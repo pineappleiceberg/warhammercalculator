@@ -57,6 +57,8 @@ type RollDetail = {
   save: string;
   fnp: string;
   damage: number;
+  outcome: string;
+  tone: "failed" | "saved" | "prevented" | "damage";
 };
 
 type RollResult = {
@@ -65,9 +67,13 @@ type RollResult = {
   criticalHits: number;
   woundingAttacks: number;
   savedAttacks: number;
+  unsavedAttacks: number;
   fnpPrevented: number;
   successfulAttacks: number;
   totalDamage: number;
+  hitsOn: number;
+  woundsOn: number;
+  savesOn: number;
   details: RollDetail[];
 };
 
@@ -351,9 +357,13 @@ function simulateAttack(profile: Profile): RollResult {
     criticalHits: 0,
     woundingAttacks: 0,
     savedAttacks: 0,
+    unsavedAttacks: 0,
     fnpPrevented: 0,
     successfulAttacks: 0,
     totalDamage: 0,
+    hitsOn,
+    woundsOn,
+    savesOn,
     details: [],
   };
 
@@ -363,7 +373,7 @@ function simulateAttack(profile: Profile): RollResult {
     lethalWound: boolean,
   ) => {
     result.hits += 1;
-    let woundLabel = "Lethal";
+    let woundLabel = "Lethal ✓";
     let criticalWound = false;
     if (!lethalWound) {
       const wound = rollCheck(
@@ -373,26 +383,46 @@ function simulateAttack(profile: Profile): RollResult {
       );
       criticalWound = wound.face >= (profile.criticalWounds || 6);
       const wounded = criticalWound || wound.face >= woundsOn;
-      woundLabel = `${wound.label}${criticalWound ? "★" : ""}`;
+      woundLabel = `${wound.label}${criticalWound ? "★" : ""} ${wounded ? "✓" : "✕"}`;
       if (!wounded) {
-        result.details.push({ label, hit: hitLabel, wound: woundLabel, save: "—", fnp: "—", damage: 0 });
+        result.details.push({
+          label,
+          hit: hitLabel,
+          wound: woundLabel,
+          save: "Not reached",
+          fnp: "Not reached",
+          damage: 0,
+          outcome: "Failed to wound",
+          tone: "failed",
+        });
         return;
       }
     }
 
     result.woundingAttacks += 1;
     const bypassSave = criticalWound && profile.devastatingWounds;
-    let saveLabel = "Bypass";
+    let saveLabel = "Bypassed";
     if (!bypassSave) {
       const save = rollDie();
       const saved = save >= savesOn;
-      saveLabel = `${save} ${saved ? "saved" : "failed"}`;
+      saveLabel = `${save} ${saved ? "✓" : "✕"}`;
       if (saved) {
         result.savedAttacks += 1;
-        result.details.push({ label, hit: hitLabel, wound: woundLabel, save: saveLabel, fnp: "—", damage: 0 });
+        result.details.push({
+          label,
+          hit: hitLabel,
+          wound: woundLabel,
+          save: saveLabel,
+          fnp: "Not reached",
+          damage: 0,
+          outcome: "Saved",
+          tone: "saved",
+        });
         return;
       }
     }
+
+    result.unsavedAttacks += 1;
 
     const rawDamage = rollDiceValue(
       profile.damageDice,
@@ -418,29 +448,40 @@ function simulateAttack(profile: Profile): RollResult {
       hit: hitLabel,
       wound: woundLabel,
       save: saveLabel,
-      fnp: profile.feelNoPain > 0 ? `${prevented}/${reducedDamage}` : "—",
+      fnp: profile.feelNoPain > 0 ? `${prevented} prevented` : "None",
       damage,
+      outcome: damage > 0 ? `${damage} damage` : "Stopped by FNP",
+      tone: damage > 0 ? "damage" : "prevented",
     });
   };
 
   for (let attack = 1; attack <= attacks; attack += 1) {
     if (profile.torrent) {
-      resolveHit(`#${attack}`, "Auto", false);
+      resolveHit(`#${attack}`, "Auto ✓", false);
       continue;
     }
     const hit = rollCheck(hitsOn, profile.criticalHits, profile.rerollHits);
     const criticalHit = hit.face >= profile.criticalHits;
     const hitSucceeded = criticalHit || hit.face >= hitsOn;
-    const hitLabel = `${hit.label}${criticalHit ? "★" : ""}`;
+    const hitLabel = `${hit.label}${criticalHit ? "★" : ""} ${hitSucceeded ? "✓" : "✕"}`;
     if (!hitSucceeded) {
-      result.details.push({ label: `#${attack}`, hit: hitLabel, wound: "—", save: "—", fnp: "—", damage: 0 });
+      result.details.push({
+        label: `#${attack}`,
+        hit: hitLabel,
+        wound: "Not reached",
+        save: "Not reached",
+        fnp: "Not reached",
+        damage: 0,
+        outcome: "Missed",
+        tone: "failed",
+      });
       continue;
     }
     if (criticalHit) result.criticalHits += 1;
     resolveHit(`#${attack}`, hitLabel, criticalHit && profile.lethalHits);
     if (criticalHit) {
       for (let extra = 1; extra <= profile.sustainedHits; extra += 1) {
-        resolveHit(`#${attack}.S${extra}`, "Sustained", false);
+        resolveHit(`#${attack}.S${extra}`, "Sustained ✓", false);
       }
     }
   }
@@ -1015,15 +1056,26 @@ export default function Home() {
             {rollError && <p className="roll-error">{rollError}</p>}
             {rollResult && (
               <div className="roll-output" aria-live="polite">
+                <div className="roll-flow" aria-label="Attack resolution summary">
+                  <div><b>{rollResult.attacks}</b><span>Attacks</span></div>
+                  <i aria-hidden="true">→</i>
+                  <div><b>{rollResult.hits}</b><span>Hits</span></div>
+                  <i aria-hidden="true">→</i>
+                  <div><b>{rollResult.woundingAttacks}</b><span>Wounds</span></div>
+                  <i aria-hidden="true">→</i>
+                  <div><b>{rollResult.unsavedAttacks}</b><span>Unsaved</span></div>
+                  <i aria-hidden="true">→</i>
+                  <div className="flow-damage"><b>{rollResult.totalDamage}</b><span>Damage</span></div>
+                </div>
                 <div className="roll-summary">
                   {[
-                    ["Attacks", rollResult.attacks],
-                    ["Hits", rollResult.hits],
-                    ["Critical hits", rollResult.criticalHits],
-                    ["Wounding attacks", rollResult.woundingAttacks],
-                    ["Saved attacks", rollResult.savedAttacks],
-                    ["FNP'd damage", rollResult.fnpPrevented],
-                    ["Final successful attacks", rollResult.successfulAttacks],
+                    ["Attacks rolled", rollResult.attacks],
+                    ["Successful hits", rollResult.hits],
+                    ["Critical hit rolls", rollResult.criticalHits],
+                    ["Successful wounds", rollResult.woundingAttacks],
+                    ["Successful saves", rollResult.savedAttacks],
+                    ["Damage prevented by FNP", rollResult.fnpPrevented],
+                    ["Attacks dealing damage", rollResult.successfulAttacks],
                     ["Total damage", rollResult.totalDamage],
                   ].map(([label, value]) => (
                     <div key={label}>
@@ -1034,23 +1086,35 @@ export default function Home() {
                 </div>
                 <div className="roll-table-wrap">
                   <table className="roll-table">
-                    <caption>Damage per attack</caption>
+                    <caption>Roll-by-roll breakdown</caption>
                     <thead>
-                      <tr><th>Attack</th><th>Hit</th><th>Wound</th><th>Save</th><th>FNP</th><th>Damage</th></tr>
+                      <tr>
+                        <th>Attack</th>
+                        <th>Hit ({rollResult.hitsOn}+)</th>
+                        <th>Wound ({rollResult.woundsOn}+)</th>
+                        <th>Save ({rollResult.savesOn <= 6 ? `${rollResult.savesOn}+` : "none"})</th>
+                        <th>FNP</th>
+                        <th>Damage</th>
+                        <th>Outcome</th>
+                      </tr>
                     </thead>
                     <tbody>
                       {rollResult.details.slice(0, 250).map((detail, index) => (
-                        <tr key={`${detail.label}-${index}`}>
+                        <tr key={`${detail.label}-${index}`} className={`outcome-${detail.tone}`}>
                           <th>{detail.label}</th>
                           <td>{detail.hit}</td>
                           <td>{detail.wound}</td>
                           <td>{detail.save}</td>
                           <td>{detail.fnp}</td>
                           <td><b>{detail.damage}</b></td>
+                          <td><span className="outcome-label">{detail.outcome}</span></td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                  <p className="roll-legend">
+                    <b>✓</b> success <b>✕</b> failure <b>★</b> critical <b>→</b> reroll <b>.S</b> sustained hit
+                  </p>
                   {rollResult.details.length > 250 && (
                     <p className="roll-truncated">Showing the first 250 resolved attacks.</p>
                   )}
