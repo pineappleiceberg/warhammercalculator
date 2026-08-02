@@ -6,6 +6,7 @@ type Profile = {
   attackDice: number;
   attackSides: number;
   attacks: number;
+  weaponCount: number;
   hitOn: number;
   strength: number;
   ap: number;
@@ -18,8 +19,20 @@ type Profile = {
   invulnerable: number;
   feelNoPain: number;
   wounds: number;
+  targetModels: number;
   reduction: number;
   criticalWounds: number;
+  sustainedHits: number;
+  rapidFire: number;
+  melta: number;
+  withinHalfRange: boolean;
+  torrent: boolean;
+  blast: boolean;
+  heavyActive: boolean;
+  lanceActive: boolean;
+  targetCover: boolean;
+  ignoresCover: boolean;
+  indirect: boolean;
   lethalHits: boolean;
   devastatingWounds: boolean;
   twinLinked: boolean;
@@ -48,6 +61,7 @@ const DEFAULT_PROFILE: Profile = {
   attackDice: 0,
   attackSides: 0,
   attacks: 4,
+  weaponCount: 1,
   hitOn: 3,
   strength: 8,
   ap: 2,
@@ -60,8 +74,20 @@ const DEFAULT_PROFILE: Profile = {
   invulnerable: 5,
   feelNoPain: 0,
   wounds: 12,
+  targetModels: 1,
   reduction: 0,
   criticalWounds: 0,
+  sustainedHits: 0,
+  rapidFire: 0,
+  melta: 0,
+  withinHalfRange: false,
+  torrent: false,
+  blast: false,
+  heavyActive: false,
+  lanceActive: false,
+  targetCover: false,
+  ignoresCover: false,
+  indirect: false,
   lethalHits: false,
   devastatingWounds: false,
   twinLinked: false,
@@ -88,7 +114,7 @@ async function loadCalculator(): Promise<WasmModule> {
 }
 
 function combineUint64(low: number, high: number): bigint {
-  return (BigInt(high >>> 0) << 32n) | BigInt(low >>> 0);
+  return (BigInt(high >>> 0) << BigInt(32)) | BigInt(low >>> 0);
 }
 
 async function calculate(profile: Profile): Promise<Result> {
@@ -98,13 +124,23 @@ async function calculate(profile: Profile): Promise<Result> {
     (profile.lethalHits ? 1 : 0) |
     (profile.devastatingWounds ? 2 : 0) |
     (profile.twinLinked ? 4 : 0) |
-    (profile.rerollHits ? 8 : 0);
+    (profile.rerollHits ? 8 : 0) |
+    (profile.torrent ? 16 : 0) |
+    (profile.heavyActive ? 32 : 0) |
+    (profile.lanceActive ? 64 : 0) |
+    (profile.blast ? 128 : 0) |
+    (profile.withinHalfRange && profile.rapidFire > 0 ? 256 : 0) |
+    (profile.withinHalfRange && profile.melta > 0 ? 512 : 0) |
+    (profile.targetCover ? 1024 : 0) |
+    (profile.ignoresCover ? 2048 : 0) |
+    (profile.indirect ? 4096 : 0);
 
   try {
     const ok = module._whc_calculate_summary(
       profile.attackDice,
       profile.attackSides,
       profile.attacks,
+      profile.weaponCount,
       profile.hitOn,
       profile.strength,
       profile.ap,
@@ -120,6 +156,10 @@ async function calculate(profile: Profile): Promise<Result> {
       profile.reduction,
       flags,
       profile.criticalWounds,
+      profile.targetModels,
+      profile.sustainedHits,
+      profile.rapidFire,
+      profile.melta,
       output,
     );
 
@@ -275,13 +315,35 @@ function DiceField({
   );
 }
 
+function Toggle({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="rule-toggle">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className="checkmark" aria-hidden="true" />
+      <b>{label}</b>
+    </label>
+  );
+}
+
 export default function Home() {
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
   const [result, setResult] = useState<Result | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
   );
-  const [message, setMessage] = useState("Loading calculation engine…");
+  const [message, setMessage] = useState("Loading…");
 
   const set = <K extends keyof Profile>(key: K, value: Profile[K]) =>
     setProfile((current) => ({ ...current, [key]: value }));
@@ -294,7 +356,7 @@ export default function Home() {
         if (!active) return;
         setResult(next);
         setStatus("ready");
-        setMessage("Calculated locally in WebAssembly");
+        setMessage("Ready");
       })
       .catch((error: unknown) => {
         if (!active) return;
@@ -377,9 +439,10 @@ export default function Home() {
                   }))
                 }
               />
-              <div className="field-grid two">
+              <div className="field-grid three">
                 <SelectField label="Critical hits" value={profile.criticalHits} onChange={(value) => set("criticalHits", value)} />
                 <SelectField label="Critical wounds / Anti-X" value={profile.criticalWounds} onChange={(value) => set("criticalWounds", value)} allowNone />
+                <NumberField label="Weapons" value={profile.weaponCount} min={1} max={100} onChange={(value) => set("weaponCount", value)} />
               </div>
             </div>
           </section>
@@ -398,6 +461,7 @@ export default function Home() {
               <SelectField label="Invulnerable save" value={profile.invulnerable} onChange={(value) => set("invulnerable", value)} allowNone />
               <SelectField label="Feel No Pain" value={profile.feelNoPain} onChange={(value) => set("feelNoPain", value)} allowNone />
               <NumberField label="Wounds" value={profile.wounds} min={1} onChange={(value) => set("wounds", value)} suffix="W" />
+              <NumberField label="Models in unit" value={profile.targetModels} min={1} onChange={(value) => set("targetModels", value)} />
               <NumberField label="Damage reduction" value={profile.reduction} onChange={(value) => set("reduction", value)} suffix="−D" />
             </div>
           </section>
@@ -406,32 +470,30 @@ export default function Home() {
             <div className="panel-heading rules-heading">
               <span>03</span>
               <div>
-                <p>Weapon abilities</p>
-                <h2 id="rules-heading">Rules</h2>
+                <p>10th edition</p>
+                <h2 id="rules-heading">Weapon rules</h2>
               </div>
             </div>
             <div className="rules-grid">
-              {[
-                ["lethalHits", "Lethal Hits", "Critical hits wound automatically"],
-                ["devastatingWounds", "Devastating Wounds", "Critical wounds bypass saves"],
-                ["twinLinked", "Twin-linked", "Re-roll failed wound rolls"],
-                ["rerollHits", "Re-roll Hits", "Re-roll failed hit rolls"],
-              ].map(([key, title, detail]) => (
-                <label className="rule-toggle" key={key}>
-                  <input
-                    type="checkbox"
-                    checked={profile[key as keyof Profile] as boolean}
-                    onChange={(event) =>
-                      set(key as keyof Profile, event.target.checked as never)
-                    }
-                  />
-                  <span className="checkmark" aria-hidden="true" />
-                  <span>
-                    <b>{title}</b>
-                    <small>{detail}</small>
-                  </span>
-                </label>
-              ))}
+              <Toggle label="Lethal Hits" checked={profile.lethalHits} onChange={(value) => set("lethalHits", value)} />
+              <Toggle label="Devastating Wounds" checked={profile.devastatingWounds} onChange={(value) => set("devastatingWounds", value)} />
+              <Toggle label="Twin-linked" checked={profile.twinLinked} onChange={(value) => set("twinLinked", value)} />
+              <Toggle label="Torrent" checked={profile.torrent} onChange={(value) => set("torrent", value)} />
+              <Toggle label="Blast" checked={profile.blast} onChange={(value) => set("blast", value)} />
+              <Toggle label="Re-roll Hits" checked={profile.rerollHits} onChange={(value) => set("rerollHits", value)} />
+            </div>
+            <div className="rule-values field-grid three">
+              <NumberField label="Sustained Hits" value={profile.sustainedHits} max={6} onChange={(value) => set("sustainedHits", value)} suffix="X" />
+              <NumberField label="Rapid Fire" value={profile.rapidFire} max={100} onChange={(value) => set("rapidFire", value)} suffix="X" />
+              <NumberField label="Melta" value={profile.melta} max={100} onChange={(value) => set("melta", value)} suffix="X" />
+            </div>
+            <div className="context-grid">
+              <Toggle label="Within half range" checked={profile.withinHalfRange} onChange={(value) => set("withinHalfRange", value)} />
+              <Toggle label="Heavy · stationary" checked={profile.heavyActive} onChange={(value) => set("heavyActive", value)} />
+              <Toggle label="Lance · charged" checked={profile.lanceActive} onChange={(value) => set("lanceActive", value)} />
+              <Toggle label="Target in cover" checked={profile.targetCover} onChange={(value) => set("targetCover", value)} />
+              <Toggle label="Ignores Cover" checked={profile.ignoresCover} onChange={(value) => set("ignoresCover", value)} />
+              <Toggle label="Indirect · no LOS" checked={profile.indirect} onChange={(value) => set("indirect", value)} />
             </div>
           </section>
         </div>
@@ -448,7 +510,7 @@ export default function Home() {
           {result && (
             <>
               <p className="fraction">
-                Exact mean <b>{result.numerator.toString()} / {result.denominator.toString()}</b>
+                Exact <b>{result.numerator.toString()} / {result.denominator.toString()}</b>
               </p>
               <div className="quartile-title">
                 <span>Damage spread</span>
@@ -482,13 +544,6 @@ export default function Home() {
               </div>
             </>
           )}
-          <div className="scope-note">
-            <b>Calculation scope</b>
-            <p>Reports uncapped inflicted damage. Model-by-model spill, Blast, Sustained Hits, and target wound caps are not applied.</p>
-          </div>
-          <footer>
-            Runs entirely on your device · C17 fixed-point engine
-          </footer>
         </aside>
       </div>
     </main>

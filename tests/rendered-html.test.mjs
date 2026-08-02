@@ -34,8 +34,9 @@ test("server-renders the calculator interface", async () => {
   assert.match(html, /<title>Warhammer Damage Calculator<\/title>/i);
   assert.match(html, /Damage Calculator/);
   assert.match(html, /Expected damage/);
-  assert.match(html, /Weapon abilities/);
-  assert.match(html, /Calculation scope/);
+  assert.match(html, /Weapon rules/);
+  assert.match(html, /Sustained Hits/);
+  assert.match(html, /Rapid Fire/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 

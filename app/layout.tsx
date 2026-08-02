@@ -20,7 +20,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const origin = `${protocol}://${host}`;
   const title = "Warhammer Damage Calculator";
   const description =
-    "Calculate exact expected damage, quartiles, and attack outcomes with a fast C and WebAssembly engine.";
+    "Expected damage, quartiles, and weapon-rule outcomes for Warhammer 40,000.";
 
   return {
     title,

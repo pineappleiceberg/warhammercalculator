@@ -240,11 +240,11 @@ input[type="number"]:focus, select:focus {
 .rules-grid {
   padding: 20px;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
 }
 .rule-toggle {
-  min-height: 66px;
+  min-height: 52px;
   display: grid;
   grid-template-columns: 24px 1fr;
   gap: 12px;
@@ -266,12 +266,23 @@ input[type="number"]:focus, select:focus {
 .rule-toggle input:checked + .checkmark::after { content: "×"; color: #fff; font-weight: 800; line-height: 1; }
 .rule-toggle:has(input:focus-visible) { outline: 3px solid var(--gold); }
 .rule-toggle b { display: block; text-transform: uppercase; font-size: 12px; }
-.rule-toggle small { display: block; color: var(--muted); margin-top: 3px; line-height: 1.25; }
+.rule-values {
+  margin: 0 20px;
+  padding: 18px 0;
+  border-top: 1px solid #aaa397;
+  border-bottom: 1px solid #aaa397;
+}
+.context-grid {
+  padding: 20px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
 
 .results-panel {
   position: sticky;
   top: 20px;
-  min-height: 620px;
+  min-height: 540px;
   background: var(--ink);
   color: #fff;
   border-top: 8px solid var(--red);
@@ -314,11 +325,6 @@ input[type="number"]:focus, select:focus {
 .result-table > div:last-child { border: 0; }
 .result-table span { color: #aaa69d; font-size: 12px; }
 .result-table b { color: var(--gold); font: 700 16px var(--font-geist-mono), monospace; }
-.scope-note { margin-top: 28px; padding-left: 13px; border-left: 3px solid var(--red); }
-.scope-note b { text-transform: uppercase; font: 700 10px var(--font-geist-mono), monospace; letter-spacing: .1em; color: var(--gold); }
-.scope-note p { margin: 6px 0 0; color: #aaa69d; font-size: 11px; line-height: 1.5; }
-.results-panel footer { position: absolute; bottom: 18px; left: 28px; right: 28px; color: #77746d; font: 9px var(--font-geist-mono), monospace; text-transform: uppercase; letter-spacing: .08em; }
-
 @media (max-width: 980px) {
   .calculator-grid { grid-template-columns: 1fr; }
   .results-panel { position: relative; top: auto; min-height: 590px; }
@@ -328,7 +334,7 @@ input[type="number"]:focus, select:focus {
   .masthead { align-items: flex-start; flex-direction: column; }
   .intro-strip { align-items: flex-start; flex-direction: column; gap: 10px; }
   .calculator-grid { padding-top: 20px; }
-  .field-grid.three, .field-grid.two, .rules-grid { grid-template-columns: 1fr; }
+  .field-grid.three, .field-grid.two, .rules-grid, .context-grid { grid-template-columns: 1fr; }
   .dice-field { grid-template-columns: 1fr 16px 1fr; }
   .dice-field output { grid-column: 1 / -1; }
   .dice-field > .dice-mark:nth-of-type(2) { display: none; }
