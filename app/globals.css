@@ -320,6 +320,94 @@ input[type="number"]:focus, select:focus {
   gap: 10px;
 }
 
+.roll-panel {
+  background: #252522;
+  color: #fff;
+  border: 1px solid var(--ink);
+  border-bottom: 7px solid var(--gold);
+  box-shadow: 6px 6px 0 var(--red-dark);
+}
+.roll-action {
+  padding: 22px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+}
+.roll-action span {
+  color: var(--gold);
+  font: 10px/1.2 var(--font-geist-mono), monospace;
+  letter-spacing: .14em;
+}
+.roll-action h2 {
+  margin: 5px 0 0;
+  font-size: 25px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.roll-action button {
+  min-height: 48px;
+  padding: 12px 24px;
+  border: 2px solid var(--gold);
+  background: var(--red);
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font: 800 12px var(--font-geist-mono), monospace;
+  box-shadow: 4px 4px 0 #000;
+}
+.roll-action button:hover { background: #98303a; }
+.roll-action button:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 #000; }
+.roll-action button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+.roll-error { margin: 0; padding: 0 24px 20px; color: #ff8c92; }
+.roll-output { border-top: 1px solid #55534d; }
+.roll-summary {
+  padding: 18px 24px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: #55534d;
+}
+.roll-summary > div {
+  min-height: 72px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: #302f2b;
+}
+.roll-summary span {
+  color: #aaa69d;
+  text-transform: uppercase;
+  font: 9px var(--font-geist-mono), monospace;
+  letter-spacing: .08em;
+}
+.roll-summary b { color: var(--gold); font: 700 24px var(--font-geist-mono), monospace; }
+.roll-table-wrap { max-height: 440px; overflow: auto; }
+.roll-table { width: 100%; border-collapse: collapse; font: 11px var(--font-geist-mono), monospace; }
+.roll-table caption {
+  padding: 16px 24px 10px;
+  text-align: left;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  font-weight: 700;
+}
+.roll-table th, .roll-table td { padding: 9px 12px; border-bottom: 1px solid #45443f; text-align: right; }
+.roll-table th:first-child { text-align: left; }
+.roll-table thead th {
+  position: sticky;
+  top: 0;
+  background: #1b1b19;
+  color: #aaa69d;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  z-index: 1;
+}
+.roll-table tbody th { color: #aaa69d; }
+.roll-table tbody td:last-child b { color: var(--gold); }
+.roll-truncated { margin: 0; padding: 12px 24px; color: #aaa69d; font-size: 11px; }
+
 .results-panel {
   position: sticky;
   top: 20px;
@@ -380,6 +468,9 @@ input[type="number"]:focus, select:focus {
   .dice-field output { grid-column: 1 / -1; }
   .dice-field > .dice-mark:nth-of-type(2) { display: none; }
   .panel-body { padding: 17px; }
+  .roll-action { align-items: stretch; flex-direction: column; }
+  .roll-action button { width: 100%; }
+  .roll-summary { grid-template-columns: repeat(2, 1fr); padding: 14px; }
   .results-panel { padding: 22px; }
   .rail-point b { font-size: 11px; }
 }

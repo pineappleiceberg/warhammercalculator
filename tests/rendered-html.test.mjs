@@ -37,6 +37,8 @@ test("server-renders the calculator interface", async () => {
   assert.match(html, /Weapon rules/);
   assert.match(html, /Sustained Hits/);
   assert.match(html, /Rapid Fire/);
+  assert.match(html, /Roll this attack/);
+  assert.match(html, /LIVE RESOLUTION/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 

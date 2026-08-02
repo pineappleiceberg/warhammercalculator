@@ -50,6 +50,27 @@ type Result = {
   mean: number;
 };
 
+type RollDetail = {
+  label: string;
+  hit: string;
+  wound: string;
+  save: string;
+  fnp: string;
+  damage: number;
+};
+
+type RollResult = {
+  attacks: number;
+  hits: number;
+  criticalHits: number;
+  woundingAttacks: number;
+  savedAttacks: number;
+  fnpPrevented: number;
+  successfulAttacks: number;
+  totalDamage: number;
+  details: RollDetail[];
+};
+
 type WasmModule = {
   _malloc: (size: number) => number;
   _free: (pointer: number) => void;
@@ -244,6 +265,189 @@ function fixedAbilityValue(ability: CatalogueAbility | undefined) {
   return Number(ability.value);
 }
 
+function randomBelow(exclusiveMaximum: number) {
+  if (!Number.isInteger(exclusiveMaximum) || exclusiveMaximum < 1) {
+    throw new Error("Invalid die size");
+  }
+  const range = 0x1_0000_0000;
+  const limit = range - (range % exclusiveMaximum);
+  const buffer = new Uint32Array(1);
+  let value = 0;
+  do {
+    globalThis.crypto.getRandomValues(buffer);
+    value = buffer[0];
+  } while (value >= limit);
+  return value % exclusiveMaximum;
+}
+
+function rollDie(sides = 6) {
+  return randomBelow(sides) + 1;
+}
+
+function rollDiceValue(count: number, sides: number, modifier: number) {
+  let total = modifier;
+  for (let die = 0; die < count; die += 1) total += rollDie(sides);
+  return total;
+}
+
+function woundTarget(strength: number, toughness: number) {
+  if (strength >= toughness * 2) return 2;
+  if (strength > toughness) return 3;
+  if (strength === toughness) return 4;
+  if (toughness >= strength * 2) return 6;
+  return 5;
+}
+
+function rollCheck(
+  succeedsOn: number,
+  criticalOn = 0,
+  rerollFailures = false,
+) {
+  const first = rollDie();
+  const succeeds = (face: number) =>
+    (criticalOn >= 2 && face >= criticalOn) || face >= succeedsOn;
+  if (!rerollFailures || succeeds(first)) {
+    return { face: first, label: String(first) };
+  }
+  const second = rollDie();
+  return { face: second, label: `${first}→${second}` };
+}
+
+function simulateAttack(profile: Profile): RollResult {
+  const attacksPerWeapon =
+    profile.attacks +
+    (profile.withinHalfRange ? profile.rapidFire : 0) +
+    (profile.blast ? Math.floor(profile.targetModels / 5) : 0);
+  const attacks =
+    rollDiceValue(
+      profile.attackDice * profile.weaponCount,
+      profile.attackSides,
+      attacksPerWeapon * profile.weaponCount,
+    );
+  if (attacks > 10_000) {
+    throw new Error("This roll is too large to display. Reduce the attack or weapon count.");
+  }
+
+  let hitModifier = (profile.heavyActive ? 1 : 0) - (profile.indirect ? 1 : 0);
+  hitModifier = Math.max(-1, Math.min(1, hitModifier));
+  const hitsOn = Math.max(2, Math.min(6, profile.hitOn - hitModifier));
+  const woundsOn = Math.max(
+    2,
+    woundTarget(profile.strength, profile.toughness) - (profile.lanceActive ? 1 : 0),
+  );
+  const hasCover =
+    (profile.targetCover || profile.indirect) &&
+    !profile.ignoresCover &&
+    !(profile.ap === 0 && profile.save <= 3);
+  const armourSave = profile.save + profile.ap - (hasCover ? 1 : 0);
+  const savesOn = Math.max(
+    2,
+    Math.min(7, profile.invulnerable > 0 ? Math.min(armourSave, profile.invulnerable) : armourSave),
+  );
+
+  const result: RollResult = {
+    attacks,
+    hits: 0,
+    criticalHits: 0,
+    woundingAttacks: 0,
+    savedAttacks: 0,
+    fnpPrevented: 0,
+    successfulAttacks: 0,
+    totalDamage: 0,
+    details: [],
+  };
+
+  const resolveHit = (
+    label: string,
+    hitLabel: string,
+    lethalWound: boolean,
+  ) => {
+    result.hits += 1;
+    let woundLabel = "Lethal";
+    let criticalWound = false;
+    if (!lethalWound) {
+      const wound = rollCheck(
+        woundsOn,
+        profile.criticalWounds || 6,
+        profile.twinLinked,
+      );
+      criticalWound = wound.face >= (profile.criticalWounds || 6);
+      const wounded = criticalWound || wound.face >= woundsOn;
+      woundLabel = `${wound.label}${criticalWound ? "★" : ""}`;
+      if (!wounded) {
+        result.details.push({ label, hit: hitLabel, wound: woundLabel, save: "—", fnp: "—", damage: 0 });
+        return;
+      }
+    }
+
+    result.woundingAttacks += 1;
+    const bypassSave = criticalWound && profile.devastatingWounds;
+    let saveLabel = "Bypass";
+    if (!bypassSave) {
+      const save = rollDie();
+      const saved = save >= savesOn;
+      saveLabel = `${save} ${saved ? "saved" : "failed"}`;
+      if (saved) {
+        result.savedAttacks += 1;
+        result.details.push({ label, hit: hitLabel, wound: woundLabel, save: saveLabel, fnp: "—", damage: 0 });
+        return;
+      }
+    }
+
+    const rawDamage = rollDiceValue(
+      profile.damageDice,
+      profile.damageSides,
+      profile.damage + (profile.withinHalfRange ? profile.melta : 0),
+    );
+    const reducedDamage =
+      rawDamage > 0 && profile.reduction > 0
+        ? Math.max(1, rawDamage - profile.reduction)
+        : rawDamage;
+    let prevented = 0;
+    if (profile.feelNoPain > 0) {
+      for (let point = 0; point < reducedDamage; point += 1) {
+        if (rollDie() >= profile.feelNoPain) prevented += 1;
+      }
+    }
+    const damage = reducedDamage - prevented;
+    result.fnpPrevented += prevented;
+    result.totalDamage += damage;
+    if (damage > 0) result.successfulAttacks += 1;
+    result.details.push({
+      label,
+      hit: hitLabel,
+      wound: woundLabel,
+      save: saveLabel,
+      fnp: profile.feelNoPain > 0 ? `${prevented}/${reducedDamage}` : "—",
+      damage,
+    });
+  };
+
+  for (let attack = 1; attack <= attacks; attack += 1) {
+    if (profile.torrent) {
+      resolveHit(`#${attack}`, "Auto", false);
+      continue;
+    }
+    const hit = rollCheck(hitsOn, profile.criticalHits, profile.rerollHits);
+    const criticalHit = hit.face >= profile.criticalHits;
+    const hitSucceeded = criticalHit || hit.face >= hitsOn;
+    const hitLabel = `${hit.label}${criticalHit ? "★" : ""}`;
+    if (!hitSucceeded) {
+      result.details.push({ label: `#${attack}`, hit: hitLabel, wound: "—", save: "—", fnp: "—", damage: 0 });
+      continue;
+    }
+    if (criticalHit) result.criticalHits += 1;
+    resolveHit(`#${attack}`, hitLabel, criticalHit && profile.lethalHits);
+    if (criticalHit) {
+      for (let extra = 1; extra <= profile.sustainedHits; extra += 1) {
+        resolveHit(`#${attack}.S${extra}`, "Sustained", false);
+      }
+    }
+  }
+
+  return result;
+}
+
 function NumberField({
   label,
   value,
@@ -399,6 +603,8 @@ export default function Home() {
   const [targetFaction, setTargetFaction] = useState("");
   const [targetUnit, setTargetUnit] = useState("");
   const [targetModel, setTargetModel] = useState("");
+  const [rollResult, setRollResult] = useState<RollResult | null>(null);
+  const [rollError, setRollError] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
@@ -783,6 +989,74 @@ export default function Home() {
               <Toggle label="Ignores Cover" checked={profile.ignoresCover} onChange={(value) => set("ignoresCover", value)} />
               <Toggle label="Indirect · no LOS" checked={profile.indirect} onChange={(value) => set("indirect", value)} />
             </div>
+          </section>
+
+          <section className="roll-panel" aria-labelledby="roll-heading">
+            <div className="roll-action">
+              <div>
+                <span>LIVE RESOLUTION // CSPRNG</span>
+                <h2 id="roll-heading">Roll this attack</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    setRollResult(simulateAttack(profile));
+                    setRollError("");
+                  } catch (error) {
+                    setRollResult(null);
+                    setRollError(error instanceof Error ? error.message : "Roll failed");
+                  }
+                }}
+              >
+                Roll this attack
+              </button>
+            </div>
+            {rollError && <p className="roll-error">{rollError}</p>}
+            {rollResult && (
+              <div className="roll-output" aria-live="polite">
+                <div className="roll-summary">
+                  {[
+                    ["Attacks", rollResult.attacks],
+                    ["Hits", rollResult.hits],
+                    ["Critical hits", rollResult.criticalHits],
+                    ["Wounding attacks", rollResult.woundingAttacks],
+                    ["Saved attacks", rollResult.savedAttacks],
+                    ["FNP'd damage", rollResult.fnpPrevented],
+                    ["Final successful attacks", rollResult.successfulAttacks],
+                    ["Total damage", rollResult.totalDamage],
+                  ].map(([label, value]) => (
+                    <div key={label}>
+                      <span>{label}</span>
+                      <b>{value}</b>
+                    </div>
+                  ))}
+                </div>
+                <div className="roll-table-wrap">
+                  <table className="roll-table">
+                    <caption>Damage per attack</caption>
+                    <thead>
+                      <tr><th>Attack</th><th>Hit</th><th>Wound</th><th>Save</th><th>FNP</th><th>Damage</th></tr>
+                    </thead>
+                    <tbody>
+                      {rollResult.details.slice(0, 250).map((detail, index) => (
+                        <tr key={`${detail.label}-${index}`}>
+                          <th>{detail.label}</th>
+                          <td>{detail.hit}</td>
+                          <td>{detail.wound}</td>
+                          <td>{detail.save}</td>
+                          <td>{detail.fnp}</td>
+                          <td><b>{detail.damage}</b></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {rollResult.details.length > 250 && (
+                    <p className="roll-truncated">Showing the first 250 resolved attacks.</p>
+                  )}
+                </div>
+              </div>
+            )}
           </section>
         </div>
 
