@@ -173,6 +173,47 @@ main { min-height: 100vh; padding-bottom: 56px; }
 .field-grid.three { grid-template-columns: repeat(3, 1fr); }
 .field-grid.two { grid-template-columns: repeat(2, 1fr); }
 
+.profile-picker {
+  display: grid;
+  grid-template-columns: .8fr 1.25fr 1.25fr;
+  gap: 10px;
+  padding: 14px;
+  background: #ddd6c8;
+  border: 1px solid #9d9689;
+}
+.profile-picker label { display: grid; gap: 6px; min-width: 0; }
+.profile-picker label > span {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font: 700 10px/1.2 var(--font-geist-mono), monospace;
+}
+.profile-picker select {
+  min-width: 0;
+  font-size: 13px;
+  text-overflow: ellipsis;
+}
+.profile-picker select:disabled {
+  color: #8d887f;
+  background: #ebe7de;
+  cursor: not-allowed;
+}
+.loaded-profile {
+  margin: -10px 0 0;
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  color: var(--muted);
+  font: 10px/1.4 var(--font-geist-mono), monospace;
+}
+.loaded-profile b {
+  flex: 0 0 auto;
+  color: var(--red);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.loaded-profile span { text-transform: capitalize; }
+
 .number-field { display: grid; gap: 7px; }
 .number-field > span:first-child,
 .dice-field legend,
@@ -334,7 +375,7 @@ input[type="number"]:focus, select:focus {
   .masthead { align-items: flex-start; flex-direction: column; }
   .intro-strip { align-items: flex-start; flex-direction: column; gap: 10px; }
   .calculator-grid { padding-top: 20px; }
-  .field-grid.three, .field-grid.two, .rules-grid, .context-grid { grid-template-columns: 1fr; }
+  .field-grid.three, .field-grid.two, .profile-picker, .rules-grid, .context-grid { grid-template-columns: 1fr; }
   .dice-field { grid-template-columns: 1fr 16px 1fr; }
   .dice-field output { grid-column: 1 / -1; }
   .dice-field > .dice-mark:nth-of-type(2) { display: none; }

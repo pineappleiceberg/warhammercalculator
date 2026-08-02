@@ -57,6 +57,41 @@ type WasmModule = {
   getValue: (pointer: number, type: "i32") => number;
 };
 
+type CatalogueFaction = { id: string; name: string };
+type CatalogueAbility = { name: string; value: string | null };
+type CatalogueWeapon = {
+  id: number;
+  name: string;
+  type: "Ranged" | "Melee";
+  attacks: string;
+  skill: number | null;
+  strength: string;
+  ap: number | null;
+  damage: string;
+  rules: string;
+  abilities: CatalogueAbility[];
+};
+type CatalogueModel = {
+  id: number;
+  name: string;
+  t: number | null;
+  save: number | null;
+  invuln: number | null;
+  wounds: number | null;
+};
+type CatalogueUnit = {
+  id: string;
+  factionId: string;
+  name: string;
+  models: CatalogueModel[];
+  weapons: CatalogueWeapon[];
+};
+type Catalogue = {
+  sourceUpdatedAt: string;
+  factions: CatalogueFaction[];
+  units: CatalogueUnit[];
+};
+
 const DEFAULT_PROFILE: Profile = {
   attackDice: 0,
   attackSides: 0,
@@ -118,8 +153,8 @@ function combineUint64(low: number, high: number): bigint {
 }
 
 async function calculate(profile: Profile): Promise<Result> {
-  const module = await loadCalculator();
-  const output = module._malloc(36);
+  const wasmModule = await loadCalculator();
+  const output = wasmModule._malloc(36);
   const flags =
     (profile.lethalHits ? 1 : 0) |
     (profile.devastatingWounds ? 2 : 0) |
@@ -136,7 +171,7 @@ async function calculate(profile: Profile): Promise<Result> {
     (profile.indirect ? 4096 : 0);
 
   try {
-    const ok = module._whc_calculate_summary(
+    const ok = wasmModule._whc_calculate_summary(
       profile.attackDice,
       profile.attackSides,
       profile.attacks,
@@ -166,7 +201,7 @@ async function calculate(profile: Profile): Promise<Result> {
     if (!ok) throw new Error("That profile exceeds the calculator limits.");
 
     const read = (index: number) =>
-      module.getValue(output + index * 4, "i32") >>> 0;
+      wasmModule.getValue(output + index * 4, "i32") >>> 0;
     const numerator = combineUint64(read(5), read(6));
     const denominator = combineUint64(read(7), read(8));
 
@@ -181,7 +216,7 @@ async function calculate(profile: Profile): Promise<Result> {
       mean: Number(numerator) / Number(denominator),
     };
   } finally {
-    module._free(output);
+    wasmModule._free(output);
   }
 }
 
@@ -189,6 +224,24 @@ function formatDice(count: number, sides: number, modifier: number) {
   if (count === 0) return `${modifier}`;
   const suffix = modifier > 0 ? `+${modifier}` : "";
   return `${count > 1 ? count : ""}D${sides}${suffix}`;
+}
+
+function parseDice(value: string) {
+  const normalized = value.replace(/\s/g, "");
+  const fixed = /^\d+$/.exec(normalized);
+  if (fixed) return { count: 0, sides: 0, modifier: Number(fixed[0]) };
+  const dice = /^(\d*)D(\d+)([+-]\d+)?$/i.exec(normalized);
+  if (!dice) return null;
+  return {
+    count: dice[1] ? Number(dice[1]) : 1,
+    sides: Number(dice[2]),
+    modifier: Math.max(0, Number(dice[3] ?? 0)),
+  };
+}
+
+function fixedAbilityValue(ability: CatalogueAbility | undefined) {
+  if (!ability?.value || !/^\d+$/.test(ability.value)) return 0;
+  return Number(ability.value);
 }
 
 function NumberField({
@@ -339,6 +392,13 @@ function Toggle({
 
 export default function Home() {
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
+  const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
+  const [attackerFaction, setAttackerFaction] = useState("");
+  const [attackerUnit, setAttackerUnit] = useState("");
+  const [attackerWeapon, setAttackerWeapon] = useState("");
+  const [targetFaction, setTargetFaction] = useState("");
+  const [targetUnit, setTargetUnit] = useState("");
+  const [targetModel, setTargetModel] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
@@ -350,7 +410,24 @@ export default function Home() {
 
   useEffect(() => {
     let active = true;
-    setStatus("loading");
+    fetch("/profile-data.json")
+      .then((response) => {
+        if (!response.ok) throw new Error("Profile catalogue unavailable");
+        return response.json() as Promise<Catalogue>;
+      })
+      .then((data) => {
+        if (active) setCatalogue(data);
+      })
+      .catch(() => {
+        if (active) setCatalogue(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
     calculate(profile)
       .then((next) => {
         if (!active) return;
@@ -373,6 +450,88 @@ export default function Home() {
       `${formatDice(profile.attackDice, profile.attackSides, profile.attacks)} attacks · ${profile.hitOn}+ hit · S${profile.strength} · AP-${profile.ap} · ${formatDice(profile.damageDice, profile.damageSides, profile.damage)} damage`,
     [profile],
   );
+
+  const attackerUnits = useMemo(
+    () =>
+      catalogue?.units.filter(
+        (unit) => unit.factionId === attackerFaction && unit.weapons.length > 0,
+      ) ?? [],
+    [catalogue, attackerFaction],
+  );
+  const selectedAttackerUnit = attackerUnits.find(
+    (unit) => unit.id === attackerUnit,
+  );
+  const selectedWeapon = selectedAttackerUnit?.weapons.find(
+    (weapon) => String(weapon.id) === attackerWeapon,
+  );
+  const targetUnits = useMemo(
+    () =>
+      catalogue?.units.filter(
+        (unit) => unit.factionId === targetFaction && unit.models.length > 0,
+      ) ?? [],
+    [catalogue, targetFaction],
+  );
+  const selectedTargetUnit = targetUnits.find((unit) => unit.id === targetUnit);
+  const selectedTargetModel = selectedTargetUnit?.models.find(
+    (model) => String(model.id) === targetModel,
+  );
+
+  const applyWeapon = (weapon: CatalogueWeapon) => {
+    const attacks = parseDice(weapon.attacks);
+    const damage = parseDice(weapon.damage);
+    const names = new Set(weapon.abilities.map((ability) => ability.name));
+    const ability = (name: string) =>
+      weapon.abilities.find((entry) => entry.name === name);
+    const anti = weapon.abilities.find((entry) => entry.name.startsWith("anti-"));
+    const antiTarget = anti?.value ? Number(anti.value.replace("+", "")) : 0;
+
+    setProfile((current) => ({
+      ...current,
+      ...(attacks
+        ? {
+            attackDice: attacks.count,
+            attackSides: attacks.sides,
+            attacks: attacks.modifier,
+          }
+        : {}),
+      ...(damage
+        ? {
+            damageDice: damage.count,
+            damageSides: damage.sides,
+            damage: damage.modifier,
+          }
+        : {}),
+      ...(weapon.skill ? { hitOn: weapon.skill } : {}),
+      ...(/^\d+$/.test(weapon.strength)
+        ? { strength: Number(weapon.strength) }
+        : {}),
+      ...(weapon.ap !== null ? { ap: Math.abs(weapon.ap) } : {}),
+      criticalWounds: Number.isFinite(antiTarget) ? antiTarget : 0,
+      sustainedHits: fixedAbilityValue(ability("sustained hits")),
+      rapidFire: fixedAbilityValue(ability("rapid fire")),
+      melta: fixedAbilityValue(ability("melta")),
+      torrent: names.has("torrent"),
+      blast: names.has("blast"),
+      ignoresCover: names.has("ignores cover"),
+      lethalHits: names.has("lethal hits"),
+      devastatingWounds: names.has("devastating wounds"),
+      twinLinked: names.has("twin-linked"),
+      withinHalfRange: false,
+      heavyActive: false,
+      lanceActive: false,
+      indirect: false,
+    }));
+  };
+
+  const applyTarget = (model: CatalogueModel) => {
+    setProfile((current) => ({
+      ...current,
+      ...(model.t ? { toughness: model.t } : {}),
+      ...(model.save ? { save: model.save } : {}),
+      invulnerable: model.invuln ?? 0,
+      ...(model.wounds ? { wounds: model.wounds } : {}),
+    }));
+  };
 
   return (
     <main>
@@ -406,6 +565,68 @@ export default function Home() {
             </div>
 
             <div className="panel-body">
+              <div className="profile-picker" aria-label="Attacker profile picker">
+                <label>
+                  <span>Faction</span>
+                  <select
+                    value={attackerFaction}
+                    disabled={!catalogue}
+                    onChange={(event) => {
+                      setAttackerFaction(event.target.value);
+                      setAttackerUnit("");
+                      setAttackerWeapon("");
+                    }}
+                  >
+                    <option value="">{catalogue ? "Choose faction" : "Loading profiles…"}</option>
+                    {catalogue?.factions.map((faction) => (
+                      <option value={faction.id} key={faction.id}>{faction.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Unit</span>
+                  <select
+                    value={attackerUnit}
+                    disabled={!attackerFaction}
+                    onChange={(event) => {
+                      setAttackerUnit(event.target.value);
+                      setAttackerWeapon("");
+                    }}
+                  >
+                    <option value="">Choose unit</option>
+                    {attackerUnits.map((unit) => (
+                      <option value={unit.id} key={unit.id}>{unit.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Weapon</span>
+                  <select
+                    value={attackerWeapon}
+                    disabled={!selectedAttackerUnit}
+                    onChange={(event) => {
+                      setAttackerWeapon(event.target.value);
+                      const weapon = selectedAttackerUnit?.weapons.find(
+                        (item) => String(item.id) === event.target.value,
+                      );
+                      if (weapon) applyWeapon(weapon);
+                    }}
+                  >
+                    <option value="">Choose weapon</option>
+                    {selectedAttackerUnit?.weapons.map((weapon) => (
+                      <option value={weapon.id} key={weapon.id}>
+                        {weapon.name} · {weapon.type}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {selectedWeapon && (
+                <p className="loaded-profile">
+                  <b>Profile loaded</b>
+                  <span>{selectedWeapon.rules || "No weapon keywords"}</span>
+                </p>
+              )}
               <DiceField
                 label="Attacks"
                 count={profile.attackDice}
@@ -455,14 +676,81 @@ export default function Home() {
                 <h2 id="target-heading">Target</h2>
               </div>
             </div>
-            <div className="panel-body field-grid three">
-              <NumberField label="Toughness" value={profile.toughness} min={1} onChange={(value) => set("toughness", value)} suffix="T" />
-              <SelectField label="Armour save" value={profile.save} onChange={(value) => set("save", value)} />
-              <SelectField label="Invulnerable save" value={profile.invulnerable} onChange={(value) => set("invulnerable", value)} allowNone />
-              <SelectField label="Feel No Pain" value={profile.feelNoPain} onChange={(value) => set("feelNoPain", value)} allowNone />
-              <NumberField label="Wounds" value={profile.wounds} min={1} onChange={(value) => set("wounds", value)} suffix="W" />
-              <NumberField label="Models in unit" value={profile.targetModels} min={1} onChange={(value) => set("targetModels", value)} />
-              <NumberField label="Damage reduction" value={profile.reduction} onChange={(value) => set("reduction", value)} suffix="−D" />
+            <div className="panel-body">
+              <div className="profile-picker" aria-label="Target profile picker">
+                <label>
+                  <span>Faction</span>
+                  <select
+                    value={targetFaction}
+                    disabled={!catalogue}
+                    onChange={(event) => {
+                      setTargetFaction(event.target.value);
+                      setTargetUnit("");
+                      setTargetModel("");
+                    }}
+                  >
+                    <option value="">{catalogue ? "Choose faction" : "Loading profiles…"}</option>
+                    {catalogue?.factions.map((faction) => (
+                      <option value={faction.id} key={faction.id}>{faction.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Unit</span>
+                  <select
+                    value={targetUnit}
+                    disabled={!targetFaction}
+                    onChange={(event) => {
+                      setTargetUnit(event.target.value);
+                      setTargetModel("");
+                      const unit = targetUnits.find((item) => item.id === event.target.value);
+                      if (unit?.models.length === 1) {
+                        setTargetModel(String(unit.models[0].id));
+                        applyTarget(unit.models[0]);
+                      }
+                    }}
+                  >
+                    <option value="">Choose unit</option>
+                    {targetUnits.map((unit) => (
+                      <option value={unit.id} key={unit.id}>{unit.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Model profile</span>
+                  <select
+                    value={targetModel}
+                    disabled={!selectedTargetUnit}
+                    onChange={(event) => {
+                      setTargetModel(event.target.value);
+                      const model = selectedTargetUnit?.models.find(
+                        (item) => String(item.id) === event.target.value,
+                      );
+                      if (model) applyTarget(model);
+                    }}
+                  >
+                    <option value="">Choose profile</option>
+                    {selectedTargetUnit?.models.map((model) => (
+                      <option value={model.id} key={model.id}>{model.name}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {selectedTargetModel && (
+                <p className="loaded-profile">
+                  <b>Profile loaded</b>
+                  <span>Adjust wounds, models, and defensive rules as needed</span>
+                </p>
+              )}
+              <div className="field-grid three">
+                <NumberField label="Toughness" value={profile.toughness} min={1} onChange={(value) => set("toughness", value)} suffix="T" />
+                <SelectField label="Armour save" value={profile.save} onChange={(value) => set("save", value)} />
+                <SelectField label="Invulnerable save" value={profile.invulnerable} onChange={(value) => set("invulnerable", value)} allowNone />
+                <SelectField label="Feel No Pain" value={profile.feelNoPain} onChange={(value) => set("feelNoPain", value)} allowNone />
+                <NumberField label="Wounds" value={profile.wounds} min={1} onChange={(value) => set("wounds", value)} suffix="W" />
+                <NumberField label="Models in unit" value={profile.targetModels} min={1} onChange={(value) => set("targetModels", value)} />
+                <NumberField label="Damage reduction" value={profile.reduction} onChange={(value) => set("reduction", value)} suffix="−D" />
+              </div>
             </div>
           </section>
 
