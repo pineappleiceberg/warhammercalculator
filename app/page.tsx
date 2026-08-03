@@ -1,43 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-
-type Profile = {
-  attackDice: number;
-  attackSides: number;
-  attacks: number;
-  weaponCount: number;
-  hitOn: number;
-  strength: number;
-  ap: number;
-  damageDice: number;
-  damageSides: number;
-  damage: number;
-  criticalHits: number;
-  toughness: number;
-  save: number;
-  invulnerable: number;
-  feelNoPain: number;
-  wounds: number;
-  targetModels: number;
-  reduction: number;
-  criticalWounds: number;
-  sustainedHits: number;
-  rapidFire: number;
-  melta: number;
-  withinHalfRange: boolean;
-  torrent: boolean;
-  blast: boolean;
-  heavyActive: boolean;
-  lanceActive: boolean;
-  targetCover: boolean;
-  ignoresCover: boolean;
-  indirect: boolean;
-  lethalHits: boolean;
-  devastatingWounds: boolean;
-  twinLinked: boolean;
-  rerollHits: boolean;
-};
+import {
+  DEFAULT_PROFILE,
+  type CombatProfile as Profile,
+  type RollResult,
+} from "../lib/combat";
 
 type Result = {
   minimum: number;
@@ -50,32 +18,6 @@ type Result = {
   mean: number;
 };
 
-type RollDetail = {
-  label: string;
-  hit: string;
-  wound: string;
-  save: string;
-  fnp: string;
-  damage: number;
-  outcome: string;
-  tone: "failed" | "saved" | "prevented" | "damage";
-};
-
-type RollResult = {
-  attacks: number;
-  hits: number;
-  criticalHits: number;
-  woundingAttacks: number;
-  savedAttacks: number;
-  unsavedAttacks: number;
-  fnpPrevented: number;
-  successfulAttacks: number;
-  totalDamage: number;
-  hitsOn: number;
-  woundsOn: number;
-  savesOn: number;
-  details: RollDetail[];
-};
 
 type WasmModule = {
   _malloc: (size: number) => number;
@@ -117,43 +59,6 @@ type Catalogue = {
   sourceUpdatedAt: string;
   factions: CatalogueFaction[];
   units: CatalogueUnit[];
-};
-
-const DEFAULT_PROFILE: Profile = {
-  attackDice: 0,
-  attackSides: 0,
-  attacks: 4,
-  weaponCount: 1,
-  hitOn: 3,
-  strength: 8,
-  ap: 2,
-  damageDice: 1,
-  damageSides: 6,
-  damage: 1,
-  criticalHits: 6,
-  toughness: 8,
-  save: 3,
-  invulnerable: 5,
-  feelNoPain: 0,
-  wounds: 12,
-  targetModels: 1,
-  reduction: 0,
-  criticalWounds: 0,
-  sustainedHits: 0,
-  rapidFire: 0,
-  melta: 0,
-  withinHalfRange: false,
-  torrent: false,
-  blast: false,
-  heavyActive: false,
-  lanceActive: false,
-  targetCover: false,
-  ignoresCover: false,
-  indirect: false,
-  lethalHits: false,
-  devastatingWounds: false,
-  twinLinked: false,
-  rerollHits: false,
 };
 
 let modulePromise: Promise<WasmModule> | null = null;
