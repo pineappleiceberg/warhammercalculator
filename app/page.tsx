@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   DEFAULT_PROFILE,
+  normalizeProfile,
   type CombatProfile as Profile,
   type RollResult,
 } from "../lib/combat";
@@ -60,6 +61,49 @@ type Catalogue = {
   factions: CatalogueFaction[];
   units: CatalogueUnit[];
 };
+
+type SharedMatchup = {
+  version: 1;
+  profile: Profile;
+  attackerFaction: string;
+  attackerUnit: string;
+  attackerWeapon: string;
+  targetFaction: string;
+  targetUnit: string;
+  targetModel: string;
+};
+
+function encodeMatchup(matchup: SharedMatchup) {
+  const bytes = new TextEncoder().encode(JSON.stringify(matchup));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function decodeMatchup(encoded: string): SharedMatchup {
+  if (encoded.length > 12_000) throw new Error("Matchup link is too large");
+  const base64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  const parsed = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+  if (parsed.version !== 1) throw new Error("Unsupported matchup link version");
+  const selection = (key: string) => {
+    const value = parsed[key];
+    if (typeof value !== "string") throw new Error(`Invalid ${key}`);
+    return value;
+  };
+  return {
+    version: 1,
+    profile: normalizeProfile(parsed.profile),
+    attackerFaction: selection("attackerFaction"),
+    attackerUnit: selection("attackerUnit"),
+    attackerWeapon: selection("attackerWeapon"),
+    targetFaction: selection("targetFaction"),
+    targetUnit: selection("targetUnit"),
+    targetModel: selection("targetModel"),
+  };
+}
 
 let modulePromise: Promise<WasmModule> | null = null;
 
@@ -551,6 +595,7 @@ export default function Home() {
   const [targetModel, setTargetModel] = useState("");
   const [rollResult, setRollResult] = useState<RollResult | null>(null);
   const [rollError, setRollError] = useState("");
+  const [shareStatus, setShareStatus] = useState("Share matchup");
   const [result, setResult] = useState<Result | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">(
     "loading",
@@ -559,6 +604,27 @@ export default function Home() {
 
   const set = <K extends keyof Profile>(key: K, value: Profile[K]) =>
     setProfile((current) => ({ ...current, [key]: value }));
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const encoded = new URL(window.location.href).searchParams.get("matchup");
+      if (!encoded) return;
+      try {
+        const shared = decodeMatchup(encoded);
+        setProfile(shared.profile);
+        setAttackerFaction(shared.attackerFaction);
+        setAttackerUnit(shared.attackerUnit);
+        setAttackerWeapon(shared.attackerWeapon);
+        setTargetFaction(shared.targetFaction);
+        setTargetUnit(shared.targetUnit);
+        setTargetModel(shared.targetModel);
+        setShareStatus("Matchup loaded");
+      } catch {
+        setShareStatus("Invalid matchup link");
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -685,6 +751,29 @@ export default function Home() {
     }));
   };
 
+  const shareMatchup = async () => {
+    const matchup: SharedMatchup = {
+      version: 1,
+      profile,
+      attackerFaction,
+      attackerUnit,
+      attackerWeapon,
+      targetFaction,
+      targetUnit,
+      targetModel,
+    };
+    const url = new URL(window.location.href);
+    url.searchParams.set("matchup", encodeMatchup(matchup));
+    window.history.replaceState(null, "", url);
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      setShareStatus("Link copied");
+    } catch {
+      setShareStatus("Link ready in address bar");
+    }
+    window.setTimeout(() => setShareStatus("Share matchup"), 2500);
+  };
+
   return (
     <main>
       <header className="masthead">
@@ -700,9 +789,14 @@ export default function Home() {
 
       <div className="intro-strip">
         <p>{weaponSummary}</p>
-        <button type="button" onClick={() => setProfile(DEFAULT_PROFILE)}>
-          Reset profile
-        </button>
+        <div className="intro-actions">
+          <button className="share-matchup" type="button" onClick={shareMatchup} aria-live="polite">
+            {shareStatus}
+          </button>
+          <button type="button" onClick={() => setProfile(DEFAULT_PROFILE)}>
+            Reset profile
+          </button>
+        </div>
       </div>
 
       <div className="calculator-grid">

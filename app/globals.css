@@ -105,6 +105,7 @@ main { min-height: 100vh; padding-bottom: 56px; }
   font-size: 12px;
 }
 .intro-strip p { margin: 0; }
+.intro-actions { display: flex; align-items: center; gap: 18px; }
 .intro-strip button {
   border: 0;
   padding: 0 0 2px;
@@ -116,6 +117,15 @@ main { min-height: 100vh; padding-bottom: 56px; }
   font-size: 10px;
   white-space: nowrap;
 }
+.intro-strip .share-matchup {
+  min-height: 34px;
+  padding: 8px 12px;
+  border: 1px solid var(--red);
+  background: var(--red);
+  color: #fff;
+}
+.intro-strip .share-matchup:hover { background: var(--red-dark); }
+.intro-strip button:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
 
 .calculator-grid {
   max-width: 1500px;
@@ -504,6 +514,7 @@ input[type="number"]:focus, select:focus {
 @media (max-width: 660px) {
   .masthead { align-items: flex-start; flex-direction: column; }
   .intro-strip { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .intro-actions { width: 100%; justify-content: space-between; }
   .calculator-grid { padding-top: 20px; }
   .field-grid.three, .field-grid.two, .profile-picker, .rules-grid, .context-grid { grid-template-columns: 1fr; }
   .dice-field { grid-template-columns: 1fr 16px 1fr; }
