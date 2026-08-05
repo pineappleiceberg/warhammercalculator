@@ -84,8 +84,9 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     testEnv,
     context,
   );
-  assert.equal(calculate.status, 200);
-  const calculated = await calculate.json();
+  const calculateBody = await calculate.text();
+  assert.equal(calculate.status, 200, calculateBody);
+  const calculated = JSON.parse(calculateBody);
   assert.ok(calculated.data.mean > 0);
   assert.match(calculated.data.exact.numerator, /^\d+$/);
 
@@ -98,8 +99,9 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     testEnv,
     context,
   );
-  assert.equal(roll.status, 200);
-  const rolled = await roll.json();
+  const rollBody = await roll.text();
+  assert.equal(roll.status, 200, rollBody);
+  const rolled = JSON.parse(rollBody);
   assert.equal(rolled.data.attacks, 4);
   assert.equal(rolled.data.details.length, 4);
 });

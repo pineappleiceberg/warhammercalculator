@@ -1,6 +1,6 @@
 # Warhammer fixed-memory damage calculator core
 
-[Use the hosted calculator](https://pineappleiceberg.github.io/warhammercalculator/)
+[Use the hosted calculator](https://amrishhallberg.com/warhammercalculator/)
 
 This implementation is C17, performs no dynamic allocation, and keeps all
 large scratch storage in a caller-owned `struct calculator_workspace`.
