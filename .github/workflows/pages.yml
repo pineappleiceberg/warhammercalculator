@@ -22,15 +22,15 @@ jobs:
       - uses: actions/configure-pages@v6
         with:
           enablement: true
+      - uses: mymindstorm/setup-emsdk@v16
+        with:
+          version: 3.1.6
+          actions-cache-folder: emsdk-cache
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - uses: mymindstorm/setup-emsdk@v16
-        with:
-          version: 3.1.6
-          actions-cache-folder: emsdk-cache
       - name: Build WebAssembly core
         run: |
           emcmake cmake -S . -B build/wasm -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
