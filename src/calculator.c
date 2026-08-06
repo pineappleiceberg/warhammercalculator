@@ -2212,19 +2212,22 @@ uint32_t target_unit_capacity(const struct target_unit_layout *layout) {
 }
 
 /*@ requires whc_valid_target_unit_layout(layout);
-    requires applied_damage < whc_target_capacity(layout);
+    requires capacity == whc_target_capacity(layout);
+    requires applied_damage < capacity;
     requires \valid(segment_index) && \valid(wounds_remaining);
     assigns *segment_index, *wounds_remaining;
     ensures \result ==> *segment_index < layout->segment_count;
     ensures \result ==> 1 <= *wounds_remaining;
 */
-static bool target_unit_position(const struct target_unit_layout *layout, uint32_t applied_damage,
-                                 uint16_t *segment_index, uint16_t *wounds_remaining) {
+static bool target_unit_position_with_capacity(const struct target_unit_layout *layout,
+                                               uint32_t capacity, uint32_t applied_damage,
+                                               uint16_t *segment_index,
+                                               uint16_t *wounds_remaining) {
     uint32_t offset = 0u;
     uint16_t index = 0u;
 
-    if (layout == NULL || segment_index == NULL || wounds_remaining == NULL ||
-        applied_damage >= target_unit_capacity(layout)) {
+    if (layout == NULL || segment_index == NULL || wounds_remaining == NULL || capacity == 0u ||
+        applied_damage >= capacity) {
         return false;
     }
 
@@ -2241,6 +2244,20 @@ static bool target_unit_position(const struct target_unit_layout *layout, uint32
         index++;
     }
     return false;
+}
+
+/*@ requires whc_valid_target_unit_layout(layout);
+    requires applied_damage < whc_target_capacity(layout);
+    requires \valid(segment_index) && \valid(wounds_remaining);
+    assigns *segment_index, *wounds_remaining;
+    ensures \result ==> *segment_index < layout->segment_count;
+    ensures \result ==> 1 <= *wounds_remaining;
+*/
+static bool target_unit_position(const struct target_unit_layout *layout, uint32_t applied_damage,
+                                 uint16_t *segment_index, uint16_t *wounds_remaining) {
+    uint32_t capacity = target_unit_capacity(layout);
+    return target_unit_position_with_capacity(layout, capacity, applied_damage, segment_index,
+                                              wounds_remaining);
 }
 
 uint32_t allocate_damage_to_target_unit(const struct target_unit_layout *layout,
@@ -2300,10 +2317,10 @@ static bool probability_distribution_allocate_mixed_attack_internal(
             uint32_t damage = 0u;
             const struct probability_distribution *attack = NULL;
 
-            if (!target_unit_position(layout, applied, &segment_index, &wounds_remaining)) {
+            if (!target_unit_position_with_capacity(layout, capacity, applied, &segment_index,
+                                                    &wounds_remaining)) {
                 return false;
             }
-            (void)wounds_remaining;
             attack = &incoming[segment_index];
             if (attack->total_mass != PROBABILITY_SCALE || attack->minimum > attack->maximum) {
                 return false;
@@ -2311,7 +2328,8 @@ static bool probability_distribution_allocate_mixed_attack_internal(
             damage = attack->minimum;
             while (damage <= attack->maximum) {
                 if (attack->mass[damage] != 0u) {
-                    uint32_t next = allocate_damage_to_target_unit(layout, applied, damage);
+                    uint32_t allocated = damage < wounds_remaining ? damage : wounds_remaining;
+                    uint32_t next = applied + allocated;
                     uint64_t product = (uint64_t)current_mass * attack->mass[damage];
                     if (!uint64_add_checked(accumulator[next], product, &accumulator[next])) {
                         return false;

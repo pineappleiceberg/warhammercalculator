@@ -185,6 +185,15 @@ The supplied Makefile is also supported:
 make test
 ```
 
+Large exact volleys have deterministic native and WebAssembly benchmarks. They
+exercise 80 allocated attacks and the supported maximum of 32 ordered weapons
+against 16 mixed target segments. Enable them with
+`-DWHC_BUILD_BENCHMARKS=ON` or run `make benchmark`. The executable emits JSON;
+CI stores both runtime reports and applies deliberately hardware-tolerant
+regression limits. Profiling those cases removed repeated target-layout scans
+from the innermost allocation loop, cutting the instrumented two-case workload
+from 1.04 seconds to 0.65 seconds without changing its output checksum.
+
 The included tests cover exact dice distributions, quartiles, ordinary attack
 resolution, random attacks/damage, Feel No Pain, and several compiled rules.
 Deterministically generated property tests also exercise 5,000 dice profiles,

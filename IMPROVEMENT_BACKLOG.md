@@ -16,12 +16,17 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Benchmark and profile large volleys in native and WebAssembly builds.
-2. Improve mobile play-mode ergonomics and accessibility.
-3. Add deployment health checks and clearer service-failure diagnostics.
+1. Improve mobile play-mode ergonomics and accessibility.
+2. Add deployment health checks and clearer service-failure diagnostics.
 
 ## Completed cycles
 
+- 2026-08-06: Added deterministic JSON benchmarks for an 80-attack workload and
+  the maximum 32-weapon/16-target exact volley in both native and WebAssembly
+  builds, with CI artifacts and tolerant regression limits. Profiling exposed
+  millions of redundant target-layout scans; reusing known capacity and wound
+  state cut the instrumented workload from 1.04 s to 0.65 s and the largest
+  case from 13.59 ms to 5.84 ms without changing exact output.
 - 2026-08-06: Pinned every imported source export by update timestamp, SHA-256,
   and row count. Routine rebuilds now reject unreviewed upstream drift, CI proves
   the SQLite database and browser catalogue share the pin without network

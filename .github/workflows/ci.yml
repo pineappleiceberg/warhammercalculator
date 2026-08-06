@@ -27,7 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Configure native build
-        run: cmake -S . -B build/native -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+        run: >-
+          cmake -S . -B build/native -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          -DWHC_BUILD_BENCHMARKS=ON -DWHC_BENCHMARK_MAX_MS=250
       - name: Build native targets
         run: cmake --build build/native --parallel
       - name: Run native tests
@@ -36,6 +38,14 @@ jobs:
         run: python3 -m unittest discover -s tests -p test_profiles_data.py
       - name: Verify profile source lock and generated artifacts
         run: python3 scripts/profile_freshness.py --offline
+      - name: Record native large-volley benchmark
+        run: build/native/warhammercalculator_benchmark 5 250 > build/native-benchmark.json
+      - name: Upload native benchmark report
+        uses: actions/upload-artifact@v6
+        with:
+          name: native-large-volley-benchmark
+          path: build/native-benchmark.json
+          if-no-files-found: error
 
   fuzz:
     runs-on: ubuntu-latest
@@ -67,10 +77,18 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Build WebAssembly core
         run: |
-          emcmake cmake -S . -B build/wasm -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          emcmake cmake -S . -B build/wasm -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DWHC_BUILD_BENCHMARKS=ON
           cmake --build build/wasm --parallel
           cp build/wasm/calculator.js web/public/wasm/calculator.js
           cp build/wasm/calculator.wasm web/public/wasm/calculator.wasm
+      - name: Record WebAssembly large-volley benchmark
+        run: node build/wasm/warhammercalculator_benchmark.js 3 500 > build/wasm-benchmark.json
+      - name: Upload WebAssembly benchmark report
+        uses: actions/upload-artifact@v6
+        with:
+          name: wasm-large-volley-benchmark
+          path: build/wasm-benchmark.json
+          if-no-files-found: error
       - name: Install web dependencies
         working-directory: web
         run: npm ci

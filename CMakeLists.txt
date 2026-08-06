@@ -10,6 +10,8 @@ project(
 include(CTest)
 
 option(WHC_BUILD_FUZZER "Build the Clang libFuzzer harness" OFF)
+option(WHC_BUILD_BENCHMARKS "Build deterministic large-volley benchmarks" OFF)
+set(WHC_BENCHMARK_MAX_MS 250 CACHE STRING "Maximum milliseconds per benchmark iteration")
 
 add_library(warhammercalculator STATIC
     src/calculator.c
@@ -59,6 +61,22 @@ if(EMSCRIPTEN)
         "SHELL:-s EXPORTED_FUNCTIONS=['_main','_malloc','_free','_whc_calculate_summary','_whc_calculate_ordered_volley_summary','_calculate_attack_damage_distribution','_calculate_attack_applied_damage_distribution','_calculate_ordered_volley_applied_damage_distribution','_calculate_attack_expected_damage','_calculate_attack_damage_summary','_calculate_attack_applied_damage_summary','_probability_distribution_is_normalized','_attack_plan_is_valid','_dice_value_is_valid','_allocate_damage_to_unit','_allocate_damage_to_target_unit','_target_unit_capacity','_attack_roll_succeeds','_rule_set_clear','_rule_add_lethal_hits','_rule_add_devastating_wounds','_rule_add_twin_linked','_rule_add_reroll_failed_hits','_rule_add_wounds_on','_rule_add_critical_wounds_on','_rule_add_hit_reroll_mask','_rule_add_wound_reroll_mask','_rule_add_hit_auto_fails_through','_wounds_on','_saves_on','_saves_on_with_cover']"
         "SHELL:-s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue','setValue']"
     )
+endif()
+
+if(WHC_BUILD_BENCHMARKS)
+    add_executable(warhammercalculator_benchmark benchmarks/benchmark_volley.c)
+    target_link_libraries(warhammercalculator_benchmark
+        PRIVATE warhammercalculator::warhammercalculator
+    )
+    if(EMSCRIPTEN)
+        set_target_properties(warhammercalculator_benchmark PROPERTIES SUFFIX ".js")
+    endif()
+    if(BUILD_TESTING)
+        add_test(NAME warhammercalculator_benchmark_smoke
+            COMMAND warhammercalculator_benchmark 1 ${WHC_BENCHMARK_MAX_MS}
+        )
+        set_tests_properties(warhammercalculator_benchmark_smoke PROPERTIES TIMEOUT 30)
+    endif()
 endif()
 
 if(BUILD_TESTING)
