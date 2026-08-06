@@ -162,7 +162,8 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.match(loadoutData.composition[0].text, /10-20 Necron Warriors/i);
   assert.match(loadoutData.loadout, /Every model is equipped with.*gauss flayer/i);
   assert.equal(
-    loadoutData.defaultWeapons.find((weapon) => weapon.groupName === "Gauss flayer").perModel,
+    loadoutData.defaultWeapons.find((weapon) => weapon.groupName === "Gauss flayer").terms[0]
+      .perModel,
     1,
   );
   assert.ok(loadoutData.wargearOptions.some((option) => /gauss reaper/i.test(option)));
@@ -283,6 +284,29 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     context,
   );
   assert.match((await overriddenCasualties.json()).data.warnings[0], /battlefield casualties/i);
+
+  const cadian = catalogue.units.find((unit) => unit.name === "Cadian Shock Troops");
+  const cadianLoadout = await worker.fetch(
+    new Request(`http://localhost/api/v1/loadout?unit=${cadian.id}`),
+    testEnv,
+    context,
+  );
+  const cadianData = (await cadianLoadout.json()).data;
+  assert.equal(cadianData.suggestedModelCount, 10);
+  assert.equal(cadianData.maximumModelCount, 20);
+  assert.ok(cadianData.compositionModels.some((model) => model.name === "Shock Troopers"));
+  const cadianDefaults = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ unitId: cadian.id, modelCount: 20, weaponCounts: {} }),
+    }),
+    testEnv,
+    context,
+  );
+  const cadianDefaultCounts = (await cadianDefaults.json()).data.suggestedEquippedCounts;
+  const lasgunGroup = cadian.weapons.find((weapon) => weapon.groupName === "Lasgun").groupId;
+  assert.equal(cadianDefaultCounts[lasgunGroup], 18);
 
   const sisters = catalogue.units.find((unit) => unit.name === "Battle Sisters Squad");
   const sisterUnits = await worker.fetch(

@@ -14,8 +14,9 @@ The main tables are:
   weapon-keyword list
 - `weapon_abilities` for individually queryable tags such as `blast`,
   `lethal hits`, `sustained hits`, `rapid fire`, `melta`, and `anti-*`
-- `unit_composition` for source ordering, display text, and safely parsed
-  minimum/maximum model counts
+- `unit_composition` and `unit_composition_models` for source ordering, display
+  text, safely parsed unit-size ranges, and the named model components within
+  each composition row
 - `wargear_options` for the complete published loadout guidance, preserved as
   both original HTML and plain text
 - `wargear_constraints` and `wargear_constraint_weapons` for conservatively
@@ -24,8 +25,9 @@ The main tables are:
 - `wargear_choice_pools`, `wargear_choice_alternatives`, and
   `wargear_choice_alternative_weapons` for shared allowances and exact
   multi-weapon bundles, with every alternative linked to its source option
-- `default_weapon_loadout` and `wargear_choice_replaced_weapons` for safely
-  parsed starting quantities and the equipment removed by a replacement
+- `default_loadout_subjects`, `default_weapon_loadout`, and
+  `wargear_choice_replaced_weapons` for audited loadout subjects, normalized
+  starting-quantity formulas, and the equipment removed by a replacement
 - `source_files` and `metadata` for URLs, timestamps, and source checksums
 
 The source export can retain rows for datasheets that it no longer publishes.
@@ -65,8 +67,11 @@ single-weapon rules. Where the source is structurally clear, the browser
 instead exposes each alternative within its shared choice pool. Selecting a
 compound alternative records every weapon in that bundle and checks the pool
 once, rather than incorrectly granting its full allowance to every weapon.
-Exact `This model is equipped with` and `Every/Each model is equipped with`
-forms pre-fill editable weapon totals. Selecting a structured replacement
-subtracts its source equipment and adds the chosen alternative. Mixed-unit
-clauses and conditional prose that depend on model identity or another option
-remain visible but are not guessed.
+Exact `This model`, named-model, explicit-count, `Every/Each model`, and
+unit-size-scaled forms pre-fill editable weapon totals. This includes mixed
+units whose composition determines the named model count, such as Boyz and
+Cadian Shock Troops. Selecting a structured replacement subtracts its source
+equipment and adds the chosen alternative. All 1,971 loadout subjects are kept
+in the audit table; 1,883 currently resolve to exact formulas. Conditional or
+multi-variable clauses whose result cannot be inferred from total unit size
+remain visible and editable but are deliberately not guessed.

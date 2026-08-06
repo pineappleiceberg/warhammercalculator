@@ -4,14 +4,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.build_profiles_db import composition_range, plain_text
-from scripts.export_profiles_json import export, profile_group_names
+from scripts.build_profiles_db import composition_components, composition_range, plain_text
+from scripts.export_profiles_json import export, profile_group_names, unit_model_range
 from scripts.wargear_constraints import (
     allowance,
     choice_weapon_vector,
     default_loadout_clauses,
     normalized_name,
     option_choices,
+    subject_count,
     weapon_vector,
 )
 
@@ -26,10 +27,36 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(composition_range("10-20 Necron Warriors"), (10, 20))
         self.assertEqual(composition_range("3‑10 Kill Team Infiltrators"), (3, 10))
         self.assertEqual(
+            composition_components(
+                "1 Master of Ordnance, 1 Officer of the Fleet and 1 Astropath."
+            ),
+            [
+                ("Master of Ordnance", 1, 1),
+                ("Officer of the Fleet", 1, 1),
+                ("Astropath", 1, 1),
+            ],
+        )
+        self.assertEqual(
+            composition_range(
+                "1 Master of Ordnance, 1 Officer of the Fleet and 1 Astropath."
+            ),
+            (3, 3),
+        )
+        self.assertEqual(
             plain_text('1 Hero – <span class="kwb">EPIC</span> <b>HERO</b>'),
             "1 Hero – EPIC HERO",
         )
         self.assertEqual(composition_range("OR"), (None, None))
+        self.assertEqual(
+            unit_model_range(
+                [
+                    {"text": "1 Sergeant and 9 Troopers", "min": 10, "max": 10},
+                    {"text": "OR", "min": None, "max": None},
+                    {"text": "2 Sergeants and 18 Troopers", "min": 20, "max": 20},
+                ]
+            ),
+            (10, 20),
+        )
         self.assertEqual(
             allowance("For every 5 models in this unit, 1 model can replace it."),
             (0, 1, 5),
@@ -62,11 +89,24 @@ class ProfileDataTests(unittest.TestCase):
             default_loadout_clauses(
                 "<b>Every model is equipped with:</b> 1 gauss flayer; close combat weapon."
             ),
-            [(0, 1, "1 gauss flayer; close combat weapon.")],
+            [(0, 1, 0, 1, "1 gauss flayer; close combat weapon.")],
         )
         self.assertEqual(
             weapon_vector("2 lastrum storm bolters; Achillus dreadspear.", known),
             {"unit:1": ("Lastrum storm bolter", 2)},
+        )
+        boyz = [("Boss Nob", 1, 1, 1), ("Boyz", 9, 19, 2)]
+        self.assertEqual(subject_count("The Boss Nob", boyz), (1, 0, 0, 1))
+        self.assertEqual(subject_count("Every Boy", boyz), (-1, 1, 0, 1))
+        shock_troops = [
+            ("Shock Trooper Sergeant", 1, 1, 1),
+            ("Shock Troopers", 9, 9, 1),
+            ("Shock Trooper Sergeants", 2, 2, 3),
+            ("Shock Troopers", 18, 18, 3),
+        ]
+        self.assertEqual(
+            subject_count("Every Shock Trooper Sergeant", shock_troops),
+            (0, 0, 1, 10),
         )
 
     def test_checked_database_preserves_loadout_sources_and_provenance(self):
@@ -77,7 +117,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "6",
+                "7",
             )
             for filename, minimum_rows in (
                 ("Datasheets_unit_composition.csv", 2_000),
@@ -101,7 +141,17 @@ class ProfileDataTests(unittest.TestCase):
             )
             self.assertGreater(
                 connection.execute("SELECT count(*) FROM default_weapon_loadout").fetchone()[0],
-                3_500,
+                4_400,
+            )
+            self.assertEqual(
+                connection.execute("SELECT count(*) FROM default_loadout_subjects").fetchone()[0],
+                1_971,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM default_loadout_subjects WHERE resolved = 1"
+                ).fetchone()[0],
+                1_883,
             )
             self.assertGreater(
                 connection.execute(
@@ -161,7 +211,10 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(catalogue["structuredWargear"]["constraintCount"], 1798)
         self.assertEqual(catalogue["structuredWargear"]["choicePoolCount"], 2009)
         self.assertEqual(catalogue["structuredWargear"]["compoundAlternativeCount"], 241)
-        self.assertEqual(catalogue["structuredWargear"]["defaultWeaponCount"], 3825)
+        self.assertEqual(catalogue["structuredWargear"]["defaultWeaponCount"], 4349)
+        self.assertEqual(catalogue["structuredWargear"]["defaultWeaponTermCount"], 4494)
+        self.assertEqual(catalogue["structuredWargear"]["loadoutSubjectCount"], 1971)
+        self.assertEqual(catalogue["structuredWargear"]["resolvedLoadoutSubjectCount"], 1883)
         self.assertEqual(catalogue["structuredWargear"]["replacementWeaponCount"], 1172)
         self.assertTrue(catalogue["structuredWargear"]["conservative"])
         for unit in catalogue["units"]:
@@ -184,8 +237,11 @@ class ProfileDataTests(unittest.TestCase):
                         self.assertGreater(weapon["quantity"], 0)
             for weapon in unit["defaultWeapons"]:
                 self.assertIn(weapon["groupId"], weapon_group_ids)
-                self.assertGreater(weapon["fixed"] + weapon["perModel"], 0)
-                self.assertEqual(weapon["source"], unit["loadout"])
+                self.assertTrue(weapon["terms"])
+                for term in weapon["terms"]:
+                    self.assertGreater(term["quantity"], 0)
+                    self.assertGreater(term["modelsPerIncrement"], 0)
+                    self.assertEqual(term["source"], unit["loadout"])
 
         achillus = next(
             unit for unit in catalogue["units"] if unit["name"] == "Contemptor-achillus Dreadnought"
@@ -198,7 +254,11 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(
             sorted(
-                (weapon["groupName"], weapon["fixed"], weapon["perModel"])
+                (
+                    weapon["groupName"],
+                    weapon["terms"][0]["fixed"] * weapon["terms"][0]["quantity"],
+                    weapon["terms"][0]["perModel"],
+                )
                 for weapon in achillus["defaultWeapons"]
             ),
             [("Achillus dreadspear", 1, 0), ("Lastrum storm bolter", 2, 0)],
@@ -260,9 +320,35 @@ class ProfileDataTests(unittest.TestCase):
                 weapon
                 for weapon in drazhar["defaultWeapons"]
                 if weapon["groupName"] == "Executioner’s demiklaives"
-            )["fixed"],
+            )["terms"][0]["fixed"],
             1,
         )
+
+        boyz = next(unit for unit in catalogue["units"] if unit["name"] == "Boyz")
+        self.assertEqual((boyz["suggestedModelCount"], boyz["maximumModelCount"]), (10, 20))
+        choppa = next(weapon for weapon in boyz["defaultWeapons"] if weapon["groupName"] == "Choppa")
+        self.assertEqual(
+            (choppa["terms"][0]["fixed"], choppa["terms"][0]["perModel"]),
+            (-1, 1),
+        )
+        cadian = next(unit for unit in catalogue["units"] if unit["name"] == "Cadian Shock Troops")
+        self.assertEqual((cadian["suggestedModelCount"], cadian["maximumModelCount"]), (10, 20))
+        lasgun = next(
+            weapon for weapon in cadian["defaultWeapons"] if weapon["groupName"] == "Lasgun"
+        )
+        self.assertEqual(
+            (
+                lasgun["terms"][0]["perIncrement"],
+                lasgun["terms"][0]["modelsPerIncrement"],
+            ),
+            (9, 10),
+        )
+        attaches = next(unit for unit in catalogue["units"] if unit["name"] == "Regimental Attachés")
+        self.assertEqual(attaches["suggestedModelCount"], 3)
+        laspistol = next(
+            weapon for weapon in attaches["defaultWeapons"] if weapon["groupName"] == "Laspistol"
+        )
+        self.assertEqual(sum(term["fixed"] * term["quantity"] for term in laspistol["terms"]), 3)
 
 
 if __name__ == "__main__":

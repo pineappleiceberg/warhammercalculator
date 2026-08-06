@@ -52,9 +52,16 @@ test("source choice pools share allowances and preserve compound bundles", () =>
       {
         groupId: "unit:bolter",
         groupName: "Bolter",
-        fixed: 2,
-        perModel: 0,
-        source: "This model is equipped with 2 bolters",
+        terms: [
+          {
+            fixed: 2,
+            perModel: 0,
+            perIncrement: 0,
+            modelsPerIncrement: 1,
+            quantity: 1,
+            source: "This model is equipped with 2 bolters",
+          },
+        ],
       },
     ],
     wargearChoicePools: [
@@ -122,8 +129,34 @@ test("source choice pools share allowances and preserve compound bundles", () =>
 test("source defaults scale with model count without discarding editable overrides", () => {
   const unit = {
     defaultWeapons: [
-      { groupId: "unit:rifle", groupName: "Rifle", fixed: 0, perModel: 1, source: "Every model" },
-      { groupId: "unit:pistol", groupName: "Pistol", fixed: 1, perModel: 0, source: "This model" },
+      {
+        groupId: "unit:rifle",
+        groupName: "Rifle",
+        terms: [
+          {
+            fixed: 0,
+            perModel: 1,
+            perIncrement: 0,
+            modelsPerIncrement: 1,
+            quantity: 1,
+            source: "Every model",
+          },
+        ],
+      },
+      {
+        groupId: "unit:pistol",
+        groupName: "Pistol",
+        terms: [
+          {
+            fixed: 1,
+            perModel: 0,
+            perIncrement: 0,
+            modelsPerIncrement: 1,
+            quantity: 1,
+            source: "This model",
+          },
+        ],
+      },
     ],
   };
   assert.deepEqual(defaultWeaponCounts(unit, 5), { "unit:rifle": 5, "unit:pistol": 1 });
@@ -131,6 +164,43 @@ test("source defaults scale with model count without discarding editable overrid
     "unit:rifle": 12,
     "unit:pistol": 1,
   });
+});
+
+test("mixed-model defaults support fixed leaders and unit-size increments", () => {
+  const unit = {
+    defaultWeapons: [
+      {
+        groupId: "unit:lasgun",
+        groupName: "Lasgun",
+        terms: [
+          {
+            fixed: 0,
+            perModel: 0,
+            perIncrement: 9,
+            modelsPerIncrement: 10,
+            quantity: 1,
+            source: "Every Shock Trooper",
+          },
+        ],
+      },
+      {
+        groupId: "unit:choppa",
+        groupName: "Choppa",
+        terms: [
+          {
+            fixed: -1,
+            perModel: 1,
+            perIncrement: 0,
+            modelsPerIncrement: 1,
+            quantity: 1,
+            source: "Every Boy",
+          },
+        ],
+      },
+    ],
+  };
+  assert.deepEqual(defaultWeaponCounts(unit, 10), { "unit:lasgun": 9, "unit:choppa": 9 });
+  assert.deepEqual(defaultWeaponCounts(unit, 20), { "unit:lasgun": 18, "unit:choppa": 19 });
 });
 
 test("mixed target allocation never spills damage between models", () => {

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 from pathlib import Path
 
@@ -41,6 +42,50 @@ def profile_group_names(names: list[str]) -> tuple[str, list[str | None]]:
     raise ValueError(f"could not derive profile modes for grouped weapon: {names!r}")
 
 
+def unit_model_range(composition: list[dict]) -> tuple[int | None, int | None]:
+    separators = {index for index, row in enumerate(composition) if row["text"].strip().lower() in {"or", "or:"}}
+    if separators:
+        groups = []
+        current = []
+        for index, row in enumerate(composition):
+            if index in separators:
+                if current:
+                    groups.append(current)
+                    current = []
+                continue
+            if row["min"] is not None and row["max"] is not None:
+                current.append(row)
+        if current:
+            groups.append(current)
+        if groups:
+            return (
+                min(sum(row["min"] for row in group) for group in groups),
+                max(sum(row["max"] for row in group) for group in groups),
+            )
+
+    numeric = [row for row in composition if row["min"] is not None and row["max"] is not None]
+    unknown = [row["text"] for row in composition if row not in numeric]
+    if any("one of the following" in text.lower() for text in unknown) and numeric:
+        return min(row["min"] for row in numeric), max(row["max"] for row in numeric)
+
+    caps = []
+    for text in unknown:
+        match = re.search(
+            r"(?:maximum of\s+(\d+)|\b(\d+)\s+models?\s+maximum)",
+            text,
+            re.IGNORECASE,
+        )
+        if match:
+            caps.append(int(match.group(1) or match.group(2)))
+        elif text.strip():
+            return None, None
+    if not numeric:
+        return None, None
+    minimum = sum(row["min"] for row in numeric)
+    maximum = sum(row["max"] for row in numeric)
+    return minimum, min([maximum, *caps]) if caps else maximum
+
+
 def export(database: Path, output: Path) -> None:
     connection = sqlite3.connect(database)
     connection.row_factory = sqlite3.Row
@@ -59,6 +104,7 @@ def export(database: Path, output: Path) -> None:
                 "models": [],
                 "weapons": [],
                 "composition": [],
+                "compositionModels": [],
                 "loadout": row["loadout_text"],
                 "defaultWeapons": [],
                 "wargearOptions": [],
@@ -125,6 +171,21 @@ def export(database: Path, output: Path) -> None:
             )
 
         for row in connection.execute(
+            """SELECT datasheet_id, model_name, min_models, max_models,
+                      description_text
+               FROM unit_composition_models
+               ORDER BY datasheet_id, composition_position, component_position"""
+        ):
+            units[row["datasheet_id"]]["compositionModels"].append(
+                {
+                    "name": row["model_name"],
+                    "min": row["min_models"],
+                    "max": row["max_models"],
+                    "source": row["description_text"],
+                }
+            )
+
+        for row in connection.execute(
             """SELECT datasheet_id, description_text
                FROM wargear_options
                ORDER BY datasheet_id, position"""
@@ -133,21 +194,36 @@ def export(database: Path, output: Path) -> None:
                 row["description_text"]
             )
 
+        defaults: dict[tuple[str, str], dict] = {}
         for row in connection.execute(
-            """SELECT datasheet_id, weapon_group_id, weapon_group_name,
-                      fixed_quantity, quantity_per_model, description_text
+            """SELECT datasheet_id, subject_position, weapon_group_id,
+                      weapon_group_name, quantity, fixed_quantity,
+                      quantity_per_model, quantity_per_increment,
+                      models_per_increment, description_text
                FROM default_weapon_loadout
-               ORDER BY datasheet_id, weapon_group_id"""
+               ORDER BY datasheet_id, weapon_group_id, subject_position"""
         ):
-            units[row["datasheet_id"]]["defaultWeapons"].append(
+            key = (row["datasheet_id"], row["weapon_group_id"])
+            default = defaults.setdefault(
+                key,
                 {
                     "groupId": row["weapon_group_id"],
                     "groupName": row["weapon_group_name"],
+                    "terms": [],
+                },
+            )
+            default["terms"].append(
+                {
                     "fixed": row["fixed_quantity"],
                     "perModel": row["quantity_per_model"],
+                    "perIncrement": row["quantity_per_increment"],
+                    "modelsPerIncrement": row["models_per_increment"],
+                    "quantity": row["quantity"],
                     "source": row["description_text"],
                 }
             )
+        for (datasheet_id, _group_id), default in defaults.items():
+            units[datasheet_id]["defaultWeapons"].append(default)
 
         limits: dict[tuple[str, str], dict] = {}
         for row in connection.execute(
@@ -248,12 +324,9 @@ def export(database: Path, output: Path) -> None:
 
         for unit in units.values():
             composition = unit["composition"]
-            if composition and all(
-                row["min"] is not None and row["max"] is not None
-                for row in composition
-            ):
-                unit["suggestedModelCount"] = sum(row["min"] for row in composition)
-                unit["maximumModelCount"] = sum(row["max"] for row in composition)
+            minimum, maximum = unit_model_range(composition)
+            unit["suggestedModelCount"] = minimum
+            unit["maximumModelCount"] = maximum
 
         weapon_rows = list(
             connection.execute(
@@ -326,8 +399,15 @@ def export(database: Path, output: Path) -> None:
                 ).fetchone()[0],
                 "constrainedWeaponCount": len(limits),
                 "choicePoolCount": len(pools),
-                "defaultWeaponCount": connection.execute(
+                "defaultWeaponCount": len(defaults),
+                "defaultWeaponTermCount": connection.execute(
                     "SELECT count(*) FROM default_weapon_loadout"
+                ).fetchone()[0],
+                "loadoutSubjectCount": connection.execute(
+                    "SELECT count(*) FROM default_loadout_subjects"
+                ).fetchone()[0],
+                "resolvedLoadoutSubjectCount": connection.execute(
+                    "SELECT count(*) FROM default_loadout_subjects WHERE resolved = 1"
                 ).fetchone()[0],
                 "replacementWeaponCount": connection.execute(
                     "SELECT count(*) FROM wargear_choice_replaced_weapons"

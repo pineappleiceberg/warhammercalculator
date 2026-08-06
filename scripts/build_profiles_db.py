@@ -133,6 +133,19 @@ CREATE TABLE unit_composition (
     PRIMARY KEY (datasheet_id, position)
 ) WITHOUT ROWID;
 
+CREATE TABLE unit_composition_models (
+    datasheet_id TEXT NOT NULL,
+    composition_position INTEGER NOT NULL,
+    component_position INTEGER NOT NULL,
+    model_name TEXT NOT NULL,
+    min_models INTEGER NOT NULL CHECK (min_models >= 0),
+    max_models INTEGER NOT NULL CHECK (max_models >= min_models),
+    description_text TEXT NOT NULL,
+    PRIMARY KEY (datasheet_id, composition_position, component_position),
+    FOREIGN KEY (datasheet_id, composition_position)
+        REFERENCES unit_composition(datasheet_id, position) ON DELETE CASCADE
+) WITHOUT ROWID;
+
 CREATE TABLE wargear_options (
     datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
     position INTEGER NOT NULL,
@@ -150,6 +163,8 @@ CREATE INDEX idx_weapons_type ON weapon_profiles(weapon_type);
 CREATE INDEX idx_weapon_abilities_name ON weapon_abilities(name);
 CREATE INDEX idx_datasheet_keywords_keyword ON datasheet_keywords(keyword);
 CREATE INDEX idx_unit_composition_datasheet ON unit_composition(datasheet_id);
+CREATE INDEX idx_unit_composition_models_datasheet
+    ON unit_composition_models(datasheet_id, model_name);
 CREATE INDEX idx_wargear_options_datasheet ON wargear_options(datasheet_id);
 
 CREATE VIEW attacker_profiles AS
@@ -268,14 +283,31 @@ def plain_text(value: str) -> str:
     return re.sub(r"\s+", " ", html.unescape(without_tags)).strip()
 
 
-def composition_range(value: str) -> tuple[int | None, int | None]:
+def composition_components(value: str) -> list[tuple[str, int, int]]:
     normalized = plain_text(value).replace("‑", "-").replace("–", "-")
-    match = re.match(r"^(\d+)(?:-(\d+))?\s+", normalized)
-    if not match:
+    if re.search(r"\bor\b", normalized, re.IGNORECASE):
+        return []
+    pattern = re.compile(
+        r"(?:^|,\s*|\s+and\s+)(\d+)(?:-(\d+))?\s+(.+?)"
+        r"(?=(?:,\s*|\s+and\s+)\d+(?:-\d+)?\s+|$)",
+        re.IGNORECASE,
+    )
+    components = []
+    for match in pattern.finditer(normalized):
+        name = re.sub(r"(?:\s+-\s+.*|[.*]+)$", "", match.group(3)).strip()
+        if not name:
+            return []
+        minimum = int(match.group(1))
+        maximum = int(match.group(2) or match.group(1))
+        components.append((name, minimum, maximum))
+    return components
+
+
+def composition_range(value: str) -> tuple[int | None, int | None]:
+    components = composition_components(value)
+    if not components:
         return None, None
-    minimum = int(match.group(1))
-    maximum = int(match.group(2) or match.group(1))
-    return minimum, maximum
+    return sum(row[1] for row in components), sum(row[2] for row in components)
 
 
 def download_exports() -> tuple[dict[str, bytes], str, str]:
@@ -340,7 +372,7 @@ def create_database(output: Path) -> dict[str, int]:
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "6"),
+                    ("schema_version", "7"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
@@ -433,7 +465,6 @@ def create_database(output: Path) -> dict[str, int]:
                         boolean(row["is_faction_keyword"]),
                     ),
                 )
-
             composition_positions: dict[str, int] = {}
             for row in composition_rows:
                 datasheet_id = row["datasheet_id"]
@@ -455,6 +486,24 @@ def create_database(output: Path) -> dict[str, int]:
                         maximum,
                     ),
                 )
+                for component_position, (name, component_min, component_max) in enumerate(
+                    composition_components(row["description"]), start=1
+                ):
+                    connection.execute(
+                        """INSERT INTO unit_composition_models
+                           (datasheet_id, composition_position, component_position,
+                            model_name, min_models, max_models, description_text)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            datasheet_id,
+                            position,
+                            component_position,
+                            name,
+                            component_min,
+                            component_max,
+                            plain_text(row["description"]),
+                        ),
+                    )
 
             option_positions: dict[str, int] = {}
             for row in option_rows:
@@ -533,6 +582,7 @@ def create_database(output: Path) -> dict[str, int]:
                 "weapon_profiles",
                 "weapon_abilities",
                 "unit_composition",
+                "unit_composition_models",
                 "wargear_options",
                 "wargear_constraints",
                 "wargear_constraint_weapons",
@@ -541,6 +591,7 @@ def create_database(output: Path) -> dict[str, int]:
                 "wargear_choice_alternative_weapons",
                 "wargear_choice_replaced_weapons",
                 "default_weapon_loadout",
+                "default_loadout_subjects",
             )
         }
         connection.execute("PRAGMA optimize")

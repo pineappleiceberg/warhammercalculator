@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import html
+import math
 import re
 import sqlite3
 from pathlib import Path
@@ -92,13 +93,39 @@ CREATE INDEX IF NOT EXISTS idx_wargear_choice_replaced_datasheet
     ON wargear_choice_replaced_weapons(datasheet_id, weapon_group_id);
 
 CREATE TABLE IF NOT EXISTS default_weapon_loadout (
-    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    datasheet_id TEXT NOT NULL,
+    subject_position INTEGER NOT NULL,
     weapon_group_id TEXT NOT NULL,
     weapon_group_name TEXT NOT NULL,
-    fixed_quantity INTEGER NOT NULL CHECK (fixed_quantity >= 0),
+    quantity INTEGER NOT NULL CHECK (quantity >= 1),
+    fixed_quantity INTEGER NOT NULL,
     quantity_per_model INTEGER NOT NULL CHECK (quantity_per_model >= 0),
+    quantity_per_increment INTEGER NOT NULL CHECK (quantity_per_increment >= 0),
+    models_per_increment INTEGER NOT NULL CHECK (models_per_increment >= 1),
     description_text TEXT NOT NULL,
-    PRIMARY KEY (datasheet_id, weapon_group_id)
+    PRIMARY KEY (datasheet_id, subject_position, weapon_group_id),
+    FOREIGN KEY (datasheet_id, subject_position)
+        REFERENCES default_loadout_subjects(datasheet_id, position) ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS default_loadout_subjects (
+    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    subject_text TEXT NOT NULL,
+    equipment_text TEXT NOT NULL,
+    fixed_quantity INTEGER,
+    quantity_per_model INTEGER,
+    quantity_per_increment INTEGER,
+    models_per_increment INTEGER,
+    resolved INTEGER NOT NULL CHECK (resolved IN (0, 1)),
+    PRIMARY KEY (datasheet_id, position),
+    CHECK (
+        (resolved = 0 AND fixed_quantity IS NULL AND quantity_per_model IS NULL
+         AND quantity_per_increment IS NULL AND models_per_increment IS NULL)
+        OR
+        (resolved = 1 AND fixed_quantity IS NOT NULL AND quantity_per_model IS NOT NULL
+         AND quantity_per_increment IS NOT NULL AND models_per_increment IS NOT NULL)
+    )
 ) WITHOUT ROWID;
 """
 
@@ -230,19 +257,161 @@ def weapon_vector(
     return parsed
 
 
-def default_loadout_clauses(loadout_html: str) -> list[tuple[int, int, str]]:
+def singular_model_name(value: str) -> str:
+    words = normalized_name(value).split()
+    if not words:
+        return ""
+    word = words[-1]
+    if word.endswith("ies") and len(word) > 3:
+        words[-1] = f"{word[:-3]}y"
+    elif word.endswith("men") and len(word) > 3:
+        words[-1] = f"{word[:-3]}man"
+    elif word.endswith(("sses", "xes", "zes", "ches", "shes", "oes")) and len(word) > 3:
+        words[-1] = word[:-2]
+    elif word.endswith(("s", "z")) and len(word) > 1:
+        words[-1] = word[:-1]
+    return " ".join(words)
+
+
+def model_name_matches(subject: str, component: str) -> bool:
+    left = singular_model_name(subject)
+    right = singular_model_name(component)
+    return left == right or left.endswith(f" {right}") or right.endswith(f" {left}")
+
+
+def subject_count(
+    subject: str,
+    components: list[tuple[str, int, int, int]],
+) -> tuple[int, int, int, int] | None:
+    value = normalized_name(subject)
+    if value in {"every model", "each model", "every model in this unit", "each model in this unit"}:
+        return 0, 1, 0, 1
+
+    def part_count(part: str, inherited: str | None = None) -> tuple[int, int, int, int] | None:
+        mode = inherited
+        item = normalized_name(part)
+        every = re.match(r"^(?:every|each)\s+(.+)$", item)
+        explicit = re.match(r"^(?:the\s+)?(?:(\d+)|one)(?:\s+other)?\s+(.+)$", item)
+        if every:
+            mode = "every"
+            item = every.group(1)
+        elif explicit:
+            mode = "explicit"
+            explicit_count = int(explicit.group(1) or 1)
+            item = explicit.group(2)
+        else:
+            item = re.sub(r"^(?:the|a|an)\s+", "", item)
+            mode = mode or "single"
+        item = re.sub(r"\s+models?$", "", item)
+        matches = [row for row in components if model_name_matches(item, row[0])]
+        if not matches:
+            return None
+        if mode == "explicit":
+            return (
+                (explicit_count, 0, 0, 1)
+                if any(row[1] >= explicit_count for row in matches)
+                else None
+            )
+        if mode == "single":
+            return (
+                (1, 0, 0, 1)
+                if all(row[1:3] == (1, 1) for row in matches)
+                else None
+            )
+        if len(matches) > 1:
+            if any(row[1] != row[2] for row in matches):
+                return None
+            if len({row[1] for row in matches}) == 1:
+                return matches[0][1], 0, 0, 1
+            row_totals = {
+                position: sum(row[1] for row in components if row[3] == position)
+                for position in {row[3] for row in matches}
+            }
+            divisor = 0
+            for row in matches:
+                divisor = math.gcd(divisor, row[1])
+            if divisor <= 0:
+                return None
+            increments = {
+                row_totals[row[3]] // (row[1] // divisor)
+                for row in matches
+                if row[1] > 0 and row_totals[row[3]] % (row[1] // divisor) == 0
+            }
+            if len(increments) == 1 and all(row[1] > 0 for row in matches):
+                return 0, 0, divisor, increments.pop()
+            return None
+        _name, minimum, maximum, _position = matches[0]
+        if minimum == maximum:
+            return minimum, 0, 0, 1
+        variable = [row for row in components if row[1] != row[2]]
+        if len(variable) != 1 or variable[0] != matches[0]:
+            return None
+        fixed_others = sum(row[1] for row in components if row != matches[0])
+        return -fixed_others, 1, 0, 1
+
+    if " and " not in value:
+        whole = part_count(value)
+        if whole is not None:
+            return whole
+    parts = re.split(r"\s+and\s+", value)
+    if len(parts) < 2:
+        return None
+    inherited = "every" if re.match(r"^(?:every|each)\s+", parts[0]) else "single"
+    expressions = [part_count(part, inherited) for part in parts]
+    if any(expression is None for expression in expressions):
+        return None
+    increments = {
+        expression[3]
+        for expression in expressions
+        if expression is not None and expression[2] > 0
+    }
+    if len(increments) > 1:
+        return None
+    return (
+        sum(expression[0] for expression in expressions if expression is not None),
+        sum(expression[1] for expression in expressions if expression is not None),
+        sum(expression[2] for expression in expressions if expression is not None),
+        next(
+            (
+                expression[3]
+                for expression in expressions
+                if expression is not None and expression[2] > 0
+            ),
+            1,
+        ),
+    )
+
+
+def loadout_subjects(loadout_html: str) -> list[tuple[str, str]]:
     value = re.sub(r"<br\s*/?>", "\n", loadout_html, flags=re.IGNORECASE)
     value = html.unescape(re.sub(r"<[^>]+>", "", value))
     clauses = []
     for line in (re.sub(r"\s+", " ", item).strip() for item in value.splitlines()):
-        match = re.match(r"(.+?)\s+(?:is|are) equipped with:\s*(.+)$", line, re.IGNORECASE)
+        match = re.match(
+            r"(.+?)\s+(?:is|are)(?: both)? equipped with:\s*(.+)$",
+            line,
+            re.IGNORECASE,
+        )
         if not match:
             continue
-        subject = normalized_name(match.group(1))
-        if subject in {"this model"}:
-            clauses.append((1, 0, match.group(2)))
-        elif subject in {"every model", "each model", "every model in this unit", "each model in this unit"}:
-            clauses.append((0, 1, match.group(2)))
+        clauses.append((match.group(1).strip(), match.group(2).strip()))
+    return clauses
+
+
+def default_loadout_clauses(
+    loadout_html: str,
+    components: list[tuple[str, int, int, int]] | None = None,
+) -> list[tuple[int, int, int, int, str]]:
+    clauses = []
+    for subject_text, equipment in loadout_subjects(loadout_html):
+        subject = normalized_name(subject_text)
+        expression = (
+            (1, 0, 0, 1)
+            if subject in {"this model", "this unit"}
+            else subject_count(subject, components or [])
+        )
+        if expression is not None:
+            clauses.append((*expression, equipment))
     return clauses
 
 
@@ -262,6 +431,7 @@ def replaced_weapon_vector(
 def populate_constraints(connection: sqlite3.Connection) -> int:
     connection.executescript(CONSTRAINT_SCHEMA)
     connection.execute("DELETE FROM default_weapon_loadout")
+    connection.execute("DELETE FROM default_loadout_subjects")
     connection.execute("DELETE FROM wargear_choice_replaced_weapons")
     connection.execute("DELETE FROM wargear_choice_alternative_weapons")
     connection.execute("DELETE FROM wargear_choice_alternatives")
@@ -302,28 +472,64 @@ def populate_constraints(connection: sqlite3.Connection) -> int:
             "SELECT id, loadout_html, loadout_text FROM datasheets"
         )
     }
+    composition = {}
+    for row in connection.execute(
+        """SELECT datasheet_id, model_name, min_models, max_models,
+                  composition_position
+           FROM unit_composition_models
+           ORDER BY datasheet_id, composition_position, component_position"""
+    ):
+        composition.setdefault(row[0], []).append((row[1], row[2], row[3], row[4]))
 
     for datasheet_id, (loadout_html, loadout_text) in loadouts.items():
         known = names_by_unit.get(datasheet_id, {})
-        totals: dict[str, tuple[str, int, int]] = {}
-        for fixed, per_model, equipment in default_loadout_clauses(loadout_html):
+        components = composition.get(datasheet_id, [])
+        subjects = loadout_subjects(loadout_html)
+        for position, (subject_text, equipment) in enumerate(subjects, start=1):
+            subject = normalized_name(subject_text)
+            expression = (
+                (1, 0, 0, 1)
+                if subject in {"this model", "this unit"}
+                else subject_count(subject, components)
+            )
+            connection.execute(
+                """INSERT INTO default_loadout_subjects
+                   (datasheet_id, position, subject_text, equipment_text,
+                    fixed_quantity, quantity_per_model, quantity_per_increment,
+                    models_per_increment, resolved)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    datasheet_id,
+                    position,
+                    subject_text,
+                    equipment,
+                    expression[0] if expression is not None else None,
+                    expression[1] if expression is not None else None,
+                    expression[2] if expression is not None else None,
+                    expression[3] if expression is not None else None,
+                    int(expression is not None),
+                ),
+            )
+            if expression is None:
+                continue
             for weapon_group_id, (weapon_name, quantity) in weapon_vector(equipment, known).items():
-                previous = totals.get(weapon_group_id, (weapon_name, 0, 0))
-                totals[weapon_group_id] = (
-                    weapon_name,
-                    previous[1] + fixed * quantity,
-                    previous[2] + per_model * quantity,
+                connection.execute(
+                    """INSERT INTO default_weapon_loadout
+                       (datasheet_id, subject_position, weapon_group_id,
+                        weapon_group_name, quantity, fixed_quantity,
+                        quantity_per_model, quantity_per_increment,
+                        models_per_increment, description_text)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        datasheet_id,
+                        position,
+                        weapon_group_id,
+                        weapon_name,
+                        quantity,
+                        *expression,
+                        loadout_text,
+                    ),
                 )
-        connection.executemany(
-            """INSERT INTO default_weapon_loadout
-               (datasheet_id, weapon_group_id, weapon_group_name, fixed_quantity,
-                quantity_per_model, description_text)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (
-                (datasheet_id, group_id, name, fixed, per_model, loadout_text)
-                for group_id, (name, fixed, per_model) in totals.items()
-            ),
-        )
 
     inserted = 0
     for datasheet_id, options in options_by_unit.items():
@@ -441,7 +647,7 @@ def main() -> None:
     try:
         with connection:
             count = populate_constraints(connection)
-            connection.execute("UPDATE metadata SET value = '6' WHERE key = 'schema_version'")
+            connection.execute("UPDATE metadata SET value = '7' WHERE key = 'schema_version'")
         print(f"Structured {count} source-backed wargear constraints")
         pools = connection.execute("SELECT count(*) FROM wargear_choice_pools").fetchone()[0]
         print(f"Structured {pools} source-backed wargear choice pools")

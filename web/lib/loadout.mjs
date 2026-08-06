@@ -92,7 +92,17 @@ export function defaultWeaponCounts(unit, modelCount) {
   return Object.fromEntries(
     (unit?.defaultWeapons ?? []).map((weapon) => [
       weapon.groupId,
-      normalizeEquippedCount(weapon.fixed + weapon.perModel * models),
+      normalizeEquippedCount(
+        weapon.terms.reduce(
+          (count, term) =>
+            count +
+            (term.fixed +
+              term.perModel * models +
+              Math.floor(models / term.modelsPerIncrement) * term.perIncrement) *
+              term.quantity,
+          0,
+        ),
+      ),
     ]),
   );
 }

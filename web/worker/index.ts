@@ -46,13 +46,19 @@ type Catalogue = {
     models: unknown[];
     weapons: Array<{ groupId: string }>;
     composition: Array<{ text: string; min: number | null; max: number | null }>;
+    compositionModels: Array<{ name: string; min: number; max: number; source: string }>;
     loadout: string;
     defaultWeapons: Array<{
       groupId: string;
       groupName: string;
-      fixed: number;
-      perModel: number;
-      source: string;
+      terms: Array<{
+        fixed: number;
+        perModel: number;
+        perIncrement: number;
+        modelsPerIncrement: number;
+        quantity: number;
+        source: string;
+      }>;
     }>;
     wargearOptions: string[];
     weaponLimits: Array<{
@@ -556,6 +562,7 @@ async function handleApi(request: Request, env: Env) {
           factionId: unit.factionId,
           name: unit.name,
           composition: unit.composition,
+          compositionModels: unit.compositionModels,
           loadout: unit.loadout,
           defaultWeapons: unit.defaultWeapons,
           wargearOptions: unit.wargearOptions,

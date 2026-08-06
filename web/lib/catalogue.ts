@@ -35,6 +35,12 @@ export type CatalogueComposition = {
   min: number | null;
   max: number | null;
 };
+export type CatalogueCompositionModel = {
+  name: string;
+  min: number;
+  max: number;
+  source: string;
+};
 export type CatalogueWeaponLimitTerm = {
   fixed: number;
   perIncrement: number;
@@ -69,9 +75,14 @@ export type CatalogueWargearChoicePool = {
 export type CatalogueDefaultWeapon = {
   groupId: string;
   groupName: string;
-  fixed: number;
-  perModel: number;
-  source: string;
+  terms: Array<{
+    fixed: number;
+    perModel: number;
+    perIncrement: number;
+    modelsPerIncrement: number;
+    quantity: number;
+    source: string;
+  }>;
 };
 export type CatalogueUnit = {
   id: string;
@@ -80,6 +91,7 @@ export type CatalogueUnit = {
   models: CatalogueModel[];
   weapons: CatalogueWeapon[];
   composition: CatalogueComposition[];
+  compositionModels: CatalogueCompositionModel[];
   loadout: string;
   defaultWeapons: CatalogueDefaultWeapon[];
   wargearOptions: string[];
@@ -95,6 +107,9 @@ export type Catalogue = {
     constrainedWeaponCount: number;
     choicePoolCount: number;
     defaultWeaponCount: number;
+    defaultWeaponTermCount: number;
+    loadoutSubjectCount: number;
+    resolvedLoadoutSubjectCount: number;
     replacementWeaponCount: number;
     compoundAlternativeCount: number;
     optionCount: number;

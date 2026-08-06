@@ -16,14 +16,14 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Extend exact defaults to mixed-model units by reconciling named loadout
-   subjects against source composition counts.
-2. Add phase-scale simulations with reproducible seeded runs
+1. Add phase-scale simulations with reproducible seeded runs
    alongside cryptographically random live rolls.
-3. Add property-based and fuzz testing at the C and API boundaries.
-4. Expand formal proofs from threshold helpers to attack-plan invariants and
+2. Add property-based and fuzz testing at the C and API boundaries.
+3. Expand formal proofs from threshold helpers to attack-plan invariants and
    probability-mass conservation.
-5. Improve list persistence, import/export, and mid-game state recovery.
+4. Improve list persistence, import/export, and mid-game state recovery.
+5. Add an explicit per-model composition editor for the 88 conditional or
+   multi-variable loadout subjects that total unit size alone cannot resolve.
 6. Add data freshness checks, change reports, and source-version pinning.
 7. Benchmark and profile large volleys in native and WebAssembly builds.
 8. Improve mobile play-mode ergonomics and accessibility.
@@ -31,6 +31,11 @@ priority over feature count.
 
 ## Completed cycles
 
+- 2026-08-06: Parsed named models from unit compositions and normalized default
+  loadouts into size-dependent terms. Exact source defaults now cover 1,883 of
+  1,971 loadout subjects, including fixed leaders, mixed-model units, and
+  alternative unit sizes; all unresolved subjects remain explicitly audited
+  instead of being guessed.
 - 2026-08-06: Imported datasheet keywords and made Anti abilities activate only
   when the selected target has the matching keyword.
 - 2026-08-06: Added model-by-model damage allocation to C, WebAssembly, the API,
