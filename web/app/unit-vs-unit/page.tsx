@@ -8,7 +8,9 @@ import {
   equippedWeaponLines,
   groupWeaponProfiles,
   normalizeEquippedCount,
+  unitLoadoutWarnings,
   weaponAllocationErrors,
+  weaponLimitMaximum,
 } from "../../lib/loadout.mjs";
 import {
   applyTargetProfile,
@@ -30,6 +32,7 @@ export default function UnitVsUnit() {
   const [attackerModels, setAttackerModels] = useState(1);
   const [targetModels, setTargetModels] = useState(1);
   const [weaponCounts, setWeaponCounts] = useState<Record<string, number>>({});
+  const [optionCounts, setOptionCounts] = useState<Record<string, number>>({});
   const [profileCounts, setProfileCounts] = useState<Record<number, number>>({});
   const [targetOverrides, setTargetOverrides] = useState({
     toughness: 8,
@@ -62,6 +65,12 @@ export default function UnitVsUnit() {
   const attackerUnit = attackerUnits.find((unit) => unit.id === attackerUnitId);
   const targetUnit = targetUnits.find((unit) => unit.id === targetUnitId);
   const weaponGroups = groupWeaponProfiles(attackerUnit?.weapons ?? []);
+  const loadoutWarnings = unitLoadoutWarnings(
+    attackerUnit,
+    attackerModels,
+    optionCounts,
+    weaponCounts,
+  );
 
   const selectAttacker = (unitId: string) => {
     setAttackerUnitId(unitId);
@@ -69,6 +78,7 @@ export default function UnitVsUnit() {
     const groups = groupWeaponProfiles(unit?.weapons ?? []);
     setAttackerModels(unit?.suggestedModelCount ?? 1);
     setWeaponCounts(Object.fromEntries(groups.map((group) => [group.id, 0])));
+    setOptionCounts(Object.fromEntries(groups.map((group) => [group.id, 0])));
     setProfileCounts(
       Object.fromEntries(
         groups.flatMap((group) => group.profiles.map((profile) => [profile.id, 0])),
@@ -123,7 +133,9 @@ export default function UnitVsUnit() {
         }),
       );
       setResults(resolved);
-      setStatus("Volley calculated");
+      setStatus(
+        loadoutWarnings.length ? "Volley calculated with loadout warnings" : "Volley calculated",
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Calculation failed");
     }
@@ -208,6 +220,14 @@ export default function UnitVsUnit() {
                             ? `${group.profiles.length} mutually exclusive profiles`
                             : `${group.profiles[0].attacks} · S${group.profiles[0].strength} · AP ${group.profiles[0].ap ?? "—"} · D ${group.profiles[0].damage}`}
                           {" · copies across unit"}
+                          {attackerUnit.weaponLimits?.find((limit) => limit.groupId === group.id)
+                            ? ` · options allow up to ${weaponLimitMaximum(
+                                attackerUnit.weaponLimits.find(
+                                  (limit) => limit.groupId === group.id,
+                                )!,
+                                attackerModels,
+                              )}`
+                            : ""}
                         </small>
                       </span>
                       <input
@@ -224,6 +244,27 @@ export default function UnitVsUnit() {
                         }
                       />
                     </label>
+                    {attackerUnit.weaponLimits.some((limit) => limit.groupId === group.id) && (
+                      <label className="option-count">
+                        <span>
+                          Selected through wargear options
+                          <small>Copies taken or replaced using the source options</small>
+                        </span>
+                        <input
+                          aria-label={`${group.name} option-selected copies`}
+                          type="number"
+                          min={0}
+                          max={weaponCounts[group.id] ?? 0}
+                          value={optionCounts[group.id] ?? 0}
+                          onChange={(event) =>
+                            setOptionCounts((current) => ({
+                              ...current,
+                              [group.id]: normalizeEquippedCount(+event.target.value),
+                            }))
+                          }
+                        />
+                      </label>
+                    )}
                     {group.profiles.length > 1 && (
                       <div className="profile-allocations">
                         <span>Copies using each profile this volley</span>
@@ -258,6 +299,19 @@ export default function UnitVsUnit() {
                     )}
                   </div>
                 ))}
+                {loadoutWarnings.length > 0 && (
+                  <div className="loadout-warnings" role="status">
+                    <strong>Check this edited loadout</strong>
+                    <ul>
+                      {loadoutWarnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                    <small>
+                      You can still calculate to represent casualties or narrative rules.
+                    </small>
+                  </div>
+                )}
                 <details className="source-guidance" open>
                   <summary>Unit composition</summary>
                   <ul>

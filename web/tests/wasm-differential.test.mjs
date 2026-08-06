@@ -13,7 +13,9 @@ import {
   equippedWeaponLines,
   groupWeaponProfiles,
   normalizeEquippedCount,
+  unitLoadoutWarnings,
   weaponAllocationErrors,
+  weaponLimitMaximum,
 } from "../lib/loadout.mjs";
 
 globalThis.require = createRequire(import.meta.url);
@@ -159,8 +161,8 @@ test("unit loadouts group mutually exclusive profiles and allocate equipped copi
   assert.equal(groups.length, 2);
   assert.equal(groups[0].profiles.length, 2);
   assert.deepEqual(armyListWeaponsFromGroups(groups), [
-    { weaponId: 1, groupId: "unit:7", name: "Plasma pistol", count: 0 },
-    { weaponId: 3, groupId: "unit:8", name: "Boltgun", count: 0 },
+    { weaponId: 1, groupId: "unit:7", name: "Plasma pistol", count: 0, optionCount: 0 },
+    { weaponId: 3, groupId: "unit:8", name: "Boltgun", count: 0, optionCount: 0 },
   ]);
   assert.deepEqual(equippedWeaponLines(groups, { "unit:7": 5, "unit:8": 7 }, { 1: 3, 2: 2 }), [
     { weapon: weapons[0], count: 3 },
@@ -176,6 +178,46 @@ test("unit loadouts group mutually exclusive profiles and allocate equipped copi
   assert.equal(normalizeEquippedCount(2.9), 2);
   assert.equal(normalizeEquippedCount(-1), 0);
   assert.equal(normalizeEquippedCount(Number.NaN), 0);
+});
+
+test("source-backed loadout limits scale with unit size and remain overridable warnings", () => {
+  const unit = {
+    name: "Assault Squad",
+    suggestedModelCount: 5,
+    maximumModelCount: 10,
+    weaponLimits: [
+      {
+        groupId: "assault:eviscerator",
+        groupName: "Eviscerator",
+        terms: [
+          {
+            fixed: 0,
+            perIncrement: 1,
+            modelsPerIncrement: 5,
+            quantity: 1,
+            source: "For every 5 models in this unit, 1 model can take an eviscerator.",
+          },
+        ],
+      },
+    ],
+  };
+  assert.equal(weaponLimitMaximum(unit.weaponLimits[0], 4), 0);
+  assert.equal(weaponLimitMaximum(unit.weaponLimits[0], 5), 1);
+  assert.equal(weaponLimitMaximum(unit.weaponLimits[0], 10), 2);
+  assert.deepEqual(
+    unitLoadoutWarnings(unit, 10, { "assault:eviscerator": 2 }, { "assault:eviscerator": 2 }),
+    [],
+  );
+  assert.match(
+    unitLoadoutWarnings(unit, 5, { "assault:eviscerator": 2 }, { "assault:eviscerator": 2 })[0],
+    /2 option-selected copies exceeds.*limit of 1/i,
+  );
+  assert.match(unitLoadoutWarnings(unit, 3, {}, {})[0], /may represent battlefield casualties/i);
+  assert.match(unitLoadoutWarnings(unit, 11, {}, {})[0], /at most 10 models/i);
+  assert.match(
+    unitLoadoutWarnings(unit, 10, { "assault:eviscerator": 2 }, { "assault:eviscerator": 1 })[0],
+    /exceeds 1 total equipped/i,
+  );
 });
 
 test("JavaScript and C agree on wound thresholds", () => {

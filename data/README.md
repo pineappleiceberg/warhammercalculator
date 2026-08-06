@@ -17,6 +17,9 @@ The main tables are:
   minimum/maximum model counts
 - `wargear_options` for the complete published loadout guidance, preserved as
   both original HTML and plain text
+- `wargear_constraints` and `wargear_constraint_weapons` for conservatively
+  parsed fixed, per-model, and unit-size-dependent option allowances linked
+  back to their exact source text
 - `source_files` and `metadata` for URLs, timestamps, and source checksums
 
 The source export can retain rows for datasheets that it no longer publishes.
@@ -49,6 +52,8 @@ profiles in the same volley.
 The presence of a weapon on a datasheet does not by itself mean every model in
 that datasheet can equip it. The UI therefore treats weapon quantities as
 editable totals across the unit and shows the source wargear options beside
-them. It never assumes every listed profile is equipped. Automatically
-enforcing every natural-language replacement and per-model constraint remains
-a separate structured-rules task.
+them. It never assumes every listed profile is equipped. A separate editable
+"selected through wargear options" count is checked against the structured
+allowances, avoiding the unsafe assumption that every copy of an offered weapon
+came from an option. Ambiguous compound and conditional prose remains visible
+but is deliberately not compiled into a constraint.

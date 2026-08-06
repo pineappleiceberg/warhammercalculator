@@ -44,6 +44,7 @@ def export(database: Path, output: Path) -> None:
                 "weapons": [],
                 "composition": [],
                 "wargearOptions": [],
+                "weaponLimits": [],
                 "suggestedModelCount": None,
                 "maximumModelCount": None,
             }
@@ -111,6 +112,37 @@ def export(database: Path, output: Path) -> None:
             units[row["datasheet_id"]]["wargearOptions"].append(
                 row["description_text"]
             )
+
+        limits: dict[tuple[str, str], dict] = {}
+        for row in connection.execute(
+            """SELECT wc.datasheet_id, wc.fixed_limit, wc.limit_per_increment,
+                      wc.models_per_increment, wc.description_text,
+                      wcw.weapon_group_id, wcw.weapon_group_name, wcw.quantity
+               FROM wargear_constraints AS wc
+               JOIN wargear_constraint_weapons AS wcw
+                 USING (datasheet_id, option_position)
+               ORDER BY wc.datasheet_id, wcw.weapon_group_id, wc.option_position"""
+        ):
+            key = (row["datasheet_id"], row["weapon_group_id"])
+            limit = limits.setdefault(
+                key,
+                {
+                    "groupId": row["weapon_group_id"],
+                    "groupName": row["weapon_group_name"],
+                    "terms": [],
+                },
+            )
+            limit["terms"].append(
+                {
+                    "fixed": row["fixed_limit"],
+                    "perIncrement": row["limit_per_increment"],
+                    "modelsPerIncrement": row["models_per_increment"],
+                    "quantity": row["quantity"],
+                    "source": row["description_text"],
+                }
+            )
+        for (datasheet_id, _group_id), limit in limits.items():
+            units[datasheet_id]["weaponLimits"].append(limit)
 
         for unit in units.values():
             composition = unit["composition"]
@@ -184,6 +216,16 @@ def export(database: Path, output: Path) -> None:
         ).fetchone()[0]
         payload = {
             "sourceUpdatedAt": source_updated_at,
+            "structuredWargear": {
+                "constraintCount": connection.execute(
+                    "SELECT count(*) FROM wargear_constraints"
+                ).fetchone()[0],
+                "constrainedWeaponCount": len(limits),
+                "optionCount": connection.execute(
+                    "SELECT count(*) FROM wargear_options"
+                ).fetchone()[0],
+                "conservative": True,
+            },
             "factions": factions,
             "units": list(units.values()),
         }

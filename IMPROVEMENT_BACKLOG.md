@@ -16,11 +16,10 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Compile structured constraints from wargear-option prose so the editor can
-   flag illegal replacements, per-model limits, and unit-size-dependent
-   quantities.
-2. Combine complete multi-weapon volleys in player-selected order so casualties
+1. Combine complete multi-weapon volleys in player-selected order so casualties
    and existing wounds carry between weapon profiles and mixed model profiles.
+2. Extend structured wargear coverage to compound bundles, shared choice pools,
+   conditional replacements, and exact default-loadout reconciliation.
 3. Add phase-scale simulations with reproducible seeded runs
    alongside cryptographically random live rolls.
 4. Add property-based and fuzz testing at the C and API boundaries.
@@ -52,3 +51,8 @@ priority over feature count.
   quantities are stored once, standard/supercharge and frag/krak modes cannot
   be mistaken for separate weapons, individual copies can still split across
   profiles in a volley, and Play Mode selects the firing profile explicitly.
+- 2026-08-06: Compiled 1,704 unambiguous wargear options into source-linked
+  fixed, per-model, and unit-size-dependent constraints covering 2,709 unit
+  weapon groups; separated total equipped quantities from option-selected
+  copies so editors and the API can flag illegal allowances without mistaking
+  standard equipment for an upgrade, while retaining explicit overrides.

@@ -15,6 +15,11 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+try:
+    from scripts.wargear_constraints import CONSTRAINT_SCHEMA, populate_constraints
+except ModuleNotFoundError:
+    from wargear_constraints import CONSTRAINT_SCHEMA, populate_constraints
+
 
 BASE_URL = "https://wahapedia.ru/wh40k10ed"
 FILES = (
@@ -200,7 +205,7 @@ SELECT
 FROM model_profiles AS m
 JOIN datasheets AS d ON d.id = m.datasheet_id
 JOIN factions AS f ON f.id = d.faction_id;
-"""
+""" + CONSTRAINT_SCHEMA
 
 
 def fetch(url: str) -> bytes:
@@ -333,7 +338,7 @@ def create_database(output: Path) -> dict[str, int]:
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "3"),
+                    ("schema_version", "4"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
@@ -508,6 +513,8 @@ def create_database(output: Path) -> dict[str, int]:
                         (weapon_id, position, name, value, raw),
                     )
 
+            populate_constraints(connection)
+
         integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
         if integrity != "ok":
             raise RuntimeError(f"SQLite integrity check failed: {integrity}")
@@ -522,6 +529,8 @@ def create_database(output: Path) -> dict[str, int]:
                 "weapon_abilities",
                 "unit_composition",
                 "wargear_options",
+                "wargear_constraints",
+                "wargear_constraint_weapons",
             )
         }
         connection.execute("PRAGMA optimize")

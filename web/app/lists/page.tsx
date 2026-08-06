@@ -13,6 +13,7 @@ import {
   armyListWeaponsFromGroups,
   groupWeaponProfiles,
   normalizeEquippedCount,
+  unitLoadoutWarnings,
 } from "../../lib/loadout.mjs";
 
 const emptyList: ArmyListInput = { name: "", factionId: "", units: [] };
@@ -181,6 +182,36 @@ export default function ArmyLists() {
                             }))
                           }
                         />
+                        {catalogue?.units
+                          .find((entry) => entry.id === unit.unitId)
+                          ?.weaponLimits.some(
+                            (limit) =>
+                              limit.groupId === (weapon.groupId ?? String(weapon.weaponId)),
+                          ) && (
+                          <span className="option-count-inline">
+                            <span>Via options</span>
+                            <input
+                              aria-label={`${weapon.name} option-selected copies`}
+                              type="number"
+                              min={0}
+                              max={weapon.count}
+                              value={weapon.optionCount ?? 0}
+                              onChange={(event) =>
+                                changeUnit(unit.id, (current) => ({
+                                  ...current,
+                                  weapons: current.weapons.map((entry) =>
+                                    entry.weaponId === weapon.weaponId
+                                      ? {
+                                          ...entry,
+                                          optionCount: normalizeEquippedCount(+event.target.value),
+                                        }
+                                      : entry,
+                                  ),
+                                }))
+                              }
+                            />
+                          </span>
+                        )}
                       </label>
                     </div>
                     <button
@@ -222,6 +253,40 @@ export default function ArmyLists() {
                       </label>
                     ))}
                   </div>
+                  {(() => {
+                    const sourceUnit = catalogue?.units.find((entry) => entry.id === unit.unitId);
+                    const counts = Object.fromEntries(
+                      unit.weapons.map((weapon) => [
+                        weapon.groupId ?? String(weapon.weaponId),
+                        weapon.count,
+                      ]),
+                    );
+                    const optionCounts = Object.fromEntries(
+                      unit.weapons.map((weapon) => [
+                        weapon.groupId ?? String(weapon.weaponId),
+                        weapon.optionCount ?? 0,
+                      ]),
+                    );
+                    const warnings = unitLoadoutWarnings(
+                      sourceUnit,
+                      unit.modelCount,
+                      optionCounts,
+                      counts,
+                    );
+                    return warnings.length > 0 ? (
+                      <div className="loadout-warnings" role="status">
+                        <strong>Source loadout check</strong>
+                        <ul>
+                          {warnings.map((warning) => (
+                            <li key={warning}>{warning}</li>
+                          ))}
+                        </ul>
+                        <small>
+                          Saving remains available for casualties and narrative overrides.
+                        </small>
+                      </div>
+                    ) : null;
+                  })()}
                 </article>
               ))}
             </div>

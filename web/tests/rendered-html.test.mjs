@@ -161,6 +161,71 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.equal(loadoutData.maximumModelCount, 20);
   assert.match(loadoutData.composition[0].text, /10-20 Necron Warriors/i);
   assert.ok(loadoutData.wargearOptions.some((option) => /gauss reaper/i.test(option)));
+  const reaperLimit = loadoutData.weaponLimits.find((limit) => limit.groupName === "Gauss reaper");
+  assert.ok(reaperLimit);
+  assert.equal(reaperLimit.terms[0].modelsPerIncrement, 1);
+
+  const invalidLoadout = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: warriors.id,
+        modelCount: 10,
+        weaponCounts: { [reaperLimit.groupId]: 11 },
+        optionCounts: { [reaperLimit.groupId]: 11 },
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(invalidLoadout.status, 200);
+  const invalidLoadoutData = (await invalidLoadout.json()).data;
+  assert.equal(invalidLoadoutData.valid, false);
+  assert.match(invalidLoadoutData.warnings[0], /limit of 10/i);
+
+  const standardEquipment = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: warriors.id,
+        modelCount: 10,
+        weaponCounts: { [reaperLimit.groupId]: 10 },
+        optionCounts: { [reaperLimit.groupId]: 0 },
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal((await standardEquipment.json()).data.valid, true);
+
+  const unknownWeapon = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: warriors.id,
+        modelCount: 10,
+        weaponCounts: { "not-a-weapon": 1 },
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(unknownWeapon.status, 400);
+  assert.match((await unknownWeapon.json()).error.message, /weapon group ids/i);
+
+  const overriddenCasualties = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ unitId: warriors.id, modelCount: 7, weaponCounts: {} }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.match((await overriddenCasualties.json()).data.warnings[0], /battlefield casualties/i);
 
   const sisters = catalogue.units.find((unit) => unit.name === "Battle Sisters Squad");
   const sisterUnits = await worker.fetch(

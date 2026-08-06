@@ -221,6 +221,12 @@ Indirect Fire applies its hit modifier and cover normally, forces unmodified Hit
 rolls of 1–3 to fail before critical-hit processing, and rejects Torrent attacks
 when no target model is visible.
 
+The checked profile-data suite also verifies conservative structured wargear
+constraints. Fixed limits, per-model allowances, and rules such as "for every 5
+models" are exposed to the web editor and API with their original source text.
+Total equipped counts remain independent and editable; option-selected counts
+produce warnings that can be acknowledged for casualties or narrative rules.
+
 ## WebAssembly build
 
 Activate an Emscripten SDK environment, then run:

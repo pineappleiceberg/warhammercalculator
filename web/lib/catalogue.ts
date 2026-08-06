@@ -35,6 +35,18 @@ export type CatalogueComposition = {
   min: number | null;
   max: number | null;
 };
+export type CatalogueWeaponLimitTerm = {
+  fixed: number;
+  perIncrement: number;
+  modelsPerIncrement: number;
+  quantity: number;
+  source: string;
+};
+export type CatalogueWeaponLimit = {
+  groupId: string;
+  groupName: string;
+  terms: CatalogueWeaponLimitTerm[];
+};
 export type CatalogueUnit = {
   id: string;
   factionId: string;
@@ -43,11 +55,18 @@ export type CatalogueUnit = {
   weapons: CatalogueWeapon[];
   composition: CatalogueComposition[];
   wargearOptions: string[];
+  weaponLimits: CatalogueWeaponLimit[];
   suggestedModelCount: number | null;
   maximumModelCount: number | null;
 };
 export type Catalogue = {
   sourceUpdatedAt: string;
+  structuredWargear: {
+    constraintCount: number;
+    constrainedWeaponCount: number;
+    optionCount: number;
+    conservative: boolean;
+  };
   factions: CatalogueFaction[];
   units: CatalogueUnit[];
 };

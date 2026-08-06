@@ -3,6 +3,7 @@ export type ArmyListWeapon = {
   groupId?: string;
   name: string;
   count: number;
+  optionCount?: number;
 };
 
 export type ArmyListUnit = {

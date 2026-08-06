@@ -940,6 +940,43 @@ select:focus {
   color: var(--muted);
   font-weight: 400;
 }
+
+.loadout-warnings {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--gold) 58%, transparent);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  color: var(--ink);
+}
+
+.loadout-warnings ul {
+  margin: 0.45rem 0;
+  padding-left: 1.1rem;
+}
+
+.loadout-warnings li,
+.loadout-warnings small {
+  color: var(--muted);
+}
+
+.option-count {
+  margin: 0.4rem 0 0 1rem;
+  padding-left: 0.65rem;
+  border-left: 2px solid var(--gold);
+}
+
+.option-count-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: 0.5rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.option-count-inline input {
+  width: 4.25rem;
+}
 .source-guidance {
   border: 1px solid #c8c0b1;
   background: #f6f1e7;

@@ -26,6 +26,7 @@ export function armyListWeaponsFromGroups(groups) {
     groupId: group.id,
     name: group.name,
     count: 0,
+    optionCount: 0,
   }));
 }
 
@@ -55,4 +56,47 @@ export function equippedWeaponLines(groups, counts, profileCounts = {}) {
       return allocated > 0 ? [{ weapon, count: allocated }] : [];
     });
   });
+}
+
+export function weaponLimitMaximum(limit, modelCount) {
+  const models = normalizeEquippedCount(modelCount, 1000);
+  return limit.terms.reduce(
+    (maximum, term) =>
+      maximum +
+      (term.fixed + Math.floor(models / term.modelsPerIncrement) * term.perIncrement) *
+        term.quantity,
+    0,
+  );
+}
+
+export function unitLoadoutWarnings(unit, modelCount, optionCounts = {}, equippedCounts = {}) {
+  if (!unit) return [];
+  const models = normalizeEquippedCount(modelCount, 1000);
+  const warnings = [];
+  if (unit.suggestedModelCount !== null && models < unit.suggestedModelCount) {
+    warnings.push(
+      `${unit.name} source composition starts at ${unit.suggestedModelCount} models; ${models} may represent battlefield casualties`,
+    );
+  }
+  if (unit.maximumModelCount !== null && models > unit.maximumModelCount) {
+    warnings.push(
+      `${unit.name} source composition allows at most ${unit.maximumModelCount} models`,
+    );
+  }
+  for (const limit of unit.weaponLimits ?? []) {
+    const count = normalizeEquippedCount(optionCounts[limit.groupId] ?? 0);
+    const equipped = normalizeEquippedCount(equippedCounts[limit.groupId] ?? 0);
+    const maximum = weaponLimitMaximum(limit, models);
+    if (count > equipped) {
+      warnings.push(
+        `${limit.groupName}: ${count} option-selected copies exceeds ${equipped} total equipped`,
+      );
+    }
+    if (count > maximum) {
+      warnings.push(
+        `${limit.groupName}: ${count} option-selected copies exceeds the source-backed limit of ${maximum} for ${models} models`,
+      );
+    }
+  }
+  return warnings;
 }

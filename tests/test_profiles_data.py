@@ -6,6 +6,7 @@ from pathlib import Path
 
 from scripts.build_profiles_db import composition_range, plain_text
 from scripts.export_profiles_json import export, profile_group_names
+from scripts.wargear_constraints import allowance, normalized_name, option_choices
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +24,16 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(composition_range("OR"), (None, None))
         self.assertEqual(
+            allowance("For every 5 models in this unit, 1 model can replace it."),
+            (0, 1, 5),
+        )
+        self.assertEqual(allowance("Any number of models can each replace it."), (0, 1, 1))
+        self.assertEqual(normalized_name("Power weapon’s – profile"), "power weapon s profile")
+        self.assertEqual(
+            option_choices("Choose:<ul><li>1 flamer</li><li>1 meltagun</li></ul>", "Choose"),
+            ["1 flamer", "1 meltagun"],
+        )
+        self.assertEqual(
             profile_group_names(
                 ["Plasma pistol – standard", "Plasma pistol – supercharge"]
             ),
@@ -37,7 +48,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "3",
+                "4",
             )
             for filename, minimum_rows in (
                 ("Datasheets_unit_composition.csv", 2_000),
@@ -59,6 +70,16 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute("SELECT count(*) FROM wargear_options").fetchone()[0],
                 2_500,
             )
+            self.assertGreater(
+                connection.execute("SELECT count(*) FROM wargear_constraints").fetchone()[0],
+                1_500,
+            )
+            self.assertGreater(
+                connection.execute(
+                    "SELECT count(*) FROM wargear_constraint_weapons"
+                ).fetchone()[0],
+                2_500,
+            )
         finally:
             connection.close()
 
@@ -71,6 +92,28 @@ class ProfileDataTests(unittest.TestCase):
         self.assertTrue(
             any("gauss reaper" in option.lower() for option in warriors["wargearOptions"])
         )
+        reaper = next(
+            limit
+            for limit in warriors["weaponLimits"]
+            if limit["groupName"] == "Gauss reaper"
+        )
+        self.assertEqual(reaper["terms"][0]["perIncrement"], 1)
+        self.assertEqual(reaper["terms"][0]["modelsPerIncrement"], 1)
+
+        assault = next(unit for unit in catalogue["units"] if unit["name"] == "Assault Squad")
+        eviscerator = next(
+            limit for limit in assault["weaponLimits"] if limit["groupName"] == "Eviscerator"
+        )
+        self.assertEqual(eviscerator["terms"][0]["modelsPerIncrement"], 5)
+        self.assertEqual(catalogue["structuredWargear"]["constraintCount"], 1704)
+        self.assertTrue(catalogue["structuredWargear"]["conservative"])
+        for unit in catalogue["units"]:
+            weapon_group_ids = {weapon["groupId"] for weapon in unit["weapons"]}
+            for limit in unit["weaponLimits"]:
+                self.assertIn(limit["groupId"], weapon_group_ids)
+                self.assertTrue(limit["terms"])
+                for term in limit["terms"]:
+                    self.assertIn(term["source"], unit["wargearOptions"])
 
     def test_checked_browser_catalogue_matches_the_database_export(self):
         with tempfile.TemporaryDirectory() as directory:
