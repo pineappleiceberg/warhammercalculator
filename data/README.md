@@ -19,8 +19,10 @@ The main tables are:
 - `unit_combat_presets` and `unit_combat_preset_effects` for conservatively
   extracted Hit/Wound modifiers, re-roll modes, weapon-keyword grants, AP
   changes, Critical Hit/Wound thresholds, and direct positive Attacks,
-  Strength, and Damage modifiers; mutually exclusive named modes and rolled outcomes are stored
-  as separate ordered choices. Each extracted Hit, Wound, and re-roll effect
+  Strength, and Damage modifiers, plus defensive Save targets, invulnerable
+  saves, unrestricted Feel No Pain thresholds, and per-attack damage reduction;
+  mutually exclusive named modes and rolled outcomes are stored as separate
+  ordered choices. Each extracted Hit, Wound, and re-roll effect
   records whether it applies from the attacking or target side and whether its
   subject is the source unit, a led unit, a friendly unit, an enemy unit, or an
   otherwise affected unit. Unclassified effects are omitted instead of guessed.

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { WorkflowNav } from "../../components/workflow-nav";
 import { CombatPresetSelector } from "../../components/combat-preset-selector";
+import { applyTargetCombatPresets } from "../../lib/combat-presets.mjs";
 import {
   calculateOrderedVolley,
   estimateOrderedVolleyComplexity,
@@ -253,6 +254,16 @@ export default function UnitVsUnit() {
     );
   };
 
+  const currentTargets = () => {
+    const targetPresets =
+      targetUnit?.combatPresets.filter((preset) => activeTargetPresetIds.includes(preset.id)) ?? [];
+    return applyTargetCombatPresets(
+      targetSegments,
+      targetPresets,
+      orderedLines.map((line) => line.weapon.type),
+    );
+  };
+
   const calculateUnit = async (forceExact = false) => {
     if (!attackerUnit || !targetUnit) return;
     setStatus("Calculating unit volley…");
@@ -272,18 +283,15 @@ export default function UnitVsUnit() {
     }
     try {
       const profiles = currentProfiles();
-      const estimate = await estimateOrderedVolleyComplexity(
-        profiles,
-        targetSegments,
-        initialWoundsLost,
-      );
+      const targets = currentTargets();
+      const estimate = await estimateOrderedVolleyComplexity(profiles, targets, initialWoundsLost);
       setComplexity(estimate);
       setComplexityKey(inputKey);
       if (estimate.usesDeferredStates && !estimate.exactGuaranteedByBound && !forceExact) {
         setStatus("This volley may exceed the exact state budget; choose exact or simulation");
         return;
       }
-      const summary = await calculateOrderedVolley(profiles, targetSegments, initialWoundsLost);
+      const summary = await calculateOrderedVolley(profiles, targets, initialWoundsLost);
       const resolved = lines.map((line, index) => ({
         ...line,
         incrementalMean: summary.incrementalMeans[index],
@@ -313,7 +321,7 @@ export default function UnitVsUnit() {
     }
     try {
       const profiles = currentProfiles();
-      setRollResult(simulateOrderedVolley(profiles, targetSegments, initialWoundsLost));
+      setRollResult(simulateOrderedVolley(profiles, currentTargets(), initialWoundsLost));
       setRollKey(inputKey);
       setStatus("Full volley rolled with secure random dice");
     } catch (error) {
@@ -339,7 +347,7 @@ export default function UnitVsUnit() {
       setPhaseResult(
         simulateOrderedVolleyPhase(
           profiles,
-          targetSegments,
+          currentTargets(),
           simulationSeed,
           simulationTrials,
           initialWoundsLost,

@@ -16,15 +16,26 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Extend conservative conditional-ability extraction to defensive saves, Feel
-   No Pain, and damage reduction, applying those effects to every ordered target
-   segment without overriding editable values.
+1. Distinguish unconditional model-wide abilities from situational presets so
+   inherent Feel No Pain and damage reduction can be enabled by default while
+   remaining editable and reversible.
 2. Represent negative, random, and replacement-value Attacks, Strength, and
    Damage changes exactly in native C and WebAssembly before importing them.
 3. Add a source-backed rules eligibility layer for target keywords and phase or
    range conditions that currently require manual interpretation.
 
 ## Completed cycles
+
+- 2026-08-06: Added 90 conservatively classified defensive effects from the
+  pinned source catalogue: 34 invulnerable saves, 24 unrestricted Feel No Pain
+  thresholds, 31 per-attack damage reductions, and one replacement Save target.
+  Bearer-only, subset-model, friendly-aura, affected-model, attack-type-limited,
+  and conflicting values remain omitted instead of being applied to the wrong
+  unit. Selected defenses preserve stronger editable values, reach exact and
+  simulated single-profile calculations, and are composed onto every ordered
+  target segment. Mixed ranged/melee volleys are rejected only when a scoped
+  defense would require two incompatible target profiles. SQLite, catalogue,
+  API, browser composition, and C/WebAssembly regressions cover the behavior.
 
 - 2026-08-06: Added a versioned static `/agent/` URL interface for browser-capable
   AI agents. It resolves catalogue matchups by stable ID or unambiguous name,

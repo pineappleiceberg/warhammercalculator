@@ -187,7 +187,8 @@ CREATE TABLE unit_combat_preset_effects (
         ('lethal_hits', 'devastating_wounds', 'twin_linked', 'ignores_cover',
          'sustained_hits', 'rapid_fire', 'lance', 'heavy', 'ap_modifier',
          'critical_hits', 'critical_wounds', 'attacks_modifier',
-         'strength_modifier', 'damage_modifier')),
+         'strength_modifier', 'damage_modifier', 'save_target',
+         'invulnerable_save', 'feel_no_pain', 'damage_reduction')),
     value INTEGER NOT NULL,
     dice_count INTEGER NOT NULL DEFAULT 0 CHECK (dice_count >= 0),
     dice_sides INTEGER NOT NULL DEFAULT 0 CHECK (dice_sides >= 0),
@@ -727,6 +728,110 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
         for effect in characteristic_effects.values()
         if effect is not None and len(characteristic_values[effect["type"]]) == 1
     )
+
+    def defensive_subject(subject_text: str, effect_start: int) -> tuple[str, str]:
+        subject = subject_text.casefold()
+        context = text[max(0, effect_start - 300) : effect_start].casefold()
+        if "bearer’s unit" in subject or "bearer's unit" in subject:
+            return "target", "led_unit"
+        if "that unit" in subject:
+            if "leading a unit" in context:
+                return "target", "led_unit"
+            if "friendly" in context:
+                return "target", "friendly_unit"
+            if "affected by this ability" in context:
+                return "target", "affected_unit"
+            return "target", "affected_unit"
+        if "that model" in subject:
+            if "friendly" in context:
+                return "target", "friendly_unit"
+            return "target", "affected_unit"
+        return "target", "self"
+
+    defensive_subject_pattern = (
+        r"((?<![A-Za-z] )(?:all )?models? in "
+        r"(?:this|that|the bearer’s|the bearer's) unit|"
+        r"(?<!in )(?<!to )(?<!of )(?:this|that) (?:model|unit))"
+    )
+    defensive_patterns = (
+        (
+            "invulnerable_save",
+            re.compile(r"([2-6])\+ invulnerable save", re.IGNORECASE),
+        ),
+        (
+            "feel_no_pain",
+            re.compile(r"Feel No Pain ([2-6])\+ ability", re.IGNORECASE),
+        ),
+        (
+            "save_target",
+            re.compile(r"Save characteristic of ([2-6])\+", re.IGNORECASE),
+        ),
+    )
+    for effect_type, pattern in defensive_patterns:
+        candidates: dict[int, dict[str, int | str]] = {}
+        for match in pattern.finditer(text):
+            sentence_start = max(
+                text.rfind(".", 0, match.start()),
+                text.rfind(";", 0, match.start()),
+            )
+            clause = text[sentence_start + 1 : match.start()]
+            subjects = list(
+                re.finditer(
+                    defensive_subject_pattern + r" (?:has|have)\b",
+                    clause,
+                    re.IGNORECASE,
+                )
+            )
+            if not subjects:
+                continue
+            clause_tail = text[match.end() : match.end() + 80]
+            if effect_type == "feel_no_pain" and re.match(
+                r"\s+against\b", clause_tail, re.IGNORECASE
+            ):
+                continue
+            value = int(match.group(1))
+            source = subjects[-1]
+            role, subject = defensive_subject(source.group(1), sentence_start + 1 + source.start())
+            if subject not in {"self", "led_unit"}:
+                continue
+            candidates[value] = {
+                "type": effect_type,
+                "value": value,
+                "dice_count": 0,
+                "dice_sides": 0,
+                "role": role,
+                "subject": subject,
+            }
+        if len(candidates) == 1:
+            effects.append(next(iter(candidates.values())))
+
+    damage_reduction_pattern = re.compile(
+        r"each time an attack[^.;]{0,180}?"
+        r"subtract (\d+) from (?:the |that attack’s |that attack's )?"
+        r"Damage characteristic(?: of that attack)?",
+        re.IGNORECASE,
+    )
+    damage_reductions: dict[int, dict[str, int | str]] = {}
+    for match in damage_reduction_pattern.finditer(text):
+        context = text[max(0, match.start() - 240) : match.end()].casefold()
+        attack_clause = match.group(0).casefold()
+        if (
+            not re.search(r"\b(?:allocated to|made against)\b", attack_clause)
+            or "bearer" in attack_clause
+            or "affected by this ability" in context
+        ):
+            continue
+        value = int(match.group(1))
+        damage_reductions[value] = {
+            "type": "damage_reduction",
+            "value": value,
+            "dice_count": 0,
+            "dice_sides": 0,
+            "role": "target",
+            "subject": "enemy_unit",
+        }
+    if len(damage_reductions) == 1:
+        effects.append(next(iter(damage_reductions.values())))
     return [effect for effect in effects if effect["subject"] != "unknown"]
 
 
@@ -1061,7 +1166,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "13"),
+                    ("schema_version", "14"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

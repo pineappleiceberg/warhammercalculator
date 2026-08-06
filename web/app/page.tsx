@@ -929,6 +929,8 @@ export default function Home() {
           ...(model.t ? { toughness: model.t } : {}),
           ...(model.save ? { save: model.save } : {}),
           invulnerable: model.invuln ?? 0,
+          feelNoPain: 0,
+          reduction: 0,
           ...(model.wounds ? { wounds: model.wounds } : {}),
           criticalWounds: selectedWeapon
             ? antiWoundThreshold(selectedWeapon.abilities, model.keywords)
@@ -949,9 +951,11 @@ export default function Home() {
 
   const chooseTargetPresets = (ids: string[]) => {
     setActiveTargetPresetIds(ids);
-    setProfile((current) =>
-      withActivePresets(current, selectedWeapon, activeAttackerPresetIds, ids),
-    );
+    if (selectedTargetModel) applyTarget(selectedTargetModel, ids);
+    else
+      setProfile((current) =>
+        withActivePresets(current, selectedWeapon, activeAttackerPresetIds, ids),
+      );
   };
 
   const shareMatchup = async () => {

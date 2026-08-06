@@ -106,6 +106,12 @@ export function combatPresetEffects(presets, weaponType, role) {
       .map((effect) => effect.value);
     return values.length ? Math.min(...values) : 0;
   };
+  const strongestDefense = (type) => {
+    const values = additional
+      .filter((effect) => effect.type === type)
+      .map((effect) => effect.value);
+    return values.length ? Math.min(...values) : 0;
+  };
   return {
     hitModifier: hitModifiers.reduce((sum, preset) => sum + preset.hitModifier, 0),
     woundModifier: woundModifiers.reduce((sum, preset) => sum + preset.woundModifier, 0),
@@ -129,6 +135,12 @@ export function combatPresetEffects(presets, weaponType, role) {
     damageModifier: additional
       .filter((effect) => effect.type === "damage_modifier")
       .reduce((sum, effect) => sum + effect.value, 0),
+    saveTarget: strongestDefense("save_target"),
+    invulnerableSave: strongestDefense("invulnerable_save"),
+    feelNoPain: strongestDefense("feel_no_pain"),
+    damageReduction: additional
+      .filter((effect) => effect.type === "damage_reduction")
+      .reduce((strongest, effect) => Math.max(strongest, effect.value), 0),
     criticalHits: threshold("critical_hits"),
     criticalWounds: threshold("critical_wounds"),
     lethalHits: additional.some((effect) => effect.type === "lethal_hits"),
@@ -144,6 +156,46 @@ export function combatPresetEffects(presets, weaponType, role) {
     rapidFireDice: rapidFire.diceCount,
     rapidFireSides: rapidFire.diceSides,
   };
+}
+
+function strongestSave(current, candidate) {
+  if (!candidate) return current;
+  if (!current) return candidate;
+  return Math.min(current, candidate);
+}
+
+function applyDefensiveEffects(profile, effects) {
+  return {
+    ...profile,
+    save: strongestSave(profile.save, effects.saveTarget),
+    invulnerable: strongestSave(profile.invulnerable, effects.invulnerableSave),
+    feelNoPain: strongestSave(profile.feelNoPain, effects.feelNoPain),
+    reduction: Math.max(profile.reduction ?? 0, effects.damageReduction),
+  };
+}
+
+export function applyTargetCombatPresets(targets, targetPresets, weaponTypes) {
+  const types = [...new Set(weaponTypes)];
+  const effects = types.map((weaponType) =>
+    combatPresetEffects(targetPresets, weaponType, "target"),
+  );
+  const candidates = effects.map((effect) =>
+    targets.map((target) => applyDefensiveEffects(target, effect)),
+  );
+  const signatures = candidates.map((candidate) =>
+    JSON.stringify(
+      candidate.map((target) => [
+        target.save,
+        target.invulnerable,
+        target.feelNoPain,
+        target.reduction,
+      ]),
+    ),
+  );
+  if (new Set(signatures).size > 1) {
+    throw new Error("Resolve ranged and melee weapons separately for this defensive ability");
+  }
+  return candidates[0] ?? targets;
 }
 
 function strongerProfileDice(profile, prefix, effect) {
@@ -208,44 +260,52 @@ export function applyCombatPresets(profile, attackerPresets, targetPresets, weap
     attacker.criticalWounds,
     target.criticalWounds,
   ].filter((value) => value > 0);
-  return {
-    ...profile,
-    ...(typeof profile.attacks === "number"
-      ? { attacks: profile.attacks + attacker.attacksModifier + target.attacksModifier }
-      : {}),
-    ...(typeof profile.strength === "number"
-      ? { strength: profile.strength + attacker.strengthModifier + target.strengthModifier }
-      : {}),
-    ...(typeof profile.damage === "number"
-      ? { damage: profile.damage + attacker.damageModifier + target.damageModifier }
-      : {}),
-    ap: Math.max(0, (profile.ap ?? 0) + attacker.apModifier + target.apModifier),
-    criticalHits: criticalHits.length ? Math.min(...criticalHits) : 0,
-    criticalWounds: criticalWounds.length ? Math.min(...criticalWounds) : 0,
-    lethalHits: profile.lethalHits || attacker.lethalHits || target.lethalHits,
-    devastatingWounds:
-      profile.devastatingWounds || attacker.devastatingWounds || target.devastatingWounds,
-    twinLinked: profile.twinLinked || attacker.twinLinked || target.twinLinked,
-    ignoresCover: profile.ignoresCover || attacker.ignoresCover || target.ignoresCover,
-    lanceActive: profile.lanceActive || attacker.lanceActive || target.lanceActive,
-    heavyActive: profile.heavyActive || attacker.heavyActive || target.heavyActive,
-    sustainedHits: combined.sustainedHits.value,
-    sustainedHitsDice: combined.sustainedHits.diceCount,
-    sustainedHitsSides: combined.sustainedHits.diceSides,
-    rapidFire: combined.rapidFire.value,
-    rapidFireDice: combined.rapidFire.diceCount,
-    rapidFireSides: combined.rapidFire.diceSides,
-    hitModifier: Math.max(-1, Math.min(1, attacker.hitModifier + target.hitModifier)),
-    woundModifier: Math.max(-1, Math.min(1, attacker.woundModifier + target.woundModifier)),
-    rerollHits: attacker.rerollHits || target.rerollHits,
-    rerollHitOnes:
-      !attacker.rerollHits &&
-      !target.rerollHits &&
-      (attacker.rerollHitOnes || target.rerollHitOnes),
-    rerollWounds: attacker.rerollWounds || target.rerollWounds,
-    rerollWoundOnes:
-      !attacker.rerollWounds &&
-      !target.rerollWounds &&
-      (attacker.rerollWoundOnes || target.rerollWoundOnes),
-  };
+  return applyDefensiveEffects(
+    {
+      ...profile,
+      ...(typeof profile.attacks === "number"
+        ? { attacks: profile.attacks + attacker.attacksModifier + target.attacksModifier }
+        : {}),
+      ...(typeof profile.strength === "number"
+        ? { strength: profile.strength + attacker.strengthModifier + target.strengthModifier }
+        : {}),
+      ...(typeof profile.damage === "number"
+        ? { damage: profile.damage + attacker.damageModifier + target.damageModifier }
+        : {}),
+      ap: Math.max(0, (profile.ap ?? 0) + attacker.apModifier + target.apModifier),
+      criticalHits: criticalHits.length ? Math.min(...criticalHits) : 0,
+      criticalWounds: criticalWounds.length ? Math.min(...criticalWounds) : 0,
+      lethalHits: profile.lethalHits || attacker.lethalHits || target.lethalHits,
+      devastatingWounds:
+        profile.devastatingWounds || attacker.devastatingWounds || target.devastatingWounds,
+      twinLinked: profile.twinLinked || attacker.twinLinked || target.twinLinked,
+      ignoresCover: profile.ignoresCover || attacker.ignoresCover || target.ignoresCover,
+      lanceActive: profile.lanceActive || attacker.lanceActive || target.lanceActive,
+      heavyActive: profile.heavyActive || attacker.heavyActive || target.heavyActive,
+      sustainedHits: combined.sustainedHits.value,
+      sustainedHitsDice: combined.sustainedHits.diceCount,
+      sustainedHitsSides: combined.sustainedHits.diceSides,
+      rapidFire: combined.rapidFire.value,
+      rapidFireDice: combined.rapidFire.diceCount,
+      rapidFireSides: combined.rapidFire.diceSides,
+      hitModifier: Math.max(-1, Math.min(1, attacker.hitModifier + target.hitModifier)),
+      woundModifier: Math.max(-1, Math.min(1, attacker.woundModifier + target.woundModifier)),
+      rerollHits: attacker.rerollHits || target.rerollHits,
+      rerollHitOnes:
+        !attacker.rerollHits &&
+        !target.rerollHits &&
+        (attacker.rerollHitOnes || target.rerollHitOnes),
+      rerollWounds: attacker.rerollWounds || target.rerollWounds,
+      rerollWoundOnes:
+        !attacker.rerollWounds &&
+        !target.rerollWounds &&
+        (attacker.rerollWoundOnes || target.rerollWoundOnes),
+    },
+    {
+      saveTarget: strongestSave(attacker.saveTarget, target.saveTarget),
+      invulnerableSave: strongestSave(attacker.invulnerableSave, target.invulnerableSave),
+      feelNoPain: strongestSave(attacker.feelNoPain, target.feelNoPain),
+      damageReduction: Math.max(attacker.damageReduction, target.damageReduction),
+    },
+  );
 }

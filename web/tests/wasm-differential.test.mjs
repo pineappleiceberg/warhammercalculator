@@ -20,6 +20,7 @@ import { abilityDiceValue } from "../lib/dice.mjs";
 import { parseAgentProfile } from "../lib/agent-parameters.mjs";
 import {
   applyCombatPresets,
+  applyTargetCombatPresets,
   combatPresetEffects,
   combatPresetSubjectSummary,
   combatPresetSupportsRole,
@@ -364,6 +365,81 @@ test("unit ability presets compose direct weapon characteristic modifiers", () =
   assert.equal(applied.strength, 10);
   assert.deepEqual([applied.damageDice, applied.damageSides, applied.damage], [1, 3, 2]);
   assert.equal(combatPresetEffects([preset], "Ranged", "attacker").attacksModifier, 0);
+});
+
+test("defensive presets compose editable profiles and every ordered target segment", () => {
+  const preset = {
+    weaponScope: "Any",
+    hitModifier: 0,
+    woundModifier: 0,
+    rerollHits: false,
+    rerollHitOnes: false,
+    rerollWounds: false,
+    rerollWoundOnes: false,
+    effects: [
+      ["save_target", 2],
+      ["invulnerable_save", 4],
+      ["feel_no_pain", 5],
+      ["damage_reduction", 1],
+    ].map(([type, value]) => ({
+      type,
+      value,
+      diceCount: 0,
+      diceSides: 0,
+      role: "target",
+      subject: "self",
+    })),
+  };
+  const base = {
+    save: 3,
+    invulnerable: 0,
+    feelNoPain: 0,
+    reduction: 0,
+    hitModifier: 0,
+    woundModifier: 0,
+  };
+  const applied = applyCombatPresets(base, [], [preset], "Ranged");
+  assert.deepEqual(
+    [applied.save, applied.invulnerable, applied.feelNoPain, applied.reduction],
+    [2, 4, 5, 1],
+  );
+  const targets = applyTargetCombatPresets(
+    [
+      { ...base, modelCount: 2 },
+      { ...base, save: 2, invulnerable: 3, feelNoPain: 6, reduction: 2, modelCount: 1 },
+    ],
+    [preset],
+    ["Ranged", "Melee"],
+  );
+  assert.deepEqual(
+    targets.map((target) => [
+      target.save,
+      target.invulnerable,
+      target.feelNoPain,
+      target.reduction,
+    ]),
+    [
+      [2, 4, 5, 1],
+      [2, 3, 5, 2],
+    ],
+  );
+  const rangedOnly = { ...preset, weaponScope: "Ranged" };
+  assert.throws(
+    () => applyTargetCombatPresets([base], [rangedOnly], ["Ranged", "Melee"]),
+    /resolve ranged and melee weapons separately/i,
+  );
+  const redundantRangedSave = {
+    ...rangedOnly,
+    effects: [rangedOnly.effects.find((effect) => effect.type === "invulnerable_save")],
+  };
+  assert.equal(
+    applyTargetCombatPresets(
+      [{ ...base, invulnerable: 3 }],
+      [redundantRangedSave],
+      ["Ranged", "Melee"],
+    )[0].invulnerable,
+    3,
+  );
 });
 
 test("mutually exclusive ability modes replace the prior selection", () => {
@@ -711,6 +787,7 @@ function exactMean({
   save = 3,
   invulnerable = 0,
   feelNoPain = 0,
+  reduction = 0,
   flags = 0,
   hitModifier = 0,
   woundModifier = 0,
@@ -734,7 +811,7 @@ function exactMean({
       invulnerable,
       feelNoPain,
       12,
-      0,
+      reduction,
       flags,
       0,
       1,
@@ -1166,4 +1243,17 @@ test("defensive rules cannot increase exact expected damage", () => {
   assert.ok(lessThanOrEqual(invulnerable, baseline));
   assert.ok(lessThanOrEqual(feelNoPain, baseline));
   assert.ok(lessThanOrEqual(cover, baseline));
+});
+
+test("source-backed defensive profile values reduce C/Wasm exact damage", () => {
+  const baseline = exactMean({ ap: 2, save: 3 });
+  const defended = exactMean({
+    ap: 2,
+    save: 2,
+    invulnerable: 4,
+    feelNoPain: 5,
+    reduction: 1,
+  });
+  assert.ok(lessThanOrEqual(defended, baseline));
+  assert.notDeepEqual(defended, baseline);
 });

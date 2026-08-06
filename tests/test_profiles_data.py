@@ -162,6 +162,62 @@ class ProfileDataTests(unittest.TestCase):
             },
         )
 
+    def test_combat_preset_parser_extracts_conservative_defensive_effects(self):
+        preset = combat_preset(
+            "While this model is leading a unit, models in that unit have a 4+ invulnerable "
+            "save and the Feel No Pain 5+ ability. Each time an attack is allocated to a "
+            "model in that unit, subtract 1 from the Damage characteristic of that attack."
+        )
+        effects = {effect["type"]: effect for effect in preset["additional_effects"]}
+        self.assertEqual(
+            {
+                effect_type: (effect["value"], effect["role"], effect["subject"])
+                for effect_type, effect in effects.items()
+            },
+            {
+                "invulnerable_save": (4, "target", "led_unit"),
+                "feel_no_pain": (5, "target", "led_unit"),
+                "damage_reduction": (1, "target", "enemy_unit"),
+            },
+        )
+        save = combat_preset(
+            "While this model is leading a unit, models in that unit have a Save "
+            "characteristic of 2+."
+        )
+        self.assertEqual(save["additional_effects"][0]["type"], "save_target")
+        self.assertEqual(save["additional_effects"][0]["value"], 2)
+
+    def test_combat_preset_parser_omits_unsupported_defensive_effects(self):
+        self.assertIsNone(
+            combat_preset(
+                "This model has the Feel No Pain 3+ ability against Psychic Attacks."
+            )
+        )
+        self.assertIsNone(combat_preset("The bearer has a 4+ invulnerable save."))
+        self.assertIsNone(
+            combat_preset(
+                'While a friendly VEHICLE unit is within 6" of this model, that unit has '
+                "the Feel No Pain 6+ ability."
+            )
+        )
+        self.assertIsNone(
+            combat_preset(
+                "While a model is affected by this ability, each time an attack is allocated "
+                "to that model, subtract 1 from the Damage characteristic of that attack."
+            )
+        )
+        self.assertIsNone(
+            combat_preset(
+                "Each time an attack is made by a model in this unit, subtract 1 from the "
+                "Damage characteristic of that attack."
+            )
+        )
+        conflicting = combat_preset(
+            "Models in this unit have the Feel No Pain 5+ ability. If empowered, models "
+            "in this unit have the Feel No Pain 4+ ability instead."
+        )
+        self.assertIsNone(conflicting)
+
     def test_combat_preset_parser_omits_characteristic_changes_it_cannot_apply_exactly(self):
         named_weapon = combat_preset(
             "Add 2 to the Attacks characteristic of this model’s Frostfang weapon."
@@ -331,7 +387,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "13",
+                "14",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -363,6 +419,21 @@ class ProfileDataTests(unittest.TestCase):
                     ("attacks_modifier", 17),
                     ("damage_modifier", 3),
                     ("strength_modifier", 90),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT effect_type, count(*) FROM unit_combat_preset_effects
+                       WHERE effect_type IN
+                           ('save_target', 'invulnerable_save', 'feel_no_pain',
+                            'damage_reduction')
+                       GROUP BY effect_type ORDER BY effect_type"""
+                ).fetchall(),
+                [
+                    ("damage_reduction", 31),
+                    ("feel_no_pain", 24),
+                    ("invulnerable_save", 34),
+                    ("save_target", 1),
                 ],
             )
             self.assertEqual(
@@ -573,6 +644,35 @@ class ProfileDataTests(unittest.TestCase):
                     "subject": "self",
                 },
             ],
+        )
+        redemptor = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Redemptor Dreadnought"
+        )
+        duty_eternal = next(
+            preset for preset in redemptor["combatPresets"] if preset["name"] == "Duty Eternal"
+        )
+        self.assertEqual(
+            duty_eternal["effects"],
+            [
+                {
+                    "type": "damage_reduction",
+                    "value": 1,
+                    "diceCount": 0,
+                    "diceSides": 0,
+                    "role": "target",
+                    "subject": "enemy_unit",
+                }
+            ],
+        )
+        imagifier = next(unit for unit in catalogue["units"] if unit["name"] == "Imagifier")
+        martyrs = next(
+            preset
+            for preset in imagifier["combatPresets"]
+            if preset["name"] == "Stanchion of Holy Martyrs"
+        )
+        self.assertEqual(
+            [(effect["type"], effect["value"]) for effect in martyrs["effects"]],
+            [("invulnerable_save", 4), ("save_target", 2)],
         )
         troupe = next(unit for unit in catalogue["units"] if unit["id"] == "000002536")
         dance = [preset for preset in troupe["combatPresets"] if preset["choiceGroup"]]
