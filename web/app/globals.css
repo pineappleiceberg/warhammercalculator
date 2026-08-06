@@ -351,6 +351,49 @@ main {
   white-space: nowrap;
 }
 
+.combat-preset-selector {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #9d9689;
+  background: #ebe7de;
+}
+.combat-preset-selector > legend {
+  padding: 0 5px;
+  color: var(--red);
+  font:
+    700 10px/1.2 var(--font-geist-mono),
+    monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.combat-preset-selector > label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+.combat-preset-selector input {
+  margin-top: 3px;
+}
+.combat-preset-selector label span,
+.combat-preset-selector label small {
+  display: block;
+}
+.combat-preset-selector label small {
+  margin-top: 3px;
+  line-height: 1.35;
+}
+.play-ability-selectors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .number-field {
   display: grid;
   gap: 7px;
@@ -1656,6 +1699,9 @@ select:focus {
 }
 
 @media (max-width: 660px) {
+  .play-ability-selectors {
+    grid-template-columns: 1fr;
+  }
   .site-credit {
     flex-direction: column;
   }

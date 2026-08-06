@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { WorkflowNav } from "../../components/workflow-nav";
+import { CombatPresetSelector } from "../../components/combat-preset-selector";
 import {
   calculateOrderedVolley,
   estimateOrderedVolleyComplexity,
@@ -32,6 +33,7 @@ import {
   weaponLimitMaximum,
 } from "../../lib/loadout.mjs";
 import {
+  applyCombatPresets,
   applyWeaponProfile,
   loadCatalogue,
   type Catalogue,
@@ -80,6 +82,8 @@ export default function UnitVsUnit() {
   const [choiceSelections, setChoiceSelections] = useState<Record<string, number>>({});
   const [loadoutSubjectCounts, setLoadoutSubjectCounts] = useState<Record<string, number>>({});
   const [profileCounts, setProfileCounts] = useState<Record<number, number>>({});
+  const [activeAttackerPresetIds, setActiveAttackerPresetIds] = useState<string[]>([]);
+  const [activeTargetPresetIds, setActiveTargetPresetIds] = useState<string[]>([]);
   const [weaponOrder, setWeaponOrder] = useState<number[]>([]);
   const [targetSegments, setTargetSegments] = useState<TargetSegment[]>([]);
   const [initialWoundsLost, setInitialWoundsLost] = useState(0);
@@ -148,6 +152,8 @@ export default function UnitVsUnit() {
     initialWoundsLost,
     orderedLines: orderedLines.map((line) => [line.weapon.id, line.count]),
     targetSegments,
+    activeAttackerPresetIds,
+    activeTargetPresetIds,
   });
   const resultsAreCurrent = resultKey === inputKey;
   const rollIsCurrent = rollKey === inputKey;
@@ -178,6 +184,7 @@ export default function UnitVsUnit() {
       ),
     );
     setWeaponOrder(groups.flatMap((group) => group.profiles.map((profile) => profile.id)));
+    setActiveAttackerPresetIds([]);
     setResults([]);
     setVolleySummary(null);
     setRollResult(null);
@@ -190,6 +197,7 @@ export default function UnitVsUnit() {
     const model = unit?.models[0];
     setTargetSegments(model ? [targetSegment(model, unit?.suggestedModelCount ?? 1)] : []);
     setInitialWoundsLost(0);
+    setActiveTargetPresetIds([]);
     setResults([]);
     setVolleySummary(null);
     setRollResult(null);
@@ -226,11 +234,21 @@ export default function UnitVsUnit() {
 
   const currentProfiles = () => {
     const targetModels = targetSegments.reduce((sum, segment) => sum + segment.modelCount, 0);
+    const attackerPresets =
+      attackerUnit?.combatPresets.filter((preset) => activeAttackerPresetIds.includes(preset.id)) ??
+      [];
+    const targetPresets =
+      targetUnit?.combatPresets.filter((preset) => activeTargetPresetIds.includes(preset.id)) ?? [];
     return orderedLines.map((line) =>
-      applyWeaponProfile(
-        { ...DEFAULT_PROFILE, targetModels, weaponCount: line.count },
-        line.weapon,
-        targetSegments[0]?.keywords ?? [],
+      applyCombatPresets(
+        applyWeaponProfile(
+          { ...DEFAULT_PROFILE, targetModels, weaponCount: line.count },
+          line.weapon,
+          targetSegments[0]?.keywords ?? [],
+        ),
+        attackerPresets,
+        targetPresets,
+        line.weapon.type,
       ),
     );
   };
@@ -412,6 +430,13 @@ export default function UnitVsUnit() {
             </label>
             {attackerUnit && (
               <div className="loadout-list">
+                <CombatPresetSelector
+                  presets={attackerUnit.combatPresets}
+                  role="attacker"
+                  selectedIds={activeAttackerPresetIds}
+                  onChange={setActiveAttackerPresetIds}
+                  title="Active attacking abilities"
+                />
                 {attackerUnit.unresolvedLoadoutSubjects.length > 0 && (
                   <details className="source-choice-pools model-composition-editor" open>
                     <summary>Model composition</summary>
@@ -673,6 +698,13 @@ export default function UnitVsUnit() {
             </label>
             {targetUnit && (
               <div className="target-sequence">
+                <CombatPresetSelector
+                  presets={targetUnit.combatPresets}
+                  role="target"
+                  selectedIds={activeTargetPresetIds}
+                  onChange={setActiveTargetPresetIds}
+                  title="Active defensive abilities"
+                />
                 <div className="sequence-heading">
                   <div>
                     <h3>Damage allocation order</h3>

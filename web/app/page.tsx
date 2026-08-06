@@ -17,6 +17,7 @@ import { antiWoundThreshold } from "../lib/anti.mjs";
 import { allocateDamageToUnit } from "../lib/allocation.mjs";
 import { abilityDiceValue, parseDice } from "../lib/dice.mjs";
 import { WorkflowNav } from "../components/workflow-nav";
+import { combatPresetEffects, combatPresetSupportsRole } from "../lib/combat-presets.mjs";
 
 type Result = {
   minimum: number;
@@ -849,14 +850,10 @@ export default function Home() {
   };
 
   const applyCombatPreset = (preset: CatalogueCombatPreset) => {
+    const effects = combatPresetEffects([preset], selectedWeapon?.type ?? "Ranged", "attacker");
     setProfile((current) => ({
       ...current,
-      hitModifier: preset.hitModifier,
-      woundModifier: preset.woundModifier,
-      rerollHits: preset.rerollHits,
-      rerollHitOnes: preset.rerollHitOnes,
-      rerollWounds: preset.rerollWounds,
-      rerollWoundOnes: preset.rerollWoundOnes,
+      ...effects,
     }));
   };
 
@@ -1001,7 +998,8 @@ export default function Home() {
                 selectedAttackerUnit &&
                 selectedAttackerUnit.combatPresets.some(
                   (preset) =>
-                    preset.weaponScope === "Any" || preset.weaponScope === selectedWeapon.type,
+                    combatPresetSupportsRole(preset, "attacker") &&
+                    (preset.weaponScope === "Any" || preset.weaponScope === selectedWeapon.type),
                 ) && (
                   <div className="ability-presets" aria-label="Unit ability presets">
                     <div>
@@ -1013,8 +1011,9 @@ export default function Home() {
                     {selectedAttackerUnit.combatPresets
                       .filter(
                         (preset) =>
-                          preset.weaponScope === "Any" ||
-                          preset.weaponScope === selectedWeapon.type,
+                          combatPresetSupportsRole(preset, "attacker") &&
+                          (preset.weaponScope === "Any" ||
+                            preset.weaponScope === selectedWeapon.type),
                       )
                       .map((preset) => (
                         <button

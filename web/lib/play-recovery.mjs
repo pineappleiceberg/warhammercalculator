@@ -26,6 +26,17 @@ export function createPlayRecovery(state, savedAt = Date.now()) {
     }
     recovery[key] = value[key];
   }
+  for (const key of ["activeAttackerPresetIds", "activeTargetPresetIds"]) {
+    const ids = value[key] ?? [];
+    if (
+      !Array.isArray(ids) ||
+      ids.length > 100 ||
+      ids.some((id) => typeof id !== "string" || !id || id.length > 200)
+    ) {
+      throw new Error(`${key} must contain at most 100 valid preset ids`);
+    }
+    recovery[key] = [...new Set(ids)];
+  }
   recovery.profile = object(value.profile, "profile must be an object");
   if (!Array.isArray(value.history) || value.history.length > 30) {
     throw new Error("history must contain at most 30 attacks");

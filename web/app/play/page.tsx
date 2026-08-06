@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { WorkflowNav } from "../../components/workflow-nav";
+import { CombatPresetSelector } from "../../components/combat-preset-selector";
 import { fetchArmyLists, type ArmyListRecord } from "../../lib/army-list";
 import {
   DEFAULT_PROFILE,
@@ -11,6 +12,7 @@ import {
   type RollResult,
 } from "../../lib/combat";
 import {
+  applyCombatPresets,
   applyTargetProfile,
   applyWeaponProfile,
   loadCatalogue,
@@ -42,6 +44,8 @@ export default function PlayMode() {
   const [weaponId, setWeaponId] = useState("");
   const [profileId, setProfileId] = useState("");
   const [targetModelId, setTargetModelId] = useState("");
+  const [activeAttackerPresetIds, setActiveAttackerPresetIds] = useState<string[]>([]);
+  const [activeTargetPresetIds, setActiveTargetPresetIds] = useState<string[]>([]);
   const [profile, setProfile] = useState<CombatProfile>(DEFAULT_PROFILE);
   const [result, setResult] = useState<RollResult | null>(null);
   const [history, setHistory] = useState<LogEntry[]>([]);
@@ -68,7 +72,7 @@ export default function PlayMode() {
       try {
         const raw = window.localStorage.getItem(PLAY_RECOVERY_KEY);
         if (raw) {
-          const saved = parsePlayRecovery(JSON.parse(raw)) as {
+          const saved = parsePlayRecovery(JSON.parse(raw)) as unknown as {
             attackerListId: string;
             targetListId: string;
             attackerUnitId: string;
@@ -78,6 +82,8 @@ export default function PlayMode() {
             targetModelId: string;
             profile: unknown;
             history: LogEntry[];
+            activeAttackerPresetIds: string[];
+            activeTargetPresetIds: string[];
           };
           setAttackerListId(saved.attackerListId);
           setTargetListId(saved.targetListId);
@@ -86,6 +92,8 @@ export default function PlayMode() {
           setWeaponId(saved.weaponId);
           setProfileId(saved.profileId);
           setTargetModelId(saved.targetModelId);
+          setActiveAttackerPresetIds(saved.activeAttackerPresetIds);
+          setActiveTargetPresetIds(saved.activeTargetPresetIds);
           setProfile(normalizeProfile(saved.profile));
           setHistory(saved.history);
           recovered.current = true;
@@ -116,12 +124,16 @@ export default function PlayMode() {
       weaponId,
       profileId,
       targetModelId,
+      activeAttackerPresetIds,
+      activeTargetPresetIds,
       profile,
       history,
     });
     window.localStorage.setItem(PLAY_RECOVERY_KEY, JSON.stringify(saved));
   }, [
     attackerListId,
+    activeAttackerPresetIds,
+    activeTargetPresetIds,
     attackerUnitId,
     history,
     profile,
@@ -141,6 +153,7 @@ export default function PlayMode() {
     (weapon) => String(weapon.weaponId) === weaponId,
   );
   const attackerCatalogueUnit = catalogue?.units.find((unit) => unit.id === attackerUnit?.unitId);
+  const targetCatalogueUnit = catalogue?.units.find((unit) => unit.id === targetUnit?.unitId);
   const weaponGroups = groupWeaponProfiles(attackerCatalogueUnit?.weapons ?? []);
   const selectedWeaponGroup = weaponGroups.find(
     (group) =>
@@ -150,13 +163,17 @@ export default function PlayMode() {
   const weaponProfile =
     selectedWeaponGroup?.profiles.find((weapon) => String(weapon.id) === profileId) ??
     selectedWeaponGroup?.profiles[0];
-  const targetProfiles =
-    catalogue?.units.find((unit) => unit.id === targetUnit?.unitId)?.models ?? [];
+  const targetProfiles = targetCatalogueUnit?.models ?? [];
+
+  const selectedCombatPresets = (ids: string[], unit: typeof attackerCatalogueUnit) =>
+    unit?.combatPresets.filter((preset) => ids.includes(preset.id)) ?? [];
 
   const refreshProfile = (
     nextWeaponId = weaponId,
     nextTargetModelId = targetModelId,
     nextProfileId = profileId,
+    nextAttackerPresetIds = activeAttackerPresetIds,
+    nextTargetPresetIds = activeTargetPresetIds,
   ) => {
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
@@ -173,14 +190,19 @@ export default function PlayMode() {
       targetProfiles.find((entry) => String(entry.id) === nextTargetModelId) ?? targetProfiles[0];
     if (!weapon || !model) return;
     setProfile(
-      applyWeaponProfile(
-        {
-          ...applyTargetProfile(DEFAULT_PROFILE, model),
-          weaponCount: listWeapon?.count ?? 1,
-          targetModels: targetUnit?.modelCount ?? 1,
-        },
-        weapon,
-        model.keywords,
+      applyCombatPresets(
+        applyWeaponProfile(
+          {
+            ...applyTargetProfile(DEFAULT_PROFILE, model),
+            weaponCount: listWeapon?.count ?? 1,
+            targetModels: targetUnit?.modelCount ?? 1,
+          },
+          weapon,
+          model.keywords,
+        ),
+        selectedCombatPresets(nextAttackerPresetIds, attackerCatalogueUnit),
+        selectedCombatPresets(nextTargetPresetIds, targetCatalogueUnit),
+        weapon.type,
       ),
     );
     setResult(null);
@@ -214,19 +236,40 @@ export default function PlayMode() {
 
   const chooseTargetUnit = (id: string) => {
     const nextTarget = targetList?.units.find((unit) => unit.id === id);
-    const model = catalogue?.units.find((unit) => unit.id === nextTarget?.unitId)?.models[0];
+    const nextTargetCatalogueUnit = catalogue?.units.find((unit) => unit.id === nextTarget?.unitId);
+    const model = nextTargetCatalogueUnit?.models[0];
+    const nextTargetPresetIds = nextTarget?.combatPresetIds ?? [];
     setTargetUnitId(id);
     setTargetModelId(model ? String(model.id) : "");
+    setActiveTargetPresetIds(nextTargetPresetIds);
     if (!weaponProfile || !model || !nextTarget) return;
     setProfile(
-      applyWeaponProfile(
-        {
-          ...applyTargetProfile(DEFAULT_PROFILE, model),
-          weaponCount: selectedWeapon?.count ?? 1,
-          targetModels: nextTarget.modelCount,
-        },
-        weaponProfile,
-        model.keywords,
+      applyCombatPresets(
+        applyWeaponProfile(
+          {
+            ...applyTargetProfile(DEFAULT_PROFILE, model),
+            weaponCount: selectedWeapon?.count ?? 1,
+            targetModels: nextTarget.modelCount,
+          },
+          weaponProfile,
+          model.keywords,
+        ),
+        selectedCombatPresets(activeAttackerPresetIds, attackerCatalogueUnit),
+        selectedCombatPresets(nextTargetPresetIds, nextTargetCatalogueUnit),
+        weaponProfile.type,
+      ),
+    );
+    setResult(null);
+  };
+
+  const applyActivePresetSelection = (attackerIds: string[], targetIds: string[]) => {
+    if (!weaponProfile) return;
+    setProfile((current) =>
+      applyCombatPresets(
+        current,
+        selectedCombatPresets(attackerIds, attackerCatalogueUnit),
+        selectedCombatPresets(targetIds, targetCatalogueUnit),
+        weaponProfile.type,
       ),
     );
     setResult(null);
@@ -288,6 +331,8 @@ export default function PlayMode() {
     setWeaponId("");
     setProfileId("");
     setTargetModelId("");
+    setActiveAttackerPresetIds([]);
+    setActiveTargetPresetIds([]);
     setProfile(DEFAULT_PROFILE);
     setResult(null);
     setHistory([]);
@@ -330,6 +375,7 @@ export default function PlayMode() {
                       setAttackerUnitId("");
                       setWeaponId("");
                       setProfileId("");
+                      setActiveAttackerPresetIds([]);
                       setResult(null);
                     }}
                   >
@@ -347,7 +393,11 @@ export default function PlayMode() {
                     value={attackerUnitId}
                     disabled={!attackerList}
                     onChange={(event) => {
+                      const nextUnit = attackerList?.units.find(
+                        (unit) => unit.id === event.target.value,
+                      );
                       setAttackerUnitId(event.target.value);
+                      setActiveAttackerPresetIds(nextUnit?.combatPresetIds ?? []);
                       setWeaponId("");
                       setProfileId("");
                       setResult(null);
@@ -404,6 +454,7 @@ export default function PlayMode() {
                       setTargetListId(event.target.value);
                       setTargetUnitId("");
                       setTargetModelId("");
+                      setActiveTargetPresetIds([]);
                       setResult(null);
                     }}
                   >
@@ -446,6 +497,32 @@ export default function PlayMode() {
                   </select>
                 </label>
               </fieldset>
+            </div>
+            <div className="play-ability-selectors">
+              {attackerCatalogueUnit && (
+                <CombatPresetSelector
+                  presets={attackerCatalogueUnit.combatPresets}
+                  role="attacker"
+                  selectedIds={activeAttackerPresetIds}
+                  onChange={(ids) => {
+                    setActiveAttackerPresetIds(ids);
+                    applyActivePresetSelection(ids, activeTargetPresetIds);
+                  }}
+                  title="Active attacking abilities"
+                />
+              )}
+              {targetCatalogueUnit && (
+                <CombatPresetSelector
+                  presets={targetCatalogueUnit.combatPresets}
+                  role="target"
+                  selectedIds={activeTargetPresetIds}
+                  onChange={(ids) => {
+                    setActiveTargetPresetIds(ids);
+                    applyActivePresetSelection(activeAttackerPresetIds, ids);
+                  }}
+                  title="Active defensive abilities"
+                />
+              )}
             </div>
             <details className="override-strip">
               <summary>

@@ -77,6 +77,17 @@ export function normalizeArmyListInput(value) {
         ]),
       );
     }
+    let combatPresetIds;
+    if (unit.combatPresetIds !== undefined) {
+      if (
+        !Array.isArray(unit.combatPresetIds) ||
+        unit.combatPresetIds.length > 100 ||
+        unit.combatPresetIds.some((id) => typeof id !== "string" || !id || id.length > 200)
+      ) {
+        throw new Error("combatPresetIds must contain at most 100 valid preset ids");
+      }
+      combatPresetIds = [...new Set(unit.combatPresetIds)];
+    }
     const weapons = unit.weapons.map((candidateWeapon) => {
       const weapon = object(candidateWeapon, "Each weapon must be a JSON object");
       if (
@@ -117,6 +128,7 @@ export function normalizeArmyListInput(value) {
     if (loadoutSubjectCounts !== undefined) {
       normalized.loadoutSubjectCounts = loadoutSubjectCounts;
     }
+    if (combatPresetIds !== undefined) normalized.combatPresetIds = combatPresetIds;
     return normalized;
   });
   return { name: body.name.trim(), factionId: body.factionId, units };

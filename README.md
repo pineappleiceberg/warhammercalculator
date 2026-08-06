@@ -302,6 +302,13 @@ seeded simulation. API clients can make the same preflight request with
 `POST /api/v1/volley/complexity`; an exact calculation that actually exhausts
 the budget returns HTTP 422 with code `EXACT_STATE_LIMIT` and names the
 simulation endpoint.
+Unit vs Unit and Play Mode also expose conditional unit abilities imported with
+their published source text. No condition is silently enabled in Unit vs Unit.
+Saved lists can mark battle- or turn-long conditions as Play Mode defaults, and
+Play Mode keeps changes in its local recovery state. Offensive modifiers and
+re-rolls come from the attacking unit, defensive penalties come from the target
+unit, melee/ranged scope is respected per weapon, and the resulting profile
+remains editable.
 Indirect Fire applies its hit modifier and cover normally, forces unmodified Hit
 rolls of 1–3 to fail before critical-hit processing, and rejects Torrent attacks
 when no target model is visible.

@@ -16,15 +16,24 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Expose source-backed unit ability presets in Unit vs Unit and Play Mode,
-   including saved-list choices for abilities that are active for an entire
-   battle or turn.
+1. Split source abilities that contain mutually exclusive modes into separate
+   selectable effects, and expose defensive target abilities in Model vs Model
+   without combining effects that cannot be active together.
 2. Record the observed peak sparse-state count from exact Devastating Wounds
    volleys and use benchmark evidence to tighten the conservative preflight
    without ever hiding a valid exact option.
 
 ## Completed cycles
 
+- 2026-08-06: Added source-backed conditional ability selection to Unit vs
+  Unit, saved lists, and Play Mode. Saved defaults follow a unit into battle,
+  can be changed for the current matchup, survive Play Mode recovery, and leave
+  all calculated characteristics editable. Shared rule composition applies
+  positive modifiers and attack re-rolls only from the attacker, negative
+  modifiers only from the target, respects melee/ranged scope, combines
+  modifiers before the 10th-edition cap, and has persistence/API/Wasm
+  regressions. Model vs Model no longer offers defensive abilities as attacker
+  bonuses.
 - 2026-08-06: Added a C/WebAssembly exact-complexity preflight for ordered
   volleys. It distinguishes ordinary damage distributions from the 2,047-state
   sparse evaluator required by deferred Devastating Wounds, reports a

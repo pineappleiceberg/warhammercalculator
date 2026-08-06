@@ -1,6 +1,7 @@
 import type { CombatProfile } from "./combat";
 import { antiWoundThreshold } from "./anti.mjs";
 import { abilityDiceValue, parseDice } from "./dice.mjs";
+import { applyCombatPresets as applySelectedCombatPresets } from "./combat-presets.mjs";
 
 export type CatalogueFaction = { id: string; name: string };
 export type CatalogueAbility = { name: string; value: string | null };
@@ -122,15 +123,26 @@ export type CatalogueUnit = {
 };
 
 export function applyCombatPreset(profile: CombatProfile, preset: CatalogueCombatPreset) {
-  return {
-    ...profile,
-    hitModifier: preset.hitModifier,
-    woundModifier: preset.woundModifier,
-    rerollHits: preset.rerollHits,
-    rerollHitOnes: preset.rerollHitOnes,
-    rerollWounds: preset.rerollWounds,
-    rerollWoundOnes: preset.rerollWoundOnes,
-  } satisfies CombatProfile;
+  return applySelectedCombatPresets(
+    profile,
+    [preset],
+    [],
+    preset.weaponScope === "Melee" ? "Melee" : "Ranged",
+  ) as CombatProfile;
+}
+
+export function applyCombatPresets(
+  profile: CombatProfile,
+  attackerPresets: CatalogueCombatPreset[],
+  targetPresets: CatalogueCombatPreset[],
+  weaponType: "Ranged" | "Melee",
+) {
+  return applySelectedCombatPresets(
+    profile,
+    attackerPresets,
+    targetPresets,
+    weaponType,
+  ) as CombatProfile;
 }
 export type Catalogue = {
   sourceUpdatedAt: string;

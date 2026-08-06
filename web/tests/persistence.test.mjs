@@ -29,6 +29,7 @@ const list = {
       ],
       choiceSelections: { "datasheet-1:choice:1": 0 },
       loadoutSubjectCounts: { "datasheet-1:subject:1": 4 },
+      combatPresetIds: ["datasheet-1:ability:2"],
     },
   ],
   createdAt: 1_700_000_000_000,
@@ -86,6 +87,19 @@ test("rejects incompatible and malformed army-list backups", () => {
       }),
     /loadoutSubjectCounts/i,
   );
+  assert.throws(
+    () =>
+      parseArmyListBackup({
+        ...backup,
+        lists: [
+          {
+            ...list,
+            units: [{ ...list.units[0], combatPresetIds: [42] }],
+          },
+        ],
+      }),
+    /combatPresetIds/i,
+  );
 });
 
 test("reconciles newer device edits and offline deletions deterministically", () => {
@@ -105,6 +119,8 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
     weaponId: "7",
     profileId: "7",
     targetModelId: "3",
+    activeAttackerPresetIds: ["datasheet-1:ability:2"],
+    activeTargetPresetIds: ["datasheet-2:ability:4"],
     profile: { attacks: 2, hitOn: 3, damage: 2 },
     history: [
       {
@@ -118,6 +134,7 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
     ],
   };
   const recovery = createPlayRecovery(state, 1_700_000_000_000);
+  assert.deepEqual(recovery.activeAttackerPresetIds, ["datasheet-1:ability:2"]);
   assert.deepEqual(parsePlayRecovery(JSON.parse(JSON.stringify(recovery))), recovery);
   assert.throws(
     () => parsePlayRecovery({ ...recovery, history: [{ ...recovery.history[0], damage: -1 }] }),
@@ -126,5 +143,9 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   assert.throws(
     () => parsePlayRecovery({ ...recovery, history: Array(31).fill(recovery.history[0]) }),
     /30/,
+  );
+  assert.throws(
+    () => parsePlayRecovery({ ...recovery, activeTargetPresetIds: [42] }),
+    /activeTargetPresetIds/,
   );
 });

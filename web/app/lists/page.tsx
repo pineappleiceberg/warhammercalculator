@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { WorkflowNav } from "../../components/workflow-nav";
+import { CombatPresetSelector } from "../../components/combat-preset-selector";
 import {
   importArmyLists,
   loadArmyLists,
@@ -114,6 +115,7 @@ export default function ArmyLists() {
         ),
       ),
       loadoutSubjectCounts,
+      combatPresetIds: [],
     };
     setDraft((current) => ({ ...current, units: [...current.units, item] }));
     setUnitId("");
@@ -475,6 +477,21 @@ export default function ArmyLists() {
                     );
                     return (
                       <>
+                        {sourceUnit && (
+                          <CombatPresetSelector
+                            presets={sourceUnit.combatPresets}
+                            role="either"
+                            selectedIds={unit.combatPresetIds ?? []}
+                            onChange={(combatPresetIds) =>
+                              changeUnit(unit.id, (current) => ({
+                                ...current,
+                                combatPresetIds,
+                              }))
+                            }
+                            title="Play Mode ability defaults"
+                            hint="Save conditions that normally begin active; you can change them during play."
+                          />
+                        )}
                         {(sourceUnit?.wargearChoicePools.length ?? 0) > 0 && (
                           <details className="source-choice-pools roster-choice-pools">
                             <summary>Source option choices</summary>

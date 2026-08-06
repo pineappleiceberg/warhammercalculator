@@ -17,6 +17,11 @@ import {
   targetSequencePosition,
 } from "../lib/allocation.mjs";
 import { abilityDiceValue } from "../lib/dice.mjs";
+import {
+  applyCombatPresets,
+  combatPresetEffects,
+  combatPresetSupportsRole,
+} from "../lib/combat-presets.mjs";
 import { rulesInteractionCases } from "./rules-interaction-corpus.mjs";
 import {
   applyChoiceSelectionChange,
@@ -139,6 +144,52 @@ test("source choice pools share allowances and preserve compound bundles", () =>
       { "unit:pool:1": 2 },
     )[0],
     /2 selections exceeds the shared limit of 1/i,
+  );
+});
+
+test("unit ability presets separate attacking and defensive effects", () => {
+  const mixed = {
+    weaponScope: "Melee",
+    hitModifier: -1,
+    woundModifier: 1,
+    rerollHits: true,
+    rerollHitOnes: false,
+    rerollWounds: false,
+    rerollWoundOnes: true,
+  };
+  assert.equal(combatPresetSupportsRole(mixed, "attacker"), true);
+  assert.equal(combatPresetSupportsRole(mixed, "target"), true);
+  assert.deepEqual(combatPresetEffects([mixed], "Ranged", "attacker"), {
+    hitModifier: 0,
+    woundModifier: 0,
+    rerollHits: false,
+    rerollHitOnes: false,
+    rerollWounds: false,
+    rerollWoundOnes: false,
+  });
+  const applied = applyCombatPresets(
+    { hitModifier: 0, woundModifier: 0, ap: 4 },
+    [mixed],
+    [mixed],
+    "Melee",
+  );
+  assert.equal(applied.hitModifier, -1);
+  assert.equal(applied.woundModifier, 1);
+  assert.equal(applied.rerollHits, true);
+  assert.equal(applied.rerollHitOnes, false);
+  assert.equal(applied.rerollWoundOnes, true);
+  assert.equal(applied.ap, 4);
+  assert.equal(
+    applyCombatPresets(
+      { hitModifier: 0, woundModifier: 0 },
+      [
+        { ...mixed, hitModifier: 1 },
+        { ...mixed, hitModifier: 1 },
+      ],
+      [mixed],
+      "Melee",
+    ).hitModifier,
+    1,
   );
 });
 

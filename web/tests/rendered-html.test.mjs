@@ -1036,6 +1036,7 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
         weapons: [{ weaponId: 7, groupId: "datasheet-1:7", name: "Test weapon", count: 10 }],
         choiceSelections: { "datasheet-1:pool:1": 1 },
         loadoutSubjectCounts: { "datasheet-1:subject:1": 4 },
+        combatPresetIds: ["datasheet-1:ability:2"],
       },
     ],
   };
@@ -1053,6 +1054,7 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
   assert.match(created.id, /^[0-9a-f-]{36}$/i);
   assert.equal(created.units[0].choiceSelections["datasheet-1:pool:1"], 1);
   assert.equal(created.units[0].loadoutSubjectCounts["datasheet-1:subject:1"], 4);
+  assert.deepEqual(created.units[0].combatPresetIds, ["datasheet-1:ability:2"]);
 
   const listed = await worker.fetch(new Request("http://localhost/api/v1/lists"), testEnv, context);
   assert.equal((await listed.json()).data.length, 1);
