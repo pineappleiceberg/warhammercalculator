@@ -137,12 +137,23 @@ const API_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Expose-Headers": "X-Request-ID",
   "Cache-Control": "no-store",
   "Content-Type": "application/json; charset=utf-8",
 };
 
 let cataloguePromise: Promise<Catalogue> | null = null;
 let calculatorPromise: Promise<CalculatorExports> | null = null;
+
+class ServiceUnavailableError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+  ) {
+    super(message);
+    this.name = "ServiceUnavailableError";
+  }
+}
 
 function json(data: unknown, status = 200, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(data), {
@@ -151,17 +162,51 @@ function json(data: unknown, status = 200, headers: Record<string, string> = {})
   });
 }
 
-function apiError(message: string, status = 400) {
-  return json({ error: { message, status }, apiVersion: "v1" }, status);
+function apiError(
+  message: string,
+  status = 400,
+  code = status === 404 ? "NOT_FOUND" : "INVALID_REQUEST",
+) {
+  return json(
+    {
+      error: { message, status, code, retryable: status >= 500 },
+      apiVersion: "v1",
+    },
+    status,
+  );
 }
 
 async function loadCatalogue(request: Request, env: Env) {
-  cataloguePromise ??= env.ASSETS.fetch(
-    new Request(new URL("/profile-data.json", request.url)),
-  ).then(async (response) => {
-    if (!response.ok) throw new Error("Profile catalogue is unavailable");
-    return response.json() as Promise<Catalogue>;
-  });
+  cataloguePromise ??= env.ASSETS.fetch(new Request(new URL("/profile-data.json", request.url)))
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new ServiceUnavailableError(
+          "Profile catalogue is unavailable",
+          "PROFILE_CATALOGUE_UNAVAILABLE",
+        );
+      }
+      const catalogue = (await response.json()) as Catalogue;
+      if (
+        !catalogue ||
+        typeof catalogue.sourceUpdatedAt !== "string" ||
+        !Array.isArray(catalogue.factions) ||
+        !Array.isArray(catalogue.units)
+      ) {
+        throw new ServiceUnavailableError(
+          "Profile catalogue is invalid",
+          "PROFILE_CATALOGUE_INVALID",
+        );
+      }
+      return catalogue;
+    })
+    .catch((error: unknown) => {
+      cataloguePromise = null;
+      if (error instanceof ServiceUnavailableError) throw error;
+      throw new ServiceUnavailableError(
+        "Profile catalogue could not be loaded",
+        "PROFILE_CATALOGUE_UNAVAILABLE",
+      );
+    });
   return cataloguePromise;
 }
 
@@ -170,7 +215,12 @@ async function loadCalculator(request: Request, env: Env) {
     const response = await env.ASSETS.fetch(
       new Request(new URL("/wasm/calculator.wasm", request.url)),
     );
-    if (!response.ok) throw new Error("Calculator engine is unavailable");
+    if (!response.ok) {
+      throw new ServiceUnavailableError(
+        "Calculator engine is unavailable",
+        "CALCULATOR_ENGINE_UNAVAILABLE",
+      );
+    }
     let calculator: CalculatorExports | null = null;
     const imports = {
       env: {
@@ -195,10 +245,58 @@ async function loadCalculator(request: Request, env: Env) {
     };
     const instantiated = await WebAssembly.instantiate(await response.arrayBuffer(), imports);
     calculator = instantiated.instance.exports as unknown as CalculatorExports;
+    if (
+      typeof calculator.__wasm_call_ctors !== "function" ||
+      typeof calculator.whc_calculate_summary !== "function" ||
+      typeof calculator.whc_calculate_ordered_volley_summary !== "function"
+    ) {
+      throw new ServiceUnavailableError(
+        "Calculator engine exports are invalid",
+        "CALCULATOR_ENGINE_INVALID",
+      );
+    }
     calculator.__wasm_call_ctors();
     return calculator;
-  })();
+  })().catch((error: unknown) => {
+    calculatorPromise = null;
+    if (error instanceof ServiceUnavailableError) throw error;
+    throw new ServiceUnavailableError(
+      "Calculator engine could not be loaded",
+      "CALCULATOR_ENGINE_UNAVAILABLE",
+    );
+  });
   return calculatorPromise;
+}
+
+async function withStorage<T>(operation: () => Promise<T>) {
+  try {
+    return await operation();
+  } catch {
+    throw new ServiceUnavailableError(
+      "Cloud list storage is temporarily unavailable",
+      "LIST_STORAGE_UNAVAILABLE",
+    );
+  }
+}
+
+async function healthCheck(name: string, operation: () => Promise<Record<string, unknown> | void>) {
+  const startedAt = performance.now();
+  try {
+    const detail = (await operation()) ?? {};
+    return {
+      name,
+      status: "ok" as const,
+      latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
+      ...detail,
+    };
+  } catch (error) {
+    return {
+      name,
+      status: "failed" as const,
+      latencyMs: Math.max(0, Math.round(performance.now() - startedAt)),
+      code: error instanceof ServiceUnavailableError ? error.code : "DEPENDENCY_UNAVAILABLE",
+    };
+  }
 }
 
 function profileFlags(profile: CombatProfile) {
@@ -465,6 +563,7 @@ async function handleApi(request: Request, env: Env) {
         name: "Warhammer Damage Calculator API",
         apiVersion: "v1",
         endpoints: {
+          health: "GET /api/v1/health",
           factions: "GET /api/v1/factions",
           units: "GET /api/v1/units?faction={factionId}&kind={attacker|target|all}",
           weapons: "GET /api/v1/weapons?unit={datasheetId}",
@@ -482,6 +581,36 @@ async function handleApi(request: Request, env: Env) {
         },
         request: { profile: DEFAULT_PROFILE },
       });
+    }
+
+    if (url.pathname === "/api/v1/health" && request.method === "GET") {
+      const checks = await Promise.all([
+        healthCheck("profile-catalogue", async () => {
+          const catalogue = await loadCatalogue(request, env);
+          return {
+            sourceUpdatedAt: catalogue.sourceUpdatedAt,
+            factions: catalogue.factions.length,
+            units: catalogue.units.length,
+          };
+        }),
+        healthCheck("calculator-engine", async () => {
+          await loadCalculator(request, env);
+        }),
+        healthCheck("list-storage", async () => {
+          await withStorage(() => env.ARMY_DB.prepare("SELECT 1 AS healthy").first());
+        }),
+      ]);
+      const healthy = checks.every((check) => check.status === "ok");
+      return json(
+        {
+          status: healthy ? "ok" : "degraded",
+          apiVersion: "v1",
+          checkedAt: new Date().toISOString(),
+          checks,
+        },
+        healthy ? 200 : 503,
+        { "Cache-Control": "no-store" },
+      );
     }
 
     if (url.pathname === "/api/v1/profiles" && request.method === "GET") {
@@ -779,21 +908,25 @@ async function handleApi(request: Request, env: Env) {
     }
 
     if (url.pathname === "/api/v1/lists" && request.method === "GET") {
-      return json({ data: await listArmyLists(env.ARMY_DB), apiVersion: "v1" });
+      return json({
+        data: await withStorage(() => listArmyLists(env.ARMY_DB)),
+        apiVersion: "v1",
+      });
     }
 
     if (url.pathname === "/api/v1/lists" && request.method === "POST") {
-      if ((await listArmyLists(env.ARMY_DB)).length >= 100) {
+      if ((await withStorage(() => listArmyLists(env.ARMY_DB))).length >= 100) {
         throw new Error("Cloud storage supports at most 100 army lists");
       }
-      return json({ data: await createArmyList(env.ARMY_DB, await requestArmyList(request)) }, 201);
+      const input = await requestArmyList(request);
+      return json({ data: await withStorage(() => createArmyList(env.ARMY_DB, input)) }, 201);
     }
 
     if (url.pathname === "/api/v1/lists/export" && request.method === "GET") {
       const catalogue = await loadCatalogue(request, env);
       return json(
         createArmyListBackup(
-          await listArmyLists(env.ARMY_DB),
+          await withStorage(() => listArmyLists(env.ARMY_DB)),
           new Date().toISOString(),
           catalogue.sourceUpdatedAt,
         ),
@@ -805,29 +938,37 @@ async function handleApi(request: Request, env: Env) {
       const records = backup.lists.map(
         (record) => normalizeArmyListRecord(record) as ArmyListRecord,
       );
-      const mergedIds = new Set((await listArmyLists(env.ARMY_DB)).map((record) => record.id));
+      const mergedIds = new Set(
+        (await withStorage(() => listArmyLists(env.ARMY_DB))).map((record) => record.id),
+      );
       for (const record of records) mergedIds.add(record.id);
       if (mergedIds.size > 100) throw new Error("Cloud storage supports at most 100 army lists");
-      return json({ data: await importArmyLists(env.ARMY_DB, records), imported: records.length });
+      return json({
+        data: await withStorage(() => importArmyLists(env.ARMY_DB, records)),
+        imported: records.length,
+      });
     }
 
     const listMatch = /^\/api\/v1\/lists\/([0-9a-f-]+)$/i.exec(url.pathname);
     if (listMatch && request.method === "PUT") {
-      const updated = await updateArmyList(
-        env.ARMY_DB,
-        listMatch[1],
-        await requestArmyList(request),
-      );
+      const input = await requestArmyList(request);
+      const updated = await withStorage(() => updateArmyList(env.ARMY_DB, listMatch[1], input));
       return updated ? json({ data: updated }) : apiError("Army list not found", 404);
     }
     if (listMatch && request.method === "DELETE") {
-      return (await deleteArmyList(env.ARMY_DB, listMatch[1]))
+      return (await withStorage(() => deleteArmyList(env.ARMY_DB, listMatch[1])))
         ? json({ deleted: true })
         : apiError("Army list not found", 404);
     }
 
     return apiError("API endpoint not found", 404);
   } catch (error) {
+    if (error instanceof ServiceUnavailableError) {
+      return apiError(error.message, 503, error.code);
+    }
+    if (error instanceof SyntaxError) {
+      return apiError("Request body must contain valid JSON", 400, "INVALID_JSON");
+    }
     return apiError(error instanceof Error ? error.message : "Request failed");
   }
 }
@@ -839,7 +980,11 @@ const worker = {
     if (url.pathname === "/api" || url.pathname === "/api/") {
       return Response.redirect(new URL("/api/v1", request.url), 308);
     }
-    if (url.pathname.startsWith("/api/v1")) return handleApi(request, env);
+    if (url.pathname.startsWith("/api/v1")) {
+      const response = await handleApi(request, env);
+      response.headers.set("X-Request-ID", crypto.randomUUID());
+      return response;
+    }
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];

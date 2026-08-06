@@ -303,6 +303,33 @@ old equipment before adding the selected alternative. Alternate profiles are
 grouped by their shared weapon name even when the export assigns their modes
 different source-line identifiers.
 
+## Deployment health and API diagnostics
+
+The hosted API exposes `GET /api/v1/health`. It independently loads the pinned
+profile catalogue, instantiates the C/WebAssembly calculator, and queries list
+storage. A healthy response is HTTP 200 with `status: "ok"`; a dependency
+failure is HTTP 503 with `status: "degraded"` and a stable failure code for each
+failed check. Failed catalogue and calculator loads are evicted from the worker
+cache so a recovered dependency can be retried without restarting the service.
+
+API errors include a stable `code`, `retryable` flag, and `X-Request-ID` response
+header. In particular, list-database failures return 503
+`LIST_STORAGE_UNAVAILABLE` instead of being misreported as invalid requests.
+
+The deployment checker validates the homepage marker, profile-data schema and
+source timestamp, WebAssembly magic bytes, and—on the hosted API—the health
+contract and its dependency results:
+
+```sh
+node web/scripts/check-deployment.mjs https://example.com/ --surface=api
+node web/scripts/check-deployment.mjs https://example.com/path/ --surface=static
+```
+
+It emits a versioned JSON report and distinguishes DNS, TLS, connection,
+timeout, HTTP, HTML, catalogue, WebAssembly, and dependency failures. GitHub
+Pages runs the check after each deployment and every six hours, retaining the
+report as a workflow artifact.
+
 Every imported CSV is pinned in `data/profile-source-lock.json` by published
 update timestamp, SHA-256, and row count. A normal database rebuild refuses
 changed upstream inputs, preventing an unnoticed profile update from reaching

@@ -16,10 +16,20 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Add deployment health checks and clearer service-failure diagnostics.
+1. Add granular hit and wound rerolls (ones versus all failures) plus explicit
+   roll modifiers consistently across C, WebAssembly, API, web, and simulations.
+2. Add a reviewed interaction corpus for combinations of critical hits/wounds,
+   rerolls, modifiers, and save bypasses, with native/Wasm differential checks.
 
 ## Completed cycles
 
+- 2026-08-06: Added a dependency-aware API health endpoint for profile data,
+  the C/WebAssembly engine, and list storage. Dependency outages now return
+  retryable 503 errors with stable codes and request IDs, and failed asset loads
+  are evicted so they recover without a worker restart. A standalone JSON health
+  checker diagnoses network, HTTP, content, profile, Wasm, and API dependency
+  failures; Pages runs it after deployments and every six hours with retained
+  reports.
 - 2026-08-06: Reworked Play Mode for at-the-table mobile use with semantic
   attacker/target groups, prerequisite-disabled selectors, collapsed optional
   overrides, 48 px touch inputs, and a safe-area-aware sticky resolve control.

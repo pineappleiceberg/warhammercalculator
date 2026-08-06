@@ -616,6 +616,63 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.ok(rolled.data.modelsDestroyed <= 1);
 });
 
+test("reports dependency health, retryable outages, and request diagnostics", async () => {
+  const worker = await loadWorker();
+  const context = { waitUntil() {}, passThroughOnException() {} };
+  const unavailableEnv = {
+    ARMY_DB: {
+      prepare() {
+        throw new Error("database unavailable");
+      },
+    },
+    ASSETS: {
+      async fetch() {
+        return new Response("Unavailable", { status: 503 });
+      },
+    },
+  };
+
+  const degraded = await worker.fetch(
+    new Request("http://localhost/api/v1/health"),
+    unavailableEnv,
+    context,
+  );
+  assert.equal(degraded.status, 503);
+  assert.match(degraded.headers.get("x-request-id") ?? "", /^[0-9a-f-]{36}$/i);
+  const degradedBody = await degraded.json();
+  assert.equal(degradedBody.status, "degraded");
+  assert.deepEqual(
+    degradedBody.checks.map((entry) => entry.code),
+    ["PROFILE_CATALOGUE_UNAVAILABLE", "CALCULATOR_ENGINE_UNAVAILABLE", "LIST_STORAGE_UNAVAILABLE"],
+  );
+
+  const recovered = await worker.fetch(
+    new Request("http://localhost/api/v1/health"),
+    testEnv,
+    context,
+  );
+  assert.equal(recovered.status, 200);
+  const recoveredBody = await recovered.json();
+  assert.equal(recoveredBody.status, "ok");
+  assert.deepEqual(
+    recoveredBody.checks.map((entry) => entry.name),
+    ["profile-catalogue", "calculator-engine", "list-storage"],
+  );
+
+  const storageFailure = await worker.fetch(
+    new Request("http://localhost/api/v1/lists"),
+    unavailableEnv,
+    context,
+  );
+  assert.equal(storageFailure.status, 503);
+  assert.deepEqual((await storageFailure.json()).error, {
+    message: "Cloud list storage is temporarily unavailable",
+    status: 503,
+    code: "LIST_STORAGE_UNAVAILABLE",
+    retryable: true,
+  });
+});
+
 test("generated API profiles preserve combat invariants and reject malformed fields", async () => {
   const worker = await loadWorker();
   const context = { waitUntil() {}, passThroughOnException() {} };

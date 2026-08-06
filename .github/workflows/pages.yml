@@ -50,6 +50,8 @@ jobs:
           path: web/dist-pages
 
   deploy:
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -59,3 +61,25 @@ jobs:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v5
+
+  verify:
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Verify deployed calculator assets
+        env:
+          DEPLOYED_URL: ${{ needs.deploy.outputs.page_url }}
+        run: |
+          set -o pipefail
+          node web/scripts/check-deployment.mjs "$DEPLOYED_URL" --surface=static | tee deployment-health.json
+      - name: Upload deployment health report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: github-pages-deployment-health
+          path: deployment-health.json
+          if-no-files-found: warn
