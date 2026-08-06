@@ -98,12 +98,28 @@ export type CatalogueCombatPreset = {
   description: string;
   weaponScope: "Any" | "Ranged" | "Melee";
   hitModifier: number;
+  hitModifierRole: CombatPresetRole | null;
+  hitModifierSubject: CombatPresetSubject | null;
   woundModifier: number;
+  woundModifierRole: CombatPresetRole | null;
+  woundModifierSubject: CombatPresetSubject | null;
   rerollHits: boolean;
   rerollHitOnes: boolean;
+  hitRerollRole: CombatPresetRole | null;
+  hitRerollSubject: CombatPresetSubject | null;
   rerollWounds: boolean;
   rerollWoundOnes: boolean;
+  woundRerollRole: CombatPresetRole | null;
+  woundRerollSubject: CombatPresetSubject | null;
 };
+export type CombatPresetRole = "attacker" | "target" | "either";
+export type CombatPresetSubject =
+  | "self"
+  | "led_unit"
+  | "friendly_unit"
+  | "enemy_unit"
+  | "affected_unit"
+  | "unknown";
 export type CatalogueUnit = {
   id: string;
   factionId: string;

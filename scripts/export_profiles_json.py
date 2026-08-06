@@ -161,8 +161,11 @@ def export(database: Path, output: Path) -> None:
 
         for row in connection.execute(
             """SELECT datasheet_id, ability_position, preset_position, name, description_text,
-                      is_exclusive_choice, weapon_scope, hit_modifier, wound_modifier, reroll_hits,
-                      reroll_hit_ones, reroll_wounds, reroll_wound_ones
+                      is_exclusive_choice, weapon_scope, hit_modifier, hit_modifier_role,
+                      hit_modifier_subject, wound_modifier, wound_modifier_role,
+                      wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
+                      hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
+                      wound_reroll_subject
                FROM unit_combat_presets
                ORDER BY datasheet_id, ability_position, preset_position"""
         ):
@@ -175,11 +178,19 @@ def export(database: Path, output: Path) -> None:
                     "description": row["description_text"],
                     "weaponScope": row["weapon_scope"],
                     "hitModifier": row["hit_modifier"],
+                    "hitModifierRole": row["hit_modifier_role"],
+                    "hitModifierSubject": row["hit_modifier_subject"],
                     "woundModifier": row["wound_modifier"],
+                    "woundModifierRole": row["wound_modifier_role"],
+                    "woundModifierSubject": row["wound_modifier_subject"],
                     "rerollHits": bool(row["reroll_hits"]),
                     "rerollHitOnes": bool(row["reroll_hit_ones"]),
+                    "hitRerollRole": row["hit_reroll_role"],
+                    "hitRerollSubject": row["hit_reroll_subject"],
                     "rerollWounds": bool(row["reroll_wounds"]),
                     "rerollWoundOnes": bool(row["reroll_wound_ones"]),
+                    "woundRerollRole": row["wound_reroll_role"],
+                    "woundRerollSubject": row["wound_reroll_subject"],
                 }
             )
 

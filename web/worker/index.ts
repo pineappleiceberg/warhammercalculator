@@ -32,6 +32,7 @@ import {
   sourceEquippedWeaponCounts,
   unitLoadoutWarnings,
 } from "../lib/loadout.mjs";
+import type { CatalogueCombatPreset } from "../lib/catalogue";
 
 interface Env {
   ASSETS: Fetcher;
@@ -111,6 +112,7 @@ type Catalogue = {
     }>;
     suggestedModelCount: number | null;
     maximumModelCount: number | null;
+    combatPresets: CatalogueCombatPreset[];
   }>;
 };
 

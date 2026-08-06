@@ -79,11 +79,19 @@ type CatalogueCombatPreset = {
   description: string;
   weaponScope: "Any" | "Ranged" | "Melee";
   hitModifier: number;
+  hitModifierRole: "attacker" | "target" | "either" | null;
+  hitModifierSubject: string | null;
   woundModifier: number;
+  woundModifierRole: "attacker" | "target" | "either" | null;
+  woundModifierSubject: string | null;
   rerollHits: boolean;
   rerollHitOnes: boolean;
+  hitRerollRole: "attacker" | "target" | "either" | null;
+  hitRerollSubject: string | null;
   rerollWounds: boolean;
   rerollWoundOnes: boolean;
+  woundRerollRole: "attacker" | "target" | "either" | null;
+  woundRerollSubject: string | null;
 };
 type CatalogueUnit = {
   id: string;

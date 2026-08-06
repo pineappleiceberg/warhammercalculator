@@ -156,11 +156,23 @@ CREATE TABLE unit_combat_presets (
     is_exclusive_choice INTEGER NOT NULL CHECK (is_exclusive_choice IN (0, 1)),
     weapon_scope TEXT NOT NULL CHECK (weapon_scope IN ('Any', 'Ranged', 'Melee')),
     hit_modifier INTEGER NOT NULL CHECK (hit_modifier BETWEEN -1 AND 1),
+    hit_modifier_role TEXT CHECK (hit_modifier_role IN ('attacker', 'target', 'either')),
+    hit_modifier_subject TEXT CHECK (hit_modifier_subject IN
+        ('self', 'led_unit', 'friendly_unit', 'enemy_unit', 'affected_unit', 'unknown')),
     wound_modifier INTEGER NOT NULL CHECK (wound_modifier BETWEEN -1 AND 1),
+    wound_modifier_role TEXT CHECK (wound_modifier_role IN ('attacker', 'target', 'either')),
+    wound_modifier_subject TEXT CHECK (wound_modifier_subject IN
+        ('self', 'led_unit', 'friendly_unit', 'enemy_unit', 'affected_unit', 'unknown')),
     reroll_hits INTEGER NOT NULL CHECK (reroll_hits IN (0, 1)),
     reroll_hit_ones INTEGER NOT NULL CHECK (reroll_hit_ones IN (0, 1)),
+    hit_reroll_role TEXT CHECK (hit_reroll_role IN ('attacker', 'target', 'either')),
+    hit_reroll_subject TEXT CHECK (hit_reroll_subject IN
+        ('self', 'led_unit', 'friendly_unit', 'enemy_unit', 'affected_unit', 'unknown')),
     reroll_wounds INTEGER NOT NULL CHECK (reroll_wounds IN (0, 1)),
     reroll_wound_ones INTEGER NOT NULL CHECK (reroll_wound_ones IN (0, 1)),
+    wound_reroll_role TEXT CHECK (wound_reroll_role IN ('attacker', 'target', 'either')),
+    wound_reroll_subject TEXT CHECK (wound_reroll_subject IN
+        ('self', 'led_unit', 'friendly_unit', 'enemy_unit', 'affected_unit', 'unknown')),
     PRIMARY KEY (datasheet_id, ability_position, preset_position),
     FOREIGN KEY (datasheet_id, ability_position)
         REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
@@ -329,6 +341,140 @@ def plain_text(value: str) -> str:
     return re.sub(r"\s+", " ", html.unescape(without_tags)).strip()
 
 
+def combat_effect_application(text: str, effect_start: int) -> tuple[str, str]:
+    lowered = text.casefold()
+    prefix = lowered[:effect_start]
+    sentence_start = max(prefix.rfind(". "), prefix.rfind("; "))
+    context = prefix[sentence_start + 2 :]
+    window = prefix[max(0, effect_start - 700) :]
+
+    defensive = (
+        r"(?:an |the )?attacks? (?:that )?(?:targets?|is made against|are made against) "
+        r"(?:this|the bearer(?:’s|'s)|the bearer) (?:model|unit)(?![’'])\b|"
+        r"(?:ranged |melee )?attack targets? the bearer|"
+        r"attacks? targets? this model(?:’s|'s) unit|"
+        r"attacks? (?:is |are )?allocated to (?:this|a model in this) (?:model|unit)"
+    )
+    if re.search(defensive, context):
+        return "target", "enemy_unit"
+    if "leading a unit" in window and re.search(
+        r"attacks? (?:that )?targets? that unit", context
+    ):
+        return "target", "enemy_unit"
+    if re.search(
+        r"enemy unit[^.;]{0,180}targets? this (?:model|unit)|"
+        r"model makes? (?:an? )?(?:(?:melee|ranged|psychic) )?attack that targets? "
+        r"this model(?![’'])\b",
+        context,
+    ):
+        return "target", "enemy_unit"
+    if re.search(
+        r"(?:that|the selected) (?:[a-z0-9-]+ )?(?:model|unit)[^.;]{0,120}"
+        r"makes? (?:an? )?(?:(?:melee|ranged|psychic) )?attack",
+        context,
+    ):
+        if "leading a unit" in window:
+            return "attacker", "led_unit"
+        if re.search(r"this (?:model|unit)(?:’s|'s) unit", window):
+            return "attacker", "self"
+        friendly_at = max(window.rfind("friendly "), window.rfind("your army"))
+        enemy_at = max(window.rfind("enemy "), window.rfind("opponent"))
+        if enemy_at > friendly_at:
+            return "target", "enemy_unit"
+        if friendly_at >= 0:
+            return "attacker", "friendly_unit"
+    if re.search(
+        r"friendly[^.;]{0,180}(?:model|unit)[^.;]{0,100}"
+        r"makes? (?:an? )?(?:(?:melee|ranged|psychic) )?attack",
+        context,
+    ):
+        return "attacker", "friendly_unit"
+    if re.search(
+        r"(?:model in that unit|that unit)[^.;]{0,100}"
+        r"makes? (?:an? )?(?:(?:melee|ranged|psychic) )?attack",
+        context,
+    ):
+        if "leading a unit" in window:
+            return "attacker", "led_unit"
+        if re.search(r"this (?:model|unit)(?:’s|'s) unit", window):
+            return "attacker", "self"
+        friendly_at = max(window.rfind("friendly "), window.rfind("your army"))
+        enemy_at = max(window.rfind("enemy "), window.rfind("opponent"))
+        if enemy_at > friendly_at:
+            return "target", "enemy_unit"
+        if friendly_at >= 0:
+            return "attacker", "friendly_unit"
+    if re.search(
+        r"(?:model in this unit|this (?:model|unit)|model with this ability|"
+        r"model in the bearer(?:’s|'s) unit|bearer(?:’s|'s) unit)[^.;]{0,140}"
+        r"makes? (?:an? )?(?:(?:melee|ranged|psychic) )?attack",
+        context,
+    ):
+        return "attacker", "self"
+    if re.search(
+        r"model in this unit targets? [^.;]{0,100} with (?:an? )?(?:melee|ranged|psychic) attack",
+        context,
+    ):
+        return "attacker", "self"
+    if re.search(
+        r"(?:attack (?:made|is made) by a model in this unit|"
+        r"attack made by this (?:model|unit)|the bearer makes? )",
+        context,
+    ):
+        return "attacker", "self"
+    if re.search(r"attack is made by a model in (?:a|their) [^.;]{0,80} unit", context):
+        return "attacker", "friendly_unit"
+    if re.search(
+        r"model that disembarked from this [^.;]{0,80}makes? "
+        r"(?:an? )?(?:(?:melee|ranged|psychic) )?attack",
+        context,
+    ):
+        return "attacker", "friendly_unit"
+    if "selected as the target of ranged attacks" in window and "such an attack is made" in context:
+        return "attacker", "friendly_unit"
+    if re.search(
+        r"(?:model|unit) affected by this ability[^.;]{0,120}"
+        r"makes? (?:an? )?(?:(?:melee|ranged|psychic) )?attack",
+        context,
+    ):
+        return "attacker", "affected_unit"
+    if "model is affected by this ability" in window and re.search(
+        r"that model[^.;]{0,100}makes? (?:an? )?(?:(?:melee|ranged|psychic) )?attack",
+        context,
+    ):
+        return "attacker", "affected_unit"
+    if re.search(
+        r"(?:friendly|model from your army)[^.;]{0,220}"
+        r"makes? (?:an? )?(?:(?:melee|ranged|psychic) )?attack",
+        context,
+    ):
+        return "attacker", "friendly_unit"
+    if re.search(
+        r"(?:enemy (?:[a-z0-9-]+ )?(?:model|unit)|opponent(?:’s|'s) unit) "
+        r"makes? (?:an? )?(?:(?:melee|ranged|psychic) )?attack|"
+        r"model in (?:that|the selected) enemy unit[^.;]{0,100}"
+        r"makes? (?:an? )?(?:(?:melee|ranged|psychic) )?attack",
+        context,
+    ):
+        return "target", "enemy_unit"
+    if re.search(
+        r"(?:each time|whenever)[^.;]{0,220}"
+        r"makes? (?:an? )?(?:(?:melee|ranged|psychic) )?attack",
+        context,
+    ):
+        return "either", "unknown"
+    previous_effects = list(
+        re.finditer(
+            r"\b(?:add|subtract) 1 (?:to|from) the (?:hit|wound) roll\b|"
+            r"\bre-roll (?:a|the) (?:hit|wound) roll(?: of 1)?\b",
+            lowered[: sentence_start + 1],
+        )
+    )
+    if previous_effects:
+        return combat_effect_application(text, previous_effects[-1].start())
+    return "either", "unknown"
+
+
 def combat_preset(description: str) -> dict[str, int | str] | None:
     text = plain_text(description)
     lowered = text.casefold()
@@ -346,6 +492,9 @@ def combat_preset(description: str) -> dict[str, int | str] | None:
         )
         if modifier:
             effects[field] = 1 if modifier.group(1) == "add" else -1
+            role, subject = combat_effect_application(text, modifier.start())
+            effects[f"{field}_role"] = role
+            effects[f"{field}_subject"] = subject
         rerolls = list(
             re.finditer(
                 rf"\bre-roll (?:a|the) {roll} roll(?: of 1)?\b", lowered
@@ -355,6 +504,9 @@ def combat_preset(description: str) -> dict[str, int | str] | None:
             first = rerolls[0].group(0)
             effects[f"reroll_{roll}_ones"] = int(first.endswith("of 1"))
             effects[f"reroll_{roll}s"] = int(not first.endswith("of 1"))
+            role, subject = combat_effect_application(text, rerolls[0].start())
+            effects[f"{roll}_reroll_role"] = role
+            effects[f"{roll}_reroll_subject"] = subject
     if not any(value for key, value in effects.items() if key != "weapon_scope"):
         return None
     has_melee = "melee attack" in lowered
@@ -439,9 +591,12 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
             connection.execute(
                 """INSERT INTO unit_combat_presets
                    (datasheet_id, ability_position, preset_position, name, description_text,
-                    is_exclusive_choice, weapon_scope, hit_modifier, wound_modifier,
-                    reroll_hits, reroll_hit_ones, reroll_wounds, reroll_wound_ones)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    is_exclusive_choice, weapon_scope, hit_modifier, hit_modifier_role,
+                    hit_modifier_subject, wound_modifier, wound_modifier_role,
+                    wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
+                    hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
+                    wound_reroll_subject)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     ability_position,
@@ -451,11 +606,19 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     preset["is_exclusive_choice"],
                     preset["weapon_scope"],
                     preset["hit_modifier"],
+                    preset.get("hit_modifier_role"),
+                    preset.get("hit_modifier_subject"),
                     preset["wound_modifier"],
+                    preset.get("wound_modifier_role"),
+                    preset.get("wound_modifier_subject"),
                     preset["reroll_hits"],
                     preset["reroll_hit_ones"],
+                    preset.get("hit_reroll_role"),
+                    preset.get("hit_reroll_subject"),
                     preset["reroll_wounds"],
                     preset["reroll_wound_ones"],
+                    preset.get("wound_reroll_role"),
+                    preset.get("wound_reroll_subject"),
                 ),
             )
             inserted += 1
@@ -595,7 +758,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "10"),
+                    ("schema_version", "11"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

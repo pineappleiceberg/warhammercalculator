@@ -35,7 +35,7 @@ class ProfileDataTests(unittest.TestCase):
     def test_combat_preset_parser_preserves_scope_and_first_reroll_tier(self):
         self.assertEqual(
             combat_preset(
-                "While leading a unit, each time a model makes a melee attack, "
+                "While this model is leading a unit, each time a model in that unit makes a melee attack, "
                 "add 1 to the Hit roll and add 1 to the Wound roll."
             ),
             {
@@ -46,6 +46,10 @@ class ProfileDataTests(unittest.TestCase):
                 "reroll_hit_ones": 0,
                 "reroll_wounds": 0,
                 "reroll_wound_ones": 0,
+                "hit_modifier_role": "attacker",
+                "hit_modifier_subject": "led_unit",
+                "wound_modifier_role": "attacker",
+                "wound_modifier_subject": "led_unit",
             },
         )
         preset = combat_preset(
@@ -55,7 +59,31 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(preset["weapon_scope"], "Ranged")
         self.assertEqual(preset["reroll_hit_ones"], 1)
         self.assertEqual(preset["reroll_hits"], 0)
+        self.assertEqual(preset["hit_reroll_role"], "attacker")
+        self.assertEqual(preset["hit_reroll_subject"], "self")
         self.assertIsNone(combat_preset("Add 1 to this model's Leadership characteristic."))
+
+    def test_combat_preset_parser_classifies_each_effect_without_using_its_sign(self):
+        self_penalty = combat_preset(
+            "Each time a model in this unit makes an attack, subtract 1 from the Hit roll."
+        )
+        self.assertEqual(
+            (self_penalty["hit_modifier_role"], self_penalty["hit_modifier_subject"]),
+            ("attacker", "self"),
+        )
+        defensive_bonus = combat_preset(
+            "Each time an attack targets this unit, add 1 to the Wound roll."
+        )
+        self.assertEqual(
+            (defensive_bonus["wound_modifier_role"], defensive_bonus["wound_modifier_subject"]),
+            ("target", "enemy_unit"),
+        )
+        mixed = combat_preset(
+            "Each time this model makes an attack, add 1 to the Wound roll. "
+            "Each time an attack is made against this model, subtract 1 from the Hit roll."
+        )
+        self.assertEqual(mixed["wound_modifier_role"], "attacker")
+        self.assertEqual(mixed["hit_modifier_role"], "target")
 
     def test_combat_preset_parser_splits_exclusive_modes_and_roll_outcomes(self):
         dance = combat_presets(
@@ -209,7 +237,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "10",
+                "11",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -225,6 +253,20 @@ class ProfileDataTests(unittest.TestCase):
             self.assertGreater(
                 connection.execute("SELECT count(*) FROM unit_combat_presets").fetchone()[0],
                 900,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_combat_presets
+                       WHERE (hit_modifier <> 0 AND
+                              (hit_modifier_role IS NULL OR hit_modifier_subject IS NULL))
+                          OR (wound_modifier <> 0 AND
+                              (wound_modifier_role IS NULL OR wound_modifier_subject IS NULL))
+                          OR ((reroll_hits OR reroll_hit_ones) AND
+                              (hit_reroll_role IS NULL OR hit_reroll_subject IS NULL))
+                          OR ((reroll_wounds OR reroll_wound_ones) AND
+                              (wound_reroll_role IS NULL OR wound_reroll_subject IS NULL))"""
+                ).fetchone()[0],
+                0,
             )
             dance = connection.execute(
                 """SELECT preset_position, name, hit_modifier, wound_modifier,
@@ -371,6 +413,8 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(might["weaponScope"], "Melee")
         self.assertEqual(might["hitModifier"], 1)
+        self.assertEqual(might["hitModifierRole"], "attacker")
+        self.assertEqual(might["hitModifierSubject"], "led_unit")
         self.assertIn("leading a unit", might["description"])
         troupe = next(unit for unit in catalogue["units"] if unit["id"] == "000002536")
         dance = [preset for preset in troupe["combatPresets"] if preset["choiceGroup"]]

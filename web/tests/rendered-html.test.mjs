@@ -179,6 +179,10 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const catalogue = await profiles.json();
   const warriors = catalogue.units.find((unit) => unit.name === "Necron Warriors");
   assert.ok(warriors);
+  const warboss = catalogue.units.find((unit) => unit.name === "Warboss");
+  const mightIsRight = warboss.combatPresets.find((preset) => preset.name === "Might is Right");
+  assert.equal(mightIsRight.hitModifierRole, "attacker");
+  assert.equal(mightIsRight.hitModifierSubject, "led_unit");
   const loadout = await worker.fetch(
     new Request(`http://localhost/api/v1/loadout?unit=${warriors.id}`),
     testEnv,

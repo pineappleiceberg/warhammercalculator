@@ -1,7 +1,11 @@
 "use client";
 
 import type { CatalogueCombatPreset } from "../lib/catalogue";
-import { combatPresetSupportsRole, updateCombatPresetSelection } from "../lib/combat-presets.mjs";
+import {
+  combatPresetSubjectSummary,
+  combatPresetSupportsRole,
+  updateCombatPresetSelection,
+} from "../lib/combat-presets.mjs";
 
 type Props = {
   presets: CatalogueCombatPreset[];
@@ -42,6 +46,7 @@ export function CombatPresetSelector({ presets, role, selectedIds, onChange, tit
               {preset.weaponScope}
               {preset.choiceGroup ? " · choose one mode" : ""} · {preset.description}
             </small>
+            <small>Affects {combatPresetSubjectSummary(preset, role)}</small>
           </span>
         </label>
       ))}

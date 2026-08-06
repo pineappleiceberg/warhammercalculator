@@ -16,15 +16,28 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Classify the subject and recipient of imported ability clauses so selectors
-   can distinguish self, led-unit, friendly-unit, and enemy-unit effects instead
-   of relying only on the sign of a modifier.
+1. Extend source-backed conditional unit abilities beyond modifiers and
+   re-rolls to weapon-keyword grants, AP changes, and Critical Hit/Wound
+   thresholds, retaining the same subject and condition safeguards.
 2. Record the observed peak sparse-state count from exact Devastating Wounds
    volleys and use benchmark evidence to tighten the conservative preflight
    without ever hiding a valid exact option.
 
 ## Completed cycles
 
+- 2026-08-06: Replaced sign-based unit-ability role inference with clause-level
+  subject classification. Hit modifiers, Wound modifiers, Hit re-rolls, and
+  Wound re-rolls independently record whether their source belongs on the
+  attacking or target side and whether they affect the source, a led unit, a
+  friendly unit, an enemy attacker, or another affected unit. Mixed offensive
+  and defensive abilities now apply only their relevant clauses, negative
+  self-penalties and positive defensive effects no longer swap sides, and every
+  imported effect is classified. Selectors expose the affected subject while
+  preserving editable values and stable saved-list IDs; SQLite, API, UI, and
+  C/WebAssembly composition regressions cover the behavior. The unchanged
+  2,000-input sanitizer campaign also received a realistic harness ceiling after
+  WSL timing proved the previous 120-second ceiling flaky without finding a
+  sanitizer fault.
 - 2026-08-06: Split imported abilities with named modes or rolled outcomes into
   atomic combat presets and added stable exclusive-choice groups to SQLite and
   the browser catalogue. Selecting one mode now replaces its sibling instead

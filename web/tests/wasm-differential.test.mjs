@@ -20,6 +20,7 @@ import { abilityDiceValue } from "../lib/dice.mjs";
 import {
   applyCombatPresets,
   combatPresetEffects,
+  combatPresetSubjectSummary,
   combatPresetSupportsRole,
   updateCombatPresetSelection,
 } from "../lib/combat-presets.mjs";
@@ -157,6 +158,14 @@ test("unit ability presets separate attacking and defensive effects", () => {
     rerollHitOnes: false,
     rerollWounds: false,
     rerollWoundOnes: true,
+    hitModifierRole: "target",
+    hitModifierSubject: "enemy_unit",
+    woundModifierRole: "attacker",
+    woundModifierSubject: "self",
+    hitRerollRole: "attacker",
+    hitRerollSubject: "self",
+    woundRerollRole: "attacker",
+    woundRerollSubject: "self",
   };
   assert.equal(combatPresetSupportsRole(mixed, "attacker"), true);
   assert.equal(combatPresetSupportsRole(mixed, "target"), true);
@@ -180,12 +189,25 @@ test("unit ability presets separate attacking and defensive effects", () => {
   assert.equal(applied.rerollHitOnes, false);
   assert.equal(applied.rerollWoundOnes, true);
   assert.equal(applied.ap, 4);
+  assert.equal(combatPresetSubjectSummary(mixed, "attacker"), "this unit");
+  assert.equal(combatPresetSubjectSummary(mixed, "target"), "enemy attacker");
+  const selfPenalty = {
+    ...mixed,
+    hitModifier: -1,
+    hitModifierRole: "attacker",
+    hitModifierSubject: "self",
+    woundModifier: 0,
+    rerollHits: false,
+    rerollWoundOnes: false,
+  };
+  assert.equal(combatPresetEffects([selfPenalty], "Melee", "attacker").hitModifier, -1);
+  assert.equal(combatPresetEffects([selfPenalty], "Melee", "target").hitModifier, 0);
   assert.equal(
     applyCombatPresets(
       { hitModifier: 0, woundModifier: 0 },
       [
-        { ...mixed, hitModifier: 1 },
-        { ...mixed, hitModifier: 1 },
+        { ...mixed, hitModifier: 1, hitModifierRole: "attacker" },
+        { ...mixed, hitModifier: 1, hitModifierRole: "attacker" },
       ],
       [mixed],
       "Melee",
