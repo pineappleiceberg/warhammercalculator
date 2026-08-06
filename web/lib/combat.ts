@@ -1,3 +1,5 @@
+import { savingThrowTarget, woundTarget } from "./thresholds.mjs";
+
 export type CombatProfile = {
   attackDice: number;
   attackSides: number;
@@ -199,14 +201,6 @@ function rollDiceValue(count: number, sides: number, modifier: number) {
   return total;
 }
 
-function woundTarget(strength: number, toughness: number) {
-  if (strength >= toughness * 2) return 2;
-  if (strength > toughness) return 3;
-  if (strength === toughness) return 4;
-  if (toughness >= strength * 2) return 6;
-  return 5;
-}
-
 function rollCheck(succeedsOn: number, criticalOn = 0, rerollFailures = false) {
   const first = rollDie();
   const succeeds = (face: number) => (criticalOn >= 2 && face >= criticalOn) || face >= succeedsOn;
@@ -236,14 +230,11 @@ export function simulateAttack(profile: CombatProfile): RollResult {
     2,
     woundTarget(profile.strength, profile.toughness) - (profile.lanceActive ? 1 : 0),
   );
-  const hasCover =
-    (profile.targetCover || profile.indirect) &&
-    !profile.ignoresCover &&
-    !(profile.ap === 0 && profile.save <= 3);
-  const armourSave = profile.save + profile.ap - (hasCover ? 1 : 0);
-  const savesOn = Math.max(
-    2,
-    Math.min(7, profile.invulnerable > 0 ? Math.min(armourSave, profile.invulnerable) : armourSave),
+  const savesOn = savingThrowTarget(
+    profile.save,
+    profile.invulnerable,
+    profile.ap,
+    (profile.targetCover || profile.indirect) && !profile.ignoresCover,
   );
 
   const result: RollResult = {

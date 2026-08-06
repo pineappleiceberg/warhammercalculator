@@ -1,0 +1,89 @@
+#include "warhammercalculator/calculator.h"
+
+#include <assert.h>
+#include <stdint.h>
+
+/*@ terminates \true;
+    ensures \result == 0;
+*/
+int main(void) {
+    uint8_t save = 2u;
+    struct weapon_profile weapon = {0};
+    struct target_profile target = {0};
+    struct calculator_workspace workspace;
+    struct probability_distribution distribution;
+    uint64_t mass_sum = 0u;
+    uint32_t outcome = 0u;
+
+    /*@ loop invariant 2 <= save && save <= 8;
+        loop assigns save;
+        loop variant 8 - save;
+    */
+    while (save <= 7u) {
+        uint8_t invulnerable = 0u;
+
+        /*@ loop invariant 0 <= invulnerable && invulnerable <= 7;
+            loop assigns invulnerable;
+            loop variant 7 - invulnerable;
+        */
+        while (invulnerable <= 6u) {
+            uint16_t ap = 0u;
+
+            if (invulnerable == 1u) {
+                invulnerable = 2u;
+            }
+
+            /*@ loop invariant 0 <= ap && ap <= 13;
+                loop assigns ap;
+                loop variant 13 - ap;
+            */
+            while (ap <= 12u) {
+                uint8_t threshold = saves_on(save, invulnerable, ap);
+                uint8_t covered = saves_on_with_cover(save, invulnerable, ap);
+
+                assert(threshold >= 2u && threshold <= 7u);
+                assert(covered >= 2u && covered <= threshold);
+                if (invulnerable != 0u) {
+                    assert(threshold <= invulnerable);
+                }
+                ap++;
+            }
+
+            invulnerable++;
+        }
+
+        save++;
+    }
+
+    assert(saves_on(2u, 0u, 4u) == 6u);
+    assert(saves_on_with_cover(2u, 0u, 4u) == 5u);
+    assert(saves_on_with_cover(3u, 0u, 0u) == 3u);
+
+    weapon.attacks = (struct dice_value){0u, 0u, 4u};
+    weapon.hits_on = 3u;
+    weapon.strength = 10u;
+    weapon.ap = 3u;
+    weapon.damage = (struct dice_value){1u, 6u, 1u};
+    weapon.critical_hits_on = 6u;
+    target.toughness = 10u;
+    target.save = 2u;
+    target.wounds = 12u;
+
+    assert(calculate_attack_damage_distribution(&weapon, &target, &workspace, &distribution));
+    assert(distribution.minimum <= distribution.maximum);
+    assert(distribution.maximum <= MAX_DISTRIBUTION_RESULT);
+
+    outcome = distribution.minimum;
+    /*@ loop invariant distribution.minimum <= outcome && outcome <= distribution.maximum + 1;
+        loop assigns outcome, mass_sum;
+        loop variant distribution.maximum + 1 - outcome;
+    */
+    while (outcome <= distribution.maximum) {
+        mass_sum += distribution.mass[outcome];
+        outcome++;
+    }
+
+    assert(mass_sum == PROBABILITY_SCALE);
+    assert(distribution.total_mass == PROBABILITY_SCALE);
+    return 0;
+}

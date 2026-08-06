@@ -23,6 +23,21 @@ struct save_categories {
     uint64_t total;
 };
 
+/*@ behavior null_result:
+        assumes result == \null;
+        assigns \nothing;
+        ensures !\result;
+    behavior overflow:
+        assumes \valid(result) && right > UINT64_MAX - left;
+        assigns \nothing;
+        ensures !\result;
+    behavior success:
+        assumes \valid(result) && right <= UINT64_MAX - left;
+        assigns *result;
+        ensures \result && *result == left + right;
+    complete behaviors;
+    disjoint behaviors;
+*/
 static bool uint64_add_checked(uint64_t left, uint64_t right, uint64_t *result) {
     if (result == NULL || UINT64_MAX - left < right) {
         return false;
@@ -32,6 +47,21 @@ static bool uint64_add_checked(uint64_t left, uint64_t right, uint64_t *result) 
     return true;
 }
 
+/*@ behavior null_result:
+        assumes result == \null;
+        assigns \nothing;
+        ensures !\result;
+    behavior overflow:
+        assumes \valid(result) && left != 0 && right > UINT64_MAX / left;
+        assigns \nothing;
+        ensures !\result;
+    behavior success:
+        assumes \valid(result) && (left == 0 || right <= UINT64_MAX / left);
+        assigns *result;
+        ensures \result && *result == left * right;
+    complete behaviors;
+    disjoint behaviors;
+*/
 static bool uint64_multiply_checked(uint64_t left, uint64_t right, uint64_t *result) {
     if (result == NULL) {
         return false;
@@ -45,6 +75,10 @@ static bool uint64_multiply_checked(uint64_t left, uint64_t right, uint64_t *res
     return true;
 }
 
+/*@ requires \valid(result);
+    assigns *result;
+    ensures \result ==> *result == first * second * third;
+*/
 static bool uint64_product3_checked(uint64_t first, uint64_t second, uint64_t third,
                                     uint64_t *result) {
     uint64_t temporary = 0;
@@ -53,6 +87,10 @@ static bool uint64_product3_checked(uint64_t first, uint64_t second, uint64_t th
            uint64_multiply_checked(temporary, third, result);
 }
 
+/*@ requires \valid(required);
+    assigns *required;
+    ensures \result ==> (1 <= *required && *required <= total);
+*/
 static bool quantile_required_mass(uint64_t total, uint64_t quantile_numerator,
                                    uint64_t quantile_denominator, uint64_t *required) {
     if (required == NULL || total == 0 || quantile_denominator == 0 || quantile_numerator == 0 ||
@@ -95,6 +133,9 @@ static bool quantile_required_mass(uint64_t total, uint64_t quantile_numerator,
 #endif
 }
 
+/*@ assigns \nothing;
+    ensures \result <= PROBABILITY_SCALE;
+*/
 static uint32_t ratio_to_probability_mass(uint64_t numerator, uint64_t denominator) {
     uint32_t result = 0;
     uint32_t bit = 0;
@@ -108,6 +149,11 @@ static uint32_t ratio_to_probability_mass(uint64_t numerator, uint64_t denominat
         return PROBABILITY_SCALE;
     }
 
+    /*@ loop invariant 0 <= bit && bit <= 31;
+        loop invariant remainder < denominator;
+        loop assigns bit, result, remainder;
+        loop variant 31 - bit;
+    */
     while (bit < 31u) {
         result <<= 1u;
 
@@ -124,6 +170,12 @@ static uint32_t ratio_to_probability_mass(uint64_t numerator, uint64_t denominat
     return result;
 }
 
+/*@ requires minimum <= maximum && maximum <= MAX_DISTRIBUTION_RESULT;
+    requires \valid_read(weights + (minimum .. maximum));
+    requires \valid(result);
+    assigns *result;
+    ensures \result ==> whc_normalized_probability_distribution(result);
+*/
 static bool probability_distribution_from_weights(const uint64_t *weights, uint32_t minimum,
                                                   uint32_t maximum, uint64_t total_weight,
                                                   struct probability_distribution *result) {
@@ -139,6 +191,13 @@ static bool probability_distribution_from_weights(const uint64_t *weights, uint3
     probability_distribution_clear(result);
 
     outcome = minimum;
+    /*@ loop invariant minimum <= outcome && outcome <= maximum + 1;
+        loop invariant cumulative <= total_weight;
+        loop invariant previous_scaled <= PROBABILITY_SCALE;
+        loop assigns outcome, cumulative, previous_scaled,
+                     result->mass[minimum .. maximum];
+        loop variant maximum + 1 - outcome;
+    */
     while (outcome <= maximum) {
         uint32_t scaled_cumulative = 0;
 
@@ -166,6 +225,11 @@ static bool probability_distribution_from_weights(const uint64_t *weights, uint3
     return true;
 }
 
+/*@ requires \valid(result);
+    assigns *result;
+    ensures \result ==> whc_normalized_probability_distribution(result);
+    ensures \result ==> result->minimum == value && result->maximum == value;
+*/
 static bool probability_distribution_from_constant(uint32_t value,
                                                    struct probability_distribution *result) {
     if (result == NULL || value > MAX_DISTRIBUTION_RESULT) {
@@ -180,6 +244,12 @@ static bool probability_distribution_from_constant(uint32_t value,
     return true;
 }
 
+/*@ requires \valid_read(left) && \valid_read(right);
+    requires \valid(accumulator + (0 .. MAX_DISTRIBUTION_RESULT));
+    requires \valid(result);
+    requires \separated(accumulator + (0 .. MAX_DISTRIBUTION_RESULT), left, right, result);
+    assigns accumulator[0 .. MAX_DISTRIBUTION_RESULT], *result;
+*/
 static bool probability_distribution_convolve_internal(const struct probability_distribution *left,
                                                        const struct probability_distribution *right,
                                                        uint64_t *accumulator,
@@ -199,10 +269,20 @@ static bool probability_distribution_convolve_internal(const struct probability_
     memset(accumulator, 0, sizeof(uint64_t) * (MAX_DISTRIBUTION_RESULT + 1u));
 
     left_outcome = left->minimum;
+    /*@ loop invariant left->minimum <= left_outcome &&
+                       left_outcome <= left->maximum + 1;
+        loop assigns left_outcome, accumulator[0 .. MAX_DISTRIBUTION_RESULT];
+        loop variant left->maximum + 1 - left_outcome;
+    */
     while (left_outcome <= left->maximum) {
         uint32_t right_outcome = right->minimum;
 
         if (left->mass[left_outcome] != 0) {
+            /*@ loop invariant right->minimum <= right_outcome &&
+                               right_outcome <= right->maximum + 1;
+                loop assigns right_outcome, accumulator[0 .. MAX_DISTRIBUTION_RESULT];
+                loop variant right->maximum + 1 - right_outcome;
+            */
             while (right_outcome <= right->maximum) {
                 if (right->mass[right_outcome] != 0) {
                     uint32_t combined = left_outcome + right_outcome;
@@ -229,6 +309,12 @@ static bool probability_distribution_convolve_internal(const struct probability_
                                                  total_weight, result);
 }
 
+/*@ requires \valid_read(source) && \valid(result);
+    requires \separated(source, result);
+    assigns *result;
+    ensures \result ==> result->minimum <= result->maximum;
+    ensures \result ==> result->maximum <= MAX_DISTRIBUTION_RESULT;
+*/
 static bool distribution_add_uniform_die(const struct distribution *source, uint16_t sides,
                                          struct distribution *result) {
     uint32_t outcome = 0;
@@ -249,6 +335,11 @@ static bool distribution_add_uniform_die(const struct distribution *source, uint
     new_maximum = source->maximum + sides;
     outcome = new_minimum;
 
+    /*@ loop invariant new_minimum <= outcome && outcome <= new_maximum + 1;
+        loop invariant outcome <= MAX_DISTRIBUTION_RESULT + 1;
+        loop assigns outcome, window, result->ways[new_minimum .. new_maximum];
+        loop variant new_maximum + 1 - outcome;
+    */
     while (outcome <= new_maximum) {
         uint32_t entering = outcome - 1u;
 
@@ -281,12 +372,18 @@ static bool distribution_add_uniform_die(const struct distribution *source, uint
     return true;
 }
 
+/*@ assigns \nothing;
+    ensures \result <==> ((critical_on >= 2 && face >= critical_on) || face >= succeeds_on);
+*/
 static bool roll_is_success(uint8_t face, uint8_t succeeds_on, uint8_t critical_on) {
     bool critical = critical_on >= 2u && critical_on <= 6u && face >= critical_on;
 
     return critical || (succeeds_on <= 6u && face >= succeeds_on);
 }
 
+/*@ assigns \nothing;
+    ensures (\result & ~VALID_D6_FACE_MASK) == 0;
+*/
 static uint8_t failed_roll_mask(uint8_t succeeds_on, uint8_t critical_on) {
     uint8_t mask = 0;
     uint8_t face = 1;
@@ -301,6 +398,10 @@ static uint8_t failed_roll_mask(uint8_t succeeds_on, uint8_t critical_on) {
     return mask;
 }
 
+/*@ requires \valid(table);
+    assigns *table;
+    ensures \result ==> table->total_ways > 0;
+*/
 static bool roll_table_build(uint8_t reroll_mask, struct roll_table *table) {
     uint8_t face = 0;
 
@@ -341,6 +442,10 @@ static bool roll_table_build(uint8_t reroll_mask, struct roll_table *table) {
     return true;
 }
 
+/*@ requires \valid_read(table) && \valid(categories);
+    assigns *categories;
+    ensures categories->failed + categories->normal + categories->critical == categories->total;
+*/
 static void classify_attack_rolls(const struct roll_table *table, uint8_t succeeds_on,
                                   uint8_t critical_on, struct roll_categories *categories) {
     uint8_t face = 1;
@@ -365,6 +470,10 @@ static void classify_attack_rolls(const struct roll_table *table, uint8_t succee
     categories->total = table->total_ways;
 }
 
+/*@ requires \valid_read(table) && \valid(categories);
+    assigns *categories;
+    ensures categories->failed + categories->succeeded == categories->total;
+*/
 static void classify_saves(const struct roll_table *table, uint8_t saves_on_value,
                            struct save_categories *categories) {
     uint8_t face = 1;
@@ -383,6 +492,9 @@ static void classify_saves(const struct roll_table *table, uint8_t saves_on_valu
     categories->total = table->total_ways;
 }
 
+/*@ requires \valid_read(plan) && \valid(result);
+    assigns *result;
+*/
 static bool apply_damage_plan(const struct attack_plan *plan, uint32_t raw_damage,
                               uint32_t *result) {
     uint32_t damage = raw_damage;
@@ -422,6 +534,11 @@ static bool apply_damage_plan(const struct attack_plan *plan, uint32_t raw_damag
     return true;
 }
 
+/*@ requires \valid_read(weapon) && \valid_read(plan);
+    requires \valid(result) && \valid(damage_distribution);
+    requires \separated(result, damage_distribution, weapon, plan);
+    assigns *result, *damage_distribution;
+*/
 static bool build_single_attack_exact_distribution(const struct weapon_profile *weapon,
                                                    const struct attack_plan *plan,
                                                    struct distribution *damage_distribution,
@@ -566,6 +683,11 @@ static bool build_single_attack_exact_distribution(const struct weapon_profile *
     return distribution_reduce_weights(result);
 }
 
+/*@ requires \valid_read(weapon) && \valid_read(plan);
+    requires \valid(result) && \valid(damage_distribution);
+    requires \separated(result, damage_distribution, weapon, plan);
+    assigns *result, *damage_distribution;
+*/
 static bool build_conditional_hit_exact_distribution(const struct weapon_profile *weapon,
                                                      const struct attack_plan *plan,
                                                      bool automatic_wound,
@@ -595,6 +717,10 @@ static bool build_conditional_hit_exact_distribution(const struct weapon_profile
                                                   result);
 }
 
+/*@ requires \valid_read(weapon) && \valid_read(plan);
+    requires \valid(workspace) && \valid(result);
+    assigns *workspace, *result;
+*/
 static bool build_single_attack_probability_distribution(const struct weapon_profile *weapon,
                                                          const struct attack_plan *plan,
                                                          struct calculator_workspace *workspace,
@@ -699,6 +825,10 @@ static bool build_single_attack_probability_distribution(const struct weapon_pro
                                                  total_weight, result);
 }
 
+/*@ requires \valid_read(weapon) && \valid_read(plan);
+    requires \valid(workspace) && \valid(result);
+    assigns *workspace, *result;
+*/
 static bool build_single_attack_expected_damage(const struct weapon_profile *weapon,
                                                 const struct attack_plan *plan,
                                                 struct calculator_workspace *workspace,
@@ -768,6 +898,9 @@ static bool build_single_attack_expected_damage(const struct weapon_profile *wea
     return fraction_add(weighted_normal, weighted_critical, result);
 }
 
+/*@ requires \valid_read(source) && \valid(workspace) && \valid(result);
+    assigns *workspace, *result;
+*/
 static bool apply_feel_no_pain(const struct probability_distribution *source,
                                uint8_t feel_no_pain_on, struct calculator_workspace *workspace,
                                struct probability_distribution *result) {
@@ -858,6 +991,9 @@ static bool apply_feel_no_pain(const struct probability_distribution *source,
                                                  total_weight, result);
 }
 
+/*@ requires \valid(plan) && \valid_read(weapon) && \valid_read(target) && \valid_read(payload);
+    assigns *plan;
+*/
 static bool compile_add_flags(struct attack_plan *plan, const struct weapon_profile *weapon,
                               const struct target_profile *target,
                               const union rule_payload *payload) {
@@ -872,6 +1008,9 @@ static bool compile_add_flags(struct attack_plan *plan, const struct weapon_prof
     return true;
 }
 
+/*@ requires \valid(plan) && \valid_read(weapon) && \valid_read(target) && \valid_read(payload);
+    assigns *plan;
+*/
 static bool compile_set_wounds_on(struct attack_plan *plan, const struct weapon_profile *weapon,
                                   const struct target_profile *target,
                                   const union rule_payload *payload) {
@@ -886,6 +1025,9 @@ static bool compile_set_wounds_on(struct attack_plan *plan, const struct weapon_
     return true;
 }
 
+/*@ requires \valid(plan) && \valid_read(weapon) && \valid_read(target) && \valid_read(payload);
+    assigns *plan;
+*/
 static bool compile_set_critical_wounds_on(struct attack_plan *plan,
                                            const struct weapon_profile *weapon,
                                            const struct target_profile *target,
@@ -901,6 +1043,9 @@ static bool compile_set_critical_wounds_on(struct attack_plan *plan,
     return true;
 }
 
+/*@ requires \valid(plan) && \valid_read(weapon) && \valid_read(target) && \valid_read(payload);
+    assigns *plan;
+*/
 static bool compile_or_hit_reroll_mask(struct attack_plan *plan,
                                        const struct weapon_profile *weapon,
                                        const struct target_profile *target,
@@ -916,6 +1061,9 @@ static bool compile_or_hit_reroll_mask(struct attack_plan *plan,
     return true;
 }
 
+/*@ requires \valid(plan) && \valid_read(weapon) && \valid_read(target) && \valid_read(payload);
+    assigns *plan;
+*/
 static bool compile_or_wound_reroll_mask(struct attack_plan *plan,
                                          const struct weapon_profile *weapon,
                                          const struct target_profile *target,
@@ -931,6 +1079,9 @@ static bool compile_or_wound_reroll_mask(struct attack_plan *plan,
     return true;
 }
 
+/*@ requires \valid(plan) && \valid_read(weapon) && \valid_read(target) && \valid_read(payload);
+    assigns *plan;
+*/
 static bool compile_set_sustained_hits(struct attack_plan *plan,
                                        const struct weapon_profile *weapon,
                                        const struct target_profile *target,
@@ -946,6 +1097,9 @@ static bool compile_set_sustained_hits(struct attack_plan *plan,
     return true;
 }
 
+/*@ requires \valid(plan) && \valid_read(weapon) && \valid_read(target) && \valid_read(payload);
+    assigns *plan;
+*/
 static bool compile_wound_bonus(struct attack_plan *plan, const struct weapon_profile *weapon,
                                 const struct target_profile *target,
                                 const union rule_payload *payload) {
@@ -964,31 +1118,26 @@ static bool compile_wound_bonus(struct attack_plan *plan, const struct weapon_pr
     return true;
 }
 
+/*@ requires \valid(plan) && \valid_read(weapon) && \valid_read(target) && \valid_read(payload);
+    assigns *plan;
+*/
 static bool compile_cover(struct attack_plan *plan, const struct weapon_profile *weapon,
                           const struct target_profile *target, const union rule_payload *payload) {
-    uint32_t armour_save = 0;
-    uint32_t best_save = 0;
-
     (void)payload;
 
     if (plan == NULL || weapon == NULL || target == NULL) {
         return false;
     }
 
-    armour_save = (uint32_t)target->save + weapon->ap;
-    if (!(weapon->ap == 0u && target->save <= 3u) && armour_save > 2u) {
-        armour_save--;
-    }
-
-    best_save = armour_save;
-    if (target->invulnerable_save != 0u && target->invulnerable_save < best_save) {
-        best_save = target->invulnerable_save;
-    }
-    plan->saves_on = best_save > 7u ? 7u : (uint8_t)best_save;
+    plan->saves_on =
+        saves_on_with_cover(target->save, target->invulnerable_save, weapon->ap);
     return true;
 }
 
 uint64_t greatest_common_divisor(uint64_t a, uint64_t b) {
+    /*@ loop assigns a, b;
+        loop variant b;
+    */
     while (b != 0) {
         uint64_t remainder = a % b;
         a = b;
@@ -1103,6 +1252,10 @@ bool distribution_is_valid(const struct distribution *distribution) {
     }
 
     outcome = 0;
+    /*@ loop invariant 0 <= outcome && outcome <= MAX_DISTRIBUTION_RESULT + 1;
+        loop assigns outcome, sum, first_nonzero, last_nonzero, found;
+        loop variant MAX_DISTRIBUTION_RESULT + 1 - outcome;
+    */
     while (outcome <= MAX_DISTRIBUTION_RESULT) {
         uint64_t ways = distribution->ways[outcome];
 
@@ -1173,6 +1326,11 @@ bool distribution_reduce_weights(struct distribution *distribution) {
     }
 
     outcome = distribution->minimum;
+    /*@ loop invariant distribution->minimum <= outcome &&
+                       outcome <= distribution->maximum + 1;
+        loop assigns outcome, divisor;
+        loop variant distribution->maximum + 1 - outcome;
+    */
     while (outcome <= distribution->maximum) {
         if (distribution->ways[outcome] != 0) {
             divisor = greatest_common_divisor(divisor, distribution->ways[outcome]);
@@ -1189,6 +1347,11 @@ bool distribution_reduce_weights(struct distribution *distribution) {
     }
 
     outcome = distribution->minimum;
+    /*@ loop invariant distribution->minimum <= outcome &&
+                       outcome <= distribution->maximum + 1;
+        loop assigns outcome, distribution->ways[distribution->minimum .. distribution->maximum];
+        loop variant distribution->maximum + 1 - outcome;
+    */
     while (outcome <= distribution->maximum) {
         distribution->ways[outcome] /= divisor;
         outcome++;
@@ -1215,6 +1378,10 @@ bool distribution_from_die(uint16_t sides, struct distribution *result) {
 
     distribution_clear(result);
 
+    /*@ loop invariant 1 <= face && face <= sides + 1;
+        loop assigns face, *result;
+        loop variant sides + 1 - face;
+    */
     while (face <= sides) {
         if (!distribution_add_outcome(result, face, 1)) {
             distribution_clear(result);
@@ -1240,6 +1407,10 @@ bool distribution_from_dice_value(struct dice_value dice, struct distribution *r
         return false;
     }
 
+    /*@ loop invariant 0 <= die && die <= dice.dice_count;
+        loop assigns die, scratch, *result, current, next;
+        loop variant dice.dice_count - die;
+    */
     while (die < dice.dice_count) {
         struct distribution *swap = NULL;
 
@@ -1274,10 +1445,20 @@ bool distribution_convolve(const struct distribution *left, const struct distrib
     distribution_clear(&temporary);
 
     left_outcome = left->minimum;
+    /*@ loop invariant left->minimum <= left_outcome &&
+                       left_outcome <= left->maximum + 1;
+        loop assigns left_outcome, temporary;
+        loop variant left->maximum + 1 - left_outcome;
+    */
     while (left_outcome <= left->maximum) {
         uint32_t right_outcome = right->minimum;
 
         if (left->ways[left_outcome] != 0) {
+            /*@ loop invariant right->minimum <= right_outcome &&
+                               right_outcome <= right->maximum + 1;
+                loop assigns right_outcome, temporary;
+                loop variant right->maximum + 1 - right_outcome;
+            */
             while (right_outcome <= right->maximum) {
                 if (right->ways[right_outcome] != 0) {
                     uint64_t combined_ways = 0;
@@ -1318,6 +1499,10 @@ bool distribution_shift(const struct distribution *source, uint32_t amount,
     distribution_clear(&temporary);
     outcome = source->minimum;
 
+    /*@ loop invariant source->minimum <= outcome && outcome <= source->maximum + 1;
+        loop assigns outcome, temporary;
+        loop variant source->maximum + 1 - outcome;
+    */
     while (outcome <= source->maximum) {
         if (source->ways[outcome] != 0 &&
             !distribution_add_outcome(&temporary, outcome + amount, source->ways[outcome])) {
@@ -1646,6 +1831,10 @@ bool attack_plan_build(const struct weapon_profile *weapon, const struct target_
     plan->damage_floor = 1;
 
     rule_index = 0;
+    /*@ loop invariant 0 <= rule_index && rule_index <= weapon->rules.count;
+        loop assigns rule_index, *plan;
+        loop variant weapon->rules.count - rule_index;
+    */
     while (rule_index < weapon->rules.count) {
         const struct rule_entry *entry = &weapon->rules.entries[rule_index];
 
@@ -1656,6 +1845,10 @@ bool attack_plan_build(const struct weapon_profile *weapon, const struct target_
     }
 
     rule_index = 0;
+    /*@ loop invariant 0 <= rule_index && rule_index <= target->rules.count;
+        loop assigns rule_index, *plan;
+        loop variant target->rules.count - rule_index;
+    */
     while (rule_index < target->rules.count) {
         const struct rule_entry *entry = &target->rules.entries[rule_index];
 
@@ -1716,6 +1909,22 @@ uint8_t saves_on(uint8_t save, uint8_t invulnerable_save, uint16_t ap) {
     }
 
     return (uint8_t)best_save;
+}
+
+uint8_t saves_on_with_cover(uint8_t save, uint8_t invulnerable_save, uint16_t ap) {
+    uint32_t armour_save = (uint32_t)save + ap;
+    uint32_t best_save = 0;
+
+    if (!(ap == 0u && save <= 3u) && armour_save > 2u) {
+        armour_save--;
+    }
+
+    best_save = armour_save;
+    if (invulnerable_save != 0u && invulnerable_save < best_save) {
+        best_save = invulnerable_save;
+    }
+
+    return best_save > 7u ? 7u : (uint8_t)best_save;
 }
 
 bool calculate_attack_damage_distribution(const struct weapon_profile *weapon,

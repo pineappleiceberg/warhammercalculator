@@ -184,6 +184,33 @@ make test
 The included tests cover exact dice distributions, quartiles, ordinary attack
 resolution, random attacks/damage, Feel No Pain, and several compiled rules.
 
+## Formal verification
+
+The C API and internal helpers have ACSL contracts. Frama-C 31 with Alt-Ergo
+proves the save/AP/cover model and its relational properties, Eva checks the
+formal runtime harness for undefined behavior, and E-ACSL executes instrumented
+contracts across bounded save profiles.
+
+With Frama-C, Alt-Ergo, E-ACSL, and `jq` available:
+
+```sh
+bash scripts/run_formal.sh all
+```
+
+Individual CMake targets are also available when the tools are found:
+
+```sh
+cmake --build build --target formal-parse
+cmake --build build --target formal-wp
+cmake --build build --target formal-eva
+cmake --build build --target formal-e-acsl
+```
+
+The web test suite exhaustively compares the JavaScript and WebAssembly wound,
+armour, AP, invulnerable-save, and cover thresholds over their supported small
+domains. It also checks expected-damage monotonicity for AP, armour, Feel No
+Pain, invulnerable saves, and cover.
+
 ## WebAssembly build
 
 Activate an Emscripten SDK environment, then run:

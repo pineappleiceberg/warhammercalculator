@@ -34,6 +34,22 @@ struct whc_web_summary {
     uint32_t mean_denominator_high;
 };
 
+/*@ requires \valid(summary);
+    requires weapon_count > 0;
+    requires 2 <= hits_on && hits_on <= 6;
+    requires strength > 0 && toughness > 0;
+    requires 2 <= save && save <= 7;
+    requires invulnerable_save == 0 || (2 <= invulnerable_save && invulnerable_save <= 6);
+    requires feel_no_pain == 0 || (2 <= feel_no_pain && feel_no_pain <= 6);
+    requires critical_hits_on == 0 || (2 <= critical_hits_on && critical_hits_on <= 6);
+    requires critical_wounds_on == 0 || (2 <= critical_wounds_on && critical_wounds_on <= 6);
+    requires sustained_hits <= 6;
+    ensures \result ==> summary->minimum <= summary->first_quartile;
+    ensures \result ==> summary->first_quartile <= summary->median;
+    ensures \result ==> summary->median <= summary->third_quartile;
+    ensures \result ==> summary->third_quartile <= summary->maximum;
+    ensures \result ==> summary->mean_denominator_low != 0 || summary->mean_denominator_high != 0;
+*/
 bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_sides,
                            uint16_t attack_modifier, uint16_t weapon_count, uint8_t hits_on,
                            uint16_t strength, uint16_t ap, uint16_t damage_dice_count,

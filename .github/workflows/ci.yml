@@ -9,6 +9,19 @@ permissions:
   contents: read
 
 jobs:
+  formal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: 4.14.x
+          dune-cache: true
+      - name: Install formal verification tools
+        run: opam install frama-c.31.0 alt-ergo.2.6.2
+      - name: Parse, prove, analyze, and instrument contracts
+        run: opam exec -- bash scripts/run_formal.sh all
+
   native:
     runs-on: ubuntu-latest
     steps:

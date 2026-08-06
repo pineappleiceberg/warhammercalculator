@@ -13,5 +13,13 @@ export default defineConfig({
   build: {
     outDir: path.join(webRoot, "dist-pages"),
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: path.join(webRoot, "static-site/index.html"),
+        "unit-vs-unit": path.join(webRoot, "static-site/unit-vs-unit/index.html"),
+        lists: path.join(webRoot, "static-site/lists/index.html"),
+        play: path.join(webRoot, "static-site/play/index.html"),
+      },
+    },
   },
 });

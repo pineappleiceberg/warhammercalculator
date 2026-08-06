@@ -10,6 +10,8 @@ import {
   simulateAttack,
   type CombatProfile,
 } from "../lib/combat";
+import { createArmyList, deleteArmyList, listArmyLists, updateArmyList } from "../db/army-lists";
+import type { ArmyListInput } from "../lib/army-list";
 
 interface Env {
   ASSETS: Fetcher;
@@ -50,7 +52,7 @@ type CalculatorExports = {
 
 const API_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
   "Cache-Control": "no-store",
   "Content-Type": "application/json; charset=utf-8",
@@ -194,6 +196,35 @@ async function requestProfile(request: Request) {
   return normalizeProfile(candidate);
 }
 
+async function requestArmyList(request: Request): Promise<ArmyListInput> {
+  const body = (await request.json()) as Partial<ArmyListInput> | null;
+  if (!body || typeof body !== "object") throw new Error("Request body must be a JSON object");
+  if (typeof body.name !== "string" || !body.name.trim() || body.name.length > 100) {
+    throw new Error("name must contain 1 to 100 characters");
+  }
+  if (typeof body.factionId !== "string" || !body.factionId) {
+    throw new Error("factionId is required");
+  }
+  if (!Array.isArray(body.units) || body.units.length > 100) {
+    throw new Error("units must be an array containing at most 100 entries");
+  }
+  for (const unit of body.units) {
+    if (
+      !unit ||
+      typeof unit.id !== "string" ||
+      typeof unit.unitId !== "string" ||
+      typeof unit.name !== "string" ||
+      !Number.isInteger(unit.modelCount) ||
+      unit.modelCount < 1 ||
+      unit.modelCount > 1000 ||
+      !Array.isArray(unit.weapons)
+    ) {
+      throw new Error("Each unit must have an id, unitId, name, model count, and weapons");
+    }
+  }
+  return { name: body.name.trim(), factionId: body.factionId, units: body.units };
+}
+
 async function handleApi(request: Request, env: Env) {
   const url = new URL(request.url);
   if (request.method === "OPTIONS")
@@ -212,6 +243,7 @@ async function handleApi(request: Request, env: Env) {
           profiles: "GET /api/v1/profiles",
           calculate: "POST /api/v1/calculate",
           roll: "POST /api/v1/roll?details={true|false}",
+          lists: "GET|POST /api/v1/lists; PUT|DELETE /api/v1/lists/{id}",
         },
         request: { profile: DEFAULT_PROFILE },
       });
@@ -280,6 +312,25 @@ async function handleApi(request: Request, env: Env) {
       const rolled = simulateAttack(profile);
       if (url.searchParams.get("details") === "false") rolled.details = [];
       return json({ data: rolled, profile, apiVersion: "v1" });
+    }
+
+    if (url.pathname === "/api/v1/lists" && request.method === "GET") {
+      return json({ data: await listArmyLists(env.DB), apiVersion: "v1" });
+    }
+
+    if (url.pathname === "/api/v1/lists" && request.method === "POST") {
+      return json({ data: await createArmyList(env.DB, await requestArmyList(request)) }, 201);
+    }
+
+    const listMatch = /^\/api\/v1\/lists\/([0-9a-f-]+)$/i.exec(url.pathname);
+    if (listMatch && request.method === "PUT") {
+      const updated = await updateArmyList(env.DB, listMatch[1], await requestArmyList(request));
+      return updated ? json({ data: updated }) : apiError("Army list not found", 404);
+    }
+    if (listMatch && request.method === "DELETE") {
+      return (await deleteArmyList(env.DB, listMatch[1]))
+        ? json({ deleted: true })
+        : apiError("Army list not found", 404);
     }
 
     return apiError("API endpoint not found", 404);

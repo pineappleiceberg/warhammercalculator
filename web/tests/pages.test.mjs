@@ -12,4 +12,9 @@ test("builds a GitHub Pages application with its calculator assets", async () =>
   await access(new URL("profile-data.json", output));
   await access(new URL("wasm/calculator.js", output));
   await access(new URL("wasm/calculator.wasm", output));
+  await Promise.all([
+    access(new URL("unit-vs-unit/index.html", output)),
+    access(new URL("lists/index.html", output)),
+    access(new URL("play/index.html", output)),
+  ]);
 });

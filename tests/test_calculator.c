@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 
+/*@ terminates \true; */
 static void test_dice(void) {
     struct distribution d;
     struct distribution_summary s;
@@ -26,6 +27,12 @@ static void test_dice(void) {
     assert(s.mean.denominator == 1);
 }
 
+/*@ requires \valid(weapon) && \valid(target);
+    requires \separated(weapon, target);
+    assigns *weapon, *target;
+    ensures weapon->hits_on == 3 && weapon->strength == 4;
+    ensures target->toughness == 4 && target->save == 3;
+*/
 static void initialize_profiles(struct weapon_profile *weapon, struct target_profile *target) {
     memset(weapon, 0, sizeof(*weapon));
     memset(target, 0, sizeof(*target));
@@ -47,6 +54,7 @@ static void initialize_profiles(struct weapon_profile *weapon, struct target_pro
     target->reduction = 0;
 }
 
+/*@ terminates \true; */
 static void test_basic_attack(void) {
     struct weapon_profile weapon;
     struct target_profile target;
@@ -76,6 +84,7 @@ static void test_basic_attack(void) {
     }
 }
 
+/*@ terminates \true; */
 static void test_rules(void) {
     struct weapon_profile weapon;
     struct target_profile target;
@@ -95,6 +104,7 @@ static void test_rules(void) {
            s.mean.denominator);
 }
 
+/*@ terminates \true; */
 static void test_random_attacks_damage_and_fnp(void) {
     struct weapon_profile weapon;
     struct target_profile target;
@@ -114,6 +124,7 @@ static void test_random_attacks_damage_and_fnp(void) {
            s.mean.denominator);
 }
 
+/*@ terminates \true; */
 static void test_web_api(void) {
     struct whc_web_summary summary;
 
@@ -125,6 +136,7 @@ static void test_web_api(void) {
     assert(summary.mean_denominator_high == 0);
 }
 
+/*@ terminates \true; */
 static void test_sustained_hits_torrent_and_lance(void) {
     struct weapon_profile weapon;
     struct target_profile target;
@@ -176,6 +188,7 @@ static void test_sustained_hits_torrent_and_lance(void) {
     assert(mean.denominator == 3);
 }
 
+/*@ terminates \true; */
 static void test_web_api_context_rules(void) {
     struct whc_web_summary summary;
     uint32_t combined =
@@ -193,6 +206,19 @@ static void test_web_api_context_rules(void) {
     assert(summary.mean_denominator_low == 18);
 }
 
+/*@ terminates \true; */
+static void test_save_thresholds(void) {
+    assert(saves_on(2, 0, 4) == 6);
+    assert(saves_on_with_cover(2, 0, 4) == 5);
+    assert(saves_on(2, 4, 4) == 4);
+    assert(saves_on_with_cover(3, 0, 0) == 3);
+    assert(saves_on_with_cover(4, 0, 0) == 3);
+    assert(saves_on(6, 0, 2) == 7);
+}
+
+/*@ terminates \true;
+    ensures \result == 0;
+*/
 int main(void) {
     assert(greatest_common_divisor(48, 18) == 6);
     test_dice();
@@ -202,6 +228,7 @@ int main(void) {
     test_web_api();
     test_sustained_hits_torrent_and_lance();
     test_web_api_context_rules();
+    test_save_thresholds();
     puts("all tests passed");
     return 0;
 }
