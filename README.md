@@ -197,13 +197,14 @@ make test
 
 Large exact volleys have deterministic native and WebAssembly benchmarks. They
 exercise 80 allocated attacks, the supported maximum of 32 ordered weapons
-against 16 mixed target segments, and a rules-sensitive Devastating Wounds-last
-volley. Enable them with
+against 16 mixed target segments, a rules-sensitive Devastating Wounds-last
+volley, and a prefix-bound regression. Enable them with
 `-DWHC_BUILD_BENCHMARKS=ON` or run `make benchmark`. The executable emits JSON;
 CI stores both runtime reports and applies deliberately hardware-tolerant
-regression limits. Profiling those cases removed repeated target-layout scans
-from the innermost allocation loop, cutting the instrumented two-case workload
-from 1.04 seconds to 0.65 seconds without changing its output checksum.
+regression limits. Every case records its conservative bound, observed peak
+sparse-state count, and hard limit. The four-case corpus covers dense attacks,
+the maximum mixed volley shape, deferred Devastating Wounds, and a weapon-order
+case that proves the prefix-aware bound avoids a former false warning.
 
 The included tests cover exact dice distributions, quartiles, ordinary attack
 resolution, random attacks/damage, Feel No Pain, and several compiled rules.
@@ -294,14 +295,16 @@ continue to use the system cryptographic random source. The equivalent API is
 and optional `initialWoundsLost` fields.
 Before starting an exact ordered volley, Unit vs Unit asks the C/WebAssembly
 engine for a conservative state upper bound. Ordinary volleys use the standard
-damage distribution. Volleys that defer Devastating Wounds compare their bound
-with the 2,047-state sparse budget; a bound above that budget is a warning, not
-a rejection, because unreachable combinations can make the real state set much
-smaller. The user can try exact calculation or run the existing reproducible
-seeded simulation. API clients can make the same preflight request with
-`POST /api/v1/volley/complexity`; an exact calculation that actually exhausts
-the budget returns HTTP 422 with code `EXACT_STATE_LIMIT` and names the
-simulation endpoint.
+damage distribution. Volleys that defer Devastating Wounds use a prefix-aware
+bound: only packet dimensions already reachable at each weapon stage are
+multiplied together. They compare that bound with the 2,047-state sparse budget;
+a bound above that budget is a warning, not a rejection, because unreachable
+combinations can make the real state set much smaller. Successful exact results
+also report the observed peak sparse-state count. The user can try exact
+calculation or run the existing reproducible seeded simulation. API clients can
+make the same preflight request with `POST /api/v1/volley/complexity`; an exact
+calculation that actually exhausts the budget returns HTTP 422 with code
+`EXACT_STATE_LIMIT` and names the simulation endpoint.
 Model vs Model, Unit vs Unit, and Play Mode expose conditional unit abilities imported with
 their published source text. No condition is silently enabled in Unit vs Unit.
 Saved lists can mark battle- or turn-long conditions as Play Mode defaults, and

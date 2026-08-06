@@ -32,8 +32,8 @@ bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
                                         struct exact_complexity *result) {
     uint32_t capacity = target_unit_capacity(layout);
     uint32_t maximum_attack_events = 0u;
-    uint32_t maximum_stage_dimension = 1u;
-    uint32_t deferred_packet_dimensions = 1u;
+    uint32_t prefix_deferred_dimensions = 1u;
+    uint32_t estimated_state_upper_bound = 1u;
     uint16_t weapon_index = 0u;
     bool uses_deferred_states = false;
 
@@ -84,13 +84,15 @@ bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
         stage_dimension = uint32_saturating_product(uint32_saturating_add(1u, attack_maximum),
                                                     uint32_saturating_add(1u, hit_events));
         stage_dimension = uint32_saturating_product(stage_dimension, 2u);
-        if (stage_dimension > maximum_stage_dimension) {
-            maximum_stage_dimension = stage_dimension;
-        }
         if (weapon_defers) {
             uses_deferred_states = true;
-            deferred_packet_dimensions = uint32_saturating_product(
-                deferred_packet_dimensions, uint32_saturating_add(1u, hit_events));
+            prefix_deferred_dimensions = uint32_saturating_product(
+                prefix_deferred_dimensions, uint32_saturating_add(1u, hit_events));
+        }
+        stage_dimension = uint32_saturating_product(stage_dimension,
+                                                    prefix_deferred_dimensions);
+        if (stage_dimension > estimated_state_upper_bound) {
+            estimated_state_upper_bound = stage_dimension;
         }
         weapon_index++;
     }
@@ -101,8 +103,7 @@ bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
     result->uses_deferred_states = uses_deferred_states;
     if (uses_deferred_states) {
         result->estimated_state_upper_bound = uint32_saturating_product(
-            uint32_saturating_add(1u, capacity),
-            uint32_saturating_product(maximum_stage_dimension, deferred_packet_dimensions));
+            uint32_saturating_add(1u, capacity), estimated_state_upper_bound);
     } else {
         result->estimated_state_upper_bound = uint32_saturating_add(1u, capacity);
     }

@@ -598,7 +598,7 @@ function orderedVolley(weapons, targets, initialWoundsLost = 0) {
   const targetFields = 7;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
-  const summaryPointer = calculator._malloc(9 * 4);
+  const summaryPointer = calculator._malloc(10 * 4);
   const meansPointer = calculator._malloc(weapons.length * 4 * 4);
   const write = (pointer, values) =>
     values.forEach((value, index) => calculator.setValue(pointer + index * 4, value, "i32"));
@@ -625,6 +625,7 @@ function orderedVolley(weapons, targets, initialWoundsLost = 0) {
       minimum: calculator.getValue(summaryPointer, "i32") >>> 0,
       maximum: calculator.getValue(summaryPointer + 16, "i32") >>> 0,
       mean: fraction(summaryPointer + 20),
+      peakSparseStates: calculator.getValue(summaryPointer + 36, "i32") >>> 0,
       cumulative: weapons.map((_, index) => fraction(meansPointer + index * 16)),
     };
   } finally {
@@ -679,6 +680,17 @@ test("C/Wasm reports conservative deferred-state complexity before exact volleys
   const high = orderedVolleyComplexity([devastating, ordinary], [[1, 7, 0, 0, 3, 0, 2]]);
   assert.ok(high[0] > high[1]);
   assert.equal(high[5], 0);
+
+  const prefixOrdinary = [...ordinary];
+  prefixOrdinary[2] = 8;
+  prefixOrdinary[9] = 1;
+  devastating[2] = 1;
+  const tightened = orderedVolleyComplexity([prefixOrdinary, devastating], [[1, 7, 0, 0, 3, 0, 2]]);
+  assert.deepEqual(tightened, [1134, 2047, 9, 6, 1, 1]);
+  assert.ok(tightened[0] < 2268);
+  const exact = orderedVolley([prefixOrdinary, devastating], [[1, 7, 0, 0, 3, 0, 2]]);
+  assert.equal(exact.peakSparseStates, 13);
+  assert.ok(exact.peakSparseStates <= tightened[0]);
 });
 
 function variableRuleMean({ flags = 0, sustained = [0, 0, 0], rapid = [0, 0, 0] }) {

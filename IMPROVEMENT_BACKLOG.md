@@ -16,13 +16,21 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Record the observed peak sparse-state count from exact Devastating Wounds
-   volleys and use benchmark evidence to tighten the conservative preflight
-   without ever hiding a valid exact option.
-2. Extend conservative conditional-ability extraction to direct attacks,
+1. Extend conservative conditional-ability extraction to direct attacks,
    Strength, Damage, defensive save, Feel No Pain, and damage-reduction changes.
+2. Add a source-backed rules eligibility layer for target keywords and phase or
+   range conditions that currently require manual interpretation.
 
 ## Completed cycles
+
+- 2026-08-06: Instrumented the exact deferred-damage evaluator to record its
+  true peak sparse-state count and exposed that evidence through native,
+  WebAssembly, API, and Unit vs Unit results. Replaced the former all-weapons
+  Cartesian preflight with a safe prefix-reachable bound. The benchmark case
+  that formerly warned at 2,268 states is now proven within a 1,134-state bound
+  and observes only 13 states, without changing the 2,047-state hard limit.
+  Generated sanitizer inputs assert every successful observed peak remains
+  below both the bound and engine limit.
 
 - 2026-08-06: Extended source-backed conditional combat presets to weapon
   keyword grants, variable Sustained Hits and Rapid Fire, AP changes, and

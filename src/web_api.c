@@ -412,6 +412,7 @@ bool whc_calculate_ordered_volley_summary(const struct whc_web_weapon_input *wea
     summary->mean_numerator_high = (uint32_t)(calculated.mean.numerator >> 32u);
     summary->mean_denominator_low = (uint32_t)calculated.mean.denominator;
     summary->mean_denominator_high = (uint32_t)(calculated.mean.denominator >> 32u);
+    summary->peak_sparse_states = workspace.peak_sparse_states;
     weapon_index = 0u;
     while (weapon_index < weapon_count) {
         cumulative_means[weapon_index].numerator_low = (uint32_t)means[weapon_index].numerator;

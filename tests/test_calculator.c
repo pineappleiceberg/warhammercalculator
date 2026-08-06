@@ -623,6 +623,7 @@ static void test_ordered_mixed_profile_volley(void) {
 static void test_devastating_wounds_resolve_after_ordinary_attacks(void) {
     struct weapon_profile weapons[2];
     struct weapon_profile reversed[2];
+    struct weapon_profile prefix_tightened[2];
     struct target_profile targets[2];
     struct target_unit_layout layout = {
         .wounds_per_model = {3u},
@@ -698,6 +699,22 @@ static void test_devastating_wounds_resolve_after_ordinary_attacks(void) {
     assert(probability_distribution_mean(&ordered, &mean));
     assert((double)mean.numerator / (double)mean.denominator > 875.0 / 216.0 - 1e-8);
     assert((double)mean.numerator / (double)mean.denominator < 875.0 / 216.0 + 1e-8);
+
+    prefix_tightened[0] = weapons[1];
+    prefix_tightened[0].attacks.modifier = 8u;
+    prefix_tightened[0].damage.modifier = 1u;
+    prefix_tightened[1] = weapons[1];
+    prefix_tightened[1].damage.modifier = 2u;
+    assert(rule_add_devastating_wounds(&prefix_tightened[1].rules));
+    assert(rule_add_critical_wounds_on(&prefix_tightened[1].rules, 2u));
+    assert(estimate_ordered_volley_complexity(prefix_tightened, targets, 2u, &layout,
+                                              &complexity));
+    assert(complexity.estimated_state_upper_bound == 1134u);
+    assert(complexity.exact_guaranteed_by_bound);
+    assert(calculate_ordered_volley_applied_damage_distribution(
+        prefix_tightened, targets, 2u, &layout, &workspace, &ordered, means));
+    assert(workspace.peak_sparse_states == 13u);
+    assert(workspace.peak_sparse_states <= complexity.estimated_state_upper_bound);
 }
 
 /*@ terminates \true;

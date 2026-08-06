@@ -115,12 +115,15 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     struct whc_web_target_input targets[3];
     struct whc_web_summary summary;
     struct whc_web_applied_summary volley_summary;
+    struct whc_web_exact_complexity complexity;
     struct whc_web_mean cumulative[3];
     struct dice_value dice;
     uint16_t weapon_count = (uint16_t)(1u + next_byte(&input) % 3u);
     uint16_t target_count = (uint16_t)(1u + next_byte(&input) % 3u);
     uint16_t index = 0u;
     bool valid = false;
+    bool estimated = false;
+    uint16_t initial_wounds_lost = 0u;
 
     while (index < weapon_count) {
         generate_weapon(&input, &weapons[index]);
@@ -152,15 +155,20 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     }
 
     memset(cumulative, 0, sizeof(cumulative));
+    initial_wounds_lost = (uint16_t)(next_byte(&input) % targets[0].wounds);
+    estimated = whc_estimate_ordered_volley_complexity(
+        weapons, weapon_count, targets, target_count, initial_wounds_lost, &complexity);
     valid = whc_calculate_ordered_volley_summary(weapons, weapon_count, targets, target_count,
-                                                 (uint16_t)(next_byte(&input) % targets[0].wounds),
-                                                 &volley_summary, cumulative);
+                                                 initial_wounds_lost, &volley_summary, cumulative);
     if (valid) {
+        assert(estimated);
         assert(volley_summary.minimum <= volley_summary.first_quartile);
         assert(volley_summary.first_quartile <= volley_summary.median);
         assert(volley_summary.median <= volley_summary.third_quartile);
         assert(volley_summary.third_quartile <= volley_summary.maximum);
         assert(volley_summary.maximum <= MAX_DISTRIBUTION_RESULT);
+        assert(volley_summary.peak_sparse_states <= complexity.estimated_state_upper_bound);
+        assert(volley_summary.peak_sparse_states <= complexity.state_limit);
         index = 0u;
         while (index < weapon_count) {
             assert(cumulative[index].denominator_low != 0u ||

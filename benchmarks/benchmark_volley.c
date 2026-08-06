@@ -91,12 +91,36 @@ static void devastating_case(struct benchmark_case *benchmark) {
     };
 }
 
+static void prefix_tightened_case(struct benchmark_case *benchmark) {
+    memset(benchmark, 0, sizeof(*benchmark));
+    benchmark->name = "prefix_tightened_devastating";
+    benchmark->weapon_count = 2u;
+    benchmark->target_count = 1u;
+    set_weapon(&benchmark->weapons[0], 8u, 1u, 1u, WHC_RULE_TORRENT);
+    set_weapon(&benchmark->weapons[1], 1u, 1u, 2u,
+               WHC_RULE_TORRENT | WHC_RULE_DEVASTATING_WOUNDS);
+    benchmark->weapons[1].critical_wounds_on = 2u;
+    benchmark->targets[0] = (struct whc_web_target_input){
+        .toughness = 1u,
+        .save = 7u,
+        .wounds = 3u,
+        .model_count = 2u,
+    };
+}
+
 static bool run_case(const struct benchmark_case *benchmark, uint32_t iterations, double maximum_ms,
-                     double *elapsed_ms, uint64_t *checksum) {
+                     double *elapsed_ms, uint64_t *checksum, uint32_t *peak_sparse_states,
+                     struct whc_web_exact_complexity *complexity) {
     struct whc_web_applied_summary summary;
     struct whc_web_mean means[MAX_VOLLEY_WEAPONS];
     clock_t start = clock();
     uint32_t iteration = 0u;
+
+    if (!whc_estimate_ordered_volley_complexity(
+            benchmark->weapons, benchmark->weapon_count, benchmark->targets,
+            benchmark->target_count, 0u, complexity)) {
+        return false;
+    }
 
     while (iteration < iterations) {
         if (!whc_calculate_ordered_volley_summary(benchmark->weapons, benchmark->weapon_count,
@@ -108,6 +132,9 @@ static bool run_case(const struct benchmark_case *benchmark, uint32_t iterations
         *checksum += summary.mean_numerator_high;
         *checksum += summary.mean_denominator_low;
         *checksum += summary.maximum;
+        if (summary.peak_sparse_states > *peak_sparse_states) {
+            *peak_sparse_states = summary.peak_sparse_states;
+        }
         iteration++;
     }
     *elapsed_ms = milliseconds(start, clock());
@@ -115,7 +142,7 @@ static bool run_case(const struct benchmark_case *benchmark, uint32_t iterations
 }
 
 int main(int argc, char **argv) {
-    struct benchmark_case cases[3];
+    struct benchmark_case cases[4];
     uint32_t iterations = 5u;
     double maximum_ms = 10000.0;
     uint16_t index = 0u;
@@ -139,21 +166,27 @@ int main(int argc, char **argv) {
     dense_case(&cases[0]);
     mixed_case(&cases[1]);
     devastating_case(&cases[2]);
-    printf("{\"schemaVersion\":1,\"iterations\":%" PRIu32 ",\"cases\":[", iterations);
-    while (index < 3u) {
+    prefix_tightened_case(&cases[3]);
+    printf("{\"schemaVersion\":2,\"iterations\":%" PRIu32 ",\"cases\":[", iterations);
+    while (index < 4u) {
         double elapsed_ms = 0.0;
-        bool passed = run_case(&cases[index], iterations, maximum_ms, &elapsed_ms, &checksum);
+        uint32_t peak_sparse_states = 0u;
+        struct whc_web_exact_complexity complexity = {0};
+        bool passed = run_case(&cases[index], iterations, maximum_ms, &elapsed_ms, &checksum,
+                               &peak_sparse_states, &complexity);
         printf("%s{\"name\":\"%s\",\"totalMs\":%.3f,\"millisecondsPerIteration\":%.3f,"
-               "\"withinLimit\":%s}",
+               "\"withinLimit\":%s,\"estimatedStateUpperBound\":%" PRIu32
+               ",\"observedPeakSparseStates\":%" PRIu32 ",\"stateLimit\":%" PRIu32 "}",
                index == 0u ? "" : ",", cases[index].name, elapsed_ms, elapsed_ms / iterations,
-               passed ? "true" : "false");
+               passed ? "true" : "false", complexity.estimated_state_upper_bound,
+               peak_sparse_states, complexity.state_limit);
         if (!passed) {
             printf("],\"checksum\":%" PRIu64 "}\n", checksum);
             return 1;
         }
         index++;
     }
-    checksum_matches = checksum == UINT64_C(9531144046) * iterations;
+    checksum_matches = checksum == UINT64_C(9998691095) * iterations;
     printf("],\"checksum\":%" PRIu64 ",\"checksumMatches\":%s}\n", checksum,
            checksum_matches ? "true" : "false");
     return checksum_matches ? 0 : 1;

@@ -91,6 +91,7 @@ struct whc_web_applied_summary {
     uint32_t mean_numerator_high;
     uint32_t mean_denominator_low;
     uint32_t mean_denominator_high;
+    uint32_t peak_sparse_states;
 };
 
 struct whc_web_mean {
@@ -153,6 +154,7 @@ bool whc_calculate_summary(
     ensures \result ==> summary->third_quartile <= summary->maximum;
     ensures \result ==> summary->mean_denominator_low != 0 ||
                          summary->mean_denominator_high != 0;
+    ensures \result ==> summary->peak_sparse_states <= MAX_EXACT_DEFERRED_STATES;
 */
 bool whc_calculate_ordered_volley_summary(const struct whc_web_weapon_input *weapons,
                                           uint16_t weapon_count,

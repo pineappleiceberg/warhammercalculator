@@ -46,6 +46,7 @@ struct deferred_state_table {
     uint32_t *slots;
     uint32_t generation;
     uint32_t count;
+    uint32_t peak_count;
 };
 
 /*@ behavior null_result:
@@ -2498,7 +2499,8 @@ static void deferred_state_table_reset(struct deferred_state_table *table) {
 }
 
 /*@ requires \valid(table) && table->entries != \null && \valid_read(state);
-    assigns table->entries[0 .. DEFERRED_STATE_TABLE_CAPACITY - 1], table->count;
+    assigns table->entries[0 .. DEFERRED_STATE_TABLE_CAPACITY - 1], table->count,
+            table->peak_count;
 */
 static bool deferred_state_table_add_weight(struct deferred_state_table *table,
                                             const struct deferred_volley_state *state,
@@ -2522,6 +2524,9 @@ static bool deferred_state_table_add_weight(struct deferred_state_table *table,
             entry->generation = table->generation;
             table->slots[table->count] = slot;
             table->count++;
+            if (table->count > table->peak_count) {
+                table->peak_count = table->count;
+            }
             return true;
         }
         if (memcmp(&entry->state, state, sizeof(*state)) == 0) {
@@ -3343,6 +3348,12 @@ static bool calculate_deferred_ordered_volley_prefix(const struct weapon_profile
     success = deferred_states_to_distribution(current, layout, workspace, result);
 
 cleanup:
+    if (tables[0].peak_count > workspace->peak_sparse_states) {
+        workspace->peak_sparse_states = tables[0].peak_count;
+    }
+    if (tables[1].peak_count > workspace->peak_sparse_states) {
+        workspace->peak_sparse_states = tables[1].peak_count;
+    }
     deferred_state_table_destroy(&tables[0]);
     deferred_state_table_destroy(&tables[1]);
     return success;
@@ -3466,6 +3477,7 @@ bool calculate_ordered_volley_applied_damage_distribution(const struct weapon_pr
                                                 &workspace->probability_e)) {
         return false;
     }
+    workspace->peak_sparse_states = 0u;
 
     weapon_index = 0u;
     while (weapon_index < weapon_count && !has_devastating_wounds) {

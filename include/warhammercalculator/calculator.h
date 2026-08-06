@@ -172,6 +172,7 @@ struct calculator_workspace {
 
     uint64_t convolution_accumulator[MAX_DISTRIBUTION_RESULT + 1u];
     uint64_t mixture_accumulator[MAX_DISTRIBUTION_RESULT + 1u];
+    uint32_t peak_sparse_states;
 };
 
 /*@

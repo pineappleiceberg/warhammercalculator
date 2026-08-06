@@ -572,6 +572,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   ];
   const devastatingLastExact = await requestVolley(devastatingLastProfiles, devastatingLastTargets);
   assert.equal(devastatingLastExact.maximum, 5);
+  assert.equal(devastatingLastExact.peakSparseStates, 4);
   assert.ok(Math.abs(devastatingLastExact.mean - 25 / 6) < 1e-8, devastatingLastExact.mean);
 
   const complexityResponse = await worker.fetch(
@@ -593,7 +594,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.equal(complexity.exactGuaranteedByBound, true);
   assert.equal(complexity.estimatedStateUpperBound, 112);
   assert.equal(complexity.stateLimit, 2047);
-  assert.equal(complexity.estimateKind, "conservative-upper-bound");
+  assert.equal(complexity.estimateKind, "prefix-aware-conservative-upper-bound");
   assert.equal(complexity.fallbackEndpoint, "/api/v1/volley/simulate");
 
   const highComplexityResponse = await worker.fetch(
@@ -611,6 +612,22 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const highComplexity = (await highComplexityResponse.json()).data;
   assert.equal(highComplexity.exactGuaranteedByBound, false);
   assert.ok(highComplexity.estimatedStateUpperBound > highComplexity.stateLimit);
+
+  const tightenedResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/volley/complexity", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        profiles: [{ ...volleyProfile(0, 1), attacks: 8 }, devastatingLastProfiles[0]],
+        targets: devastatingLastTargets,
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  const tightened = (await tightenedResponse.json()).data;
+  assert.equal(tightened.estimatedStateUpperBound, 1134);
+  assert.equal(tightened.exactGuaranteedByBound, true);
 
   const overflowingProfile = {
     ...volleyProfile(4, 0),

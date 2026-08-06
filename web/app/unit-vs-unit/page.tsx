@@ -918,7 +918,7 @@ export default function UnitVsUnit() {
               </strong>
               <small>
                 {complexity.usesDeferredStates
-                  ? `Conservative upper bound ${complexity.estimatedStateUpperBound.toLocaleString()} · engine budget ${complexity.stateLimit.toLocaleString()}`
+                  ? `Prefix-aware upper bound ${complexity.estimatedStateUpperBound.toLocaleString()} · engine budget ${complexity.stateLimit.toLocaleString()}${resultsAreCurrent && volleySummary ? ` · observed peak ${volleySummary.peakSparseStates.toLocaleString()}` : ""}`
                   : `${complexity.targetCapacity + 1} possible applied-damage totals`}
               </small>
             </div>

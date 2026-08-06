@@ -34,6 +34,7 @@ export type OrderedVolleySummary = {
   mean: number;
   cumulativeMeans: number[];
   incrementalMeans: number[];
+  peakSparseStates: number;
 };
 
 export type ExactComplexity = {
@@ -228,7 +229,7 @@ export async function calculateOrderedVolley(
   const targetFields = 7;
   const weaponsPointer = calculator._malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
-  const summaryPointer = calculator._malloc(9 * 4);
+  const summaryPointer = calculator._malloc(10 * 4);
   const meansPointer = calculator._malloc(profiles.length * 4 * 4);
   const write = (pointer: number, values: number[]) =>
     values.forEach((value, index) => calculator.setValue(pointer + index * 4, value, "i32"));
@@ -265,6 +266,7 @@ export async function calculateOrderedVolley(
       thirdQuartile: read(summaryPointer, 3),
       maximum: read(summaryPointer, 4),
       mean: fraction(summaryPointer + 5 * 4),
+      peakSparseStates: read(summaryPointer, 9),
       cumulativeMeans,
       incrementalMeans: cumulativeMeans.map(
         (mean, index) => mean - (index === 0 ? 0 : cumulativeMeans[index - 1]),

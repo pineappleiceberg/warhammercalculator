@@ -430,7 +430,7 @@ async function exactVolley(
   const targetFields = 7;
   const weaponsPointer = calculator.malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator.malloc(targets.length * targetFields * 4);
-  const summaryPointer = calculator.malloc(9 * 4);
+  const summaryPointer = calculator.malloc(10 * 4);
   const meansPointer = calculator.malloc(profiles.length * 4 * 4);
   try {
     let view = new DataView(calculator.memory.buffer);
@@ -503,6 +503,7 @@ async function exactVolley(
       maximum: read(summaryPointer, 4),
       mean: total.mean,
       exact: total.exact,
+      peakSparseStates: read(summaryPointer, 9),
       cumulative,
       incrementalMeans: cumulative.map(
         (entry, index) => entry.mean - (index === 0 ? 0 : cumulative[index - 1].mean),
@@ -594,7 +595,7 @@ async function volleyComplexity(
       targetCapacity: read(3),
       usesDeferredStates: read(4) !== 0,
       exactGuaranteedByBound: read(5) !== 0,
-      estimateKind: "conservative-upper-bound",
+      estimateKind: "prefix-aware-conservative-upper-bound",
       fallbackEndpoint: "/api/v1/volley/simulate",
     };
   } finally {
