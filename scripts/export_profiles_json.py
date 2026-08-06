@@ -111,6 +111,7 @@ def export(database: Path, output: Path) -> None:
                 "wargearOptions": [],
                 "weaponLimits": [],
                 "wargearChoicePools": [],
+                "combatPresets": [],
                 "suggestedModelCount": None,
                 "maximumModelCount": None,
             }
@@ -156,6 +157,28 @@ def export(database: Path, output: Path) -> None:
         ):
             abilities.setdefault(row["weapon_profile_id"], []).append(
                 {"name": row["name"], "value": row["value"]}
+            )
+
+        for row in connection.execute(
+            """SELECT datasheet_id, ability_position, name, description_text,
+                      weapon_scope, hit_modifier, wound_modifier, reroll_hits,
+                      reroll_hit_ones, reroll_wounds, reroll_wound_ones
+               FROM unit_combat_presets
+               ORDER BY datasheet_id, ability_position"""
+        ):
+            units[row["datasheet_id"]]["combatPresets"].append(
+                {
+                    "id": f"{row['datasheet_id']}:{row['ability_position']}",
+                    "name": row["name"],
+                    "description": row["description_text"],
+                    "weaponScope": row["weapon_scope"],
+                    "hitModifier": row["hit_modifier"],
+                    "woundModifier": row["wound_modifier"],
+                    "rerollHits": bool(row["reroll_hits"]),
+                    "rerollHitOnes": bool(row["reroll_hit_ones"]),
+                    "rerollWounds": bool(row["reroll_wounds"]),
+                    "rerollWoundOnes": bool(row["reroll_wound_ones"]),
+                }
             )
 
         for row in connection.execute(

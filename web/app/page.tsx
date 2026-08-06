@@ -67,12 +67,25 @@ type CatalogueModel = {
   wounds: number | null;
   keywords: string[];
 };
+type CatalogueCombatPreset = {
+  id: string;
+  name: string;
+  description: string;
+  weaponScope: "Any" | "Ranged" | "Melee";
+  hitModifier: number;
+  woundModifier: number;
+  rerollHits: boolean;
+  rerollHitOnes: boolean;
+  rerollWounds: boolean;
+  rerollWoundOnes: boolean;
+};
 type CatalogueUnit = {
   id: string;
   factionId: string;
   name: string;
   models: CatalogueModel[];
   weapons: CatalogueWeapon[];
+  combatPresets: CatalogueCombatPreset[];
 };
 type Catalogue = {
   sourceUpdatedAt: string;
@@ -835,6 +848,18 @@ export default function Home() {
     }));
   };
 
+  const applyCombatPreset = (preset: CatalogueCombatPreset) => {
+    setProfile((current) => ({
+      ...current,
+      hitModifier: preset.hitModifier,
+      woundModifier: preset.woundModifier,
+      rerollHits: preset.rerollHits,
+      rerollHitOnes: preset.rerollHitOnes,
+      rerollWounds: preset.rerollWounds,
+      rerollWoundOnes: preset.rerollWoundOnes,
+    }));
+  };
+
   const shareMatchup = async () => {
     const matchup: SharedMatchup = {
       version: 1,
@@ -925,6 +950,15 @@ export default function Home() {
                     onChange={(event) => {
                       setAttackerUnit(event.target.value);
                       setAttackerWeapon("");
+                      setProfile((current) => ({
+                        ...current,
+                        hitModifier: 0,
+                        woundModifier: 0,
+                        rerollHits: false,
+                        rerollHitOnes: false,
+                        rerollWounds: false,
+                        rerollWoundOnes: false,
+                      }));
                     }}
                   >
                     <option value="">Choose unit</option>
@@ -963,6 +997,38 @@ export default function Home() {
                   <span>{selectedWeapon.rules || "No weapon keywords"}</span>
                 </p>
               )}
+              {selectedWeapon &&
+                selectedAttackerUnit &&
+                selectedAttackerUnit.combatPresets.some(
+                  (preset) =>
+                    preset.weaponScope === "Any" || preset.weaponScope === selectedWeapon.type,
+                ) && (
+                  <div className="ability-presets" aria-label="Unit ability presets">
+                    <div>
+                      <b>Unit abilities</b>
+                      <span>
+                        Apply only when the printed condition is active. Values remain editable.
+                      </span>
+                    </div>
+                    {selectedAttackerUnit.combatPresets
+                      .filter(
+                        (preset) =>
+                          preset.weaponScope === "Any" ||
+                          preset.weaponScope === selectedWeapon.type,
+                      )
+                      .map((preset) => (
+                        <button
+                          type="button"
+                          key={preset.id}
+                          title={preset.description}
+                          onClick={() => applyCombatPreset(preset)}
+                        >
+                          <b>{preset.name}</b>
+                          <span>{preset.description}</span>
+                        </button>
+                      ))}
+                  </div>
+                )}
               <DiceField
                 label="Attacks"
                 count={profile.attackDice}

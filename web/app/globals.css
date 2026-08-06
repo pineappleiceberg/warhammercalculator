@@ -313,6 +313,44 @@ main {
   text-transform: capitalize;
 }
 
+.ability-presets {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #9d9689;
+  background: #ebe7de;
+}
+.ability-presets > div {
+  display: grid;
+  gap: 3px;
+}
+.ability-presets > div b {
+  color: var(--red);
+  font:
+    700 10px/1.2 var(--font-geist-mono),
+    monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ability-presets > div span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.ability-presets button {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  text-align: left;
+}
+.ability-presets button span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .number-field {
   display: grid;
   gap: 7px;

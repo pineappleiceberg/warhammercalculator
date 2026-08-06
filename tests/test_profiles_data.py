@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from scripts.build_profiles_db import (
+    combat_preset,
     composition_components,
     composition_range,
     plain_text,
@@ -30,6 +31,31 @@ SOURCE_LOCK = ROOT / "data" / "profile-source-lock.json"
 
 
 class ProfileDataTests(unittest.TestCase):
+    def test_combat_preset_parser_preserves_scope_and_first_reroll_tier(self):
+        self.assertEqual(
+            combat_preset(
+                "While leading a unit, each time a model makes a melee attack, "
+                "add 1 to the Hit roll and add 1 to the Wound roll."
+            ),
+            {
+                "weapon_scope": "Melee",
+                "hit_modifier": 1,
+                "wound_modifier": 1,
+                "reroll_hits": 0,
+                "reroll_hit_ones": 0,
+                "reroll_wounds": 0,
+                "reroll_wound_ones": 0,
+            },
+        )
+        preset = combat_preset(
+            "Each time this model makes a ranged attack, re-roll a Hit roll of 1. "
+            "Against a unit on an objective, you can re-roll the Hit roll instead."
+        )
+        self.assertEqual(preset["weapon_scope"], "Ranged")
+        self.assertEqual(preset["reroll_hit_ones"], 1)
+        self.assertEqual(preset["reroll_hits"], 0)
+        self.assertIsNone(combat_preset("Add 1 to this model's Leadership characteristic."))
+
     def test_checked_artifacts_match_the_pinned_source_manifest(self):
         lock = json.loads(SOURCE_LOCK.read_text(encoding="utf-8"))
         report = offline_report(lock, DATABASE, CATALOGUE)
@@ -151,7 +177,30 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "8",
+                "9",
+            )
+            for filename, minimum_rows in (
+                ("Abilities.csv", 80),
+                ("Datasheets_abilities.csv", 7_000),
+            ):
+                row = connection.execute(
+                    "SELECT row_count, sha256 FROM source_files WHERE filename = ?",
+                    (filename,),
+                ).fetchone()
+                self.assertIsNotNone(row)
+                self.assertGreater(row[0], minimum_rows)
+                self.assertEqual(len(row[1]), 64)
+            self.assertGreater(
+                connection.execute("SELECT count(*) FROM unit_combat_presets").fetchone()[0],
+                900,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT weapon_scope, hit_modifier, wound_modifier
+                       FROM unit_combat_presets
+                       WHERE datasheet_id = '000000008' AND name = 'Prophet of Da Great Waaagh!'"""
+                ).fetchone(),
+                ("Melee", 1, 1),
             )
             for filename, minimum_rows in (
                 ("Datasheets_unit_composition.csv", 2_000),
@@ -270,6 +319,13 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(catalogue["structuredWargear"]["loadoutSubjectWeaponCount"], 4701)
         self.assertEqual(catalogue["structuredWargear"]["replacementWeaponCount"], 1172)
         self.assertTrue(catalogue["structuredWargear"]["conservative"])
+        warboss = next(unit for unit in catalogue["units"] if unit["name"] == "Warboss")
+        might = next(
+            preset for preset in warboss["combatPresets"] if preset["name"] == "Might is Right"
+        )
+        self.assertEqual(might["weaponScope"], "Melee")
+        self.assertEqual(might["hitModifier"], 1)
+        self.assertIn("leading a unit", might["description"])
         for unit in catalogue["units"]:
             weapon_group_ids = {weapon["groupId"] for weapon in unit["weapons"]}
             for limit in unit["weaponLimits"]:

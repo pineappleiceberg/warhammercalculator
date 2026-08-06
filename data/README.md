@@ -2,9 +2,9 @@
 
 `warhammer_10e.sqlite` is generated from Wahapedia's structured 10th-edition
 CSV exports. It contains calculator-relevant profile data only: factions,
-datasheets, model defenses, weapon statlines, weapon ability tags, unit
-composition, wargear-option text, source URLs, and import metadata. It
-intentionally excludes lore and unrelated full rules text.
+datasheets, model defenses, weapon statlines, weapon ability tags, unit combat
+abilities, unit composition, wargear-option text, source URLs, and import
+metadata.
 
 The main tables are:
 
@@ -14,6 +14,10 @@ The main tables are:
   weapon-keyword list
 - `weapon_abilities` for individually queryable tags such as `blast`,
   `lethal hits`, `sustained hits`, `rapid fire`, `melta`, and `anti-*`
+- `abilities` and `datasheet_abilities` for resolved shared and unit-specific
+  ability names, conditions, scope, and source ordering
+- `unit_combat_presets` for conservatively extracted Hit/Wound modifiers and
+  re-roll modes; these preserve the full condition and are never assumed active
 - `unit_composition` and `unit_composition_models` for source ordering, display
   text, safely parsed unit-size ranges, and the named model components within
   each composition row

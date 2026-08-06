@@ -4,37 +4,45 @@
   "baseUrl": "https://wahapedia.ru/wh40k10ed",
   "sourceUpdatedAt": "2026-06-13 12:02:41",
   "files": {
-    "Datasheets.csv": {
-      "sha256": "33b23bc06fcfb87bca3b60d2ba811849d0cc826fffdf5553321437d2a143a4d6",
-      "rowCount": 1712
+    "Abilities.csv": {
+      "sha256": "7bcd46ac51565119ab26f2457aa3806b037db9fd87ee2564ef2b07d998caef1e",
+      "rowCount": 90
     },
-    "Datasheets_keywords.csv": {
-      "sha256": "3169e6aebbde9e3be3ede491bcc1c3b2af7213de1d44a4ae48b47e0fd2318179",
-      "rowCount": 15877
-    },
-    "Datasheets_models.csv": {
-      "sha256": "0228c66ef0fcb41c41296a61cd68d638642f8c3d17a77785b79eec1724701eb3",
-      "rowCount": 1817
-    },
-    "Datasheets_options.csv": {
-      "sha256": "940314465ff7e753d15e0cdb60bda6d4634fb40e6beb6b42a83349e2329f7990",
-      "rowCount": 2832
-    },
-    "Datasheets_unit_composition.csv": {
-      "sha256": "58e75ff8ff632a7ccf19af09652c604f4527efa4e0966f1fa3566f6237ad6bd0",
-      "rowCount": 2168
-    },
-    "Datasheets_wargear.csv": {
-      "sha256": "0a122a4c2bda9747d561d87b2bed58292de8d5190b89c57f8c6becc00736f586",
-      "rowCount": 9355
+    "Last_update.csv": {
+      "sha256": "d1c928b45e5d706971974c1f631a912449bcf3acc5848c6e67e53b4a9e08adc6",
+      "rowCount": 1
     },
     "Factions.csv": {
       "sha256": "562f3f83aa09ed5bdfd160a79d0b734c6073818770c1d8807bcfd8fba1a3b9ef",
       "rowCount": 26
     },
-    "Last_update.csv": {
-      "sha256": "d1c928b45e5d706971974c1f631a912449bcf3acc5848c6e67e53b4a9e08adc6",
-      "rowCount": 1
+    "Datasheets.csv": {
+      "sha256": "33b23bc06fcfb87bca3b60d2ba811849d0cc826fffdf5553321437d2a143a4d6",
+      "rowCount": 1712
+    },
+    "Datasheets_models.csv": {
+      "sha256": "0228c66ef0fcb41c41296a61cd68d638642f8c3d17a77785b79eec1724701eb3",
+      "rowCount": 1817
+    },
+    "Datasheets_keywords.csv": {
+      "sha256": "3169e6aebbde9e3be3ede491bcc1c3b2af7213de1d44a4ae48b47e0fd2318179",
+      "rowCount": 15877
+    },
+    "Datasheets_wargear.csv": {
+      "sha256": "0a122a4c2bda9747d561d87b2bed58292de8d5190b89c57f8c6becc00736f586",
+      "rowCount": 9355
+    },
+    "Datasheets_unit_composition.csv": {
+      "sha256": "58e75ff8ff632a7ccf19af09652c604f4527efa4e0966f1fa3566f6237ad6bd0",
+      "rowCount": 2168
+    },
+    "Datasheets_options.csv": {
+      "sha256": "940314465ff7e753d15e0cdb60bda6d4634fb40e6beb6b42a83349e2329f7990",
+      "rowCount": 2832
+    },
+    "Datasheets_abilities.csv": {
+      "sha256": "6328d78850cfea5840071fcafaf98a264c8b3ac9ef1b55752367dbddbdb20a6f",
+      "rowCount": 7158
     }
   }
 }

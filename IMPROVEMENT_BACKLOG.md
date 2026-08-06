@@ -16,14 +16,22 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Add source-backed unit ability presets for common Hit and Wound modifiers and
-   re-roll effects while retaining manual overrides.
-2. Report exact-state complexity before calculation and offer the seeded
+1. Report exact-state complexity before calculation and offer the seeded
    simulator as an explicit fallback when a combinatorial volley exceeds the
    bounded exact engine.
+2. Expose source-backed unit ability presets in Unit vs Unit and Play Mode,
+   including saved-list choices for abilities that are active for an entire
+   battle or turn.
 
 ## Completed cycles
 
+- 2026-08-06: Added pinned ability-source imports and 1,017 conservative unit
+  combat presets for Hit/Wound modifiers and re-rolls. The model calculator
+  filters presets by melee/ranged scope, shows the full published condition,
+  requires explicit activation, and copies the effect into the existing
+  editable fields. SQLite, browser-catalogue, provenance, and parser regressions
+  cover both referenced and datasheet-specific abilities without treating a
+  conditional rule as permanently active.
 - 2026-08-06: Enforced the 10th-edition allocation order for Devastating Wounds
   across the exact C engine, WebAssembly, live CSPRNG rolls, seeded simulations,
   and API. A bounded sparse state machine retains deferred packets by source

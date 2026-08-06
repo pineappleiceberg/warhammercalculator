@@ -90,6 +90,18 @@ export type CatalogueUnresolvedLoadoutSubject = {
   equipment: string;
   weapons: CatalogueWargearChoice[];
 };
+export type CatalogueCombatPreset = {
+  id: string;
+  name: string;
+  description: string;
+  weaponScope: "Any" | "Ranged" | "Melee";
+  hitModifier: number;
+  woundModifier: number;
+  rerollHits: boolean;
+  rerollHitOnes: boolean;
+  rerollWounds: boolean;
+  rerollWoundOnes: boolean;
+};
 export type CatalogueUnit = {
   id: string;
   factionId: string;
@@ -104,9 +116,22 @@ export type CatalogueUnit = {
   wargearOptions: string[];
   weaponLimits: CatalogueWeaponLimit[];
   wargearChoicePools: CatalogueWargearChoicePool[];
+  combatPresets: CatalogueCombatPreset[];
   suggestedModelCount: number | null;
   maximumModelCount: number | null;
 };
+
+export function applyCombatPreset(profile: CombatProfile, preset: CatalogueCombatPreset) {
+  return {
+    ...profile,
+    hitModifier: preset.hitModifier,
+    woundModifier: preset.woundModifier,
+    rerollHits: preset.rerollHits,
+    rerollHitOnes: preset.rerollHitOnes,
+    rerollWounds: preset.rerollWounds,
+    rerollWoundOnes: preset.rerollWoundOnes,
+  } satisfies CombatProfile;
+}
 export type Catalogue = {
   sourceUpdatedAt: string;
   structuredWargear: {

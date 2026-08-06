@@ -24,6 +24,7 @@ except ModuleNotFoundError:
 
 BASE_URL = "https://wahapedia.ru/wh40k10ed"
 FILES = (
+    "Abilities.csv",
     "Last_update.csv",
     "Factions.csv",
     "Datasheets.csv",
@@ -32,6 +33,7 @@ FILES = (
     "Datasheets_wargear.csv",
     "Datasheets_unit_composition.csv",
     "Datasheets_options.csv",
+    "Datasheets_abilities.csv",
 )
 
 SCHEMA = """
@@ -123,6 +125,45 @@ CREATE TABLE weapon_abilities (
     PRIMARY KEY (weapon_profile_id, position)
 ) WITHOUT ROWID;
 
+CREATE TABLE abilities (
+    id TEXT NOT NULL,
+    faction_id TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL,
+    legend_text TEXT NOT NULL DEFAULT '',
+    description_text TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (id, faction_id)
+) WITHOUT ROWID;
+
+CREATE TABLE datasheet_abilities (
+    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    source_line INTEGER,
+    ability_id TEXT,
+    model TEXT,
+    name TEXT NOT NULL,
+    description_text TEXT NOT NULL,
+    ability_type TEXT NOT NULL,
+    parameter TEXT,
+    PRIMARY KEY (datasheet_id, position)
+) WITHOUT ROWID;
+
+CREATE TABLE unit_combat_presets (
+    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    ability_position INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    description_text TEXT NOT NULL,
+    weapon_scope TEXT NOT NULL CHECK (weapon_scope IN ('Any', 'Ranged', 'Melee')),
+    hit_modifier INTEGER NOT NULL CHECK (hit_modifier BETWEEN -1 AND 1),
+    wound_modifier INTEGER NOT NULL CHECK (wound_modifier BETWEEN -1 AND 1),
+    reroll_hits INTEGER NOT NULL CHECK (reroll_hits IN (0, 1)),
+    reroll_hit_ones INTEGER NOT NULL CHECK (reroll_hit_ones IN (0, 1)),
+    reroll_wounds INTEGER NOT NULL CHECK (reroll_wounds IN (0, 1)),
+    reroll_wound_ones INTEGER NOT NULL CHECK (reroll_wound_ones IN (0, 1)),
+    PRIMARY KEY (datasheet_id, ability_position),
+    FOREIGN KEY (datasheet_id, ability_position)
+        REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
+) WITHOUT ROWID;
+
 CREATE TABLE unit_composition (
     datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
     position INTEGER NOT NULL,
@@ -162,6 +203,8 @@ CREATE INDEX idx_models_datasheet_name ON model_profiles(datasheet_id, name);
 CREATE INDEX idx_weapons_datasheet_name ON weapon_profiles(datasheet_id, name);
 CREATE INDEX idx_weapons_type ON weapon_profiles(weapon_type);
 CREATE INDEX idx_weapon_abilities_name ON weapon_abilities(name);
+CREATE INDEX idx_datasheet_abilities_name ON datasheet_abilities(name);
+CREATE INDEX idx_unit_combat_presets_datasheet ON unit_combat_presets(datasheet_id);
 CREATE INDEX idx_datasheet_keywords_keyword ON datasheet_keywords(keyword);
 CREATE INDEX idx_unit_composition_datasheet ON unit_composition(datasheet_id);
 CREATE INDEX idx_unit_composition_models_datasheet
@@ -284,6 +327,42 @@ def plain_text(value: str) -> str:
     return re.sub(r"\s+", " ", html.unescape(without_tags)).strip()
 
 
+def combat_preset(description: str) -> dict[str, int | str] | None:
+    text = plain_text(description)
+    lowered = text.casefold()
+    effects: dict[str, int | str] = {
+        "hit_modifier": 0,
+        "wound_modifier": 0,
+        "reroll_hits": 0,
+        "reroll_hit_ones": 0,
+        "reroll_wounds": 0,
+        "reroll_wound_ones": 0,
+    }
+    for roll, field in (("hit", "hit_modifier"), ("wound", "wound_modifier")):
+        modifier = re.search(
+            rf"\b(add|subtract) 1 (?:to|from) the {roll} roll\b", lowered
+        )
+        if modifier:
+            effects[field] = 1 if modifier.group(1) == "add" else -1
+        rerolls = list(
+            re.finditer(
+                rf"\bre-roll (?:a|the) {roll} roll(?: of 1)?\b", lowered
+            )
+        )
+        if rerolls:
+            first = rerolls[0].group(0)
+            effects[f"reroll_{roll}_ones"] = int(first.endswith("of 1"))
+            effects[f"reroll_{roll}s"] = int(not first.endswith("of 1"))
+    if not any(value for key, value in effects.items() if key != "weapon_scope"):
+        return None
+    has_melee = "melee attack" in lowered
+    has_ranged = "ranged attack" in lowered
+    effects["weapon_scope"] = (
+        "Melee" if has_melee and not has_ranged else "Ranged" if has_ranged and not has_melee else "Any"
+    )
+    return effects
+
+
 def composition_components(value: str) -> list[tuple[str, int, int]]:
     normalized = plain_text(value).replace("‑", "-").replace("–", "-")
     if re.search(r"\bor\b", normalized, re.IGNORECASE):
@@ -388,6 +467,11 @@ def create_database(
         for row in rows["Datasheets_options.csv"]
         if row["datasheet_id"] in datasheet_ids
     ]
+    ability_rows = [
+        row
+        for row in rows["Datasheets_abilities.csv"]
+        if row["datasheet_id"] in datasheet_ids
+    ]
     orphan_model_count = len(rows["Datasheets_models.csv"]) - len(model_rows)
     orphan_weapon_count = len(rows["Datasheets_wargear.csv"]) - len(linked_weapon_rows)
     placeholder_weapon_count = len(linked_weapon_rows) - len(weapon_rows)
@@ -412,7 +496,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "8"),
+                    ("schema_version", "9"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
@@ -459,6 +543,88 @@ def create_database(
                     for row in rows["Datasheets.csv"]
                 ),
             )
+            connection.executemany(
+                """INSERT OR REPLACE INTO abilities
+                   (id, faction_id, name, legend_text, description_text)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (
+                    (
+                        row["id"],
+                        row["faction_id"].strip(),
+                        row["name"].strip(),
+                        plain_text(row["legend"]),
+                        plain_text(row["description"]),
+                    )
+                    for row in rows["Abilities.csv"]
+                    if row["id"].strip() and row["name"].strip()
+                ),
+            )
+            definitions: dict[str, list[dict[str, str]]] = {}
+            for row in rows["Abilities.csv"]:
+                definitions.setdefault(row["id"], []).append(row)
+            datasheet_factions = {
+                row["id"]: row["faction_id"] for row in rows["Datasheets.csv"]
+            }
+            ability_positions: dict[str, int] = {}
+            for row in ability_rows:
+                datasheet_id = row["datasheet_id"]
+                position = ability_positions.get(datasheet_id, 0) + 1
+                ability_positions[datasheet_id] = position
+                name = row["name"].strip()
+                description = plain_text(row["description"])
+                if row["ability_id"].strip() and (not name or not description):
+                    candidates = definitions.get(row["ability_id"], [])
+                    faction_id = datasheet_factions[datasheet_id]
+                    resolved = next(
+                        (item for item in candidates if item["faction_id"] == faction_id),
+                        next(
+                            (item for item in candidates if not item["faction_id"]),
+                            candidates[0] if candidates else None,
+                        ),
+                    )
+                    if resolved:
+                        name = name or resolved["name"].strip()
+                        description = description or plain_text(resolved["description"])
+                name = name or row["type"].strip() or row["ability_id"].strip()
+                connection.execute(
+                    """INSERT INTO datasheet_abilities
+                       (datasheet_id, position, source_line, ability_id, model, name,
+                        description_text, ability_type, parameter)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        datasheet_id,
+                        position,
+                        integer(row["line"]),
+                        row["ability_id"].strip() or None,
+                        row["model"].strip() or None,
+                        name,
+                        description,
+                        row["type"].strip(),
+                        row["parameter"].strip() or None,
+                    ),
+                )
+                preset = combat_preset(description)
+                if preset:
+                    connection.execute(
+                        """INSERT INTO unit_combat_presets
+                           (datasheet_id, ability_position, name, description_text,
+                            weapon_scope, hit_modifier, wound_modifier, reroll_hits,
+                            reroll_hit_ones, reroll_wounds, reroll_wound_ones)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            datasheet_id,
+                            position,
+                            name,
+                            description,
+                            preset["weapon_scope"],
+                            preset["hit_modifier"],
+                            preset["wound_modifier"],
+                            preset["reroll_hits"],
+                            preset["reroll_hit_ones"],
+                            preset["reroll_wounds"],
+                            preset["reroll_wound_ones"],
+                        ),
+                    )
             connection.executemany(
                 """INSERT INTO model_profiles
                    (datasheet_id, source_line, name, movement, movement_inches,
@@ -621,6 +787,9 @@ def create_database(
                 "datasheet_keywords",
                 "weapon_profiles",
                 "weapon_abilities",
+                "abilities",
+                "datasheet_abilities",
+                "unit_combat_presets",
                 "unit_composition",
                 "unit_composition_models",
                 "wargear_options",
