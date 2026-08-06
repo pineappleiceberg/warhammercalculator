@@ -628,6 +628,7 @@ export function simulateOrderedVolley(
   const targetModels = targets.reduce((total, target) => total + target.modelCount, 0);
   let appliedState = initialWoundsLost;
   const lines: RollResult[] = [];
+  const deferredDevastatingWounds: Array<() => void> = [];
 
   for (const sourceProfile of profiles) {
     if (sourceProfile.torrent && sourceProfile.indirect) {
@@ -680,9 +681,6 @@ export function simulateOrderedVolley(
     const addDetail = (detail: RollDetail) => {
       if (includeDetails) line.details.push(detail);
     };
-    const modelsBefore =
-      targetSequencePosition(appliedState, targets)?.modelsDestroyed ?? targetModels;
-
     const resolveHit = (label: string, hitLabel: string, lethalWound: boolean) => {
       const position = targetSequencePosition(appliedState, targets);
       if (!position) return;
@@ -755,47 +753,71 @@ export function simulateOrderedVolley(
         }
       }
       line.unsavedAttacks += 1;
-      const rawDamage = rollDiceValue(
-        profile.damageDice,
-        profile.damageSides,
-        profile.damage + (profile.withinHalfRange ? profile.melta : 0),
-        randomUint32,
-      );
-      const reducedDamage =
-        rawDamage > 0 && target.reduction > 0
-          ? Math.max(1, rawDamage - target.reduction)
-          : rawDamage;
-      let prevented = 0;
-      if (target.feelNoPain > 0) {
-        for (let point = 0; point < reducedDamage; point += 1) {
-          if (rollDie(6, randomUint32) >= target.feelNoPain) prevented += 1;
-        }
-      }
-      const damage = reducedDamage - prevented;
-      line.fnpPrevented += prevented;
-      line.totalDamage += damage;
-      const allocation = allocateDamageToSequence(appliedState, damage, targets);
-      appliedState = allocation.applied;
-      line.appliedDamage += allocation.appliedThisAttack;
-      line.wastedDamage += allocation.wasted;
-      if (damage > 0) line.successfulAttacks += 1;
-      addDetail({
+      const detail: RollDetail = {
         label,
         hit: hitLabel,
         wound: woundLabel,
         save: saveLabel,
-        fnp: target.feelNoPain > 0 ? `${prevented} prevented` : "None",
-        damage,
-        appliedDamage: allocation.appliedThisAttack,
-        wastedDamage: allocation.wasted,
-        outcome:
+        fnp: bypassSave ? "Deferred" : "Not reached",
+        damage: 0,
+        appliedDamage: 0,
+        wastedDamage: 0,
+        outcome: bypassSave ? "Devastating Wounds · resolves last" : "Resolving",
+        tone: "damage",
+      };
+      addDetail(detail);
+
+      const resolveDamage = () => {
+        const allocationPosition = targetSequencePosition(appliedState, targets);
+        if (!allocationPosition) {
+          detail.fnp = "Not reached";
+          detail.outcome = "Target already destroyed";
+          detail.tone = "failed";
+          return;
+        }
+        const allocationTarget = targets[allocationPosition.segmentIndex];
+        const rawDamage = rollDiceValue(
+          profile.damageDice,
+          profile.damageSides,
+          profile.damage + (profile.withinHalfRange ? profile.melta : 0),
+          randomUint32,
+        );
+        const reducedDamage =
+          rawDamage > 0 && allocationTarget.reduction > 0
+            ? Math.max(1, rawDamage - allocationTarget.reduction)
+            : rawDamage;
+        let prevented = 0;
+        if (allocationTarget.feelNoPain > 0) {
+          for (let point = 0; point < reducedDamage; point += 1) {
+            if (rollDie(6, randomUint32) >= allocationTarget.feelNoPain) prevented += 1;
+          }
+        }
+        const damage = reducedDamage - prevented;
+        line.fnpPrevented += prevented;
+        line.totalDamage += damage;
+        const modelsBefore = allocationPosition.modelsDestroyed;
+        const allocation = allocateDamageToSequence(appliedState, damage, targets);
+        appliedState = allocation.applied;
+        line.appliedDamage += allocation.appliedThisAttack;
+        line.wastedDamage += allocation.wasted;
+        line.modelsDestroyed += allocation.modelsDestroyed - modelsBefore;
+        line.targetWoundsRemaining = capacity - appliedState;
+        if (damage > 0) line.successfulAttacks += 1;
+        detail.fnp = allocationTarget.feelNoPain > 0 ? `${prevented} prevented` : "None";
+        detail.damage = damage;
+        detail.appliedDamage = allocation.appliedThisAttack;
+        detail.wastedDamage = allocation.wasted;
+        detail.outcome =
           damage === 0
             ? "Stopped by FNP"
             : allocation.wasted > 0
               ? `${allocation.appliedThisAttack} applied · ${allocation.wasted} lost`
-              : `${allocation.appliedThisAttack} applied`,
-        tone: damage > 0 ? "damage" : "prevented",
-      });
+              : `${allocation.appliedThisAttack} applied`;
+        detail.tone = damage > 0 ? "damage" : "prevented";
+      };
+
+      if (bypassSave) deferredDevastatingWounds.push(resolveDamage);
+      else resolveDamage();
     };
 
     for (let attack = 1; attack <= attacks && appliedState < capacity; attack += 1) {
@@ -850,12 +872,11 @@ export function simulateOrderedVolley(
         }
       }
     }
-    const modelsAfter =
-      targetSequencePosition(appliedState, targets)?.modelsDestroyed ?? targetModels;
-    line.modelsDestroyed = modelsAfter - modelsBefore;
     line.targetWoundsRemaining = capacity - appliedState;
     lines.push(line);
   }
+
+  for (const resolveDamage of deferredDevastatingWounds) resolveDamage();
 
   const sum = (key: keyof RollResult) =>
     lines.reduce((total, line) => total + (line[key] as number), 0);
