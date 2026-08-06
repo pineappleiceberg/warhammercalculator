@@ -25,12 +25,21 @@ export type CatalogueModel = {
   wounds: number | null;
   keywords: string[];
 };
+export type CatalogueComposition = {
+  text: string;
+  min: number | null;
+  max: number | null;
+};
 export type CatalogueUnit = {
   id: string;
   factionId: string;
   name: string;
   models: CatalogueModel[];
   weapons: CatalogueWeapon[];
+  composition: CatalogueComposition[];
+  wargearOptions: string[];
+  suggestedModelCount: number | null;
+  maximumModelCount: number | null;
 };
 export type Catalogue = {
   sourceUpdatedAt: string;

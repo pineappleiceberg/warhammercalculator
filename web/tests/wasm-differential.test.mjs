@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { attackRollSucceeds, savingThrowTarget, woundTarget } from "../lib/thresholds.mjs";
 import { allocateDamageToUnit } from "../lib/allocation.mjs";
 import { abilityDiceValue } from "../lib/dice.mjs";
+import { equippedWeaponLines, normalizeEquippedCount } from "../lib/loadout.mjs";
 
 globalThis.require = createRequire(import.meta.url);
 globalThis.__dirname = dirname(fileURLToPath(import.meta.url));
@@ -122,6 +123,20 @@ test("C/Wasm preserves variable Sustained Hits and Rapid Fire values", () => {
     numerator: 5n,
     denominator: 2n,
   });
+});
+
+test("unit loadouts use editable total weapon copies without model multiplication", () => {
+  const weapons = [
+    { id: 1, name: "Gauss flayer" },
+    { id: 2, name: "Gauss reaper" },
+  ];
+  assert.deepEqual(equippedWeaponLines(weapons, { 1: 7, 2: 3 }), [
+    { weapon: weapons[0], count: 7 },
+    { weapon: weapons[1], count: 3 },
+  ]);
+  assert.equal(normalizeEquippedCount(2.9), 2);
+  assert.equal(normalizeEquippedCount(-1), 0);
+  assert.equal(normalizeEquippedCount(Number.NaN), 0);
 });
 
 test("JavaScript and C agree on wound thresholds", () => {

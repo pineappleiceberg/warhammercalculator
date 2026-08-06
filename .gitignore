@@ -4,3 +4,4 @@
 *.user
 *.swp
 data/*.sqlite.tmp
+__pycache__/

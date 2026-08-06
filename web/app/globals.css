@@ -914,6 +914,29 @@ select:focus {
   color: var(--muted);
   font-weight: 400;
 }
+.source-guidance {
+  border: 1px solid #c8c0b1;
+  background: #f6f1e7;
+}
+.source-guidance summary {
+  padding: 11px 13px;
+  cursor: pointer;
+  color: var(--ink);
+  font:
+    700 10px var(--font-geist-mono),
+    monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.source-guidance ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0 28px 13px;
+  color: #5d584f;
+  font-size: 12px;
+  line-height: 1.45;
+}
 .stat-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

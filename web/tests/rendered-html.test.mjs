@@ -142,6 +142,26 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.equal(factions.status, 200);
   assert.ok((await factions.json()).data.length > 20);
 
+  const profiles = await worker.fetch(
+    new Request("http://localhost/api/v1/profiles"),
+    testEnv,
+    context,
+  );
+  const catalogue = await profiles.json();
+  const warriors = catalogue.units.find((unit) => unit.name === "Necron Warriors");
+  assert.ok(warriors);
+  const loadout = await worker.fetch(
+    new Request(`http://localhost/api/v1/loadout?unit=${warriors.id}`),
+    testEnv,
+    context,
+  );
+  assert.equal(loadout.status, 200);
+  const loadoutData = (await loadout.json()).data;
+  assert.equal(loadoutData.suggestedModelCount, 10);
+  assert.equal(loadoutData.maximumModelCount, 20);
+  assert.match(loadoutData.composition[0].text, /10-20 Necron Warriors/i);
+  assert.ok(loadoutData.wargearOptions.some((option) => /gauss reaper/i.test(option)));
+
   const calculate = await worker.fetch(
     new Request("http://localhost/api/v1/calculate", {
       method: "POST",

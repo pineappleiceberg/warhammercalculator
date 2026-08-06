@@ -2,9 +2,9 @@
 
 `warhammer_10e.sqlite` is generated from Wahapedia's structured 10th-edition
 CSV exports. It contains calculator-relevant profile data only: factions,
-datasheets, model defenses, weapon statlines, weapon ability tags, source URLs,
-and import metadata. It intentionally excludes lore, loadout prose, and full
-rules text.
+datasheets, model defenses, weapon statlines, weapon ability tags, unit
+composition, wargear-option text, source URLs, and import metadata. It
+intentionally excludes lore and unrelated full rules text.
 
 The main tables are:
 
@@ -13,6 +13,10 @@ The main tables are:
   weapon-keyword list
 - `weapon_abilities` for individually queryable tags such as `blast`,
   `lethal hits`, `sustained hits`, `rapid fire`, `melta`, and `anti-*`
+- `unit_composition` for source ordering, display text, and safely parsed
+  minimum/maximum model counts
+- `wargear_options` for the complete published loadout guidance, preserved as
+  both original HTML and plain text
 - `source_files` and `metadata` for URLs, timestamps, and source checksums
 
 The source export can retain rows for datasheets that it no longer publishes.
@@ -37,5 +41,8 @@ python3 scripts/build_profiles_db.py --output data/warhammer_10e.sqlite
 Values that can be dice expressions are preserved as text (`D6+1`, `2D3`, and
 so on). Plain numeric values are also exposed in companion integer columns.
 The presence of a weapon on a datasheet does not by itself mean every model in
-that datasheet can equip it; loadout legality is deliberately outside this
-calculator-focused schema.
+that datasheet can equip it. The UI therefore treats weapon quantities as
+editable totals across the unit and shows the source wargear options beside
+them. It never assumes every listed profile is equipped. Automatically
+enforcing every natural-language replacement and per-model constraint remains
+a separate structured-rules task.

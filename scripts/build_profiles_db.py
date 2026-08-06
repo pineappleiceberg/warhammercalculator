@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import html
 import io
 import re
 import sqlite3
@@ -23,6 +24,8 @@ FILES = (
     "Datasheets_models.csv",
     "Datasheets_keywords.csv",
     "Datasheets_wargear.csv",
+    "Datasheets_unit_composition.csv",
+    "Datasheets_options.csv",
 )
 
 SCHEMA = """
@@ -112,12 +115,35 @@ CREATE TABLE weapon_abilities (
     PRIMARY KEY (weapon_profile_id, position)
 ) WITHOUT ROWID;
 
+CREATE TABLE unit_composition (
+    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    source_line INTEGER,
+    description_html TEXT NOT NULL,
+    description_text TEXT NOT NULL,
+    min_models INTEGER,
+    max_models INTEGER,
+    PRIMARY KEY (datasheet_id, position)
+) WITHOUT ROWID;
+
+CREATE TABLE wargear_options (
+    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    source_line INTEGER,
+    button TEXT,
+    description_html TEXT NOT NULL,
+    description_text TEXT NOT NULL,
+    PRIMARY KEY (datasheet_id, position)
+) WITHOUT ROWID;
+
 CREATE INDEX idx_datasheets_faction_name ON datasheets(faction_id, name);
 CREATE INDEX idx_models_datasheet_name ON model_profiles(datasheet_id, name);
 CREATE INDEX idx_weapons_datasheet_name ON weapon_profiles(datasheet_id, name);
 CREATE INDEX idx_weapons_type ON weapon_profiles(weapon_type);
 CREATE INDEX idx_weapon_abilities_name ON weapon_abilities(name);
 CREATE INDEX idx_datasheet_keywords_keyword ON datasheet_keywords(keyword);
+CREATE INDEX idx_unit_composition_datasheet ON unit_composition(datasheet_id);
+CREATE INDEX idx_wargear_options_datasheet ON wargear_options(datasheet_id);
 
 CREATE VIEW attacker_profiles AS
 SELECT
@@ -230,6 +256,21 @@ def parse_ability(raw: str) -> tuple[str, str | None]:
     return token.lower(), None
 
 
+def plain_text(value: str) -> str:
+    without_tags = re.sub(r"<[^>]+>", " ", value)
+    return re.sub(r"\s+", " ", html.unescape(without_tags)).strip()
+
+
+def composition_range(value: str) -> tuple[int | None, int | None]:
+    normalized = plain_text(value).replace("‑", "-").replace("–", "-")
+    match = re.match(r"^(\d+)(?:-(\d+))?\s+", normalized)
+    if not match:
+        return None, None
+    minimum = int(match.group(1))
+    maximum = int(match.group(2) or match.group(1))
+    return minimum, maximum
+
+
 def download_exports() -> tuple[dict[str, bytes], str, str]:
     fetched_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     exports = {name: fetch(f"{BASE_URL}/{name}") for name in FILES}
@@ -258,9 +299,23 @@ def create_database(output: Path) -> dict[str, int]:
         for row in linked_weapon_rows
         if row["type"].strip().title() in {"Ranged", "Melee"} and row["name"].strip()
     ]
+    composition_rows = [
+        row
+        for row in rows["Datasheets_unit_composition.csv"]
+        if row["datasheet_id"] in datasheet_ids
+    ]
+    option_rows = [
+        row
+        for row in rows["Datasheets_options.csv"]
+        if row["datasheet_id"] in datasheet_ids
+    ]
     orphan_model_count = len(rows["Datasheets_models.csv"]) - len(model_rows)
     orphan_weapon_count = len(rows["Datasheets_wargear.csv"]) - len(linked_weapon_rows)
     placeholder_weapon_count = len(linked_weapon_rows) - len(weapon_rows)
+    orphan_composition_count = (
+        len(rows["Datasheets_unit_composition.csv"]) - len(composition_rows)
+    )
+    orphan_option_count = len(rows["Datasheets_options.csv"]) - len(option_rows)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(output.suffix + ".tmp")
     temporary.unlink(missing_ok=True)
@@ -278,10 +333,12 @@ def create_database(output: Path) -> dict[str, int]:
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "2"),
+                    ("schema_version", "3"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
+                    ("skipped_orphan_composition_rows", str(orphan_composition_count)),
+                    ("skipped_orphan_option_rows", str(orphan_option_count)),
                 ),
             )
             connection.executemany(
@@ -367,6 +424,48 @@ def create_database(output: Path) -> dict[str, int]:
                     ),
                 )
 
+            composition_positions: dict[str, int] = {}
+            for row in composition_rows:
+                datasheet_id = row["datasheet_id"]
+                position = composition_positions.get(datasheet_id, 0) + 1
+                composition_positions[datasheet_id] = position
+                minimum, maximum = composition_range(row["description"])
+                connection.execute(
+                    """INSERT INTO unit_composition
+                       (datasheet_id, position, source_line, description_html,
+                        description_text, min_models, max_models)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        datasheet_id,
+                        position,
+                        integer(row["line"]),
+                        row["description"],
+                        plain_text(row["description"]),
+                        minimum,
+                        maximum,
+                    ),
+                )
+
+            option_positions: dict[str, int] = {}
+            for row in option_rows:
+                datasheet_id = row["datasheet_id"]
+                position = option_positions.get(datasheet_id, 0) + 1
+                option_positions[datasheet_id] = position
+                connection.execute(
+                    """INSERT INTO wargear_options
+                       (datasheet_id, position, source_line, button, description_html,
+                        description_text)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        datasheet_id,
+                        position,
+                        integer(row["line"]),
+                        row["button"].strip() or None,
+                        row["description"],
+                        plain_text(row["description"]),
+                    ),
+                )
+
             for row in weapon_rows:
                 weapon_type = row["type"].strip().title()
                 if weapon_type not in {"Ranged", "Melee"}:
@@ -421,6 +520,8 @@ def create_database(output: Path) -> dict[str, int]:
                 "datasheet_keywords",
                 "weapon_profiles",
                 "weapon_abilities",
+                "unit_composition",
+                "wargear_options",
             )
         }
         connection.execute("PRAGMA optimize")

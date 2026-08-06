@@ -16,7 +16,9 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Model complete unit loadouts and weapon quantities from datasheet options.
+1. Compile structured constraints from wargear-option prose so the editor can
+   flag illegal replacements, mutually exclusive weapon modes, per-model
+   limits, and unit-size-dependent quantities.
 2. Combine complete multi-weapon volleys in player-selected order so casualties
    and existing wounds carry between weapon profiles and mixed model profiles.
 3. Add phase-scale simulations with reproducible seeded runs
@@ -42,3 +44,7 @@ priority over feature count.
 - 2026-08-06: Preserved variable Sustained Hits and Rapid Fire catalogue values
   such as D3 and D6+3 across the C engine, WebAssembly, API, editable profiles,
   shared matchups, exact distributions, and cryptographically random live rolls.
+- 2026-08-06: Imported complete unit-composition and wargear-option exports with
+  checksums and source timestamps; added safe model-count defaults, editable
+  total weapon quantities, source guidance, and a loadout API without assuming
+  every model carries every profile listed on its datasheet.

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { WorkflowNav } from "../../components/workflow-nav";
 import { calculateProfile, type DamageSummary } from "../../lib/client-calculator";
 import { DEFAULT_PROFILE } from "../../lib/combat";
+import { equippedWeaponLines, normalizeEquippedCount } from "../../lib/loadout.mjs";
 import {
   applyTargetProfile,
   applyWeaponProfile,
@@ -58,14 +59,17 @@ export default function UnitVsUnit() {
   const selectAttacker = (unitId: string) => {
     setAttackerUnitId(unitId);
     const unit = attackerUnits.find((entry) => entry.id === unitId);
-    setWeaponCounts(Object.fromEntries((unit?.weapons ?? []).map((weapon) => [weapon.id, 1])));
+    setAttackerModels(unit?.suggestedModelCount ?? 1);
+    setWeaponCounts(Object.fromEntries((unit?.weapons ?? []).map((weapon) => [weapon.id, 0])));
     setResults([]);
+    setStatus(unit ? "Set the total equipped weapon quantities" : "Choose both units");
   };
 
   const selectTarget = (unitId: string) => {
     setTargetUnitId(unitId);
     const unit = targetUnits.find((entry) => entry.id === unitId);
     const model = unit?.models[0];
+    setTargetModels(unit?.suggestedModelCount ?? 1);
     setTargetModelId(model ? String(model.id) : "");
     if (model) {
       setTargetOverrides({
@@ -83,9 +87,11 @@ export default function UnitVsUnit() {
     setStatus("Calculating unit volley…");
     const model =
       targetUnit.models.find((entry) => String(entry.id) === targetModelId) ?? targetUnit.models[0];
-    const lines = attackerUnit.weapons
-      .filter((weapon) => (weaponCounts[weapon.id] ?? 0) > 0)
-      .map((weapon) => ({ weapon, count: weaponCounts[weapon.id] * attackerModels }));
+    const lines = equippedWeaponLines(attackerUnit.weapons, weaponCounts);
+    if (!lines.length) {
+      setStatus("Enter at least one equipped weapon quantity");
+      return;
+    }
     try {
       const resolved = await Promise.all(
         lines.map(async (line) => {
@@ -166,38 +172,56 @@ export default function UnitVsUnit() {
               <input
                 type="number"
                 min={1}
-                max={100}
+                max={attackerUnit?.maximumModelCount ?? 100}
                 value={attackerModels}
                 onChange={(event) => setAttackerModels(Math.max(1, +event.target.value))}
               />
             </label>
             {attackerUnit && (
               <div className="loadout-list">
-                <h3>Weapons per model</h3>
+                <h3>Total weapons equipped</h3>
                 {attackerUnit.weapons.map((weapon) => (
                   <label key={weapon.id}>
                     <span>
                       {weapon.name}
                       <small>
                         {weapon.attacks} · S{weapon.strength} · AP {weapon.ap ?? "—"} · D{" "}
-                        {weapon.damage}
+                        {weapon.damage} · copies across unit
                       </small>
                     </span>
                     <input
                       aria-label={`${weapon.name} count`}
                       type="number"
                       min={0}
-                      max={20}
+                      max={100}
                       value={weaponCounts[weapon.id] ?? 0}
                       onChange={(event) =>
                         setWeaponCounts((current) => ({
                           ...current,
-                          [weapon.id]: Math.max(0, +event.target.value),
+                          [weapon.id]: normalizeEquippedCount(+event.target.value),
                         }))
                       }
                     />
                   </label>
                 ))}
+                <details className="source-guidance" open>
+                  <summary>Unit composition</summary>
+                  <ul>
+                    {attackerUnit.composition.map((line, index) => (
+                      <li key={`${line.text}-${index}`}>{line.text}</li>
+                    ))}
+                  </ul>
+                </details>
+                {attackerUnit.wargearOptions.length > 0 && (
+                  <details className="source-guidance">
+                    <summary>Wargear options ({attackerUnit.wargearOptions.length})</summary>
+                    <ul>
+                      {attackerUnit.wargearOptions.map((option, index) => (
+                        <li key={`${option}-${index}`}>{option}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
               </div>
             )}
           </div>
@@ -270,11 +294,21 @@ export default function UnitVsUnit() {
               <input
                 type="number"
                 min={1}
-                max={1000}
+                max={targetUnit?.maximumModelCount ?? 1000}
                 value={targetModels}
                 onChange={(event) => setTargetModels(Math.max(1, +event.target.value))}
               />
             </label>
+            {targetUnit && targetUnit.composition.length > 0 && (
+              <details className="source-guidance" open>
+                <summary>Unit composition</summary>
+                <ul>
+                  {targetUnit.composition.map((line, index) => (
+                    <li key={`${line.text}-${index}`}>{line.text}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
             <div className="stat-row">
               {(
                 [

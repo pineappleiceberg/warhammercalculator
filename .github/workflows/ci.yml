@@ -32,6 +32,8 @@ jobs:
         run: cmake --build build/native --parallel
       - name: Run native tests
         run: ctest --test-dir build/native --output-on-failure
+      - name: Verify checked profile data and loadout provenance
+        run: python3 -m unittest discover -s tests -p test_profiles_data.py
 
   web:
     runs-on: ubuntu-latest

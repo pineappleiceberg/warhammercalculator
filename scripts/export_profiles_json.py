@@ -26,6 +26,10 @@ def export(database: Path, output: Path) -> None:
                 "name": row["name"],
                 "models": [],
                 "weapons": [],
+                "composition": [],
+                "wargearOptions": [],
+                "suggestedModelCount": None,
+                "maximumModelCount": None,
             }
             for row in connection.execute(
                 "SELECT id, faction_id, name FROM datasheets ORDER BY name COLLATE NOCASE"
@@ -69,6 +73,37 @@ def export(database: Path, output: Path) -> None:
             abilities.setdefault(row["weapon_profile_id"], []).append(
                 {"name": row["name"], "value": row["value"]}
             )
+
+        for row in connection.execute(
+            """SELECT datasheet_id, description_text, min_models, max_models
+               FROM unit_composition
+               ORDER BY datasheet_id, position"""
+        ):
+            units[row["datasheet_id"]]["composition"].append(
+                {
+                    "text": row["description_text"],
+                    "min": row["min_models"],
+                    "max": row["max_models"],
+                }
+            )
+
+        for row in connection.execute(
+            """SELECT datasheet_id, description_text
+               FROM wargear_options
+               ORDER BY datasheet_id, position"""
+        ):
+            units[row["datasheet_id"]]["wargearOptions"].append(
+                row["description_text"]
+            )
+
+        for unit in units.values():
+            composition = unit["composition"]
+            if composition and all(
+                row["min"] is not None and row["max"] is not None
+                for row in composition
+            ):
+                unit["suggestedModelCount"] = sum(row["min"] for row in composition)
+                unit["maximumModelCount"] = sum(row["max"] for row in composition)
 
         for row in connection.execute(
             """SELECT id, datasheet_id, name, weapon_type, attacks,

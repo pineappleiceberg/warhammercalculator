@@ -39,6 +39,10 @@ type Catalogue = {
     name: string;
     models: unknown[];
     weapons: unknown[];
+    composition: Array<{ text: string; min: number | null; max: number | null }>;
+    wargearOptions: string[];
+    suggestedModelCount: number | null;
+    maximumModelCount: number | null;
   }>;
 };
 
@@ -257,6 +261,7 @@ async function handleApi(request: Request, env: Env) {
           factions: "GET /api/v1/factions",
           units: "GET /api/v1/units?faction={factionId}&kind={attacker|target|all}",
           weapons: "GET /api/v1/weapons?unit={datasheetId}",
+          loadout: "GET /api/v1/loadout?unit={datasheetId}",
           targets: "GET /api/v1/targets?unit={datasheetId}",
           profiles: "GET /api/v1/profiles",
           calculate: "POST /api/v1/calculate",
@@ -299,8 +304,31 @@ async function handleApi(request: Request, env: Env) {
           name: unit.name,
           modelProfileCount: unit.models.length,
           weaponProfileCount: unit.weapons.length,
+          suggestedModelCount: unit.suggestedModelCount,
+          maximumModelCount: unit.maximumModelCount,
         }));
       return json({ data, faction });
+    }
+
+    if (url.pathname === "/api/v1/loadout" && request.method === "GET") {
+      const unitId = url.searchParams.get("unit");
+      if (!unitId) return apiError("Missing required unit query parameter");
+      const catalogue = await loadCatalogue(request, env);
+      const unit = catalogue.units.find((entry) => entry.id === unitId);
+      if (!unit) return apiError("Unit not found", 404);
+      return json({
+        data: {
+          id: unit.id,
+          factionId: unit.factionId,
+          name: unit.name,
+          composition: unit.composition,
+          wargearOptions: unit.wargearOptions,
+          suggestedModelCount: unit.suggestedModelCount,
+          maximumModelCount: unit.maximumModelCount,
+          weapons: unit.weapons,
+        },
+        sourceUpdatedAt: catalogue.sourceUpdatedAt,
+      });
     }
 
     if (
