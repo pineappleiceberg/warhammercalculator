@@ -1,6 +1,6 @@
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-export const armyLists = sqliteTable("army_lists", {
+export const armyLists = sqliteTable("army_lists_v2", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   factionId: text("faction_id").notNull(),

@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS `army_lists` (
+CREATE TABLE `army_lists_v2` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`faction_id` text NOT NULL,
