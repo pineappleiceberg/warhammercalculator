@@ -13,6 +13,7 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
                            uint16_t sustained_hits_dice_count, uint16_t sustained_hits_dice_sides,
                            uint16_t sustained_hits, uint16_t rapid_fire_dice_count,
                            uint16_t rapid_fire_dice_sides, uint16_t rapid_fire, uint16_t melta,
+                           int16_t explicit_hit_modifier, int16_t explicit_wound_modifier,
                            struct whc_web_summary *summary) {
     static struct calculator_workspace workspace;
     struct weapon_profile weapon;
@@ -23,8 +24,8 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
     uint32_t total_attack_dice = 0;
     uint32_t total_attack_modifier = 0;
     uint32_t effective_damage_modifier = damage_modifier;
-    int16_t hit_modifier = 0;
-    uint8_t effective_hits_on = hits_on;
+    int32_t hit_modifier = explicit_hit_modifier;
+    int32_t wound_modifier = explicit_wound_modifier;
     bool target_has_cover = false;
     uint16_t effective_attack_dice_count = attack_dice_count;
     uint16_t effective_attack_dice_sides = attack_dice_sides;
@@ -75,15 +76,18 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
     if ((rule_flags & WHC_RULE_INDIRECT_NOT_VISIBLE) != 0u) {
         hit_modifier--;
     }
+    if ((rule_flags & WHC_RULE_LANCE_ACTIVE) != 0u) {
+        wound_modifier++;
+    }
     if (hit_modifier > 1) {
         hit_modifier = 1;
     } else if (hit_modifier < -1) {
         hit_modifier = -1;
     }
-    if (hit_modifier > 0 && effective_hits_on > 2u) {
-        effective_hits_on--;
-    } else if (hit_modifier < 0 && effective_hits_on < 6u) {
-        effective_hits_on++;
+    if (wound_modifier > 1) {
+        wound_modifier = 1;
+    } else if (wound_modifier < -1) {
+        wound_modifier = -1;
     }
 
     target_has_cover = (rule_flags & WHC_RULE_TARGET_COVER) != 0u ||
@@ -97,12 +101,20 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
 
     weapon.attacks = (struct dice_value){(uint16_t)total_attack_dice, effective_attack_dice_sides,
                                          (uint16_t)total_attack_modifier};
-    weapon.hits_on = effective_hits_on;
+    weapon.hits_on = hits_on;
     weapon.strength = strength;
     weapon.ap = ap;
     weapon.damage = (struct dice_value){damage_dice_count, damage_dice_sides,
                                         (uint16_t)effective_damage_modifier};
     weapon.critical_hits_on = critical_hits_on;
+    weapon.hit_modifier = (int8_t)hit_modifier;
+    weapon.wound_modifier = (int8_t)wound_modifier;
+    if ((rule_flags & WHC_RULE_REROLL_HIT_ONES) != 0u) {
+        weapon.hit_reroll_mask = UINT8_C(1) << 1u;
+    }
+    if ((rule_flags & WHC_RULE_REROLL_WOUND_ONES) != 0u) {
+        weapon.wound_reroll_mask = UINT8_C(1) << 1u;
+    }
 
     target.toughness = toughness;
     target.save = save;
@@ -114,7 +126,8 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
     if (((rule_flags & WHC_RULE_LETHAL_HITS) != 0u && !rule_add_lethal_hits(&weapon.rules)) ||
         ((rule_flags & WHC_RULE_DEVASTATING_WOUNDS) != 0u &&
          !rule_add_devastating_wounds(&weapon.rules)) ||
-        ((rule_flags & WHC_RULE_TWIN_LINKED) != 0u && !rule_add_twin_linked(&weapon.rules)) ||
+        ((rule_flags & (WHC_RULE_TWIN_LINKED | WHC_RULE_REROLL_FAILED_WOUNDS)) != 0u &&
+         !rule_add_reroll_failed_wounds(&weapon.rules)) ||
         ((rule_flags & WHC_RULE_REROLL_FAILED_HITS) != 0u &&
          !rule_add_reroll_failed_hits(&weapon.rules)) ||
         ((rule_flags & WHC_RULE_TORRENT) != 0u && !rule_add_torrent(&weapon.rules)) ||
@@ -122,7 +135,6 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
          !rule_add_hit_auto_fails_through(&weapon.rules, 3u)) ||
         ((sustained_hits_dice_count != 0u || sustained_hits != 0u) &&
          !rule_add_sustained_hits_dice(&weapon.rules, sustained_hits_value)) ||
-        ((rule_flags & WHC_RULE_LANCE_ACTIVE) != 0u && !rule_add_wound_bonus(&weapon.rules, 1u)) ||
         (critical_wounds_on != 0u &&
          !rule_add_critical_wounds_on(&weapon.rules, critical_wounds_on)) ||
         (target_has_cover && !(ap == 0u && save <= 3u) && !rule_add_cover(&target.rules))) {
@@ -172,8 +184,8 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
     uint64_t total_attack_modifier_wide = 0u;
     uint32_t effective_damage_modifier = 0u;
     uint32_t combined_dice_count = 0u;
-    int16_t hit_modifier = 0;
-    uint8_t effective_hits_on = 0u;
+    int32_t hit_modifier = 0;
+    int32_t wound_modifier = 0;
     uint16_t effective_attack_dice_count = 0u;
     uint16_t effective_attack_dice_sides = 0u;
     bool target_has_cover = false;
@@ -191,6 +203,8 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
         input->sustained_hits_dice_sides > UINT16_MAX || input->sustained_hits > UINT16_MAX ||
         input->rapid_fire_dice_count > UINT16_MAX || input->rapid_fire_dice_sides > UINT16_MAX ||
         input->rapid_fire > UINT16_MAX || input->melta > UINT16_MAX ||
+        input->hit_modifier < INT16_MIN || input->hit_modifier > INT16_MAX ||
+        input->wound_modifier < INT16_MIN || input->wound_modifier > INT16_MAX ||
         target_input->toughness > UINT16_MAX || target_input->save > UINT8_MAX ||
         target_input->invulnerable_save > UINT8_MAX || target_input->feel_no_pain > UINT8_MAX ||
         target_input->wounds > UINT16_MAX || target_input->damage_reduction > UINT16_MAX ||
@@ -202,7 +216,8 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
 
     attacks_per_weapon = input->attack_modifier;
     effective_damage_modifier = input->damage_modifier;
-    effective_hits_on = (uint8_t)input->hits_on;
+    hit_modifier = input->hit_modifier;
+    wound_modifier = input->wound_modifier;
     effective_attack_dice_count = (uint16_t)input->attack_dice_count;
     effective_attack_dice_sides = (uint16_t)input->attack_dice_sides;
     sustained_hits_value = (struct dice_value){
@@ -255,15 +270,18 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
     if ((input->rule_flags & WHC_RULE_INDIRECT_NOT_VISIBLE) != 0u) {
         hit_modifier--;
     }
+    if ((input->rule_flags & WHC_RULE_LANCE_ACTIVE) != 0u) {
+        wound_modifier++;
+    }
     if (hit_modifier > 1) {
         hit_modifier = 1;
     } else if (hit_modifier < -1) {
         hit_modifier = -1;
     }
-    if (hit_modifier > 0 && effective_hits_on > 2u) {
-        effective_hits_on--;
-    } else if (hit_modifier < 0 && effective_hits_on < 6u) {
-        effective_hits_on++;
+    if (wound_modifier > 1) {
+        wound_modifier = 1;
+    } else if (wound_modifier < -1) {
+        wound_modifier = -1;
     }
 
     memset(weapon, 0, sizeof(*weapon));
@@ -273,7 +291,7 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
         effective_attack_dice_sides,
         (uint16_t)total_attack_modifier,
     };
-    weapon->hits_on = effective_hits_on;
+    weapon->hits_on = (uint8_t)input->hits_on;
     weapon->strength = (uint16_t)input->strength;
     weapon->ap = (uint16_t)input->ap;
     weapon->damage = (struct dice_value){
@@ -282,6 +300,14 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
         (uint16_t)effective_damage_modifier,
     };
     weapon->critical_hits_on = (uint8_t)input->critical_hits_on;
+    weapon->hit_modifier = (int8_t)hit_modifier;
+    weapon->wound_modifier = (int8_t)wound_modifier;
+    if ((input->rule_flags & WHC_RULE_REROLL_HIT_ONES) != 0u) {
+        weapon->hit_reroll_mask = UINT8_C(1) << 1u;
+    }
+    if ((input->rule_flags & WHC_RULE_REROLL_WOUND_ONES) != 0u) {
+        weapon->wound_reroll_mask = UINT8_C(1) << 1u;
+    }
 
     target->toughness = (uint16_t)target_input->toughness;
     target->save = (uint8_t)target_input->save;
@@ -300,8 +326,8 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
              rule_add_lethal_hits(&weapon->rules)) &&
             ((input->rule_flags & WHC_RULE_DEVASTATING_WOUNDS) == 0u ||
              rule_add_devastating_wounds(&weapon->rules)) &&
-            ((input->rule_flags & WHC_RULE_TWIN_LINKED) == 0u ||
-             rule_add_twin_linked(&weapon->rules)) &&
+            ((input->rule_flags & (WHC_RULE_TWIN_LINKED | WHC_RULE_REROLL_FAILED_WOUNDS)) == 0u ||
+             rule_add_reroll_failed_wounds(&weapon->rules)) &&
             ((input->rule_flags & WHC_RULE_REROLL_FAILED_HITS) == 0u ||
              rule_add_reroll_failed_hits(&weapon->rules)) &&
             ((input->rule_flags & WHC_RULE_TORRENT) == 0u || rule_add_torrent(&weapon->rules)) &&
@@ -309,8 +335,6 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
              rule_add_hit_auto_fails_through(&weapon->rules, 3u)) &&
             ((input->sustained_hits_dice_count == 0u && input->sustained_hits == 0u) ||
              rule_add_sustained_hits_dice(&weapon->rules, sustained_hits_value)) &&
-            ((input->rule_flags & WHC_RULE_LANCE_ACTIVE) == 0u ||
-             rule_add_wound_bonus(&weapon->rules, 1u)) &&
             (input->critical_wounds_on == 0u ||
              rule_add_critical_wounds_on(&weapon->rules, (uint8_t)input->critical_wounds_on)) &&
             (!target_has_cover || (input->ap == 0u && target_input->save <= 3u) ||

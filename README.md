@@ -109,6 +109,9 @@ rule_add_lethal_hits(&weapon.rules);
 rule_add_devastating_wounds(&weapon.rules);
 rule_add_twin_linked(&weapon.rules);
 rule_add_reroll_failed_hits(&weapon.rules);
+rule_add_reroll_failed_wounds(&weapon.rules);
+rule_add_hit_modifier(&weapon.rules, 1);
+rule_add_wound_modifier(&weapon.rules, -1);
 rule_add_sustained_hits(&weapon.rules, 1);
 rule_add_sustained_hits_dice(
     &weapon.rules,
@@ -124,6 +127,13 @@ rule_add_critical_wounds_on(&weapon.rules, 4);
 The devastating-wounds convenience rule currently compiles to "critical
 wounds bypass the save." Edition-specific wording can be isolated by changing
 that one rule compiler rather than rewriting the probability engine.
+
+`weapon.hit_reroll_mask` and `weapon.wound_reroll_mask` select specific
+unmodified D6 faces, while the convenience functions above select all failed
+rolls. Hit and Wound modifiers accumulate, then each roll's final modifier is
+capped to +1 or -1. Re-rolls use the unmodified face and the modifier is applied
+afterward, matching the official 10th-edition [Core Rules](https://assets.warhammer-community.com/warhammer40000_core%26key_corerules_eng_24.09-5xfayxjekm.pdf)
+and [Rules Commentary](https://assets.warhammer-community.com/warhammer40000_core%26key_corerulesupdate%26commentary_eng_24.09-lyrhcoyn9s.pdf).
 
 ## Why the rules are fast
 
@@ -254,9 +264,11 @@ cmake --build build --target formal-e-acsl
 ```
 
 The web test suite exhaustively compares the JavaScript and WebAssembly wound,
-armour, AP, invulnerable-save, and cover thresholds over their supported small
-domains. It also checks expected-damage monotonicity for AP, armour, Feel No
-Pain, invulnerable saves, and cover. Profile selection applies Anti abilities
+modified Hit/Wound, armour, AP, invulnerable-save, and cover thresholds over
+their supported small domains. Hand-derived exact fractions cover re-rolls of
+1, all failed-roll re-rolls, modifier caps, and opposing modifiers. It also
+checks expected-damage monotonicity for AP, armour, Feel No Pain, invulnerable
+saves, and cover. Profile selection applies Anti abilities
 only when the selected target has the matching datasheet keyword. Damage
 allocation is exhaustively compared between C and JavaScript across model
 wound counts, unit sizes, prior damage states, and incoming damage values.

@@ -173,7 +173,7 @@ static void test_web_api(void) {
     struct whc_web_summary summary;
 
     assert(whc_calculate_summary(0, 0, 1, 1, 3, 4, 0, 0, 0, 2, 6, 4, 3, 0, 0, 10, 0, 0, 0, 1, 0, 0,
-                                 0, 0, 0, 0, 0, &summary));
+                                 0, 0, 0, 0, 0, 0, 0, &summary));
     assert(summary.mean_numerator_low == 2);
     assert(summary.mean_numerator_high == 0);
     assert(summary.mean_denominator_low == 9);
@@ -249,13 +249,13 @@ static void test_web_api_context_rules(void) {
         WHC_RULE_TORRENT | WHC_RULE_RAPID_FIRE_ACTIVE | WHC_RULE_BLAST | WHC_RULE_MELTA_ACTIVE;
 
     assert(whc_calculate_summary(0, 0, 1, 2, 6, 2, 0, 0, 0, 1, 6, 1, 7, 0, 0, 10, 0, combined, 0,
-                                 10, 0, 0, 0, 0, 0, 1, 2, &summary));
+                                 10, 0, 0, 0, 0, 0, 1, 2, 0, 0, &summary));
     assert(summary.mean_numerator_low == 20);
     assert(summary.mean_denominator_low == 1);
 
     assert(whc_calculate_summary(0, 0, 1, 1, 6, 2, 1, 0, 0, 1, 6, 1, 3, 0, 0, 10, 0,
                                  WHC_RULE_TORRENT | WHC_RULE_TARGET_COVER, 0, 1, 0, 0, 0, 0, 0, 0,
-                                 0, &summary));
+                                 0, 0, 0, &summary));
     assert(summary.mean_numerator_low == 5);
     assert(summary.mean_denominator_low == 18);
 }
@@ -266,15 +266,72 @@ static void test_indirect_fire_restrictions(void) {
     uint32_t indirect = WHC_RULE_INDIRECT_NOT_VISIBLE | WHC_RULE_IGNORES_COVER;
 
     assert(whc_calculate_summary(0, 0, 1, 1, 2, 10, 0, 0, 0, 1, 3, 1, 7, 0, 0, 2, 0, indirect, 0, 1,
-                                 0, 0, 0, 0, 0, 0, 0, &summary));
+                                 0, 0, 0, 0, 0, 0, 0, 0, 0, &summary));
     assert(summary.mean_numerator_low == 5);
     assert(summary.mean_numerator_high == 0);
     assert(summary.mean_denominator_low == 12);
     assert(summary.mean_denominator_high == 0);
 
     assert(!whc_calculate_summary(0, 0, 1, 1, 2, 10, 0, 0, 0, 1, 6, 1, 7, 0, 0, 2, 0,
-                                  indirect | WHC_RULE_TORRENT, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+                                  indirect | WHC_RULE_TORRENT, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                   &summary));
+}
+
+/*@ terminates \true; */
+static void test_roll_modifiers_and_rerolls(void) {
+    struct weapon_profile weapon;
+    struct target_profile target;
+    struct calculator_workspace workspace;
+    struct attack_plan plan;
+    struct fraction mean;
+
+    initialize_profiles(&weapon, &target);
+    weapon.damage = (struct dice_value){0u, 0u, 1u};
+    target.save = 7u;
+
+    assert(modified_roll_threshold(4u, 0) == 4u);
+    assert(modified_roll_threshold(4u, 10) == 3u);
+    assert(modified_roll_threshold(4u, -10) == 5u);
+    assert(modified_roll_threshold(2u, 1) == 2u);
+    assert(modified_roll_threshold(6u, -1) == 6u);
+
+    weapon.hit_modifier = 2;
+    weapon.wound_modifier = -2;
+    weapon.hit_reroll_mask = UINT8_C(1) << 1u;
+    weapon.wound_reroll_mask = UINT8_C(1) << 1u;
+    assert(attack_plan_build(&weapon, &target, &plan));
+    assert(plan.hits_on == 2u);
+    assert(plan.wounds_on == 5u);
+    assert(plan.hit_reroll_mask == (UINT8_C(1) << 1u));
+    assert(plan.wound_reroll_mask == (UINT8_C(1) << 1u));
+
+    weapon.hit_modifier = 0;
+    weapon.wound_modifier = 0;
+    weapon.hit_reroll_mask = 0u;
+    weapon.wound_reroll_mask = 0u;
+    assert(calculate_attack_expected_damage(&weapon, &target, &workspace, &mean));
+    assert(mean.numerator == 1u && mean.denominator == 3u);
+
+    weapon.hit_reroll_mask = UINT8_C(1) << 1u;
+    weapon.wound_reroll_mask = UINT8_C(1) << 1u;
+    assert(calculate_attack_expected_damage(&weapon, &target, &workspace, &mean));
+    assert(mean.numerator == 49u && mean.denominator == 108u);
+
+    weapon.hit_reroll_mask = 0u;
+    weapon.wound_reroll_mask = 0u;
+    assert(rule_add_reroll_failed_hits(&weapon.rules));
+    assert(rule_add_reroll_failed_wounds(&weapon.rules));
+    assert(calculate_attack_expected_damage(&weapon, &target, &workspace, &mean));
+    assert(mean.numerator == 2u && mean.denominator == 3u);
+
+    rule_set_clear(&weapon.rules);
+    weapon.hit_modifier = 1;
+    weapon.wound_modifier = 1;
+    assert(rule_add_hit_modifier(&weapon.rules, 1));
+    assert(rule_add_wound_modifier(&weapon.rules, 1));
+    assert(attack_plan_build(&weapon, &target, &plan));
+    assert(plan.hits_on == 2u);
+    assert(plan.wounds_on == 3u);
 }
 
 /*@ terminates \true; */
@@ -462,6 +519,7 @@ int main(void) {
     test_sustained_hits_torrent_and_lance();
     test_web_api_context_rules();
     test_indirect_fire_restrictions();
+    test_roll_modifiers_and_rerolls();
     test_save_thresholds();
     test_unit_damage_allocation();
     test_ordered_mixed_profile_volley();

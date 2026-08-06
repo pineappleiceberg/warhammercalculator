@@ -5,7 +5,12 @@ import { dirname } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { attackRollSucceeds, savingThrowTarget, woundTarget } from "../lib/thresholds.mjs";
+import {
+  attackRollSucceeds,
+  modifiedRollTarget,
+  savingThrowTarget,
+  woundTarget,
+} from "../lib/thresholds.mjs";
 import {
   allocateDamageToSequence,
   allocateDamageToUnit,
@@ -315,7 +320,15 @@ function readUint64(pointer, lowIndex, highIndex) {
   return (BigInt(high) << 32n) | BigInt(low);
 }
 
-function exactMean({ ap = 0, save = 3, invulnerable = 0, feelNoPain = 0, flags = 0 } = {}) {
+function exactMean({
+  ap = 0,
+  save = 3,
+  invulnerable = 0,
+  feelNoPain = 0,
+  flags = 0,
+  hitModifier = 0,
+  woundModifier = 0,
+} = {}) {
   const output = calculator._malloc(72);
   try {
     const ok = calculator._whc_calculate_summary(
@@ -346,6 +359,8 @@ function exactMean({ ap = 0, save = 3, invulnerable = 0, feelNoPain = 0, flags =
       0,
       0,
       0,
+      hitModifier,
+      woundModifier,
       output,
     );
     assert.equal(ok, 1);
@@ -363,7 +378,7 @@ function lessThanOrEqual(left, right) {
 }
 
 function orderedVolley(weapons, targets, initialWoundsLost = 0) {
-  const weaponFields = 20;
+  const weaponFields = 22;
   const targetFields = 7;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
@@ -430,6 +445,8 @@ function variableRuleMean({ flags = 0, sustained = [0, 0, 0], rapid = [0, 0, 0] 
       1,
       ...sustained,
       ...rapid,
+      0,
+      0,
       0,
       output,
     );
@@ -544,8 +561,8 @@ test("source-backed loadout limits scale with unit size and remain overridable w
 });
 
 test("C/Wasm carries ordered damage across partial wounds and mixed target profiles", () => {
-  const light = [0, 0, 1, 1, 2, 10, 0, 0, 0, 1, 6, 16, 0, 0, 0, 0, 0, 0, 0, 0];
-  const heavy = [0, 0, 1, 1, 2, 10, 6, 0, 0, 2, 6, 16, 0, 0, 0, 0, 0, 0, 0, 0];
+  const light = [0, 0, 1, 1, 2, 10, 0, 0, 0, 1, 6, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  const heavy = [0, 0, 1, 1, 2, 10, 6, 0, 0, 2, 6, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
   const mixedTargets = [
     [1, 7, 0, 0, 1, 0, 1],
     [1, 2, 0, 0, 2, 0, 1],
@@ -573,6 +590,49 @@ test("JavaScript and C agree on wound thresholds", () => {
       assert.equal(calculator._wounds_on(strength, toughness), woundTarget(strength, toughness));
     }
   }
+});
+
+test("JavaScript and C agree on capped Hit and Wound modifiers", () => {
+  for (let succeedsOn = 2; succeedsOn <= 6; succeedsOn += 1) {
+    for (let modifier = -10; modifier <= 10; modifier += 1) {
+      assert.equal(
+        calculator._modified_roll_threshold(succeedsOn, modifier),
+        modifiedRollTarget(succeedsOn, modifier),
+      );
+    }
+  }
+});
+
+test("exact re-roll and modifier interactions match hand-derived probabilities", () => {
+  assert.deepEqual(exactMean({ save: 7 }), { numerator: 8n, denominator: 3n });
+  assert.deepEqual(exactMean({ save: 7, flags: 8192 }), {
+    numerator: 28n,
+    denominator: 9n,
+  });
+  assert.deepEqual(exactMean({ save: 7, flags: 32768 }), {
+    numerator: 28n,
+    denominator: 9n,
+  });
+  assert.deepEqual(exactMean({ save: 7, flags: 8192 | 32768 }), {
+    numerator: 98n,
+    denominator: 27n,
+  });
+  assert.deepEqual(exactMean({ save: 7, flags: 8 | 16384 }), {
+    numerator: 16n,
+    denominator: 3n,
+  });
+  assert.deepEqual(exactMean({ save: 7, hitModifier: 8, woundModifier: 8 }), {
+    numerator: 40n,
+    denominator: 9n,
+  });
+  assert.deepEqual(exactMean({ save: 7, hitModifier: -8, woundModifier: -8 }), {
+    numerator: 4n,
+    denominator: 3n,
+  });
+  assert.deepEqual(exactMean({ save: 7, flags: 32, hitModifier: -1 }), {
+    numerator: 8n,
+    denominator: 3n,
+  });
 });
 
 test("JavaScript and C agree on armour, invulnerable, AP, and cover thresholds", () => {

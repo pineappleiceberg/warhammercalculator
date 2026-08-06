@@ -110,6 +110,10 @@ test("server-renders the calculator interface", async () => {
   assert.match(html, /Weapon rules/);
   assert.match(html, /Sustained Hits/);
   assert.match(html, /Rapid Fire/);
+  assert.match(html, /Hit re-rolls/);
+  assert.match(html, /Wound re-rolls/);
+  assert.match(html, /Other Hit modifier/);
+  assert.match(html, /Other Wound modifier/);
   assert.match(html, /Roll this attack/);
   assert.match(html, /Share matchup/);
   assert.match(html, /LIVE RESOLUTION/);
@@ -700,6 +704,8 @@ test("generated API profiles preserve combat invariants and reject malformed fie
   };
 
   for (let iteration = 0; iteration < 40; iteration += 1) {
+    const rerollHits = below(2) === 1;
+    const rerollWounds = below(2) === 1;
     const profile = {
       attackDice: 0,
       attackSides: 0,
@@ -719,10 +725,15 @@ test("generated API profiles preserve combat invariants and reject malformed fie
       wounds: 1 + below(8),
       targetModels: 1 + below(4),
       reduction: below(3),
+      hitModifier: below(5) - 2,
+      woundModifier: below(5) - 2,
       lethalHits: below(2) === 1,
       devastatingWounds: below(2) === 1,
       twinLinked: below(2) === 1,
-      rerollHits: below(2) === 1,
+      rerollHits,
+      rerollHitOnes: !rerollHits && below(2) === 1,
+      rerollWounds,
+      rerollWoundOnes: !rerollWounds && below(2) === 1,
     };
     const baseline = await calculate(profile);
     assert.ok(baseline.minimum <= baseline.firstQuartile);

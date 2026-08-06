@@ -19,7 +19,10 @@ enum whc_rule_flags {
     WHC_RULE_MELTA_ACTIVE = UINT32_C(1) << 9,
     WHC_RULE_TARGET_COVER = UINT32_C(1) << 10,
     WHC_RULE_IGNORES_COVER = UINT32_C(1) << 11,
-    WHC_RULE_INDIRECT_NOT_VISIBLE = UINT32_C(1) << 12
+    WHC_RULE_INDIRECT_NOT_VISIBLE = UINT32_C(1) << 12,
+    WHC_RULE_REROLL_HIT_ONES = UINT32_C(1) << 13,
+    WHC_RULE_REROLL_FAILED_WOUNDS = UINT32_C(1) << 14,
+    WHC_RULE_REROLL_WOUND_ONES = UINT32_C(1) << 15
 };
 
 struct whc_web_summary {
@@ -64,6 +67,8 @@ struct whc_web_weapon_input {
     uint32_t rapid_fire_dice_sides;
     uint32_t rapid_fire;
     uint32_t melta;
+    int32_t hit_modifier;
+    int32_t wound_modifier;
 };
 
 struct whc_web_target_input {
@@ -115,18 +120,16 @@ struct whc_web_mean {
     ensures \result ==> summary->applied_median <= summary->applied_third_quartile;
     ensures \result ==> summary->applied_third_quartile <= summary->applied_maximum;
 */
-bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_sides,
-                           uint16_t attack_modifier, uint16_t weapon_count, uint8_t hits_on,
-                           uint16_t strength, uint16_t ap, uint16_t damage_dice_count,
-                           uint16_t damage_dice_sides, uint16_t damage_modifier,
-                           uint8_t critical_hits_on, uint16_t toughness, uint8_t save,
-                           uint8_t invulnerable_save, uint8_t feel_no_pain, uint16_t wounds,
-                           uint16_t damage_reduction, uint32_t rule_flags,
-                           uint8_t critical_wounds_on, uint16_t target_models,
-                           uint16_t sustained_hits_dice_count, uint16_t sustained_hits_dice_sides,
-                           uint16_t sustained_hits, uint16_t rapid_fire_dice_count,
-                           uint16_t rapid_fire_dice_sides, uint16_t rapid_fire, uint16_t melta,
-                           struct whc_web_summary *summary);
+bool whc_calculate_summary(
+    uint16_t attack_dice_count, uint16_t attack_dice_sides, uint16_t attack_modifier,
+    uint16_t weapon_count, uint8_t hits_on, uint16_t strength, uint16_t ap,
+    uint16_t damage_dice_count, uint16_t damage_dice_sides, uint16_t damage_modifier,
+    uint8_t critical_hits_on, uint16_t toughness, uint8_t save, uint8_t invulnerable_save,
+    uint8_t feel_no_pain, uint16_t wounds, uint16_t damage_reduction, uint32_t rule_flags,
+    uint8_t critical_wounds_on, uint16_t target_models, uint16_t sustained_hits_dice_count,
+    uint16_t sustained_hits_dice_sides, uint16_t sustained_hits, uint16_t rapid_fire_dice_count,
+    uint16_t rapid_fire_dice_sides, uint16_t rapid_fire, uint16_t melta, int16_t hit_modifier,
+    int16_t wound_modifier, struct whc_web_summary *summary);
 
 /*@ requires 1 <= weapon_count && weapon_count <= MAX_VOLLEY_WEAPONS;
     requires 1 <= target_segment_count && target_segment_count <= MAX_TARGET_SEGMENTS;

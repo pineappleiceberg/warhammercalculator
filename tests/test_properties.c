@@ -143,6 +143,14 @@ static void generate_profiles(struct weapon_profile *weapon, struct target_profi
         weapon->damage = (struct dice_value){0u, 0u, (uint16_t)(1u + random_below(state, 5u))};
     }
     weapon->critical_hits_on = (uint8_t)(5u + random_below(state, 2u));
+    weapon->hit_modifier = (int8_t)random_below(state, 5u) - 2;
+    weapon->wound_modifier = (int8_t)random_below(state, 5u) - 2;
+    if ((flags & 256u) != 0u) {
+        weapon->hit_reroll_mask = UINT8_C(1) << 1u;
+    }
+    if ((flags & 512u) != 0u) {
+        weapon->wound_reroll_mask = UINT8_C(1) << 1u;
+    }
     target->toughness = (uint16_t)(1u + random_below(state, 16u));
     target->save = (uint8_t)(2u + random_below(state, 6u));
     target->invulnerable_save = (flags & 4u) != 0u ? (uint8_t)(2u + random_below(state, 5u)) : 0u;

@@ -16,13 +16,20 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Add granular hit and wound rerolls (ones versus all failures) plus explicit
-   roll modifiers consistently across C, WebAssembly, API, web, and simulations.
-2. Add a reviewed interaction corpus for combinations of critical hits/wounds,
+1. Expand the reviewed interaction corpus for combinations of critical hits/wounds,
    rerolls, modifiers, and save bypasses, with native/Wasm differential checks.
+2. Add source-backed unit ability presets for common Hit and Wound modifiers and
+   re-roll effects while retaining manual overrides.
 
 ## Completed cycles
 
+- 2026-08-06: Added independent Hit and Wound re-roll modes for unmodified 1s
+  or all failures, plus explicit cumulative roll modifiers capped to +1/-1.
+  Native C, WebAssembly, exact and ordered APIs, editable/shared profiles, live
+  CSPRNG rolls, and seeded simulations now use the same behavior. Formal proofs
+  cover modifier bounds, generated and fuzz profiles exercise the new fields,
+  and hand-derived fractions verify representative re-roll and modifier
+  interactions across C and JavaScript.
 - 2026-08-06: Added a dependency-aware API health endpoint for profile data,
   the C/WebAssembly engine, and list storage. Dependency outages now return
   retryable 503 errors with stable codes and request IDs, and failed asset loads

@@ -100,6 +100,24 @@ bool whc_prove_indirect_low_hit_rolls_fail(uint8_t face) {
     return !result;
 }
 
+/*@ requires 2 <= succeeds_on && succeeds_on <= 6;
+    assigns \nothing;
+    ensures \result;
+*/
+bool whc_prove_roll_modifier_caps(uint8_t succeeds_on) {
+    uint8_t large_bonus = modified_roll_threshold(succeeds_on, 10);
+    uint8_t single_bonus = modified_roll_threshold(succeeds_on, 1);
+    uint8_t large_penalty = modified_roll_threshold(succeeds_on, -10);
+    uint8_t single_penalty = modified_roll_threshold(succeeds_on, -1);
+    uint8_t unchanged = modified_roll_threshold(succeeds_on, 0);
+
+    /*@ assert large_bonus == single_bonus; */
+    /*@ assert large_penalty == single_penalty; */
+    /*@ assert unchanged == succeeds_on; */
+    return large_bonus == single_bonus && large_penalty == single_penalty &&
+           unchanged == succeeds_on;
+}
+
 /*@ requires whc_valid_target_unit_layout(layout);
     requires applied_damage <= whc_target_capacity(layout);
     assigns \nothing;

@@ -1,4 +1,9 @@
-import { attackRollSucceeds, savingThrowTarget, woundTarget } from "./thresholds.mjs";
+import {
+  attackRollSucceeds,
+  modifiedRollTarget,
+  savingThrowTarget,
+  woundTarget,
+} from "./thresholds.mjs";
 import {
   allocateDamageToSequence,
   allocateDamageToUnit,
@@ -26,6 +31,8 @@ export type CombatProfile = {
   targetModels: number;
   reduction: number;
   criticalWounds: number;
+  hitModifier: number;
+  woundModifier: number;
   sustainedHitsDice: number;
   sustainedHitsSides: number;
   sustainedHits: number;
@@ -45,6 +52,9 @@ export type CombatProfile = {
   devastatingWounds: boolean;
   twinLinked: boolean;
   rerollHits: boolean;
+  rerollHitOnes: boolean;
+  rerollWounds: boolean;
+  rerollWoundOnes: boolean;
 };
 
 export type RollDetail = {
@@ -163,6 +173,8 @@ export const DEFAULT_PROFILE: CombatProfile = {
   targetModels: 1,
   reduction: 0,
   criticalWounds: 0,
+  hitModifier: 0,
+  woundModifier: 0,
   sustainedHitsDice: 0,
   sustainedHitsSides: 0,
   sustainedHits: 0,
@@ -182,6 +194,9 @@ export const DEFAULT_PROFILE: CombatProfile = {
   devastatingWounds: false,
   twinLinked: false,
   rerollHits: false,
+  rerollHitOnes: false,
+  rerollWounds: false,
+  rerollWoundOnes: false,
 };
 
 export function normalizeProfile(input: unknown): CombatProfile {
@@ -232,6 +247,8 @@ export function normalizeProfile(input: unknown): CombatProfile {
     targetModels: numberValue("targetModels", 1, 1000),
     reduction: numberValue("reduction", 0, 1024),
     criticalWounds: numberValue("criticalWounds", 0, 6),
+    hitModifier: numberValue("hitModifier", -10, 10),
+    woundModifier: numberValue("woundModifier", -10, 10),
     sustainedHitsDice: numberValue("sustainedHitsDice", 0, 20),
     sustainedHitsSides: numberValue("sustainedHitsSides", 0, 100),
     sustainedHits: numberValue("sustainedHits", 0, 1024),
@@ -251,6 +268,9 @@ export function normalizeProfile(input: unknown): CombatProfile {
     devastatingWounds: booleanValue("devastatingWounds"),
     twinLinked: booleanValue("twinLinked"),
     rerollHits: booleanValue("rerollHits"),
+    rerollHitOnes: booleanValue("rerollHitOnes"),
+    rerollWounds: booleanValue("rerollWounds"),
+    rerollWoundOnes: booleanValue("rerollWoundOnes"),
   };
   if (profile.criticalWounds === 1) {
     throw new Error("criticalWounds must be 0 or an integer from 2 to 6");
@@ -266,6 +286,12 @@ export function normalizeProfile(input: unknown): CombatProfile {
   }
   if (profile.rapidFireDice > 0 && profile.rapidFireSides < 2) {
     throw new Error("rapidFireSides must be at least 2 when rapidFireDice is non-zero");
+  }
+  if (profile.rerollHits && profile.rerollHitOnes) {
+    throw new Error("Choose either Hit re-rolls of 1 or failed Hit re-rolls");
+  }
+  if (profile.rerollWounds && profile.rerollWoundOnes) {
+    throw new Error("Choose either Wound re-rolls of 1 or failed Wound re-rolls");
   }
   return profile;
 }
@@ -337,11 +363,14 @@ function rollCheck(
   rerollFailures = false,
   autoFailsThrough = 0,
   randomUint32: RandomUint32,
+  rerollOnes = false,
 ) {
   const first = rollDie(6, randomUint32);
   const succeeds = (face: number) =>
     attackRollSucceeds(face, succeedsOn, criticalOn, autoFailsThrough);
-  if (!rerollFailures || succeeds(first)) return { face: first, label: String(first) };
+  if (!(rerollOnes && first === 1) && (!rerollFailures || succeeds(first))) {
+    return { face: first, label: String(first) };
+  }
   const second = rollDie(6, randomUint32);
   return { face: second, label: `${first}→${second}` };
 }
@@ -373,12 +402,13 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
     throw new Error("This roll is too large. Reduce the attack or weapon count.");
   }
 
-  let hitModifier = (profile.heavyActive ? 1 : 0) - (profile.indirect ? 1 : 0);
-  hitModifier = Math.max(-1, Math.min(1, hitModifier));
-  const hitsOn = Math.max(2, Math.min(6, profile.hitOn - hitModifier));
-  const woundsOn = Math.max(
-    2,
-    woundTarget(profile.strength, profile.toughness) - (profile.lanceActive ? 1 : 0),
+  const hitsOn = modifiedRollTarget(
+    profile.hitOn,
+    profile.hitModifier + (profile.heavyActive ? 1 : 0) - (profile.indirect ? 1 : 0),
+  );
+  const woundsOn = modifiedRollTarget(
+    woundTarget(profile.strength, profile.toughness),
+    profile.woundModifier + (profile.lanceActive ? 1 : 0),
   );
   const savesOn = savingThrowTarget(
     profile.save,
@@ -419,9 +449,10 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
       const wound = rollCheck(
         woundsOn,
         profile.criticalWounds || 6,
-        profile.twinLinked,
+        profile.twinLinked || profile.rerollWounds,
         0,
         randomUint32,
+        profile.rerollWoundOnes,
       );
       criticalWound = wound.face >= (profile.criticalWounds || 6);
       const wounded = criticalWound || wound.face >= woundsOn;
@@ -532,6 +563,7 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
       profile.rerollHits,
       autoFailsThrough,
       randomUint32,
+      profile.rerollHitOnes,
     );
     const hitSucceeded = attackRollSucceeds(
       hit.face,
@@ -621,9 +653,10 @@ export function simulateOrderedVolley(
     if (attacks > 10_000) {
       throw new Error("This roll is too large. Reduce the attack or weapon count.");
     }
-    let hitModifier = (profile.heavyActive ? 1 : 0) - (profile.indirect ? 1 : 0);
-    hitModifier = Math.max(-1, Math.min(1, hitModifier));
-    const hitsOn = Math.max(2, Math.min(6, profile.hitOn - hitModifier));
+    const hitsOn = modifiedRollTarget(
+      profile.hitOn,
+      profile.hitModifier + (profile.heavyActive ? 1 : 0) - (profile.indirect ? 1 : 0),
+    );
     const line: RollResult = {
       attacks,
       attacksResolved: 0,
@@ -654,9 +687,9 @@ export function simulateOrderedVolley(
       const position = targetSequencePosition(appliedState, targets);
       if (!position) return;
       const target = targets[position.segmentIndex];
-      const woundsOn = Math.max(
-        2,
-        woundTarget(profile.strength, target.toughness) - (profile.lanceActive ? 1 : 0),
+      const woundsOn = modifiedRollTarget(
+        woundTarget(profile.strength, target.toughness),
+        profile.woundModifier + (profile.lanceActive ? 1 : 0),
       );
       const savesOn = savingThrowTarget(
         target.save,
@@ -673,9 +706,10 @@ export function simulateOrderedVolley(
         const wound = rollCheck(
           woundsOn,
           profile.criticalWounds || 6,
-          profile.twinLinked,
+          profile.twinLinked || profile.rerollWounds,
           0,
           randomUint32,
+          profile.rerollWoundOnes,
         );
         criticalWound = wound.face >= (profile.criticalWounds || 6);
         const wounded = criticalWound || wound.face >= woundsOn;
@@ -777,6 +811,7 @@ export function simulateOrderedVolley(
         profile.rerollHits,
         autoFailsThrough,
         randomUint32,
+        profile.rerollHitOnes,
       );
       const hitSucceeded = attackRollSucceeds(
         hit.face,
@@ -880,8 +915,8 @@ export function simulateOrderedVolleyPhase(
       (profile.withinHalfRange ? profile.melta : 0) +
       profile.damageDice * profile.damageSides;
     const drawsPerResolvedHit =
-      (profile.torrent ? 0 : profile.rerollHits ? 2 : 1) +
-      (profile.twinLinked ? 2 : 1) +
+      (profile.torrent ? 0 : profile.rerollHits || profile.rerollHitOnes ? 2 : 1) +
+      (profile.twinLinked || profile.rerollWounds || profile.rerollWoundOnes ? 2 : 1) +
       1 +
       profile.damageDice +
       (hasFeelNoPain ? maximumDamage : 0);

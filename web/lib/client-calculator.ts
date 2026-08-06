@@ -77,7 +77,10 @@ function profileFlags(profile: CombatProfile) {
     (profile.withinHalfRange && profile.melta > 0 ? 512 : 0) |
     (profile.targetCover ? 1024 : 0) |
     (profile.ignoresCover ? 2048 : 0) |
-    (profile.indirect ? 4096 : 0)
+    (profile.indirect ? 4096 : 0) |
+    (profile.rerollHitOnes ? 8192 : 0) |
+    (profile.rerollWounds ? 16384 : 0) |
+    (profile.rerollWoundOnes ? 32768 : 0)
   );
 }
 
@@ -114,6 +117,8 @@ export async function calculateProfile(profile: CombatProfile): Promise<DamageSu
       profile.rapidFireSides,
       profile.rapidFire,
       profile.melta,
+      profile.hitModifier,
+      profile.woundModifier,
       output,
     );
     if (!ok) throw new Error("That unit profile exceeds the exact calculator limits");
@@ -163,7 +168,7 @@ export async function calculateOrderedVolley(
   }
 
   const calculator = await loadCalculator();
-  const weaponFields = 20;
+  const weaponFields = 22;
   const targetFields = 7;
   const weaponsPointer = calculator._malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
@@ -202,6 +207,8 @@ export async function calculateOrderedVolley(
         profile.rapidFireSides,
         profile.rapidFire,
         profile.melta,
+        profile.hitModifier,
+        profile.woundModifier,
       ]);
     });
     targets.forEach((target, index) => {

@@ -17,3 +17,8 @@ export function attackRollSucceeds(face, succeedsOn, criticalOn = 0, autoFailsTh
   if (face <= autoFailsThrough) return false;
   return (criticalOn >= 2 && face >= criticalOn) || (succeedsOn <= 6 && face >= succeedsOn);
 }
+
+export function modifiedRollTarget(succeedsOn, modifier) {
+  const cappedModifier = Math.max(-1, Math.min(1, modifier));
+  return Math.max(2, Math.min(6, succeedsOn - cappedModifier));
+}

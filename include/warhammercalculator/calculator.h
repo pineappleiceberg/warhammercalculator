@@ -103,6 +103,9 @@ struct attack_plan {
     uint8_t wound_reroll_mask;
     uint8_t save_reroll_mask;
 
+    int16_t hit_modifier;
+    int16_t wound_modifier;
+
     uint16_t damage_reduction;
     uint16_t damage_floor;
     struct dice_value sustained_hits;
@@ -120,6 +123,10 @@ struct weapon_profile {
     uint16_t ap;
     struct dice_value damage;
     uint8_t critical_hits_on;
+    int8_t hit_modifier;
+    int8_t wound_modifier;
+    uint8_t hit_reroll_mask;
+    uint8_t wound_reroll_mask;
     struct rule_set rules;
 };
 
@@ -159,6 +166,11 @@ struct calculator_workspace {
 
 /*@
   logic integer whc_min(integer left, integer right) = left < right ? left : right;
+  logic integer whc_max(integer left, integer right) = left > right ? left : right;
+  logic integer whc_capped_roll_modifier(integer modifier) =
+      modifier > 1 ? 1 : modifier < -1 ? -1 : modifier;
+  logic integer whc_modified_roll_threshold(integer succeeds_on, integer modifier) =
+      whc_max(2, whc_min(6, succeeds_on - whc_capped_roll_modifier(modifier)));
   logic integer whc_clamp_save(integer value) = value > 7 ? 7 : value;
   logic integer whc_armour_save(integer save, integer ap) = save + ap;
   logic integer whc_wound_threshold(integer strength, integer toughness) =
@@ -234,6 +246,8 @@ struct calculator_workspace {
       \valid_read(weapon) && whc_valid_dice_value(weapon->attacks) &&
       whc_valid_dice_value(weapon->damage) &&
       2 <= weapon->hits_on && weapon->hits_on <= 6 && weapon->strength > 0 &&
+      (weapon->hit_reroll_mask & 0x81) == 0 &&
+      (weapon->wound_reroll_mask & 0x81) == 0 &&
       whc_valid_rule_set(&weapon->rules);
 
   predicate whc_valid_target_profile{L}(struct target_profile *target) =
@@ -515,6 +529,8 @@ bool rule_add_twin_linked(struct rule_set *rules);
 /*@ requires \valid(rules); assigns *rules; */
 bool rule_add_reroll_failed_hits(struct rule_set *rules);
 /*@ requires \valid(rules); assigns *rules; */
+bool rule_add_reroll_failed_wounds(struct rule_set *rules);
+/*@ requires \valid(rules); assigns *rules; */
 bool rule_add_wounds_on(struct rule_set *rules, uint8_t target);
 /*@ requires \valid(rules); assigns *rules; */
 bool rule_add_critical_wounds_on(struct rule_set *rules, uint8_t target);
@@ -530,6 +546,10 @@ bool rule_add_sustained_hits(struct rule_set *rules, uint8_t additional_hits);
 bool rule_add_sustained_hits_dice(struct rule_set *rules, struct dice_value additional_hits);
 /*@ requires \valid(rules); assigns *rules; */
 bool rule_add_torrent(struct rule_set *rules);
+/*@ requires \valid(rules); assigns *rules; */
+bool rule_add_hit_modifier(struct rule_set *rules, int8_t modifier);
+/*@ requires \valid(rules); assigns *rules; */
+bool rule_add_wound_modifier(struct rule_set *rules, int8_t modifier);
 /*@ requires \valid(rules); assigns *rules; */
 bool rule_add_wound_bonus(struct rule_set *rules, uint8_t bonus);
 /*@ requires \valid(rules); assigns *rules; */
@@ -599,6 +619,15 @@ bool attack_plan_build(const struct weapon_profile *weapon, const struct target_
     ensures \result == whc_wound_threshold(strength, toughness);
 */
 uint8_t wounds_on(uint16_t strength, uint16_t toughness);
+/*@ requires 2 <= succeeds_on && succeeds_on <= 6;
+    assigns \nothing;
+    ensures 2 <= \result && \result <= 6;
+    ensures modifier > 0 ==> \result <= succeeds_on;
+    ensures modifier < 0 ==> \result >= succeeds_on;
+    ensures modifier == 0 ==> \result == succeeds_on;
+    ensures \result == whc_modified_roll_threshold(succeeds_on, modifier);
+*/
+uint8_t modified_roll_threshold(uint8_t succeeds_on, int16_t modifier);
 /*@ requires 2 <= save && save <= 7;
     requires invulnerable_save == 0 || (2 <= invulnerable_save && invulnerable_save <= 6);
     assigns \nothing;

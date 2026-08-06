@@ -1224,21 +1224,34 @@ static bool compile_set_sustained_hits(struct attack_plan *plan,
 /*@ requires \valid(plan) && \valid_read(weapon) && \valid_read(target) && \valid_read(payload);
     assigns *plan;
 */
-static bool compile_wound_bonus(struct attack_plan *plan, const struct weapon_profile *weapon,
-                                const struct target_profile *target,
-                                const union rule_payload *payload) {
-    uint8_t bonus = 0;
-
+static bool compile_hit_modifier(struct attack_plan *plan, const struct weapon_profile *weapon,
+                                 const struct target_profile *target,
+                                 const union rule_payload *payload) {
     (void)weapon;
     (void)target;
 
-    if (plan == NULL || payload == NULL || payload->u8[0] > 5u) {
+    if (plan == NULL || payload == NULL) {
         return false;
     }
 
-    bonus = payload->u8[0];
-    plan->wounds_on =
-        plan->wounds_on > (uint8_t)(2u + bonus) ? (uint8_t)(plan->wounds_on - bonus) : 2u;
+    plan->hit_modifier += (int8_t)payload->u8[0];
+    return true;
+}
+
+/*@ requires \valid(plan) && \valid_read(weapon) && \valid_read(target) && \valid_read(payload);
+    assigns *plan;
+*/
+static bool compile_wound_modifier(struct attack_plan *plan, const struct weapon_profile *weapon,
+                                   const struct target_profile *target,
+                                   const union rule_payload *payload) {
+    (void)weapon;
+    (void)target;
+
+    if (plan == NULL || payload == NULL) {
+        return false;
+    }
+
+    plan->wound_modifier += (int8_t)payload->u8[0];
     return true;
 }
 
@@ -1894,6 +1907,12 @@ bool rule_add_reroll_failed_hits(struct rule_set *rules) {
     return rule_set_add(rules, compile_add_flags, payload);
 }
 
+bool rule_add_reroll_failed_wounds(struct rule_set *rules) {
+    union rule_payload payload = {0};
+    payload.u32[0] = ATTACK_PLAN_REROLL_FAILED_WOUNDS;
+    return rule_set_add(rules, compile_add_flags, payload);
+}
+
 bool rule_add_wounds_on(struct rule_set *rules, uint8_t target) {
     union rule_payload payload = {0};
     payload.u8[0] = target;
@@ -1953,15 +1972,31 @@ bool rule_add_torrent(struct rule_set *rules) {
     return rule_set_add(rules, compile_add_flags, payload);
 }
 
-bool rule_add_wound_bonus(struct rule_set *rules, uint8_t bonus) {
+bool rule_add_hit_modifier(struct rule_set *rules, int8_t modifier) {
     union rule_payload payload = {0};
 
+    if (modifier == 0) {
+        return false;
+    }
+    payload.u8[0] = (uint8_t)modifier;
+    return rule_set_add(rules, compile_hit_modifier, payload);
+}
+
+bool rule_add_wound_modifier(struct rule_set *rules, int8_t modifier) {
+    union rule_payload payload = {0};
+
+    if (modifier == 0) {
+        return false;
+    }
+    payload.u8[0] = (uint8_t)modifier;
+    return rule_set_add(rules, compile_wound_modifier, payload);
+}
+
+bool rule_add_wound_bonus(struct rule_set *rules, uint8_t bonus) {
     if (bonus == 0u || bonus > 5u) {
         return false;
     }
-
-    payload.u8[0] = bonus;
-    return rule_set_add(rules, compile_wound_bonus, payload);
+    return rule_add_wound_modifier(rules, (int8_t)bonus);
 }
 
 bool rule_add_cover(struct rule_set *rules) {
@@ -2051,6 +2086,8 @@ bool attack_plan_build(const struct weapon_profile *weapon, const struct target_
         (target->invulnerable_save != 0 &&
          (target->invulnerable_save < 2u || target->invulnerable_save > 6u)) ||
         (target->feel_no_pain != 0 && (target->feel_no_pain < 2u || target->feel_no_pain > 6u)) ||
+        (weapon->hit_reroll_mask & (uint8_t)~VALID_D6_FACE_MASK) != 0u ||
+        (weapon->wound_reroll_mask & (uint8_t)~VALID_D6_FACE_MASK) != 0u ||
         weapon->rules.count > MAX_PROFILE_RULES || target->rules.count > MAX_PROFILE_RULES) {
         return false;
     }
@@ -2064,6 +2101,10 @@ bool attack_plan_build(const struct weapon_profile *weapon, const struct target_
     plan->feel_no_pain_on = target->feel_no_pain;
     plan->damage_reduction = target->reduction;
     plan->damage_floor = 1;
+    plan->hit_modifier = weapon->hit_modifier;
+    plan->wound_modifier = weapon->wound_modifier;
+    plan->hit_reroll_mask = weapon->hit_reroll_mask & VALID_D6_FACE_MASK;
+    plan->wound_reroll_mask = weapon->wound_reroll_mask & VALID_D6_FACE_MASK;
 
     rule_index = 0;
     /*@ loop invariant 0 <= rule_index && rule_index <= weapon->rules.count;
@@ -2092,6 +2133,9 @@ bool attack_plan_build(const struct weapon_profile *weapon, const struct target_
         }
         rule_index++;
     }
+
+    plan->hits_on = modified_roll_threshold(plan->hits_on, plan->hit_modifier);
+    plan->wounds_on = modified_roll_threshold(plan->wounds_on, plan->wound_modifier);
 
     if (plan->hits_on < 2u || plan->hits_on > 6u || plan->wounds_on < 2u || plan->wounds_on > 6u ||
         plan->saves_on < 2u || plan->saves_on > 7u || plan->critical_hits_on < 2u ||
@@ -2130,6 +2174,28 @@ uint8_t wounds_on(uint16_t strength, uint16_t toughness) {
            : (strength_wide == toughness_wide)      ? 4u
            : (toughness_wide >= strength_wide * 2u) ? 6u
                                                     : 5u;
+}
+
+uint8_t modified_roll_threshold(uint8_t succeeds_on, int16_t modifier) {
+    int16_t capped_modifier = modifier;
+    int16_t modified = succeeds_on;
+
+    if (succeeds_on < 2u || succeeds_on > 6u) {
+        return succeeds_on;
+    }
+    if (capped_modifier > 1) {
+        capped_modifier = 1;
+    } else if (capped_modifier < -1) {
+        capped_modifier = -1;
+    }
+    modified -= capped_modifier;
+    if (modified < 2) {
+        return 2u;
+    }
+    if (modified > 6) {
+        return 6u;
+    }
+    return (uint8_t)modified;
 }
 
 uint8_t saves_on(uint8_t save, uint8_t invulnerable_save, uint16_t ap) {

@@ -7,7 +7,12 @@ import {
   type CombatProfile as Profile,
   type RollResult,
 } from "../lib/combat";
-import { attackRollSucceeds, savingThrowTarget, woundTarget } from "../lib/thresholds.mjs";
+import {
+  attackRollSucceeds,
+  modifiedRollTarget,
+  savingThrowTarget,
+  woundTarget,
+} from "../lib/thresholds.mjs";
 import { antiWoundThreshold } from "../lib/anti.mjs";
 import { allocateDamageToUnit } from "../lib/allocation.mjs";
 import { abilityDiceValue, parseDice } from "../lib/dice.mjs";
@@ -158,7 +163,10 @@ async function calculate(profile: Profile): Promise<Result> {
     (profile.withinHalfRange && profile.melta > 0 ? 512 : 0) |
     (profile.targetCover ? 1024 : 0) |
     (profile.ignoresCover ? 2048 : 0) |
-    (profile.indirect ? 4096 : 0);
+    (profile.indirect ? 4096 : 0) |
+    (profile.rerollHitOnes ? 8192 : 0) |
+    (profile.rerollWounds ? 16384 : 0) |
+    (profile.rerollWoundOnes ? 32768 : 0);
 
   try {
     const ok = wasmModule._whc_calculate_summary(
@@ -189,6 +197,8 @@ async function calculate(profile: Profile): Promise<Result> {
       profile.rapidFireSides,
       profile.rapidFire,
       profile.melta,
+      profile.hitModifier,
+      profile.woundModifier,
       output,
     );
 
@@ -259,11 +269,12 @@ function rollCheck(
   criticalOn = 0,
   rerollFailures = false,
   autoFailsThrough = 0,
+  rerollOnes = false,
 ) {
   const first = rollDie();
   const succeeds = (face: number) =>
     attackRollSucceeds(face, succeedsOn, criticalOn, autoFailsThrough);
-  if (!rerollFailures || succeeds(first)) {
+  if (!(rerollOnes && first === 1) && (!rerollFailures || succeeds(first))) {
     return { face: first, label: String(first) };
   }
   const second = rollDie();
@@ -293,12 +304,13 @@ function simulateAttack(profile: Profile): RollResult {
     throw new Error("This roll is too large to display. Reduce the attack or weapon count.");
   }
 
-  let hitModifier = (profile.heavyActive ? 1 : 0) - (profile.indirect ? 1 : 0);
-  hitModifier = Math.max(-1, Math.min(1, hitModifier));
-  const hitsOn = Math.max(2, Math.min(6, profile.hitOn - hitModifier));
-  const woundsOn = Math.max(
-    2,
-    woundTarget(profile.strength, profile.toughness) - (profile.lanceActive ? 1 : 0),
+  const hitsOn = modifiedRollTarget(
+    profile.hitOn,
+    profile.hitModifier + (profile.heavyActive ? 1 : 0) - (profile.indirect ? 1 : 0),
+  );
+  const woundsOn = modifiedRollTarget(
+    woundTarget(profile.strength, profile.toughness),
+    profile.woundModifier + (profile.lanceActive ? 1 : 0),
   );
   const savesOn = savingThrowTarget(
     profile.save,
@@ -333,7 +345,13 @@ function simulateAttack(profile: Profile): RollResult {
     let woundLabel = "Lethal ✓";
     let criticalWound = false;
     if (!lethalWound) {
-      const wound = rollCheck(woundsOn, profile.criticalWounds || 6, profile.twinLinked);
+      const wound = rollCheck(
+        woundsOn,
+        profile.criticalWounds || 6,
+        profile.twinLinked || profile.rerollWounds,
+        0,
+        profile.rerollWoundOnes,
+      );
       criticalWound = wound.face >= (profile.criticalWounds || 6);
       const wounded = criticalWound || wound.face >= woundsOn;
       woundLabel = `${wound.label}${criticalWound ? "★" : ""} ${wounded ? "✓" : "✕"}`;
@@ -437,7 +455,13 @@ function simulateAttack(profile: Profile): RollResult {
       continue;
     }
     const autoFailsThrough = profile.indirect ? 3 : 0;
-    const hit = rollCheck(hitsOn, profile.criticalHits, profile.rerollHits, autoFailsThrough);
+    const hit = rollCheck(
+      hitsOn,
+      profile.criticalHits,
+      profile.rerollHits,
+      autoFailsThrough,
+      profile.rerollHitOnes,
+    );
     const hitSucceeded = attackRollSucceeds(
       hit.face,
       hitsOn,
@@ -613,6 +637,33 @@ function Toggle({
       />
       <span className="checkmark" aria-hidden="true" />
       <b>{label}</b>
+    </label>
+  );
+}
+
+function RerollField({
+  label,
+  ones,
+  failures,
+  onChange,
+}: {
+  label: string;
+  ones: boolean;
+  failures: boolean;
+  onChange: (mode: "none" | "ones" | "failures") => void;
+}) {
+  const mode = failures ? "failures" : ones ? "ones" : "none";
+  return (
+    <label className="number-field">
+      <span>{label}</span>
+      <select
+        value={mode}
+        onChange={(event) => onChange(event.target.value as "none" | "ones" | "failures")}
+      >
+        <option value="none">None</option>
+        <option value="ones">Re-roll 1s</option>
+        <option value="failures">Re-roll failed rolls</option>
+      </select>
     </label>
   );
 }
@@ -1145,13 +1196,46 @@ export default function Home() {
                 checked={profile.blast}
                 onChange={(value) => set("blast", value)}
               />
-              <Toggle
-                label="Re-roll Hits"
-                checked={profile.rerollHits}
-                onChange={(value) => set("rerollHits", value)}
-              />
             </div>
             <div className="rule-values field-grid three">
+              <RerollField
+                label="Hit re-rolls"
+                ones={profile.rerollHitOnes}
+                failures={profile.rerollHits}
+                onChange={(mode) =>
+                  setProfile((current) => ({
+                    ...current,
+                    rerollHitOnes: mode === "ones",
+                    rerollHits: mode === "failures",
+                  }))
+                }
+              />
+              <RerollField
+                label="Wound re-rolls"
+                ones={profile.rerollWoundOnes}
+                failures={profile.rerollWounds}
+                onChange={(mode) =>
+                  setProfile((current) => ({
+                    ...current,
+                    rerollWoundOnes: mode === "ones",
+                    rerollWounds: mode === "failures",
+                  }))
+                }
+              />
+              <NumberField
+                label="Other Hit modifier"
+                value={profile.hitModifier}
+                min={-10}
+                max={10}
+                onChange={(value) => set("hitModifier", value)}
+              />
+              <NumberField
+                label="Other Wound modifier"
+                value={profile.woundModifier}
+                min={-10}
+                max={10}
+                onChange={(value) => set("woundModifier", value)}
+              />
               <NumberField
                 label="Sustained Hits dice"
                 value={profile.sustainedHitsDice}

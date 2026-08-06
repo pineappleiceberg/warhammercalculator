@@ -74,7 +74,7 @@ static void generate_weapon(struct fuzz_input *input, struct whc_web_weapon_inpu
     weapon->damage_dice_sides = weapon->damage_dice_count == 0u ? 0u : 2u + next_byte(input) % 5u;
     weapon->damage_modifier = next_byte(input) % 5u;
     weapon->critical_hits_on = 5u + next_byte(input) % 2u;
-    weapon->rule_flags = next_u16(input) & UINT32_C(0x1fff);
+    weapon->rule_flags = next_u16(input);
     weapon->critical_wounds_on = next_byte(input) % 3u == 0u ? 0u : 5u + next_byte(input) % 2u;
     weapon->sustained_hits_dice_count = next_byte(input) % 2u;
     weapon->sustained_hits_dice_sides =
@@ -85,6 +85,8 @@ static void generate_weapon(struct fuzz_input *input, struct whc_web_weapon_inpu
         weapon->rapid_fire_dice_count == 0u ? 0u : 2u + next_byte(input) % 3u;
     weapon->rapid_fire = next_byte(input) % 3u;
     weapon->melta = next_byte(input) % 4u;
+    weapon->hit_modifier = (int32_t)(next_byte(input) % 5u) - 2;
+    weapon->wound_modifier = (int32_t)(next_byte(input) % 5u) - 2;
 }
 
 /*@ requires \valid(input) && \valid(target);
@@ -143,7 +145,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         (uint16_t)weapons[0].sustained_hits_dice_count,
         (uint16_t)weapons[0].sustained_hits_dice_sides, (uint16_t)weapons[0].sustained_hits,
         (uint16_t)weapons[0].rapid_fire_dice_count, (uint16_t)weapons[0].rapid_fire_dice_sides,
-        (uint16_t)weapons[0].rapid_fire, (uint16_t)weapons[0].melta, &summary);
+        (uint16_t)weapons[0].rapid_fire, (uint16_t)weapons[0].melta,
+        (int16_t)weapons[0].hit_modifier, (int16_t)weapons[0].wound_modifier, &summary);
     if (valid) {
         assert_summary(&summary);
     }
