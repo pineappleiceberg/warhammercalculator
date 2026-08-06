@@ -13,12 +13,16 @@ import {
 } from "../lib/allocation.mjs";
 import { abilityDiceValue } from "../lib/dice.mjs";
 import {
+  applyChoiceSelectionChange,
+  applyModelCountChange,
   armyListWeaponsFromGroups,
   choicePoolMaximum,
   choiceSelectionWeaponCounts,
+  defaultWeaponCounts,
   equippedWeaponLines,
   groupWeaponProfiles,
   normalizeEquippedCount,
+  sourceEquippedWeaponCounts,
   unitLoadoutWarnings,
   weaponAllocationErrors,
   weaponLimitMaximum,
@@ -44,6 +48,15 @@ test("source choice pools share allowances and preserve compound bundles", () =>
       { groupId: "unit:flamer", groupName: "Flamer" },
       { groupId: "unit:bolter", groupName: "Bolter" },
     ],
+    defaultWeapons: [
+      {
+        groupId: "unit:bolter",
+        groupName: "Bolter",
+        fixed: 2,
+        perModel: 0,
+        source: "This model is equipped with 2 bolters",
+      },
+    ],
     wargearChoicePools: [
       {
         id: "unit:pool",
@@ -51,6 +64,7 @@ test("source choice pools share allowances and preserve compound bundles", () =>
         perIncrement: 0,
         modelsPerIncrement: 1,
         source: "Choose one replacement",
+        replaces: [{ groupId: "unit:bolter", groupName: "Bolter", quantity: 2 }],
         alternatives: [
           {
             id: "unit:pool:1",
@@ -74,6 +88,21 @@ test("source choice pools share allowances and preserve compound bundles", () =>
     "unit:flamer": 1,
     "unit:bolter": 1,
   });
+  assert.deepEqual(defaultWeaponCounts(unit, 1), { "unit:bolter": 2 });
+  assert.deepEqual(sourceEquippedWeaponCounts(unit, 1, { "unit:pool:2": 1 }), {
+    "unit:bolter": 1,
+    "unit:flamer": 1,
+  });
+  assert.deepEqual(
+    applyChoiceSelectionChange(
+      { "unit:bolter": 2, "unit:flamer": 0 },
+      unit.wargearChoicePools[0],
+      unit.wargearChoicePools[0].alternatives[1],
+      0,
+      1,
+    ),
+    { "unit:bolter": 1, "unit:flamer": 1 },
+  );
   assert.deepEqual(
     unitLoadoutWarnings(unit, 1, {}, { "unit:flamer": 1, "unit:bolter": 1 }, { "unit:pool:2": 1 }),
     [],
@@ -88,6 +117,20 @@ test("source choice pools share allowances and preserve compound bundles", () =>
     )[0],
     /2 selections exceeds the shared limit of 1/i,
   );
+});
+
+test("source defaults scale with model count without discarding editable overrides", () => {
+  const unit = {
+    defaultWeapons: [
+      { groupId: "unit:rifle", groupName: "Rifle", fixed: 0, perModel: 1, source: "Every model" },
+      { groupId: "unit:pistol", groupName: "Pistol", fixed: 1, perModel: 0, source: "This model" },
+    ],
+  };
+  assert.deepEqual(defaultWeaponCounts(unit, 5), { "unit:rifle": 5, "unit:pistol": 1 });
+  assert.deepEqual(applyModelCountChange({ "unit:rifle": 7, "unit:pistol": 1 }, unit, 5, 10), {
+    "unit:rifle": 12,
+    "unit:pistol": 1,
+  });
 });
 
 test("mixed target allocation never spills damage between models", () => {

@@ -8,7 +8,8 @@ intentionally excludes lore and unrelated full rules text.
 
 The main tables are:
 
-- `datasheets` and `model_profiles` for units and their model statlines
+- `datasheets` and `model_profiles` for units, their published starting
+  equipment, and their model statlines
 - `weapon_profiles` for attacks, skill, strength, AP, damage, and the original
   weapon-keyword list
 - `weapon_abilities` for individually queryable tags such as `blast`,
@@ -23,6 +24,8 @@ The main tables are:
 - `wargear_choice_pools`, `wargear_choice_alternatives`, and
   `wargear_choice_alternative_weapons` for shared allowances and exact
   multi-weapon bundles, with every alternative linked to its source option
+- `default_weapon_loadout` and `wargear_choice_replaced_weapons` for safely
+  parsed starting quantities and the equipment removed by a replacement
 - `source_files` and `metadata` for URLs, timestamps, and source checksums
 
 The source export can retain rows for datasheets that it no longer publishes.
@@ -46,11 +49,12 @@ python3 scripts/build_profiles_db.py --output data/warhammer_10e.sqlite
 
 Values that can be dice expressions are preserved as text (`D6+1`, `2D3`, and
 so on). Plain numeric values are also exposed in companion integer columns.
-Weapon rows sharing `(datasheet_id, source_line)` are profiles of the same
-physical weapon. The browser export records that source-defined group plus the
-profile label, allowing standard/supercharge and frag/krak modes to share one
-equipped quantity without forbidding different copies from choosing different
-profiles in the same volley.
+Weapon rows with the same base name before a standard profile separator are
+profiles of the same physical weapon. This remains true when the source export
+uses one line for every mode instead of repeating a line identifier. The
+browser export records that group plus the profile label, allowing
+standard/supercharge and frag/krak modes to share one equipped quantity without
+forbidding different copies from choosing different profiles in the same volley.
 
 The presence of a weapon on a datasheet does not by itself mean every model in
 that datasheet can equip it. The UI therefore treats weapon quantities as
@@ -61,5 +65,8 @@ single-weapon rules. Where the source is structurally clear, the browser
 instead exposes each alternative within its shared choice pool. Selecting a
 compound alternative records every weapon in that bundle and checks the pool
 once, rather than incorrectly granting its full allowance to every weapon.
-Conditional prose that depends on model identity or another option remains
-visible but is not guessed.
+Exact `This model is equipped with` and `Every/Each model is equipped with`
+forms pre-fill editable weapon totals. Selecting a structured replacement
+subtracts its source equipment and adds the chosen alternative. Mixed-unit
+clauses and conditional prose that depend on model identity or another option
+remain visible but are not guessed.

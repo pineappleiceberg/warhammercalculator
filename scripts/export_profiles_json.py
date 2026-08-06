@@ -12,9 +12,25 @@ from pathlib import Path
 PROFILE_SEPARATORS = (" – ", " - ", " — ")
 
 
+def profile_base_name(name: str) -> str:
+    for separator in PROFILE_SEPARATORS:
+        if separator in name:
+            return name.split(separator, 1)[0].strip()
+    return name.strip()
+
+
 def profile_group_names(names: list[str]) -> tuple[str, list[str | None]]:
     if len(names) == 1:
         return names[0], [None]
+    if len(set(names)) == 1:
+        return names[0], [None] * len(names)
+    bases = [profile_base_name(name) for name in names]
+    if len({name.casefold() for name in bases}) == 1:
+        profiles = []
+        for name in names:
+            base = profile_base_name(name)
+            profiles.append(name[len(base) :].lstrip(" –—-").strip() or None)
+        return bases[0], profiles
     for separator in PROFILE_SEPARATORS:
         if separator not in names[0]:
             continue
@@ -43,6 +59,8 @@ def export(database: Path, output: Path) -> None:
                 "models": [],
                 "weapons": [],
                 "composition": [],
+                "loadout": row["loadout_text"],
+                "defaultWeapons": [],
                 "wargearOptions": [],
                 "weaponLimits": [],
                 "wargearChoicePools": [],
@@ -50,7 +68,8 @@ def export(database: Path, output: Path) -> None:
                 "maximumModelCount": None,
             }
             for row in connection.execute(
-                "SELECT id, faction_id, name FROM datasheets ORDER BY name COLLATE NOCASE"
+                """SELECT id, faction_id, name, loadout_text
+                   FROM datasheets ORDER BY name COLLATE NOCASE"""
             )
         }
 
@@ -114,6 +133,22 @@ def export(database: Path, output: Path) -> None:
                 row["description_text"]
             )
 
+        for row in connection.execute(
+            """SELECT datasheet_id, weapon_group_id, weapon_group_name,
+                      fixed_quantity, quantity_per_model, description_text
+               FROM default_weapon_loadout
+               ORDER BY datasheet_id, weapon_group_id"""
+        ):
+            units[row["datasheet_id"]]["defaultWeapons"].append(
+                {
+                    "groupId": row["weapon_group_id"],
+                    "groupName": row["weapon_group_name"],
+                    "fixed": row["fixed_quantity"],
+                    "perModel": row["quantity_per_model"],
+                    "source": row["description_text"],
+                }
+            )
+
         limits: dict[tuple[str, str], dict] = {}
         for row in connection.execute(
             """SELECT wc.datasheet_id, wc.fixed_limit, wc.limit_per_increment,
@@ -171,6 +206,7 @@ def export(database: Path, output: Path) -> None:
                     "perIncrement": row["limit_per_increment"],
                     "modelsPerIncrement": row["models_per_increment"],
                     "source": row["source_text"],
+                    "replaces": [],
                     "alternatives": [],
                 },
             )
@@ -194,6 +230,22 @@ def export(database: Path, output: Path) -> None:
         for (datasheet_id, _position), pool in pools.items():
             units[datasheet_id]["wargearChoicePools"].append(pool)
 
+        for row in connection.execute(
+            """SELECT datasheet_id, option_position, weapon_group_id,
+                      weapon_group_name, quantity
+               FROM wargear_choice_replaced_weapons
+               ORDER BY datasheet_id, option_position, weapon_group_id"""
+        ):
+            pool = pools.get((row["datasheet_id"], row["option_position"]))
+            if pool is not None:
+                pool["replaces"].append(
+                    {
+                        "groupId": row["weapon_group_id"],
+                        "groupName": row["weapon_group_name"],
+                        "quantity": row["quantity"],
+                    }
+                )
+
         for unit in units.values():
             composition = unit["composition"]
             if composition and all(
@@ -212,17 +264,19 @@ def export(database: Path, output: Path) -> None:
                    ORDER BY datasheet_id, source_line, profile_line, name COLLATE NOCASE"""
             )
         )
-        weapon_groups: dict[str, list[sqlite3.Row]] = {}
+        weapon_groups: dict[tuple[str, str], list[sqlite3.Row]] = {}
         for row in weapon_rows:
-            group_id = (
-                f"{row['datasheet_id']}:{row['source_line']}"
-                if row["source_line"] is not None
-                else f"{row['datasheet_id']}:profile:{row['id']}"
-            )
-            weapon_groups.setdefault(group_id, []).append(row)
+            key = (row["datasheet_id"], profile_base_name(row["name"]).casefold())
+            weapon_groups.setdefault(key, []).append(row)
 
         group_metadata: dict[int, tuple[str, str, str | None, int, int]] = {}
-        for group_id, rows_in_group in weapon_groups.items():
+        for (datasheet_id, _base_name), rows_in_group in weapon_groups.items():
+            source_lines = [row["source_line"] for row in rows_in_group if row["source_line"] is not None]
+            group_id = (
+                f"{datasheet_id}:{min(source_lines)}"
+                if source_lines
+                else f"{datasheet_id}:profile:{min(row['id'] for row in rows_in_group)}"
+            )
             group_name, profile_names = profile_group_names(
                 [row["name"] for row in rows_in_group]
             )
@@ -272,6 +326,12 @@ def export(database: Path, output: Path) -> None:
                 ).fetchone()[0],
                 "constrainedWeaponCount": len(limits),
                 "choicePoolCount": len(pools),
+                "defaultWeaponCount": connection.execute(
+                    "SELECT count(*) FROM default_weapon_loadout"
+                ).fetchone()[0],
+                "replacementWeaponCount": connection.execute(
+                    "SELECT count(*) FROM wargear_choice_replaced_weapons"
+                ).fetchone()[0],
                 "compoundAlternativeCount": sum(
                     1
                     for alternative in alternatives.values()

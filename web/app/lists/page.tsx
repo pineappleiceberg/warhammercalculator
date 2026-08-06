@@ -10,8 +10,11 @@ import {
 } from "../../lib/army-list";
 import { loadCatalogue, type Catalogue } from "../../lib/catalogue";
 import {
+  applyChoiceSelectionChange,
+  applyModelCountChange,
   armyListWeaponsFromGroups,
   choicePoolMaximum,
+  defaultWeaponCounts,
   groupWeaponProfiles,
   normalizeEquippedCount,
   unitLoadoutWarnings,
@@ -51,12 +54,14 @@ export default function ArmyLists() {
     const unit = units.find((entry) => entry.id === unitId);
     if (!unit) return;
     const weaponGroups = groupWeaponProfiles(unit.weapons);
+    const modelCount = unit.suggestedModelCount ?? 1;
+    const defaults = defaultWeaponCounts(unit, modelCount);
     const item: ArmyListUnit = {
       id: crypto.randomUUID(),
       unitId: unit.id,
       name: unit.name,
-      modelCount: unit.suggestedModelCount ?? 1,
-      weapons: armyListWeaponsFromGroups(weaponGroups),
+      modelCount,
+      weapons: armyListWeaponsFromGroups(weaponGroups, defaults),
       choiceSelections: Object.fromEntries(
         unit.wargearChoicePools.flatMap((pool) =>
           pool.alternatives.map((alternative) => [alternative.id, 0]),
@@ -181,12 +186,34 @@ export default function ArmyLists() {
                           min={1}
                           max={1000}
                           value={unit.modelCount}
-                          onChange={(event) =>
-                            changeUnit(unit.id, (current) => ({
-                              ...current,
-                              modelCount: Math.max(1, +event.target.value),
-                            }))
-                          }
+                          onChange={(event) => {
+                            const next = Math.max(1, +event.target.value);
+                            const sourceUnit = catalogue?.units.find(
+                              (entry) => entry.id === unit.unitId,
+                            );
+                            changeUnit(unit.id, (current) => {
+                              const counts = Object.fromEntries(
+                                current.weapons.map((weapon) => [
+                                  weapon.groupId ?? String(weapon.weaponId),
+                                  weapon.count,
+                                ]),
+                              );
+                              const adjusted = applyModelCountChange(
+                                counts,
+                                sourceUnit,
+                                current.modelCount,
+                                next,
+                              );
+                              return {
+                                ...current,
+                                modelCount: next,
+                                weapons: current.weapons.map((weapon) => ({
+                                  ...weapon,
+                                  count: adjusted[weapon.groupId ?? String(weapon.weaponId)] ?? 0,
+                                })),
+                              };
+                            });
+                          }}
                         />
                       </label>
                     </div>
@@ -206,10 +233,12 @@ export default function ArmyLists() {
                     {unit.weapons.map((weapon) => {
                       const sourceUnit = catalogue?.units.find((entry) => entry.id === unit.unitId);
                       const groupId = weapon.groupId ?? String(weapon.weaponId);
-                      const structured = sourceUnit?.wargearChoicePools.some((pool) =>
-                        pool.alternatives.some((alternative) =>
-                          alternative.weapons.some((choice) => choice.groupId === groupId),
-                        ),
+                      const structured = sourceUnit?.wargearChoicePools.some(
+                        (pool) =>
+                          pool.replaces.some((choice) => choice.groupId === groupId) ||
+                          pool.alternatives.some((alternative) =>
+                            alternative.weapons.some((choice) => choice.groupId === groupId),
+                          ),
                       );
                       const manualOption =
                         !structured &&
@@ -316,18 +345,43 @@ export default function ArmyLists() {
                                         min={0}
                                         max={maximum}
                                         value={unit.choiceSelections?.[alternative.id] ?? 0}
-                                        onChange={(event) =>
-                                          changeUnit(unit.id, (current) => ({
-                                            ...current,
-                                            choiceSelections: {
-                                              ...(current.choiceSelections ?? {}),
-                                              [alternative.id]: normalizeEquippedCount(
-                                                +event.target.value,
-                                                maximum,
-                                              ),
-                                            },
-                                          }))
-                                        }
+                                        onChange={(event) => {
+                                          const next = normalizeEquippedCount(
+                                            +event.target.value,
+                                            maximum,
+                                          );
+                                          changeUnit(unit.id, (current) => {
+                                            const previous =
+                                              current.choiceSelections?.[alternative.id] ?? 0;
+                                            const counts = Object.fromEntries(
+                                              current.weapons.map((weapon) => [
+                                                weapon.groupId ?? String(weapon.weaponId),
+                                                weapon.count,
+                                              ]),
+                                            );
+                                            const adjusted = applyChoiceSelectionChange(
+                                              counts,
+                                              pool,
+                                              alternative,
+                                              previous,
+                                              next,
+                                            );
+                                            return {
+                                              ...current,
+                                              weapons: current.weapons.map((weapon) => ({
+                                                ...weapon,
+                                                count:
+                                                  adjusted[
+                                                    weapon.groupId ?? String(weapon.weaponId)
+                                                  ] ?? 0,
+                                              })),
+                                              choiceSelections: {
+                                                ...(current.choiceSelections ?? {}),
+                                                [alternative.id]: next,
+                                              },
+                                            };
+                                          });
+                                        }}
                                       />
                                     </label>
                                   ))}

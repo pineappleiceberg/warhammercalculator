@@ -13,7 +13,11 @@ import {
 } from "../lib/combat";
 import { createArmyList, deleteArmyList, listArmyLists, updateArmyList } from "../db/army-lists";
 import type { ArmyListInput } from "../lib/army-list";
-import { choiceSelectionWeaponCounts, unitLoadoutWarnings } from "../lib/loadout.mjs";
+import {
+  choiceSelectionWeaponCounts,
+  sourceEquippedWeaponCounts,
+  unitLoadoutWarnings,
+} from "../lib/loadout.mjs";
 
 interface Env {
   ASSETS: Fetcher;
@@ -42,6 +46,14 @@ type Catalogue = {
     models: unknown[];
     weapons: Array<{ groupId: string }>;
     composition: Array<{ text: string; min: number | null; max: number | null }>;
+    loadout: string;
+    defaultWeapons: Array<{
+      groupId: string;
+      groupName: string;
+      fixed: number;
+      perModel: number;
+      source: string;
+    }>;
     wargearOptions: string[];
     weaponLimits: Array<{
       groupId: string;
@@ -60,6 +72,7 @@ type Catalogue = {
       perIncrement: number;
       modelsPerIncrement: number;
       source: string;
+      replaces: Array<{ groupId: string; groupName: string; quantity: number }>;
       alternatives: Array<{
         id: string;
         label: string;
@@ -543,6 +556,8 @@ async function handleApi(request: Request, env: Env) {
           factionId: unit.factionId,
           name: unit.name,
           composition: unit.composition,
+          loadout: unit.loadout,
+          defaultWeapons: unit.defaultWeapons,
           wargearOptions: unit.wargearOptions,
           weaponLimits: unit.weaponLimits,
           wargearChoicePools: unit.wargearChoicePools,
@@ -634,6 +649,11 @@ async function handleApi(request: Request, env: Env) {
           weaponLimits: unit.weaponLimits,
           wargearChoicePools: unit.wargearChoicePools,
           selectedWeaponCounts: choiceSelectionWeaponCounts(unit, choiceSelections),
+          suggestedEquippedCounts: sourceEquippedWeaponCounts(
+            unit,
+            body.modelCount as number,
+            choiceSelections,
+          ),
         },
         sourceUpdatedAt: catalogue.sourceUpdatedAt,
       });

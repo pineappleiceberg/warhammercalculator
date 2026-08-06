@@ -9,8 +9,10 @@ from scripts.export_profiles_json import export, profile_group_names
 from scripts.wargear_constraints import (
     allowance,
     choice_weapon_vector,
+    default_loadout_clauses,
     normalized_name,
     option_choices,
+    weapon_vector,
 )
 
 
@@ -56,6 +58,16 @@ class ProfileDataTests(unittest.TestCase):
             ),
             {"unit:2": ("Infernus incinerator", 1)},
         )
+        self.assertEqual(
+            default_loadout_clauses(
+                "<b>Every model is equipped with:</b> 1 gauss flayer; close combat weapon."
+            ),
+            [(0, 1, "1 gauss flayer; close combat weapon.")],
+        )
+        self.assertEqual(
+            weapon_vector("2 lastrum storm bolters; Achillus dreadspear.", known),
+            {"unit:1": ("Lastrum storm bolter", 2)},
+        )
 
     def test_checked_database_preserves_loadout_sources_and_provenance(self):
         connection = sqlite3.connect(DATABASE)
@@ -65,7 +77,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "5",
+                "6",
             )
             for filename, minimum_rows in (
                 ("Datasheets_unit_composition.csv", 2_000),
@@ -86,6 +98,16 @@ class ProfileDataTests(unittest.TestCase):
             self.assertGreater(
                 connection.execute("SELECT count(*) FROM wargear_options").fetchone()[0],
                 2_500,
+            )
+            self.assertGreater(
+                connection.execute("SELECT count(*) FROM default_weapon_loadout").fetchone()[0],
+                3_500,
+            )
+            self.assertGreater(
+                connection.execute(
+                    "SELECT count(*) FROM wargear_choice_replaced_weapons"
+                ).fetchone()[0],
+                1_000,
             )
             self.assertGreater(
                 connection.execute("SELECT count(*) FROM wargear_choice_pools").fetchone()[0],
@@ -136,9 +158,11 @@ class ProfileDataTests(unittest.TestCase):
             limit for limit in assault["weaponLimits"] if limit["groupName"] == "Eviscerator"
         )
         self.assertEqual(eviscerator["terms"][0]["modelsPerIncrement"], 5)
-        self.assertEqual(catalogue["structuredWargear"]["constraintCount"], 1715)
-        self.assertEqual(catalogue["structuredWargear"]["choicePoolCount"], 1923)
-        self.assertEqual(catalogue["structuredWargear"]["compoundAlternativeCount"], 204)
+        self.assertEqual(catalogue["structuredWargear"]["constraintCount"], 1798)
+        self.assertEqual(catalogue["structuredWargear"]["choicePoolCount"], 2009)
+        self.assertEqual(catalogue["structuredWargear"]["compoundAlternativeCount"], 241)
+        self.assertEqual(catalogue["structuredWargear"]["defaultWeaponCount"], 3825)
+        self.assertEqual(catalogue["structuredWargear"]["replacementWeaponCount"], 1172)
         self.assertTrue(catalogue["structuredWargear"]["conservative"])
         for unit in catalogue["units"]:
             weapon_group_ids = {weapon["groupId"] for weapon in unit["weapons"]}
@@ -150,17 +174,35 @@ class ProfileDataTests(unittest.TestCase):
             for pool in unit["wargearChoicePools"]:
                 self.assertIn(pool["source"], unit["wargearOptions"])
                 self.assertTrue(pool["alternatives"])
+                for weapon in pool["replaces"]:
+                    self.assertIn(weapon["groupId"], weapon_group_ids)
+                    self.assertGreater(weapon["quantity"], 0)
                 for alternative in pool["alternatives"]:
                     self.assertTrue(alternative["weapons"])
                     for weapon in alternative["weapons"]:
                         self.assertIn(weapon["groupId"], weapon_group_ids)
                         self.assertGreater(weapon["quantity"], 0)
+            for weapon in unit["defaultWeapons"]:
+                self.assertIn(weapon["groupId"], weapon_group_ids)
+                self.assertGreater(weapon["fixed"] + weapon["perModel"], 0)
+                self.assertEqual(weapon["source"], unit["loadout"])
 
         achillus = next(
             unit for unit in catalogue["units"] if unit["name"] == "Contemptor-achillus Dreadnought"
         )
         self.assertEqual(len(achillus["wargearChoicePools"]), 1)
         pool = achillus["wargearChoicePools"][0]
+        self.assertEqual(
+            [(weapon["groupName"], weapon["quantity"]) for weapon in pool["replaces"]],
+            [("Lastrum storm bolter", 2)],
+        )
+        self.assertEqual(
+            sorted(
+                (weapon["groupName"], weapon["fixed"], weapon["perModel"])
+                for weapon in achillus["defaultWeapons"]
+            ),
+            [("Achillus dreadspear", 1, 0), ("Lastrum storm bolter", 2, 0)],
+        )
         self.assertEqual(len(pool["alternatives"]), 5)
         mixed = next(
             alternative
@@ -196,7 +238,7 @@ class ProfileDataTests(unittest.TestCase):
             for weapon in unit["weapons"]
             if weapon["profileCount"] > 1
         }
-        self.assertEqual(len(grouped), 38)
+        self.assertEqual(len(grouped), 787)
         sisters = next(
             unit for unit in catalogue["units"] if unit["name"] == "Battle Sisters Squad"
         )
@@ -205,6 +247,22 @@ class ProfileDataTests(unittest.TestCase):
         ]
         self.assertEqual({weapon["profileName"] for weapon in plasma}, {"standard", "supercharge"})
         self.assertEqual(len({weapon["groupId"] for weapon in plasma}), 1)
+        drazhar = next(unit for unit in catalogue["units"] if unit["name"] == "Drazhar")
+        demiklaives = [
+            weapon
+            for weapon in drazhar["weapons"]
+            if weapon["groupName"] == "Executioner’s demiklaives"
+        ]
+        self.assertEqual(len(demiklaives), 2)
+        self.assertEqual(len({weapon["groupId"] for weapon in demiklaives}), 1)
+        self.assertEqual(
+            next(
+                weapon
+                for weapon in drazhar["defaultWeapons"]
+                if weapon["groupName"] == "Executioner’s demiklaives"
+            )["fixed"],
+            1,
+        )
 
 
 if __name__ == "__main__":

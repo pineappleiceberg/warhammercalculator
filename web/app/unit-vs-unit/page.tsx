@@ -13,8 +13,11 @@ import {
   type OrderedVolleyRollResult,
 } from "../../lib/combat";
 import {
+  applyChoiceSelectionChange,
+  applyModelCountChange,
   choicePoolMaximum,
   choiceSelectionWeaponCounts,
+  defaultWeaponCounts,
   equippedWeaponLines,
   groupWeaponProfiles,
   normalizeEquippedCount,
@@ -104,9 +107,13 @@ export default function UnitVsUnit() {
   const weaponGroups = groupWeaponProfiles(attackerUnit?.weapons ?? []);
   const structuredGroupIds = new Set(
     attackerUnit?.wargearChoicePools.flatMap((pool) =>
-      pool.alternatives.flatMap((alternative) =>
-        alternative.weapons.map((weapon) => weapon.groupId),
-      ),
+      pool.replaces
+        .map((weapon) => weapon.groupId)
+        .concat(
+          pool.alternatives.flatMap((alternative) =>
+            alternative.weapons.map((weapon) => weapon.groupId),
+          ),
+        ),
     ) ?? [],
   );
   const structuredOptionCounts = choiceSelectionWeaponCounts(attackerUnit, choiceSelections);
@@ -135,8 +142,10 @@ export default function UnitVsUnit() {
     setAttackerUnitId(unitId);
     const unit = attackerUnits.find((entry) => entry.id === unitId);
     const groups = groupWeaponProfiles(unit?.weapons ?? []);
-    setAttackerModels(unit?.suggestedModelCount ?? 1);
-    setWeaponCounts(Object.fromEntries(groups.map((group) => [group.id, 0])));
+    const models = unit?.suggestedModelCount ?? 1;
+    const defaults = defaultWeaponCounts(unit, models);
+    setAttackerModels(models);
+    setWeaponCounts(Object.fromEntries(groups.map((group) => [group.id, defaults[group.id] ?? 0])));
     setOptionCounts(Object.fromEntries(groups.map((group) => [group.id, 0])));
     setChoiceSelections(
       Object.fromEntries(
@@ -154,7 +163,7 @@ export default function UnitVsUnit() {
     setResults([]);
     setVolleySummary(null);
     setRollResult(null);
-    setStatus(unit ? "Set the total equipped weapon quantities" : "Choose both units");
+    setStatus(unit ? "Source loadout applied; edit it if needed" : "Choose both units");
   };
 
   const selectTarget = (unitId: string) => {
@@ -329,7 +338,13 @@ export default function UnitVsUnit() {
                 min={1}
                 max={attackerUnit?.maximumModelCount ?? 100}
                 value={attackerModels}
-                onChange={(event) => setAttackerModels(Math.max(1, +event.target.value))}
+                onChange={(event) => {
+                  const next = Math.max(1, +event.target.value);
+                  setWeaponCounts((current) =>
+                    applyModelCountChange(current, attackerUnit, attackerModels, next),
+                  );
+                  setAttackerModels(next);
+                }}
               />
             </label>
             {attackerUnit && (
@@ -455,15 +470,23 @@ export default function UnitVsUnit() {
                                 min={0}
                                 max={maximum}
                                 value={choiceSelections[alternative.id] ?? 0}
-                                onChange={(event) =>
+                                onChange={(event) => {
+                                  const previous = choiceSelections[alternative.id] ?? 0;
+                                  const next = normalizeEquippedCount(+event.target.value, maximum);
+                                  setWeaponCounts((current) =>
+                                    applyChoiceSelectionChange(
+                                      current,
+                                      pool,
+                                      alternative,
+                                      previous,
+                                      next,
+                                    ),
+                                  );
                                   setChoiceSelections((current) => ({
                                     ...current,
-                                    [alternative.id]: normalizeEquippedCount(
-                                      +event.target.value,
-                                      maximum,
-                                    ),
-                                  }))
-                                }
+                                    [alternative.id]: next,
+                                  }));
+                                }}
                               />
                             </label>
                           ))}
@@ -493,6 +516,12 @@ export default function UnitVsUnit() {
                     ))}
                   </ul>
                 </details>
+                {attackerUnit.loadout && (
+                  <details className="source-guidance" open>
+                    <summary>Starting equipment</summary>
+                    <p>{attackerUnit.loadout}</p>
+                  </details>
+                )}
                 {attackerUnit.wargearOptions.length > 0 && (
                   <details className="source-guidance">
                     <summary>Wargear options ({attackerUnit.wargearOptions.length})</summary>

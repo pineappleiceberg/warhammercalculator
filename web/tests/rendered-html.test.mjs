@@ -160,6 +160,11 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.equal(loadoutData.suggestedModelCount, 10);
   assert.equal(loadoutData.maximumModelCount, 20);
   assert.match(loadoutData.composition[0].text, /10-20 Necron Warriors/i);
+  assert.match(loadoutData.loadout, /Every model is equipped with.*gauss flayer/i);
+  assert.equal(
+    loadoutData.defaultWeapons.find((weapon) => weapon.groupName === "Gauss flayer").perModel,
+    1,
+  );
   assert.ok(loadoutData.wargearOptions.some((option) => /gauss reaper/i.test(option)));
   const reaperLimit = loadoutData.weaponLimits.find((limit) => limit.groupName === "Gauss reaper");
   assert.ok(reaperLimit);
@@ -206,6 +211,12 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const infernusGroup = achillus.weapons.find(
     (weapon) => weapon.groupName === "Infernus incinerator",
   ).groupId;
+  const lastrumGroup = achillus.weapons.find(
+    (weapon) => weapon.groupName === "Lastrum storm bolter",
+  ).groupId;
+  assert.deepEqual(achillusPool.replaces, [
+    { groupId: lastrumGroup, groupName: "Lastrum storm bolter", quantity: 2 },
+  ]);
   const doubleInfernus = achillusPool.alternatives.find((alternative) =>
     /^2 infernus incinerators$/i.test(alternative.label),
   );
@@ -226,6 +237,8 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const validBundleData = (await validBundle.json()).data;
   assert.equal(validBundleData.valid, true);
   assert.equal(validBundleData.selectedWeaponCounts[infernusGroup], 2);
+  assert.equal(validBundleData.suggestedEquippedCounts[lastrumGroup], 0);
+  assert.equal(validBundleData.suggestedEquippedCounts[infernusGroup], 2);
   const invalidSharedPool = await worker.fetch(
     new Request("http://localhost/api/v1/validate-loadout", {
       method: "POST",

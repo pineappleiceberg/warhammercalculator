@@ -61,6 +61,8 @@ CREATE TABLE datasheets (
     faction_id TEXT NOT NULL REFERENCES factions(id),
     name TEXT NOT NULL,
     battlefield_role TEXT,
+    loadout_html TEXT NOT NULL DEFAULT '',
+    loadout_text TEXT NOT NULL DEFAULT '',
     is_virtual INTEGER NOT NULL DEFAULT 0 CHECK (is_virtual IN (0, 1)),
     source_url TEXT NOT NULL
 ) WITHOUT ROWID;
@@ -338,7 +340,7 @@ def create_database(output: Path) -> dict[str, int]:
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "5"),
+                    ("schema_version", "6"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
@@ -368,14 +370,17 @@ def create_database(output: Path) -> dict[str, int]:
             )
             connection.executemany(
                 """INSERT INTO datasheets
-                   (id, faction_id, name, battlefield_role, is_virtual, source_url)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
+                   (id, faction_id, name, battlefield_role, loadout_html,
+                    loadout_text, is_virtual, source_url)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     (
                         row["id"],
                         row["faction_id"],
                         row["name"],
                         row["role"] or None,
+                        row["loadout"],
+                        plain_text(row["loadout"]),
                         boolean(row["virtual"]),
                         row["link"],
                     )
@@ -534,6 +539,8 @@ def create_database(output: Path) -> dict[str, int]:
                 "wargear_choice_pools",
                 "wargear_choice_alternatives",
                 "wargear_choice_alternative_weapons",
+                "wargear_choice_replaced_weapons",
+                "default_weapon_loadout",
             )
         }
         connection.execute("PRAGMA optimize")

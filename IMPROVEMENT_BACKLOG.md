@@ -16,8 +16,8 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Reconcile exact default loadouts and model-specific conditional replacements
-   so source choices can also subtract replaced equipment safely.
+1. Extend exact defaults to mixed-model units by reconciling named loadout
+   subjects against source composition counts.
 2. Add phase-scale simulations with reproducible seeded runs
    alongside cryptographically random live rolls.
 3. Add property-based and fuzz testing at the C and API boundaries.
@@ -64,3 +64,10 @@ priority over feature count.
   saved lists, and the API now preserve per-alternative selections, enforce
   each shared allowance once, derive bundled weapon quantities, and retain the
   original source text while leaving total equipment editable.
+- 2026-08-06: Imported the published `loadout` field and compiled 3,825 exact
+  starting weapon quantities covering every weapon-bearing `This model` and
+  `Every/Each model` loadout. Added 1,172 source-weapon replacement vectors so
+  structured choices subtract old equipment and add the selected bundle while
+  remaining editable. Corrected cross-line weapon grouping from 38 to 787
+  multi-profile groups, including standard/supercharge modes assigned different
+  source-line identifiers.

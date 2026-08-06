@@ -20,12 +20,12 @@ export function groupWeaponProfiles(weapons) {
   }));
 }
 
-export function armyListWeaponsFromGroups(groups) {
+export function armyListWeaponsFromGroups(groups, equippedCounts = {}) {
   return groups.map((group) => ({
     weaponId: group.profiles[0].id,
     groupId: group.id,
     name: group.name,
-    count: 0,
+    count: normalizeEquippedCount(equippedCounts[group.id] ?? 0),
     optionCount: 0,
   }));
 }
@@ -87,6 +87,77 @@ export function choiceSelectionWeaponCounts(unit, choiceSelections = {}) {
   return counts;
 }
 
+export function defaultWeaponCounts(unit, modelCount) {
+  const models = normalizeEquippedCount(modelCount, 1000);
+  return Object.fromEntries(
+    (unit?.defaultWeapons ?? []).map((weapon) => [
+      weapon.groupId,
+      normalizeEquippedCount(weapon.fixed + weapon.perModel * models),
+    ]),
+  );
+}
+
+export function choiceSelectionReplacementCounts(unit, choiceSelections = {}) {
+  const counts = {};
+  for (const pool of unit?.wargearChoicePools ?? []) {
+    const selected = pool.alternatives.reduce(
+      (sum, alternative) => sum + normalizeEquippedCount(choiceSelections[alternative.id] ?? 0),
+      0,
+    );
+    for (const weapon of pool.replaces ?? []) {
+      counts[weapon.groupId] = (counts[weapon.groupId] ?? 0) + selected * weapon.quantity;
+    }
+  }
+  return counts;
+}
+
+export function sourceEquippedWeaponCounts(unit, modelCount, choiceSelections = {}) {
+  const counts = defaultWeaponCounts(unit, modelCount);
+  const additions = choiceSelectionWeaponCounts(unit, choiceSelections);
+  const replacements = choiceSelectionReplacementCounts(unit, choiceSelections);
+  for (const [groupId, count] of Object.entries(additions)) {
+    counts[groupId] = (counts[groupId] ?? 0) + count;
+  }
+  for (const [groupId, count] of Object.entries(replacements)) {
+    counts[groupId] = Math.max(0, (counts[groupId] ?? 0) - count);
+  }
+  return counts;
+}
+
+export function applyChoiceSelectionChange(
+  equippedCounts,
+  pool,
+  alternative,
+  previousValue,
+  nextValue,
+) {
+  const delta = normalizeEquippedCount(nextValue) - normalizeEquippedCount(previousValue);
+  const counts = { ...equippedCounts };
+  for (const weapon of pool.replaces ?? []) {
+    counts[weapon.groupId] = normalizeEquippedCount(
+      (counts[weapon.groupId] ?? 0) - delta * weapon.quantity,
+    );
+  }
+  for (const weapon of alternative.weapons) {
+    counts[weapon.groupId] = normalizeEquippedCount(
+      (counts[weapon.groupId] ?? 0) + delta * weapon.quantity,
+    );
+  }
+  return counts;
+}
+
+export function applyModelCountChange(equippedCounts, unit, previousValue, nextValue) {
+  const previous = defaultWeaponCounts(unit, previousValue);
+  const next = defaultWeaponCounts(unit, nextValue);
+  const counts = { ...equippedCounts };
+  for (const groupId of new Set([...Object.keys(previous), ...Object.keys(next)])) {
+    counts[groupId] = normalizeEquippedCount(
+      (counts[groupId] ?? 0) + (next[groupId] ?? 0) - (previous[groupId] ?? 0),
+    );
+  }
+  return counts;
+}
+
 export function choiceSelectionWarnings(
   unit,
   modelCount,
@@ -115,6 +186,16 @@ export function choiceSelectionWarnings(
     }
   }
   const selectedWeapons = choiceSelectionWeaponCounts(unit, choiceSelections);
+  const replacedWeapons = choiceSelectionReplacementCounts(unit, choiceSelections);
+  const defaultWeapons = defaultWeaponCounts(unit, modelCount);
+  for (const [groupId, count] of Object.entries(replacedWeapons)) {
+    if (count > (defaultWeapons[groupId] ?? 0)) {
+      const name = unit.weapons.find((weapon) => weapon.groupId === groupId)?.groupName ?? groupId;
+      warnings.push(
+        `${name}: structured choices replace ${count} copies but the source default has ${defaultWeapons[groupId] ?? 0}`,
+      );
+    }
+  }
   for (const [groupId, count] of Object.entries(selectedWeapons)) {
     const equipped = normalizeEquippedCount(equippedCounts[groupId] ?? 0);
     if (count > equipped) {

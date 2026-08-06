@@ -234,6 +234,11 @@ Shared source allowances are represented as choice pools, and compound
 alternatives retain every tracked weapon in the bundle. Unit editors, saved
 lists, and `POST /api/v1/validate-loadout` accept per-alternative selections,
 derive the resulting weapon counts, and flag a combined pool only once.
+Published starting equipment now pre-fills those editable counts and scales
+when every model carries a weapon. Structured replacement choices subtract the
+old equipment before adding the selected alternative. Alternate profiles are
+grouped by their shared weapon name even when the export assigns their modes
+different source-line identifiers.
 
 ## WebAssembly build
 

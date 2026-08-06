@@ -63,7 +63,15 @@ export type CatalogueWargearChoicePool = {
   perIncrement: number;
   modelsPerIncrement: number;
   source: string;
+  replaces: CatalogueWargearChoice[];
   alternatives: CatalogueWargearAlternative[];
+};
+export type CatalogueDefaultWeapon = {
+  groupId: string;
+  groupName: string;
+  fixed: number;
+  perModel: number;
+  source: string;
 };
 export type CatalogueUnit = {
   id: string;
@@ -72,6 +80,8 @@ export type CatalogueUnit = {
   models: CatalogueModel[];
   weapons: CatalogueWeapon[];
   composition: CatalogueComposition[];
+  loadout: string;
+  defaultWeapons: CatalogueDefaultWeapon[];
   wargearOptions: string[];
   weaponLimits: CatalogueWeaponLimit[];
   wargearChoicePools: CatalogueWargearChoicePool[];
@@ -84,6 +94,8 @@ export type Catalogue = {
     constraintCount: number;
     constrainedWeaponCount: number;
     choicePoolCount: number;
+    defaultWeaponCount: number;
+    replacementWeaponCount: number;
     compoundAlternativeCount: number;
     optionCount: number;
     conservative: boolean;
