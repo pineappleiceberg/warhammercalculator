@@ -38,6 +38,12 @@ const calculator = await createCalculator({
   wasmBinary,
 });
 
+test("WebAssembly exports the formally verified validators", () => {
+  assert.equal(typeof calculator._dice_value_is_valid, "function");
+  assert.equal(typeof calculator._probability_distribution_is_normalized, "function");
+  assert.equal(typeof calculator._attack_plan_is_valid, "function");
+});
+
 test("source choice pools share allowances and preserve compound bundles", () => {
   const unit = {
     name: "Dreadnought",

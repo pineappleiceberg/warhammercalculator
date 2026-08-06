@@ -55,6 +55,50 @@ static void initialize_profiles(struct weapon_profile *weapon, struct target_pro
 }
 
 /*@ terminates \true; */
+static void test_probability_and_plan_validators(void) {
+    struct weapon_profile weapon;
+    struct target_profile target;
+    struct attack_plan plan;
+    struct attack_plan invalid_plan;
+    struct calculator_workspace workspace;
+    struct probability_distribution distribution;
+    struct probability_distribution invalid_distribution;
+
+    initialize_profiles(&weapon, &target);
+    assert(attack_plan_build(&weapon, &target, &plan));
+    assert(attack_plan_is_valid(&plan));
+
+    invalid_plan = plan;
+    invalid_plan.flags |= UINT32_C(1) << 31u;
+    assert(!attack_plan_is_valid(&invalid_plan));
+    invalid_plan = plan;
+    invalid_plan.hit_reroll_mask |= UINT8_C(1);
+    assert(!attack_plan_is_valid(&invalid_plan));
+    invalid_plan = plan;
+    invalid_plan.sustained_hits = (struct dice_value){1u, 0u, 0u};
+    assert(!attack_plan_is_valid(&invalid_plan));
+    invalid_plan = plan;
+    invalid_plan.damage_transform_count = 1u;
+    invalid_plan.damage_transforms[0].apply = NULL;
+    assert(!attack_plan_is_valid(&invalid_plan));
+
+    assert(calculate_attack_damage_distribution(&weapon, &target, &workspace, &distribution));
+    assert(probability_distribution_is_normalized(&distribution));
+    invalid_distribution = distribution;
+    invalid_distribution.mass[invalid_distribution.minimum]--;
+    assert(!probability_distribution_is_normalized(&invalid_distribution));
+    assert(!probability_distribution_summarize(&invalid_distribution,
+                                               &(struct distribution_summary){0}));
+    assert(!probability_distribution_mean(&invalid_distribution, &(struct fraction){0}));
+    invalid_distribution = distribution;
+    invalid_distribution.total_mass--;
+    assert(!probability_distribution_is_normalized(&invalid_distribution));
+    invalid_distribution = distribution;
+    invalid_distribution.mass[MAX_DISTRIBUTION_RESULT] = 1u;
+    assert(!probability_distribution_is_normalized(&invalid_distribution));
+}
+
+/*@ terminates \true; */
 static void test_basic_attack(void) {
     struct weapon_profile weapon;
     struct target_profile target;
@@ -410,6 +454,7 @@ static void test_ordered_mixed_profile_volley(void) {
 int main(void) {
     assert(greatest_common_divisor(48, 18) == 6);
     test_dice();
+    test_probability_and_plan_validators();
     test_basic_attack();
     test_rules();
     test_random_attacks_damage_and_fnp();

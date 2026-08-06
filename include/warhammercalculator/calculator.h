@@ -193,6 +193,33 @@ struct calculator_workspace {
       distribution->maximum <= MAX_DISTRIBUTION_RESULT &&
       distribution->total_mass == PROBABILITY_SCALE;
 
+  axiomatic WhcProbabilityMass {
+    logic integer whc_probability_mass_sum{L}(
+        struct probability_distribution *distribution, integer count)
+        reads distribution->mass[0 .. count - 1];
+
+    axiom whc_probability_mass_sum_zero{L}:
+        \forall struct probability_distribution *distribution;
+            whc_probability_mass_sum(distribution, 0) == 0;
+
+    axiom whc_probability_mass_sum_step{L}:
+        \forall struct probability_distribution *distribution, integer count;
+            \valid_read(distribution) &&
+            0 <= count <= MAX_DISTRIBUTION_RESULT ==>
+                whc_probability_mass_sum(distribution, count + 1) ==
+                    whc_probability_mass_sum(distribution, count) +
+                        distribution->mass[count];
+  }
+
+  predicate whc_conserved_probability_distribution{L}(
+      struct probability_distribution *distribution) =
+      whc_normalized_probability_distribution(distribution) &&
+      whc_probability_mass_sum(distribution, MAX_DISTRIBUTION_RESULT + 1) ==
+          PROBABILITY_SCALE &&
+      (\forall integer index; 0 <= index <= MAX_DISTRIBUTION_RESULT ==>
+          (index < distribution->minimum || index > distribution->maximum) ==>
+              distribution->mass[index] == 0);
+
   predicate whc_valid_rule_set{L}(struct rule_set *rules) =
       \valid_read(rules) && rules->count <= MAX_PROFILE_RULES;
 
@@ -273,12 +300,39 @@ struct calculator_workspace {
       layout->initial_wounds_lost < layout->wounds_per_model[0] &&
       whc_target_capacity(layout) <= MAX_DISTRIBUTION_RESULT;
 
-  predicate whc_valid_attack_plan{L}(struct attack_plan *plan) =
+  predicate whc_valid_attack_thresholds{L}(struct attack_plan *plan) =
       \valid_read(plan) && 2 <= plan->hits_on && plan->hits_on <= 6 &&
       2 <= plan->wounds_on && plan->wounds_on <= 6 &&
       2 <= plan->saves_on && plan->saves_on <= 7 &&
-      plan->hit_auto_fails_through <= 6 &&
+      2 <= plan->critical_hits_on && plan->critical_hits_on <= 6 &&
+      2 <= plan->critical_wounds_on && plan->critical_wounds_on <= 6 &&
+      (plan->feel_no_pain_on == 0 ||
+       (2 <= plan->feel_no_pain_on && plan->feel_no_pain_on <= 6)) &&
+      plan->hit_auto_fails_through <= 6;
+
+  predicate whc_valid_attack_rerolls{L}(struct attack_plan *plan) =
+      \valid_read(plan) &&
+      (plan->hit_reroll_mask & 0x81) == 0 &&
+      (plan->wound_reroll_mask & 0x81) == 0 &&
+      (plan->save_reroll_mask & 0x81) == 0;
+
+  predicate whc_valid_attack_damage_values{L}(struct attack_plan *plan) =
+      \valid_read(plan) && whc_valid_dice_value(plan->sustained_hits) &&
+      plan->damage_floor > 0 &&
+      (plan->flags & ~0x3f) == 0 &&
       plan->damage_transform_count <= MAX_DAMAGE_TRANSFORMS;
+
+  predicate whc_valid_attack_transforms{L}(struct attack_plan *plan) =
+      \valid_read(plan) && plan->damage_transform_count <= MAX_DAMAGE_TRANSFORMS &&
+      (\forall integer index; 0 <= index < plan->damage_transform_count ==>
+          plan->damage_transforms[index].apply != \null);
+
+  predicate whc_valid_attack_damage{L}(struct attack_plan *plan) =
+      whc_valid_attack_damage_values(plan) && whc_valid_attack_transforms(plan);
+
+  predicate whc_valid_attack_plan{L}(struct attack_plan *plan) =
+      whc_valid_attack_thresholds(plan) && whc_valid_attack_rerolls(plan) &&
+      whc_valid_attack_damage(plan);
 */
 
 /*@ assigns \nothing;
@@ -304,7 +358,9 @@ bool fraction_multiply(struct fraction left, struct fraction right, struct fract
 */
 bool fraction_add(struct fraction left, struct fraction right, struct fraction *result);
 
-/*@ assigns \nothing; */
+/*@ assigns \nothing;
+    ensures \result <==> whc_valid_dice_value(dice);
+*/
 bool dice_value_is_valid(struct dice_value dice);
 /*@ requires \valid_read(distribution);
     assigns \nothing;
@@ -396,6 +452,18 @@ bool distribution_summarize(const struct distribution *distribution,
     ensures distribution->total_mass == 0;
 */
 void probability_distribution_clear(struct probability_distribution *distribution);
+#ifndef WHC_E_ACSL
+/*@ requires \valid_read(distribution);
+    assigns \nothing;
+    ensures \result ==> whc_conserved_probability_distribution(distribution);
+*/
+#else
+/*@ requires \valid_read(distribution);
+    assigns \nothing;
+    ensures \result ==> whc_normalized_probability_distribution(distribution);
+*/
+#endif
+bool probability_distribution_is_normalized(const struct probability_distribution *distribution);
 /*@ requires \valid_read(source) && \valid(result);
     assigns *result;
     ensures \result ==> whc_normalized_probability_distribution(result);
@@ -467,18 +535,61 @@ bool rule_add_wound_bonus(struct rule_set *rules, uint8_t bonus);
 /*@ requires \valid(rules); assigns *rules; */
 bool rule_add_cover(struct rule_set *rules);
 
+#ifndef WHC_E_ACSL
+/*@ requires \valid_read(plan);
+    assigns \nothing;
+    ensures \result ==> whc_valid_attack_thresholds(plan);
+    ensures \result ==> whc_valid_attack_rerolls(plan);
+    ensures \result ==> whc_valid_dice_value(plan->sustained_hits);
+    ensures \result ==> plan->damage_floor > 0;
+    ensures \result ==> (plan->flags & ~0x3f) == 0;
+    ensures \result ==> plan->damage_transform_count <= MAX_DAMAGE_TRANSFORMS;
+    ensures \result ==> (\forall integer index;
+        0 <= index < plan->damage_transform_count ==>
+            plan->damage_transforms[index].apply != \null);
+*/
+#else
+/*@ requires \valid_read(plan);
+    assigns \nothing;
+    ensures \result ==> whc_valid_attack_thresholds(plan);
+    ensures \result ==> whc_valid_attack_rerolls(plan);
+    ensures \result ==> whc_valid_dice_value(plan->sustained_hits);
+    ensures \result ==> plan->damage_floor > 0;
+    ensures \result ==> (plan->flags & ~0x3f) == 0;
+    ensures \result ==> plan->damage_transform_count <= MAX_DAMAGE_TRANSFORMS;
+*/
+#endif
+bool attack_plan_is_valid(const struct attack_plan *plan);
 /*@ requires \valid(plan);
     assigns *plan;
     ensures \result ==> plan->damage_transform_count == \old(plan->damage_transform_count) + 1;
 */
 bool attack_plan_add_damage_transform(struct attack_plan *plan, damage_transform_function transform,
                                       union rule_payload payload);
+#ifndef WHC_E_ACSL
 /*@ requires \valid_read(weapon) && \valid_read(target) && \valid(plan);
     assigns *plan;
-    ensures \result ==> (2 <= plan->hits_on && plan->hits_on <= 6);
-    ensures \result ==> (2 <= plan->wounds_on && plan->wounds_on <= 6);
-    ensures \result ==> (2 <= plan->saves_on && plan->saves_on <= 7);
+    ensures \result ==> whc_valid_attack_thresholds(plan);
+    ensures \result ==> whc_valid_attack_rerolls(plan);
+    ensures \result ==> whc_valid_dice_value(plan->sustained_hits);
+    ensures \result ==> plan->damage_floor > 0;
+    ensures \result ==> (plan->flags & ~0x3f) == 0;
+    ensures \result ==> plan->damage_transform_count <= MAX_DAMAGE_TRANSFORMS;
+    ensures \result ==> (\forall integer index;
+        0 <= index < plan->damage_transform_count ==>
+            plan->damage_transforms[index].apply != \null);
 */
+#else
+/*@ requires \valid_read(weapon) && \valid_read(target) && \valid(plan);
+    assigns *plan;
+    ensures \result ==> whc_valid_attack_thresholds(plan);
+    ensures \result ==> whc_valid_attack_rerolls(plan);
+    ensures \result ==> whc_valid_dice_value(plan->sustained_hits);
+    ensures \result ==> plan->damage_floor > 0;
+    ensures \result ==> (plan->flags & ~0x3f) == 0;
+    ensures \result ==> plan->damage_transform_count <= MAX_DAMAGE_TRANSFORMS;
+*/
+#endif
 bool attack_plan_build(const struct weapon_profile *weapon, const struct target_profile *target,
                        struct attack_plan *plan);
 

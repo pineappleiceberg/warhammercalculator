@@ -216,9 +216,12 @@ every total editable for casualties, unusual rules, and custom play states.
 ## Formal verification
 
 The C API and internal helpers have ACSL contracts. Frama-C 31 with Alt-Ergo
-proves the save/AP/cover model and its relational properties, Eva checks the
-formal runtime harness for undefined behavior, and E-ACSL executes instrumented
-contracts across bounded save profiles.
+proves the save/AP/cover model, damage-allocation bounds, dice validity,
+attack-plan invariants, and actual Q31 probability-mass conservation. Eva
+checks the formal runtime harness for undefined behavior, while E-ACSL executes
+instrumented contracts and deliberate invalid-plan and corrupted-distribution
+checks. Public probability summaries reject distributions whose bins do not
+sum to the declared mass or contain mass outside their stated support.
 
 With Frama-C, Alt-Ergo, E-ACSL, and `jq` available:
 

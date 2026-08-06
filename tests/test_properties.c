@@ -43,6 +43,7 @@ static void assert_probability_invariants(const struct probability_distribution 
     uint64_t mass = 0u;
     uint32_t outcome = 0u;
 
+    assert(probability_distribution_is_normalized(distribution));
     assert(distribution->minimum <= distribution->maximum);
     assert(distribution->maximum <= MAX_DISTRIBUTION_RESULT);
     while (outcome <= MAX_DISTRIBUTION_RESULT) {
@@ -178,6 +179,7 @@ static void test_attack_properties(void) {
         struct calculator_workspace workspace;
         struct probability_distribution potential;
         struct probability_distribution applied;
+        struct attack_plan plan;
         struct distribution_summary summary;
         struct fraction baseline_mean;
         struct fraction better_ap_mean;
@@ -185,6 +187,8 @@ static void test_attack_properties(void) {
         uint16_t target_models = (uint16_t)(1u + random_below(&state, 5u));
 
         generate_profiles(&weapon, &target, &state);
+        assert(attack_plan_build(&weapon, &target, &plan));
+        assert(attack_plan_is_valid(&plan));
         assert(calculate_attack_damage_distribution(&weapon, &target, &workspace, &potential));
         assert_probability_invariants(&potential);
         assert(probability_distribution_summarize(&potential, &summary));

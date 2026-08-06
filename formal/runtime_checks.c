@@ -11,6 +11,7 @@ int main(void) {
     struct weapon_profile weapon = {0};
     struct target_profile target = {0};
     struct calculator_workspace workspace;
+    struct attack_plan plan;
     struct probability_distribution distribution;
     uint64_t mass_sum = 0u;
     uint32_t outcome = 0u;
@@ -69,7 +70,10 @@ int main(void) {
     target.save = 2u;
     target.wounds = 12u;
 
+    assert(attack_plan_build(&weapon, &target, &plan));
+    assert(attack_plan_is_valid(&plan));
     assert(calculate_attack_damage_distribution(&weapon, &target, &workspace, &distribution));
+    assert(probability_distribution_is_normalized(&distribution));
     assert(distribution.minimum <= distribution.maximum);
     assert(distribution.maximum <= MAX_DISTRIBUTION_RESULT);
 
@@ -85,5 +89,10 @@ int main(void) {
 
     assert(mass_sum == PROBABILITY_SCALE);
     assert(distribution.total_mass == PROBABILITY_SCALE);
+
+    distribution.mass[distribution.minimum]--;
+    assert(!probability_distribution_is_normalized(&distribution));
+    plan.flags |= UINT32_C(1) << 31u;
+    assert(!attack_plan_is_valid(&plan));
     return 0;
 }

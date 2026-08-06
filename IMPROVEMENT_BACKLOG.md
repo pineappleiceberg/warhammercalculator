@@ -16,18 +16,23 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Expand formal proofs from threshold helpers to attack-plan invariants and
-   probability-mass conservation.
-2. Improve list persistence, import/export, and mid-game state recovery.
-3. Add an explicit per-model composition editor for the 88 conditional or
+1. Improve list persistence, import/export, and mid-game state recovery.
+2. Add an explicit per-model composition editor for the 88 conditional or
    multi-variable loadout subjects that total unit size alone cannot resolve.
-4. Add data freshness checks, change reports, and source-version pinning.
-5. Benchmark and profile large volleys in native and WebAssembly builds.
-6. Improve mobile play-mode ergonomics and accessibility.
-7. Add deployment health checks and clearer service-failure diagnostics.
+3. Add data freshness checks, change reports, and source-version pinning.
+4. Benchmark and profile large volleys in native and WebAssembly builds.
+5. Improve mobile play-mode ergonomics and accessibility.
+6. Add deployment health checks and clearer service-failure diagnostics.
 
 ## Completed cycles
 
+- 2026-08-06: Strengthened formal verification from threshold helpers to
+  compiled attack plans and actual Q31 probability-mass conservation. The C
+  validators reject unknown plan flags, invalid reroll masks, malformed
+  sustained-hit dice, null damage transforms, incorrect bin sums, and mass
+  outside declared support; public probability consumers enforce the stronger
+  boundary. Frama-C proves the validator contracts, while native property tests
+  and E-ACSL exercise valid outputs and deliberately corrupted states.
 - 2026-08-06: Added deterministic native and API property tests plus a bounded
   Clang libFuzzer campaign instrumented with AddressSanitizer and
   UndefinedBehaviorSanitizer. Generated cases check probability mass,

@@ -1732,6 +1732,41 @@ void probability_distribution_clear(struct probability_distribution *distributio
     memset(distribution, 0, sizeof(*distribution));
 }
 
+bool probability_distribution_is_normalized(const struct probability_distribution *distribution) {
+    uint64_t mass_sum = 0u;
+    uint32_t outcome = 0u;
+
+    if (distribution == NULL || distribution->minimum > distribution->maximum ||
+        distribution->maximum > MAX_DISTRIBUTION_RESULT ||
+        distribution->total_mass != PROBABILITY_SCALE) {
+        return false;
+    }
+
+    /*@ loop invariant 0 <= outcome && outcome <= MAX_DISTRIBUTION_RESULT + 1;
+        loop invariant mass_sum == whc_probability_mass_sum(distribution, outcome);
+        loop invariant mass_sum <= (uint64_t)outcome * UINT32_MAX;
+        loop invariant \forall integer index; 0 <= index < outcome ==>
+            (index < distribution->minimum || index > distribution->maximum) ==>
+                distribution->mass[index] == 0;
+        loop assigns outcome, mass_sum;
+        loop variant MAX_DISTRIBUTION_RESULT + 1 - outcome;
+    */
+    while (outcome <= MAX_DISTRIBUTION_RESULT) {
+        if ((outcome < distribution->minimum || outcome > distribution->maximum) &&
+            distribution->mass[outcome] != 0u) {
+            return false;
+        }
+        /*@ assert whc_probability_mass_sum(distribution, outcome + 1) ==
+                       whc_probability_mass_sum(distribution, outcome) +
+                           distribution->mass[outcome];
+        */
+        mass_sum += distribution->mass[outcome];
+        outcome++;
+    }
+
+    return mass_sum == PROBABILITY_SCALE;
+}
+
 bool probability_distribution_from_exact(const struct distribution *source,
                                          struct probability_distribution *result) {
     if (source == NULL || result == NULL || source->total_ways == 0) {
@@ -1747,7 +1782,8 @@ bool probability_distribution_mean(const struct probability_distribution *distri
     uint64_t weighted_sum = 0;
     uint32_t outcome = 0;
 
-    if (distribution == NULL || result == NULL || distribution->total_mass != PROBABILITY_SCALE) {
+    if (distribution == NULL || result == NULL ||
+        !probability_distribution_is_normalized(distribution)) {
         return false;
     }
 
@@ -1773,7 +1809,8 @@ bool probability_distribution_quantile(const struct probability_distribution *di
     uint64_t cumulative = 0;
     uint32_t outcome = 0;
 
-    if (distribution == NULL || result == NULL || distribution->total_mass != PROBABILITY_SCALE ||
+    if (distribution == NULL || result == NULL ||
+        !probability_distribution_is_normalized(distribution) ||
         !quantile_required_mass(distribution->total_mass, quantile_numerator, quantile_denominator,
                                 &required)) {
         return false;
@@ -1796,7 +1833,8 @@ bool probability_distribution_quantile(const struct probability_distribution *di
 
 bool probability_distribution_summarize(const struct probability_distribution *distribution,
                                         struct distribution_summary *summary) {
-    if (distribution == NULL || summary == NULL || distribution->total_mass != PROBABILITY_SCALE) {
+    if (distribution == NULL || summary == NULL ||
+        !probability_distribution_is_normalized(distribution)) {
         return false;
     }
 
@@ -1947,6 +1985,62 @@ bool attack_plan_add_damage_transform(struct attack_plan *plan, damage_transform
     return true;
 }
 
+bool attack_plan_is_valid(const struct attack_plan *plan) {
+    uint8_t transform_index = 0u;
+    uint32_t allowed_flags =
+        (uint32_t)ATTACK_PLAN_LETHAL_HITS | (uint32_t)ATTACK_PLAN_CRITICAL_WOUNDS_BYPASS_SAVE |
+        (uint32_t)ATTACK_PLAN_REROLL_FAILED_HITS | (uint32_t)ATTACK_PLAN_REROLL_FAILED_WOUNDS |
+        (uint32_t)ATTACK_PLAN_REROLL_FAILED_SAVES | (uint32_t)ATTACK_PLAN_AUTO_HITS;
+
+    if (plan == NULL || plan->hits_on < 2u || plan->hits_on > 6u || plan->wounds_on < 2u ||
+        plan->wounds_on > 6u || plan->saves_on < 2u || plan->saves_on > 7u ||
+        plan->critical_hits_on < 2u || plan->critical_hits_on > 6u ||
+        plan->critical_wounds_on < 2u || plan->critical_wounds_on > 6u ||
+        (plan->feel_no_pain_on != 0u &&
+         (plan->feel_no_pain_on < 2u || plan->feel_no_pain_on > 6u)) ||
+        plan->hit_auto_fails_through > 6u ||
+        (plan->hit_reroll_mask & (uint8_t)~VALID_D6_FACE_MASK) != 0u ||
+        (plan->wound_reroll_mask & (uint8_t)~VALID_D6_FACE_MASK) != 0u ||
+        (plan->save_reroll_mask & (uint8_t)~VALID_D6_FACE_MASK) != 0u ||
+        !dice_value_is_valid(plan->sustained_hits) || plan->damage_floor == 0u ||
+        (plan->flags & ~allowed_flags) != 0u ||
+        plan->damage_transform_count > MAX_DAMAGE_TRANSFORMS) {
+        return false;
+    }
+
+    /*@ loop invariant 0 <= transform_index && transform_index <= plan->damage_transform_count;
+        loop invariant \forall integer index; 0 <= index < transform_index ==>
+            plan->damage_transforms[index].apply != \null;
+        loop assigns transform_index;
+        loop variant plan->damage_transform_count - transform_index;
+    */
+    while (transform_index < plan->damage_transform_count) {
+        if (plan->damage_transforms[transform_index].apply == NULL) {
+            return false;
+        }
+        transform_index++;
+    }
+    /*@ assert 2 <= plan->hits_on && plan->hits_on <= 6; */
+    /*@ assert 2 <= plan->wounds_on && plan->wounds_on <= 6; */
+    /*@ assert 2 <= plan->saves_on && plan->saves_on <= 7; */
+    /*@ assert 2 <= plan->critical_hits_on && plan->critical_hits_on <= 6; */
+    /*@ assert 2 <= plan->critical_wounds_on && plan->critical_wounds_on <= 6; */
+    /*@ assert plan->feel_no_pain_on == 0 ||
+               (2 <= plan->feel_no_pain_on && plan->feel_no_pain_on <= 6); */
+    /*@ assert plan->hit_auto_fails_through <= 6; */
+    /*@ assert (plan->hit_reroll_mask & 0x81) == 0; */
+    /*@ assert (plan->wound_reroll_mask & 0x81) == 0; */
+    /*@ assert (plan->save_reroll_mask & 0x81) == 0; */
+    /*@ assert whc_valid_dice_value(plan->sustained_hits); */
+    /*@ assert plan->damage_floor > 0; */
+    /*@ assert (plan->flags & ~0x3f) == 0; */
+    /*@ assert plan->damage_transform_count <= MAX_DAMAGE_TRANSFORMS; */
+    /*@ assert \forall integer index; 0 <= index < plan->damage_transform_count ==>
+            plan->damage_transforms[index].apply != \null; */
+    /*@ assert \valid_read(plan); */
+    return true;
+}
+
 bool attack_plan_build(const struct weapon_profile *weapon, const struct target_profile *target,
                        struct attack_plan *plan) {
     uint8_t rule_index = 0;
@@ -2024,7 +2118,7 @@ bool attack_plan_build(const struct weapon_profile *weapon, const struct target_
     plan->hit_reroll_mask &= VALID_D6_FACE_MASK;
     plan->wound_reroll_mask &= VALID_D6_FACE_MASK;
     plan->save_reroll_mask &= VALID_D6_FACE_MASK;
-    return true;
+    return attack_plan_is_valid(plan);
 }
 
 uint8_t wounds_on(uint16_t strength, uint16_t toughness) {
@@ -2254,7 +2348,7 @@ bool advance_weapon_applied_damage_distribution(const struct weapon_profile *wea
 
     if (weapon == NULL || targets == NULL || layout == NULL || current == NULL ||
         workspace == NULL || result == NULL || capacity == 0u ||
-        current->total_mass != PROBABILITY_SCALE || current->minimum > current->maximum ||
+        !probability_distribution_is_normalized(current) ||
         current->minimum < layout->initial_wounds_lost || current->maximum > capacity) {
         return false;
     }
