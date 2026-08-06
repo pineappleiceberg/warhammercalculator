@@ -70,6 +70,11 @@ if(WHC_BUILD_BENCHMARKS)
     )
     if(EMSCRIPTEN)
         set_target_properties(warhammercalculator_benchmark PROPERTIES SUFFIX ".js")
+        target_link_options(warhammercalculator_benchmark PRIVATE
+            "SHELL:-s ENVIRONMENT=node"
+            "SHELL:-s SINGLE_FILE=1"
+            "SHELL:-s EXIT_RUNTIME=1"
+        )
     endif()
     if(BUILD_TESTING)
         add_test(NAME warhammercalculator_benchmark_smoke
