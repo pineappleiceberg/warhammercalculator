@@ -16,11 +16,15 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Improve mobile play-mode ergonomics and accessibility.
-2. Add deployment health checks and clearer service-failure diagnostics.
+1. Add deployment health checks and clearer service-failure diagnostics.
 
 ## Completed cycles
 
+- 2026-08-06: Reworked Play Mode for at-the-table mobile use with semantic
+  attacker/target groups, prerequisite-disabled selectors, collapsed optional
+  overrides, 48 px touch inputs, and a safe-area-aware sticky resolve control.
+  Live status regions and focused result announcements make repeated rolls
+  usable with keyboards and screen readers while recovery remains unchanged.
 - 2026-08-06: Added deterministic JSON benchmarks for an 80-attack workload and
   the maximum 32-weapon/16-target exact volley in both native and WebAssembly
   builds, with CI artifacts and tolerant regression limits. Profiling exposed

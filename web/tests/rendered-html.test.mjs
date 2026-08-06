@@ -134,6 +134,12 @@ test("server-renders every battle workflow", async () => {
     if (pathname === "/play") {
       assert.match(html, /Reset battle/);
       assert.match(html, /recover automatically/i);
+      assert.match(html, /<legend>Attacker<\/legend>/);
+      assert.match(html, /<legend>Target<\/legend>/);
+      assert.match(html, /role="status"/);
+      assert.match(html, /aria-live="polite"/);
+      assert.match(html, /Quick overrides/);
+      assert.match(html, /play-action-hint/);
     }
   }
 });

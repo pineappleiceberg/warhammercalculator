@@ -1409,7 +1409,25 @@ select:focus {
   grid-template-columns: minmax(0, 1.5fr) minmax(310px, 0.5fr);
 }
 .play-selectors {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+.play-selector-group {
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 14px;
+}
+.play-selector-group legend {
+  padding: 0 7px;
+  color: var(--red);
+  font:
+    700 11px var(--font-geist-mono),
+    monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 .override-strip {
   margin: 22px 0;
@@ -1417,10 +1435,27 @@ select:focus {
   background: #e8e1d4;
   border: 1px solid var(--line);
 }
+.override-strip summary {
+  cursor: pointer;
+  color: var(--ink);
+  font:
+    700 12px var(--font-geist-mono),
+    monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.override-strip summary span {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0;
+  text-transform: none;
+}
 .override-strip > div {
   display: grid;
   grid-template-columns: repeat(6, minmax(58px, 1fr));
   gap: 8px;
+  margin-top: 14px;
 }
 .override-strip label {
   display: grid;
@@ -1441,6 +1476,20 @@ select:focus {
   width: 100%;
   min-height: 58px;
   font-size: 14px;
+}
+.play-action-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 0.45fr);
+  gap: 14px;
+  align-items: center;
+}
+.play-action-bar > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.resolution-panel:focus {
+  outline: 3px solid var(--gold);
+  outline-offset: 3px;
 }
 .resolution-panel {
   min-height: 460px;
@@ -1614,6 +1663,55 @@ select:focus {
   .weapon-counts {
     grid-template-columns: 1fr;
   }
+  .play-layout {
+    margin-top: 18px;
+  }
+  .play-console .panel-body {
+    padding-bottom: 0;
+  }
+  .play-selector-group {
+    padding: 12px;
+  }
+  .play-selectors select,
+  .override-strip input,
+  .battle-log button {
+    min-height: 48px;
+  }
+  .override-strip {
+    margin: 16px 0;
+  }
+  .override-strip summary {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .play-action-bar {
+    position: sticky;
+    z-index: 20;
+    bottom: 0;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin: 0 -17px;
+    padding: 10px 17px max(10px, env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--paper-light) 94%, transparent);
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -8px 18px rgb(31 30 27 / 12%);
+    backdrop-filter: blur(8px);
+  }
+  .play-action-bar > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .resolve-button {
+    min-height: 54px;
+  }
+  .resolution-panel {
+    min-height: 0;
+    padding: 22px;
+  }
   .stat-row,
   .override-strip > div {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1634,6 +1732,15 @@ select:focus {
   .battle-log article span:nth-of-type(3) {
     grid-column: 2 / -1;
   }
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+a:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 3px;
 }
 
 @media (prefers-reduced-motion: no-preference) {

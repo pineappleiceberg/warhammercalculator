@@ -49,6 +49,7 @@ export default function PlayMode() {
   const [recoveryReady, setRecoveryReady] = useState(false);
   const recovered = useRef(false);
   const suppressRecoverySave = useRef(false);
+  const latestResult = useRef<HTMLElement>(null);
 
   useEffect(() => {
     Promise.all([loadCatalogue(), fetchArmyLists()])
@@ -255,6 +256,7 @@ export default function PlayMode() {
       ].slice(0, 30),
     );
     setStatus(`${rolled.appliedDamage} damage applied`);
+    requestAnimationFrame(() => latestResult.current?.focus());
   };
 
   const setNumber = (key: keyof CombatProfile, value: number) =>
@@ -263,6 +265,19 @@ export default function PlayMode() {
   const ready = Boolean(
     attackerUnit && targetUnit && selectedWeapon && weaponProfile && targetModelId,
   );
+  const readyLabel = !attackerList
+    ? "Choose an attacking list"
+    : !attackerUnit
+      ? "Choose an attacking unit"
+      : !selectedWeapon
+        ? "Choose a weapon"
+        : !targetList
+          ? "Choose a target list"
+          : !targetUnit
+            ? "Choose a target unit"
+            : !targetModelId
+              ? "Choose a target profile"
+              : `${attackerUnit.name} into ${targetUnit.name}`;
 
   const resetBattle = () => {
     suppressRecoverySave.current = true;
@@ -287,7 +302,7 @@ export default function PlayMode() {
           <span className="serial">BATTLE CONSOLE // 10E</span>
           <h1>Play Mode</h1>
         </div>
-        <div className="engine-status ready">
+        <div className="engine-status ready" role="status" aria-live="polite" aria-atomic="true">
           <span />
           {status}
         </div>
@@ -304,116 +319,138 @@ export default function PlayMode() {
           </div>
           <div className="panel-body">
             <div className="play-selectors">
-              <label>
-                <span>Attacking list</span>
-                <select
-                  value={attackerListId}
-                  onChange={(event) => {
-                    setAttackerListId(event.target.value);
-                    setAttackerUnitId("");
-                    setWeaponId("");
-                    setProfileId("");
-                  }}
-                >
-                  <option value="">Choose list</option>
-                  {lists.map((list) => (
-                    <option key={list.id} value={list.id}>
-                      {list.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>Attacking unit</span>
-                <select
-                  value={attackerUnitId}
-                  onChange={(event) => {
-                    setAttackerUnitId(event.target.value);
-                    setWeaponId("");
-                    setProfileId("");
-                  }}
-                >
-                  <option value="">Choose unit</option>
-                  {attackerList?.units.map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {unit.name} ({unit.modelCount})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>Weapon</span>
-                <select value={weaponId} onChange={(event) => chooseWeapon(event.target.value)}>
-                  <option value="">Choose weapon</option>
-                  {attackerUnit?.weapons
-                    .filter((weapon) => weapon.count > 0)
-                    .map((weapon) => (
-                      <option key={weapon.weaponId} value={weapon.weaponId}>
-                        {weapon.name} × {weapon.count}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              {selectedWeaponGroup && selectedWeaponGroup.profiles.length > 1 && (
+              <fieldset className="play-selector-group">
+                <legend>Attacker</legend>
                 <label>
-                  <span>Weapon profile</span>
-                  <select value={profileId} onChange={(event) => chooseProfile(event.target.value)}>
-                    {selectedWeaponGroup.profiles.map((weapon) => (
-                      <option key={weapon.id} value={weapon.id}>
-                        {weapon.profileName ?? weapon.name}
+                  <span>List</span>
+                  <select
+                    value={attackerListId}
+                    onChange={(event) => {
+                      setAttackerListId(event.target.value);
+                      setAttackerUnitId("");
+                      setWeaponId("");
+                      setProfileId("");
+                      setResult(null);
+                    }}
+                  >
+                    <option value="">Choose list</option>
+                    {lists.map((list) => (
+                      <option key={list.id} value={list.id}>
+                        {list.name}
                       </option>
                     ))}
                   </select>
                 </label>
-              )}
-              <label>
-                <span>Target list</span>
-                <select
-                  value={targetListId}
-                  onChange={(event) => {
-                    setTargetListId(event.target.value);
-                    setTargetUnitId("");
-                  }}
-                >
-                  <option value="">Choose list</option>
-                  {lists.map((list) => (
-                    <option key={list.id} value={list.id}>
-                      {list.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>Target unit</span>
-                <select
-                  value={targetUnitId}
-                  onChange={(event) => chooseTargetUnit(event.target.value)}
-                >
-                  <option value="">Choose unit</option>
-                  {targetList?.units.map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {unit.name} ({unit.modelCount})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>Target profile</span>
-                <select
-                  value={targetModelId}
-                  onChange={(event) => chooseTargetProfile(event.target.value)}
-                >
-                  <option value="">Choose profile</option>
-                  {targetProfiles.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                <label>
+                  <span>Unit</span>
+                  <select
+                    value={attackerUnitId}
+                    disabled={!attackerList}
+                    onChange={(event) => {
+                      setAttackerUnitId(event.target.value);
+                      setWeaponId("");
+                      setProfileId("");
+                      setResult(null);
+                    }}
+                  >
+                    <option value="">Choose unit</option>
+                    {attackerList?.units.map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {unit.name} ({unit.modelCount})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Weapon</span>
+                  <select
+                    value={weaponId}
+                    disabled={!attackerUnit}
+                    onChange={(event) => chooseWeapon(event.target.value)}
+                  >
+                    <option value="">Choose weapon</option>
+                    {attackerUnit?.weapons
+                      .filter((weapon) => weapon.count > 0)
+                      .map((weapon) => (
+                        <option key={weapon.weaponId} value={weapon.weaponId}>
+                          {weapon.name} × {weapon.count}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                {selectedWeaponGroup && selectedWeaponGroup.profiles.length > 1 && (
+                  <label>
+                    <span>Weapon profile</span>
+                    <select
+                      value={profileId}
+                      onChange={(event) => chooseProfile(event.target.value)}
+                    >
+                      {selectedWeaponGroup.profiles.map((weapon) => (
+                        <option key={weapon.id} value={weapon.id}>
+                          {weapon.profileName ?? weapon.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </fieldset>
+              <fieldset className="play-selector-group">
+                <legend>Target</legend>
+                <label>
+                  <span>List</span>
+                  <select
+                    value={targetListId}
+                    onChange={(event) => {
+                      setTargetListId(event.target.value);
+                      setTargetUnitId("");
+                      setTargetModelId("");
+                      setResult(null);
+                    }}
+                  >
+                    <option value="">Choose list</option>
+                    {lists.map((list) => (
+                      <option key={list.id} value={list.id}>
+                        {list.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Unit</span>
+                  <select
+                    value={targetUnitId}
+                    disabled={!targetList}
+                    onChange={(event) => chooseTargetUnit(event.target.value)}
+                  >
+                    <option value="">Choose unit</option>
+                    {targetList?.units.map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {unit.name} ({unit.modelCount})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Profile</span>
+                  <select
+                    value={targetModelId}
+                    disabled={!targetUnit}
+                    onChange={(event) => chooseTargetProfile(event.target.value)}
+                  >
+                    <option value="">Choose profile</option>
+                    {targetProfiles.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </fieldset>
             </div>
-            <div className="override-strip">
-              <h3>Quick overrides</h3>
+            <details className="override-strip">
+              <summary>
+                Quick overrides <span>Optional editable values</span>
+              </summary>
               <div>
                 {(
                   [
@@ -434,6 +471,7 @@ export default function PlayMode() {
                     <span>{label}</span>
                     <input
                       type="number"
+                      inputMode="numeric"
                       min={key === "invulnerable" || key === "feelNoPain" ? 0 : 1}
                       value={profile[key] as number}
                       onChange={(event) => setNumber(key, Math.max(0, +event.target.value))}
@@ -441,14 +479,33 @@ export default function PlayMode() {
                   </label>
                 ))}
               </div>
+            </details>
+            <div className="play-action-bar">
+              <span id="play-action-hint">{readyLabel}</span>
+              <button
+                className="resolve-button"
+                type="button"
+                disabled={!ready}
+                aria-describedby="play-action-hint"
+                onClick={roll}
+              >
+                {result ? "Roll again" : "Resolve attack"}
+              </button>
             </div>
-            <button className="resolve-button" type="button" disabled={!ready} onClick={roll}>
-              Resolve attack
-            </button>
           </div>
         </section>
-        <aside className="resolution-panel">
-          <span className="section-kicker">Latest result</span>
+        <aside
+          className="resolution-panel"
+          ref={latestResult}
+          tabIndex={-1}
+          role="region"
+          aria-labelledby="latest-result-heading"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <span className="section-kicker" id="latest-result-heading">
+            Latest result
+          </span>
           {!result && <p>Choose an attack to begin.</p>}
           {result && (
             <>

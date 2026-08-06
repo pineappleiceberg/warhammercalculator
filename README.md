@@ -282,6 +282,11 @@ lists from reappearing. The list screen can export and import a versioned JSON
 backup that includes the profile-source timestamp. Imports preserve list IDs and
 update matching records. Unfinished list drafts and Play Mode selections,
 overrides, and attack history recover automatically on the current device.
+On narrow screens, Play Mode groups the attacker and target into guided steps,
+collapses optional overrides, and keeps the resolve action above the device safe
+area. Selects and action controls use touch-sized targets. Battle status and the
+latest result are polite live regions, and focus moves to each resolved result
+so keyboard and screen-reader users receive the roll without searching the page.
 
 The checked profile-data suite also verifies conservative structured wargear
 constraints. Fixed limits, per-model allowances, and rules such as "for every 5
