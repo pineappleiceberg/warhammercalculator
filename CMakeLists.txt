@@ -9,6 +9,8 @@ project(
 
 include(CTest)
 
+option(WHC_BUILD_FUZZER "Build the Clang libFuzzer harness" OFF)
+
 add_library(warhammercalculator STATIC
     src/calculator.c
     src/web_api.c
@@ -64,11 +66,52 @@ if(BUILD_TESTING)
     target_link_libraries(warhammercalculator_tests PRIVATE warhammercalculator::warhammercalculator)
     add_test(NAME warhammercalculator_tests COMMAND warhammercalculator_tests)
 
+    add_executable(warhammercalculator_property_tests tests/test_properties.c)
+    target_link_libraries(warhammercalculator_property_tests
+        PRIVATE warhammercalculator::warhammercalculator
+    )
+    if(NOT MSVC)
+        target_link_libraries(warhammercalculator_property_tests PRIVATE m)
+    endif()
+    add_test(NAME warhammercalculator_property_tests COMMAND warhammercalculator_property_tests)
+
     add_executable(warhammercalculator_contract_checks formal/runtime_checks.c)
     target_link_libraries(warhammercalculator_contract_checks
         PRIVATE warhammercalculator::warhammercalculator
     )
     add_test(NAME warhammercalculator_contract_checks COMMAND warhammercalculator_contract_checks)
+endif()
+
+if(WHC_BUILD_FUZZER)
+    if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "WHC_BUILD_FUZZER requires Clang with libFuzzer support")
+    endif()
+    add_executable(warhammercalculator_fuzz
+        tests/fuzz_calculator.c
+        src/calculator.c
+        src/web_api.c
+    )
+    target_include_directories(warhammercalculator_fuzz PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_compile_features(warhammercalculator_fuzz PRIVATE c_std_17)
+    target_compile_options(warhammercalculator_fuzz PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wshadow
+        -fno-omit-frame-pointer
+        -fsanitize=fuzzer,address,undefined
+    )
+    target_link_options(warhammercalculator_fuzz PRIVATE
+        -fno-omit-frame-pointer
+        -fsanitize=fuzzer,address,undefined
+    )
+    if(BUILD_TESTING)
+        add_test(NAME warhammercalculator_fuzz_smoke
+            COMMAND warhammercalculator_fuzz -runs=2000 -max_len=128 -timeout=10 -seed=1
+        )
+        set_tests_properties(warhammercalculator_fuzz_smoke PROPERTIES TIMEOUT 120)
+    endif()
 endif()
 
 if(UNIX)

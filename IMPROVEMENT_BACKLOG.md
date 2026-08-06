@@ -16,19 +16,24 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Add property-based and fuzz testing at the C and API boundaries.
-2. Expand formal proofs from threshold helpers to attack-plan invariants and
+1. Expand formal proofs from threshold helpers to attack-plan invariants and
    probability-mass conservation.
-3. Improve list persistence, import/export, and mid-game state recovery.
-4. Add an explicit per-model composition editor for the 88 conditional or
+2. Improve list persistence, import/export, and mid-game state recovery.
+3. Add an explicit per-model composition editor for the 88 conditional or
    multi-variable loadout subjects that total unit size alone cannot resolve.
-5. Add data freshness checks, change reports, and source-version pinning.
-6. Benchmark and profile large volleys in native and WebAssembly builds.
-7. Improve mobile play-mode ergonomics and accessibility.
-8. Add deployment health checks and clearer service-failure diagnostics.
+4. Add data freshness checks, change reports, and source-version pinning.
+5. Benchmark and profile large volleys in native and WebAssembly builds.
+6. Improve mobile play-mode ergonomics and accessibility.
+7. Add deployment health checks and clearer service-failure diagnostics.
 
 ## Completed cycles
 
+- 2026-08-06: Added deterministic native and API property tests plus a bounded
+  Clang libFuzzer campaign instrumented with AddressSanitizer and
+  UndefinedBehaviorSanitizer. Generated cases check probability mass,
+  quantiles, allocation bounds, AP and defensive monotonicity, ordered volleys,
+  and malformed API types; explicit null profile fields now fail validation
+  instead of silently selecting defaults.
 - 2026-08-06: Added reproducible seeded simulations over complete ordered unit
   volleys while preserving cryptographically random live rolls. The web and API
   report kill and zero-damage chances, variance, quartiles, roll-stage means,

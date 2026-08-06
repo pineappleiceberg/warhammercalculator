@@ -190,7 +190,7 @@ export function normalizeProfile(input: unknown): CombatProfile {
   }
   const source = input as Record<string, unknown>;
   const numberValue = (key: keyof CombatProfile, minimum: number, maximum: number) => {
-    const value = source[key] ?? DEFAULT_PROFILE[key];
+    const value = Object.hasOwn(source, key) ? source[key] : DEFAULT_PROFILE[key];
     if (
       typeof value !== "number" ||
       !Number.isInteger(value) ||
@@ -207,7 +207,7 @@ export function normalizeProfile(input: unknown): CombatProfile {
     return value;
   };
   const booleanValue = (key: keyof CombatProfile) => {
-    const value = source[key] ?? DEFAULT_PROFILE[key];
+    const value = Object.hasOwn(source, key) ? source[key] : DEFAULT_PROFILE[key];
     if (typeof value !== "boolean") throw new Error(`${key} must be a boolean`);
     return value;
   };

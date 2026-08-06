@@ -187,6 +187,26 @@ make test
 
 The included tests cover exact dice distributions, quartiles, ordinary attack
 resolution, random attacks/damage, Feel No Pain, and several compiled rules.
+Deterministically generated property tests also exercise 5,000 dice profiles,
+10,000 damage allocations, and 300 bounded combat profiles on every native
+test run. They check normalized probability mass, ordered quantiles, allocation
+bounds, AP monotonicity, and defensive-rule monotonicity.
+
+Clang builds can additionally run the libFuzzer harness under AddressSanitizer
+and UndefinedBehaviorSanitizer:
+
+```sh
+CC=clang cmake -S . -B build/fuzz -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DWHC_BUILD_FUZZER=ON
+cmake --build build/fuzz --target warhammercalculator_fuzz
+ctest --test-dir build/fuzz -R warhammercalculator_fuzz_smoke --output-on-failure
+```
+
+CI runs a reproducible, bounded 2,000-input fuzz campaign. The API suite independently
+generates valid combat profiles to check result invariants and sends malformed
+typed fields through the calculation, volley, and seeded-simulation routes.
+Explicit `null` profile fields are rejected rather than silently replaced by
+defaults; omitted fields continue to use the documented defaults.
 
 The generated profile catalogue also preserves named unit-composition models
 and source-backed default-loadout formulas. Unit editors therefore start mixed

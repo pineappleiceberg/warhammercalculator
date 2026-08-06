@@ -552,6 +552,140 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.ok(rolled.data.modelsDestroyed <= 1);
 });
 
+test("generated API profiles preserve combat invariants and reject malformed fields", async () => {
+  const worker = await loadWorker();
+  const context = { waitUntil() {}, passThroughOnException() {} };
+  let state = 0x9e37_79b9;
+  const next = () => {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    return state >>> 0;
+  };
+  const below = (maximum) => next() % maximum;
+  const calculate = async (profile) => {
+    const response = await worker.fetch(
+      new Request("http://localhost/api/v1/calculate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ profile }),
+      }),
+      testEnv,
+      context,
+    );
+    const text = await response.text();
+    assert.equal(response.status, 200, text);
+    return JSON.parse(text).data;
+  };
+
+  for (let iteration = 0; iteration < 40; iteration += 1) {
+    const profile = {
+      attackDice: 0,
+      attackSides: 0,
+      attacks: 1 + below(6),
+      weaponCount: 1 + below(3),
+      hitOn: 2 + below(5),
+      strength: 1 + below(16),
+      ap: below(4),
+      damageDice: 0,
+      damageSides: 0,
+      damage: 1 + below(5),
+      criticalHits: 5 + below(2),
+      toughness: 1 + below(16),
+      save: 2 + below(6),
+      invulnerable: below(3) === 0 ? 0 : 4 + below(3),
+      feelNoPain: 0,
+      wounds: 1 + below(8),
+      targetModels: 1 + below(4),
+      reduction: below(3),
+      lethalHits: below(2) === 1,
+      devastatingWounds: below(2) === 1,
+      twinLinked: below(2) === 1,
+      rerollHits: below(2) === 1,
+    };
+    const baseline = await calculate(profile);
+    assert.ok(baseline.minimum <= baseline.firstQuartile);
+    assert.ok(baseline.firstQuartile <= baseline.median);
+    assert.ok(baseline.median <= baseline.thirdQuartile);
+    assert.ok(baseline.thirdQuartile <= baseline.maximum);
+    assert.ok(baseline.mean >= baseline.minimum && baseline.mean <= baseline.maximum);
+    assert.ok(baseline.applied.minimum <= baseline.applied.firstQuartile);
+    assert.ok(baseline.applied.firstQuartile <= baseline.applied.median);
+    assert.ok(baseline.applied.median <= baseline.applied.thirdQuartile);
+    assert.ok(baseline.applied.thirdQuartile <= baseline.applied.maximum);
+    assert.ok(baseline.applied.mean <= baseline.mean + 1e-6 * Math.max(1, baseline.mean));
+
+    const betterAp = await calculate({ ...profile, ap: profile.ap + 1 });
+    assert.ok(betterAp.mean + 1e-12 >= baseline.mean);
+    const withFnp = await calculate({ ...profile, feelNoPain: 5 });
+    assert.ok(withFnp.mean <= baseline.mean + 1e-12);
+  }
+
+  const target = {
+    toughness: 8,
+    save: 3,
+    invulnerable: 0,
+    feelNoPain: 0,
+    wounds: 4,
+    reduction: 0,
+    modelCount: 1,
+  };
+  const numericKeys = [
+    "attacks",
+    "weaponCount",
+    "hitOn",
+    "strength",
+    "ap",
+    "damage",
+    "criticalHits",
+    "toughness",
+    "save",
+    "wounds",
+    "targetModels",
+  ];
+  const booleanKeys = [
+    "torrent",
+    "blast",
+    "heavyActive",
+    "targetCover",
+    "lethalHits",
+    "twinLinked",
+  ];
+  const invalidNumbers = [-1, 1.5, "3", null, {}, [], 1e20];
+  const invalidBooleans = [0, 1, "true", null, {}, []];
+  const endpoints = ["/api/v1/calculate", "/api/v1/volley", "/api/v1/volley/simulate"];
+
+  for (let iteration = 0; iteration < 180; iteration += 1) {
+    const useBoolean = below(2) === 1;
+    const keys = useBoolean ? booleanKeys : numericKeys;
+    const values = useBoolean ? invalidBooleans : invalidNumbers;
+    const profile = { [keys[below(keys.length)]]: values[below(values.length)] };
+    const endpoint = endpoints[below(endpoints.length)];
+    const body =
+      endpoint === "/api/v1/calculate"
+        ? { profile }
+        : {
+            profiles: [profile],
+            targets: [target],
+            initialWoundsLost: 0,
+            ...(endpoint.endsWith("simulate") ? { seed: 1, trials: 100 } : {}),
+          };
+    const response = await worker.fetch(
+      new Request(`http://localhost${endpoint}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      testEnv,
+      context,
+    );
+    const result = await response.json();
+    assert.equal(response.status, 400, JSON.stringify({ endpoint, body, result }));
+    assert.equal(result.error.status, 400);
+    assert.equal(result.apiVersion, "v1");
+  }
+});
+
 test("creates, updates, lists, and deletes durable army lists", async () => {
   const worker = await loadWorker();
   const context = { waitUntil() {}, passThroughOnException() {} };

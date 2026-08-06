@@ -35,6 +35,21 @@ jobs:
       - name: Verify checked profile data and loadout provenance
         run: python3 -m unittest discover -s tests -p test_profiles_data.py
 
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure sanitizer fuzz build
+        env:
+          CC: clang
+        run: >-
+          cmake -S . -B build/fuzz -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+          -DWHC_BUILD_FUZZER=ON
+      - name: Build sanitizer fuzz target
+        run: cmake --build build/fuzz --target warhammercalculator_fuzz --parallel
+      - name: Run bounded fuzz campaign
+        run: ctest --test-dir build/fuzz -R warhammercalculator_fuzz_smoke --output-on-failure
+
   web:
     runs-on: ubuntu-latest
     steps:
