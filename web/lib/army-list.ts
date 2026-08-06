@@ -1,4 +1,9 @@
-export type ArmyListWeapon = { weaponId: number; name: string; count: number };
+export type ArmyListWeapon = {
+  weaponId: number;
+  groupId?: string;
+  name: string;
+  count: number;
+};
 
 export type ArmyListUnit = {
   id: string;

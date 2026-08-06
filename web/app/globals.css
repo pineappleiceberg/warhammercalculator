@@ -900,6 +900,8 @@ select:focus {
   text-transform: uppercase;
 }
 .loadout-list > label,
+.weapon-group > label,
+.profile-allocations label,
 .weapon-counts label {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 72px;
@@ -907,6 +909,30 @@ select:focus {
   gap: 14px;
   padding: 10px 0;
   border-bottom: 1px solid #d2ccbf;
+}
+.weapon-group {
+  display: grid;
+  border-bottom: 1px solid #d2ccbf;
+}
+.weapon-group > label,
+.profile-allocations label {
+  border-bottom: 0;
+}
+.profile-allocations {
+  display: grid;
+  gap: 3px;
+  margin: -2px 0 10px 18px;
+  padding: 9px 11px;
+  border-left: 3px solid var(--gold);
+  background: #f6f1e7;
+}
+.profile-allocations > span {
+  color: var(--muted);
+  font:
+    700 9px var(--font-geist-mono),
+    monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .loadout-list small {
   display: block;

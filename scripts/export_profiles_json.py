@@ -9,6 +9,22 @@ import sqlite3
 from pathlib import Path
 
 
+PROFILE_SEPARATORS = (" – ", " - ", " — ")
+
+
+def profile_group_names(names: list[str]) -> tuple[str, list[str | None]]:
+    if len(names) == 1:
+        return names[0], [None]
+    for separator in PROFILE_SEPARATORS:
+        if separator not in names[0]:
+            continue
+        group_name = names[0].split(separator, 1)[0]
+        prefix = f"{group_name}{separator}"
+        if all(name.startswith(prefix) for name in names):
+            return group_name, [name[len(prefix) :] for name in names]
+    raise ValueError(f"could not derive profile modes for grouped weapon: {names!r}")
+
+
 def export(database: Path, output: Path) -> None:
     connection = sqlite3.connect(database)
     connection.row_factory = sqlite3.Row
@@ -105,13 +121,44 @@ def export(database: Path, output: Path) -> None:
                 unit["suggestedModelCount"] = sum(row["min"] for row in composition)
                 unit["maximumModelCount"] = sum(row["max"] for row in composition)
 
-        for row in connection.execute(
-            """SELECT id, datasheet_id, name, weapon_type, attacks,
-                      skill_target, strength, armour_penetration, damage,
-                      abilities_text
-               FROM weapon_profiles
-               ORDER BY datasheet_id, source_line, profile_line, name COLLATE NOCASE"""
-        ):
+        weapon_rows = list(
+            connection.execute(
+                """SELECT id, datasheet_id, name, weapon_type, attacks,
+                          skill_target, strength, armour_penetration, damage,
+                          abilities_text, source_line, profile_line
+                   FROM weapon_profiles
+                   ORDER BY datasheet_id, source_line, profile_line, name COLLATE NOCASE"""
+            )
+        )
+        weapon_groups: dict[str, list[sqlite3.Row]] = {}
+        for row in weapon_rows:
+            group_id = (
+                f"{row['datasheet_id']}:{row['source_line']}"
+                if row["source_line"] is not None
+                else f"{row['datasheet_id']}:profile:{row['id']}"
+            )
+            weapon_groups.setdefault(group_id, []).append(row)
+
+        group_metadata: dict[int, tuple[str, str, str | None, int, int]] = {}
+        for group_id, rows_in_group in weapon_groups.items():
+            group_name, profile_names = profile_group_names(
+                [row["name"] for row in rows_in_group]
+            )
+            for index, (row, profile_name) in enumerate(
+                zip(rows_in_group, profile_names, strict=True), start=1
+            ):
+                group_metadata[row["id"]] = (
+                    group_id,
+                    group_name,
+                    profile_name,
+                    index,
+                    len(rows_in_group),
+                )
+
+        for row in weapon_rows:
+            group_id, group_name, profile_name, profile_index, profile_count = (
+                group_metadata[row["id"]]
+            )
             units[row["datasheet_id"]]["weapons"].append(
                 {
                     "id": row["id"],
@@ -124,6 +171,11 @@ def export(database: Path, output: Path) -> None:
                     "damage": row["damage"],
                     "rules": row["abilities_text"],
                     "abilities": abilities.get(row["id"], []),
+                    "groupId": group_id,
+                    "groupName": group_name,
+                    "profileName": profile_name,
+                    "profileIndex": profile_index,
+                    "profileCount": profile_count,
                 }
             )
 

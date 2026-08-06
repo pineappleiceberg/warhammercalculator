@@ -15,6 +15,11 @@ export type CatalogueWeapon = {
   damage: string;
   rules: string;
   abilities: CatalogueAbility[];
+  groupId: string;
+  groupName: string;
+  profileName: string | null;
+  profileIndex: number;
+  profileCount: number;
 };
 export type CatalogueModel = {
   id: number;

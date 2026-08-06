@@ -17,8 +17,8 @@ priority over feature count.
 ## Prioritized backlog
 
 1. Compile structured constraints from wargear-option prose so the editor can
-   flag illegal replacements, mutually exclusive weapon modes, per-model
-   limits, and unit-size-dependent quantities.
+   flag illegal replacements, per-model limits, and unit-size-dependent
+   quantities.
 2. Combine complete multi-weapon volleys in player-selected order so casualties
    and existing wounds carry between weapon profiles and mixed model profiles.
 3. Add phase-scale simulations with reproducible seeded runs
@@ -48,3 +48,7 @@ priority over feature count.
   checksums and source timestamps; added safe model-count defaults, editable
   total weapon quantities, source guidance, and a loadout API without assuming
   every model carries every profile listed on its datasheet.
+- 2026-08-06: Grouped all source-defined multi-profile weapons so equipped
+  quantities are stored once, standard/supercharge and frag/krak modes cannot
+  be mistaken for separate weapons, individual copies can still split across
+  profiles in a volley, and Play Mode selects the firing profile explicitly.

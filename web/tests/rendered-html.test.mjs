@@ -162,6 +162,29 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.match(loadoutData.composition[0].text, /10-20 Necron Warriors/i);
   assert.ok(loadoutData.wargearOptions.some((option) => /gauss reaper/i.test(option)));
 
+  const sisters = catalogue.units.find((unit) => unit.name === "Battle Sisters Squad");
+  const sisterUnits = await worker.fetch(
+    new Request(`http://localhost/api/v1/units?faction=${sisters.factionId}&kind=attacker`),
+    testEnv,
+    context,
+  );
+  const sistersSummary = (await sisterUnits.json()).data.find((unit) => unit.id === sisters.id);
+  assert.ok(sistersSummary.weaponGroupCount < sistersSummary.weaponProfileCount);
+  const sistersLoadout = await worker.fetch(
+    new Request(`http://localhost/api/v1/loadout?unit=${sisters.id}`),
+    testEnv,
+    context,
+  );
+  const plasmaProfiles = (await sistersLoadout.json()).data.weapons.filter(
+    (weapon) => weapon.groupName === "Plasma pistol",
+  );
+  assert.equal(plasmaProfiles.length, 2);
+  assert.equal(new Set(plasmaProfiles.map((weapon) => weapon.groupId)).size, 1);
+  assert.deepEqual(
+    new Set(plasmaProfiles.map((weapon) => weapon.profileName)),
+    new Set(["standard", "supercharge"]),
+  );
+
   const calculate = await worker.fetch(
     new Request("http://localhost/api/v1/calculate", {
       method: "POST",
@@ -211,7 +234,7 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
         unitId: "datasheet-1",
         name: "Test unit",
         modelCount: 10,
-        weapons: [{ weaponId: 7, name: "Test weapon", count: 10 }],
+        weapons: [{ weaponId: 7, groupId: "datasheet-1:7", name: "Test weapon", count: 10 }],
       },
     ],
   };
@@ -248,6 +271,26 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
     context,
   );
   assert.equal(deleted.status, 200);
+
+  const invalid = await worker.fetch(
+    new Request("http://localhost/api/v1/lists", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...roster,
+        units: [
+          {
+            ...roster.units[0],
+            weapons: [{ weaponId: 7, name: "Test weapon", count: 101 }],
+          },
+        ],
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(invalid.status, 400);
+  assert.match((await invalid.json()).error.message, /0 to 100 equipped copies/i);
 });
 
 test("rejects Torrent attacks fired indirectly without visibility", async () => {

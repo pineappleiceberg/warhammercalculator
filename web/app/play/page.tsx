@@ -15,6 +15,7 @@ import {
   loadCatalogue,
   type Catalogue,
 } from "../../lib/catalogue";
+import { groupWeaponProfiles } from "../../lib/loadout.mjs";
 
 type LogEntry = {
   id: string;
@@ -33,6 +34,7 @@ export default function PlayMode() {
   const [attackerUnitId, setAttackerUnitId] = useState("");
   const [targetUnitId, setTargetUnitId] = useState("");
   const [weaponId, setWeaponId] = useState("");
+  const [profileId, setProfileId] = useState("");
   const [targetModelId, setTargetModelId] = useState("");
   const [profile, setProfile] = useState<CombatProfile>(DEFAULT_PROFILE);
   const [result, setResult] = useState<RollResult | null>(null);
@@ -56,21 +58,37 @@ export default function PlayMode() {
   const selectedWeapon = attackerUnit?.weapons.find(
     (weapon) => String(weapon.weaponId) === weaponId,
   );
-  const weaponProfile = catalogue?.units
-    .find((unit) => unit.id === attackerUnit?.unitId)
-    ?.weapons.find((weapon) => String(weapon.id) === weaponId);
+  const attackerCatalogueUnit = catalogue?.units.find((unit) => unit.id === attackerUnit?.unitId);
+  const weaponGroups = groupWeaponProfiles(attackerCatalogueUnit?.weapons ?? []);
+  const selectedWeaponGroup = weaponGroups.find(
+    (group) =>
+      group.id === selectedWeapon?.groupId ||
+      group.profiles.some((weapon) => weapon.id === selectedWeapon?.weaponId),
+  );
+  const weaponProfile =
+    selectedWeaponGroup?.profiles.find((weapon) => String(weapon.id) === profileId) ??
+    selectedWeaponGroup?.profiles[0];
   const targetProfiles =
     catalogue?.units.find((unit) => unit.id === targetUnit?.unitId)?.models ?? [];
 
-  const refreshProfile = (nextWeaponId = weaponId, nextTargetModelId = targetModelId) => {
-    const weapon = catalogue?.units
-      .find((unit) => unit.id === attackerUnit?.unitId)
-      ?.weapons.find((entry) => String(entry.id) === nextWeaponId);
-    const model =
-      targetProfiles.find((entry) => String(entry.id) === nextTargetModelId) ?? targetProfiles[0];
+  const refreshProfile = (
+    nextWeaponId = weaponId,
+    nextTargetModelId = targetModelId,
+    nextProfileId = profileId,
+  ) => {
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
     );
+    const groups = groupWeaponProfiles(attackerCatalogueUnit?.weapons ?? []);
+    const group = groups.find(
+      (entry) =>
+        entry.id === listWeapon?.groupId ||
+        entry.profiles.some((profile) => profile.id === listWeapon?.weaponId),
+    );
+    const weapon =
+      group?.profiles.find((entry) => String(entry.id) === nextProfileId) ?? group?.profiles[0];
+    const model =
+      targetProfiles.find((entry) => String(entry.id) === nextTargetModelId) ?? targetProfiles[0];
     if (!weapon || !model) return;
     setProfile(
       applyWeaponProfile(
@@ -87,13 +105,29 @@ export default function PlayMode() {
   };
 
   const chooseWeapon = (id: string) => {
+    const listWeapon = attackerUnit?.weapons.find((entry) => String(entry.weaponId) === id);
+    const group = weaponGroups.find(
+      (entry) =>
+        entry.id === listWeapon?.groupId ||
+        entry.profiles.some((profile) => profile.id === listWeapon?.weaponId),
+    );
+    const initialProfile = listWeapon?.groupId
+      ? group?.profiles[0]
+      : group?.profiles.find((profile) => profile.id === listWeapon?.weaponId);
+    const firstProfileId = initialProfile ? String(initialProfile.id) : "";
     setWeaponId(id);
-    refreshProfile(id, targetModelId);
+    setProfileId(firstProfileId);
+    refreshProfile(id, targetModelId, firstProfileId);
+  };
+
+  const chooseProfile = (id: string) => {
+    setProfileId(id);
+    refreshProfile(weaponId, targetModelId, id);
   };
 
   const chooseTargetProfile = (id: string) => {
     setTargetModelId(id);
-    refreshProfile(weaponId, id);
+    refreshProfile(weaponId, id, profileId);
   };
 
   const chooseTargetUnit = (id: string) => {
@@ -131,7 +165,7 @@ export default function PlayMode() {
         {
           id: crypto.randomUUID(),
           attacker: attackerUnit.name,
-          weapon: selectedWeapon.name,
+          weapon: weaponProfile.name,
           target: targetUnit.name,
           damage: rolled.appliedDamage,
           successful: rolled.successfulAttacks,
@@ -145,7 +179,9 @@ export default function PlayMode() {
   const setNumber = (key: keyof CombatProfile, value: number) =>
     setProfile((current) => ({ ...current, [key]: value }));
 
-  const ready = Boolean(attackerUnit && targetUnit && selectedWeapon && targetModelId);
+  const ready = Boolean(
+    attackerUnit && targetUnit && selectedWeapon && weaponProfile && targetModelId,
+  );
 
   return (
     <main>
@@ -179,6 +215,7 @@ export default function PlayMode() {
                     setAttackerListId(event.target.value);
                     setAttackerUnitId("");
                     setWeaponId("");
+                    setProfileId("");
                   }}
                 >
                   <option value="">Choose list</option>
@@ -196,6 +233,7 @@ export default function PlayMode() {
                   onChange={(event) => {
                     setAttackerUnitId(event.target.value);
                     setWeaponId("");
+                    setProfileId("");
                   }}
                 >
                   <option value="">Choose unit</option>
@@ -219,6 +257,18 @@ export default function PlayMode() {
                     ))}
                 </select>
               </label>
+              {selectedWeaponGroup && selectedWeaponGroup.profiles.length > 1 && (
+                <label>
+                  <span>Weapon profile</span>
+                  <select value={profileId} onChange={(event) => chooseProfile(event.target.value)}>
+                    {selectedWeaponGroup.profiles.map((weapon) => (
+                      <option key={weapon.id} value={weapon.id}>
+                        {weapon.profileName ?? weapon.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label>
                 <span>Target list</span>
                 <select

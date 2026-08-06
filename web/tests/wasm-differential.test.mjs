@@ -8,7 +8,13 @@ import { fileURLToPath } from "node:url";
 import { attackRollSucceeds, savingThrowTarget, woundTarget } from "../lib/thresholds.mjs";
 import { allocateDamageToUnit } from "../lib/allocation.mjs";
 import { abilityDiceValue } from "../lib/dice.mjs";
-import { equippedWeaponLines, normalizeEquippedCount } from "../lib/loadout.mjs";
+import {
+  armyListWeaponsFromGroups,
+  equippedWeaponLines,
+  groupWeaponProfiles,
+  normalizeEquippedCount,
+  weaponAllocationErrors,
+} from "../lib/loadout.mjs";
 
 globalThis.require = createRequire(import.meta.url);
 globalThis.__dirname = dirname(fileURLToPath(import.meta.url));
@@ -125,14 +131,47 @@ test("C/Wasm preserves variable Sustained Hits and Rapid Fire values", () => {
   });
 });
 
-test("unit loadouts use editable total weapon copies without model multiplication", () => {
+test("unit loadouts group mutually exclusive profiles and allocate equipped copies", () => {
   const weapons = [
-    { id: 1, name: "Gauss flayer" },
-    { id: 2, name: "Gauss reaper" },
+    {
+      id: 1,
+      name: "Plasma pistol – standard",
+      groupId: "unit:7",
+      groupName: "Plasma pistol",
+      profileIndex: 1,
+    },
+    {
+      id: 2,
+      name: "Plasma pistol – supercharge",
+      groupId: "unit:7",
+      groupName: "Plasma pistol",
+      profileIndex: 2,
+    },
+    {
+      id: 3,
+      name: "Boltgun",
+      groupId: "unit:8",
+      groupName: "Boltgun",
+      profileIndex: 1,
+    },
   ];
-  assert.deepEqual(equippedWeaponLines(weapons, { 1: 7, 2: 3 }), [
-    { weapon: weapons[0], count: 7 },
-    { weapon: weapons[1], count: 3 },
+  const groups = groupWeaponProfiles(weapons);
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].profiles.length, 2);
+  assert.deepEqual(armyListWeaponsFromGroups(groups), [
+    { weaponId: 1, groupId: "unit:7", name: "Plasma pistol", count: 0 },
+    { weaponId: 3, groupId: "unit:8", name: "Boltgun", count: 0 },
+  ]);
+  assert.deepEqual(equippedWeaponLines(groups, { "unit:7": 5, "unit:8": 7 }, { 1: 3, 2: 2 }), [
+    { weapon: weapons[0], count: 3 },
+    { weapon: weapons[1], count: 2 },
+    { weapon: weapons[2], count: 7 },
+  ]);
+  assert.deepEqual(weaponAllocationErrors(groups, { "unit:7": 5 }, { 1: 4, 2: 2 }), [
+    "Plasma pistol allocates 6 profiles across 5 equipped copies",
+  ]);
+  assert.deepEqual(weaponAllocationErrors(groups, { "unit:7": 5 }, {}), [
+    "Choose firing profiles for Plasma pistol",
   ]);
   assert.equal(normalizeEquippedCount(2.9), 2);
   assert.equal(normalizeEquippedCount(-1), 0);

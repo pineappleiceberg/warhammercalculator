@@ -38,7 +38,7 @@ type Catalogue = {
     factionId: string;
     name: string;
     models: unknown[];
-    weapons: unknown[];
+    weapons: Array<{ groupId: string }>;
     composition: Array<{ text: string; min: number | null; max: number | null }>;
     wargearOptions: string[];
     suggestedModelCount: number | null;
@@ -239,9 +239,25 @@ async function requestArmyList(request: Request): Promise<ArmyListInput> {
       !Number.isInteger(unit.modelCount) ||
       unit.modelCount < 1 ||
       unit.modelCount > 1000 ||
-      !Array.isArray(unit.weapons)
+      !Array.isArray(unit.weapons) ||
+      unit.weapons.length > 200
     ) {
       throw new Error("Each unit must have an id, unitId, name, model count, and weapons");
+    }
+    for (const weapon of unit.weapons) {
+      if (
+        !weapon ||
+        !Number.isInteger(weapon.weaponId) ||
+        weapon.weaponId < 1 ||
+        (weapon.groupId !== undefined && typeof weapon.groupId !== "string") ||
+        typeof weapon.name !== "string" ||
+        !weapon.name ||
+        !Number.isInteger(weapon.count) ||
+        weapon.count < 0 ||
+        weapon.count > 100
+      ) {
+        throw new Error("Each weapon must have a profile id, name, and 0 to 100 equipped copies");
+      }
     }
   }
   return { name: body.name.trim(), factionId: body.factionId, units: body.units };
@@ -304,6 +320,7 @@ async function handleApi(request: Request, env: Env) {
           name: unit.name,
           modelProfileCount: unit.models.length,
           weaponProfileCount: unit.weapons.length,
+          weaponGroupCount: new Set(unit.weapons.map((weapon) => weapon.groupId)).size,
           suggestedModelCount: unit.suggestedModelCount,
           maximumModelCount: unit.maximumModelCount,
         }));

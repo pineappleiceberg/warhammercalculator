@@ -4,7 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { WorkflowNav } from "../../components/workflow-nav";
 import { calculateProfile, type DamageSummary } from "../../lib/client-calculator";
 import { DEFAULT_PROFILE } from "../../lib/combat";
-import { equippedWeaponLines, normalizeEquippedCount } from "../../lib/loadout.mjs";
+import {
+  equippedWeaponLines,
+  groupWeaponProfiles,
+  normalizeEquippedCount,
+  weaponAllocationErrors,
+} from "../../lib/loadout.mjs";
 import {
   applyTargetProfile,
   applyWeaponProfile,
@@ -24,7 +29,8 @@ export default function UnitVsUnit() {
   const [targetModelId, setTargetModelId] = useState("");
   const [attackerModels, setAttackerModels] = useState(1);
   const [targetModels, setTargetModels] = useState(1);
-  const [weaponCounts, setWeaponCounts] = useState<Record<number, number>>({});
+  const [weaponCounts, setWeaponCounts] = useState<Record<string, number>>({});
+  const [profileCounts, setProfileCounts] = useState<Record<number, number>>({});
   const [targetOverrides, setTargetOverrides] = useState({
     toughness: 8,
     save: 3,
@@ -55,12 +61,19 @@ export default function UnitVsUnit() {
   );
   const attackerUnit = attackerUnits.find((unit) => unit.id === attackerUnitId);
   const targetUnit = targetUnits.find((unit) => unit.id === targetUnitId);
+  const weaponGroups = groupWeaponProfiles(attackerUnit?.weapons ?? []);
 
   const selectAttacker = (unitId: string) => {
     setAttackerUnitId(unitId);
     const unit = attackerUnits.find((entry) => entry.id === unitId);
+    const groups = groupWeaponProfiles(unit?.weapons ?? []);
     setAttackerModels(unit?.suggestedModelCount ?? 1);
-    setWeaponCounts(Object.fromEntries((unit?.weapons ?? []).map((weapon) => [weapon.id, 0])));
+    setWeaponCounts(Object.fromEntries(groups.map((group) => [group.id, 0])));
+    setProfileCounts(
+      Object.fromEntries(
+        groups.flatMap((group) => group.profiles.map((profile) => [profile.id, 0])),
+      ),
+    );
     setResults([]);
     setStatus(unit ? "Set the total equipped weapon quantities" : "Choose both units");
   };
@@ -87,7 +100,12 @@ export default function UnitVsUnit() {
     setStatus("Calculating unit volley…");
     const model =
       targetUnit.models.find((entry) => String(entry.id) === targetModelId) ?? targetUnit.models[0];
-    const lines = equippedWeaponLines(attackerUnit.weapons, weaponCounts);
+    const allocationErrors = weaponAllocationErrors(weaponGroups, weaponCounts, profileCounts);
+    if (allocationErrors.length) {
+      setStatus(allocationErrors[0]);
+      return;
+    }
+    const lines = equippedWeaponLines(weaponGroups, weaponCounts, profileCounts);
     if (!lines.length) {
       setStatus("Enter at least one equipped weapon quantity");
       return;
@@ -180,29 +198,65 @@ export default function UnitVsUnit() {
             {attackerUnit && (
               <div className="loadout-list">
                 <h3>Total weapons equipped</h3>
-                {attackerUnit.weapons.map((weapon) => (
-                  <label key={weapon.id}>
-                    <span>
-                      {weapon.name}
-                      <small>
-                        {weapon.attacks} · S{weapon.strength} · AP {weapon.ap ?? "—"} · D{" "}
-                        {weapon.damage} · copies across unit
-                      </small>
-                    </span>
-                    <input
-                      aria-label={`${weapon.name} count`}
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={weaponCounts[weapon.id] ?? 0}
-                      onChange={(event) =>
-                        setWeaponCounts((current) => ({
-                          ...current,
-                          [weapon.id]: normalizeEquippedCount(+event.target.value),
-                        }))
-                      }
-                    />
-                  </label>
+                {weaponGroups.map((group) => (
+                  <div className="weapon-group" key={group.id}>
+                    <label>
+                      <span>
+                        {group.name}
+                        <small>
+                          {group.profiles.length > 1
+                            ? `${group.profiles.length} mutually exclusive profiles`
+                            : `${group.profiles[0].attacks} · S${group.profiles[0].strength} · AP ${group.profiles[0].ap ?? "—"} · D ${group.profiles[0].damage}`}
+                          {" · copies across unit"}
+                        </small>
+                      </span>
+                      <input
+                        aria-label={`${group.name} count`}
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={weaponCounts[group.id] ?? 0}
+                        onChange={(event) =>
+                          setWeaponCounts((current) => ({
+                            ...current,
+                            [group.id]: normalizeEquippedCount(+event.target.value),
+                          }))
+                        }
+                      />
+                    </label>
+                    {group.profiles.length > 1 && (
+                      <div className="profile-allocations">
+                        <span>Copies using each profile this volley</span>
+                        {group.profiles.map((profile) => (
+                          <label key={profile.id}>
+                            <span>
+                              {profile.profileName ?? profile.name}
+                              <small>
+                                {profile.attacks} · S{profile.strength} · AP {profile.ap ?? "—"} · D{" "}
+                                {profile.damage}
+                              </small>
+                            </span>
+                            <input
+                              aria-label={`${profile.name} firing count`}
+                              type="number"
+                              min={0}
+                              max={weaponCounts[group.id] ?? 0}
+                              value={profileCounts[profile.id] ?? 0}
+                              onChange={(event) =>
+                                setProfileCounts((current) => ({
+                                  ...current,
+                                  [profile.id]: normalizeEquippedCount(
+                                    +event.target.value,
+                                    weaponCounts[group.id] ?? 0,
+                                  ),
+                                }))
+                              }
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ))}
                 <details className="source-guidance" open>
                   <summary>Unit composition</summary>

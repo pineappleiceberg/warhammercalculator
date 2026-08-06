@@ -9,6 +9,11 @@ import {
   type ArmyListUnit,
 } from "../../lib/army-list";
 import { loadCatalogue, type Catalogue } from "../../lib/catalogue";
+import {
+  armyListWeaponsFromGroups,
+  groupWeaponProfiles,
+  normalizeEquippedCount,
+} from "../../lib/loadout.mjs";
 
 const emptyList: ArmyListInput = { name: "", factionId: "", units: [] };
 
@@ -43,12 +48,13 @@ export default function ArmyLists() {
   const addUnit = () => {
     const unit = units.find((entry) => entry.id === unitId);
     if (!unit) return;
+    const weaponGroups = groupWeaponProfiles(unit.weapons);
     const item: ArmyListUnit = {
       id: crypto.randomUUID(),
       unitId: unit.id,
       name: unit.name,
-      modelCount: 1,
-      weapons: unit.weapons.map((weapon) => ({ weaponId: weapon.id, name: weapon.name, count: 1 })),
+      modelCount: unit.suggestedModelCount ?? 1,
+      weapons: armyListWeaponsFromGroups(weaponGroups),
     };
     setDraft((current) => ({ ...current, units: [...current.units, item] }));
     setUnitId("");
@@ -204,7 +210,10 @@ export default function ArmyLists() {
                               ...current,
                               weapons: current.weapons.map((entry) =>
                                 entry.weaponId === weapon.weaponId
-                                  ? { ...entry, count: Math.max(0, +event.target.value) }
+                                  ? {
+                                      ...entry,
+                                      count: normalizeEquippedCount(+event.target.value),
+                                    }
                                   : entry,
                               ),
                             }))

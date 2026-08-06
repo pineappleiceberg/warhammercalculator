@@ -40,6 +40,12 @@ python3 scripts/build_profiles_db.py --output data/warhammer_10e.sqlite
 
 Values that can be dice expressions are preserved as text (`D6+1`, `2D3`, and
 so on). Plain numeric values are also exposed in companion integer columns.
+Weapon rows sharing `(datasheet_id, source_line)` are profiles of the same
+physical weapon. The browser export records that source-defined group plus the
+profile label, allowing standard/supercharge and frag/krak modes to share one
+equipped quantity without forbidding different copies from choosing different
+profiles in the same volley.
+
 The presence of a weapon on a datasheet does not by itself mean every model in
 that datasheet can equip it. The UI therefore treats weapon quantities as
 editable totals across the unit and shows the source wargear options beside

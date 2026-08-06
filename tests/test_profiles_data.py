@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from scripts.build_profiles_db import composition_range, plain_text
-from scripts.export_profiles_json import export
+from scripts.export_profiles_json import export, profile_group_names
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +22,12 @@ class ProfileDataTests(unittest.TestCase):
             "1 Hero – EPIC HERO",
         )
         self.assertEqual(composition_range("OR"), (None, None))
+        self.assertEqual(
+            profile_group_names(
+                ["Plasma pistol – standard", "Plasma pistol – supercharge"]
+            ),
+            ("Plasma pistol", ["standard", "supercharge"]),
+        )
 
     def test_checked_database_preserves_loadout_sources_and_provenance(self):
         connection = sqlite3.connect(DATABASE)
@@ -71,6 +77,24 @@ class ProfileDataTests(unittest.TestCase):
             exported = Path(directory) / "profile-data.json"
             export(DATABASE, exported)
             self.assertEqual(exported.read_bytes(), CATALOGUE.read_bytes())
+
+    def test_grouped_weapon_profiles_are_mutually_identifiable(self):
+        catalogue = json.loads(CATALOGUE.read_text(encoding="utf-8"))
+        grouped = {
+            weapon["groupId"]
+            for unit in catalogue["units"]
+            for weapon in unit["weapons"]
+            if weapon["profileCount"] > 1
+        }
+        self.assertEqual(len(grouped), 38)
+        sisters = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Battle Sisters Squad"
+        )
+        plasma = [
+            weapon for weapon in sisters["weapons"] if weapon["groupName"] == "Plasma pistol"
+        ]
+        self.assertEqual({weapon["profileName"] for weapon in plasma}, {"standard", "supercharge"})
+        self.assertEqual(len({weapon["groupId"] for weapon in plasma}), 1)
 
 
 if __name__ == "__main__":
