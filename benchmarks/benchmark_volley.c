@@ -56,8 +56,7 @@ static void mixed_case(struct benchmark_case *benchmark) {
     benchmark->target_count = MAX_TARGET_SEGMENTS;
     while (index < benchmark->weapon_count) {
         uint32_t flags = (index % 2u == 0u ? WHC_RULE_TWIN_LINKED : 0u) |
-                         (index % 3u == 0u ? WHC_RULE_LETHAL_HITS : 0u) |
-                         (index % 5u == 0u ? WHC_RULE_DEVASTATING_WOUNDS : 0u);
+                         (index % 3u == 0u ? WHC_RULE_LETHAL_HITS : 0u);
         set_weapon(&benchmark->weapons[index], 4u + index % 3u, 1u, 2u + index % 2u, flags);
         index++;
     }
@@ -74,6 +73,22 @@ static void mixed_case(struct benchmark_case *benchmark) {
         };
         index++;
     }
+}
+
+static void devastating_case(struct benchmark_case *benchmark) {
+    memset(benchmark, 0, sizeof(*benchmark));
+    benchmark->name = "devastating_wounds_last";
+    benchmark->weapon_count = 2u;
+    benchmark->target_count = 1u;
+    set_weapon(&benchmark->weapons[0], 1u, 1u, 2u, WHC_RULE_TORRENT | WHC_RULE_DEVASTATING_WOUNDS);
+    benchmark->weapons[0].critical_wounds_on = 2u;
+    set_weapon(&benchmark->weapons[1], 1u, 1u, 3u, WHC_RULE_TORRENT);
+    benchmark->targets[0] = (struct whc_web_target_input){
+        .toughness = 1u,
+        .save = 7u,
+        .wounds = 3u,
+        .model_count = 2u,
+    };
 }
 
 static bool run_case(const struct benchmark_case *benchmark, uint32_t iterations, double maximum_ms,
@@ -100,7 +115,7 @@ static bool run_case(const struct benchmark_case *benchmark, uint32_t iterations
 }
 
 int main(int argc, char **argv) {
-    struct benchmark_case cases[2];
+    struct benchmark_case cases[3];
     uint32_t iterations = 5u;
     double maximum_ms = 10000.0;
     uint16_t index = 0u;
@@ -123,8 +138,9 @@ int main(int argc, char **argv) {
 
     dense_case(&cases[0]);
     mixed_case(&cases[1]);
+    devastating_case(&cases[2]);
     printf("{\"schemaVersion\":1,\"iterations\":%" PRIu32 ",\"cases\":[", iterations);
-    while (index < 2u) {
+    while (index < 3u) {
         double elapsed_ms = 0.0;
         bool passed = run_case(&cases[index], iterations, maximum_ms, &elapsed_ms, &checksum);
         printf("%s{\"name\":\"%s\",\"totalMs\":%.3f,\"millisecondsPerIteration\":%.3f,"
@@ -137,7 +153,7 @@ int main(int argc, char **argv) {
         }
         index++;
     }
-    checksum_matches = checksum == UINT64_C(9789938449) * iterations;
+    checksum_matches = checksum == UINT64_C(9531144046) * iterations;
     printf("],\"checksum\":%" PRIu64 ",\"checksumMatches\":%s}\n", checksum,
            checksum_matches ? "true" : "false");
     return checksum_matches ? 0 : 1;

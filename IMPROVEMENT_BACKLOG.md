@@ -16,14 +16,22 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Enforce the 10th-edition requirement that Devastating Wounds attacks are
-   allocated after a unit's ordinary attacks across exact ordered volleys, live
-   rolls, seeded simulations, and the API without losing user weapon ordering.
-2. Add source-backed unit ability presets for common Hit and Wound modifiers and
+1. Add source-backed unit ability presets for common Hit and Wound modifiers and
    re-roll effects while retaining manual overrides.
+2. Report exact-state complexity before calculation and offer the seeded
+   simulator as an explicit fallback when a combinatorial volley exceeds the
+   bounded exact engine.
 
 ## Completed cycles
 
+- 2026-08-06: Enforced the 10th-edition allocation order for Devastating Wounds
+  across the exact C engine, WebAssembly, live CSPRNG rolls, seeded simulations,
+  and API. A bounded sparse state machine retains deferred packets by source
+  weapon while resolving ordinary attacks in user order, including Lethal plus
+  variable Sustained Hits, saves, reduction, Feel No Pain, and non-spilling
+  damage. Hand-derived native and API regressions distinguish the corrected
+  order, and the sanitizer campaign locks a clean runtime bound for pathological
+  profiles.
 - 2026-08-06: Added a single reviewable 10th-edition interaction corpus shared
   by native C, WebAssembly, exact APIs, and seeded simulations. Thirteen
   hand-derived cases lock unmodified Critical Hits/Wounds under modifiers,

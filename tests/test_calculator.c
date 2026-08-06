@@ -613,6 +613,73 @@ static void test_ordered_mixed_profile_volley(void) {
     assert(web_forward.maximum == 1u);
 }
 
+static void test_devastating_wounds_resolve_after_ordinary_attacks(void) {
+    struct weapon_profile weapons[2];
+    struct weapon_profile reversed[2];
+    struct target_profile targets[2];
+    struct target_unit_layout layout = {
+        .wounds_per_model = {3u},
+        .model_counts = {2u},
+        .segment_count = 1u,
+        .initial_wounds_lost = 0u,
+    };
+    struct calculator_workspace workspace;
+    struct probability_distribution ordered;
+    struct probability_distribution reverse_ordered;
+    struct fraction means[2];
+    struct fraction reverse_means[2];
+    struct fraction mean;
+    struct fraction reverse_mean;
+
+    memset(weapons, 0, sizeof(weapons));
+    memset(targets, 0, sizeof(targets));
+    weapons[0].attacks = (struct dice_value){0u, 0u, 1u};
+    weapons[0].hits_on = 2u;
+    weapons[0].strength = 10u;
+    weapons[0].ap = 6u;
+    weapons[0].damage = (struct dice_value){0u, 0u, 2u};
+    assert(rule_add_torrent(&weapons[0].rules));
+    assert(rule_add_devastating_wounds(&weapons[0].rules));
+    assert(rule_add_critical_wounds_on(&weapons[0].rules, 2u));
+    weapons[1] = weapons[0];
+    weapons[1].damage = (struct dice_value){0u, 0u, 3u};
+    memset(&weapons[1].rules, 0, sizeof(weapons[1].rules));
+    assert(rule_add_torrent(&weapons[1].rules));
+    reversed[0] = weapons[1];
+    reversed[1] = weapons[0];
+
+    targets[0].toughness = 1u;
+    targets[0].save = 7u;
+    targets[0].wounds = 3u;
+    targets[1] = targets[0];
+
+    assert(calculate_ordered_volley_applied_damage_distribution(weapons, targets, 2u, &layout,
+                                                                &workspace, &ordered, means));
+    assert(calculate_ordered_volley_applied_damage_distribution(
+        reversed, targets, 2u, &layout, &workspace, &reverse_ordered, reverse_means));
+    assert(ordered.maximum == 5u);
+    assert(reverse_ordered.maximum == 5u);
+    assert(probability_distribution_mean(&ordered, &mean));
+    assert(probability_distribution_mean(&reverse_ordered, &reverse_mean));
+    assert((double)mean.numerator / (double)mean.denominator > 4.16666666);
+    assert((double)mean.numerator / (double)mean.denominator < 4.16666667);
+    assert((double)reverse_mean.numerator / (double)reverse_mean.denominator > 4.16666666);
+    assert((double)reverse_mean.numerator / (double)reverse_mean.denominator < 4.16666667);
+
+    memset(&weapons[0].rules, 0, sizeof(weapons[0].rules));
+    weapons[0].critical_hits_on = 2u;
+    assert(rule_add_lethal_hits(&weapons[0].rules));
+    assert(rule_add_sustained_hits(&weapons[0].rules, 1u));
+    assert(rule_add_devastating_wounds(&weapons[0].rules));
+    assert(rule_add_critical_wounds_on(&weapons[0].rules, 2u));
+    assert(calculate_ordered_volley_applied_damage_distribution(weapons, targets, 2u, &layout,
+                                                                &workspace, &ordered, means));
+    assert(ordered.maximum == 5u);
+    assert(probability_distribution_mean(&ordered, &mean));
+    assert((double)mean.numerator / (double)mean.denominator > 875.0 / 216.0 - 1e-8);
+    assert((double)mean.numerator / (double)mean.denominator < 875.0 / 216.0 + 1e-8);
+}
+
 /*@ terminates \true;
     ensures \result == 0;
 */
@@ -632,6 +699,7 @@ int main(void) {
     test_save_thresholds();
     test_unit_damage_allocation();
     test_ordered_mixed_profile_volley();
+    test_devastating_wounds_resolve_after_ordinary_attacks();
     puts("all tests passed");
     return 0;
 }

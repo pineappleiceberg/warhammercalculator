@@ -422,7 +422,7 @@ async function exactVolley(
   const summaryPointer = calculator.malloc(9 * 4);
   const meansPointer = calculator.malloc(profiles.length * 4 * 4);
   try {
-    const view = new DataView(calculator.memory.buffer);
+    let view = new DataView(calculator.memory.buffer);
     const write = (pointer: number, values: number[]) =>
       values.forEach((value, index) => view.setUint32(pointer + index * 4, value, true));
     const read = (pointer: number, index: number) => view.getUint32(pointer + index * 4, true);
@@ -481,6 +481,7 @@ async function exactVolley(
       meansPointer,
     );
     if (!ok) throw new Error("Ordered volley exceeds the exact calculator limits");
+    view = new DataView(calculator.memory.buffer);
     const cumulative = profiles.map((_, index) => fraction(meansPointer + index * 16));
     const total = fraction(summaryPointer + 5 * 4);
     return {

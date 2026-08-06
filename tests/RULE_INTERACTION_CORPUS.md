@@ -19,6 +19,8 @@ The corpus fixes these interpretations:
 - Devastating Wounds bypasses armour and invulnerable saves, but does not bypass
   Feel No Pain. Excess damage from one Devastating Wounds attack is lost when
   its allocated model is destroyed.
+- Attacks with Devastating Wounds are allocated only after every ordinary attack
+  made by the attacking unit has been allocated and resolved.
 
 Each `WHC_RULE_CASE` stores, in order, its name; Attacks, Hit threshold,
 Strength, AP, Damage, and Critical Hit threshold; target Toughness, save,
@@ -51,3 +53,13 @@ Lethal Hit chance and a 7/9 ordinary Hit chance. The former fails a 2+ save on
 1/6; the latter has a 1/4 chance to inflict damage after its modified Wound roll
 and Devastating Wounds branches, so Damage 3 yields
 `3 × (7/216 + 7/36) = 49/72`.
+
+The ordered-volley regressions supplement the row corpus because their expected
+value depends on interactions between weapon profiles. A D2 Devastating attack
+listed before an ordinary D3 attack into two 3-wound models produces a mean of
+`25/36 × 5 + 5/36 × 2 + 5/36 × 3 = 25/6`; reversing the listed profiles gives
+the same final distribution because the D2 packet still resolves last. A second
+case combines a 2+ Critical Hit, Lethal Hits, Sustained Hits 1, and 2+ Critical
+Wounds. The original Lethal hit remains ordinary, the additional hit rolls to
+wound and is deferred on a critical, and the hand-derived applied mean is
+`875/216`.

@@ -196,8 +196,9 @@ make test
 ```
 
 Large exact volleys have deterministic native and WebAssembly benchmarks. They
-exercise 80 allocated attacks and the supported maximum of 32 ordered weapons
-against 16 mixed target segments. Enable them with
+exercise 80 allocated attacks, the supported maximum of 32 ordered weapons
+against 16 mixed target segments, and a rules-sensitive Devastating Wounds-last
+volley. Enable them with
 `-DWHC_BUILD_BENCHMARKS=ON` or run `make benchmark`. The executable emits JSON;
 CI stores both runtime reports and applies deliberately hardware-tolerant
 regression limits. Profiling those cases removed repeated target-layout scans
@@ -279,7 +280,10 @@ allocation is exhaustively compared between C and JavaScript across model
 wound counts, unit sizes, prior damage states, and incoming damage values.
 Ordered volley tests additionally cover mixed target profiles, existing wounds,
 weapon-order-dependent casualties, per-profile cumulative means, and ordinary
-damage that cannot spill between models. The same ordered target state drives
+damage that cannot spill between models. Devastating Wounds packets are retained
+with their originating weapon but allocated only after every ordinary attack
+from the attacking unit, including when Lethal Hits and Sustained Hits interact.
+The same ordered target state drives
 the cryptographically random full-volley resolver and its API. Unit vs Unit can
 also repeat the complete ordered volley from a user-visible 32-bit seed. Its
 versioned `xoshiro128ss-v1` stream produces replayable phase statistics,

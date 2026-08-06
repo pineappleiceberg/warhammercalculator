@@ -534,30 +534,36 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.ok(firstSimulation.zeroDamageChance >= 0 && firstSimulation.zeroDamageChance <= 1);
   assert.ok(firstSimulation.unitDestroyedChance >= 0 && firstSimulation.unitDestroyedChance <= 1);
 
+  const devastatingLastProfiles = [
+    {
+      ...volleyProfile(0, 2),
+      criticalWounds: 2,
+      devastatingWounds: true,
+    },
+    volleyProfile(0, 3),
+  ];
+  const devastatingLastTargets = [
+    {
+      toughness: 1,
+      save: 7,
+      invulnerable: 0,
+      feelNoPain: 0,
+      wounds: 3,
+      reduction: 0,
+      modelCount: 2,
+    },
+  ];
+  const devastatingLastExact = await requestVolley(devastatingLastProfiles, devastatingLastTargets);
+  assert.equal(devastatingLastExact.maximum, 5);
+  assert.ok(Math.abs(devastatingLastExact.mean - 25 / 6) < 1e-8, devastatingLastExact.mean);
+
   const devastatingLastResponse = await worker.fetch(
     new Request("http://localhost/api/v1/volley/simulate", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        profiles: [
-          {
-            ...volleyProfile(0, 2),
-            criticalWounds: 2,
-            devastatingWounds: true,
-          },
-          volleyProfile(0, 3),
-        ],
-        targets: [
-          {
-            toughness: 1,
-            save: 7,
-            invulnerable: 0,
-            feelNoPain: 0,
-            wounds: 3,
-            reduction: 0,
-            modelCount: 2,
-          },
-        ],
+        profiles: devastatingLastProfiles,
+        targets: devastatingLastTargets,
         seed: 0xd3_7a_51,
         trials: 20_000,
       }),
