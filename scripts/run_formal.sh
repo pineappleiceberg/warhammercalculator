@@ -7,7 +7,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build_dir="${root}/build/formal"
 frama_c="${FRAMA_C:-frama-c}"
 e_acsl_gcc="${E_ACSL_GCC:-e-acsl-gcc.sh}"
-wp_functions="dice_value_is_valid,probability_distribution_is_normalized,attack_plan_is_valid,saves_on,saves_on_with_cover,modified_roll_threshold,allocate_damage_to_unit,attack_roll_succeeds,whc_prove_ap4_against_save2,whc_prove_ap_monotonic,whc_prove_invulnerable_save_caps_ap,whc_prove_cover_does_not_improve_good_save_against_ap0,whc_prove_cover_never_worsens_save,whc_prove_allocation_respects_unit_capacity,whc_prove_zero_damage_changes_nothing,whc_prove_indirect_low_hit_rolls_fail,whc_prove_roll_modifier_caps,whc_prove_mixed_allocation_respects_capacity,whc_prove_zero_mixed_damage_changes_nothing"
+wp_functions="uint32_saturating_product,uint32_saturating_add,dice_value_is_valid,probability_distribution_is_normalized,attack_plan_is_valid,saves_on,saves_on_with_cover,modified_roll_threshold,allocate_damage_to_unit,attack_roll_succeeds,whc_prove_ap4_against_save2,whc_prove_ap_monotonic,whc_prove_invulnerable_save_caps_ap,whc_prove_cover_does_not_improve_good_save_against_ap0,whc_prove_cover_never_worsens_save,whc_prove_allocation_respects_unit_capacity,whc_prove_zero_damage_changes_nothing,whc_prove_indirect_low_hit_rolls_fail,whc_prove_roll_modifier_caps,whc_prove_mixed_allocation_respects_capacity,whc_prove_zero_mixed_damage_changes_nothing"
 
 mkdir -p "${build_dir}"
 cd "${root}"
@@ -27,10 +27,10 @@ run_parse() {
     echo "formal: parse"
     : >"${build_dir}/parse.log"
     "${frama_c}" -quiet -cpp-extra-args=-Iinclude \
-        src/calculator.c src/web_api.c src/main.c formal/properties.c \
+        src/calculator.c src/complexity.c src/web_api.c src/main.c formal/properties.c \
         >>"${build_dir}/parse.log" 2>&1
     "${frama_c}" -quiet -cpp-extra-args=-Iinclude \
-        src/calculator.c src/web_api.c tests/test_calculator.c \
+        src/calculator.c src/complexity.c src/web_api.c tests/test_calculator.c \
         >>"${build_dir}/parse.log" 2>&1
     "${frama_c}" -quiet -cpp-extra-args=-Iinclude \
         src/calculator.c formal/eva_checks.c \
@@ -45,7 +45,7 @@ run_wp() {
     why3 config detect >/dev/null
     if ! "${frama_c}" -wp -wp-rte -wp-fct "${wp_functions}" -wp-prover alt-ergo \
         -wp-timeout 10 -wp-report-json "${build_dir}/wp.json" \
-        -cpp-extra-args=-Iinclude src/calculator.c formal/properties.c \
+        -cpp-extra-args=-Iinclude src/calculator.c src/complexity.c formal/properties.c \
         >"${build_dir}/wp.log" 2>&1; then
         cat "${build_dir}/wp.log"
         return 1

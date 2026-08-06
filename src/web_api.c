@@ -424,3 +424,67 @@ bool whc_calculate_ordered_volley_summary(const struct whc_web_weapon_input *wea
     }
     return true;
 }
+
+bool whc_estimate_ordered_volley_complexity(const struct whc_web_weapon_input *weapons,
+                                            uint16_t weapon_count,
+                                            const struct whc_web_target_input *targets,
+                                            uint16_t target_segment_count,
+                                            uint16_t initial_wounds_lost,
+                                            struct whc_web_exact_complexity *result) {
+    static struct weapon_profile compiled_weapons[MAX_VOLLEY_WEAPONS];
+    static struct target_profile compiled_targets[MAX_VOLLEY_WEAPONS * MAX_TARGET_SEGMENTS];
+    struct target_unit_layout layout;
+    struct exact_complexity estimated;
+    uint32_t total_models = 0u;
+    uint16_t weapon_index = 0u;
+    uint16_t segment_index = 0u;
+
+    if (weapons == NULL || targets == NULL || result == NULL || weapon_count == 0u ||
+        weapon_count > MAX_VOLLEY_WEAPONS || target_segment_count == 0u ||
+        target_segment_count > MAX_TARGET_SEGMENTS) {
+        return false;
+    }
+    memset(&layout, 0, sizeof(layout));
+    layout.segment_count = target_segment_count;
+    layout.initial_wounds_lost = initial_wounds_lost;
+    while (segment_index < target_segment_count) {
+        if (targets[segment_index].wounds == 0u || targets[segment_index].wounds > UINT16_MAX ||
+            targets[segment_index].model_count == 0u ||
+            targets[segment_index].model_count > UINT16_MAX ||
+            total_models + targets[segment_index].model_count > UINT16_MAX) {
+            return false;
+        }
+        layout.wounds_per_model[segment_index] = (uint16_t)targets[segment_index].wounds;
+        layout.model_counts[segment_index] = (uint16_t)targets[segment_index].model_count;
+        total_models += targets[segment_index].model_count;
+        segment_index++;
+    }
+    if (target_unit_capacity(&layout) == 0u) {
+        return false;
+    }
+
+    while (weapon_index < weapon_count) {
+        segment_index = 0u;
+        while (segment_index < target_segment_count) {
+            uint32_t target_index = (uint32_t)weapon_index * target_segment_count + segment_index;
+            if (!whc_build_volley_profiles(&weapons[weapon_index], &targets[segment_index],
+                                           (uint16_t)total_models, &compiled_weapons[weapon_index],
+                                           &compiled_targets[target_index])) {
+                return false;
+            }
+            segment_index++;
+        }
+        weapon_index++;
+    }
+    if (!estimate_ordered_volley_complexity(compiled_weapons, compiled_targets, weapon_count,
+                                            &layout, &estimated)) {
+        return false;
+    }
+    result->estimated_state_upper_bound = estimated.estimated_state_upper_bound;
+    result->state_limit = estimated.state_limit;
+    result->maximum_attack_events = estimated.maximum_attack_events;
+    result->target_capacity = estimated.target_capacity;
+    result->uses_deferred_states = estimated.uses_deferred_states ? 1u : 0u;
+    result->exact_guaranteed_by_bound = estimated.exact_guaranteed_by_bound ? 1u : 0u;
+    return true;
+}

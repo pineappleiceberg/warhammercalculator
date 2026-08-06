@@ -16,15 +16,23 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Report exact-state complexity before calculation and offer the seeded
-   simulator as an explicit fallback when a combinatorial volley exceeds the
-   bounded exact engine.
-2. Expose source-backed unit ability presets in Unit vs Unit and Play Mode,
+1. Expose source-backed unit ability presets in Unit vs Unit and Play Mode,
    including saved-list choices for abilities that are active for an entire
    battle or turn.
+2. Record the observed peak sparse-state count from exact Devastating Wounds
+   volleys and use benchmark evidence to tighten the conservative preflight
+   without ever hiding a valid exact option.
 
 ## Completed cycles
 
+- 2026-08-06: Added a C/WebAssembly exact-complexity preflight for ordered
+  volleys. It distinguishes ordinary damage distributions from the 2,047-state
+  sparse evaluator required by deferred Devastating Wounds, reports a
+  saturating conservative upper bound through the API and Unit vs Unit, and
+  lets users explicitly try exact or run the reproducible seeded fallback.
+  Actual exhaustion now returns stable API code `EXACT_STATE_LIMIT`; native,
+  Wasm, API, overflow, and formal saturating-arithmetic regressions cover the
+  contract.
 - 2026-08-06: Added pinned ability-source imports and 1,017 conservative unit
   combat presets for Hit/Wound modifiers and re-rolls. The model calculator
   filters presets by melee/ranged scope, shows the full published condition,

@@ -11,6 +11,7 @@
 #define MAX_DAMAGE_TRANSFORMS 4u
 #define MAX_TARGET_SEGMENTS 16u
 #define MAX_VOLLEY_WEAPONS 32u
+#define MAX_EXACT_DEFERRED_STATES 2047u
 
 #define PROBABILITY_SCALE (UINT32_C(1) << 31)
 
@@ -46,6 +47,15 @@ struct distribution_summary {
     uint32_t third_quartile;
     uint32_t maximum;
     struct fraction mean;
+};
+
+struct exact_complexity {
+    uint32_t estimated_state_upper_bound;
+    uint32_t state_limit;
+    uint32_t maximum_attack_events;
+    uint32_t target_capacity;
+    bool uses_deferred_states;
+    bool exact_guaranteed_by_bound;
 };
 
 struct attack_plan;
@@ -698,6 +708,23 @@ bool advance_weapon_applied_damage_distribution(const struct weapon_profile *wea
                                                 const struct probability_distribution *current,
                                                 struct calculator_workspace *workspace,
                                                 struct probability_distribution *result);
+
+/*@ requires 1 <= weapon_count && weapon_count <= MAX_VOLLEY_WEAPONS;
+    requires \valid_read(weapons + (0 .. weapon_count - 1));
+    requires whc_valid_target_unit_layout(layout);
+    requires \valid_read(targets + (0 .. weapon_count * layout->segment_count - 1));
+    requires \valid(result);
+    assigns *result;
+    ensures \result ==> result->state_limit == MAX_EXACT_DEFERRED_STATES;
+    ensures \result ==> result->target_capacity == whc_target_capacity(layout);
+    ensures \result ==> result->estimated_state_upper_bound >= 1;
+    ensures \result ==> result->exact_guaranteed_by_bound ==>
+        result->estimated_state_upper_bound <= result->state_limit;
+*/
+bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
+                                        const struct target_profile *targets, uint16_t weapon_count,
+                                        const struct target_unit_layout *layout,
+                                        struct exact_complexity *result);
 
 /*@ requires 1 <= weapon_count && weapon_count <= MAX_VOLLEY_WEAPONS;
     requires \valid_read(weapons + (0 .. weapon_count - 1));

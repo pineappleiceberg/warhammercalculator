@@ -51,6 +51,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._dice_value_is_valid, "function");
   assert.equal(typeof calculator._probability_distribution_is_normalized, "function");
   assert.equal(typeof calculator._attack_plan_is_valid, "function");
+  assert.equal(typeof calculator._whc_estimate_ordered_volley_complexity, "function");
 });
 
 test("source choice pools share allowances and preserve compound bundles", () => {
@@ -470,6 +471,52 @@ function orderedVolley(weapons, targets, initialWoundsLost = 0) {
     calculator._free(meansPointer);
   }
 }
+
+function orderedVolleyComplexity(weapons, targets, initialWoundsLost = 0) {
+  const weaponFields = 22;
+  const targetFields = 7;
+  const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
+  const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
+  const outputPointer = calculator._malloc(24);
+  const write = (pointer, values) =>
+    values.forEach((value, index) => calculator.setValue(pointer + index * 4, value, "i32"));
+  try {
+    weapons.forEach((weapon, index) => write(weaponsPointer + index * weaponFields * 4, weapon));
+    targets.forEach((target, index) => write(targetsPointer + index * targetFields * 4, target));
+    assert.equal(
+      calculator._whc_estimate_ordered_volley_complexity(
+        weaponsPointer,
+        weapons.length,
+        targetsPointer,
+        targets.length,
+        initialWoundsLost,
+        outputPointer,
+      ),
+      1,
+    );
+    return Array.from(
+      { length: 6 },
+      (_, index) => calculator.getValue(outputPointer + index * 4, "i32") >>> 0,
+    );
+  } finally {
+    calculator._free(weaponsPointer);
+    calculator._free(targetsPointer);
+    calculator._free(outputPointer);
+  }
+}
+
+test("C/Wasm reports conservative deferred-state complexity before exact volleys", () => {
+  const devastating = [0, 0, 1, 1, 2, 10, 6, 0, 0, 2, 6, 2 | 16, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  const ordinary = [0, 0, 1, 1, 2, 10, 6, 0, 0, 3, 6, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  assert.deepEqual(
+    orderedVolleyComplexity([devastating, ordinary], [[1, 7, 0, 0, 3, 0, 2]]),
+    [112, 2047, 2, 6, 1, 1],
+  );
+  devastating[2] = 20;
+  const high = orderedVolleyComplexity([devastating, ordinary], [[1, 7, 0, 0, 3, 0, 2]]);
+  assert.ok(high[0] > high[1]);
+  assert.equal(high[5], 0);
+});
 
 function variableRuleMean({ flags = 0, sustained = [0, 0, 0], rapid = [0, 0, 0] }) {
   const output = calculator._malloc(72);

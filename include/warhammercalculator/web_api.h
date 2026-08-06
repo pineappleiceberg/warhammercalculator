@@ -100,6 +100,15 @@ struct whc_web_mean {
     uint32_t denominator_high;
 };
 
+struct whc_web_exact_complexity {
+    uint32_t estimated_state_upper_bound;
+    uint32_t state_limit;
+    uint32_t maximum_attack_events;
+    uint32_t target_capacity;
+    uint32_t uses_deferred_states;
+    uint32_t exact_guaranteed_by_bound;
+};
+
 /*@ requires \valid(summary);
     requires weapon_count > 0;
     requires target_models > 0;
@@ -152,5 +161,22 @@ bool whc_calculate_ordered_volley_summary(const struct whc_web_weapon_input *wea
                                           uint16_t initial_wounds_lost,
                                           struct whc_web_applied_summary *summary,
                                           struct whc_web_mean *cumulative_means);
+
+/*@ requires 1 <= weapon_count && weapon_count <= MAX_VOLLEY_WEAPONS;
+    requires 1 <= target_segment_count && target_segment_count <= MAX_TARGET_SEGMENTS;
+    requires \valid_read(weapons + (0 .. weapon_count - 1));
+    requires \valid_read(targets + (0 .. target_segment_count - 1));
+    requires \valid(result);
+    assigns *result;
+    ensures \result ==> result->state_limit == MAX_EXACT_DEFERRED_STATES;
+    ensures \result ==> result->uses_deferred_states <= 1;
+    ensures \result ==> result->exact_guaranteed_by_bound <= 1;
+*/
+bool whc_estimate_ordered_volley_complexity(const struct whc_web_weapon_input *weapons,
+                                            uint16_t weapon_count,
+                                            const struct whc_web_target_input *targets,
+                                            uint16_t target_segment_count,
+                                            uint16_t initial_wounds_lost,
+                                            struct whc_web_exact_complexity *result);
 
 #endif

@@ -121,6 +121,7 @@ type CalculatorExports = {
   free(pointer: number): void;
   whc_calculate_summary(...values: number[]): number;
   whc_calculate_ordered_volley_summary(...values: number[]): number;
+  whc_estimate_ordered_volley_complexity(...values: number[]): number;
 };
 
 type OrderedTargetSegment = {
@@ -152,6 +153,13 @@ class ServiceUnavailableError extends Error {
   ) {
     super(message);
     this.name = "ServiceUnavailableError";
+  }
+}
+
+class ExactStateLimitError extends Error {
+  constructor() {
+    super("Exact state budget exceeded; use POST /api/v1/volley/simulate");
+    this.name = "ExactStateLimitError";
   }
 }
 
@@ -248,7 +256,8 @@ async function loadCalculator(request: Request, env: Env) {
     if (
       typeof calculator.__wasm_call_ctors !== "function" ||
       typeof calculator.whc_calculate_summary !== "function" ||
-      typeof calculator.whc_calculate_ordered_volley_summary !== "function"
+      typeof calculator.whc_calculate_ordered_volley_summary !== "function" ||
+      typeof calculator.whc_estimate_ordered_volley_complexity !== "function"
     ) {
       throw new ServiceUnavailableError(
         "Calculator engine exports are invalid",
@@ -480,7 +489,7 @@ async function exactVolley(
       summaryPointer,
       meansPointer,
     );
-    if (!ok) throw new Error("Ordered volley exceeds the exact calculator limits");
+    if (!ok) throw new ExactStateLimitError();
     view = new DataView(calculator.memory.buffer);
     const cumulative = profiles.map((_, index) => fraction(meansPointer + index * 16));
     const total = fraction(summaryPointer + 5 * 4);
@@ -502,6 +511,94 @@ async function exactVolley(
     calculator.free(targetsPointer);
     calculator.free(summaryPointer);
     calculator.free(meansPointer);
+  }
+}
+
+async function volleyComplexity(
+  profiles: CombatProfile[],
+  targets: OrderedTargetSegment[],
+  initialWoundsLost: number,
+  request: Request,
+  env: Env,
+) {
+  if (profiles.length < 1 || profiles.length > 32) {
+    throw new Error("profiles must contain 1 to 32 weapon profiles");
+  }
+  if (targets.length < 1 || targets.length > 16) {
+    throw new Error("targets must contain 1 to 16 ordered profile segments");
+  }
+  const calculator = await loadCalculator(request, env);
+  const weaponFields = 22;
+  const targetFields = 7;
+  const weaponsPointer = calculator.malloc(profiles.length * weaponFields * 4);
+  const targetsPointer = calculator.malloc(targets.length * targetFields * 4);
+  const outputPointer = calculator.malloc(6 * 4);
+  try {
+    let view = new DataView(calculator.memory.buffer);
+    const write = (pointer: number, values: number[]) =>
+      values.forEach((value, index) => view.setUint32(pointer + index * 4, value, true));
+    profiles.forEach((profile, index) =>
+      write(weaponsPointer + index * weaponFields * 4, [
+        profile.attackDice,
+        profile.attackSides,
+        profile.attacks,
+        profile.weaponCount,
+        profile.hitOn,
+        profile.strength,
+        profile.ap,
+        profile.damageDice,
+        profile.damageSides,
+        profile.damage,
+        profile.criticalHits,
+        profileFlags(profile),
+        profile.criticalWounds,
+        profile.sustainedHitsDice,
+        profile.sustainedHitsSides,
+        profile.sustainedHits,
+        profile.rapidFireDice,
+        profile.rapidFireSides,
+        profile.rapidFire,
+        profile.melta,
+        profile.hitModifier,
+        profile.woundModifier,
+      ]),
+    );
+    targets.forEach((target, index) =>
+      write(targetsPointer + index * targetFields * 4, [
+        target.toughness,
+        target.save,
+        target.invulnerable,
+        target.feelNoPain,
+        target.wounds,
+        target.reduction,
+        target.modelCount,
+      ]),
+    );
+    const ok = calculator.whc_estimate_ordered_volley_complexity(
+      weaponsPointer,
+      profiles.length,
+      targetsPointer,
+      targets.length,
+      initialWoundsLost,
+      outputPointer,
+    );
+    if (!ok) throw new Error("Volley complexity could not be estimated");
+    view = new DataView(calculator.memory.buffer);
+    const read = (index: number) => view.getUint32(outputPointer + index * 4, true);
+    return {
+      estimatedStateUpperBound: read(0),
+      stateLimit: read(1),
+      maximumAttackEvents: read(2),
+      targetCapacity: read(3),
+      usesDeferredStates: read(4) !== 0,
+      exactGuaranteedByBound: read(5) !== 0,
+      estimateKind: "conservative-upper-bound",
+      fallbackEndpoint: "/api/v1/volley/simulate",
+    };
+  } finally {
+    calculator.free(weaponsPointer);
+    calculator.free(targetsPointer);
+    calculator.free(outputPointer);
   }
 }
 
@@ -581,6 +678,7 @@ async function handleApi(request: Request, env: Env) {
           profiles: "GET /api/v1/profiles",
           calculate: "POST /api/v1/calculate",
           volley: "POST /api/v1/volley",
+          volleyComplexity: "POST /api/v1/volley/complexity",
           roll: "POST /api/v1/roll?details={true|false}",
           volleyRoll: "POST /api/v1/volley/roll?details={true|false}",
           volleySimulate: "POST /api/v1/volley/simulate",
@@ -843,6 +941,30 @@ async function handleApi(request: Request, env: Env) {
       });
     }
 
+    if (url.pathname === "/api/v1/volley/complexity" && request.method === "POST") {
+      const body = (await request.json()) as {
+        profiles?: unknown;
+        targets?: unknown;
+        initialWoundsLost?: unknown;
+      };
+      if (!body || !Array.isArray(body.profiles)) {
+        return apiError("profiles must be an array");
+      }
+      const profiles = body.profiles.map((profile) => normalizeProfile(profile));
+      const targets = orderedTargets(body.targets);
+      const initialWoundsLost = body.initialWoundsLost ?? 0;
+      if (!Number.isInteger(initialWoundsLost)) {
+        return apiError("initialWoundsLost must be an integer");
+      }
+      return json({
+        data: await volleyComplexity(profiles, targets, initialWoundsLost as number, request, env),
+        profiles,
+        targets,
+        initialWoundsLost,
+        apiVersion: "v1",
+      });
+    }
+
     if (url.pathname === "/api/v1/roll" && request.method === "POST") {
       const profile = await requestProfile(request);
       const rolled = simulateAttack(profile);
@@ -976,6 +1098,9 @@ async function handleApi(request: Request, env: Env) {
     }
     if (error instanceof SyntaxError) {
       return apiError("Request body must contain valid JSON", 400, "INVALID_JSON");
+    }
+    if (error instanceof ExactStateLimitError) {
+      return apiError(error.message, 422, "EXACT_STATE_LIMIT");
     }
     return apiError(error instanceof Error ? error.message : "Request failed");
   }

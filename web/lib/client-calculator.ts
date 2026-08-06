@@ -36,11 +36,28 @@ export type OrderedVolleySummary = {
   incrementalMeans: number[];
 };
 
+export type ExactComplexity = {
+  estimatedStateUpperBound: number;
+  stateLimit: number;
+  maximumAttackEvents: number;
+  targetCapacity: number;
+  usesDeferredStates: boolean;
+  exactGuaranteedByBound: boolean;
+};
+
+export class ExactCalculationLimitError extends Error {
+  constructor() {
+    super("The exact state budget was exceeded; use the seeded simulation fallback");
+    this.name = "ExactCalculationLimitError";
+  }
+}
+
 type WasmModule = {
   _malloc(size: number): number;
   _free(pointer: number): void;
   _whc_calculate_summary(...values: number[]): number;
   _whc_calculate_ordered_volley_summary(...values: number[]): number;
+  _whc_estimate_ordered_volley_complexity(...values: number[]): number;
   getValue(pointer: number, type: "i32"): number;
   setValue(pointer: number, value: number, type: "i32"): void;
 };
@@ -61,6 +78,45 @@ async function loadCalculator() {
     });
   })();
   return modulePromise;
+}
+
+function weaponValues(profile: CombatProfile) {
+  return [
+    profile.attackDice,
+    profile.attackSides,
+    profile.attacks,
+    profile.weaponCount,
+    profile.hitOn,
+    profile.strength,
+    profile.ap,
+    profile.damageDice,
+    profile.damageSides,
+    profile.damage,
+    profile.criticalHits,
+    profileFlags(profile),
+    profile.criticalWounds,
+    profile.sustainedHitsDice,
+    profile.sustainedHitsSides,
+    profile.sustainedHits,
+    profile.rapidFireDice,
+    profile.rapidFireSides,
+    profile.rapidFire,
+    profile.melta,
+    profile.hitModifier,
+    profile.woundModifier,
+  ];
+}
+
+function targetValues(target: OrderedTargetSegment) {
+  return [
+    target.toughness,
+    target.save,
+    target.invulnerable,
+    target.feelNoPain,
+    target.wounds,
+    target.reduction,
+    target.modelCount,
+  ];
 }
 
 function profileFlags(profile: CombatProfile) {
@@ -186,41 +242,10 @@ export async function calculateOrderedVolley(
 
   try {
     profiles.forEach((profile, index) => {
-      write(weaponsPointer + index * weaponFields * 4, [
-        profile.attackDice,
-        profile.attackSides,
-        profile.attacks,
-        profile.weaponCount,
-        profile.hitOn,
-        profile.strength,
-        profile.ap,
-        profile.damageDice,
-        profile.damageSides,
-        profile.damage,
-        profile.criticalHits,
-        profileFlags(profile),
-        profile.criticalWounds,
-        profile.sustainedHitsDice,
-        profile.sustainedHitsSides,
-        profile.sustainedHits,
-        profile.rapidFireDice,
-        profile.rapidFireSides,
-        profile.rapidFire,
-        profile.melta,
-        profile.hitModifier,
-        profile.woundModifier,
-      ]);
+      write(weaponsPointer + index * weaponFields * 4, weaponValues(profile));
     });
     targets.forEach((target, index) => {
-      write(targetsPointer + index * targetFields * 4, [
-        target.toughness,
-        target.save,
-        target.invulnerable,
-        target.feelNoPain,
-        target.wounds,
-        target.reduction,
-        target.modelCount,
-      ]);
+      write(targetsPointer + index * targetFields * 4, targetValues(target));
     });
     const ok = calculator._whc_calculate_ordered_volley_summary(
       weaponsPointer,
@@ -231,7 +256,7 @@ export async function calculateOrderedVolley(
       summaryPointer,
       meansPointer,
     );
-    if (!ok) throw new Error("That ordered volley exceeds the exact calculator limits");
+    if (!ok) throw new ExactCalculationLimitError();
     const cumulativeMeans = profiles.map((_, index) => fraction(meansPointer + index * 16));
     return {
       minimum: read(summaryPointer, 0),
@@ -250,5 +275,53 @@ export async function calculateOrderedVolley(
     calculator._free(targetsPointer);
     calculator._free(summaryPointer);
     calculator._free(meansPointer);
+  }
+}
+
+export async function estimateOrderedVolleyComplexity(
+  profiles: CombatProfile[],
+  targets: OrderedTargetSegment[],
+  initialWoundsLost = 0,
+): Promise<ExactComplexity> {
+  if (profiles.length < 1 || profiles.length > 32 || targets.length < 1 || targets.length > 16) {
+    throw new Error("Choose a valid weapon and target sequence first");
+  }
+  const calculator = await loadCalculator();
+  const weaponFields = 22;
+  const targetFields = 7;
+  const weaponsPointer = calculator._malloc(profiles.length * weaponFields * 4);
+  const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
+  const outputPointer = calculator._malloc(6 * 4);
+  const write = (pointer: number, values: number[]) =>
+    values.forEach((value, index) => calculator.setValue(pointer + index * 4, value, "i32"));
+  const read = (index: number) => calculator.getValue(outputPointer + index * 4, "i32") >>> 0;
+  try {
+    profiles.forEach((profile, index) =>
+      write(weaponsPointer + index * weaponFields * 4, weaponValues(profile)),
+    );
+    targets.forEach((target, index) =>
+      write(targetsPointer + index * targetFields * 4, targetValues(target)),
+    );
+    const ok = calculator._whc_estimate_ordered_volley_complexity(
+      weaponsPointer,
+      profiles.length,
+      targetsPointer,
+      targets.length,
+      initialWoundsLost,
+      outputPointer,
+    );
+    if (!ok) throw new Error("The exact-complexity estimate could not be calculated");
+    return {
+      estimatedStateUpperBound: read(0),
+      stateLimit: read(1),
+      maximumAttackEvents: read(2),
+      targetCapacity: read(3),
+      usesDeferredStates: read(4) !== 0,
+      exactGuaranteedByBound: read(5) !== 0,
+    };
+  } finally {
+    calculator._free(weaponsPointer);
+    calculator._free(targetsPointer);
+    calculator._free(outputPointer);
   }
 }

@@ -513,6 +513,7 @@ static void test_ordered_mixed_profile_volley(void) {
     struct whc_web_applied_summary web_reverse;
     struct whc_web_mean web_forward_means[2];
     struct whc_web_mean web_reverse_means[2];
+    struct whc_web_exact_complexity web_complexity;
     uint64_t web_forward_numerator = 0u;
     uint64_t web_forward_denominator = 0u;
     uint64_t web_reverse_numerator = 0u;
@@ -591,6 +592,12 @@ static void test_ordered_mixed_profile_volley(void) {
     web_reversed[1] = web_weapons[0];
     assert(whc_calculate_ordered_volley_summary(web_weapons, 2u, web_targets, 2u, 0u, &web_forward,
                                                 web_forward_means));
+    assert(whc_estimate_ordered_volley_complexity(web_weapons, 2u, web_targets, 2u, 0u,
+                                                  &web_complexity));
+    assert(web_complexity.uses_deferred_states == 0u);
+    assert(web_complexity.exact_guaranteed_by_bound == 1u);
+    assert(web_complexity.estimated_state_upper_bound == 4u);
+    assert(web_complexity.state_limit == MAX_EXACT_DEFERRED_STATES);
     assert(whc_calculate_ordered_volley_summary(web_reversed, 2u, web_targets, 2u, 0u, &web_reverse,
                                                 web_reverse_means));
     web_forward_numerator =
@@ -630,6 +637,7 @@ static void test_devastating_wounds_resolve_after_ordinary_attacks(void) {
     struct fraction reverse_means[2];
     struct fraction mean;
     struct fraction reverse_mean;
+    struct exact_complexity complexity;
 
     memset(weapons, 0, sizeof(weapons));
     memset(targets, 0, sizeof(targets));
@@ -652,6 +660,18 @@ static void test_devastating_wounds_resolve_after_ordinary_attacks(void) {
     targets[0].save = 7u;
     targets[0].wounds = 3u;
     targets[1] = targets[0];
+
+    assert(estimate_ordered_volley_complexity(weapons, targets, 2u, &layout, &complexity));
+    assert(complexity.uses_deferred_states);
+    assert(complexity.exact_guaranteed_by_bound);
+    assert(complexity.estimated_state_upper_bound == 112u);
+    assert(complexity.maximum_attack_events == 2u);
+    assert(complexity.target_capacity == 6u);
+    weapons[0].attacks.modifier = 20u;
+    assert(estimate_ordered_volley_complexity(weapons, targets, 2u, &layout, &complexity));
+    assert(!complexity.exact_guaranteed_by_bound);
+    assert(complexity.estimated_state_upper_bound > complexity.state_limit);
+    weapons[0].attacks.modifier = 1u;
 
     assert(calculate_ordered_volley_applied_damage_distribution(weapons, targets, 2u, &layout,
                                                                 &workspace, &ordered, means));

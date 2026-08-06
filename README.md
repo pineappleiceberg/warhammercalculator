@@ -292,6 +292,16 @@ mean roll-stage counts, and a complete applied-damage histogram. Live rolls
 continue to use the system cryptographic random source. The equivalent API is
 `POST /api/v1/volley/simulate`, with `profiles`, `targets`, `seed`, `trials`,
 and optional `initialWoundsLost` fields.
+Before starting an exact ordered volley, Unit vs Unit asks the C/WebAssembly
+engine for a conservative state upper bound. Ordinary volleys use the standard
+damage distribution. Volleys that defer Devastating Wounds compare their bound
+with the 2,047-state sparse budget; a bound above that budget is a warning, not
+a rejection, because unreachable combinations can make the real state set much
+smaller. The user can try exact calculation or run the existing reproducible
+seeded simulation. API clients can make the same preflight request with
+`POST /api/v1/volley/complexity`; an exact calculation that actually exhausts
+the budget returns HTTP 422 with code `EXACT_STATE_LIMIT` and names the
+simulation endpoint.
 Indirect Fire applies its hit modifier and cover normally, forces unmodified Hit
 rolls of 1–3 to fail before critical-hit processing, and rejects Torrent attacks
 when no target model is visible.
@@ -388,6 +398,9 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
   profile segments. The caller chooses both orders, and existing wounds,
   casualties, defensive characteristics, and lost overkill carry through the
   sequence.
+- Deferred Devastating Wounds exact evaluation uses at most 2,047 live sparse
+  states. Its preflight number is a conservative upper bound and can therefore
+  recommend simulation for a volley that exact evaluation still solves.
 
 ## 10th edition profile database
 

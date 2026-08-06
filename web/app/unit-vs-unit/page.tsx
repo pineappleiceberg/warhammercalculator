@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { WorkflowNav } from "../../components/workflow-nav";
 import {
   calculateOrderedVolley,
+  estimateOrderedVolleyComplexity,
+  type ExactComplexity,
   type OrderedTargetSegment,
   type OrderedVolleySummary,
 } from "../../lib/client-calculator";
@@ -90,6 +92,8 @@ export default function UnitVsUnit() {
   const [phaseKey, setPhaseKey] = useState("");
   const [rollKey, setRollKey] = useState("");
   const [resultKey, setResultKey] = useState("");
+  const [complexity, setComplexity] = useState<ExactComplexity | null>(null);
+  const [complexityKey, setComplexityKey] = useState("");
   const [status, setStatus] = useState("Choose both units");
 
   useEffect(() => {
@@ -220,7 +224,18 @@ export default function UnitVsUnit() {
     setRollResult(null);
   };
 
-  const calculateUnit = async () => {
+  const currentProfiles = () => {
+    const targetModels = targetSegments.reduce((sum, segment) => sum + segment.modelCount, 0);
+    return orderedLines.map((line) =>
+      applyWeaponProfile(
+        { ...DEFAULT_PROFILE, targetModels, weaponCount: line.count },
+        line.weapon,
+        targetSegments[0]?.keywords ?? [],
+      ),
+    );
+  };
+
+  const calculateUnit = async (forceExact = false) => {
     if (!attackerUnit || !targetUnit) return;
     setStatus("Calculating unit volley…");
     const allocationErrors = weaponAllocationErrors(weaponGroups, weaponCounts, profileCounts);
@@ -238,14 +253,18 @@ export default function UnitVsUnit() {
       return;
     }
     try {
-      const targetModels = targetSegments.reduce((sum, segment) => sum + segment.modelCount, 0);
-      const profiles = lines.map((line) =>
-        applyWeaponProfile(
-          { ...DEFAULT_PROFILE, targetModels, weaponCount: line.count },
-          line.weapon,
-          targetSegments[0].keywords,
-        ),
+      const profiles = currentProfiles();
+      const estimate = await estimateOrderedVolleyComplexity(
+        profiles,
+        targetSegments,
+        initialWoundsLost,
       );
+      setComplexity(estimate);
+      setComplexityKey(inputKey);
+      if (estimate.usesDeferredStates && !estimate.exactGuaranteedByBound && !forceExact) {
+        setStatus("This volley may exceed the exact state budget; choose exact or simulation");
+        return;
+      }
       const summary = await calculateOrderedVolley(profiles, targetSegments, initialWoundsLost);
       const resolved = lines.map((line, index) => ({
         ...line,
@@ -275,14 +294,7 @@ export default function UnitVsUnit() {
       return;
     }
     try {
-      const targetModels = targetSegments.reduce((sum, segment) => sum + segment.modelCount, 0);
-      const profiles = orderedLines.map((line) =>
-        applyWeaponProfile(
-          { ...DEFAULT_PROFILE, targetModels, weaponCount: line.count },
-          line.weapon,
-          targetSegments[0].keywords,
-        ),
-      );
+      const profiles = currentProfiles();
       setRollResult(simulateOrderedVolley(profiles, targetSegments, initialWoundsLost));
       setRollKey(inputKey);
       setStatus("Full volley rolled with secure random dice");
@@ -305,14 +317,7 @@ export default function UnitVsUnit() {
     setStatus(`Simulating ${simulationTrials.toLocaleString()} seeded volleys…`);
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     try {
-      const targetModels = targetSegments.reduce((sum, segment) => sum + segment.modelCount, 0);
-      const profiles = orderedLines.map((line) =>
-        applyWeaponProfile(
-          { ...DEFAULT_PROFILE, targetModels, weaponCount: line.count },
-          line.weapon,
-          targetSegments[0].keywords,
-        ),
-      );
+      const profiles = currentProfiles();
       setPhaseResult(
         simulateOrderedVolleyPhase(
           profiles,
@@ -858,10 +863,45 @@ export default function UnitVsUnit() {
           className="primary-action"
           type="button"
           disabled={!attackerUnit || !targetUnit}
-          onClick={calculateUnit}
+          onClick={() => calculateUnit(false)}
         >
           Calculate full volley
         </button>
+        {complexityKey === inputKey && complexity && (
+          <div
+            className={`complexity-report ${
+              complexity.usesDeferredStates && !complexity.exactGuaranteedByBound
+                ? "complexity-warning"
+                : ""
+            }`}
+          >
+            <div>
+              <span>Exact calculation complexity</span>
+              <strong>
+                {complexity.usesDeferredStates
+                  ? complexity.exactGuaranteedByBound
+                    ? "Within sparse-state bound"
+                    : "May exceed sparse-state bound"
+                  : "Standard exact distribution"}
+              </strong>
+              <small>
+                {complexity.usesDeferredStates
+                  ? `Conservative upper bound ${complexity.estimatedStateUpperBound.toLocaleString()} · engine budget ${complexity.stateLimit.toLocaleString()}`
+                  : `${complexity.targetCapacity + 1} possible applied-damage totals`}
+              </small>
+            </div>
+            {complexity.usesDeferredStates && !complexity.exactGuaranteedByBound && (
+              <div className="complexity-actions">
+                <button type="button" onClick={() => calculateUnit(true)}>
+                  Try exact anyway
+                </button>
+                <button type="button" className="secondary-action" onClick={runPhaseSimulation}>
+                  Use seeded simulation
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <button
           className="secondary-action"
           type="button"
