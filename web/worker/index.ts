@@ -9,6 +9,7 @@ import {
   normalizeProfile,
   simulateAttack,
   simulateOrderedVolley,
+  simulateOrderedVolleyPhase,
   type CombatProfile,
 } from "../lib/combat";
 import { createArmyList, deleteArmyList, listArmyLists, updateArmyList } from "../db/army-lists";
@@ -505,6 +506,7 @@ async function handleApi(request: Request, env: Env) {
           volley: "POST /api/v1/volley",
           roll: "POST /api/v1/roll?details={true|false}",
           volleyRoll: "POST /api/v1/volley/roll?details={true|false}",
+          volleySimulate: "POST /api/v1/volley/simulate",
           lists: "GET|POST /api/v1/lists; PUT|DELETE /api/v1/lists/{id}",
         },
         request: { profile: DEFAULT_PROFILE },
@@ -740,6 +742,43 @@ async function handleApi(request: Request, env: Env) {
       }
       return json({
         data: rolled,
+        profiles,
+        targets,
+        initialWoundsLost,
+        apiVersion: "v1",
+      });
+    }
+
+    if (url.pathname === "/api/v1/volley/simulate" && request.method === "POST") {
+      const body = (await request.json()) as {
+        profiles?: unknown;
+        targets?: unknown;
+        initialWoundsLost?: unknown;
+        seed?: unknown;
+        trials?: unknown;
+      };
+      if (!body || !Array.isArray(body.profiles)) {
+        return apiError("profiles must be an array");
+      }
+      const profiles = body.profiles.map((profile) => normalizeProfile(profile));
+      const targets = orderedTargets(body.targets);
+      const initialWoundsLost = body.initialWoundsLost ?? 0;
+      if (!Number.isInteger(initialWoundsLost)) {
+        return apiError("initialWoundsLost must be an integer");
+      }
+      const seed = body.seed;
+      const trials = body.trials ?? 10_000;
+      if (!Number.isInteger(seed) || (seed as number) < 0 || (seed as number) > 0xffff_ffff) {
+        return apiError("seed must be an unsigned 32-bit integer");
+      }
+      return json({
+        data: simulateOrderedVolleyPhase(
+          profiles,
+          targets,
+          seed as number,
+          trials as number,
+          initialWoundsLost as number,
+        ),
         profiles,
         targets,
         initialWoundsLost,

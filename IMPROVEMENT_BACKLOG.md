@@ -16,21 +16,24 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Add phase-scale simulations with reproducible seeded runs
-   alongside cryptographically random live rolls.
-2. Add property-based and fuzz testing at the C and API boundaries.
-3. Expand formal proofs from threshold helpers to attack-plan invariants and
+1. Add property-based and fuzz testing at the C and API boundaries.
+2. Expand formal proofs from threshold helpers to attack-plan invariants and
    probability-mass conservation.
-4. Improve list persistence, import/export, and mid-game state recovery.
-5. Add an explicit per-model composition editor for the 88 conditional or
+3. Improve list persistence, import/export, and mid-game state recovery.
+4. Add an explicit per-model composition editor for the 88 conditional or
    multi-variable loadout subjects that total unit size alone cannot resolve.
-6. Add data freshness checks, change reports, and source-version pinning.
-7. Benchmark and profile large volleys in native and WebAssembly builds.
-8. Improve mobile play-mode ergonomics and accessibility.
-9. Add deployment health checks and clearer service-failure diagnostics.
+5. Add data freshness checks, change reports, and source-version pinning.
+6. Benchmark and profile large volleys in native and WebAssembly builds.
+7. Improve mobile play-mode ergonomics and accessibility.
+8. Add deployment health checks and clearer service-failure diagnostics.
 
 ## Completed cycles
 
+- 2026-08-06: Added reproducible seeded simulations over complete ordered unit
+  volleys while preserving cryptographically random live rolls. The web and API
+  report kill and zero-damage chances, variance, quartiles, roll-stage means,
+  and full damage histograms; a pinned PRNG vector and convergence against the
+  C/Wasm exact mean guard reproducibility and statistical correctness.
 - 2026-08-06: Parsed named models from unit compositions and normalized default
   loadouts into size-dependent terms. Exact source defaults now cover 1,883 of
   1,971 loadout subjects, including fixed leaders, mixed-model units, and

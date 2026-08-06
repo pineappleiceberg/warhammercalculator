@@ -133,6 +133,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const documented = await docs.json();
   assert.equal(documented.apiVersion, "v1");
   assert.match(documented.endpoints.calculate, /POST \/api\/v1\/calculate/);
+  assert.match(documented.endpoints.volleySimulate, /POST \/api\/v1\/volley\/simulate/);
 
   const factions = await worker.fetch(
     new Request("http://localhost/api/v1/factions"),
@@ -431,6 +432,106 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     volleyRolled.lines.reduce((total, line) => total + line.appliedDamage, 0),
   );
   assert.ok(volleyRolled.lines.every((line) => line.details.length === 0));
+
+  const simulationRequest = () =>
+    worker.fetch(
+      new Request("http://localhost/api/v1/volley/simulate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          profiles: [volleyProfile(0, 1), volleyProfile(6, 2)],
+          targets: volleyTargets,
+          initialWoundsLost: 0,
+          seed: 0x40_000,
+          trials: 20_000,
+        }),
+      }),
+      testEnv,
+      context,
+    );
+  const firstSimulationResponse = await simulationRequest();
+  const firstSimulationText = await firstSimulationResponse.text();
+  assert.equal(firstSimulationResponse.status, 200, firstSimulationText);
+  const firstSimulation = JSON.parse(firstSimulationText).data;
+  const secondSimulation = (await (await simulationRequest()).json()).data;
+  assert.deepEqual(secondSimulation, firstSimulation);
+  assert.equal(firstSimulation.algorithm, "xoshiro128ss-v1");
+  assert.equal(firstSimulation.seed, 0x40_000);
+  assert.equal(
+    firstSimulation.histogram.reduce((total, bucket) => total + bucket.count, 0),
+    firstSimulation.trials,
+  );
+  assert.ok(Math.abs(firstSimulation.mean - forwardVolley.mean) < 0.06);
+  assert.ok(firstSimulation.zeroDamageChance >= 0 && firstSimulation.zeroDamageChance <= 1);
+  assert.ok(firstSimulation.unitDestroyedChance >= 0 && firstSimulation.unitDestroyedChance <= 1);
+  const replaySnapshot = await worker.fetch(
+    new Request("http://localhost/api/v1/volley/simulate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        profiles: [
+          {
+            attackDice: 0,
+            attacks: 4,
+            weaponCount: 1,
+            hitOn: 3,
+            strength: 10,
+            ap: 0,
+            damageDice: 0,
+            damageSides: 0,
+            damage: 2,
+          },
+        ],
+        targets: [
+          {
+            toughness: 10,
+            save: 3,
+            invulnerable: 0,
+            feelNoPain: 0,
+            wounds: 12,
+            reduction: 0,
+            modelCount: 1,
+          },
+        ],
+        seed: 0x40_000,
+        trials: 1_000,
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.deepEqual((await replaySnapshot.json()).data.histogram, [
+    { damage: 0, count: 659, probability: 0.659 },
+    { damage: 2, count: 271, probability: 0.271 },
+    { damage: 4, count: 64, probability: 0.064 },
+    { damage: 6, count: 6, probability: 0.006 },
+  ]);
+  const oversizedSimulation = await worker.fetch(
+    new Request("http://localhost/api/v1/volley/simulate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        profiles: [
+          {
+            attackDice: 20,
+            attackSides: 100,
+            attacks: 1024,
+            weaponCount: 100,
+            sustainedHitsDice: 20,
+            sustainedHitsSides: 100,
+            sustainedHits: 1024,
+          },
+        ],
+        targets: volleyTargets,
+        seed: 1,
+        trials: 100_000,
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(oversizedSimulation.status, 400);
+  assert.match(await oversizedSimulation.text(), /simulation is too large/i);
 
   const roll = await worker.fetch(
     new Request("http://localhost/api/v1/roll", {

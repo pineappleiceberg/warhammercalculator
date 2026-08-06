@@ -109,6 +109,40 @@ export type OrderedVolleyRollResult = {
   lines: RollResult[];
 };
 
+export type RandomUint32 = () => number;
+
+export type RollOptions = {
+  randomUint32?: RandomUint32;
+  details?: boolean;
+};
+
+export type PhaseSimulationResult = {
+  algorithm: "xoshiro128ss-v1";
+  seed: number;
+  trials: number;
+  minimum: number;
+  firstQuartile: number;
+  median: number;
+  thirdQuartile: number;
+  maximum: number;
+  mean: number;
+  standardDeviation: number;
+  zeroDamageChance: number;
+  unitDestroyedChance: number;
+  meanModelsDestroyed: number;
+  means: {
+    attacksResolved: number;
+    hits: number;
+    criticalHits: number;
+    woundingAttacks: number;
+    savedAttacks: number;
+    fnpPrevented: number;
+    successfulAttacks: number;
+    wastedDamage: number;
+  };
+  histogram: Array<{ damage: number; count: number; probability: number }>;
+};
+
 export const DEFAULT_PROFILE: CombatProfile = {
   attackDice: 0,
   attackSides: 0,
@@ -236,27 +270,64 @@ export function normalizeProfile(input: unknown): CombatProfile {
   return profile;
 }
 
-function randomBelow(exclusiveMaximum: number) {
+function secureRandomUint32() {
+  const buffer = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(buffer);
+  return buffer[0];
+}
+
+function rotateLeft(value: number, shift: number) {
+  return ((value << shift) | (value >>> (32 - shift))) >>> 0;
+}
+
+export function createSeededRandom(seed: number): RandomUint32 {
+  if (!Number.isInteger(seed) || seed < 0 || seed > 0xffff_ffff) {
+    throw new Error("seed must be an unsigned 32-bit integer");
+  }
+  let splitState = seed >>> 0;
+  const splitMix32 = () => {
+    splitState = (splitState + 0x9e37_79b9) >>> 0;
+    let value = splitState;
+    value = Math.imul(value ^ (value >>> 16), 0x21f0_aaad);
+    value = Math.imul(value ^ (value >>> 15), 0x735a_2d97);
+    return (value ^ (value >>> 15)) >>> 0;
+  };
+  let state0 = splitMix32();
+  let state1 = splitMix32();
+  let state2 = splitMix32();
+  let state3 = splitMix32();
+  return () => {
+    const result = Math.imul(rotateLeft(Math.imul(state1, 5) >>> 0, 7), 9) >>> 0;
+    const shifted = state1 << 9;
+    state2 ^= state0;
+    state3 ^= state1;
+    state1 ^= state2;
+    state0 ^= state3;
+    state2 ^= shifted;
+    state3 = rotateLeft(state3, 11);
+    return result;
+  };
+}
+
+function randomBelow(exclusiveMaximum: number, randomUint32: RandomUint32) {
   if (!Number.isInteger(exclusiveMaximum) || exclusiveMaximum < 1)
     throw new Error("Invalid die size");
   const range = 0x1_0000_0000;
   const limit = range - (range % exclusiveMaximum);
-  const buffer = new Uint32Array(1);
   let value = 0;
   do {
-    globalThis.crypto.getRandomValues(buffer);
-    value = buffer[0];
+    value = randomUint32() >>> 0;
   } while (value >= limit);
   return value % exclusiveMaximum;
 }
 
-function rollDie(sides = 6) {
-  return randomBelow(sides) + 1;
+function rollDie(sides: number, randomUint32: RandomUint32) {
+  return randomBelow(sides, randomUint32) + 1;
 }
 
-function rollDiceValue(count: number, sides: number, modifier: number) {
+function rollDiceValue(count: number, sides: number, modifier: number, randomUint32: RandomUint32) {
   let total = modifier;
-  for (let die = 0; die < count; die += 1) total += rollDie(sides);
+  for (let die = 0; die < count; die += 1) total += rollDie(sides, randomUint32);
   return total;
 }
 
@@ -265,16 +336,19 @@ function rollCheck(
   criticalOn = 0,
   rerollFailures = false,
   autoFailsThrough = 0,
+  randomUint32: RandomUint32,
 ) {
-  const first = rollDie();
+  const first = rollDie(6, randomUint32);
   const succeeds = (face: number) =>
     attackRollSucceeds(face, succeedsOn, criticalOn, autoFailsThrough);
   if (!rerollFailures || succeeds(first)) return { face: first, label: String(first) };
-  const second = rollDie();
+  const second = rollDie(6, randomUint32);
   return { face: second, label: `${first}→${second}` };
 }
 
-export function simulateAttack(profile: CombatProfile): RollResult {
+export function simulateAttack(profile: CombatProfile, options: RollOptions = {}): RollResult {
+  const randomUint32 = options.randomUint32 ?? secureRandomUint32;
+  const includeDetails = options.details ?? true;
   if (profile.torrent && profile.indirect) {
     throw new Error("Torrent weapons cannot fire indirectly when the target is not visible");
   }
@@ -285,12 +359,14 @@ export function simulateAttack(profile: CombatProfile): RollResult {
       profile.attackDice * profile.weaponCount,
       profile.attackSides,
       attacksPerWeapon * profile.weaponCount,
+      randomUint32,
     ) +
     (profile.withinHalfRange
       ? rollDiceValue(
           profile.rapidFireDice * profile.weaponCount,
           profile.rapidFireSides,
           profile.rapidFire * profile.weaponCount,
+          randomUint32,
         )
       : 0);
   if (attacks > 10_000) {
@@ -331,18 +407,27 @@ export function simulateAttack(profile: CombatProfile): RollResult {
     savesOn,
     details: [],
   };
+  const addDetail = (detail: RollDetail) => {
+    if (includeDetails) result.details.push(detail);
+  };
 
   const resolveHit = (label: string, hitLabel: string, lethalWound: boolean) => {
     result.hits += 1;
     let woundLabel = "Lethal ✓";
     let criticalWound = false;
     if (!lethalWound) {
-      const wound = rollCheck(woundsOn, profile.criticalWounds || 6, profile.twinLinked);
+      const wound = rollCheck(
+        woundsOn,
+        profile.criticalWounds || 6,
+        profile.twinLinked,
+        0,
+        randomUint32,
+      );
       criticalWound = wound.face >= (profile.criticalWounds || 6);
       const wounded = criticalWound || wound.face >= woundsOn;
       woundLabel = `${wound.label}${criticalWound ? "★" : ""} ${wounded ? "✓" : "✕"}`;
       if (!wounded) {
-        result.details.push({
+        addDetail({
           label,
           hit: hitLabel,
           wound: woundLabel,
@@ -362,12 +447,12 @@ export function simulateAttack(profile: CombatProfile): RollResult {
     const bypassSave = criticalWound && profile.devastatingWounds;
     let saveLabel = "Bypassed";
     if (!bypassSave) {
-      const save = rollDie();
+      const save = rollDie(6, randomUint32);
       const saved = save >= savesOn;
       saveLabel = `${save} ${saved ? "✓" : "✕"}`;
       if (saved) {
         result.savedAttacks += 1;
-        result.details.push({
+        addDetail({
           label,
           hit: hitLabel,
           wound: woundLabel,
@@ -388,6 +473,7 @@ export function simulateAttack(profile: CombatProfile): RollResult {
       profile.damageDice,
       profile.damageSides,
       profile.damage + (profile.withinHalfRange ? profile.melta : 0),
+      randomUint32,
     );
     const reducedDamage =
       rawDamage > 0 && profile.reduction > 0
@@ -396,7 +482,7 @@ export function simulateAttack(profile: CombatProfile): RollResult {
     let prevented = 0;
     if (profile.feelNoPain > 0) {
       for (let point = 0; point < reducedDamage; point += 1) {
-        if (rollDie() >= profile.feelNoPain) prevented += 1;
+        if (rollDie(6, randomUint32) >= profile.feelNoPain) prevented += 1;
       }
     }
     const damage = reducedDamage - prevented;
@@ -413,7 +499,7 @@ export function simulateAttack(profile: CombatProfile): RollResult {
     result.modelsDestroyed = allocation.modelsDestroyed;
     result.targetWoundsRemaining = allocation.woundsRemaining;
     if (damage > 0) result.successfulAttacks += 1;
-    result.details.push({
+    addDetail({
       label,
       hit: hitLabel,
       wound: woundLabel,
@@ -440,7 +526,13 @@ export function simulateAttack(profile: CombatProfile): RollResult {
       continue;
     }
     const autoFailsThrough = profile.indirect ? 3 : 0;
-    const hit = rollCheck(hitsOn, profile.criticalHits, profile.rerollHits, autoFailsThrough);
+    const hit = rollCheck(
+      hitsOn,
+      profile.criticalHits,
+      profile.rerollHits,
+      autoFailsThrough,
+      randomUint32,
+    );
     const hitSucceeded = attackRollSucceeds(
       hit.face,
       hitsOn,
@@ -450,7 +542,7 @@ export function simulateAttack(profile: CombatProfile): RollResult {
     const criticalHit = hitSucceeded && hit.face >= profile.criticalHits;
     const hitLabel = `${hit.label}${criticalHit ? "★" : ""} ${hitSucceeded ? "✓" : "✕"}`;
     if (!hitSucceeded) {
-      result.details.push({
+      addDetail({
         label: `#${attack}`,
         hit: hitLabel,
         wound: "Not reached",
@@ -471,6 +563,7 @@ export function simulateAttack(profile: CombatProfile): RollResult {
         profile.sustainedHitsDice,
         profile.sustainedHitsSides,
         profile.sustainedHits,
+        randomUint32,
       );
       for (let extra = 1; extra <= sustainedHits; extra += 1) {
         if (result.modelsDestroyed >= profile.targetModels) break;
@@ -485,7 +578,10 @@ export function simulateOrderedVolley(
   profiles: CombatProfile[],
   targets: VolleyTarget[],
   initialWoundsLost = 0,
+  options: RollOptions = {},
 ): OrderedVolleyRollResult {
+  const randomUint32 = options.randomUint32 ?? secureRandomUint32;
+  const includeDetails = options.details ?? true;
   if (!Array.isArray(profiles) || profiles.length < 1 || profiles.length > 32) {
     throw new Error("profiles must contain 1 to 32 weapon profiles");
   }
@@ -512,12 +608,14 @@ export function simulateOrderedVolley(
         profile.attackDice * profile.weaponCount,
         profile.attackSides,
         attacksPerWeapon * profile.weaponCount,
+        randomUint32,
       ) +
       (profile.withinHalfRange
         ? rollDiceValue(
             profile.rapidFireDice * profile.weaponCount,
             profile.rapidFireSides,
             profile.rapidFire * profile.weaponCount,
+            randomUint32,
           )
         : 0);
     if (attacks > 10_000) {
@@ -546,6 +644,9 @@ export function simulateOrderedVolley(
       savesOn: 0,
       details: [],
     };
+    const addDetail = (detail: RollDetail) => {
+      if (includeDetails) line.details.push(detail);
+    };
     const modelsBefore =
       targetSequencePosition(appliedState, targets)?.modelsDestroyed ?? targetModels;
 
@@ -569,12 +670,18 @@ export function simulateOrderedVolley(
       let woundLabel = "Lethal ✓";
       let criticalWound = false;
       if (!lethalWound) {
-        const wound = rollCheck(woundsOn, profile.criticalWounds || 6, profile.twinLinked);
+        const wound = rollCheck(
+          woundsOn,
+          profile.criticalWounds || 6,
+          profile.twinLinked,
+          0,
+          randomUint32,
+        );
         criticalWound = wound.face >= (profile.criticalWounds || 6);
         const wounded = criticalWound || wound.face >= woundsOn;
         woundLabel = `${wound.label}${criticalWound ? "★" : ""} ${wounded ? "✓" : "✕"}`;
         if (!wounded) {
-          line.details.push({
+          addDetail({
             label,
             hit: hitLabel,
             wound: woundLabel,
@@ -593,12 +700,12 @@ export function simulateOrderedVolley(
       const bypassSave = criticalWound && profile.devastatingWounds;
       let saveLabel = "Bypassed";
       if (!bypassSave) {
-        const save = rollDie();
+        const save = rollDie(6, randomUint32);
         const saved = save >= savesOn;
         saveLabel = `${save} ${saved ? "✓" : "✕"}`;
         if (saved) {
           line.savedAttacks += 1;
-          line.details.push({
+          addDetail({
             label,
             hit: hitLabel,
             wound: woundLabel,
@@ -618,6 +725,7 @@ export function simulateOrderedVolley(
         profile.damageDice,
         profile.damageSides,
         profile.damage + (profile.withinHalfRange ? profile.melta : 0),
+        randomUint32,
       );
       const reducedDamage =
         rawDamage > 0 && target.reduction > 0
@@ -626,7 +734,7 @@ export function simulateOrderedVolley(
       let prevented = 0;
       if (target.feelNoPain > 0) {
         for (let point = 0; point < reducedDamage; point += 1) {
-          if (rollDie() >= target.feelNoPain) prevented += 1;
+          if (rollDie(6, randomUint32) >= target.feelNoPain) prevented += 1;
         }
       }
       const damage = reducedDamage - prevented;
@@ -637,7 +745,7 @@ export function simulateOrderedVolley(
       line.appliedDamage += allocation.appliedThisAttack;
       line.wastedDamage += allocation.wasted;
       if (damage > 0) line.successfulAttacks += 1;
-      line.details.push({
+      addDetail({
         label,
         hit: hitLabel,
         wound: woundLabel,
@@ -663,7 +771,13 @@ export function simulateOrderedVolley(
         continue;
       }
       const autoFailsThrough = profile.indirect ? 3 : 0;
-      const hit = rollCheck(hitsOn, profile.criticalHits, profile.rerollHits, autoFailsThrough);
+      const hit = rollCheck(
+        hitsOn,
+        profile.criticalHits,
+        profile.rerollHits,
+        autoFailsThrough,
+        randomUint32,
+      );
       const hitSucceeded = attackRollSucceeds(
         hit.face,
         hitsOn,
@@ -673,7 +787,7 @@ export function simulateOrderedVolley(
       const criticalHit = hitSucceeded && hit.face >= profile.criticalHits;
       const hitLabel = `${hit.label}${criticalHit ? "★" : ""} ${hitSucceeded ? "✓" : "✕"}`;
       if (!hitSucceeded) {
-        line.details.push({
+        addDetail({
           label: `#${attack}`,
           hit: hitLabel,
           wound: "Not reached",
@@ -694,6 +808,7 @@ export function simulateOrderedVolley(
           profile.sustainedHitsDice,
           profile.sustainedHitsSides,
           profile.sustainedHits,
+          randomUint32,
         );
         for (let extra = 1; extra <= sustainedHits && appliedState < capacity; extra += 1) {
           resolveHit(`#${attack}.S${extra}`, "Sustained ✓", false);
@@ -725,5 +840,129 @@ export function simulateOrderedVolley(
     modelsDestroyed: targetSequencePosition(appliedState, targets)?.modelsDestroyed ?? targetModels,
     targetWoundsRemaining: capacity - appliedState,
     lines,
+  };
+}
+
+export function simulateOrderedVolleyPhase(
+  profiles: CombatProfile[],
+  targets: VolleyTarget[],
+  seed: number,
+  trials: number,
+  initialWoundsLost = 0,
+): PhaseSimulationResult {
+  if (!Number.isInteger(trials) || trials < 100 || trials > 100_000) {
+    throw new Error("trials must be an integer from 100 to 100000");
+  }
+  if (!Array.isArray(profiles) || profiles.length < 1 || profiles.length > 32) {
+    throw new Error("profiles must contain 1 to 32 weapon profiles");
+  }
+  targetSequenceCapacity(targets);
+  const targetModels = targets.reduce((total, target) => total + target.modelCount, 0);
+  const hasFeelNoPain = targets.some((target) => target.feelNoPain > 0);
+  const randomDrawsPerVolley = profiles.reduce((total, profile) => {
+    const randomAttackDraws = profile.attackDice * profile.weaponCount;
+    const rapidFireDraws = profile.withinHalfRange
+      ? profile.rapidFireDice * profile.weaponCount
+      : 0;
+    const maximumAttacks =
+      profile.weaponCount *
+        (profile.attacks +
+          profile.attackDice * profile.attackSides +
+          (profile.blast ? Math.floor(targetModels / 5) : 0)) +
+      (profile.withinHalfRange
+        ? profile.weaponCount * (profile.rapidFire + profile.rapidFireDice * profile.rapidFireSides)
+        : 0);
+    const maximumSustainedHits =
+      profile.sustainedHits + profile.sustainedHitsDice * profile.sustainedHitsSides;
+    const maximumResolvedHits = maximumAttacks * (1 + maximumSustainedHits);
+    const maximumDamage =
+      profile.damage +
+      (profile.withinHalfRange ? profile.melta : 0) +
+      profile.damageDice * profile.damageSides;
+    const drawsPerResolvedHit =
+      (profile.torrent ? 0 : profile.rerollHits ? 2 : 1) +
+      (profile.twinLinked ? 2 : 1) +
+      1 +
+      profile.damageDice +
+      (hasFeelNoPain ? maximumDamage : 0);
+    return (
+      total +
+      randomAttackDraws +
+      rapidFireDraws +
+      maximumAttacks * profile.sustainedHitsDice +
+      maximumResolvedHits * drawsPerResolvedHit
+    );
+  }, 0);
+  if (randomDrawsPerVolley * trials > 25_000_000) {
+    throw new Error("This simulation is too large. Reduce the trial, attack, or weapon count.");
+  }
+  const randomUint32 = createSeededRandom(seed);
+  const histogram = new Map<number, number>();
+  const metricKeys = [
+    "attacksResolved",
+    "hits",
+    "criticalHits",
+    "woundingAttacks",
+    "savedAttacks",
+    "fnpPrevented",
+    "successfulAttacks",
+    "wastedDamage",
+  ] as const;
+  const totals = Object.fromEntries(metricKeys.map((key) => [key, 0])) as Record<
+    (typeof metricKeys)[number],
+    number
+  >;
+  let damageTotal = 0;
+  let damageSquaredTotal = 0;
+  let destroyedTrials = 0;
+  let modelsDestroyedTotal = 0;
+
+  for (let trial = 0; trial < trials; trial += 1) {
+    const result = simulateOrderedVolley(profiles, targets, initialWoundsLost, {
+      randomUint32,
+      details: false,
+    });
+    histogram.set(result.appliedDamage, (histogram.get(result.appliedDamage) ?? 0) + 1);
+    damageTotal += result.appliedDamage;
+    damageSquaredTotal += result.appliedDamage * result.appliedDamage;
+    if (result.targetWoundsRemaining === 0) destroyedTrials += 1;
+    modelsDestroyedTotal += result.modelsDestroyed;
+    for (const key of metricKeys) totals[key] += result[key];
+  }
+
+  const outcomes = [...histogram].sort(([left], [right]) => left - right);
+  const quantile = (fraction: number) => {
+    const rank = Math.ceil(trials * fraction);
+    let cumulative = 0;
+    for (const [damage, count] of outcomes) {
+      cumulative += count;
+      if (cumulative >= rank) return damage;
+    }
+    return outcomes.at(-1)?.[0] ?? 0;
+  };
+  const mean = damageTotal / trials;
+  return {
+    algorithm: "xoshiro128ss-v1",
+    seed: seed >>> 0,
+    trials,
+    minimum: outcomes[0]?.[0] ?? 0,
+    firstQuartile: quantile(0.25),
+    median: quantile(0.5),
+    thirdQuartile: quantile(0.75),
+    maximum: outcomes.at(-1)?.[0] ?? 0,
+    mean,
+    standardDeviation: Math.sqrt(Math.max(0, damageSquaredTotal / trials - mean * mean)),
+    zeroDamageChance: (histogram.get(0) ?? 0) / trials,
+    unitDestroyedChance: destroyedTrials / trials,
+    meanModelsDestroyed: modelsDestroyedTotal / trials,
+    means: Object.fromEntries(metricKeys.map((key) => [key, totals[key] / trials])) as Record<
+      (typeof metricKeys)[number],
+      number
+    >,
+    histogram: outcomes.map(([damage, count]) => ({
+      damage,
+      count,
+      probability: count / trials,
+    })),
   };
 }

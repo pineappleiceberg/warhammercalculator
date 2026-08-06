@@ -225,7 +225,14 @@ wound counts, unit sizes, prior damage states, and incoming damage values.
 Ordered volley tests additionally cover mixed target profiles, existing wounds,
 weapon-order-dependent casualties, per-profile cumulative means, and ordinary
 damage that cannot spill between models. The same ordered target state drives
-the cryptographically random full-volley resolver and its API.
+the cryptographically random full-volley resolver and its API. Unit vs Unit can
+also repeat the complete ordered volley from a user-visible 32-bit seed. Its
+versioned `xoshiro128ss-v1` stream produces replayable phase statistics,
+including damage variance, quartiles, zero-damage and unit-destruction chances,
+mean roll-stage counts, and a complete applied-damage histogram. Live rolls
+continue to use the system cryptographic random source. The equivalent API is
+`POST /api/v1/volley/simulate`, with `profiles`, `targets`, `seed`, `trials`,
+and optional `initialWoundsLost` fields.
 Indirect Fire applies its hit modifier and cover normally, forces unmodified Hit
 rolls of 1–3 to fail before critical-hit processing, and rejects Torrent attacks
 when no target model is visible.

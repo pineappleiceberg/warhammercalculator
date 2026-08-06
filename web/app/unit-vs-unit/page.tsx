@@ -10,6 +10,8 @@ import {
 import {
   DEFAULT_PROFILE,
   simulateOrderedVolley,
+  simulateOrderedVolleyPhase,
+  type PhaseSimulationResult,
   type OrderedVolleyRollResult,
 } from "../../lib/combat";
 import {
@@ -79,6 +81,10 @@ export default function UnitVsUnit() {
   const [results, setResults] = useState<WeaponLine[]>([]);
   const [volleySummary, setVolleySummary] = useState<OrderedVolleySummary | null>(null);
   const [rollResult, setRollResult] = useState<OrderedVolleyRollResult | null>(null);
+  const [phaseResult, setPhaseResult] = useState<PhaseSimulationResult | null>(null);
+  const [simulationSeed, setSimulationSeed] = useState(1);
+  const [simulationTrials, setSimulationTrials] = useState(10_000);
+  const [phaseKey, setPhaseKey] = useState("");
   const [rollKey, setRollKey] = useState("");
   const [resultKey, setResultKey] = useState("");
   const [status, setStatus] = useState("Choose both units");
@@ -137,6 +143,8 @@ export default function UnitVsUnit() {
   });
   const resultsAreCurrent = resultKey === inputKey;
   const rollIsCurrent = rollKey === inputKey;
+  const currentPhaseKey = `${inputKey}:${simulationSeed}:${simulationTrials}`;
+  const phaseIsCurrent = phaseKey === currentPhaseKey;
 
   const selectAttacker = (unitId: string) => {
     setAttackerUnitId(unitId);
@@ -274,6 +282,44 @@ export default function UnitVsUnit() {
       setStatus("Full volley rolled with secure random dice");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Roll failed");
+    }
+  };
+
+  const runPhaseSimulation = async () => {
+    if (!attackerUnit || !targetUnit) return;
+    const allocationErrors = weaponAllocationErrors(weaponGroups, weaponCounts, profileCounts);
+    if (allocationErrors.length) {
+      setStatus(allocationErrors[0]);
+      return;
+    }
+    if (!orderedLines.length || !targetSegments.length) {
+      setStatus("Enter a weapon quantity and target profile first");
+      return;
+    }
+    setStatus(`Simulating ${simulationTrials.toLocaleString()} seeded volleys…`);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    try {
+      const targetModels = targetSegments.reduce((sum, segment) => sum + segment.modelCount, 0);
+      const profiles = orderedLines.map((line) =>
+        applyWeaponProfile(
+          { ...DEFAULT_PROFILE, targetModels, weaponCount: line.count },
+          line.weapon,
+          targetSegments[0].keywords,
+        ),
+      );
+      setPhaseResult(
+        simulateOrderedVolleyPhase(
+          profiles,
+          targetSegments,
+          simulationSeed,
+          simulationTrials,
+          initialWoundsLost,
+        ),
+      );
+      setPhaseKey(currentPhaseKey);
+      setStatus("Reproducible phase simulation complete");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Simulation failed");
     }
   };
 
@@ -777,6 +823,61 @@ export default function UnitVsUnit() {
         >
           Roll full volley
         </button>
+        <div className="phase-controls">
+          <label>
+            <span>Simulation seed</span>
+            <input
+              type="number"
+              min={0}
+              max={0xffff_ffff}
+              value={simulationSeed}
+              onChange={(event) => {
+                const value = event.currentTarget.valueAsNumber;
+                setSimulationSeed(
+                  Number.isFinite(value)
+                    ? Math.max(0, Math.min(0xffff_ffff, Math.trunc(value)))
+                    : 0,
+                );
+              }}
+            />
+          </label>
+          <label>
+            <span>Repeated volleys</span>
+            <input
+              type="number"
+              min={100}
+              max={100_000}
+              step={100}
+              value={simulationTrials}
+              onChange={(event) => {
+                const value = event.currentTarget.valueAsNumber;
+                setSimulationTrials(
+                  Number.isFinite(value)
+                    ? Math.max(100, Math.min(100_000, Math.trunc(value)))
+                    : 100,
+                );
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              const value = new Uint32Array(1);
+              crypto.getRandomValues(value);
+              setSimulationSeed(value[0]);
+            }}
+          >
+            New seed
+          </button>
+          <button
+            className="secondary-action"
+            type="button"
+            disabled={!attackerUnit || !targetUnit}
+            onClick={runPhaseSimulation}
+          >
+            Simulate phase
+          </button>
+        </div>
         <div className="volley-total">
           <span>Expected applied damage after ordered allocation</span>
           <strong>{resultsAreCurrent ? volleySummary?.mean.toFixed(2) : "—"}</strong>
@@ -854,6 +955,67 @@ export default function UnitVsUnit() {
                 </div>
               ))}
             </div>
+          </section>
+        )}
+        {phaseIsCurrent && phaseResult && (
+          <section className="phase-results" aria-live="polite">
+            <div className="sequence-heading">
+              <div>
+                <span>Seeded phase result</span>
+                <strong>{phaseResult.mean.toFixed(2)} mean applied damage</strong>
+              </div>
+              <small>
+                Seed {phaseResult.seed} · {phaseResult.trials.toLocaleString()} volleys
+              </small>
+            </div>
+            <div className="roll-summary-grid">
+              <span>
+                <b>{(phaseResult.unitDestroyedChance * 100).toFixed(1)}%</b> unit destroyed
+              </span>
+              <span>
+                <b>{(phaseResult.zeroDamageChance * 100).toFixed(1)}%</b> zero damage
+              </span>
+              <span>
+                <b>{phaseResult.standardDeviation.toFixed(2)}</b> standard deviation
+              </span>
+              <span>
+                <b>{phaseResult.meanModelsDestroyed.toFixed(2)}</b> models destroyed
+              </span>
+              <span>
+                <b>{phaseResult.means.hits.toFixed(2)}</b> mean hits
+              </span>
+              <span>
+                <b>{phaseResult.means.woundingAttacks.toFixed(2)}</b> mean wounds
+              </span>
+              <span>
+                <b>{phaseResult.means.savedAttacks.toFixed(2)}</b> mean saves
+              </span>
+              <span>
+                <b>{phaseResult.means.fnpPrevented.toFixed(2)}</b> mean FNP prevented
+              </span>
+            </div>
+            <div className="volley-distribution">
+              <span>Median {phaseResult.median}</span>
+              <span>
+                Middle half {phaseResult.firstQuartile}–{phaseResult.thirdQuartile}
+              </span>
+              <span>
+                Range {phaseResult.minimum}–{phaseResult.maximum}
+              </span>
+            </div>
+            <div className="phase-histogram" aria-label="Applied damage frequency distribution">
+              {phaseResult.histogram.map((bucket) => (
+                <div key={bucket.damage}>
+                  <span>{bucket.damage}</span>
+                  <i style={{ width: `${bucket.probability * 100}%` }} />
+                  <b>{(bucket.probability * 100).toFixed(1)}%</b>
+                </div>
+              ))}
+            </div>
+            <small className="simulation-replay">
+              Reuse this seed, trial count, weapon order, and target order to reproduce the same
+              result. Live rolls remain cryptographically random.
+            </small>
           </section>
         )}
       </section>
