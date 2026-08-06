@@ -111,6 +111,7 @@ export type CatalogueCombatPreset = {
   rerollWoundOnes: boolean;
   woundRerollRole: CombatPresetRole | null;
   woundRerollSubject: CombatPresetSubject | null;
+  effects: CatalogueCombatPresetEffect[];
 };
 export type CombatPresetRole = "attacker" | "target" | "either";
 export type CombatPresetSubject =
@@ -120,6 +121,25 @@ export type CombatPresetSubject =
   | "enemy_unit"
   | "affected_unit"
   | "unknown";
+export type CatalogueCombatPresetEffect = {
+  type:
+    | "lethal_hits"
+    | "devastating_wounds"
+    | "twin_linked"
+    | "ignores_cover"
+    | "sustained_hits"
+    | "rapid_fire"
+    | "lance"
+    | "heavy"
+    | "ap_modifier"
+    | "critical_hits"
+    | "critical_wounds";
+  value: number;
+  diceCount: number;
+  diceSides: number;
+  role: CombatPresetRole;
+  subject: CombatPresetSubject;
+};
 export type CatalogueUnit = {
   id: string;
   factionId: string;

@@ -16,13 +16,14 @@ The main tables are:
   `lethal hits`, `sustained hits`, `rapid fire`, `melta`, and `anti-*`
 - `abilities` and `datasheet_abilities` for resolved shared and unit-specific
   ability names, conditions, scope, and source ordering
-- `unit_combat_presets` for conservatively extracted Hit/Wound modifiers and
-  re-roll modes; mutually exclusive named modes and rolled outcomes are stored
+- `unit_combat_presets` and `unit_combat_preset_effects` for conservatively
+  extracted Hit/Wound modifiers, re-roll modes, weapon-keyword grants, AP
+  changes, and Critical Hit/Wound thresholds; mutually exclusive named modes and rolled outcomes are stored
   as separate ordered choices. Each extracted Hit, Wound, and re-roll effect
   records whether it applies from the attacking or target side and whether its
   subject is the source unit, a led unit, a friendly unit, an enemy unit, or an
-  otherwise affected unit. Every choice preserves its full condition and is
-  never assumed active
+  otherwise affected unit. Unclassified effects are omitted instead of guessed.
+  Every choice preserves its full condition and is never assumed active
 - `unit_composition` and `unit_composition_models` for source ordering, display
   text, safely parsed unit-size ranges, and the named model components within
   each composition row

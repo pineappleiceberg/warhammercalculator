@@ -50,6 +50,9 @@ export function combatPresetSubjectSummary(preset, role) {
     rerollRole(preset, "woundReroll"),
     preset.woundRerollSubject,
   );
+  for (const effect of preset.effects ?? []) {
+    add(true, effect.role, effect.subject);
+  }
   return [...new Set(subjects)].filter(Boolean).join(" + ");
 }
 
@@ -60,8 +63,14 @@ export function combatPresetSupportsRole(preset, role) {
     ((preset.rerollHits || preset.rerollHitOnes) &&
       matchesRole(rerollRole(preset, "hitReroll"), role)) ||
     ((preset.rerollWounds || preset.rerollWoundOnes) &&
-      matchesRole(rerollRole(preset, "woundReroll"), role))
+      matchesRole(rerollRole(preset, "woundReroll"), role)) ||
+    (preset.effects ?? []).some((effect) => matchesRole(effect.role, role))
   );
+}
+
+function strongerDiceEffect(current, candidate) {
+  const expected = (effect) => effect.value + (effect.diceCount * (effect.diceSides + 1)) / 2;
+  return expected(candidate) > expected(current) ? candidate : current;
 }
 
 export function combatPresetEffects(presets, weaponType, role) {
@@ -82,6 +91,21 @@ export function combatPresetEffects(presets, weaponType, role) {
   const woundRerolls = applicable.filter((preset) =>
     matchesRole(rerollRole(preset, "woundReroll"), role),
   );
+  const additional = applicable
+    .flatMap((preset) => preset.effects ?? [])
+    .filter((effect) => matchesRole(effect.role, role));
+  const diceEffect = (type) =>
+    additional
+      .filter((effect) => effect.type === type)
+      .reduce(strongerDiceEffect, { value: 0, diceCount: 0, diceSides: 0 });
+  const sustainedHits = diceEffect("sustained_hits");
+  const rapidFire = diceEffect("rapid_fire");
+  const threshold = (type) => {
+    const values = additional
+      .filter((effect) => effect.type === type)
+      .map((effect) => effect.value);
+    return values.length ? Math.min(...values) : 0;
+  };
   return {
     hitModifier: hitModifiers.reduce((sum, preset) => sum + preset.hitModifier, 0),
     woundModifier: woundModifiers.reduce((sum, preset) => sum + preset.woundModifier, 0),
@@ -93,7 +117,33 @@ export function combatPresetEffects(presets, weaponType, role) {
     rerollWoundOnes:
       !woundRerolls.some((preset) => preset.rerollWounds) &&
       woundRerolls.some((preset) => preset.rerollWoundOnes),
+    apModifier: additional
+      .filter((effect) => effect.type === "ap_modifier")
+      .reduce((sum, effect) => sum + effect.value, 0),
+    criticalHits: threshold("critical_hits"),
+    criticalWounds: threshold("critical_wounds"),
+    lethalHits: additional.some((effect) => effect.type === "lethal_hits"),
+    devastatingWounds: additional.some((effect) => effect.type === "devastating_wounds"),
+    twinLinked: additional.some((effect) => effect.type === "twin_linked"),
+    ignoresCover: additional.some((effect) => effect.type === "ignores_cover"),
+    lanceActive: additional.some((effect) => effect.type === "lance"),
+    heavyActive: additional.some((effect) => effect.type === "heavy"),
+    sustainedHits: sustainedHits.value,
+    sustainedHitsDice: sustainedHits.diceCount,
+    sustainedHitsSides: sustainedHits.diceSides,
+    rapidFire: rapidFire.value,
+    rapidFireDice: rapidFire.diceCount,
+    rapidFireSides: rapidFire.diceSides,
   };
+}
+
+function strongerProfileDice(profile, prefix, effect) {
+  const current = {
+    value: profile[prefix] ?? 0,
+    diceCount: profile[`${prefix}Dice`] ?? 0,
+    diceSides: profile[`${prefix}Sides`] ?? 0,
+  };
+  return strongerDiceEffect(current, effect);
 }
 
 export function updateCombatPresetSelection(presets, selectedIds, presetId, checked) {
@@ -113,8 +163,60 @@ export function updateCombatPresetSelection(presets, selectedIds, presetId, chec
 export function applyCombatPresets(profile, attackerPresets, targetPresets, weaponType) {
   const attacker = combatPresetEffects(attackerPresets, weaponType, "attacker");
   const target = combatPresetEffects(targetPresets, weaponType, "target");
+  const combined = {
+    sustainedHits: strongerDiceEffect(
+      {
+        value: attacker.sustainedHits,
+        diceCount: attacker.sustainedHitsDice,
+        diceSides: attacker.sustainedHitsSides,
+      },
+      {
+        value: target.sustainedHits,
+        diceCount: target.sustainedHitsDice,
+        diceSides: target.sustainedHitsSides,
+      },
+    ),
+    rapidFire: strongerDiceEffect(
+      {
+        value: attacker.rapidFire,
+        diceCount: attacker.rapidFireDice,
+        diceSides: attacker.rapidFireSides,
+      },
+      {
+        value: target.rapidFire,
+        diceCount: target.rapidFireDice,
+        diceSides: target.rapidFireSides,
+      },
+    ),
+  };
+  combined.sustainedHits = strongerProfileDice(profile, "sustainedHits", combined.sustainedHits);
+  combined.rapidFire = strongerProfileDice(profile, "rapidFire", combined.rapidFire);
+  const criticalHits = [profile.criticalHits, attacker.criticalHits, target.criticalHits].filter(
+    (value) => value > 0,
+  );
+  const criticalWounds = [
+    profile.criticalWounds,
+    attacker.criticalWounds,
+    target.criticalWounds,
+  ].filter((value) => value > 0);
   return {
     ...profile,
+    ap: Math.max(0, (profile.ap ?? 0) + attacker.apModifier + target.apModifier),
+    criticalHits: criticalHits.length ? Math.min(...criticalHits) : 0,
+    criticalWounds: criticalWounds.length ? Math.min(...criticalWounds) : 0,
+    lethalHits: profile.lethalHits || attacker.lethalHits || target.lethalHits,
+    devastatingWounds:
+      profile.devastatingWounds || attacker.devastatingWounds || target.devastatingWounds,
+    twinLinked: profile.twinLinked || attacker.twinLinked || target.twinLinked,
+    ignoresCover: profile.ignoresCover || attacker.ignoresCover || target.ignoresCover,
+    lanceActive: profile.lanceActive || attacker.lanceActive || target.lanceActive,
+    heavyActive: profile.heavyActive || attacker.heavyActive || target.heavyActive,
+    sustainedHits: combined.sustainedHits.value,
+    sustainedHitsDice: combined.sustainedHits.diceCount,
+    sustainedHitsSides: combined.sustainedHits.diceSides,
+    rapidFire: combined.rapidFire.value,
+    rapidFireDice: combined.rapidFire.diceCount,
+    rapidFireSides: combined.rapidFire.diceSides,
     hitModifier: Math.max(-1, Math.min(1, attacker.hitModifier + target.hitModifier)),
     woundModifier: Math.max(-1, Math.min(1, attacker.woundModifier + target.woundModifier)),
     rerollHits: attacker.rerollHits || target.rerollHits,

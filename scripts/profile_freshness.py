@@ -37,6 +37,7 @@ SNAPSHOT_TABLES = (
     "abilities",
     "datasheet_abilities",
     "unit_combat_presets",
+    "unit_combat_preset_effects",
     "unit_composition",
     "unit_composition_models",
     "wargear_options",

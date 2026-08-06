@@ -16,14 +16,22 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Extend source-backed conditional unit abilities beyond modifiers and
-   re-rolls to weapon-keyword grants, AP changes, and Critical Hit/Wound
-   thresholds, retaining the same subject and condition safeguards.
-2. Record the observed peak sparse-state count from exact Devastating Wounds
+1. Record the observed peak sparse-state count from exact Devastating Wounds
    volleys and use benchmark evidence to tighten the conservative preflight
    without ever hiding a valid exact option.
+2. Extend conservative conditional-ability extraction to direct attacks,
+   Strength, Damage, defensive save, Feel No Pain, and damage-reduction changes.
 
 ## Completed cycles
+
+- 2026-08-06: Extended source-backed conditional combat presets to weapon
+  keyword grants, variable Sustained Hits and Rapid Fire, AP changes, and
+  Critical Hit/Wound thresholds. A normalized effect table preserves dice
+  values, application side, affected subject, source conditions, and stable
+  preset IDs; unclassified effects are omitted instead of guessed. Exclusive
+  keyword choices remain mutually exclusive, native weapon rules are restored
+  when presets change, and the same composition now reaches Model vs Model,
+  Unit vs Unit, Play Mode, saved lists, profile JSON, and the API.
 
 - 2026-08-06: Replaced sign-based unit-ability role inference with clause-level
   subject classification. Hit modifiers, Wound modifiers, Hit re-rolls, and

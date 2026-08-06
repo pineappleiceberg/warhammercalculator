@@ -183,6 +183,18 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const mightIsRight = warboss.combatPresets.find((preset) => preset.name === "Might is Right");
   assert.equal(mightIsRight.hitModifierRole, "attacker");
   assert.equal(mightIsRight.hitModifierSubject, "led_unit");
+  const castigator = catalogue.units.find((unit) => unit.name === "Castigator");
+  const rites = castigator.combatPresets.find((preset) => preset.name === "Rites of Castigation");
+  assert.deepEqual(rites.effects, [
+    {
+      type: "ap_modifier",
+      value: 1,
+      diceCount: 0,
+      diceSides: 0,
+      role: "attacker",
+      subject: "friendly_unit",
+    },
+  ]);
   const loadout = await worker.fetch(
     new Request(`http://localhost/api/v1/loadout?unit=${warriors.id}`),
     testEnv,

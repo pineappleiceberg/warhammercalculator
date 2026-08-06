@@ -169,14 +169,12 @@ test("unit ability presets separate attacking and defensive effects", () => {
   };
   assert.equal(combatPresetSupportsRole(mixed, "attacker"), true);
   assert.equal(combatPresetSupportsRole(mixed, "target"), true);
-  assert.deepEqual(combatPresetEffects([mixed], "Ranged", "attacker"), {
-    hitModifier: 0,
-    woundModifier: 0,
-    rerollHits: false,
-    rerollHitOnes: false,
-    rerollWounds: false,
-    rerollWoundOnes: false,
-  });
+  const outOfScope = combatPresetEffects([mixed], "Ranged", "attacker");
+  assert.equal(outOfScope.hitModifier, 0);
+  assert.equal(outOfScope.woundModifier, 0);
+  assert.equal(outOfScope.rerollHits, false);
+  assert.equal(outOfScope.apModifier, 0);
+  assert.equal(outOfScope.lethalHits, false);
   const applied = applyCombatPresets(
     { hitModifier: 0, woundModifier: 0, ap: 4 },
     [mixed],
@@ -214,6 +212,84 @@ test("unit ability presets separate attacking and defensive effects", () => {
     ).hitModifier,
     1,
   );
+});
+
+test("unit ability presets compose weapon rules, AP, and critical thresholds", () => {
+  const preset = {
+    weaponScope: "Ranged",
+    hitModifier: 0,
+    woundModifier: 0,
+    rerollHits: false,
+    rerollHitOnes: false,
+    rerollWounds: false,
+    rerollWoundOnes: false,
+    effects: [
+      {
+        type: "lethal_hits",
+        value: 1,
+        diceCount: 0,
+        diceSides: 0,
+        role: "attacker",
+        subject: "self",
+      },
+      {
+        type: "ap_modifier",
+        value: 1,
+        diceCount: 0,
+        diceSides: 0,
+        role: "attacker",
+        subject: "self",
+      },
+      {
+        type: "critical_hits",
+        value: 5,
+        diceCount: 0,
+        diceSides: 0,
+        role: "attacker",
+        subject: "self",
+      },
+      {
+        type: "sustained_hits",
+        value: 0,
+        diceCount: 1,
+        diceSides: 3,
+        role: "attacker",
+        subject: "self",
+      },
+    ],
+  };
+  const applied = applyCombatPresets(
+    {
+      ap: 2,
+      criticalHits: 6,
+      criticalWounds: 0,
+      lethalHits: false,
+      devastatingWounds: false,
+      twinLinked: false,
+      ignoresCover: false,
+      lanceActive: false,
+      heavyActive: false,
+      sustainedHits: 1,
+      sustainedHitsDice: 0,
+      sustainedHitsSides: 0,
+      rapidFire: 0,
+      rapidFireDice: 0,
+      rapidFireSides: 0,
+      hitModifier: 0,
+      woundModifier: 0,
+    },
+    [preset],
+    [],
+    "Ranged",
+  );
+  assert.equal(applied.ap, 3);
+  assert.equal(applied.criticalHits, 5);
+  assert.equal(applied.lethalHits, true);
+  assert.deepEqual(
+    [applied.sustainedHits, applied.sustainedHitsDice, applied.sustainedHitsSides],
+    [0, 1, 3],
+  );
+  assert.equal(combatPresetSubjectSummary(preset, "attacker"), "this unit");
 });
 
 test("mutually exclusive ability modes replace the prior selection", () => {

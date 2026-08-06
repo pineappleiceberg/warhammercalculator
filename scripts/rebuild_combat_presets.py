@@ -11,6 +11,7 @@ except ModuleNotFoundError:
 
 
 TABLE_SCHEMA = """
+DROP TABLE IF EXISTS unit_combat_preset_effects;
 DROP TABLE unit_combat_presets;
 CREATE TABLE unit_combat_presets (
     datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
@@ -43,6 +44,28 @@ CREATE TABLE unit_combat_presets (
         REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
 ) WITHOUT ROWID;
 CREATE INDEX idx_unit_combat_presets_datasheet ON unit_combat_presets(datasheet_id);
+CREATE TABLE unit_combat_preset_effects (
+    datasheet_id TEXT NOT NULL,
+    ability_position INTEGER NOT NULL,
+    preset_position INTEGER NOT NULL,
+    effect_position INTEGER NOT NULL CHECK (effect_position >= 1),
+    effect_type TEXT NOT NULL CHECK (effect_type IN
+        ('lethal_hits', 'devastating_wounds', 'twin_linked', 'ignores_cover',
+         'sustained_hits', 'rapid_fire', 'lance', 'heavy', 'ap_modifier',
+         'critical_hits', 'critical_wounds')),
+    value INTEGER NOT NULL,
+    dice_count INTEGER NOT NULL DEFAULT 0 CHECK (dice_count >= 0),
+    dice_sides INTEGER NOT NULL DEFAULT 0 CHECK (dice_sides >= 0),
+    application_role TEXT NOT NULL CHECK (application_role IN ('attacker', 'target', 'either')),
+    subject TEXT NOT NULL CHECK (subject IN
+        ('self', 'led_unit', 'friendly_unit', 'enemy_unit', 'affected_unit', 'unknown')),
+    PRIMARY KEY (datasheet_id, ability_position, preset_position, effect_position),
+    FOREIGN KEY (datasheet_id, ability_position, preset_position)
+        REFERENCES unit_combat_presets(datasheet_id, ability_position, preset_position)
+        ON DELETE CASCADE
+) WITHOUT ROWID;
+CREATE INDEX idx_unit_combat_preset_effects_datasheet
+    ON unit_combat_preset_effects(datasheet_id);
 """
 
 
@@ -53,7 +76,7 @@ def main() -> None:
     with sqlite3.connect(args.database) as connection:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
-        connection.execute("UPDATE metadata SET value = '11' WHERE key = 'schema_version'")
+        connection.execute("UPDATE metadata SET value = '12' WHERE key = 'schema_version'")
     print(f"Rebuilt {count} unit combat presets in {args.database}")
 
 

@@ -122,6 +122,7 @@ def export(database: Path, output: Path) -> None:
         }
 
         keywords: dict[str, list[str]] = {}
+        preset_lookup: dict[tuple[str, int, int], dict] = {}
         for row in connection.execute(
             """SELECT datasheet_id, keyword
                FROM datasheet_keywords
@@ -170,8 +171,7 @@ def export(database: Path, output: Path) -> None:
                ORDER BY datasheet_id, ability_position, preset_position"""
         ):
             base_id = f"{row['datasheet_id']}:{row['ability_position']}"
-            units[row["datasheet_id"]]["combatPresets"].append(
-                {
+            exported_preset = {
                     "id": base_id if row["preset_position"] == 1 else f"{base_id}:{row['preset_position']}",
                     "choiceGroup": base_id if row["is_exclusive_choice"] else None,
                     "name": row["name"],
@@ -191,6 +191,27 @@ def export(database: Path, output: Path) -> None:
                     "rerollWoundOnes": bool(row["reroll_wound_ones"]),
                     "woundRerollRole": row["wound_reroll_role"],
                     "woundRerollSubject": row["wound_reroll_subject"],
+                    "effects": [],
+                }
+            units[row["datasheet_id"]]["combatPresets"].append(exported_preset)
+            preset_lookup[(row["datasheet_id"], row["ability_position"], row["preset_position"])] = exported_preset
+
+        for row in connection.execute(
+            """SELECT datasheet_id, ability_position, preset_position, effect_type,
+                      value, dice_count, dice_sides, application_role, subject
+               FROM unit_combat_preset_effects
+               ORDER BY datasheet_id, ability_position, preset_position, effect_position"""
+        ):
+            preset_lookup[
+                (row["datasheet_id"], row["ability_position"], row["preset_position"])
+            ]["effects"].append(
+                {
+                    "type": row["effect_type"],
+                    "value": row["value"],
+                    "diceCount": row["dice_count"],
+                    "diceSides": row["dice_sides"],
+                    "role": row["application_role"],
+                    "subject": row["subject"],
                 }
             )
 

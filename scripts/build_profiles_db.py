@@ -178,6 +178,27 @@ CREATE TABLE unit_combat_presets (
         REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
 ) WITHOUT ROWID;
 
+CREATE TABLE unit_combat_preset_effects (
+    datasheet_id TEXT NOT NULL,
+    ability_position INTEGER NOT NULL,
+    preset_position INTEGER NOT NULL,
+    effect_position INTEGER NOT NULL CHECK (effect_position >= 1),
+    effect_type TEXT NOT NULL CHECK (effect_type IN
+        ('lethal_hits', 'devastating_wounds', 'twin_linked', 'ignores_cover',
+         'sustained_hits', 'rapid_fire', 'lance', 'heavy', 'ap_modifier',
+         'critical_hits', 'critical_wounds')),
+    value INTEGER NOT NULL,
+    dice_count INTEGER NOT NULL DEFAULT 0 CHECK (dice_count >= 0),
+    dice_sides INTEGER NOT NULL DEFAULT 0 CHECK (dice_sides >= 0),
+    application_role TEXT NOT NULL CHECK (application_role IN ('attacker', 'target', 'either')),
+    subject TEXT NOT NULL CHECK (subject IN
+        ('self', 'led_unit', 'friendly_unit', 'enemy_unit', 'affected_unit', 'unknown')),
+    PRIMARY KEY (datasheet_id, ability_position, preset_position, effect_position),
+    FOREIGN KEY (datasheet_id, ability_position, preset_position)
+        REFERENCES unit_combat_presets(datasheet_id, ability_position, preset_position)
+        ON DELETE CASCADE
+) WITHOUT ROWID;
+
 CREATE TABLE unit_composition (
     datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
     position INTEGER NOT NULL,
@@ -219,6 +240,8 @@ CREATE INDEX idx_weapons_type ON weapon_profiles(weapon_type);
 CREATE INDEX idx_weapon_abilities_name ON weapon_abilities(name);
 CREATE INDEX idx_datasheet_abilities_name ON datasheet_abilities(name);
 CREATE INDEX idx_unit_combat_presets_datasheet ON unit_combat_presets(datasheet_id);
+CREATE INDEX idx_unit_combat_preset_effects_datasheet
+    ON unit_combat_preset_effects(datasheet_id);
 CREATE INDEX idx_datasheet_keywords_keyword ON datasheet_keywords(keyword);
 CREATE INDEX idx_unit_composition_datasheet ON unit_composition(datasheet_id);
 CREATE INDEX idx_unit_composition_models_datasheet
@@ -345,7 +368,7 @@ def combat_effect_application(text: str, effect_start: int) -> tuple[str, str]:
     lowered = text.casefold()
     prefix = lowered[:effect_start]
     sentence_start = max(prefix.rfind(". "), prefix.rfind("; "))
-    context = prefix[sentence_start + 2 :]
+    context = prefix[0 if sentence_start < 0 else sentence_start + 2 :]
     window = prefix[max(0, effect_start - 700) :]
 
     defensive = (
@@ -412,6 +435,23 @@ def combat_effect_application(text: str, effect_start: int) -> tuple[str, str]:
     ):
         return "attacker", "self"
     if re.search(
+        r"(?:weapons? equipped by models? in this unit|weapons? equipped by this model|"
+        r"this model(?:’s|'s) [^.;]{0,80}weapons?|(?:melee|ranged) weapons? "
+        r"(?:it|this model) is equipped with|bearer(?:’s|'s) (?:melee|ranged)? ?weapons?)",
+        context,
+    ):
+        return "attacker", "self"
+    if re.search(r"weapons? equipped by models? in that unit", context):
+        if "leading a unit" in window:
+            return "attacker", "led_unit"
+        friendly_at = max(window.rfind("friendly "), window.rfind("your army"))
+        enemy_at = max(window.rfind("enemy "), window.rfind("opponent"))
+        if enemy_at > friendly_at:
+            return "target", "enemy_unit"
+        return "attacker", "friendly_unit"
+    if re.search(r"friendly[^.;]{0,180}(?:weapons?|attacks?)[^.;]{0,120}", context):
+        return "attacker", "friendly_unit"
+    if re.search(
         r"model in this unit targets? [^.;]{0,100} with (?:an? )?(?:melee|ranged|psychic) attack",
         context,
     ):
@@ -475,10 +515,128 @@ def combat_effect_application(text: str, effect_start: int) -> tuple[str, str]:
     return "either", "unknown"
 
 
-def combat_preset(description: str) -> dict[str, int | str] | None:
+def dice_effect_value(value: str) -> tuple[int, int, int] | None:
+    match = re.fullmatch(r"\s*(?:(\d*)D(\d+)|0)(?:\s*\+\s*(\d+))?\s*", value, re.IGNORECASE)
+    if match:
+        if match.group(2):
+            return int(match.group(1) or "1"), int(match.group(2)), int(match.group(3) or "0")
+        return 0, 0, int(match.group(3) or "0")
+    if re.fullmatch(r"\s*\d+\s*", value):
+        return 0, 0, int(value)
+    return None
+
+
+def keyword_is_granted(text: str, match: re.Match[str]) -> bool:
+    lowered = text.casefold()
+    before = lowered[max(0, match.start() - 240) : match.start()]
+    if re.search(
+        r"(?:have|has|gain|gains)\s+(?:the\s+)?"
+        r"(?:\[[^\]]+\]\s*(?:,\s*|\band\s+)*)*$",
+        before,
+    ):
+        return True
+    if re.search(
+        r"(?:weapons?|attacks?)[^.;]{0,180}(?:have|has|gain|gains)[^.;]{0,140}"
+        r"\band (?:the )?$",
+        before,
+    ):
+        return True
+    bracket_count = len(re.findall(r"\[[^\]]+\]", text))
+    return bracket_count == 1 and bool(
+        re.search(r"(?:select|choose) one of the following|gain the ability below", lowered)
+    )
+
+
+def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
+    effects: list[dict[str, int | str]] = []
+    keyword_patterns = (
+        ("lethal_hits", r"\[LETHAL HITS\]", None),
+        ("devastating_wounds", r"\[DEVASTATING WOUNDS\]", None),
+        ("twin_linked", r"\[TWIN-LINKED\]", None),
+        ("ignores_cover", r"\[IGNORES COVER\]", None),
+        ("lance", r"\[LANCE\]", None),
+        ("heavy", r"\[HEAVY\]", None),
+        ("sustained_hits", r"\[SUSTAINED HITS\s+([^\]]+)\]", 1),
+        ("rapid_fire", r"\[RAPID FIRE\s+([^\]]+)\]", 1),
+    )
+    for effect_type, pattern, value_group in keyword_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if not match or not keyword_is_granted(text, match):
+            continue
+        dice_count, dice_sides, value = (0, 0, 1)
+        if value_group is not None:
+            parsed = dice_effect_value(match.group(value_group))
+            if not parsed:
+                continue
+            dice_count, dice_sides, value = parsed
+        role, subject = combat_effect_application(text, match.start())
+        if subject == "unknown":
+            role, subject = combat_effect_application(text, len(text))
+        effects.append(
+            {
+                "type": effect_type,
+                "value": value,
+                "dice_count": dice_count,
+                "dice_sides": dice_sides,
+                "role": role,
+                "subject": subject,
+            }
+        )
+
+    ap_pattern = re.compile(
+        r"\b(improve|worsen) the (?:Armour|Armor) Penetration characteristic of "
+        r"(?:that|the) attack by (\d+)\b|"
+        r"\b(improve|worsen) the (?:Armour|Armor) Penetration characteristic of "
+        r"(?:weapons|attacks)[^.;]{0,100}? by (\d+)\b",
+        re.IGNORECASE,
+    )
+    seen_ap: set[tuple[str, str]] = set()
+    for match in ap_pattern.finditer(text):
+        direction = match.group(1) or match.group(3)
+        amount = int(match.group(2) or match.group(4))
+        role, subject = combat_effect_application(text, match.start())
+        identity = (role, subject)
+        if identity in seen_ap:
+            continue
+        seen_ap.add(identity)
+        effects.append(
+            {
+                "type": "ap_modifier",
+                "value": amount if direction.casefold() == "improve" else -amount,
+                "dice_count": 0,
+                "dice_sides": 0,
+                "role": role,
+                "subject": subject,
+            }
+        )
+
+    for roll, effect_type in (("Hit", "critical_hits"), ("Wound", "critical_wounds")):
+        threshold = re.search(
+            rf"(?:an? )?(?:successful )?unmodified {roll} roll of (\d)\+ "
+            rf"scores a Critical {roll}|"
+            rf"a Critical {roll} is scored on a (?:successful )?unmodified {roll} roll of (\d)\+",
+            text,
+            re.IGNORECASE,
+        )
+        if threshold:
+            role, subject = combat_effect_application(text, threshold.start())
+            effects.append(
+                {
+                    "type": effect_type,
+                    "value": int(threshold.group(1) or threshold.group(2)),
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "role": role,
+                    "subject": subject,
+                }
+            )
+    return [effect for effect in effects if effect["subject"] != "unknown"]
+
+
+def combat_preset(description: str) -> dict[str, object] | None:
     text = plain_text(description)
     lowered = text.casefold()
-    effects: dict[str, int | str] = {
+    effects: dict[str, object] = {
         "hit_modifier": 0,
         "wound_modifier": 0,
         "reroll_hits": 0,
@@ -507,6 +665,7 @@ def combat_preset(description: str) -> dict[str, int | str] | None:
             role, subject = combat_effect_application(text, rerolls[0].start())
             effects[f"{roll}_reroll_role"] = role
             effects[f"{roll}_reroll_subject"] = subject
+    effects["additional_effects"] = combat_additional_effects(text)
     if not any(value for key, value in effects.items() if key != "weapon_scope"):
         return None
     has_melee = "melee attack" in lowered
@@ -517,8 +676,15 @@ def combat_preset(description: str) -> dict[str, int | str] | None:
     return effects
 
 
-def combat_presets(name: str, description: str) -> list[dict[str, int | str]]:
+def combat_presets(name: str, description: str) -> list[dict[str, object]]:
     text = plain_text(description)
+    has_choice = bool(
+        re.search(
+            r"\b(?:select|choose) one of (?:the )?[^.]{0,160}(?:following|below)",
+            text,
+            re.IGNORECASE,
+        )
+    )
     choice = re.search(r"\b(?:select|choose) one of the following\b[^:]{0,160}:\s*", text, re.IGNORECASE)
     candidates: list[tuple[str, str]] = []
     if choice:
@@ -536,6 +702,23 @@ def combat_presets(name: str, description: str) -> list[dict[str, int | str]]:
                 mode_name = mode.group(1).strip()
                 mode_text = f"{introduction}{mode_name}: {tail[mode.end() : body_end].strip()}"
                 candidates.append((mode_name, mode_text))
+
+        if not candidates:
+            tail = text[choice.end() :]
+            until = re.search(r"\bUntil\b", tail, re.IGNORECASE)
+            option_text = tail[: until.start()] if until else tail
+            remainder = tail[until.start() :] if until else ""
+            supported = re.findall(
+                r"\[(?:LETHAL HITS|DEVASTATING WOUNDS|TWIN-LINKED|IGNORES COVER|LANCE|HEAVY|"
+                r"SUSTAINED HITS\s+[^\]]+|RAPID FIRE\s+[^\]]+)\]",
+                option_text,
+                re.IGNORECASE,
+            )
+            if len(supported) >= 2:
+                introduction = text[: choice.end()]
+                for token in supported:
+                    label = token.strip("[]")
+                    candidates.append((label.title(), f"{introduction}{token}. {remainder}".strip()))
 
     if not candidates:
         outcomes = list(
@@ -566,6 +749,9 @@ def combat_presets(name: str, description: str) -> list[dict[str, int | str]]:
             preset["is_exclusive_choice"] = int(len(parsed) > 1)
         return parsed
 
+    if has_choice:
+        return []
+
     effects = combat_preset(text)
     if not effects:
         return []
@@ -580,6 +766,7 @@ def combat_presets(name: str, description: str) -> list[dict[str, int | str]]:
 
 
 def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
+    connection.execute("DELETE FROM unit_combat_preset_effects")
     connection.execute("DELETE FROM unit_combat_presets")
     inserted = 0
     abilities = connection.execute(
@@ -621,6 +808,25 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     preset.get("wound_reroll_subject"),
                 ),
             )
+            for effect_position, effect in enumerate(preset["additional_effects"], start=1):
+                connection.execute(
+                    """INSERT INTO unit_combat_preset_effects
+                       (datasheet_id, ability_position, preset_position, effect_position,
+                        effect_type, value, dice_count, dice_sides, application_role, subject)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        datasheet_id,
+                        ability_position,
+                        preset_position,
+                        effect_position,
+                        effect["type"],
+                        effect["value"],
+                        effect["dice_count"],
+                        effect["dice_sides"],
+                        effect["role"],
+                        effect["subject"],
+                    ),
+                )
             inserted += 1
     return inserted
 
@@ -758,7 +964,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "11"),
+                    ("schema_version", "12"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
@@ -1031,6 +1237,7 @@ def create_database(
                 "abilities",
                 "datasheet_abilities",
                 "unit_combat_presets",
+                "unit_combat_preset_effects",
                 "unit_composition",
                 "unit_composition_models",
                 "wargear_options",

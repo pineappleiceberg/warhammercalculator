@@ -92,6 +92,14 @@ type CatalogueCombatPreset = {
   rerollWoundOnes: boolean;
   woundRerollRole: "attacker" | "target" | "either" | null;
   woundRerollSubject: string | null;
+  effects: Array<{
+    type: string;
+    value: number;
+    diceCount: number;
+    diceSides: number;
+    role: "attacker" | "target" | "either";
+    subject: string;
+  }>;
 };
 type CatalogueUnit = {
   id: string;
@@ -809,13 +817,39 @@ export default function Home() {
     weapon: CatalogueWeapon | undefined = selectedWeapon,
     attackerIds = activeAttackerPresetIds,
     targetIds = activeTargetPresetIds,
-  ) =>
-    applySelectedCombatPresets(
-      current,
+    targetKeywords = selectedTargetModel?.keywords ?? [],
+  ) => {
+    const ability = (name: string) => weapon?.abilities.find((entry) => entry.name === name);
+    const names = new Set(weapon?.abilities.map((entry) => entry.name) ?? []);
+    const sustainedHits = abilityDiceValue(ability("sustained hits"));
+    const rapidFire = abilityDiceValue(ability("rapid fire"));
+    const baseProfile = weapon
+      ? {
+          ...current,
+          ap: Math.abs(weapon.ap ?? 0),
+          criticalHits: 6,
+          criticalWounds: antiWoundThreshold(weapon.abilities, targetKeywords),
+          sustainedHits: sustainedHits.modifier,
+          sustainedHitsDice: sustainedHits.count,
+          sustainedHitsSides: sustainedHits.sides,
+          rapidFire: rapidFire.modifier,
+          rapidFireDice: rapidFire.count,
+          rapidFireSides: rapidFire.sides,
+          ignoresCover: names.has("ignores cover"),
+          lethalHits: names.has("lethal hits"),
+          devastatingWounds: names.has("devastating wounds"),
+          twinLinked: names.has("twin-linked"),
+          heavyActive: false,
+          lanceActive: false,
+        }
+      : current;
+    return applySelectedCombatPresets(
+      baseProfile,
       selectedPresets(selectedAttackerUnit, attackerIds),
       selectedPresets(selectedTargetUnit, targetIds),
       weapon?.type ?? "Ranged",
     ) as Profile;
+  };
 
   const applyWeapon = (weapon: CatalogueWeapon) => {
     const attacks = parseDice(weapon.attacks);
@@ -886,6 +920,7 @@ export default function Home() {
         selectedWeapon,
         activeAttackerPresetIds,
         targetIds,
+        model.keywords,
       ),
     );
   };

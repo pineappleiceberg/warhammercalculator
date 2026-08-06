@@ -46,6 +46,7 @@ class ProfileDataTests(unittest.TestCase):
                 "reroll_hit_ones": 0,
                 "reroll_wounds": 0,
                 "reroll_wound_ones": 0,
+                "additional_effects": [],
                 "hit_modifier_role": "attacker",
                 "hit_modifier_subject": "led_unit",
                 "wound_modifier_role": "attacker",
@@ -115,6 +116,52 @@ class ProfileDataTests(unittest.TestCase):
         ])
         self.assertEqual(outcomes[0]["wound_modifier"], 0)
         self.assertEqual(outcomes[1]["wound_modifier"], -1)
+
+    def test_combat_preset_parser_extracts_weapon_rules_ap_and_critical_thresholds(self):
+        preset = combat_preset(
+            "Weapons equipped by models in this unit have the [SUSTAINED HITS D3] ability. "
+            "Each time a model in this unit makes an attack, improve the Armour Penetration "
+            "characteristic of that attack by 1, and an unmodified Hit roll of 5+ scores a Critical Hit."
+        )
+        effects = {effect["type"]: effect for effect in preset["additional_effects"]}
+        self.assertEqual(
+            (effects["sustained_hits"]["dice_count"], effects["sustained_hits"]["dice_sides"]),
+            (1, 3),
+        )
+        self.assertEqual(effects["ap_modifier"]["value"], 1)
+        self.assertEqual(effects["critical_hits"]["value"], 5)
+        self.assertTrue(all(effect["role"] == "attacker" for effect in effects.values()))
+        self.assertTrue(all(effect["subject"] == "self" for effect in effects.values()))
+        qualifier = combat_preset(
+            "Provided it Remained Stationary, all [HEAVY] weapons equipped by models in this "
+            "unit have the [LETHAL HITS] ability."
+        )
+        self.assertEqual(
+            [effect["type"] for effect in qualifier["additional_effects"]],
+            ["lethal_hits"],
+        )
+
+    def test_combat_preset_parser_splits_keyword_choices(self):
+        choices = combat_presets(
+            "Weapon Doctrine",
+            "Select one of the following abilities: [SUSTAINED HITS 1] or [LETHAL HITS]. "
+            "Until the end of the phase, weapons equipped by models in this unit have the selected ability.",
+        )
+        self.assertEqual(len(choices), 2)
+        self.assertEqual([choice["is_exclusive_choice"] for choice in choices], [1, 1])
+        self.assertEqual(
+            [choice["additional_effects"][0]["type"] for choice in choices],
+            ["sustained_hits", "lethal_hits"],
+        )
+        self.assertEqual(
+            combat_presets(
+                "Unparsed doctrines",
+                "Select one of the doctrines below. Protector: Weapons equipped by models in "
+                "this unit have the [HEAVY] ability. Conqueror: Improve the Armour Penetration "
+                "characteristic of that attack by 1.",
+            ),
+            [],
+        )
 
     def test_checked_artifacts_match_the_pinned_source_manifest(self):
         lock = json.loads(SOURCE_LOCK.read_text(encoding="utf-8"))
@@ -237,7 +284,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "11",
+                "12",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -253,6 +300,16 @@ class ProfileDataTests(unittest.TestCase):
             self.assertGreater(
                 connection.execute("SELECT count(*) FROM unit_combat_presets").fetchone()[0],
                 900,
+            )
+            self.assertGreater(
+                connection.execute("SELECT count(*) FROM unit_combat_preset_effects").fetchone()[0],
+                100,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM unit_combat_preset_effects WHERE subject = 'unknown'"
+                ).fetchone()[0],
+                0,
             )
             self.assertEqual(
                 connection.execute(
@@ -416,6 +473,21 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(might["hitModifierRole"], "attacker")
         self.assertEqual(might["hitModifierSubject"], "led_unit")
         self.assertIn("leading a unit", might["description"])
+        castigator = next(unit for unit in catalogue["units"] if unit["name"] == "Castigator")
+        rites = next(
+            preset for preset in castigator["combatPresets"] if preset["name"] == "Rites of Castigation"
+        )
+        self.assertEqual(
+            rites["effects"],
+            [{
+                "type": "ap_modifier",
+                "value": 1,
+                "diceCount": 0,
+                "diceSides": 0,
+                "role": "attacker",
+                "subject": "friendly_unit",
+            }],
+        )
         troupe = next(unit for unit in catalogue["units"] if unit["id"] == "000002536")
         dance = [preset for preset in troupe["combatPresets"] if preset["choiceGroup"]]
         self.assertEqual(len(dance), 3)
