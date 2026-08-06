@@ -154,6 +154,11 @@ test("catalogue agent query resolves stable IDs or unambiguous names", async () 
     catalogue,
   );
   assert.equal(ids.weapon.name, "Heavy death ray");
+  const nativeDefense = resolveAgentCatalogueSelection(
+    "attacker=000000545&weapon=1531&target=Redemptor%20Dreadnought",
+    catalogue,
+  );
+  assert.equal(nativeDefense.model.reduction, 1);
   assert.throws(
     () => resolveAgentCatalogueSelection("attacker=Doom%20Scythe&target=000000136", catalogue),
     /missing catalogue parameters: weapon/i,

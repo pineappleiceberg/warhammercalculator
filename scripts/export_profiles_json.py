@@ -145,6 +145,8 @@ def export(database: Path, output: Path) -> None:
                     "t": row["toughness"],
                     "save": row["save_target"],
                     "invuln": row["invulnerable_save_target"],
+                    "feelNoPain": 0,
+                    "reduction": 0,
                     "wounds": row["wounds"],
                     "keywords": keywords.get(row["datasheet_id"], []),
                 }
@@ -162,7 +164,7 @@ def export(database: Path, output: Path) -> None:
 
         for row in connection.execute(
             """SELECT datasheet_id, ability_position, preset_position, name, description_text,
-                      is_exclusive_choice, weapon_scope, hit_modifier, hit_modifier_role,
+                      is_exclusive_choice, activation, weapon_scope, hit_modifier, hit_modifier_role,
                       hit_modifier_subject, wound_modifier, wound_modifier_role,
                       wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                       hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
@@ -174,6 +176,7 @@ def export(database: Path, output: Path) -> None:
             exported_preset = {
                     "id": base_id if row["preset_position"] == 1 else f"{base_id}:{row['preset_position']}",
                     "choiceGroup": base_id if row["is_exclusive_choice"] else None,
+                    "activation": row["activation"],
                     "name": row["name"],
                     "description": row["description_text"],
                     "weaponScope": row["weapon_scope"],
@@ -214,6 +217,25 @@ def export(database: Path, output: Path) -> None:
                     "subject": row["subject"],
                 }
             )
+
+        for unit in units.values():
+            inherent_effects = [
+                effect
+                for preset in unit["combatPresets"]
+                if preset["activation"] == "inherent"
+                for effect in preset["effects"]
+            ]
+            for model in unit["models"]:
+                for effect in inherent_effects:
+                    value = effect["value"]
+                    if effect["type"] == "save_target":
+                        model["save"] = min(model["save"] or value, value)
+                    elif effect["type"] == "invulnerable_save":
+                        model["invuln"] = min(model["invuln"] or value, value)
+                    elif effect["type"] == "feel_no_pain":
+                        model["feelNoPain"] = min(model["feelNoPain"] or value, value)
+                    elif effect["type"] == "damage_reduction":
+                        model["reduction"] = max(model["reduction"], value)
 
         for row in connection.execute(
             """SELECT datasheet_id, description_text, min_models, max_models

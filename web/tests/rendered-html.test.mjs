@@ -213,9 +213,18 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   );
   const redemptor = catalogue.units.find((unit) => unit.name === "Redemptor Dreadnought");
   const dutyEternal = redemptor.combatPresets.find((preset) => preset.name === "Duty Eternal");
+  assert.equal(dutyEternal.activation, "inherent");
+  assert.equal(redemptor.models[0].reduction, 1);
+  assert.equal(redemptor.models[0].feelNoPain, 0);
   assert.deepEqual(
     dutyEternal.effects.map((effect) => [effect.type, effect.value, effect.role]),
     [["damage_reduction", 1, "target"]],
+  );
+  assert.equal(
+    catalogue.units.some((unit) =>
+      unit.combatPresets.some((preset) => preset.name === "Impossible Form (Psychic)"),
+    ),
+    false,
   );
   const loadout = await worker.fetch(
     new Request(`http://localhost/api/v1/loadout?unit=${warriors.id}`),

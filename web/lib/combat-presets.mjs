@@ -68,6 +68,10 @@ export function combatPresetSupportsRole(preset, role) {
   );
 }
 
+export function combatPresetRequiresActivation(preset) {
+  return preset.activation !== "inherent";
+}
+
 function strongerDiceEffect(current, candidate) {
   const expected = (effect) => effect.value + (effect.diceCount * (effect.diceSides + 1)) / 2;
   return expected(candidate) > expected(current) ? candidate : current;

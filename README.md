@@ -305,8 +305,10 @@ calculation or run the existing reproducible seeded simulation. API clients can
 make the same preflight request with `POST /api/v1/volley/complexity`; an exact
 calculation that actually exhausts the budget returns HTTP 422 with code
 `EXACT_STATE_LIMIT` and names the simulation endpoint.
-Model vs Model, Unit vs Unit, and Play Mode expose conditional unit abilities imported with
-their published source text. No condition is silently enabled in Unit vs Unit.
+Model vs Model, Unit vs Unit, and Play Mode expose unit abilities imported with
+their published source text. Strictly unconditional, whole-model/unit defenses
+load as native editable target values; conditional abilities remain explicit
+choices and are never silently enabled.
 Saved lists can mark battle- or turn-long conditions as Play Mode defaults, and
 Play Mode keeps changes in its local recovery state. Offensive modifiers,
 re-rolls, weapon-keyword grants, AP changes, Critical Hit/Wound thresholds, and

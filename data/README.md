@@ -26,7 +26,10 @@ The main tables are:
   records whether it applies from the attacking or target side and whether its
   subject is the source unit, a led unit, a friendly unit, an enemy unit, or an
   otherwise affected unit. Unclassified effects are omitted instead of guessed.
-  Every choice preserves its full condition and is never assumed active
+  Every row has an `activation` classification. Strictly unconditional,
+  whole-model/unit defenses are `inherent` and become editable model-profile
+  defaults; all other rows are `situational`, preserve their full condition,
+  and are never assumed active
 - `unit_composition` and `unit_composition_models` for source ordering, display
   text, safely parsed unit-size ranges, and the named model components within
   each composition row

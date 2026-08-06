@@ -16,15 +16,26 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Distinguish unconditional model-wide abilities from situational presets so
-   inherent Feel No Pain and damage reduction can be enabled by default while
-   remaining editable and reversible.
-2. Represent negative, random, and replacement-value Attacks, Strength, and
+1. Represent negative, random, and replacement-value Attacks, Strength, and
    Damage changes exactly in native C and WebAssembly before importing them.
-3. Add a source-backed rules eligibility layer for target keywords and phase or
+2. Add a source-backed rules eligibility layer for target keywords and phase or
    range conditions that currently require manual interpretation.
+3. Link bearer- and subset-model defensive abilities to structured wargear and
+   unit composition so equipped defensive defaults can be applied without
+   affecting models that do not have them.
 
 ## Completed cycles
+
+- 2026-08-06: Distinguished inherent defenses from situational combat presets.
+  Twenty-eight unconditional, whole-model/unit damage-reduction abilities now
+  load directly into every catalogue target profile and therefore reach Model
+  vs Model, Unit vs Unit, Play Mode, the API, and parameterized agent URLs by
+  default while remaining editable. Their source abilities retain an explicit
+  `inherent` classification and no longer appear as activation checkboxes.
+  Conditional defenses remain opt-in. The importer also removed one Psychic
+  attack-type-limited reduction that could not be represented exactly rather
+  than applying it to every attack. SQLite, catalogue, selector, API, agent,
+  and C/WebAssembly regressions cover the distinction.
 
 - 2026-08-06: Added 90 conservatively classified defensive effects from the
   pinned source catalogue: 34 invulnerable saves, 24 unrestricted Feel No Pain

@@ -28,6 +28,8 @@ export type CatalogueModel = {
   t: number | null;
   save: number | null;
   invuln: number | null;
+  feelNoPain: number;
+  reduction: number;
   wounds: number | null;
   keywords: string[];
 };
@@ -94,6 +96,7 @@ export type CatalogueUnresolvedLoadoutSubject = {
 export type CatalogueCombatPreset = {
   id: string;
   choiceGroup: string | null;
+  activation: "inherent" | "situational";
   name: string;
   description: string;
   weaponScope: "Any" | "Ranged" | "Melee";
@@ -258,6 +261,8 @@ export function applyTargetProfile(profile: CombatProfile, model: CatalogueModel
     ...(model.t ? { toughness: model.t } : {}),
     ...(model.save ? { save: model.save } : {}),
     invulnerable: model.invuln ?? 0,
+    feelNoPain: model.feelNoPain ?? 0,
+    reduction: model.reduction ?? 0,
     ...(model.wounds ? { wounds: model.wounds } : {}),
   } satisfies CombatProfile;
 }

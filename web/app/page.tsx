@@ -929,8 +929,8 @@ export default function Home() {
           ...(model.t ? { toughness: model.t } : {}),
           ...(model.save ? { save: model.save } : {}),
           invulnerable: model.invuln ?? 0,
-          feelNoPain: 0,
-          reduction: 0,
+          feelNoPain: model.feelNoPain ?? 0,
+          reduction: model.reduction ?? 0,
           ...(model.wounds ? { wounds: model.wounds } : {}),
           criticalWounds: selectedWeapon
             ? antiWoundThreshold(selectedWeapon.abilities, model.keywords)

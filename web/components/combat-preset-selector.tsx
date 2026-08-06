@@ -2,6 +2,7 @@
 
 import type { CatalogueCombatPreset } from "../lib/catalogue";
 import {
+  combatPresetRequiresActivation,
   combatPresetSubjectSummary,
   combatPresetSupportsRole,
   updateCombatPresetSelection,
@@ -17,7 +18,9 @@ type Props = {
 };
 
 export function CombatPresetSelector({ presets, role, selectedIds, onChange, title, hint }: Props) {
-  const available = presets.filter((preset) => combatPresetSupportsRole(preset, role));
+  const available = presets.filter(
+    (preset) => combatPresetRequiresActivation(preset) && combatPresetSupportsRole(preset, role),
+  );
   if (!available.length) return null;
   const selected = new Set(selectedIds);
   return (

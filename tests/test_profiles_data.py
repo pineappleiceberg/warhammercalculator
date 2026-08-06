@@ -187,6 +187,20 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(save["additional_effects"][0]["type"], "save_target")
         self.assertEqual(save["additional_effects"][0]["value"], 2)
 
+    def test_combat_preset_parser_classifies_only_unconditional_defenses_as_inherent(self):
+        inherent = combat_presets(
+            "Duty Eternal",
+            "Each time an attack is allocated to this model, subtract 1 from the Damage "
+            "characteristic of that attack.",
+        )
+        self.assertEqual(inherent[0]["activation"], "inherent")
+        conditional = combat_presets(
+            "Guardian of the Lost",
+            "While this model is leading a unit, each time an attack is allocated to a model "
+            "in that unit, subtract 1 from the Damage characteristic of that attack.",
+        )
+        self.assertEqual(conditional[0]["activation"], "situational")
+
     def test_combat_preset_parser_omits_unsupported_defensive_effects(self):
         self.assertIsNone(
             combat_preset(
@@ -210,6 +224,12 @@ class ProfileDataTests(unittest.TestCase):
             combat_preset(
                 "Each time an attack is made by a model in this unit, subtract 1 from the "
                 "Damage characteristic of that attack."
+            )
+        )
+        self.assertIsNone(
+            combat_preset(
+                "Each time an attack is made against this PSYKER (excluding Psychic Attacks), "
+                "subtract 1 from the Damage characteristic of that attack."
             )
         )
         conflicting = combat_preset(
@@ -387,7 +407,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "14",
+                "15",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -430,11 +450,28 @@ class ProfileDataTests(unittest.TestCase):
                        GROUP BY effect_type ORDER BY effect_type"""
                 ).fetchall(),
                 [
-                    ("damage_reduction", 31),
+                    ("damage_reduction", 30),
                     ("feel_no_pain", 24),
                     ("invulnerable_save", 34),
                     ("save_target", 1),
                 ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
+                ).fetchall(),
+                [("inherent", 28), ("situational", 1359)],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*)
+                       FROM unit_combat_preset_effects AS effect
+                       JOIN unit_combat_presets AS preset
+                         USING (datasheet_id, ability_position, preset_position)
+                       WHERE preset.activation = 'inherent'
+                         AND effect.effect_type = 'damage_reduction'"""
+                ).fetchone()[0],
+                28,
             )
             self.assertEqual(
                 connection.execute(
@@ -664,6 +701,16 @@ class ProfileDataTests(unittest.TestCase):
                 }
             ],
         )
+        self.assertEqual(duty_eternal["activation"], "inherent")
+        self.assertEqual(redemptor["models"][0]["reduction"], 1)
+        self.assertEqual(redemptor["models"][0]["feelNoPain"], 0)
+        self.assertFalse(
+            any(
+                preset["name"] == "Impossible Form (Psychic)"
+                for unit in catalogue["units"]
+                for preset in unit["combatPresets"]
+            )
+        )
         imagifier = next(unit for unit in catalogue["units"] if unit["name"] == "Imagifier")
         martyrs = next(
             preset
@@ -674,6 +721,7 @@ class ProfileDataTests(unittest.TestCase):
             [(effect["type"], effect["value"]) for effect in martyrs["effects"]],
             [("invulnerable_save", 4), ("save_target", 2)],
         )
+        self.assertEqual(martyrs["activation"], "situational")
         troupe = next(unit for unit in catalogue["units"] if unit["id"] == "000002536")
         dance = [preset for preset in troupe["combatPresets"] if preset["choiceGroup"]]
         self.assertEqual(len(dance), 3)

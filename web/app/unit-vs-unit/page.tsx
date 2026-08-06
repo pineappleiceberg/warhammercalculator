@@ -64,9 +64,9 @@ function targetSegment(model: CatalogueModel, modelCount: number): TargetSegment
     toughness: model.t ?? 8,
     save: model.save ?? 7,
     invulnerable: model.invuln ?? 0,
-    feelNoPain: 0,
+    feelNoPain: model.feelNoPain ?? 0,
     wounds: model.wounds ?? 1,
-    reduction: 0,
+    reduction: model.reduction ?? 0,
     modelCount,
   };
 }

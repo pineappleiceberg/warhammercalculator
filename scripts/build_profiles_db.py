@@ -154,6 +154,7 @@ CREATE TABLE unit_combat_presets (
     name TEXT NOT NULL,
     description_text TEXT NOT NULL,
     is_exclusive_choice INTEGER NOT NULL CHECK (is_exclusive_choice IN (0, 1)),
+    activation TEXT NOT NULL CHECK (activation IN ('inherent', 'situational')),
     weapon_scope TEXT NOT NULL CHECK (weapon_scope IN ('Any', 'Ranged', 'Melee')),
     hit_modifier INTEGER NOT NULL CHECK (hit_modifier BETWEEN -1 AND 1),
     hit_modifier_role TEXT CHECK (hit_modifier_role IN ('attacker', 'target', 'either')),
@@ -818,6 +819,7 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
         if (
             not re.search(r"\b(?:allocated to|made against)\b", attack_clause)
             or "bearer" in attack_clause
+            or "excluding" in attack_clause
             or "affected by this ability" in context
         ):
             continue
@@ -876,6 +878,50 @@ def combat_preset(description: str) -> dict[str, object] | None:
         "Melee" if has_melee and not has_ranged else "Ranged" if has_ranged and not has_melee else "Any"
     )
     return effects
+
+
+def combat_preset_activation(description: str, preset: dict[str, object]) -> str:
+    additional = preset["additional_effects"]
+    if not additional or any(
+        preset.get(field)
+        for field in (
+            "hit_modifier",
+            "wound_modifier",
+            "reroll_hits",
+            "reroll_hit_ones",
+            "reroll_wounds",
+            "reroll_wound_ones",
+        )
+    ):
+        return "situational"
+    if any(
+        effect["type"]
+        not in {"save_target", "invulnerable_save", "feel_no_pain", "damage_reduction"}
+        or effect["role"] != "target"
+        or effect["subject"] not in {"self", "enemy_unit"}
+        for effect in additional
+    ):
+        return "situational"
+
+    text = plain_text(description).strip()
+    lowered = text.casefold()
+    if re.search(
+        r"\b(?:while|if|once per|until|at the start|provided|unless|within|against|excluding|bearer)\b",
+        lowered,
+    ):
+        return "situational"
+    if lowered.startswith(("this model has ", "this unit has ", "models in this unit have ")):
+        return "inherent"
+    if re.fullmatch(
+        r"Each time an attack is allocated to "
+        r"(?:this model|a model in this unit|this FORTIFICATION\s*), subtract \d+ from "
+        r"(?:(?:the|that) attack(?:’s|'s) Damage characteristic|"
+        r"the Damage characteristic of that attack)\.",
+        text,
+        re.IGNORECASE,
+    ):
+        return "inherent"
+    return "situational"
 
 
 def combat_presets(name: str, description: str) -> list[dict[str, object]]:
@@ -943,6 +989,7 @@ def combat_presets(name: str, description: str) -> list[dict[str, object]]:
                 {
                     "name": f"{name} — {variant_name}",
                     "description": variant_description,
+                    "activation": "situational",
                     **effects,
                 }
             )
@@ -962,6 +1009,7 @@ def combat_presets(name: str, description: str) -> list[dict[str, object]]:
             "name": name,
             "description": text,
             "is_exclusive_choice": 0,
+            "activation": combat_preset_activation(text, effects),
             **effects,
         }
     ]
@@ -980,12 +1028,12 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
             connection.execute(
                 """INSERT INTO unit_combat_presets
                    (datasheet_id, ability_position, preset_position, name, description_text,
-                    is_exclusive_choice, weapon_scope, hit_modifier, hit_modifier_role,
+                    is_exclusive_choice, activation, weapon_scope, hit_modifier, hit_modifier_role,
                     hit_modifier_subject, wound_modifier, wound_modifier_role,
                     wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                     hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
                     wound_reroll_subject)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     ability_position,
@@ -993,6 +1041,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     preset["name"],
                     preset["description"],
                     preset["is_exclusive_choice"],
+                    preset["activation"],
                     preset["weapon_scope"],
                     preset["hit_modifier"],
                     preset.get("hit_modifier_role"),
@@ -1166,7 +1215,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "14"),
+                    ("schema_version", "15"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

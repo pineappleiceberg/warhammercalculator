@@ -22,6 +22,7 @@ import {
   applyCombatPresets,
   applyTargetCombatPresets,
   combatPresetEffects,
+  combatPresetRequiresActivation,
   combatPresetSubjectSummary,
   combatPresetSupportsRole,
   updateCombatPresetSelection,
@@ -453,6 +454,12 @@ test("mutually exclusive ability modes replace the prior selection", () => {
     "unit:3:2",
   ]);
   assert.deepEqual(updateCombatPresetSelection(presets, ["unit:3:2"], "unit:3:2", false), []);
+});
+
+test("inherent defenses are native profile values rather than activation choices", () => {
+  assert.equal(combatPresetRequiresActivation({ activation: "inherent" }), false);
+  assert.equal(combatPresetRequiresActivation({ activation: "situational" }), true);
+  assert.equal(combatPresetRequiresActivation({}), true);
 });
 
 test("source defaults scale with model count without discarding editable overrides", () => {
@@ -1245,14 +1252,25 @@ test("defensive rules cannot increase exact expected damage", () => {
   assert.ok(lessThanOrEqual(cover, baseline));
 });
 
-test("source-backed defensive profile values reduce C/Wasm exact damage", () => {
-  const baseline = exactMean({ ap: 2, save: 3 });
+test("source-backed defensive profile values reduce C/Wasm exact damage", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const redemptor = catalogue.units.find((unit) => unit.name === "Redemptor Dreadnought");
+  const model = redemptor.models[0];
+  assert.equal(model.reduction, 1);
+  const baseline = exactMean({
+    ap: 2,
+    save: model.save,
+    invulnerable: model.invuln ?? 0,
+    reduction: 0,
+  });
   const defended = exactMean({
     ap: 2,
-    save: 2,
-    invulnerable: 4,
-    feelNoPain: 5,
-    reduction: 1,
+    save: model.save,
+    invulnerable: model.invuln ?? 0,
+    feelNoPain: model.feelNoPain,
+    reduction: model.reduction,
   });
   assert.ok(lessThanOrEqual(defended, baseline));
   assert.notDeepEqual(defended, baseline);
