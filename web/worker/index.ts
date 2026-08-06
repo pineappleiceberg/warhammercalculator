@@ -15,7 +15,7 @@ import type { ArmyListInput } from "../lib/army-list";
 
 interface Env {
   ASSETS: Fetcher;
-  DB: D1Database;
+  ARMY_DB: D1Database;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -315,20 +315,24 @@ async function handleApi(request: Request, env: Env) {
     }
 
     if (url.pathname === "/api/v1/lists" && request.method === "GET") {
-      return json({ data: await listArmyLists(env.DB), apiVersion: "v1" });
+      return json({ data: await listArmyLists(env.ARMY_DB), apiVersion: "v1" });
     }
 
     if (url.pathname === "/api/v1/lists" && request.method === "POST") {
-      return json({ data: await createArmyList(env.DB, await requestArmyList(request)) }, 201);
+      return json({ data: await createArmyList(env.ARMY_DB, await requestArmyList(request)) }, 201);
     }
 
     const listMatch = /^\/api\/v1\/lists\/([0-9a-f-]+)$/i.exec(url.pathname);
     if (listMatch && request.method === "PUT") {
-      const updated = await updateArmyList(env.DB, listMatch[1], await requestArmyList(request));
+      const updated = await updateArmyList(
+        env.ARMY_DB,
+        listMatch[1],
+        await requestArmyList(request),
+      );
       return updated ? json({ data: updated }) : apiError("Army list not found", 404);
     }
     if (listMatch && request.method === "DELETE") {
-      return (await deleteArmyList(env.DB, listMatch[1]))
+      return (await deleteArmyList(env.ARMY_DB, listMatch[1]))
         ? json({ deleted: true })
         : apiError("Army list not found", 404);
     }

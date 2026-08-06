@@ -63,7 +63,7 @@ async function loadWorker() {
 }
 
 const testEnv = {
-  DB: createD1Mock(),
+  ARMY_DB: createD1Mock(),
   ASSETS: {
     fetch: async (request) => {
       const pathname = new URL(request.url).pathname.replace(/^\//, "");
