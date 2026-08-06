@@ -186,7 +186,8 @@ CREATE TABLE unit_combat_preset_effects (
     effect_type TEXT NOT NULL CHECK (effect_type IN
         ('lethal_hits', 'devastating_wounds', 'twin_linked', 'ignores_cover',
          'sustained_hits', 'rapid_fire', 'lance', 'heavy', 'ap_modifier',
-         'critical_hits', 'critical_wounds')),
+         'critical_hits', 'critical_wounds', 'attacks_modifier',
+         'strength_modifier', 'damage_modifier')),
     value INTEGER NOT NULL,
     dice_count INTEGER NOT NULL DEFAULT 0 CHECK (dice_count >= 0),
     dice_sides INTEGER NOT NULL DEFAULT 0 CHECK (dice_sides >= 0),
@@ -630,6 +631,102 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
                     "subject": subject,
                 }
             )
+
+    characteristic_list = (
+        r"((?:Attacks|Strength|Damage)"
+        r"(?:(?:\s*,\s*|\s+and\s+)(?:Attacks|Strength|Damage))*)"
+    )
+    characteristic_patterns = (
+        re.compile(
+            rf"\b(add|subtract) (\d+) (?:to|from) the {characteristic_list} "
+            r"characteristics? of ([^.;]+)",
+            re.IGNORECASE,
+        ),
+        re.compile(
+            rf"\b(improve|worsen) the {characteristic_list} characteristics? of "
+            r"([^.;]+?) by (\d+)\b",
+            re.IGNORECASE,
+        ),
+    )
+    characteristic_types = {
+        "attacks": "attacks_modifier",
+        "strength": "strength_modifier",
+        "damage": "damage_modifier",
+    }
+    characteristic_effects: dict[
+        tuple[str, str, str], dict[str, int | str] | None
+    ] = {}
+    characteristic_values: dict[str, set[int]] = {}
+    for pattern_index, pattern in enumerate(characteristic_patterns):
+        for match in pattern.finditer(text):
+            if pattern_index == 0:
+                direction, amount_text, names, subject_text = match.groups()
+            else:
+                direction, names, subject_text, amount_text = match.groups()
+            if direction.casefold() in {"subtract", "worsen"}:
+                continue
+            lowered_subject = subject_text.casefold().strip()
+            generic_subject = bool(
+                re.match(r"(?:that|the) attack\b", lowered_subject)
+                or re.match(
+                    r"(?:(?:melee|ranged) )?weapons equipped by "
+                    r"(?:this model|models? in (?:this|that|the|the bearer’s|the bearer's) unit)",
+                    lowered_subject,
+                )
+                or re.match(
+                    r"(?:this|that|the|the bearer’s|the bearer's) unit(?:’s|'s) "
+                    r"(?:melee|ranged) weapons\b",
+                    lowered_subject,
+                )
+            )
+            if not generic_subject:
+                continue
+            sentence_start = max(
+                text.rfind(".", 0, match.start()),
+                text.rfind(";", 0, match.start()),
+            )
+            clause_prefix = text[sentence_start + 1 : match.start()]
+            if re.search(
+                r"makes? (?:an? )?(?:(?:melee|ranged) )?attack with "
+                r"(?:its|their|a|the) (?!melee\b|ranged\b|weapon\b)[^,.;]{1,100} weapon",
+                clause_prefix,
+                re.IGNORECASE,
+            ):
+                continue
+            amount = int(amount_text)
+            parsed_characteristics = re.findall(
+                r"Attacks|Strength|Damage", names, re.IGNORECASE
+            )
+            for characteristic in parsed_characteristics:
+                effect_type = characteristic_types[characteristic.casefold()]
+                characteristic_values.setdefault(effect_type, set()).add(amount)
+            role, subject = combat_effect_application(text, match.start())
+            if subject == "unknown":
+                role, subject = combat_effect_application(text, match.end())
+            if subject == "unknown":
+                continue
+            for characteristic in parsed_characteristics:
+                effect_type = characteristic_types[characteristic.casefold()]
+                identity = (effect_type, role, subject)
+                existing = characteristic_effects.get(identity)
+                if identity in characteristic_effects and (
+                    existing is None or existing["value"] != amount
+                ):
+                    characteristic_effects[identity] = None
+                elif identity not in characteristic_effects:
+                    characteristic_effects[identity] = {
+                        "type": effect_type,
+                        "value": amount,
+                        "dice_count": 0,
+                        "dice_sides": 0,
+                        "role": role,
+                        "subject": subject,
+                    }
+    effects.extend(
+        effect
+        for effect in characteristic_effects.values()
+        if effect is not None and len(characteristic_values[effect["type"]]) == 1
+    )
     return [effect for effect in effects if effect["subject"] != "unknown"]
 
 
@@ -668,8 +765,8 @@ def combat_preset(description: str) -> dict[str, object] | None:
     effects["additional_effects"] = combat_additional_effects(text)
     if not any(value for key, value in effects.items() if key != "weapon_scope"):
         return None
-    has_melee = "melee attack" in lowered
-    has_ranged = "ranged attack" in lowered
+    has_melee = "melee attack" in lowered or "melee weapon" in lowered
+    has_ranged = "ranged attack" in lowered or "ranged weapon" in lowered
     effects["weapon_scope"] = (
         "Melee" if has_melee and not has_ranged else "Ranged" if has_ranged and not has_melee else "Any"
     )
@@ -964,7 +1061,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "12"),
+                    ("schema_version", "13"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

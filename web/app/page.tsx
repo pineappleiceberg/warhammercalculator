@@ -823,9 +823,26 @@ export default function Home() {
     const names = new Set(weapon?.abilities.map((entry) => entry.name) ?? []);
     const sustainedHits = abilityDiceValue(ability("sustained hits"));
     const rapidFire = abilityDiceValue(ability("rapid fire"));
+    const attacks = weapon ? parseDice(weapon.attacks) : null;
+    const damage = weapon ? parseDice(weapon.damage) : null;
     const baseProfile = weapon
       ? {
           ...current,
+          ...(attacks
+            ? {
+                attackDice: attacks.count,
+                attackSides: attacks.sides,
+                attacks: attacks.modifier,
+              }
+            : {}),
+          ...(damage
+            ? {
+                damageDice: damage.count,
+                damageSides: damage.sides,
+                damage: damage.modifier,
+              }
+            : {}),
+          ...(/^\d+$/.test(weapon.strength) ? { strength: Number(weapon.strength) } : {}),
           ap: Math.abs(weapon.ap ?? 0),
           criticalHits: 6,
           criticalWounds: antiWoundThreshold(weapon.abilities, targetKeywords),

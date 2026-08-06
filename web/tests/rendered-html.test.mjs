@@ -195,6 +195,16 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
       subject: "friendly_unit",
     },
   ]);
+  const captain = catalogue.units.find((unit) => unit.id === "000000073");
+  const finestHour = captain.combatPresets.find((preset) => preset.name === "Finest Hour");
+  assert.equal(finestHour.weaponScope, "Melee");
+  assert.deepEqual(
+    finestHour.effects.map((effect) => [effect.type, effect.value, effect.role, effect.subject]),
+    [
+      ["devastating_wounds", 1, "attacker", "self"],
+      ["attacks_modifier", 3, "attacker", "self"],
+    ],
+  );
   const loadout = await worker.fetch(
     new Request(`http://localhost/api/v1/loadout?unit=${warriors.id}`),
     testEnv,

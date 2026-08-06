@@ -264,15 +264,7 @@ export default function PlayMode() {
 
   const applyActivePresetSelection = (attackerIds: string[], targetIds: string[]) => {
     if (!weaponProfile) return;
-    setProfile((current) =>
-      applyCombatPresets(
-        current,
-        selectedCombatPresets(attackerIds, attackerCatalogueUnit),
-        selectedCombatPresets(targetIds, targetCatalogueUnit),
-        weaponProfile.type,
-      ),
-    );
-    setResult(null);
+    refreshProfile(weaponId, targetModelId, profileId, attackerIds, targetIds);
   };
 
   const roll = () => {

@@ -141,6 +141,53 @@ class ProfileDataTests(unittest.TestCase):
             ["lethal_hits"],
         )
 
+    def test_combat_preset_parser_extracts_generic_positive_characteristic_modifiers(self):
+        preset = combat_preset(
+            "While this model is leading a unit, add 1 to the Attacks and Strength "
+            "characteristics of melee weapons equipped by models in that unit. Each time a "
+            "model in that unit makes a melee attack, improve the Damage characteristic of "
+            "that attack by 2."
+        )
+        effects = {effect["type"]: effect for effect in preset["additional_effects"]}
+        self.assertEqual(preset["weapon_scope"], "Melee")
+        self.assertEqual(
+            {
+                effect_type: (effect["value"], effect["role"], effect["subject"])
+                for effect_type, effect in effects.items()
+            },
+            {
+                "attacks_modifier": (1, "attacker", "led_unit"),
+                "strength_modifier": (1, "attacker", "led_unit"),
+                "damage_modifier": (2, "attacker", "led_unit"),
+            },
+        )
+
+    def test_combat_preset_parser_omits_characteristic_changes_it_cannot_apply_exactly(self):
+        named_weapon = combat_preset(
+            "Add 2 to the Attacks characteristic of this model’s Frostfang weapon."
+        )
+        self.assertIsNone(named_weapon)
+        negative_dice_modifier = combat_preset(
+            "Select one enemy unit. Subtract 1 from the Attacks characteristic of weapons "
+            "equipped by models in that unit."
+        )
+        self.assertIsNone(negative_dice_modifier)
+        replacement = combat_preset(
+            "Melee weapons equipped by models in this unit have an Attacks characteristic of 4."
+        )
+        self.assertIsNone(replacement)
+        conflicting = combat_preset(
+            "Each time this model makes a melee attack that targets a MONSTER unit, add 1 to "
+            "the Damage characteristic of that attack. If it targets a TITANIC unit, add 2 to "
+            "the Damage characteristic of that attack instead."
+        )
+        self.assertIsNone(conflicting)
+        named_attack = combat_preset(
+            "Each time a model in this unit makes a melee attack with its Wolf Guard weapon, "
+            "add 1 to the Damage characteristic of that attack."
+        )
+        self.assertIsNone(named_attack)
+
     def test_combat_preset_parser_splits_keyword_choices(self):
         choices = combat_presets(
             "Weapon Doctrine",
@@ -284,7 +331,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "12",
+                "13",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -303,7 +350,20 @@ class ProfileDataTests(unittest.TestCase):
             )
             self.assertGreater(
                 connection.execute("SELECT count(*) FROM unit_combat_preset_effects").fetchone()[0],
-                100,
+                500,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT effect_type, count(*) FROM unit_combat_preset_effects
+                       WHERE effect_type IN
+                           ('attacks_modifier', 'strength_modifier', 'damage_modifier')
+                       GROUP BY effect_type ORDER BY effect_type"""
+                ).fetchall(),
+                [
+                    ("attacks_modifier", 17),
+                    ("damage_modifier", 3),
+                    ("strength_modifier", 90),
+                ],
             )
             self.assertEqual(
                 connection.execute(
@@ -487,6 +547,32 @@ class ProfileDataTests(unittest.TestCase):
                 "role": "attacker",
                 "subject": "friendly_unit",
             }],
+        )
+        captain = next(unit for unit in catalogue["units"] if unit["id"] == "000000073")
+        finest_hour = next(
+            preset for preset in captain["combatPresets"] if preset["name"] == "Finest Hour"
+        )
+        self.assertEqual(finest_hour["weaponScope"], "Melee")
+        self.assertEqual(
+            finest_hour["effects"],
+            [
+                {
+                    "type": "devastating_wounds",
+                    "value": 1,
+                    "diceCount": 0,
+                    "diceSides": 0,
+                    "role": "attacker",
+                    "subject": "self",
+                },
+                {
+                    "type": "attacks_modifier",
+                    "value": 3,
+                    "diceCount": 0,
+                    "diceSides": 0,
+                    "role": "attacker",
+                    "subject": "self",
+                },
+            ],
         )
         troupe = next(unit for unit in catalogue["units"] if unit["id"] == "000002536")
         dance = [preset for preset in troupe["combatPresets"] if preset["choiceGroup"]]

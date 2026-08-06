@@ -309,11 +309,14 @@ Model vs Model, Unit vs Unit, and Play Mode expose conditional unit abilities im
 their published source text. No condition is silently enabled in Unit vs Unit.
 Saved lists can mark battle- or turn-long conditions as Play Mode defaults, and
 Play Mode keeps changes in its local recovery state. Offensive modifiers,
-re-rolls, weapon-keyword grants, AP changes, and Critical Hit/Wound thresholds
-come from the correctly classified source; defensive effects come from the
-target unit. Melee/ranged scope is respected per weapon, ambiguous subjects are
-not imported, mutually exclusive modes cannot be combined, and the resulting
-profile remains editable.
+re-rolls, weapon-keyword grants, AP changes, Critical Hit/Wound thresholds, and
+direct positive Attacks, Strength, and Damage changes come from the correctly
+classified source; defensive effects come from the target unit. Melee/ranged
+scope is respected per weapon. Named-weapon-only, conflicting,
+replacement-value, random, and negative characteristic changes are omitted
+until they can be represented exactly. Ambiguous subjects are not imported,
+mutually exclusive modes cannot be combined, and the resulting profile remains
+editable.
 Indirect Fire applies its hit modifier and cover normally, forces unmodified Hit
 rolls of 1–3 to fail before critical-hit processing, and rejects Torrent attacks
 when no target model is visible.

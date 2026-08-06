@@ -120,6 +120,15 @@ export function combatPresetEffects(presets, weaponType, role) {
     apModifier: additional
       .filter((effect) => effect.type === "ap_modifier")
       .reduce((sum, effect) => sum + effect.value, 0),
+    attacksModifier: additional
+      .filter((effect) => effect.type === "attacks_modifier")
+      .reduce((sum, effect) => sum + effect.value, 0),
+    strengthModifier: additional
+      .filter((effect) => effect.type === "strength_modifier")
+      .reduce((sum, effect) => sum + effect.value, 0),
+    damageModifier: additional
+      .filter((effect) => effect.type === "damage_modifier")
+      .reduce((sum, effect) => sum + effect.value, 0),
     criticalHits: threshold("critical_hits"),
     criticalWounds: threshold("critical_wounds"),
     lethalHits: additional.some((effect) => effect.type === "lethal_hits"),
@@ -201,6 +210,15 @@ export function applyCombatPresets(profile, attackerPresets, targetPresets, weap
   ].filter((value) => value > 0);
   return {
     ...profile,
+    ...(typeof profile.attacks === "number"
+      ? { attacks: profile.attacks + attacker.attacksModifier + target.attacksModifier }
+      : {}),
+    ...(typeof profile.strength === "number"
+      ? { strength: profile.strength + attacker.strengthModifier + target.strengthModifier }
+      : {}),
+    ...(typeof profile.damage === "number"
+      ? { damage: profile.damage + attacker.damageModifier + target.damageModifier }
+      : {}),
     ap: Math.max(0, (profile.ap ?? 0) + attacker.apModifier + target.apModifier),
     criticalHits: criticalHits.length ? Math.min(...criticalHits) : 0,
     criticalWounds: criticalWounds.length ? Math.min(...criticalWounds) : 0,

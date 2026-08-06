@@ -16,12 +16,26 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Extend conservative conditional-ability extraction to direct attacks,
-   Strength, Damage, defensive save, Feel No Pain, and damage-reduction changes.
-2. Add a source-backed rules eligibility layer for target keywords and phase or
+1. Extend conservative conditional-ability extraction to defensive saves, Feel
+   No Pain, and damage reduction, applying those effects to every ordered target
+   segment without overriding editable values.
+2. Represent negative, random, and replacement-value Attacks, Strength, and
+   Damage changes exactly in native C and WebAssembly before importing them.
+3. Add a source-backed rules eligibility layer for target keywords and phase or
    range conditions that currently require manual interpretation.
 
 ## Completed cycles
+
+- 2026-08-06: Added source-backed direct positive Attacks, Strength, and Damage
+  modifiers to conditional combat presets. The conservative parser imports 110
+  exact effects across the pinned catalogue, detects melee/ranged weapon scope,
+  classifies the affected unit, and composes the changes into editable profiles
+  before native or WebAssembly calculation. Named-weapon-only clauses,
+  conflicting alternative values, fixed replacements, random values, and
+  negative dice modifiers remain explicitly omitted rather than approximated.
+  Model vs Model resets native statlines before recomposition, and Play Mode now
+  rebuilds from the selected source profiles when presets change so repeated
+  toggles cannot compound modifiers.
 
 - 2026-08-06: Instrumented the exact deferred-damage evaluator to record its
   true peak sparse-state count and exposed that evidence through native,

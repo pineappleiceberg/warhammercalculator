@@ -292,6 +292,79 @@ test("unit ability presets compose weapon rules, AP, and critical thresholds", (
   assert.equal(combatPresetSubjectSummary(preset, "attacker"), "this unit");
 });
 
+test("unit ability presets compose direct weapon characteristic modifiers", () => {
+  const preset = {
+    weaponScope: "Melee",
+    hitModifier: 0,
+    woundModifier: 0,
+    rerollHits: false,
+    rerollHitOnes: false,
+    rerollWounds: false,
+    rerollWoundOnes: false,
+    effects: [
+      {
+        type: "attacks_modifier",
+        value: 1,
+        diceCount: 0,
+        diceSides: 0,
+        role: "attacker",
+        subject: "led_unit",
+      },
+      {
+        type: "strength_modifier",
+        value: 2,
+        diceCount: 0,
+        diceSides: 0,
+        role: "attacker",
+        subject: "led_unit",
+      },
+      {
+        type: "damage_modifier",
+        value: 1,
+        diceCount: 0,
+        diceSides: 0,
+        role: "attacker",
+        subject: "led_unit",
+      },
+    ],
+  };
+  const applied = applyCombatPresets(
+    {
+      attacks: 0,
+      attackDice: 1,
+      attackSides: 6,
+      strength: 8,
+      damage: 1,
+      damageDice: 1,
+      damageSides: 3,
+      ap: 2,
+      criticalHits: 6,
+      criticalWounds: 0,
+      lethalHits: false,
+      devastatingWounds: false,
+      twinLinked: false,
+      ignoresCover: false,
+      lanceActive: false,
+      heavyActive: false,
+      sustainedHits: 0,
+      sustainedHitsDice: 0,
+      sustainedHitsSides: 0,
+      rapidFire: 0,
+      rapidFireDice: 0,
+      rapidFireSides: 0,
+      hitModifier: 0,
+      woundModifier: 0,
+    },
+    [preset],
+    [],
+    "Melee",
+  );
+  assert.deepEqual([applied.attackDice, applied.attackSides, applied.attacks], [1, 6, 1]);
+  assert.equal(applied.strength, 10);
+  assert.deepEqual([applied.damageDice, applied.damageSides, applied.damage], [1, 3, 2]);
+  assert.equal(combatPresetEffects([preset], "Ranged", "attacker").attacksModifier, 0);
+});
+
 test("mutually exclusive ability modes replace the prior selection", () => {
   const presets = [
     { id: "unit:3", choiceGroup: "unit:3" },

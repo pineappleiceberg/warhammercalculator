@@ -133,7 +133,10 @@ export type CatalogueCombatPresetEffect = {
     | "heavy"
     | "ap_modifier"
     | "critical_hits"
-    | "critical_wounds";
+    | "critical_wounds"
+    | "attacks_modifier"
+    | "strength_modifier"
+    | "damage_modifier";
   value: number;
   diceCount: number;
   diceSides: number;
