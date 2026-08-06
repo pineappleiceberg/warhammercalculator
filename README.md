@@ -265,10 +265,15 @@ cmake --build build --target formal-e-acsl
 
 The web test suite exhaustively compares the JavaScript and WebAssembly wound,
 modified Hit/Wound, armour, AP, invulnerable-save, and cover thresholds over
-their supported small domains. Hand-derived exact fractions cover re-rolls of
-1, all failed-roll re-rolls, modifier caps, and opposing modifiers. It also
-checks expected-damage monotonicity for AP, armour, Feel No Pain, invulnerable
-saves, and cover. Profile selection applies Anti abilities
+their supported small domains. The
+[shared rules interaction corpus](tests/RULE_INTERACTION_CORPUS.md) supplies
+hand-derived exact fractions for unmodified criticals, re-rolls, modifier caps,
+Lethal plus Sustained Hits, save bypasses, Feel No Pain, Indirect Fire, and
+non-spilling Devastating Wounds. Native C, WebAssembly, and the exact API must
+match every fraction, while deterministic seeded simulations must converge on
+the corresponding applied means. The suite also checks expected-damage
+monotonicity for AP, armour, Feel No Pain, invulnerable saves, and cover.
+Profile selection applies Anti abilities
 only when the selected target has the matching datasheet keyword. Damage
 allocation is exhaustively compared between C and JavaScript across model
 wound counts, unit sizes, prior damage states, and incoming damage values.

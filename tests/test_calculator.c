@@ -54,6 +54,114 @@ static void initialize_profiles(struct weapon_profile *weapon, struct target_pro
     target->reduction = 0;
 }
 
+struct rule_interaction_case {
+    const char *name;
+    uint16_t attacks;
+    uint8_t hits_on;
+    uint16_t strength;
+    uint16_t ap;
+    uint16_t damage;
+    uint8_t critical_hits_on;
+    uint16_t toughness;
+    uint8_t save;
+    uint8_t invulnerable_save;
+    uint8_t feel_no_pain;
+    uint16_t wounds;
+    uint16_t target_models;
+    uint32_t flags;
+    uint8_t critical_wounds_on;
+    uint16_t sustained_hits;
+    int16_t hit_modifier;
+    int16_t wound_modifier;
+    uint64_t expected_numerator;
+    uint64_t expected_denominator;
+    uint64_t applied_numerator;
+    uint64_t applied_denominator;
+};
+
+#define WHC_RULE_CASE(case_name, attacks, hits_on, strength, ap, damage, critical_hits_on,         \
+                      toughness, save, invulnerable_save, feel_no_pain, wounds, target_models,     \
+                      flags, critical_wounds_on, sustained_hits, hit_modifier, wound_modifier,     \
+                      expected_numerator, expected_denominator, applied_numerator,                 \
+                      applied_denominator)                                                         \
+    {#case_name,                                                                                   \
+     attacks,                                                                                      \
+     hits_on,                                                                                      \
+     strength,                                                                                     \
+     ap,                                                                                           \
+     damage,                                                                                       \
+     critical_hits_on,                                                                             \
+     toughness,                                                                                    \
+     save,                                                                                         \
+     invulnerable_save,                                                                            \
+     feel_no_pain,                                                                                 \
+     wounds,                                                                                       \
+     target_models,                                                                                \
+     flags,                                                                                        \
+     critical_wounds_on,                                                                           \
+     sustained_hits,                                                                               \
+     hit_modifier,                                                                                 \
+     wound_modifier,                                                                               \
+     expected_numerator,                                                                           \
+     expected_denominator,                                                                         \
+     applied_numerator,                                                                            \
+     applied_denominator},
+static const struct rule_interaction_case rule_interaction_cases[] = {
+#include "rules_interaction_cases.inc"
+};
+#undef WHC_RULE_CASE
+
+/*@ terminates \true; */
+static void test_rule_interaction_corpus(void) {
+    size_t index = 0u;
+
+    while (index < sizeof(rule_interaction_cases) / sizeof(rule_interaction_cases[0])) {
+        const struct rule_interaction_case *test_case = &rule_interaction_cases[index];
+        struct whc_web_summary summary;
+        uint64_t expected_numerator = 0u;
+        uint64_t expected_denominator = 0u;
+        uint64_t applied_numerator = 0u;
+        uint64_t applied_denominator = 0u;
+        long double applied_value = 0.0L;
+        long double expected_applied_value = 0.0L;
+        long double applied_difference = 0.0L;
+
+        assert(whc_calculate_summary(
+            0u, 0u, test_case->attacks, 1u, test_case->hits_on, test_case->strength, test_case->ap,
+            0u, 0u, test_case->damage, test_case->critical_hits_on, test_case->toughness,
+            test_case->save, test_case->invulnerable_save, test_case->feel_no_pain,
+            test_case->wounds, 0u, test_case->flags, test_case->critical_wounds_on,
+            test_case->target_models, 0u, 0u, test_case->sustained_hits, 0u, 0u, 0u, 0u,
+            test_case->hit_modifier, test_case->wound_modifier, &summary));
+        expected_numerator =
+            summary.mean_numerator_low | ((uint64_t)summary.mean_numerator_high << 32u);
+        expected_denominator =
+            summary.mean_denominator_low | ((uint64_t)summary.mean_denominator_high << 32u);
+        applied_numerator = summary.applied_mean_numerator_low |
+                            ((uint64_t)summary.applied_mean_numerator_high << 32u);
+        applied_denominator = summary.applied_mean_denominator_low |
+                              ((uint64_t)summary.applied_mean_denominator_high << 32u);
+        applied_value = (long double)applied_numerator / (long double)applied_denominator;
+        expected_applied_value =
+            (long double)test_case->applied_numerator / (long double)test_case->applied_denominator;
+        applied_difference = applied_value > expected_applied_value
+                                 ? applied_value - expected_applied_value
+                                 : expected_applied_value - applied_value;
+        if (expected_numerator != test_case->expected_numerator ||
+            expected_denominator != test_case->expected_denominator ||
+            applied_difference >= 1.0e-8L) {
+            fprintf(stderr,
+                    "%s: potential=%" PRIu64 "/%" PRIu64 ", applied=%" PRIu64 "/%" PRIu64 "\n",
+                    test_case->name, expected_numerator, expected_denominator, applied_numerator,
+                    applied_denominator);
+        }
+        assert(expected_numerator == test_case->expected_numerator);
+        assert(expected_denominator == test_case->expected_denominator);
+        assert(applied_difference < 1.0e-8L);
+        index++;
+    }
+}
+
 /*@ terminates \true; */
 static void test_probability_and_plan_validators(void) {
     struct weapon_profile weapon;
@@ -511,6 +619,7 @@ static void test_ordered_mixed_profile_volley(void) {
 int main(void) {
     assert(greatest_common_divisor(48, 18) == 6);
     test_dice();
+    test_rule_interaction_corpus();
     test_probability_and_plan_validators();
     test_basic_attack();
     test_rules();

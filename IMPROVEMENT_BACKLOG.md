@@ -16,13 +16,22 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Expand the reviewed interaction corpus for combinations of critical hits/wounds,
-   rerolls, modifiers, and save bypasses, with native/Wasm differential checks.
+1. Enforce the 10th-edition requirement that Devastating Wounds attacks are
+   allocated after a unit's ordinary attacks across exact ordered volleys, live
+   rolls, seeded simulations, and the API without losing user weapon ordering.
 2. Add source-backed unit ability presets for common Hit and Wound modifiers and
    re-roll effects while retaining manual overrides.
 
 ## Completed cycles
 
+- 2026-08-06: Added a single reviewable 10th-edition interaction corpus shared
+  by native C, WebAssembly, exact APIs, and seeded simulations. Thirteen
+  hand-derived cases lock unmodified Critical Hits/Wounds under modifiers,
+  specific and failed-roll re-rolls, Lethal plus Sustained Hits, Indirect Fire,
+  Devastating Wounds against invulnerable saves and Feel No Pain, and its
+  non-spilling damage allocation. The corpus records its official rule snapshot
+  and exact derivations; deterministic simulations must converge on the same
+  applied means.
 - 2026-08-06: Added independent Hit and Wound re-roll modes for unmodified 1s
   or all failures, plus explicit cumulative roll modifiers capped to +1/-1.
   Native C, WebAssembly, exact and ordered APIs, editable/shared profiles, live

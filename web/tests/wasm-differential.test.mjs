@@ -17,6 +17,7 @@ import {
   targetSequencePosition,
 } from "../lib/allocation.mjs";
 import { abilityDiceValue } from "../lib/dice.mjs";
+import { rulesInteractionCases } from "./rules-interaction-corpus.mjs";
 import {
   applyChoiceSelectionChange,
   applyLoadoutSubjectCountChange,
@@ -320,6 +321,57 @@ function readUint64(pointer, lowIndex, highIndex) {
   return (BigInt(high) << 32n) | BigInt(low);
 }
 
+function interactionMeans(testCase) {
+  const output = calculator._malloc(72);
+  try {
+    const ok = calculator._whc_calculate_summary(
+      0,
+      0,
+      testCase.attacks,
+      1,
+      testCase.hitOn,
+      testCase.strength,
+      testCase.ap,
+      0,
+      0,
+      testCase.damage,
+      testCase.criticalHits,
+      testCase.toughness,
+      testCase.save,
+      testCase.invulnerable,
+      testCase.feelNoPain,
+      testCase.wounds,
+      0,
+      testCase.flags,
+      testCase.criticalWounds,
+      testCase.targetModels,
+      0,
+      0,
+      testCase.sustainedHits,
+      0,
+      0,
+      0,
+      0,
+      testCase.hitModifier,
+      testCase.woundModifier,
+      output,
+    );
+    assert.equal(ok, 1, testCase.name);
+    return {
+      expected: {
+        numerator: readUint64(output, 5, 6),
+        denominator: readUint64(output, 7, 8),
+      },
+      applied: {
+        numerator: readUint64(output, 14, 15),
+        denominator: readUint64(output, 16, 17),
+      },
+    };
+  } finally {
+    calculator._free(output);
+  }
+}
+
 function exactMean({
   ap = 0,
   save = 3,
@@ -600,6 +652,20 @@ test("JavaScript and C agree on capped Hit and Wound modifiers", () => {
         modifiedRollTarget(succeedsOn, modifier),
       );
     }
+  }
+});
+
+test("C/Wasm matches the shared 10th-edition rules interaction corpus", () => {
+  for (const testCase of rulesInteractionCases) {
+    const actual = interactionMeans(testCase);
+    assert.deepEqual(actual.expected, testCase.expected, testCase.name);
+    assert.ok(
+      Math.abs(
+        Number(actual.applied.numerator) / Number(actual.applied.denominator) -
+          Number(testCase.applied.numerator) / Number(testCase.applied.denominator),
+      ) < 1e-8,
+      testCase.name,
+    );
   }
 });
 

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 import { antiWoundThreshold } from "../lib/anti.mjs";
+import { rulesInteractionCases } from "./rules-interaction-corpus.mjs";
 
 const projectRoot = new URL("../", import.meta.url);
 
@@ -618,6 +619,96 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.ok(rolled.data.details.length >= rolled.data.attacksResolved);
   assert.ok(rolled.data.appliedDamage <= rolled.data.totalDamage);
   assert.ok(rolled.data.modelsDestroyed <= 1);
+});
+
+test("API exact and seeded simulation paths match the shared rules interaction corpus", async () => {
+  const worker = await loadWorker();
+  const context = { waitUntil() {}, passThroughOnException() {} };
+  const profileFor = (testCase) => ({
+    attackDice: 0,
+    attackSides: 0,
+    attacks: testCase.attacks,
+    weaponCount: 1,
+    hitOn: testCase.hitOn,
+    strength: testCase.strength,
+    ap: testCase.ap,
+    damageDice: 0,
+    damageSides: 0,
+    damage: testCase.damage,
+    criticalHits: testCase.criticalHits,
+    toughness: testCase.toughness,
+    save: testCase.save,
+    invulnerable: testCase.invulnerable,
+    feelNoPain: testCase.feelNoPain,
+    wounds: testCase.wounds,
+    targetModels: testCase.targetModels,
+    criticalWounds: testCase.criticalWounds,
+    sustainedHits: testCase.sustainedHits,
+    hitModifier: testCase.hitModifier,
+    woundModifier: testCase.woundModifier,
+    lethalHits: (testCase.flags & 1) !== 0,
+    devastatingWounds: (testCase.flags & 2) !== 0,
+    twinLinked: (testCase.flags & 4) !== 0,
+    rerollHits: (testCase.flags & 8) !== 0,
+    torrent: (testCase.flags & 16) !== 0,
+    heavyActive: (testCase.flags & 32) !== 0,
+    lanceActive: (testCase.flags & 64) !== 0,
+    ignoresCover: (testCase.flags & 2048) !== 0,
+    indirect: (testCase.flags & 4096) !== 0,
+    rerollHitOnes: (testCase.flags & 8192) !== 0,
+    rerollWounds: (testCase.flags & 16384) !== 0,
+    rerollWoundOnes: (testCase.flags & 32768) !== 0,
+  });
+  const targetFor = (testCase) => ({
+    toughness: testCase.toughness,
+    save: testCase.save,
+    invulnerable: testCase.invulnerable,
+    feelNoPain: testCase.feelNoPain,
+    wounds: testCase.wounds,
+    reduction: 0,
+    modelCount: testCase.targetModels,
+  });
+  const fractionValue = (fraction) => Number(fraction.numerator) / Number(fraction.denominator);
+
+  for (const [index, testCase] of rulesInteractionCases.entries()) {
+    const profile = profileFor(testCase);
+    const exactResponse = await worker.fetch(
+      new Request("http://localhost/api/v1/calculate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ profile }),
+      }),
+      testEnv,
+      context,
+    );
+    const exactText = await exactResponse.text();
+    assert.equal(exactResponse.status, 200, `${testCase.name}: ${exactText}`);
+    const exact = JSON.parse(exactText).data;
+    assert.ok(Math.abs(exact.mean - fractionValue(testCase.expected)) < 1e-12, testCase.name);
+    assert.ok(Math.abs(exact.applied.mean - fractionValue(testCase.applied)) < 1e-8, testCase.name);
+
+    const simulationResponse = await worker.fetch(
+      new Request("http://localhost/api/v1/volley/simulate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          profiles: [profile],
+          targets: [targetFor(testCase)],
+          seed: (0x51_7c_c1e5 + index * 0x9e_37_79b9) >>> 0,
+          trials: 20_000,
+        }),
+      }),
+      testEnv,
+      context,
+    );
+    const simulationText = await simulationResponse.text();
+    assert.equal(simulationResponse.status, 200, `${testCase.name}: ${simulationText}`);
+    const simulation = JSON.parse(simulationText).data;
+    assert.ok(
+      Math.abs(simulation.mean - fractionValue(testCase.applied)) < 0.045,
+      `${testCase.name}: simulated ${simulation.mean}`,
+    );
+  }
 });
 
 test("reports dependency health, retryable outages, and request diagnostics", async () => {
