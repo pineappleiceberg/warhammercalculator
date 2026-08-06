@@ -1000,6 +1000,62 @@ select:focus {
   font-size: 12px;
   line-height: 1.45;
 }
+
+.source-choice-pools {
+  border: 1px solid #c8c0b1;
+  background: #f6f1e7;
+}
+
+.source-choice-pools > summary {
+  padding: 11px 13px;
+  cursor: pointer;
+  font:
+    700 10px var(--font-geist-mono),
+    monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.source-choice-pools > p {
+  margin: 0;
+  padding: 0 13px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.source-choice-pools fieldset {
+  display: grid;
+  gap: 7px;
+  margin: 0 12px 12px;
+  padding: 10px;
+  border: 1px solid #d8d0c2;
+  background: var(--paper);
+}
+
+.source-choice-pools legend {
+  padding: 0 5px;
+  color: var(--red);
+  font:
+    700 10px var(--font-geist-mono),
+    monospace;
+  text-transform: uppercase;
+}
+
+.source-choice-pools fieldset > small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.source-choice-pools label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 4.5rem;
+  align-items: center;
+  gap: 10px;
+}
+
+.roster-choice-pools {
+  margin-top: 0.75rem;
+}
 .stat-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

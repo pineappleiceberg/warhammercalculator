@@ -230,6 +230,10 @@ constraints. Fixed limits, per-model allowances, and rules such as "for every 5
 models" are exposed to the web editor and API with their original source text.
 Total equipped counts remain independent and editable; option-selected counts
 produce warnings that can be acknowledged for casualties or narrative rules.
+Shared source allowances are represented as choice pools, and compound
+alternatives retain every tracked weapon in the bundle. Unit editors, saved
+lists, and `POST /api/v1/validate-loadout` accept per-alternative selections,
+derive the resulting weapon counts, and flag a combined pool only once.
 
 ## WebAssembly build
 

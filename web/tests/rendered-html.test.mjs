@@ -200,6 +200,50 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   );
   assert.equal((await standardEquipment.json()).data.valid, true);
 
+  const achillus = catalogue.units.find((unit) => unit.name === "Contemptor-achillus Dreadnought");
+  const achillusPool = achillus.wargearChoicePools[0];
+  assert.equal(achillusPool.alternatives.length, 5);
+  const infernusGroup = achillus.weapons.find(
+    (weapon) => weapon.groupName === "Infernus incinerator",
+  ).groupId;
+  const doubleInfernus = achillusPool.alternatives.find((alternative) =>
+    /^2 infernus incinerators$/i.test(alternative.label),
+  );
+  const validBundle = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: achillus.id,
+        modelCount: 1,
+        weaponCounts: { [infernusGroup]: 2 },
+        choiceSelections: { [doubleInfernus.id]: 1 },
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  const validBundleData = (await validBundle.json()).data;
+  assert.equal(validBundleData.valid, true);
+  assert.equal(validBundleData.selectedWeaponCounts[infernusGroup], 2);
+  const invalidSharedPool = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: achillus.id,
+        modelCount: 1,
+        weaponCounts: { [infernusGroup]: 4 },
+        choiceSelections: { [doubleInfernus.id]: 2 },
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  const invalidSharedPoolData = (await invalidSharedPool.json()).data;
+  assert.equal(invalidSharedPoolData.valid, false);
+  assert.match(invalidSharedPoolData.warnings[0], /shared limit of 1/i);
+
   const unknownWeapon = await worker.fetch(
     new Request("http://localhost/api/v1/validate-loadout", {
       method: "POST",
@@ -383,6 +427,7 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
         name: "Test unit",
         modelCount: 10,
         weapons: [{ weaponId: 7, groupId: "datasheet-1:7", name: "Test weapon", count: 10 }],
+        choiceSelections: { "datasheet-1:pool:1": 1 },
       },
     ],
   };
@@ -398,6 +443,7 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
   assert.equal(createdResponse.status, 201);
   const created = (await createdResponse.json()).data;
   assert.match(created.id, /^[0-9a-f-]{36}$/i);
+  assert.equal(created.units[0].choiceSelections["datasheet-1:pool:1"], 1);
 
   const listed = await worker.fetch(new Request("http://localhost/api/v1/lists"), testEnv, context);
   assert.equal((await listed.json()).data.length, 1);

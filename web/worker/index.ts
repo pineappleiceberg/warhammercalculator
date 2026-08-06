@@ -13,7 +13,7 @@ import {
 } from "../lib/combat";
 import { createArmyList, deleteArmyList, listArmyLists, updateArmyList } from "../db/army-lists";
 import type { ArmyListInput } from "../lib/army-list";
-import { unitLoadoutWarnings } from "../lib/loadout.mjs";
+import { choiceSelectionWeaponCounts, unitLoadoutWarnings } from "../lib/loadout.mjs";
 
 interface Env {
   ASSETS: Fetcher;
@@ -52,6 +52,18 @@ type Catalogue = {
         modelsPerIncrement: number;
         quantity: number;
         source: string;
+      }>;
+    }>;
+    wargearChoicePools: Array<{
+      id: string;
+      fixed: number;
+      perIncrement: number;
+      modelsPerIncrement: number;
+      source: string;
+      alternatives: Array<{
+        id: string;
+        label: string;
+        weapons: Array<{ groupId: string; groupName: string; quantity: number }>;
       }>;
     }>;
     suggestedModelCount: number | null;
@@ -417,7 +429,15 @@ async function requestArmyList(request: Request): Promise<ArmyListInput> {
       unit.modelCount < 1 ||
       unit.modelCount > 1000 ||
       !Array.isArray(unit.weapons) ||
-      unit.weapons.length > 200
+      unit.weapons.length > 200 ||
+      (unit.choiceSelections !== undefined &&
+        (!unit.choiceSelections ||
+          typeof unit.choiceSelections !== "object" ||
+          Array.isArray(unit.choiceSelections) ||
+          Object.keys(unit.choiceSelections).length > 500 ||
+          Object.values(unit.choiceSelections).some(
+            (count) => !Number.isInteger(count) || count < 0 || count > 100,
+          )))
     ) {
       throw new Error("Each unit must have an id, unitId, name, model count, and weapons");
     }
@@ -525,6 +545,7 @@ async function handleApi(request: Request, env: Env) {
           composition: unit.composition,
           wargearOptions: unit.wargearOptions,
           weaponLimits: unit.weaponLimits,
+          wargearChoicePools: unit.wargearChoicePools,
           suggestedModelCount: unit.suggestedModelCount,
           maximumModelCount: unit.maximumModelCount,
           weapons: unit.weapons,
@@ -539,6 +560,7 @@ async function handleApi(request: Request, env: Env) {
         modelCount?: unknown;
         weaponCounts?: unknown;
         optionCounts?: unknown;
+        choiceSelections?: unknown;
       };
       if (
         !body ||
@@ -554,25 +576,38 @@ async function handleApi(request: Request, env: Env) {
       }
       const counts = body.weaponCounts as Record<string, unknown>;
       const optionCounts = (body.optionCounts ?? {}) as Record<string, unknown>;
+      const choiceSelections = (body.choiceSelections ?? {}) as Record<string, unknown>;
       if (
         Object.keys(counts).length > 200 ||
         !optionCounts ||
         typeof optionCounts !== "object" ||
         Array.isArray(optionCounts) ||
         Object.keys(optionCounts).length > 200 ||
+        !choiceSelections ||
+        typeof choiceSelections !== "object" ||
+        Array.isArray(choiceSelections) ||
+        Object.keys(choiceSelections).length > 500 ||
         Object.values(counts).some(
           (count) => !Number.isInteger(count) || (count as number) < 0 || (count as number) > 100,
         ) ||
         Object.values(optionCounts).some(
           (count) => !Number.isInteger(count) || (count as number) < 0 || (count as number) > 100,
+        ) ||
+        Object.values(choiceSelections).some(
+          (count) => !Number.isInteger(count) || (count as number) < 0 || (count as number) > 100,
         )
       ) {
-        return apiError("weaponCounts values must be integers from 0 to 100");
+        return apiError("Loadout count values must be integers from 0 to 100");
       }
       const catalogue = await loadCatalogue(request, env);
       const unit = catalogue.units.find((entry) => entry.id === body.unitId);
       if (!unit) return apiError("Unit not found", 404);
       const groupIds = new Set(unit.weapons.map((weapon) => weapon.groupId));
+      const alternativeIds = new Set(
+        unit.wargearChoicePools.flatMap((pool) =>
+          pool.alternatives.map((alternative) => alternative.id),
+        ),
+      );
       if (
         [...Object.keys(counts), ...Object.keys(optionCounts)].some(
           (groupId) => !groupIds.has(groupId),
@@ -580,9 +615,26 @@ async function handleApi(request: Request, env: Env) {
       ) {
         return apiError("weaponCounts and optionCounts must use weapon group IDs from this unit");
       }
-      const warnings = unitLoadoutWarnings(unit, body.modelCount as number, optionCounts, counts);
+      if (
+        Object.keys(choiceSelections).some((alternativeId) => !alternativeIds.has(alternativeId))
+      ) {
+        return apiError("choiceSelections must use alternative IDs from this unit");
+      }
+      const warnings = unitLoadoutWarnings(
+        unit,
+        body.modelCount as number,
+        optionCounts,
+        counts,
+        choiceSelections,
+      );
       return json({
-        data: { valid: warnings.length === 0, warnings, weaponLimits: unit.weaponLimits },
+        data: {
+          valid: warnings.length === 0,
+          warnings,
+          weaponLimits: unit.weaponLimits,
+          wargearChoicePools: unit.wargearChoicePools,
+          selectedWeaponCounts: choiceSelectionWeaponCounts(unit, choiceSelections),
+        },
         sourceUpdatedAt: catalogue.sourceUpdatedAt,
       });
     }

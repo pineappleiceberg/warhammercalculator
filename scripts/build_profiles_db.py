@@ -338,7 +338,7 @@ def create_database(output: Path) -> dict[str, int]:
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "4"),
+                    ("schema_version", "5"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
@@ -531,6 +531,9 @@ def create_database(output: Path) -> dict[str, int]:
                 "wargear_options",
                 "wargear_constraints",
                 "wargear_constraint_weapons",
+                "wargear_choice_pools",
+                "wargear_choice_alternatives",
+                "wargear_choice_alternative_weapons",
             )
         }
         connection.execute("PRAGMA optimize")

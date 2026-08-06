@@ -13,6 +13,8 @@ import {
   type OrderedVolleyRollResult,
 } from "../../lib/combat";
 import {
+  choicePoolMaximum,
+  choiceSelectionWeaponCounts,
   equippedWeaponLines,
   groupWeaponProfiles,
   normalizeEquippedCount,
@@ -66,6 +68,7 @@ export default function UnitVsUnit() {
   const [attackerModels, setAttackerModels] = useState(1);
   const [weaponCounts, setWeaponCounts] = useState<Record<string, number>>({});
   const [optionCounts, setOptionCounts] = useState<Record<string, number>>({});
+  const [choiceSelections, setChoiceSelections] = useState<Record<string, number>>({});
   const [profileCounts, setProfileCounts] = useState<Record<number, number>>({});
   const [weaponOrder, setWeaponOrder] = useState<number[]>([]);
   const [targetSegments, setTargetSegments] = useState<TargetSegment[]>([]);
@@ -99,11 +102,20 @@ export default function UnitVsUnit() {
   const attackerUnit = attackerUnits.find((unit) => unit.id === attackerUnitId);
   const targetUnit = targetUnits.find((unit) => unit.id === targetUnitId);
   const weaponGroups = groupWeaponProfiles(attackerUnit?.weapons ?? []);
+  const structuredGroupIds = new Set(
+    attackerUnit?.wargearChoicePools.flatMap((pool) =>
+      pool.alternatives.flatMap((alternative) =>
+        alternative.weapons.map((weapon) => weapon.groupId),
+      ),
+    ) ?? [],
+  );
+  const structuredOptionCounts = choiceSelectionWeaponCounts(attackerUnit, choiceSelections);
   const loadoutWarnings = unitLoadoutWarnings(
     attackerUnit,
     attackerModels,
-    optionCounts,
+    { ...optionCounts, ...structuredOptionCounts },
     weaponCounts,
+    choiceSelections,
   );
   const orderIndex = new Map(weaponOrder.map((weaponId, index) => [weaponId, index]));
   const orderedLines = equippedWeaponLines(weaponGroups, weaponCounts, profileCounts).sort(
@@ -126,6 +138,13 @@ export default function UnitVsUnit() {
     setAttackerModels(unit?.suggestedModelCount ?? 1);
     setWeaponCounts(Object.fromEntries(groups.map((group) => [group.id, 0])));
     setOptionCounts(Object.fromEntries(groups.map((group) => [group.id, 0])));
+    setChoiceSelections(
+      Object.fromEntries(
+        (unit?.wargearChoicePools ?? []).flatMap((pool) =>
+          pool.alternatives.map((alternative) => [alternative.id, 0]),
+        ),
+      ),
+    );
     setProfileCounts(
       Object.fromEntries(
         groups.flatMap((group) => group.profiles.map((profile) => [profile.id, 0])),
@@ -350,27 +369,28 @@ export default function UnitVsUnit() {
                         }
                       />
                     </label>
-                    {attackerUnit.weaponLimits.some((limit) => limit.groupId === group.id) && (
-                      <label className="option-count">
-                        <span>
-                          Selected through wargear options
-                          <small>Copies taken or replaced using the source options</small>
-                        </span>
-                        <input
-                          aria-label={`${group.name} option-selected copies`}
-                          type="number"
-                          min={0}
-                          max={weaponCounts[group.id] ?? 0}
-                          value={optionCounts[group.id] ?? 0}
-                          onChange={(event) =>
-                            setOptionCounts((current) => ({
-                              ...current,
-                              [group.id]: normalizeEquippedCount(+event.target.value),
-                            }))
-                          }
-                        />
-                      </label>
-                    )}
+                    {attackerUnit.weaponLimits.some((limit) => limit.groupId === group.id) &&
+                      !structuredGroupIds.has(group.id) && (
+                        <label className="option-count">
+                          <span>
+                            Selected through wargear options
+                            <small>Copies taken or replaced using the source options</small>
+                          </span>
+                          <input
+                            aria-label={`${group.name} option-selected copies`}
+                            type="number"
+                            min={0}
+                            max={weaponCounts[group.id] ?? 0}
+                            value={optionCounts[group.id] ?? 0}
+                            onChange={(event) =>
+                              setOptionCounts((current) => ({
+                                ...current,
+                                [group.id]: normalizeEquippedCount(+event.target.value),
+                              }))
+                            }
+                          />
+                        </label>
+                      )}
                     {group.profiles.length > 1 && (
                       <div className="profile-allocations">
                         <span>Copies using each profile this volley</span>
@@ -405,6 +425,53 @@ export default function UnitVsUnit() {
                     )}
                   </div>
                 ))}
+                {attackerUnit.wargearChoicePools.length > 0 && (
+                  <details className="source-choice-pools">
+                    <summary>
+                      Source option choices ({attackerUnit.wargearChoicePools.length})
+                    </summary>
+                    <p>
+                      Enter how many times each alternative is selected. Alternatives in the same
+                      block share one allowance, including bundled weapons.
+                    </p>
+                    {attackerUnit.wargearChoicePools.map((pool) => {
+                      const maximum = choicePoolMaximum(pool, attackerModels);
+                      const used = pool.alternatives.reduce(
+                        (sum, alternative) => sum + (choiceSelections[alternative.id] ?? 0),
+                        0,
+                      );
+                      return (
+                        <fieldset key={pool.id}>
+                          <legend>
+                            {used}/{maximum} selections
+                          </legend>
+                          <small>{pool.source}</small>
+                          {pool.alternatives.map((alternative) => (
+                            <label key={alternative.id}>
+                              <span>{alternative.label}</span>
+                              <input
+                                aria-label={`${alternative.label} source selections`}
+                                type="number"
+                                min={0}
+                                max={maximum}
+                                value={choiceSelections[alternative.id] ?? 0}
+                                onChange={(event) =>
+                                  setChoiceSelections((current) => ({
+                                    ...current,
+                                    [alternative.id]: normalizeEquippedCount(
+                                      +event.target.value,
+                                      maximum,
+                                    ),
+                                  }))
+                                }
+                              />
+                            </label>
+                          ))}
+                        </fieldset>
+                      );
+                    })}
+                  </details>
+                )}
                 {loadoutWarnings.length > 0 && (
                   <div className="loadout-warnings" role="status">
                     <strong>Check this edited loadout</strong>

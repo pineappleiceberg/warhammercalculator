@@ -12,6 +12,7 @@ export type ArmyListUnit = {
   name: string;
   modelCount: number;
   weapons: ArmyListWeapon[];
+  choiceSelections?: Record<string, number>;
 };
 
 export type ArmyListInput = {

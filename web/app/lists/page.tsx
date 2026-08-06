@@ -11,6 +11,7 @@ import {
 import { loadCatalogue, type Catalogue } from "../../lib/catalogue";
 import {
   armyListWeaponsFromGroups,
+  choicePoolMaximum,
   groupWeaponProfiles,
   normalizeEquippedCount,
   unitLoadoutWarnings,
@@ -56,6 +57,11 @@ export default function ArmyLists() {
       name: unit.name,
       modelCount: unit.suggestedModelCount ?? 1,
       weapons: armyListWeaponsFromGroups(weaponGroups),
+      choiceSelections: Object.fromEntries(
+        unit.wargearChoicePools.flatMap((pool) =>
+          pool.alternatives.map((alternative) => [alternative.id, 0]),
+        ),
+      ),
     };
     setDraft((current) => ({ ...current, units: [...current.units, item] }));
     setUnitId("");
@@ -182,36 +188,6 @@ export default function ArmyLists() {
                             }))
                           }
                         />
-                        {catalogue?.units
-                          .find((entry) => entry.id === unit.unitId)
-                          ?.weaponLimits.some(
-                            (limit) =>
-                              limit.groupId === (weapon.groupId ?? String(weapon.weaponId)),
-                          ) && (
-                          <span className="option-count-inline">
-                            <span>Via options</span>
-                            <input
-                              aria-label={`${weapon.name} option-selected copies`}
-                              type="number"
-                              min={0}
-                              max={weapon.count}
-                              value={weapon.optionCount ?? 0}
-                              onChange={(event) =>
-                                changeUnit(unit.id, (current) => ({
-                                  ...current,
-                                  weapons: current.weapons.map((entry) =>
-                                    entry.weaponId === weapon.weaponId
-                                      ? {
-                                          ...entry,
-                                          optionCount: normalizeEquippedCount(+event.target.value),
-                                        }
-                                      : entry,
-                                  ),
-                                }))
-                              }
-                            />
-                          </span>
-                        )}
                       </label>
                     </div>
                     <button
@@ -227,31 +203,70 @@ export default function ArmyLists() {
                     </button>
                   </div>
                   <div className="weapon-counts">
-                    {unit.weapons.map((weapon) => (
-                      <label key={weapon.weaponId}>
-                        <span>{weapon.name}</span>
-                        <input
-                          aria-label={`${weapon.name} copies`}
-                          type="number"
-                          min={0}
-                          max={100}
-                          value={weapon.count}
-                          onChange={(event) =>
-                            changeUnit(unit.id, (current) => ({
-                              ...current,
-                              weapons: current.weapons.map((entry) =>
-                                entry.weaponId === weapon.weaponId
-                                  ? {
-                                      ...entry,
-                                      count: normalizeEquippedCount(+event.target.value),
-                                    }
-                                  : entry,
-                              ),
-                            }))
-                          }
-                        />
-                      </label>
-                    ))}
+                    {unit.weapons.map((weapon) => {
+                      const sourceUnit = catalogue?.units.find((entry) => entry.id === unit.unitId);
+                      const groupId = weapon.groupId ?? String(weapon.weaponId);
+                      const structured = sourceUnit?.wargearChoicePools.some((pool) =>
+                        pool.alternatives.some((alternative) =>
+                          alternative.weapons.some((choice) => choice.groupId === groupId),
+                        ),
+                      );
+                      const manualOption =
+                        !structured &&
+                        sourceUnit?.weaponLimits.some((limit) => limit.groupId === groupId);
+                      return (
+                        <label key={weapon.weaponId}>
+                          <span>{weapon.name}</span>
+                          <input
+                            aria-label={`${weapon.name} copies`}
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={weapon.count}
+                            onChange={(event) =>
+                              changeUnit(unit.id, (current) => ({
+                                ...current,
+                                weapons: current.weapons.map((entry) =>
+                                  entry.weaponId === weapon.weaponId
+                                    ? {
+                                        ...entry,
+                                        count: normalizeEquippedCount(+event.target.value),
+                                      }
+                                    : entry,
+                                ),
+                              }))
+                            }
+                          />
+                          {manualOption && (
+                            <span className="option-count-inline">
+                              <span>Via options</span>
+                              <input
+                                aria-label={`${weapon.name} option-selected copies`}
+                                type="number"
+                                min={0}
+                                max={weapon.count}
+                                value={weapon.optionCount ?? 0}
+                                onChange={(event) =>
+                                  changeUnit(unit.id, (current) => ({
+                                    ...current,
+                                    weapons: current.weapons.map((entry) =>
+                                      entry.weaponId === weapon.weaponId
+                                        ? {
+                                            ...entry,
+                                            optionCount: normalizeEquippedCount(
+                                              +event.target.value,
+                                            ),
+                                          }
+                                        : entry,
+                                    ),
+                                  }))
+                                }
+                              />
+                            </span>
+                          )}
+                        </label>
+                      );
+                    })}
                   </div>
                   {(() => {
                     const sourceUnit = catalogue?.units.find((entry) => entry.id === unit.unitId);
@@ -272,20 +287,70 @@ export default function ArmyLists() {
                       unit.modelCount,
                       optionCounts,
                       counts,
+                      unit.choiceSelections ?? {},
                     );
-                    return warnings.length > 0 ? (
-                      <div className="loadout-warnings" role="status">
-                        <strong>Source loadout check</strong>
-                        <ul>
-                          {warnings.map((warning) => (
-                            <li key={warning}>{warning}</li>
-                          ))}
-                        </ul>
-                        <small>
-                          Saving remains available for casualties and narrative overrides.
-                        </small>
-                      </div>
-                    ) : null;
+                    return (
+                      <>
+                        {(sourceUnit?.wargearChoicePools.length ?? 0) > 0 && (
+                          <details className="source-choice-pools roster-choice-pools">
+                            <summary>Source option choices</summary>
+                            {sourceUnit?.wargearChoicePools.map((pool) => {
+                              const maximum = choicePoolMaximum(pool, unit.modelCount);
+                              const used = pool.alternatives.reduce(
+                                (sum, alternative) =>
+                                  sum + (unit.choiceSelections?.[alternative.id] ?? 0),
+                                0,
+                              );
+                              return (
+                                <fieldset key={pool.id}>
+                                  <legend>
+                                    {used}/{maximum} selections
+                                  </legend>
+                                  <small>{pool.source}</small>
+                                  {pool.alternatives.map((alternative) => (
+                                    <label key={alternative.id}>
+                                      <span>{alternative.label}</span>
+                                      <input
+                                        aria-label={`${alternative.label} source selections`}
+                                        type="number"
+                                        min={0}
+                                        max={maximum}
+                                        value={unit.choiceSelections?.[alternative.id] ?? 0}
+                                        onChange={(event) =>
+                                          changeUnit(unit.id, (current) => ({
+                                            ...current,
+                                            choiceSelections: {
+                                              ...(current.choiceSelections ?? {}),
+                                              [alternative.id]: normalizeEquippedCount(
+                                                +event.target.value,
+                                                maximum,
+                                              ),
+                                            },
+                                          }))
+                                        }
+                                      />
+                                    </label>
+                                  ))}
+                                </fieldset>
+                              );
+                            })}
+                          </details>
+                        )}
+                        {warnings.length > 0 && (
+                          <div className="loadout-warnings" role="status">
+                            <strong>Source loadout check</strong>
+                            <ul>
+                              {warnings.map((warning) => (
+                                <li key={warning}>{warning}</li>
+                              ))}
+                            </ul>
+                            <small>
+                              Saving remains available for casualties and narrative overrides.
+                            </small>
+                          </div>
+                        )}
+                      </>
+                    );
                   })()}
                 </article>
               ))}

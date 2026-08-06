@@ -14,6 +14,8 @@ import {
 import { abilityDiceValue } from "../lib/dice.mjs";
 import {
   armyListWeaponsFromGroups,
+  choicePoolMaximum,
+  choiceSelectionWeaponCounts,
   equippedWeaponLines,
   groupWeaponProfiles,
   normalizeEquippedCount,
@@ -30,6 +32,62 @@ const wasmBinary = await readFile(new URL("calculator.wasm", wasmDirectory));
 const calculator = await createCalculator({
   locateFile: (file) => fileURLToPath(new URL(file, wasmDirectory)),
   wasmBinary,
+});
+
+test("source choice pools share allowances and preserve compound bundles", () => {
+  const unit = {
+    name: "Dreadnought",
+    suggestedModelCount: 1,
+    maximumModelCount: 1,
+    weaponLimits: [],
+    weapons: [
+      { groupId: "unit:flamer", groupName: "Flamer" },
+      { groupId: "unit:bolter", groupName: "Bolter" },
+    ],
+    wargearChoicePools: [
+      {
+        id: "unit:pool",
+        fixed: 1,
+        perIncrement: 0,
+        modelsPerIncrement: 1,
+        source: "Choose one replacement",
+        alternatives: [
+          {
+            id: "unit:pool:1",
+            label: "2 flamers",
+            weapons: [{ groupId: "unit:flamer", groupName: "Flamer", quantity: 2 }],
+          },
+          {
+            id: "unit:pool:2",
+            label: "1 flamer and 1 bolter",
+            weapons: [
+              { groupId: "unit:flamer", groupName: "Flamer", quantity: 1 },
+              { groupId: "unit:bolter", groupName: "Bolter", quantity: 1 },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  assert.equal(choicePoolMaximum(unit.wargearChoicePools[0], 1), 1);
+  assert.deepEqual(choiceSelectionWeaponCounts(unit, { "unit:pool:2": 1 }), {
+    "unit:flamer": 1,
+    "unit:bolter": 1,
+  });
+  assert.deepEqual(
+    unitLoadoutWarnings(unit, 1, {}, { "unit:flamer": 1, "unit:bolter": 1 }, { "unit:pool:2": 1 }),
+    [],
+  );
+  assert.match(
+    unitLoadoutWarnings(
+      unit,
+      1,
+      {},
+      { "unit:flamer": 4, "unit:bolter": 0 },
+      { "unit:pool:1": 2 },
+    )[0],
+    /2 selections exceeds the shared limit of 1/i,
+  );
 });
 
 test("mixed target allocation never spills damage between models", () => {

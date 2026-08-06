@@ -20,6 +20,9 @@ The main tables are:
 - `wargear_constraints` and `wargear_constraint_weapons` for conservatively
   parsed fixed, per-model, and unit-size-dependent option allowances linked
   back to their exact source text
+- `wargear_choice_pools`, `wargear_choice_alternatives`, and
+  `wargear_choice_alternative_weapons` for shared allowances and exact
+  multi-weapon bundles, with every alternative linked to its source option
 - `source_files` and `metadata` for URLs, timestamps, and source checksums
 
 The source export can retain rows for datasheets that it no longer publishes.
@@ -53,7 +56,10 @@ The presence of a weapon on a datasheet does not by itself mean every model in
 that datasheet can equip it. The UI therefore treats weapon quantities as
 editable totals across the unit and shows the source wargear options beside
 them. It never assumes every listed profile is equipped. A separate editable
-"selected through wargear options" count is checked against the structured
-allowances, avoiding the unsafe assumption that every copy of an offered weapon
-came from an option. Ambiguous compound and conditional prose remains visible
-but is deliberately not compiled into a constraint.
+"selected through wargear options" count remains available for conservative
+single-weapon rules. Where the source is structurally clear, the browser
+instead exposes each alternative within its shared choice pool. Selecting a
+compound alternative records every weapon in that bundle and checks the pool
+once, rather than incorrectly granting its full allowance to every weapon.
+Conditional prose that depends on model identity or another option remains
+visible but is not guessed.

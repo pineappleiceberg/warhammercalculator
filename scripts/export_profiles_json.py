@@ -45,6 +45,7 @@ def export(database: Path, output: Path) -> None:
                 "composition": [],
                 "wargearOptions": [],
                 "weaponLimits": [],
+                "wargearChoicePools": [],
                 "suggestedModelCount": None,
                 "maximumModelCount": None,
             }
@@ -144,6 +145,55 @@ def export(database: Path, output: Path) -> None:
         for (datasheet_id, _group_id), limit in limits.items():
             units[datasheet_id]["weaponLimits"].append(limit)
 
+        pools: dict[tuple[str, int], dict] = {}
+        alternatives: dict[tuple[str, int, int], dict] = {}
+        for row in connection.execute(
+            """SELECT pool.datasheet_id, pool.option_position, pool.fixed_limit,
+                      pool.limit_per_increment, pool.models_per_increment,
+                      pool.description_text AS source_text,
+                      alternative.alternative_position,
+                      alternative.description_text AS alternative_text,
+                      weapon.weapon_group_id, weapon.weapon_group_name, weapon.quantity
+               FROM wargear_choice_pools AS pool
+               JOIN wargear_choice_alternatives AS alternative
+                 USING (datasheet_id, option_position)
+               JOIN wargear_choice_alternative_weapons AS weapon
+                 USING (datasheet_id, option_position, alternative_position)
+               ORDER BY pool.datasheet_id, pool.option_position,
+                        alternative.alternative_position, weapon.weapon_group_id"""
+        ):
+            pool_key = (row["datasheet_id"], row["option_position"])
+            pool = pools.setdefault(
+                pool_key,
+                {
+                    "id": f"{row['datasheet_id']}:{row['option_position']}",
+                    "fixed": row["fixed_limit"],
+                    "perIncrement": row["limit_per_increment"],
+                    "modelsPerIncrement": row["models_per_increment"],
+                    "source": row["source_text"],
+                    "alternatives": [],
+                },
+            )
+            alternative_key = (*pool_key, row["alternative_position"])
+            alternative = alternatives.get(alternative_key)
+            if alternative is None:
+                alternative = {
+                    "id": f"{pool['id']}:{row['alternative_position']}",
+                    "label": row["alternative_text"],
+                    "weapons": [],
+                }
+                alternatives[alternative_key] = alternative
+                pool["alternatives"].append(alternative)
+            alternative["weapons"].append(
+                {
+                    "groupId": row["weapon_group_id"],
+                    "groupName": row["weapon_group_name"],
+                    "quantity": row["quantity"],
+                }
+            )
+        for (datasheet_id, _position), pool in pools.items():
+            units[datasheet_id]["wargearChoicePools"].append(pool)
+
         for unit in units.values():
             composition = unit["composition"]
             if composition and all(
@@ -221,6 +271,12 @@ def export(database: Path, output: Path) -> None:
                     "SELECT count(*) FROM wargear_constraints"
                 ).fetchone()[0],
                 "constrainedWeaponCount": len(limits),
+                "choicePoolCount": len(pools),
+                "compoundAlternativeCount": sum(
+                    1
+                    for alternative in alternatives.values()
+                    if len(alternative["weapons"]) > 1
+                ),
                 "optionCount": connection.execute(
                     "SELECT count(*) FROM wargear_options"
                 ).fetchone()[0],

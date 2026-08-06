@@ -16,8 +16,8 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Extend structured wargear coverage to compound bundles, shared choice pools,
-   conditional replacements, and exact default-loadout reconciliation.
+1. Reconcile exact default loadouts and model-specific conditional replacements
+   so source choices can also subtract replaced equipment safely.
 2. Add phase-scale simulations with reproducible seeded runs
    alongside cryptographically random live rolls.
 3. Add property-based and fuzz testing at the C and API boundaries.
@@ -59,3 +59,8 @@ priority over feature count.
   Mixed target profiles, casualties, existing wounds, damage reduction, Feel
   No Pain, and lost overkill now carry through an editable attack sequence;
   regressions prove that weapon order can change the resulting distribution.
+- 2026-08-06: Structured 1,923 source-backed wargear choice pools and 3,419
+  alternatives, including 204 compound multi-weapon bundles. Unit editors,
+  saved lists, and the API now preserve per-alternative selections, enforce
+  each shared allowance once, derive bundled weapon quantities, and retain the
+  original source text while leaving total equipment editable.

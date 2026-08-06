@@ -6,7 +6,12 @@ from pathlib import Path
 
 from scripts.build_profiles_db import composition_range, plain_text
 from scripts.export_profiles_json import export, profile_group_names
-from scripts.wargear_constraints import allowance, normalized_name, option_choices
+from scripts.wargear_constraints import (
+    allowance,
+    choice_weapon_vector,
+    normalized_name,
+    option_choices,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +44,18 @@ class ProfileDataTests(unittest.TestCase):
             ),
             ("Plasma pistol", ["standard", "supercharge"]),
         )
+        known = {
+            "lastrum storm bolter": ("unit:1", "Lastrum storm bolter"),
+            "infernus incinerator": ("unit:2", "Infernus incinerator"),
+        }
+        self.assertEqual(
+            choice_weapon_vector(
+                "1 lastrum storm bolter and 1 infernus incinerator",
+                known,
+                {"lastrum storm bolter"},
+            ),
+            {"unit:2": ("Infernus incinerator", 1)},
+        )
 
     def test_checked_database_preserves_loadout_sources_and_provenance(self):
         connection = sqlite3.connect(DATABASE)
@@ -48,7 +65,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "4",
+                "5",
             )
             for filename, minimum_rows in (
                 ("Datasheets_unit_composition.csv", 2_000),
@@ -69,6 +86,20 @@ class ProfileDataTests(unittest.TestCase):
             self.assertGreater(
                 connection.execute("SELECT count(*) FROM wargear_options").fetchone()[0],
                 2_500,
+            )
+            self.assertGreater(
+                connection.execute("SELECT count(*) FROM wargear_choice_pools").fetchone()[0],
+                1_900,
+            )
+            self.assertGreater(
+                connection.execute(
+                    """SELECT count(*) FROM (
+                           SELECT datasheet_id, option_position, alternative_position
+                           FROM wargear_choice_alternative_weapons
+                           GROUP BY 1, 2, 3 HAVING count(*) > 1
+                       )"""
+                ).fetchone()[0],
+                200,
             )
             self.assertGreater(
                 connection.execute("SELECT count(*) FROM wargear_constraints").fetchone()[0],
@@ -105,7 +136,9 @@ class ProfileDataTests(unittest.TestCase):
             limit for limit in assault["weaponLimits"] if limit["groupName"] == "Eviscerator"
         )
         self.assertEqual(eviscerator["terms"][0]["modelsPerIncrement"], 5)
-        self.assertEqual(catalogue["structuredWargear"]["constraintCount"], 1704)
+        self.assertEqual(catalogue["structuredWargear"]["constraintCount"], 1715)
+        self.assertEqual(catalogue["structuredWargear"]["choicePoolCount"], 1923)
+        self.assertEqual(catalogue["structuredWargear"]["compoundAlternativeCount"], 204)
         self.assertTrue(catalogue["structuredWargear"]["conservative"])
         for unit in catalogue["units"]:
             weapon_group_ids = {weapon["groupId"] for weapon in unit["weapons"]}
@@ -114,6 +147,40 @@ class ProfileDataTests(unittest.TestCase):
                 self.assertTrue(limit["terms"])
                 for term in limit["terms"]:
                     self.assertIn(term["source"], unit["wargearOptions"])
+            for pool in unit["wargearChoicePools"]:
+                self.assertIn(pool["source"], unit["wargearOptions"])
+                self.assertTrue(pool["alternatives"])
+                for alternative in pool["alternatives"]:
+                    self.assertTrue(alternative["weapons"])
+                    for weapon in alternative["weapons"]:
+                        self.assertIn(weapon["groupId"], weapon_group_ids)
+                        self.assertGreater(weapon["quantity"], 0)
+
+        achillus = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Contemptor-achillus Dreadnought"
+        )
+        self.assertEqual(len(achillus["wargearChoicePools"]), 1)
+        pool = achillus["wargearChoicePools"][0]
+        self.assertEqual(len(pool["alternatives"]), 5)
+        mixed = next(
+            alternative
+            for alternative in pool["alternatives"]
+            if "lastrum storm bolter and 1 infernus" in alternative["label"].lower()
+        )
+        self.assertEqual(
+            mixed["weapons"],
+            [
+                {
+                    "groupId": next(
+                        weapon["groupId"]
+                        for weapon in achillus["weapons"]
+                        if weapon["groupName"] == "Infernus incinerator"
+                    ),
+                    "groupName": "Infernus incinerator",
+                    "quantity": 1,
+                }
+            ],
+        )
 
     def test_checked_browser_catalogue_matches_the_database_export(self):
         with tempfile.TemporaryDirectory() as directory:

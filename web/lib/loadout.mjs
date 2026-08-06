@@ -69,7 +69,71 @@ export function weaponLimitMaximum(limit, modelCount) {
   );
 }
 
-export function unitLoadoutWarnings(unit, modelCount, optionCounts = {}, equippedCounts = {}) {
+export function choicePoolMaximum(pool, modelCount) {
+  const models = normalizeEquippedCount(modelCount, 1000);
+  return pool.fixed + Math.floor(models / pool.modelsPerIncrement) * pool.perIncrement;
+}
+
+export function choiceSelectionWeaponCounts(unit, choiceSelections = {}) {
+  const counts = {};
+  for (const pool of unit?.wargearChoicePools ?? []) {
+    for (const alternative of pool.alternatives) {
+      const selected = normalizeEquippedCount(choiceSelections[alternative.id] ?? 0);
+      for (const weapon of alternative.weapons) {
+        counts[weapon.groupId] = (counts[weapon.groupId] ?? 0) + selected * weapon.quantity;
+      }
+    }
+  }
+  return counts;
+}
+
+export function choiceSelectionWarnings(
+  unit,
+  modelCount,
+  choiceSelections = {},
+  equippedCounts = {},
+) {
+  if (!unit) return [];
+  const warnings = [];
+  const knownAlternativeIds = new Set();
+  for (const pool of unit.wargearChoicePools ?? []) {
+    const maximum = choicePoolMaximum(pool, modelCount);
+    let selected = 0;
+    for (const alternative of pool.alternatives) {
+      knownAlternativeIds.add(alternative.id);
+      selected += normalizeEquippedCount(choiceSelections[alternative.id] ?? 0);
+    }
+    if (selected > maximum) {
+      warnings.push(
+        `Source choice pool: ${selected} selections exceeds the shared limit of ${maximum} for ${modelCount} models — ${pool.source}`,
+      );
+    }
+  }
+  for (const [alternativeId, value] of Object.entries(choiceSelections)) {
+    if (normalizeEquippedCount(value) > 0 && !knownAlternativeIds.has(alternativeId)) {
+      warnings.push(`Unknown source choice: ${alternativeId}`);
+    }
+  }
+  const selectedWeapons = choiceSelectionWeaponCounts(unit, choiceSelections);
+  for (const [groupId, count] of Object.entries(selectedWeapons)) {
+    const equipped = normalizeEquippedCount(equippedCounts[groupId] ?? 0);
+    if (count > equipped) {
+      const name = unit.weapons.find((weapon) => weapon.groupId === groupId)?.groupName ?? groupId;
+      warnings.push(
+        `${name}: structured choices produce ${count} copies but only ${equipped} are equipped`,
+      );
+    }
+  }
+  return warnings;
+}
+
+export function unitLoadoutWarnings(
+  unit,
+  modelCount,
+  optionCounts = {},
+  equippedCounts = {},
+  choiceSelections = {},
+) {
   if (!unit) return [];
   const models = normalizeEquippedCount(modelCount, 1000);
   const warnings = [];
@@ -83,8 +147,16 @@ export function unitLoadoutWarnings(unit, modelCount, optionCounts = {}, equippe
       `${unit.name} source composition allows at most ${unit.maximumModelCount} models`,
     );
   }
+  const structuredCounts = choiceSelectionWeaponCounts(unit, choiceSelections);
+  const effectiveOptionCounts = { ...optionCounts };
+  for (const [groupId, count] of Object.entries(structuredCounts)) {
+    effectiveOptionCounts[groupId] = Math.max(
+      normalizeEquippedCount(effectiveOptionCounts[groupId] ?? 0),
+      count,
+    );
+  }
   for (const limit of unit.weaponLimits ?? []) {
-    const count = normalizeEquippedCount(optionCounts[limit.groupId] ?? 0);
+    const count = normalizeEquippedCount(effectiveOptionCounts[limit.groupId] ?? 0);
     const equipped = normalizeEquippedCount(equippedCounts[limit.groupId] ?? 0);
     const maximum = weaponLimitMaximum(limit, models);
     if (count > equipped) {
@@ -98,5 +170,5 @@ export function unitLoadoutWarnings(unit, modelCount, optionCounts = {}, equippe
       );
     }
   }
-  return warnings;
+  return warnings.concat(choiceSelectionWarnings(unit, models, choiceSelections, equippedCounts));
 }
