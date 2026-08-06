@@ -28,6 +28,7 @@ const list = {
         },
       ],
       choiceSelections: { "datasheet-1:choice:1": 0 },
+      loadoutSubjectCounts: { "datasheet-1:subject:1": 4 },
     },
   ],
   createdAt: 1_700_000_000_000,
@@ -72,6 +73,19 @@ test("rejects incompatible and malformed army-list backups", () => {
     /optionCount/i,
   );
   assert.throws(() => parseArmyListBackup({ ...backup, lists: Array(101).fill(list) }), /100/);
+  assert.throws(
+    () =>
+      parseArmyListBackup({
+        ...backup,
+        lists: [
+          {
+            ...list,
+            units: [{ ...list.units[0], loadoutSubjectCounts: { "subject:1": 1001 } }],
+          },
+        ],
+      }),
+    /loadoutSubjectCounts/i,
+  );
 });
 
 test("reconciles newer device edits and offline deletions deterministically", () => {

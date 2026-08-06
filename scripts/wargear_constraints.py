@@ -127,6 +127,20 @@ CREATE TABLE IF NOT EXISTS default_loadout_subjects (
          AND quantity_per_increment IS NOT NULL AND models_per_increment IS NOT NULL)
     )
 ) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS default_loadout_subject_weapons (
+    datasheet_id TEXT NOT NULL,
+    subject_position INTEGER NOT NULL,
+    weapon_group_id TEXT NOT NULL,
+    weapon_group_name TEXT NOT NULL,
+    quantity INTEGER NOT NULL CHECK (quantity >= 1),
+    PRIMARY KEY (datasheet_id, subject_position, weapon_group_id),
+    FOREIGN KEY (datasheet_id, subject_position)
+        REFERENCES default_loadout_subjects(datasheet_id, position) ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_default_loadout_subject_weapons_datasheet
+    ON default_loadout_subject_weapons(datasheet_id, subject_position);
 """
 
 PROFILE_SEPARATORS = (" – ", " - ", " — ")
@@ -431,6 +445,7 @@ def replaced_weapon_vector(
 def populate_constraints(connection: sqlite3.Connection) -> int:
     connection.executescript(CONSTRAINT_SCHEMA)
     connection.execute("DELETE FROM default_weapon_loadout")
+    connection.execute("DELETE FROM default_loadout_subject_weapons")
     connection.execute("DELETE FROM default_loadout_subjects")
     connection.execute("DELETE FROM wargear_choice_replaced_weapons")
     connection.execute("DELETE FROM wargear_choice_alternative_weapons")
@@ -510,9 +525,20 @@ def populate_constraints(connection: sqlite3.Connection) -> int:
                     int(expression is not None),
                 ),
             )
+            weapons = weapon_vector(equipment, known)
+            connection.executemany(
+                """INSERT INTO default_loadout_subject_weapons
+                   (datasheet_id, subject_position, weapon_group_id,
+                    weapon_group_name, quantity)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (
+                    (datasheet_id, position, weapon_group_id, weapon_name, quantity)
+                    for weapon_group_id, (weapon_name, quantity) in weapons.items()
+                ),
+            )
             if expression is None:
                 continue
-            for weapon_group_id, (weapon_name, quantity) in weapon_vector(equipment, known).items():
+            for weapon_group_id, (weapon_name, quantity) in weapons.items():
                 connection.execute(
                     """INSERT INTO default_weapon_loadout
                        (datasheet_id, subject_position, weapon_group_id,
@@ -647,7 +673,7 @@ def main() -> None:
     try:
         with connection:
             count = populate_constraints(connection)
-            connection.execute("UPDATE metadata SET value = '7' WHERE key = 'schema_version'")
+            connection.execute("UPDATE metadata SET value = '8' WHERE key = 'schema_version'")
         print(f"Structured {count} source-backed wargear constraints")
         pools = connection.execute("SELECT count(*) FROM wargear_choice_pools").fetchone()[0]
         print(f"Structured {pools} source-backed wargear choice pools")

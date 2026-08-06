@@ -16,15 +16,18 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Add an explicit per-model composition editor for the 88 conditional or
-   multi-variable loadout subjects that total unit size alone cannot resolve.
-2. Add data freshness checks, change reports, and source-version pinning.
-3. Benchmark and profile large volleys in native and WebAssembly builds.
-4. Improve mobile play-mode ergonomics and accessibility.
-5. Add deployment health checks and clearer service-failure diagnostics.
+1. Add data freshness checks, change reports, and source-version pinning.
+2. Benchmark and profile large volleys in native and WebAssembly builds.
+3. Improve mobile play-mode ergonomics and accessibility.
+4. Add deployment health checks and clearer service-failure diagnostics.
 
 ## Completed cycles
 
+- 2026-08-06: Added explicit, source-linked model-composition counts for all 88
+  conditional or multi-variable loadout subjects across 37 datasheets. Their
+  207 weapon vectors now derive editable starting totals in lists and Unit vs
+  Unit, survive backup and device/cloud persistence, and are validated by the
+  loadout API without guessing relationships absent from the published source.
 - 2026-08-06: Added resilient army-list persistence with D1 as the hosted source
   of truth, validated device caching for offline and static-site use, automatic
   reconciliation of newer edits, and deletion tombstones. Versioned JSON

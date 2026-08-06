@@ -87,9 +87,26 @@ export function choiceSelectionWeaponCounts(unit, choiceSelections = {}) {
   return counts;
 }
 
-export function defaultWeaponCounts(unit, modelCount) {
-  const models = normalizeEquippedCount(modelCount, 1000);
+export function defaultLoadoutSubjectCounts(unit) {
   return Object.fromEntries(
+    (unit?.unresolvedLoadoutSubjects ?? []).map((subject) => [subject.id, 0]),
+  );
+}
+
+export function loadoutSubjectWeaponCounts(unit, loadoutSubjectCounts = {}) {
+  const counts = {};
+  for (const subject of unit?.unresolvedLoadoutSubjects ?? []) {
+    const models = normalizeEquippedCount(loadoutSubjectCounts[subject.id] ?? 0, 1000);
+    for (const weapon of subject.weapons) {
+      counts[weapon.groupId] = (counts[weapon.groupId] ?? 0) + models * weapon.quantity;
+    }
+  }
+  return counts;
+}
+
+export function defaultWeaponCounts(unit, modelCount, loadoutSubjectCounts = {}) {
+  const models = normalizeEquippedCount(modelCount, 1000);
+  const counts = Object.fromEntries(
     (unit?.defaultWeapons ?? []).map((weapon) => [
       weapon.groupId,
       normalizeEquippedCount(
@@ -105,6 +122,12 @@ export function defaultWeaponCounts(unit, modelCount) {
       ),
     ]),
   );
+  for (const [groupId, count] of Object.entries(
+    loadoutSubjectWeaponCounts(unit, loadoutSubjectCounts),
+  )) {
+    counts[groupId] = normalizeEquippedCount((counts[groupId] ?? 0) + count);
+  }
+  return counts;
 }
 
 export function choiceSelectionReplacementCounts(unit, choiceSelections = {}) {
@@ -121,8 +144,13 @@ export function choiceSelectionReplacementCounts(unit, choiceSelections = {}) {
   return counts;
 }
 
-export function sourceEquippedWeaponCounts(unit, modelCount, choiceSelections = {}) {
-  const counts = defaultWeaponCounts(unit, modelCount);
+export function sourceEquippedWeaponCounts(
+  unit,
+  modelCount,
+  choiceSelections = {},
+  loadoutSubjectCounts = {},
+) {
+  const counts = defaultWeaponCounts(unit, modelCount, loadoutSubjectCounts);
   const additions = choiceSelectionWeaponCounts(unit, choiceSelections);
   const replacements = choiceSelectionReplacementCounts(unit, choiceSelections);
   for (const [groupId, count] of Object.entries(additions)) {
@@ -156,9 +184,27 @@ export function applyChoiceSelectionChange(
   return counts;
 }
 
-export function applyModelCountChange(equippedCounts, unit, previousValue, nextValue) {
-  const previous = defaultWeaponCounts(unit, previousValue);
-  const next = defaultWeaponCounts(unit, nextValue);
+export function applyLoadoutSubjectCountChange(equippedCounts, subject, previousValue, nextValue) {
+  const delta =
+    normalizeEquippedCount(nextValue, 1000) - normalizeEquippedCount(previousValue, 1000);
+  const counts = { ...equippedCounts };
+  for (const weapon of subject.weapons) {
+    counts[weapon.groupId] = normalizeEquippedCount(
+      (counts[weapon.groupId] ?? 0) + delta * weapon.quantity,
+    );
+  }
+  return counts;
+}
+
+export function applyModelCountChange(
+  equippedCounts,
+  unit,
+  previousValue,
+  nextValue,
+  loadoutSubjectCounts = {},
+) {
+  const previous = defaultWeaponCounts(unit, previousValue, loadoutSubjectCounts);
+  const next = defaultWeaponCounts(unit, nextValue, loadoutSubjectCounts);
   const counts = { ...equippedCounts };
   for (const groupId of new Set([...Object.keys(previous), ...Object.keys(next)])) {
     counts[groupId] = normalizeEquippedCount(
@@ -168,11 +214,49 @@ export function applyModelCountChange(equippedCounts, unit, previousValue, nextV
   return counts;
 }
 
+export function loadoutSubjectWarnings(
+  unit,
+  modelCount,
+  loadoutSubjectCounts = {},
+  equippedCounts = {},
+) {
+  if (!unit) return [];
+  const models = normalizeEquippedCount(modelCount, 1000);
+  const warnings = [];
+  const known = new Set((unit.unresolvedLoadoutSubjects ?? []).map((subject) => subject.id));
+  for (const subject of unit.unresolvedLoadoutSubjects ?? []) {
+    const count = normalizeEquippedCount(loadoutSubjectCounts[subject.id] ?? 0, 1000);
+    if (count > models) {
+      warnings.push(
+        `${subject.subject}: ${count} matching models exceeds the unit total of ${models}`,
+      );
+    }
+  }
+  for (const [subjectId, value] of Object.entries(loadoutSubjectCounts)) {
+    if (normalizeEquippedCount(value, 1000) > 0 && !known.has(subjectId)) {
+      warnings.push(`Unknown source loadout subject: ${subjectId}`);
+    }
+  }
+  for (const [groupId, count] of Object.entries(
+    loadoutSubjectWeaponCounts(unit, loadoutSubjectCounts),
+  )) {
+    const equipped = normalizeEquippedCount(equippedCounts[groupId] ?? 0);
+    if (count > equipped) {
+      const name = unit.weapons.find((weapon) => weapon.groupId === groupId)?.groupName ?? groupId;
+      warnings.push(
+        `${name}: model composition produces ${count} copies but only ${equipped} are equipped`,
+      );
+    }
+  }
+  return warnings;
+}
+
 export function choiceSelectionWarnings(
   unit,
   modelCount,
   choiceSelections = {},
   equippedCounts = {},
+  loadoutSubjectCounts = {},
 ) {
   if (!unit) return [];
   const warnings = [];
@@ -197,7 +281,7 @@ export function choiceSelectionWarnings(
   }
   const selectedWeapons = choiceSelectionWeaponCounts(unit, choiceSelections);
   const replacedWeapons = choiceSelectionReplacementCounts(unit, choiceSelections);
-  const defaultWeapons = defaultWeaponCounts(unit, modelCount);
+  const defaultWeapons = defaultWeaponCounts(unit, modelCount, loadoutSubjectCounts);
   for (const [groupId, count] of Object.entries(replacedWeapons)) {
     if (count > (defaultWeapons[groupId] ?? 0)) {
       const name = unit.weapons.find((weapon) => weapon.groupId === groupId)?.groupName ?? groupId;
@@ -224,6 +308,7 @@ export function unitLoadoutWarnings(
   optionCounts = {},
   equippedCounts = {},
   choiceSelections = {},
+  loadoutSubjectCounts = {},
 ) {
   if (!unit) return [];
   const models = normalizeEquippedCount(modelCount, 1000);
@@ -261,5 +346,9 @@ export function unitLoadoutWarnings(
       );
     }
   }
-  return warnings.concat(choiceSelectionWarnings(unit, models, choiceSelections, equippedCounts));
+  return warnings
+    .concat(
+      choiceSelectionWarnings(unit, models, choiceSelections, equippedCounts, loadoutSubjectCounts),
+    )
+    .concat(loadoutSubjectWarnings(unit, models, loadoutSubjectCounts, equippedCounts));
 }

@@ -14,13 +14,16 @@ import {
 import { abilityDiceValue } from "../lib/dice.mjs";
 import {
   applyChoiceSelectionChange,
+  applyLoadoutSubjectCountChange,
   applyModelCountChange,
   armyListWeaponsFromGroups,
   choicePoolMaximum,
   choiceSelectionWeaponCounts,
   defaultWeaponCounts,
+  defaultLoadoutSubjectCounts,
   equippedWeaponLines,
   groupWeaponProfiles,
+  loadoutSubjectWeaponCounts,
   normalizeEquippedCount,
   sourceEquippedWeaponCounts,
   unitLoadoutWarnings,
@@ -207,6 +210,82 @@ test("mixed-model defaults support fixed leaders and unit-size increments", () =
   };
   assert.deepEqual(defaultWeaponCounts(unit, 10), { "unit:lasgun": 9, "unit:choppa": 9 });
   assert.deepEqual(defaultWeaponCounts(unit, 20), { "unit:lasgun": 18, "unit:choppa": 19 });
+});
+
+test("explicit model composition derives unresolved source loadouts", () => {
+  const unit = {
+    name: "Accursed Cultists",
+    suggestedModelCount: 8,
+    maximumModelCount: 16,
+    defaultWeapons: [],
+    weaponLimits: [],
+    wargearChoicePools: [],
+    weapons: [
+      { groupId: "cultists:mutations", groupName: "Hideous mutations" },
+      { groupId: "cultists:appendages", groupName: "Blasphemous appendages" },
+    ],
+    unresolvedLoadoutSubjects: [
+      {
+        id: "cultists:1",
+        subject: "Every Torment",
+        equipment: "hideous mutations",
+        weapons: [{ groupId: "cultists:mutations", groupName: "Hideous mutations", quantity: 1 }],
+      },
+      {
+        id: "cultists:2",
+        subject: "Every Mutant",
+        equipment: "blasphemous appendages",
+        weapons: [
+          {
+            groupId: "cultists:appendages",
+            groupName: "Blasphemous appendages",
+            quantity: 1,
+          },
+        ],
+      },
+    ],
+  };
+  assert.deepEqual(defaultLoadoutSubjectCounts(unit), { "cultists:1": 0, "cultists:2": 0 });
+  const composition = { "cultists:1": 3, "cultists:2": 5 };
+  assert.deepEqual(loadoutSubjectWeaponCounts(unit, composition), {
+    "cultists:mutations": 3,
+    "cultists:appendages": 5,
+  });
+  assert.deepEqual(defaultWeaponCounts(unit, 8, composition), {
+    "cultists:mutations": 3,
+    "cultists:appendages": 5,
+  });
+  assert.deepEqual(
+    applyLoadoutSubjectCountChange(
+      { "cultists:mutations": 0, "cultists:appendages": 0 },
+      unit.unresolvedLoadoutSubjects[0],
+      0,
+      3,
+    ),
+    { "cultists:mutations": 3, "cultists:appendages": 0 },
+  );
+  assert.deepEqual(
+    unitLoadoutWarnings(
+      unit,
+      8,
+      {},
+      { "cultists:mutations": 3, "cultists:appendages": 5 },
+      {},
+      composition,
+    ),
+    [],
+  );
+  assert.match(
+    unitLoadoutWarnings(
+      unit,
+      8,
+      {},
+      { "cultists:mutations": 9, "cultists:appendages": 0 },
+      {},
+      { "cultists:1": 9 },
+    )[0],
+    /exceeds the unit total/i,
+  );
 });
 
 test("mixed target allocation never spills damage between models", () => {

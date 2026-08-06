@@ -16,10 +16,12 @@ import {
 } from "../../lib/combat";
 import {
   applyChoiceSelectionChange,
+  applyLoadoutSubjectCountChange,
   applyModelCountChange,
   choicePoolMaximum,
   choiceSelectionWeaponCounts,
   defaultWeaponCounts,
+  defaultLoadoutSubjectCounts,
   equippedWeaponLines,
   groupWeaponProfiles,
   normalizeEquippedCount,
@@ -74,6 +76,7 @@ export default function UnitVsUnit() {
   const [weaponCounts, setWeaponCounts] = useState<Record<string, number>>({});
   const [optionCounts, setOptionCounts] = useState<Record<string, number>>({});
   const [choiceSelections, setChoiceSelections] = useState<Record<string, number>>({});
+  const [loadoutSubjectCounts, setLoadoutSubjectCounts] = useState<Record<string, number>>({});
   const [profileCounts, setProfileCounts] = useState<Record<number, number>>({});
   const [weaponOrder, setWeaponOrder] = useState<number[]>([]);
   const [targetSegments, setTargetSegments] = useState<TargetSegment[]>([]);
@@ -129,6 +132,7 @@ export default function UnitVsUnit() {
     { ...optionCounts, ...structuredOptionCounts },
     weaponCounts,
     choiceSelections,
+    loadoutSubjectCounts,
   );
   const orderIndex = new Map(weaponOrder.map((weaponId, index) => [weaponId, index]));
   const orderedLines = equippedWeaponLines(weaponGroups, weaponCounts, profileCounts).sort(
@@ -151,7 +155,8 @@ export default function UnitVsUnit() {
     const unit = attackerUnits.find((entry) => entry.id === unitId);
     const groups = groupWeaponProfiles(unit?.weapons ?? []);
     const models = unit?.suggestedModelCount ?? 1;
-    const defaults = defaultWeaponCounts(unit, models);
+    const subjectCounts = defaultLoadoutSubjectCounts(unit);
+    const defaults = defaultWeaponCounts(unit, models, subjectCounts);
     setAttackerModels(models);
     setWeaponCounts(Object.fromEntries(groups.map((group) => [group.id, defaults[group.id] ?? 0])));
     setOptionCounts(Object.fromEntries(groups.map((group) => [group.id, 0])));
@@ -162,6 +167,7 @@ export default function UnitVsUnit() {
         ),
       ),
     );
+    setLoadoutSubjectCounts(subjectCounts);
     setProfileCounts(
       Object.fromEntries(
         groups.flatMap((group) => group.profiles.map((profile) => [profile.id, 0])),
@@ -387,7 +393,13 @@ export default function UnitVsUnit() {
                 onChange={(event) => {
                   const next = Math.max(1, +event.target.value);
                   setWeaponCounts((current) =>
-                    applyModelCountChange(current, attackerUnit, attackerModels, next),
+                    applyModelCountChange(
+                      current,
+                      attackerUnit,
+                      attackerModels,
+                      next,
+                      loadoutSubjectCounts,
+                    ),
                   );
                   setAttackerModels(next);
                 }}
@@ -395,6 +407,41 @@ export default function UnitVsUnit() {
             </label>
             {attackerUnit && (
               <div className="loadout-list">
+                {attackerUnit.unresolvedLoadoutSubjects.length > 0 && (
+                  <details className="source-choice-pools model-composition-editor" open>
+                    <summary>Model composition</summary>
+                    <small>
+                      Enter how many models match each published loadout clause. Weapon totals
+                      remain editable.
+                    </small>
+                    {attackerUnit.unresolvedLoadoutSubjects.map((subject) => (
+                      <label key={subject.id}>
+                        <span>
+                          {subject.subject}
+                          <small>{subject.equipment}</small>
+                        </span>
+                        <input
+                          aria-label={`${subject.subject} model count`}
+                          type="number"
+                          min={0}
+                          max={1000}
+                          value={loadoutSubjectCounts[subject.id] ?? 0}
+                          onChange={(event) => {
+                            const next = normalizeEquippedCount(+event.target.value, 1000);
+                            const previous = loadoutSubjectCounts[subject.id] ?? 0;
+                            setWeaponCounts((current) =>
+                              applyLoadoutSubjectCountChange(current, subject, previous, next),
+                            );
+                            setLoadoutSubjectCounts((current) => ({
+                              ...current,
+                              [subject.id]: next,
+                            }));
+                          }}
+                        />
+                      </label>
+                    ))}
+                  </details>
+                )}
                 <h3>Total weapons equipped</h3>
                 {weaponGroups.map((group) => (
                   <div className="weapon-group" key={group.id}>

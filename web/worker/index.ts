@@ -28,6 +28,7 @@ import {
 } from "../lib/army-list-codec.mjs";
 import {
   choiceSelectionWeaponCounts,
+  loadoutSubjectWeaponCounts,
   sourceEquippedWeaponCounts,
   unitLoadoutWarnings,
 } from "../lib/loadout.mjs";
@@ -71,6 +72,16 @@ type Catalogue = {
         modelsPerIncrement: number;
         quantity: number;
         source: string;
+      }>;
+    }>;
+    unresolvedLoadoutSubjects: Array<{
+      id: string;
+      subject: string;
+      equipment: string;
+      weapons: Array<{
+        groupId: string;
+        groupName: string;
+        quantity: number;
       }>;
     }>;
     wargearOptions: string[];
@@ -527,6 +538,7 @@ async function handleApi(request: Request, env: Env) {
           compositionModels: unit.compositionModels,
           loadout: unit.loadout,
           defaultWeapons: unit.defaultWeapons,
+          unresolvedLoadoutSubjects: unit.unresolvedLoadoutSubjects,
           wargearOptions: unit.wargearOptions,
           weaponLimits: unit.weaponLimits,
           wargearChoicePools: unit.wargearChoicePools,
@@ -545,6 +557,7 @@ async function handleApi(request: Request, env: Env) {
         weaponCounts?: unknown;
         optionCounts?: unknown;
         choiceSelections?: unknown;
+        loadoutSubjectCounts?: unknown;
       };
       if (
         !body ||
@@ -561,6 +574,7 @@ async function handleApi(request: Request, env: Env) {
       const counts = body.weaponCounts as Record<string, unknown>;
       const optionCounts = (body.optionCounts ?? {}) as Record<string, unknown>;
       const choiceSelections = (body.choiceSelections ?? {}) as Record<string, unknown>;
+      const loadoutSubjectCounts = (body.loadoutSubjectCounts ?? {}) as Record<string, unknown>;
       if (
         Object.keys(counts).length > 200 ||
         !optionCounts ||
@@ -571,6 +585,10 @@ async function handleApi(request: Request, env: Env) {
         typeof choiceSelections !== "object" ||
         Array.isArray(choiceSelections) ||
         Object.keys(choiceSelections).length > 500 ||
+        !loadoutSubjectCounts ||
+        typeof loadoutSubjectCounts !== "object" ||
+        Array.isArray(loadoutSubjectCounts) ||
+        Object.keys(loadoutSubjectCounts).length > 100 ||
         Object.values(counts).some(
           (count) => !Number.isInteger(count) || (count as number) < 0 || (count as number) > 100,
         ) ||
@@ -579,9 +597,12 @@ async function handleApi(request: Request, env: Env) {
         ) ||
         Object.values(choiceSelections).some(
           (count) => !Number.isInteger(count) || (count as number) < 0 || (count as number) > 100,
+        ) ||
+        Object.values(loadoutSubjectCounts).some(
+          (count) => !Number.isInteger(count) || (count as number) < 0 || (count as number) > 1000,
         )
       ) {
-        return apiError("Loadout count values must be integers from 0 to 100");
+        return apiError("Loadout count values must be integers within their supported ranges");
       }
       const catalogue = await loadCatalogue(request, env);
       const unit = catalogue.units.find((entry) => entry.id === body.unitId);
@@ -591,6 +612,9 @@ async function handleApi(request: Request, env: Env) {
         unit.wargearChoicePools.flatMap((pool) =>
           pool.alternatives.map((alternative) => alternative.id),
         ),
+      );
+      const loadoutSubjectIds = new Set(
+        unit.unresolvedLoadoutSubjects.map((subject) => subject.id),
       );
       if (
         [...Object.keys(counts), ...Object.keys(optionCounts)].some(
@@ -604,12 +628,18 @@ async function handleApi(request: Request, env: Env) {
       ) {
         return apiError("choiceSelections must use alternative IDs from this unit");
       }
+      if (
+        Object.keys(loadoutSubjectCounts).some((subjectId) => !loadoutSubjectIds.has(subjectId))
+      ) {
+        return apiError("loadoutSubjectCounts must use unresolved subject IDs from this unit");
+      }
       const warnings = unitLoadoutWarnings(
         unit,
         body.modelCount as number,
         optionCounts,
         counts,
         choiceSelections,
+        loadoutSubjectCounts,
       );
       return json({
         data: {
@@ -618,10 +648,12 @@ async function handleApi(request: Request, env: Env) {
           weaponLimits: unit.weaponLimits,
           wargearChoicePools: unit.wargearChoicePools,
           selectedWeaponCounts: choiceSelectionWeaponCounts(unit, choiceSelections),
+          compositionWeaponCounts: loadoutSubjectWeaponCounts(unit, loadoutSubjectCounts),
           suggestedEquippedCounts: sourceEquippedWeaponCounts(
             unit,
             body.modelCount as number,
             choiceSelections,
+            loadoutSubjectCounts,
           ),
         },
         sourceUpdatedAt: catalogue.sourceUpdatedAt,

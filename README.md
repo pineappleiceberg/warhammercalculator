@@ -212,6 +212,12 @@ The generated profile catalogue also preserves named unit-composition models
 and source-backed default-loadout formulas. Unit editors therefore start mixed
 units with the correct weapon totals for their selected size while keeping
 every total editable for casualties, unusual rules, and custom play states.
+For the 88 published loadout clauses whose quantities depend on a specialist or
+conditional model rather than total unit size, the list and Unit vs Unit editors
+show the exact source subject and equipment text. Entering the matching model
+count derives its 207 tracked weapon quantities, while those totals remain
+editable. Saved lists, JSON backups, and the loadout-validation API preserve the
+composition counts.
 
 ## Formal verification
 

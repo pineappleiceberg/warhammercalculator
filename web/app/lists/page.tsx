@@ -16,10 +16,12 @@ import { normalizeArmyListInput } from "../../lib/army-list-codec.mjs";
 import { loadCatalogue, type Catalogue } from "../../lib/catalogue";
 import {
   applyChoiceSelectionChange,
+  applyLoadoutSubjectCountChange,
   applyModelCountChange,
   armyListWeaponsFromGroups,
   choicePoolMaximum,
   defaultWeaponCounts,
+  defaultLoadoutSubjectCounts,
   groupWeaponProfiles,
   normalizeEquippedCount,
   unitLoadoutWarnings,
@@ -98,7 +100,8 @@ export default function ArmyLists() {
     if (!unit) return;
     const weaponGroups = groupWeaponProfiles(unit.weapons);
     const modelCount = unit.suggestedModelCount ?? 1;
-    const defaults = defaultWeaponCounts(unit, modelCount);
+    const loadoutSubjectCounts = defaultLoadoutSubjectCounts(unit);
+    const defaults = defaultWeaponCounts(unit, modelCount, loadoutSubjectCounts);
     const item: ArmyListUnit = {
       id: crypto.randomUUID(),
       unitId: unit.id,
@@ -110,6 +113,7 @@ export default function ArmyLists() {
           pool.alternatives.map((alternative) => [alternative.id, 0]),
         ),
       ),
+      loadoutSubjectCounts,
     };
     setDraft((current) => ({ ...current, units: [...current.units, item] }));
     setUnitId("");
@@ -295,6 +299,7 @@ export default function ArmyLists() {
                                 sourceUnit,
                                 current.modelCount,
                                 next,
+                                current.loadoutSubjectCounts ?? {},
                               );
                               return {
                                 ...current,
@@ -321,6 +326,63 @@ export default function ArmyLists() {
                       Remove
                     </button>
                   </div>
+                  {(catalogue?.units.find((entry) => entry.id === unit.unitId)
+                    ?.unresolvedLoadoutSubjects.length ?? 0) > 0 && (
+                    <details className="source-choice-pools model-composition-editor" open>
+                      <summary>Model composition</summary>
+                      <small>
+                        Enter how many models match each published loadout clause. Weapon totals
+                        remain editable.
+                      </small>
+                      {catalogue?.units
+                        .find((entry) => entry.id === unit.unitId)
+                        ?.unresolvedLoadoutSubjects.map((subject) => (
+                          <label key={subject.id}>
+                            <span>
+                              {subject.subject}
+                              <small>{subject.equipment}</small>
+                            </span>
+                            <input
+                              aria-label={`${subject.subject} model count`}
+                              type="number"
+                              min={0}
+                              max={1000}
+                              value={unit.loadoutSubjectCounts?.[subject.id] ?? 0}
+                              onChange={(event) => {
+                                const next = normalizeEquippedCount(+event.target.value, 1000);
+                                changeUnit(unit.id, (current) => {
+                                  const previous = current.loadoutSubjectCounts?.[subject.id] ?? 0;
+                                  const counts = Object.fromEntries(
+                                    current.weapons.map((weapon) => [
+                                      weapon.groupId ?? String(weapon.weaponId),
+                                      weapon.count,
+                                    ]),
+                                  );
+                                  const adjusted = applyLoadoutSubjectCountChange(
+                                    counts,
+                                    subject,
+                                    previous,
+                                    next,
+                                  );
+                                  return {
+                                    ...current,
+                                    weapons: current.weapons.map((weapon) => ({
+                                      ...weapon,
+                                      count:
+                                        adjusted[weapon.groupId ?? String(weapon.weaponId)] ?? 0,
+                                    })),
+                                    loadoutSubjectCounts: {
+                                      ...(current.loadoutSubjectCounts ?? {}),
+                                      [subject.id]: next,
+                                    },
+                                  };
+                                });
+                              }}
+                            />
+                          </label>
+                        ))}
+                    </details>
+                  )}
                   <div className="weapon-counts">
                     {unit.weapons.map((weapon) => {
                       const sourceUnit = catalogue?.units.find((entry) => entry.id === unit.unitId);
@@ -409,6 +471,7 @@ export default function ArmyLists() {
                       optionCounts,
                       counts,
                       unit.choiceSelections ?? {},
+                      unit.loadoutSubjectCounts ?? {},
                     );
                     return (
                       <>

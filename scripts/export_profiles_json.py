@@ -107,6 +107,7 @@ def export(database: Path, output: Path) -> None:
                 "compositionModels": [],
                 "loadout": row["loadout_text"],
                 "defaultWeapons": [],
+                "unresolvedLoadoutSubjects": [],
                 "wargearOptions": [],
                 "weaponLimits": [],
                 "wargearChoicePools": [],
@@ -224,6 +225,38 @@ def export(database: Path, output: Path) -> None:
             )
         for (datasheet_id, _group_id), default in defaults.items():
             units[datasheet_id]["defaultWeapons"].append(default)
+
+        unresolved_subjects: dict[tuple[str, int], dict] = {}
+        for row in connection.execute(
+            """SELECT subject.datasheet_id, subject.position,
+                      subject.subject_text, subject.equipment_text,
+                      weapon.weapon_group_id, weapon.weapon_group_name, weapon.quantity
+               FROM default_loadout_subjects AS subject
+               LEFT JOIN default_loadout_subject_weapons AS weapon
+                 ON weapon.datasheet_id = subject.datasheet_id
+                AND weapon.subject_position = subject.position
+               WHERE subject.resolved = 0
+               ORDER BY subject.datasheet_id, subject.position, weapon.weapon_group_id"""
+        ):
+            key = (row["datasheet_id"], row["position"])
+            subject = unresolved_subjects.get(key)
+            if subject is None:
+                subject = {
+                    "id": f"{row['datasheet_id']}:{row['position']}",
+                    "subject": row["subject_text"],
+                    "equipment": row["equipment_text"],
+                    "weapons": [],
+                }
+                unresolved_subjects[key] = subject
+                units[row["datasheet_id"]]["unresolvedLoadoutSubjects"].append(subject)
+            if row["weapon_group_id"] is not None:
+                subject["weapons"].append(
+                    {
+                        "groupId": row["weapon_group_id"],
+                        "groupName": row["weapon_group_name"],
+                        "quantity": row["quantity"],
+                    }
+                )
 
         limits: dict[tuple[str, str], dict] = {}
         for row in connection.execute(
@@ -408,6 +441,12 @@ def export(database: Path, output: Path) -> None:
                 ).fetchone()[0],
                 "resolvedLoadoutSubjectCount": connection.execute(
                     "SELECT count(*) FROM default_loadout_subjects WHERE resolved = 1"
+                ).fetchone()[0],
+                "unresolvedLoadoutSubjectCount": connection.execute(
+                    "SELECT count(*) FROM default_loadout_subjects WHERE resolved = 0"
+                ).fetchone()[0],
+                "loadoutSubjectWeaponCount": connection.execute(
+                    "SELECT count(*) FROM default_loadout_subject_weapons"
                 ).fetchone()[0],
                 "replacementWeaponCount": connection.execute(
                     "SELECT count(*) FROM wargear_choice_replaced_weapons"

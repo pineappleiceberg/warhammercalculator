@@ -61,6 +61,22 @@ export function normalizeArmyListInput(value) {
         ]),
       );
     }
+    let loadoutSubjectCounts;
+    if (unit.loadoutSubjectCounts !== undefined) {
+      const counts = object(unit.loadoutSubjectCounts, "loadoutSubjectCounts must be an object");
+      if (
+        Object.keys(counts).length > 100 ||
+        Object.keys(counts).some((key) => !key || key.length > 200)
+      ) {
+        throw new Error("loadoutSubjectCounts contains too many or invalid entries");
+      }
+      loadoutSubjectCounts = Object.fromEntries(
+        Object.entries(counts).map(([key, count]) => [
+          key,
+          integer(count, 0, 1000, "loadoutSubjectCounts values must be integers from 0 to 1000"),
+        ]),
+      );
+    }
     const weapons = unit.weapons.map((candidateWeapon) => {
       const weapon = object(candidateWeapon, "Each weapon must be a JSON object");
       if (
@@ -98,6 +114,9 @@ export function normalizeArmyListInput(value) {
     });
     const normalized = { id: unit.id, unitId: unit.unitId, name: unit.name, modelCount, weapons };
     if (choiceSelections !== undefined) normalized.choiceSelections = choiceSelections;
+    if (loadoutSubjectCounts !== undefined) {
+      normalized.loadoutSubjectCounts = loadoutSubjectCounts;
+    }
     return normalized;
   });
   return { name: body.name.trim(), factionId: body.factionId, units };

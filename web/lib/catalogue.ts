@@ -84,6 +84,12 @@ export type CatalogueDefaultWeapon = {
     source: string;
   }>;
 };
+export type CatalogueUnresolvedLoadoutSubject = {
+  id: string;
+  subject: string;
+  equipment: string;
+  weapons: CatalogueWargearChoice[];
+};
 export type CatalogueUnit = {
   id: string;
   factionId: string;
@@ -94,6 +100,7 @@ export type CatalogueUnit = {
   compositionModels: CatalogueCompositionModel[];
   loadout: string;
   defaultWeapons: CatalogueDefaultWeapon[];
+  unresolvedLoadoutSubjects: CatalogueUnresolvedLoadoutSubject[];
   wargearOptions: string[];
   weaponLimits: CatalogueWeaponLimit[];
   wargearChoicePools: CatalogueWargearChoicePool[];
@@ -110,6 +117,8 @@ export type Catalogue = {
     defaultWeaponTermCount: number;
     loadoutSubjectCount: number;
     resolvedLoadoutSubjectCount: number;
+    unresolvedLoadoutSubjectCount: number;
+    loadoutSubjectWeaponCount: number;
     replacementWeaponCount: number;
     compoundAlternativeCount: number;
     optionCount: number;

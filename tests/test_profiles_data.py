@@ -117,7 +117,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "7",
+                "8",
             )
             for filename, minimum_rows in (
                 ("Datasheets_unit_composition.csv", 2_000),
@@ -152,6 +152,23 @@ class ProfileDataTests(unittest.TestCase):
                     "SELECT count(*) FROM default_loadout_subjects WHERE resolved = 1"
                 ).fetchone()[0],
                 1_883,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM default_loadout_subjects WHERE resolved = 0"
+                ).fetchone()[0],
+                88,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*)
+                       FROM default_loadout_subject_weapons AS weapon
+                       JOIN default_loadout_subjects AS subject
+                         ON subject.datasheet_id = weapon.datasheet_id
+                        AND subject.position = weapon.subject_position
+                       WHERE subject.resolved = 0"""
+                ).fetchone()[0],
+                207,
             )
             self.assertGreater(
                 connection.execute(
@@ -215,6 +232,8 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(catalogue["structuredWargear"]["defaultWeaponTermCount"], 4494)
         self.assertEqual(catalogue["structuredWargear"]["loadoutSubjectCount"], 1971)
         self.assertEqual(catalogue["structuredWargear"]["resolvedLoadoutSubjectCount"], 1883)
+        self.assertEqual(catalogue["structuredWargear"]["unresolvedLoadoutSubjectCount"], 88)
+        self.assertEqual(catalogue["structuredWargear"]["loadoutSubjectWeaponCount"], 4701)
         self.assertEqual(catalogue["structuredWargear"]["replacementWeaponCount"], 1172)
         self.assertTrue(catalogue["structuredWargear"]["conservative"])
         for unit in catalogue["units"]:
@@ -242,6 +261,25 @@ class ProfileDataTests(unittest.TestCase):
                     self.assertGreater(term["quantity"], 0)
                     self.assertGreater(term["modelsPerIncrement"], 0)
                     self.assertEqual(term["source"], unit["loadout"])
+            for subject in unit["unresolvedLoadoutSubjects"]:
+                self.assertTrue(subject["id"].startswith(f"{unit['id']}:"))
+                self.assertTrue(subject["subject"])
+                self.assertTrue(subject["equipment"])
+                self.assertTrue(subject["weapons"])
+                for weapon in subject["weapons"]:
+                    self.assertIn(weapon["groupId"], weapon_group_ids)
+                    self.assertGreater(weapon["quantity"], 0)
+
+        accursed = next(unit for unit in catalogue["units"] if unit["name"] == "Accursed Cultists")
+        torment = next(
+            subject
+            for subject in accursed["unresolvedLoadoutSubjects"]
+            if subject["subject"] == "Every Torment"
+        )
+        self.assertEqual(
+            [(weapon["groupName"], weapon["quantity"]) for weapon in torment["weapons"]],
+            [("Hideous mutations", 1)],
+        )
 
         achillus = next(
             unit for unit in catalogue["units"] if unit["name"] == "Contemptor-achillus Dreadnought"

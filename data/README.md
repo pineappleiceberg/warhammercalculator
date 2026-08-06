@@ -25,7 +25,7 @@ The main tables are:
 - `wargear_choice_pools`, `wargear_choice_alternatives`, and
   `wargear_choice_alternative_weapons` for shared allowances and exact
   multi-weapon bundles, with every alternative linked to its source option
-- `default_loadout_subjects`, `default_weapon_loadout`, and
+- `default_loadout_subjects`, `default_loadout_subject_weapons`, `default_weapon_loadout`, and
   `wargear_choice_replaced_weapons` for audited loadout subjects, normalized
   starting-quantity formulas, and the equipment removed by a replacement
 - `source_files` and `metadata` for URLs, timestamps, and source checksums
@@ -74,4 +74,6 @@ Cadian Shock Troops. Selecting a structured replacement subtracts its source
 equipment and adds the chosen alternative. All 1,971 loadout subjects are kept
 in the audit table; 1,883 currently resolve to exact formulas. Conditional or
 multi-variable clauses whose result cannot be inferred from total unit size
-remain visible and editable but are deliberately not guessed.
+are exported with their source subject and exact weapon vector. The list and
+unit editors ask for the number of models matching each clause, then derive
+editable weapon totals from that explicit count instead of guessing.

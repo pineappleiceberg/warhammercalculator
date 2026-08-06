@@ -223,6 +223,48 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   );
   assert.equal((await standardEquipment.json()).data.valid, true);
 
+  const accursed = catalogue.units.find((unit) => unit.name === "Accursed Cultists");
+  const tormentSubject = accursed.unresolvedLoadoutSubjects.find(
+    (subject) => subject.subject === "Every Torment",
+  );
+  const mutationGroup = tormentSubject.weapons[0].groupId;
+  const explicitComposition = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: accursed.id,
+        modelCount: 8,
+        weaponCounts: { [mutationGroup]: 3 },
+        loadoutSubjectCounts: { [tormentSubject.id]: 3 },
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  const explicitCompositionData = (await explicitComposition.json()).data;
+  assert.equal(explicitCompositionData.valid, true);
+  assert.equal(explicitCompositionData.compositionWeaponCounts[mutationGroup], 3);
+  assert.equal(explicitCompositionData.suggestedEquippedCounts[mutationGroup], 3);
+
+  const impossibleComposition = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: accursed.id,
+        modelCount: 8,
+        weaponCounts: { [mutationGroup]: 9 },
+        loadoutSubjectCounts: { [tormentSubject.id]: 9 },
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  const impossibleCompositionData = (await impossibleComposition.json()).data;
+  assert.equal(impossibleCompositionData.valid, false);
+  assert.match(impossibleCompositionData.warnings[0], /exceeds the unit total/i);
+
   const achillus = catalogue.units.find((unit) => unit.name === "Contemptor-achillus Dreadnought");
   const achillusPool = achillus.wargearChoicePools[0];
   assert.equal(achillusPool.alternatives.length, 5);
@@ -716,6 +758,7 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
         modelCount: 10,
         weapons: [{ weaponId: 7, groupId: "datasheet-1:7", name: "Test weapon", count: 10 }],
         choiceSelections: { "datasheet-1:pool:1": 1 },
+        loadoutSubjectCounts: { "datasheet-1:subject:1": 4 },
       },
     ],
   };
@@ -732,6 +775,7 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
   const created = (await createdResponse.json()).data;
   assert.match(created.id, /^[0-9a-f-]{36}$/i);
   assert.equal(created.units[0].choiceSelections["datasheet-1:pool:1"], 1);
+  assert.equal(created.units[0].loadoutSubjectCounts["datasheet-1:subject:1"], 4);
 
   const listed = await worker.fetch(new Request("http://localhost/api/v1/lists"), testEnv, context);
   assert.equal((await listed.json()).data.length, 1);
