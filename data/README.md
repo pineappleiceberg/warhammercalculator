@@ -49,6 +49,31 @@ Rebuild it from WSL with:
 python3 scripts/build_profiles_db.py --output data/warhammer_10e.sqlite
 ```
 
+That command accepts only the exact source files recorded in
+`profile-source-lock.json`. This prevents a routine rebuild from silently
+publishing changed rules or profiles. Check the current upstream exports and
+write a machine-readable table/checksum report without modifying checked data:
+
+```sh
+python3 scripts/profile_freshness.py --output build/profile-freshness-report.json
+```
+
+After reviewing that report and adding regression tests for every relevant
+rules/profile change, explicitly accept the new source identities, regenerate
+the browser catalogue, and rerun the checked-data suite:
+
+```sh
+python3 scripts/build_profiles_db.py --update-source-lock
+python3 scripts/export_profiles_json.py data/warhammer_10e.sqlite web/public/profile-data.json
+python3 scripts/profile_freshness.py --offline
+python3 -m unittest discover -s tests -p test_profiles_data.py
+```
+
+CI verifies the lock against both SQLite and the browser catalogue without
+network access. A daily and manually dispatchable workflow separately compares
+the pin with upstream, uploads the complete JSON report, and fails visibly when
+a reviewed update is available.
+
 Values that can be dice expressions are preserved as text (`D6+1`, `2D3`, and
 so on). Plain numeric values are also exposed in companion integer columns.
 Weapon rows with the same base name before a standard profile separator are

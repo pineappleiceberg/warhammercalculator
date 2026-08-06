@@ -4,8 +4,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.build_profiles_db import composition_components, composition_range, plain_text
+from scripts.build_profiles_db import (
+    composition_components,
+    composition_range,
+    plain_text,
+    source_manifest_differences,
+)
 from scripts.export_profiles_json import export, profile_group_names, unit_model_range
+from scripts.profile_freshness import database_source_manifest, offline_report, table_snapshot
 from scripts.wargear_constraints import (
     allowance,
     choice_weapon_vector,
@@ -20,9 +26,37 @@ from scripts.wargear_constraints import (
 ROOT = Path(__file__).resolve().parents[1]
 DATABASE = ROOT / "data" / "warhammer_10e.sqlite"
 CATALOGUE = ROOT / "web" / "public" / "profile-data.json"
+SOURCE_LOCK = ROOT / "data" / "profile-source-lock.json"
 
 
 class ProfileDataTests(unittest.TestCase):
+    def test_checked_artifacts_match_the_pinned_source_manifest(self):
+        lock = json.loads(SOURCE_LOCK.read_text(encoding="utf-8"))
+        report = offline_report(lock, DATABASE, CATALOGUE)
+        self.assertEqual(report["status"], "consistent")
+        self.assertEqual(report["differences"], [])
+        self.assertEqual(database_source_manifest(DATABASE), lock)
+
+        changed = json.loads(json.dumps(lock))
+        changed["files"]["Datasheets.csv"]["rowCount"] += 1
+        self.assertEqual(
+            source_manifest_differences(lock, changed),
+            ["Datasheets.csv"],
+        )
+
+    def test_table_snapshots_ignore_generated_row_ids_but_detect_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            first = Path(directory) / "first.sqlite"
+            second = Path(directory) / "second.sqlite"
+            for path, row_id, value in ((first, 1, "same"), (second, 99, "same")):
+                with sqlite3.connect(path) as connection:
+                    connection.execute("CREATE TABLE sample(id INTEGER PRIMARY KEY, value TEXT)")
+                    connection.execute("INSERT INTO sample(id, value) VALUES (?, ?)", (row_id, value))
+            self.assertEqual(table_snapshot(first, "sample"), table_snapshot(second, "sample"))
+            with sqlite3.connect(second) as connection:
+                connection.execute("UPDATE sample SET value = 'changed'")
+            self.assertNotEqual(table_snapshot(first, "sample"), table_snapshot(second, "sample"))
+
     def test_composition_parser_handles_export_markup_and_unicode_hyphens(self):
         self.assertEqual(composition_range("10-20 Necron Warriors"), (10, 20))
         self.assertEqual(composition_range("3‑10 Kill Team Infiltrators"), (3, 10))

@@ -8,6 +8,7 @@ import csv
 import hashlib
 import html
 import io
+import json
 import re
 import sqlite3
 import time
@@ -319,8 +320,47 @@ def download_exports() -> tuple[dict[str, bytes], str, str]:
     return exports, update_rows[0]["last_update"].strip(), fetched_at
 
 
-def create_database(output: Path) -> dict[str, int]:
-    exports, source_updated_at, fetched_at = download_exports()
+def source_manifest(exports: dict[str, bytes], source_updated_at: str) -> dict:
+    return {
+        "schemaVersion": 1,
+        "source": "Wahapedia structured CSV export",
+        "baseUrl": BASE_URL,
+        "sourceUpdatedAt": source_updated_at,
+        "files": {
+            name: {
+                "sha256": hashlib.sha256(exports[name]).hexdigest(),
+                "rowCount": len(read_rows(exports[name])),
+            }
+            for name in FILES
+        },
+    }
+
+
+def source_manifest_differences(expected: dict, actual: dict) -> list[str]:
+    differences = []
+    for field in ("schemaVersion", "source", "baseUrl", "sourceUpdatedAt"):
+        if expected.get(field) != actual.get(field):
+            differences.append(field)
+    expected_files = expected.get("files", {})
+    actual_files = actual.get("files", {})
+    for name in sorted(set(expected_files) | set(actual_files)):
+        if expected_files.get(name) != actual_files.get(name):
+            differences.append(name)
+    return differences
+
+
+def write_source_lock(path: Path, manifest: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
+def create_database(
+    output: Path,
+    export_bundle: tuple[dict[str, bytes], str, str] | None = None,
+) -> dict[str, int]:
+    exports, source_updated_at, fetched_at = export_bundle or download_exports()
     rows = {name: read_rows(data) for name, data in exports.items()}
     datasheet_ids = {row["id"] for row in rows["Datasheets.csv"]}
     model_rows = [
@@ -614,8 +654,38 @@ def main() -> None:
         default=Path("data/warhammer_10e.sqlite"),
         help="SQLite output path (default: data/warhammer_10e.sqlite)",
     )
+    parser.add_argument(
+        "--source-lock",
+        type=Path,
+        default=Path("data/profile-source-lock.json"),
+        help="pinned source manifest (default: data/profile-source-lock.json)",
+    )
+    parser.add_argument(
+        "--update-source-lock",
+        action="store_true",
+        help="accept the downloaded source identities after a successful build",
+    )
     args = parser.parse_args()
-    counts = create_database(args.output.resolve())
+    bundle = download_exports()
+    manifest = source_manifest(bundle[0], bundle[1])
+    source_lock = args.source_lock.resolve()
+    if not args.update_source_lock:
+        if not source_lock.exists():
+            raise RuntimeError(
+                f"source lock is missing: {source_lock}; review the source and rerun with "
+                "--update-source-lock"
+            )
+        expected = json.loads(source_lock.read_text(encoding="utf-8"))
+        differences = source_manifest_differences(expected, manifest)
+        if differences:
+            raise RuntimeError(
+                "downloaded profile source differs from the pinned manifest: "
+                + ", ".join(differences)
+                + "; run scripts/profile_freshness.py for a change report"
+            )
+    counts = create_database(args.output.resolve(), bundle)
+    if args.update_source_lock:
+        write_source_lock(source_lock, manifest)
     print(f"Built {args.output.resolve()}")
     for table, count in counts.items():
         print(f"  {table}: {count}")

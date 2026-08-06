@@ -289,6 +289,15 @@ old equipment before adding the selected alternative. Alternate profiles are
 grouped by their shared weapon name even when the export assigns their modes
 different source-line identifiers.
 
+Every imported CSV is pinned in `data/profile-source-lock.json` by published
+update timestamp, SHA-256, and row count. A normal database rebuild refuses
+changed upstream inputs, preventing an unnoticed profile update from reaching
+the calculator. CI also checks that the committed SQLite database and browser
+catalogue match the same pin. The scheduled profile-freshness workflow compares
+that pin with the current exports each day; when an update appears it uploads a
+JSON report identifying changed files and semantic database tables for review
+and regression testing before the new source can be explicitly accepted.
+
 ## WebAssembly build
 
 Activate an Emscripten SDK environment, then run:

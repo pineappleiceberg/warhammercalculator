@@ -34,6 +34,8 @@ jobs:
         run: ctest --test-dir build/native --output-on-failure
       - name: Verify checked profile data and loadout provenance
         run: python3 -m unittest discover -s tests -p test_profiles_data.py
+      - name: Verify profile source lock and generated artifacts
+        run: python3 scripts/profile_freshness.py --offline
 
   fuzz:
     runs-on: ubuntu-latest

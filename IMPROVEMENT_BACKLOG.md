@@ -16,13 +16,17 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Add data freshness checks, change reports, and source-version pinning.
-2. Benchmark and profile large volleys in native and WebAssembly builds.
-3. Improve mobile play-mode ergonomics and accessibility.
-4. Add deployment health checks and clearer service-failure diagnostics.
+1. Benchmark and profile large volleys in native and WebAssembly builds.
+2. Improve mobile play-mode ergonomics and accessibility.
+3. Add deployment health checks and clearer service-failure diagnostics.
 
 ## Completed cycles
 
+- 2026-08-06: Pinned every imported source export by update timestamp, SHA-256,
+  and row count. Routine rebuilds now reject unreviewed upstream drift, CI proves
+  the SQLite database and browser catalogue share the pin without network
+  access, and a daily/manual freshness workflow uploads a machine-readable
+  source and semantic-table change report before failing visibly on an update.
 - 2026-08-06: Added explicit, source-linked model-composition counts for all 88
   conditional or multi-variable loadout subjects across 37 datasheets. Their
   207 weapon vectors now derive editable starting totals in lists and Unit vs
