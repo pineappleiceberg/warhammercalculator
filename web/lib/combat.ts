@@ -21,7 +21,11 @@ export type CombatProfile = {
   targetModels: number;
   reduction: number;
   criticalWounds: number;
+  sustainedHitsDice: number;
+  sustainedHitsSides: number;
   sustainedHits: number;
+  rapidFireDice: number;
+  rapidFireSides: number;
   rapidFire: number;
   melta: number;
   withinHalfRange: boolean;
@@ -92,7 +96,11 @@ export const DEFAULT_PROFILE: CombatProfile = {
   targetModels: 1,
   reduction: 0,
   criticalWounds: 0,
+  sustainedHitsDice: 0,
+  sustainedHitsSides: 0,
   sustainedHits: 0,
+  rapidFireDice: 0,
+  rapidFireSides: 0,
   rapidFire: 0,
   melta: 0,
   withinHalfRange: false,
@@ -157,7 +165,11 @@ export function normalizeProfile(input: unknown): CombatProfile {
     targetModels: numberValue("targetModels", 1, 1000),
     reduction: numberValue("reduction", 0, 1024),
     criticalWounds: numberValue("criticalWounds", 0, 6),
-    sustainedHits: numberValue("sustainedHits", 0, 6),
+    sustainedHitsDice: numberValue("sustainedHitsDice", 0, 20),
+    sustainedHitsSides: numberValue("sustainedHitsSides", 0, 100),
+    sustainedHits: numberValue("sustainedHits", 0, 1024),
+    rapidFireDice: numberValue("rapidFireDice", 0, 20),
+    rapidFireSides: numberValue("rapidFireSides", 0, 100),
     rapidFire: numberValue("rapidFire", 0, 100),
     melta: numberValue("melta", 0, 100),
     withinHalfRange: booleanValue("withinHalfRange"),
@@ -181,6 +193,12 @@ export function normalizeProfile(input: unknown): CombatProfile {
   }
   if (profile.damageDice > 0 && profile.damageSides < 2) {
     throw new Error("damageSides must be at least 2 when damageDice is non-zero");
+  }
+  if (profile.sustainedHitsDice > 0 && profile.sustainedHitsSides < 2) {
+    throw new Error("sustainedHitsSides must be at least 2 when sustainedHitsDice is non-zero");
+  }
+  if (profile.rapidFireDice > 0 && profile.rapidFireSides < 2) {
+    throw new Error("rapidFireSides must be at least 2 when rapidFireDice is non-zero");
   }
   return profile;
 }
@@ -228,14 +246,20 @@ export function simulateAttack(profile: CombatProfile): RollResult {
     throw new Error("Torrent weapons cannot fire indirectly when the target is not visible");
   }
   const attacksPerWeapon =
-    profile.attacks +
-    (profile.withinHalfRange ? profile.rapidFire : 0) +
-    (profile.blast ? Math.floor(profile.targetModels / 5) : 0);
-  const attacks = rollDiceValue(
-    profile.attackDice * profile.weaponCount,
-    profile.attackSides,
-    attacksPerWeapon * profile.weaponCount,
-  );
+    profile.attacks + (profile.blast ? Math.floor(profile.targetModels / 5) : 0);
+  const attacks =
+    rollDiceValue(
+      profile.attackDice * profile.weaponCount,
+      profile.attackSides,
+      attacksPerWeapon * profile.weaponCount,
+    ) +
+    (profile.withinHalfRange
+      ? rollDiceValue(
+          profile.rapidFireDice * profile.weaponCount,
+          profile.rapidFireSides,
+          profile.rapidFire * profile.weaponCount,
+        )
+      : 0);
   if (attacks > 10_000) {
     throw new Error("This roll is too large. Reduce the attack or weapon count.");
   }
@@ -410,7 +434,12 @@ export function simulateAttack(profile: CombatProfile): RollResult {
     if (criticalHit) result.criticalHits += 1;
     resolveHit(`#${attack}`, hitLabel, criticalHit && profile.lethalHits);
     if (criticalHit) {
-      for (let extra = 1; extra <= profile.sustainedHits; extra += 1) {
+      const sustainedHits = rollDiceValue(
+        profile.sustainedHitsDice,
+        profile.sustainedHitsSides,
+        profile.sustainedHits,
+      );
+      for (let extra = 1; extra <= sustainedHits; extra += 1) {
         if (result.modelsDestroyed >= profile.targetModels) break;
         resolveHit(`#${attack}.S${extra}`, "Sustained ✓", false);
       }

@@ -52,7 +52,7 @@ export async function calculateProfile(profile: CombatProfile): Promise<DamageSu
     (profile.heavyActive ? 32 : 0) |
     (profile.lanceActive ? 64 : 0) |
     (profile.blast ? 128 : 0) |
-    (profile.withinHalfRange && profile.rapidFire > 0 ? 256 : 0) |
+    (profile.withinHalfRange && (profile.rapidFire > 0 || profile.rapidFireDice > 0) ? 256 : 0) |
     (profile.withinHalfRange && profile.melta > 0 ? 512 : 0) |
     (profile.targetCover ? 1024 : 0) |
     (profile.ignoresCover ? 2048 : 0) |
@@ -79,7 +79,11 @@ export async function calculateProfile(profile: CombatProfile): Promise<DamageSu
       flags,
       profile.criticalWounds,
       profile.targetModels,
+      profile.sustainedHitsDice,
+      profile.sustainedHitsSides,
       profile.sustainedHits,
+      profile.rapidFireDice,
+      profile.rapidFireSides,
       profile.rapidFire,
       profile.melta,
       output,

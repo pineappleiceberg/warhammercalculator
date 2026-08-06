@@ -53,7 +53,6 @@ struct whc_web_summary {
     requires feel_no_pain == 0 || (2 <= feel_no_pain && feel_no_pain <= 6);
     requires critical_hits_on == 0 || (2 <= critical_hits_on && critical_hits_on <= 6);
     requires critical_wounds_on == 0 || (2 <= critical_wounds_on && critical_wounds_on <= 6);
-    requires sustained_hits <= 6;
     ensures \result ==> summary->minimum <= summary->first_quartile;
     ensures \result ==> summary->first_quartile <= summary->median;
     ensures \result ==> summary->median <= summary->third_quartile;
@@ -72,7 +71,9 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
                            uint8_t invulnerable_save, uint8_t feel_no_pain, uint16_t wounds,
                            uint16_t damage_reduction, uint32_t rule_flags,
                            uint8_t critical_wounds_on, uint16_t target_models,
-                           uint8_t sustained_hits, uint16_t rapid_fire, uint16_t melta,
+                           uint16_t sustained_hits_dice_count, uint16_t sustained_hits_dice_sides,
+                           uint16_t sustained_hits, uint16_t rapid_fire_dice_count,
+                           uint16_t rapid_fire_dice_sides, uint16_t rapid_fire, uint16_t melta,
                            struct whc_web_summary *summary);
 
 #endif

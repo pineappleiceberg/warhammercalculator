@@ -10,7 +10,9 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
                            uint8_t invulnerable_save, uint8_t feel_no_pain, uint16_t wounds,
                            uint16_t damage_reduction, uint32_t rule_flags,
                            uint8_t critical_wounds_on, uint16_t target_models,
-                           uint8_t sustained_hits, uint16_t rapid_fire, uint16_t melta,
+                           uint16_t sustained_hits_dice_count, uint16_t sustained_hits_dice_sides,
+                           uint16_t sustained_hits, uint16_t rapid_fire_dice_count,
+                           uint16_t rapid_fire_dice_sides, uint16_t rapid_fire, uint16_t melta,
                            struct whc_web_summary *summary) {
     static struct calculator_workspace workspace;
     struct weapon_profile weapon;
@@ -24,14 +26,33 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
     int16_t hit_modifier = 0;
     uint8_t effective_hits_on = hits_on;
     bool target_has_cover = false;
+    uint16_t effective_attack_dice_count = attack_dice_count;
+    uint16_t effective_attack_dice_sides = attack_dice_sides;
+    struct dice_value sustained_hits_value = {sustained_hits_dice_count, sustained_hits_dice_sides,
+                                              sustained_hits};
+    struct dice_value rapid_fire_value = {rapid_fire_dice_count, rapid_fire_dice_sides, rapid_fire};
 
-    if (weapon_count == 0u || target_models == 0u || sustained_hits > 6u ||
+    if (weapon_count == 0u || target_models == 0u || !dice_value_is_valid(sustained_hits_value) ||
+        !dice_value_is_valid(rapid_fire_value) ||
         ((rule_flags & WHC_RULE_INDIRECT_NOT_VISIBLE) != 0u &&
          (rule_flags & WHC_RULE_TORRENT) != 0u)) {
         return false;
     }
 
     if ((rule_flags & WHC_RULE_RAPID_FIRE_ACTIVE) != 0u) {
+        uint32_t combined_dice_count = 0u;
+        if (rapid_fire_dice_count != 0u && attack_dice_count != 0u &&
+            rapid_fire_dice_sides != attack_dice_sides) {
+            return false;
+        }
+        combined_dice_count = (uint32_t)attack_dice_count + rapid_fire_dice_count;
+        if (combined_dice_count > UINT16_MAX) {
+            return false;
+        }
+        effective_attack_dice_count = (uint16_t)combined_dice_count;
+        if (rapid_fire_dice_count != 0u) {
+            effective_attack_dice_sides = rapid_fire_dice_sides;
+        }
         attacks_per_weapon += rapid_fire;
     }
     if ((rule_flags & WHC_RULE_BLAST) != 0u) {
@@ -41,7 +62,7 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
         effective_damage_modifier += melta;
     }
 
-    total_attack_dice = (uint32_t)attack_dice_count * weapon_count;
+    total_attack_dice = (uint32_t)effective_attack_dice_count * weapon_count;
     total_attack_modifier = attacks_per_weapon * weapon_count;
     if (total_attack_dice > UINT16_MAX || total_attack_modifier > UINT16_MAX ||
         effective_damage_modifier > UINT16_MAX) {
@@ -74,7 +95,7 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
     memset(&weapon, 0, sizeof(weapon));
     memset(&target, 0, sizeof(target));
 
-    weapon.attacks = (struct dice_value){(uint16_t)total_attack_dice, attack_dice_sides,
+    weapon.attacks = (struct dice_value){(uint16_t)total_attack_dice, effective_attack_dice_sides,
                                          (uint16_t)total_attack_modifier};
     weapon.hits_on = effective_hits_on;
     weapon.strength = strength;
@@ -99,7 +120,8 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
         ((rule_flags & WHC_RULE_TORRENT) != 0u && !rule_add_torrent(&weapon.rules)) ||
         ((rule_flags & WHC_RULE_INDIRECT_NOT_VISIBLE) != 0u &&
          !rule_add_hit_auto_fails_through(&weapon.rules, 3u)) ||
-        (sustained_hits != 0u && !rule_add_sustained_hits(&weapon.rules, sustained_hits)) ||
+        ((sustained_hits_dice_count != 0u || sustained_hits != 0u) &&
+         !rule_add_sustained_hits_dice(&weapon.rules, sustained_hits_value)) ||
         ((rule_flags & WHC_RULE_LANCE_ACTIVE) != 0u && !rule_add_wound_bonus(&weapon.rules, 1u)) ||
         (critical_wounds_on != 0u &&
          !rule_add_critical_wounds_on(&weapon.rules, critical_wounds_on)) ||

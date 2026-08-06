@@ -110,6 +110,10 @@ rule_add_devastating_wounds(&weapon.rules);
 rule_add_twin_linked(&weapon.rules);
 rule_add_reroll_failed_hits(&weapon.rules);
 rule_add_sustained_hits(&weapon.rules, 1);
+rule_add_sustained_hits_dice(
+    &weapon.rules,
+    (struct dice_value){ .dice_count = 1, .dice_sides = 3 }
+);
 rule_add_torrent(&weapon.rules);
 rule_add_wound_bonus(&weapon.rules, 1);
 rule_add_cover(&target.rules);

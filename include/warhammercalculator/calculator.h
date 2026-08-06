@@ -103,7 +103,7 @@ struct attack_plan {
 
     uint16_t damage_reduction;
     uint16_t damage_floor;
-    uint8_t sustained_hits;
+    struct dice_value sustained_hits;
     uint32_t flags;
 
     struct damage_transform_entry damage_transforms[MAX_DAMAGE_TRANSFORMS];
@@ -391,6 +391,8 @@ bool rule_add_wound_reroll_mask(struct rule_set *rules, uint8_t face_mask);
 bool rule_add_hit_auto_fails_through(struct rule_set *rules, uint8_t face);
 /*@ requires \valid(rules); assigns *rules; */
 bool rule_add_sustained_hits(struct rule_set *rules, uint8_t additional_hits);
+/*@ requires \valid(rules); assigns *rules; */
+bool rule_add_sustained_hits_dice(struct rule_set *rules, struct dice_value additional_hits);
 /*@ requires \valid(rules); assigns *rules; */
 bool rule_add_torrent(struct rule_set *rules);
 /*@ requires \valid(rules); assigns *rules; */

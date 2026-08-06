@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { attackRollSucceeds, savingThrowTarget, woundTarget } from "../lib/thresholds.mjs";
 import { allocateDamageToUnit } from "../lib/allocation.mjs";
+import { abilityDiceValue } from "../lib/dice.mjs";
 
 globalThis.require = createRequire(import.meta.url);
 globalThis.__dirname = dirname(fileURLToPath(import.meta.url));
@@ -51,6 +52,10 @@ function exactMean({ ap = 0, save = 3, invulnerable = 0, feelNoPain = 0, flags =
       0,
       0,
       0,
+      0,
+      0,
+      0,
+      0,
       output,
     );
     assert.equal(ok, 1);
@@ -66,6 +71,58 @@ function exactMean({ ap = 0, save = 3, invulnerable = 0, feelNoPain = 0, flags =
 function lessThanOrEqual(left, right) {
   return left.numerator * right.denominator <= right.numerator * left.denominator;
 }
+
+function variableRuleMean({ flags = 0, sustained = [0, 0, 0], rapid = [0, 0, 0] }) {
+  const output = calculator._malloc(72);
+  try {
+    const ok = calculator._whc_calculate_summary(
+      0,
+      0,
+      1,
+      1,
+      6,
+      2,
+      0,
+      0,
+      0,
+      1,
+      6,
+      1,
+      7,
+      0,
+      0,
+      10,
+      0,
+      flags,
+      0,
+      1,
+      ...sustained,
+      ...rapid,
+      0,
+      output,
+    );
+    assert.equal(ok, 1);
+    return {
+      numerator: readUint64(output, 5, 6),
+      denominator: readUint64(output, 7, 8),
+    };
+  } finally {
+    calculator._free(output);
+  }
+}
+
+test("C/Wasm preserves variable Sustained Hits and Rapid Fire values", () => {
+  assert.deepEqual(abilityDiceValue({ value: "d3" }), { count: 1, sides: 3, modifier: 0 });
+  assert.deepEqual(abilityDiceValue({ value: "D6+3" }), { count: 1, sides: 6, modifier: 3 });
+  assert.deepEqual(variableRuleMean({ sustained: [1, 3, 0] }), {
+    numerator: 5n,
+    denominator: 12n,
+  });
+  assert.deepEqual(variableRuleMean({ flags: 16 | 256, rapid: [1, 3, 0] }), {
+    numerator: 5n,
+    denominator: 2n,
+  });
+});
 
 test("JavaScript and C agree on wound thresholds", () => {
   for (let strength = 1; strength <= 24; strength += 1) {

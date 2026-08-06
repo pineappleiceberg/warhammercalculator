@@ -1,5 +1,6 @@
 import type { CombatProfile } from "./combat";
 import { antiWoundThreshold } from "./anti.mjs";
+import { abilityDiceValue, parseDice } from "./dice.mjs";
 
 export type CatalogueFaction = { id: string; name: string };
 export type CatalogueAbility = { name: string; value: string | null };
@@ -37,24 +38,6 @@ export type Catalogue = {
   units: CatalogueUnit[];
 };
 
-export function parseDice(value: string) {
-  const normalized = value.replace(/\s/g, "");
-  const fixed = /^\d+$/.exec(normalized);
-  if (fixed) return { count: 0, sides: 0, modifier: Number(fixed[0]) };
-  const dice = /^(\d*)D(\d+)([+-]\d+)?$/i.exec(normalized);
-  if (!dice) return null;
-  return {
-    count: dice[1] ? Number(dice[1]) : 1,
-    sides: Number(dice[2]),
-    modifier: Math.max(0, Number(dice[3] ?? 0)),
-  };
-}
-
-function fixedAbilityValue(ability: CatalogueAbility | undefined) {
-  if (!ability?.value || !/^\d+$/.test(ability.value)) return 0;
-  return Number(ability.value);
-}
-
 export function applyWeaponProfile(
   profile: CombatProfile,
   weapon: CatalogueWeapon,
@@ -64,6 +47,8 @@ export function applyWeaponProfile(
   const damage = parseDice(weapon.damage);
   const names = new Set(weapon.abilities.map((ability) => ability.name));
   const ability = (name: string) => weapon.abilities.find((entry) => entry.name === name);
+  const sustainedHits = abilityDiceValue(ability("sustained hits"));
+  const rapidFire = abilityDiceValue(ability("rapid fire"));
   return {
     ...profile,
     ...(attacks
@@ -76,9 +61,13 @@ export function applyWeaponProfile(
     ...(/^\d+$/.test(weapon.strength) ? { strength: Number(weapon.strength) } : {}),
     ...(weapon.ap !== null ? { ap: Math.abs(weapon.ap) } : {}),
     criticalWounds: antiWoundThreshold(weapon.abilities, targetKeywords),
-    sustainedHits: fixedAbilityValue(ability("sustained hits")),
-    rapidFire: fixedAbilityValue(ability("rapid fire")),
-    melta: fixedAbilityValue(ability("melta")),
+    sustainedHitsDice: sustainedHits.count,
+    sustainedHitsSides: sustainedHits.sides,
+    sustainedHits: sustainedHits.modifier,
+    rapidFireDice: rapidFire.count,
+    rapidFireSides: rapidFire.sides,
+    rapidFire: rapidFire.modifier,
+    melta: abilityDiceValue(ability("melta")).modifier,
     torrent: names.has("torrent"),
     blast: names.has("blast"),
     ignoresCover: names.has("ignores cover"),

@@ -10,6 +10,7 @@ import {
 import { attackRollSucceeds, savingThrowTarget, woundTarget } from "../lib/thresholds.mjs";
 import { antiWoundThreshold } from "../lib/anti.mjs";
 import { allocateDamageToUnit } from "../lib/allocation.mjs";
+import { abilityDiceValue, parseDice } from "../lib/dice.mjs";
 import { WorkflowNav } from "../components/workflow-nav";
 
 type Result = {
@@ -153,7 +154,7 @@ async function calculate(profile: Profile): Promise<Result> {
     (profile.heavyActive ? 32 : 0) |
     (profile.lanceActive ? 64 : 0) |
     (profile.blast ? 128 : 0) |
-    (profile.withinHalfRange && profile.rapidFire > 0 ? 256 : 0) |
+    (profile.withinHalfRange && (profile.rapidFire > 0 || profile.rapidFireDice > 0) ? 256 : 0) |
     (profile.withinHalfRange && profile.melta > 0 ? 512 : 0) |
     (profile.targetCover ? 1024 : 0) |
     (profile.ignoresCover ? 2048 : 0) |
@@ -181,7 +182,11 @@ async function calculate(profile: Profile): Promise<Result> {
       flags,
       profile.criticalWounds,
       profile.targetModels,
+      profile.sustainedHitsDice,
+      profile.sustainedHitsSides,
       profile.sustainedHits,
+      profile.rapidFireDice,
+      profile.rapidFireSides,
       profile.rapidFire,
       profile.melta,
       output,
@@ -222,24 +227,6 @@ function formatDice(count: number, sides: number, modifier: number) {
   if (count === 0) return `${modifier}`;
   const suffix = modifier > 0 ? `+${modifier}` : "";
   return `${count > 1 ? count : ""}D${sides}${suffix}`;
-}
-
-function parseDice(value: string) {
-  const normalized = value.replace(/\s/g, "");
-  const fixed = /^\d+$/.exec(normalized);
-  if (fixed) return { count: 0, sides: 0, modifier: Number(fixed[0]) };
-  const dice = /^(\d*)D(\d+)([+-]\d+)?$/i.exec(normalized);
-  if (!dice) return null;
-  return {
-    count: dice[1] ? Number(dice[1]) : 1,
-    sides: Number(dice[2]),
-    modifier: Math.max(0, Number(dice[3] ?? 0)),
-  };
-}
-
-function fixedAbilityValue(ability: CatalogueAbility | undefined) {
-  if (!ability?.value || !/^\d+$/.test(ability.value)) return 0;
-  return Number(ability.value);
 }
 
 function randomBelow(exclusiveMaximum: number) {
@@ -288,14 +275,20 @@ function simulateAttack(profile: Profile): RollResult {
     throw new Error("Torrent weapons cannot fire indirectly when the target is not visible");
   }
   const attacksPerWeapon =
-    profile.attacks +
-    (profile.withinHalfRange ? profile.rapidFire : 0) +
-    (profile.blast ? Math.floor(profile.targetModels / 5) : 0);
-  const attacks = rollDiceValue(
-    profile.attackDice * profile.weaponCount,
-    profile.attackSides,
-    attacksPerWeapon * profile.weaponCount,
-  );
+    profile.attacks + (profile.blast ? Math.floor(profile.targetModels / 5) : 0);
+  const attacks =
+    rollDiceValue(
+      profile.attackDice * profile.weaponCount,
+      profile.attackSides,
+      attacksPerWeapon * profile.weaponCount,
+    ) +
+    (profile.withinHalfRange
+      ? rollDiceValue(
+          profile.rapidFireDice * profile.weaponCount,
+          profile.rapidFireSides,
+          profile.rapidFire * profile.weaponCount,
+        )
+      : 0);
   if (attacks > 10_000) {
     throw new Error("This roll is too large to display. Reduce the attack or weapon count.");
   }
@@ -471,7 +464,12 @@ function simulateAttack(profile: Profile): RollResult {
     if (criticalHit) result.criticalHits += 1;
     resolveHit(`#${attack}`, hitLabel, criticalHit && profile.lethalHits);
     if (criticalHit) {
-      for (let extra = 1; extra <= profile.sustainedHits; extra += 1) {
+      const sustainedHits = rollDiceValue(
+        profile.sustainedHitsDice,
+        profile.sustainedHitsSides,
+        profile.sustainedHits,
+      );
+      for (let extra = 1; extra <= sustainedHits; extra += 1) {
         if (result.modelsDestroyed >= profile.targetModels) break;
         resolveHit(`#${attack}.S${extra}`, "Sustained ✓", false);
       }
@@ -730,6 +728,8 @@ export default function Home() {
     const damage = parseDice(weapon.damage);
     const names = new Set(weapon.abilities.map((ability) => ability.name));
     const ability = (name: string) => weapon.abilities.find((entry) => entry.name === name);
+    const sustainedHits = abilityDiceValue(ability("sustained hits"));
+    const rapidFire = abilityDiceValue(ability("rapid fire"));
 
     setProfile((current) => ({
       ...current,
@@ -751,9 +751,13 @@ export default function Home() {
       ...(/^\d+$/.test(weapon.strength) ? { strength: Number(weapon.strength) } : {}),
       ...(weapon.ap !== null ? { ap: Math.abs(weapon.ap) } : {}),
       criticalWounds: antiWoundThreshold(weapon.abilities, selectedTargetModel?.keywords ?? []),
-      sustainedHits: fixedAbilityValue(ability("sustained hits")),
-      rapidFire: fixedAbilityValue(ability("rapid fire")),
-      melta: fixedAbilityValue(ability("melta")),
+      sustainedHitsDice: sustainedHits.count,
+      sustainedHitsSides: sustainedHits.sides,
+      sustainedHits: sustainedHits.modifier,
+      rapidFireDice: rapidFire.count,
+      rapidFireSides: rapidFire.sides,
+      rapidFire: rapidFire.modifier,
+      melta: abilityDiceValue(ability("melta")).modifier,
       torrent: names.has("torrent"),
       blast: names.has("blast"),
       ignoresCover: names.has("ignores cover"),
@@ -1149,18 +1153,40 @@ export default function Home() {
             </div>
             <div className="rule-values field-grid three">
               <NumberField
-                label="Sustained Hits"
-                value={profile.sustainedHits}
-                max={6}
-                onChange={(value) => set("sustainedHits", value)}
-                suffix="X"
+                label="Sustained Hits dice"
+                value={profile.sustainedHitsDice}
+                max={20}
+                onChange={(value) => set("sustainedHitsDice", value)}
               />
               <NumberField
-                label="Rapid Fire"
+                label="Sustained Hits sides"
+                value={profile.sustainedHitsSides}
+                max={100}
+                onChange={(value) => set("sustainedHitsSides", value)}
+              />
+              <NumberField
+                label="Sustained Hits modifier"
+                value={profile.sustainedHits}
+                max={1024}
+                onChange={(value) => set("sustainedHits", value)}
+              />
+              <NumberField
+                label="Rapid Fire dice"
+                value={profile.rapidFireDice}
+                max={20}
+                onChange={(value) => set("rapidFireDice", value)}
+              />
+              <NumberField
+                label="Rapid Fire sides"
+                value={profile.rapidFireSides}
+                max={100}
+                onChange={(value) => set("rapidFireSides", value)}
+              />
+              <NumberField
+                label="Rapid Fire modifier"
                 value={profile.rapidFire}
                 max={100}
                 onChange={(value) => set("rapidFire", value)}
-                suffix="X"
               />
               <NumberField
                 label="Melta"

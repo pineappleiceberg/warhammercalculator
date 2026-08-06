@@ -39,3 +39,6 @@ priority over feature count.
   overkill damage.
 - 2026-08-06: Corrected Indirect Fire so unmodified Hit rolls of 1–3 always fail
   and Torrent weapons cannot fire indirectly at a non-visible target.
+- 2026-08-06: Preserved variable Sustained Hits and Rapid Fire catalogue values
+  such as D3 and D6+3 across the C engine, WebAssembly, API, editable profiles,
+  shared matchups, exact distributions, and cryptographically random live rolls.

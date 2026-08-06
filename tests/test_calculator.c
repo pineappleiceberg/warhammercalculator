@@ -129,7 +129,7 @@ static void test_web_api(void) {
     struct whc_web_summary summary;
 
     assert(whc_calculate_summary(0, 0, 1, 1, 3, 4, 0, 0, 0, 2, 6, 4, 3, 0, 0, 10, 0, 0, 0, 1, 0, 0,
-                                 0, &summary));
+                                 0, 0, 0, 0, 0, &summary));
     assert(summary.mean_numerator_low == 2);
     assert(summary.mean_numerator_high == 0);
     assert(summary.mean_denominator_low == 9);
@@ -160,6 +160,14 @@ static void test_sustained_hits_torrent_and_lance(void) {
     assert(mean.denominator == 18);
     assert(calculate_attack_damage_summary(&weapon, &target, &workspace, &summary));
     assert(summary.maximum == 2);
+
+    rule_set_clear(&weapon.rules);
+    assert(rule_add_sustained_hits_dice(&weapon.rules, (struct dice_value){1, 3, 0}));
+    assert(calculate_attack_expected_damage(&weapon, &target, &workspace, &mean));
+    assert(mean.numerator == 5);
+    assert(mean.denominator == 12);
+    assert(calculate_attack_damage_summary(&weapon, &target, &workspace, &summary));
+    assert(summary.maximum == 4);
 
     rule_set_clear(&weapon.rules);
     assert(rule_add_lethal_hits(&weapon.rules));
@@ -197,13 +205,13 @@ static void test_web_api_context_rules(void) {
         WHC_RULE_TORRENT | WHC_RULE_RAPID_FIRE_ACTIVE | WHC_RULE_BLAST | WHC_RULE_MELTA_ACTIVE;
 
     assert(whc_calculate_summary(0, 0, 1, 2, 6, 2, 0, 0, 0, 1, 6, 1, 7, 0, 0, 10, 0, combined, 0,
-                                 10, 0, 1, 2, &summary));
+                                 10, 0, 0, 0, 0, 0, 1, 2, &summary));
     assert(summary.mean_numerator_low == 20);
     assert(summary.mean_denominator_low == 1);
 
     assert(whc_calculate_summary(0, 0, 1, 1, 6, 2, 1, 0, 0, 1, 6, 1, 3, 0, 0, 10, 0,
-                                 WHC_RULE_TORRENT | WHC_RULE_TARGET_COVER, 0, 1, 0, 0, 0,
-                                 &summary));
+                                 WHC_RULE_TORRENT | WHC_RULE_TARGET_COVER, 0, 1, 0, 0, 0, 0, 0, 0,
+                                 0, &summary));
     assert(summary.mean_numerator_low == 5);
     assert(summary.mean_denominator_low == 18);
 }
@@ -214,14 +222,15 @@ static void test_indirect_fire_restrictions(void) {
     uint32_t indirect = WHC_RULE_INDIRECT_NOT_VISIBLE | WHC_RULE_IGNORES_COVER;
 
     assert(whc_calculate_summary(0, 0, 1, 1, 2, 10, 0, 0, 0, 1, 3, 1, 7, 0, 0, 2, 0, indirect, 0, 1,
-                                 0, 0, 0, &summary));
+                                 0, 0, 0, 0, 0, 0, 0, &summary));
     assert(summary.mean_numerator_low == 5);
     assert(summary.mean_numerator_high == 0);
     assert(summary.mean_denominator_low == 12);
     assert(summary.mean_denominator_high == 0);
 
     assert(!whc_calculate_summary(0, 0, 1, 1, 2, 10, 0, 0, 0, 1, 6, 1, 7, 0, 0, 2, 0,
-                                  indirect | WHC_RULE_TORRENT, 0, 1, 0, 0, 0, &summary));
+                                  indirect | WHC_RULE_TORRENT, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+                                  &summary));
 }
 
 /*@ terminates \true; */

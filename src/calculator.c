@@ -760,7 +760,7 @@ static bool build_conditional_hit_exact_distribution(const struct weapon_profile
     conditional.critical_hits_on = 0u;
     conditional.hit_reroll_mask = 0u;
     conditional.hit_auto_fails_through = 0u;
-    conditional.sustained_hits = 0u;
+    conditional.sustained_hits = (struct dice_value){0u, 0u, 0u};
     conditional.flags &=
         (uint32_t)~((uint32_t)ATTACK_PLAN_LETHAL_HITS | (uint32_t)ATTACK_PLAN_AUTO_HITS);
 
@@ -788,7 +788,6 @@ static bool build_single_attack_probability_distribution(const struct weapon_pro
     struct probability_distribution *automatic_wound = NULL;
     struct probability_distribution *critical_hit = NULL;
     struct probability_distribution *next = NULL;
-    uint8_t extra_hit = 0;
     uint32_t outcome = 0;
     uint32_t maximum = 0;
     uint64_t total_weight = 0;
@@ -800,7 +799,8 @@ static bool build_single_attack_probability_distribution(const struct weapon_pro
     }
 
     auto_hits = (plan->flags & ATTACK_PLAN_AUTO_HITS) != 0;
-    if (plan->sustained_hits == 0u && !auto_hits) {
+    if (plan->sustained_hits.dice_count == 0u && plan->sustained_hits.modifier == 0u &&
+        !auto_hits) {
         return build_single_attack_exact_distribution(weapon, plan, &workspace->exact_a,
                                                       &workspace->exact_b) &&
                probability_distribution_from_exact(&workspace->exact_b, result);
@@ -829,22 +829,56 @@ static bool build_single_attack_probability_distribution(const struct weapon_pro
 
     automatic_wound = &workspace->probability_c;
     lethal = (plan->flags & ATTACK_PLAN_LETHAL_HITS) != 0;
-    critical_hit = lethal ? automatic_wound : normal_hit;
+    critical_hit = automatic_wound;
+    if (!lethal) {
+        memcpy(critical_hit, normal_hit, sizeof(*critical_hit));
+    }
     next = &workspace->probability_d;
 
-    extra_hit = 0;
-    while (extra_hit < plan->sustained_hits) {
-        struct probability_distribution *swap = NULL;
+    if (plan->sustained_hits.dice_count != 0u || plan->sustained_hits.modifier != 0u) {
+        struct distribution *hit_count = &workspace->exact_a;
+        struct probability_distribution *current = critical_hit;
+        uint32_t extra_hit = 0u;
+        uint32_t base_maximum = critical_hit->maximum;
+        uint64_t sustained_total_weight = 0u;
 
-        if (!probability_distribution_convolve_internal(critical_hit, normal_hit,
-                                                        workspace->convolution_accumulator, next)) {
+        if (!distribution_from_dice_value(plan->sustained_hits, hit_count) ||
+            !uint64_multiply_checked((uint64_t)PROBABILITY_SCALE, hit_count->total_ways,
+                                     &sustained_total_weight)) {
             return false;
         }
-
-        swap = critical_hit;
+        memset(workspace->mixture_accumulator, 0, sizeof(workspace->mixture_accumulator));
+        while (extra_hit <= hit_count->maximum) {
+            uint64_t hit_count_weight = hit_count->ways[extra_hit];
+            if (hit_count_weight != 0u) {
+                outcome = current->minimum;
+                while (outcome <= current->maximum) {
+                    uint64_t weighted_mass = (uint64_t)current->mass[outcome] * hit_count_weight;
+                    if (!uint64_add_checked(workspace->mixture_accumulator[outcome], weighted_mass,
+                                            &workspace->mixture_accumulator[outcome])) {
+                        return false;
+                    }
+                    outcome++;
+                }
+            }
+            if (extra_hit < hit_count->maximum) {
+                struct probability_distribution *swap = NULL;
+                if (!probability_distribution_convolve_internal(
+                        current, normal_hit, workspace->convolution_accumulator, next)) {
+                    return false;
+                }
+                swap = current;
+                current = next;
+                next = swap;
+            }
+            extra_hit++;
+        }
+        maximum = base_maximum + hit_count->maximum * normal_hit->maximum;
         critical_hit = next;
-        next = swap == normal_hit ? automatic_wound : swap;
-        extra_hit++;
+        if (!probability_distribution_from_weights(workspace->mixture_accumulator, 0u, maximum,
+                                                   sustained_total_weight, critical_hit)) {
+            return false;
+        }
     }
 
     classify_attack_rolls(&hit_table, plan->hits_on, plan->critical_hits_on,
@@ -928,8 +962,13 @@ static bool build_single_attack_expected_damage(const struct weapon_profile *wea
         critical_mean = normal_mean;
     }
 
-    if (plan->sustained_hits != 0u) {
-        struct fraction additional = {.numerator = plan->sustained_hits, .denominator = 1u};
+    if (plan->sustained_hits.dice_count != 0u || plan->sustained_hits.modifier != 0u) {
+        struct fraction additional;
+
+        if (!distribution_from_dice_value(plan->sustained_hits, &workspace->exact_a) ||
+            !distribution_mean(&workspace->exact_a, &additional)) {
+            return false;
+        }
 
         if (!fraction_multiply(normal_mean, additional, &additional) ||
             !fraction_add(critical_mean, additional, &critical_mean)) {
@@ -1168,11 +1207,17 @@ static bool compile_set_sustained_hits(struct attack_plan *plan,
     (void)weapon;
     (void)target;
 
-    if (plan == NULL || payload == NULL || payload->u8[0] > 6u) {
+    struct dice_value additional_hits;
+
+    if (plan == NULL || payload == NULL) {
         return false;
     }
-
-    plan->sustained_hits = payload->u8[0];
+    additional_hits = (struct dice_value){payload->u16[0], payload->u16[1], payload->u16[2]};
+    if (!dice_value_is_valid(additional_hits) ||
+        (additional_hits.dice_count == 0u && additional_hits.modifier == 0u)) {
+        return false;
+    }
+    plan->sustained_hits = additional_hits;
     return true;
 }
 
@@ -1846,13 +1891,21 @@ bool rule_add_hit_auto_fails_through(struct rule_set *rules, uint8_t face) {
 }
 
 bool rule_add_sustained_hits(struct rule_set *rules, uint8_t additional_hits) {
+    return rule_add_sustained_hits_dice(rules,
+                                        (struct dice_value){0u, 0u, (uint16_t)additional_hits});
+}
+
+bool rule_add_sustained_hits_dice(struct rule_set *rules, struct dice_value additional_hits) {
     union rule_payload payload = {0};
 
-    if (additional_hits == 0u || additional_hits > 6u) {
+    if (!dice_value_is_valid(additional_hits) ||
+        (additional_hits.dice_count == 0u && additional_hits.modifier == 0u)) {
         return false;
     }
 
-    payload.u8[0] = additional_hits;
+    payload.u16[0] = additional_hits.dice_count;
+    payload.u16[1] = additional_hits.dice_sides;
+    payload.u16[2] = additional_hits.modifier;
     return rule_set_add(rules, compile_set_sustained_hits, payload);
 }
 
