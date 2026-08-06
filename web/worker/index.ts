@@ -120,7 +120,7 @@ async function loadCalculator(request: Request, env: Env) {
 
 async function exactCalculation(profile: CombatProfile, request: Request, env: Env) {
   const calculator = await loadCalculator(request, env);
-  const output = calculator.malloc(36);
+  const output = calculator.malloc(72);
   const flags =
     (profile.lethalHits ? 1 : 0) |
     (profile.devastatingWounds ? 2 : 0) |
@@ -168,6 +168,8 @@ async function exactCalculation(profile: CombatProfile, request: Request, env: E
     const read = (index: number) => view.getUint32(output + index * 4, true);
     const numerator = (BigInt(read(6)) << 32n) | BigInt(read(5));
     const denominator = (BigInt(read(8)) << 32n) | BigInt(read(7));
+    const appliedNumerator = (BigInt(read(15)) << 32n) | BigInt(read(14));
+    const appliedDenominator = (BigInt(read(17)) << 32n) | BigInt(read(16));
     return {
       minimum: read(0),
       firstQuartile: read(1),
@@ -176,6 +178,18 @@ async function exactCalculation(profile: CombatProfile, request: Request, env: E
       maximum: read(4),
       mean: Number(numerator) / Number(denominator),
       exact: { numerator: numerator.toString(), denominator: denominator.toString() },
+      applied: {
+        minimum: read(9),
+        firstQuartile: read(10),
+        median: read(11),
+        thirdQuartile: read(12),
+        maximum: read(13),
+        mean: Number(appliedNumerator) / Number(appliedDenominator),
+        estimated: {
+          numerator: appliedNumerator.toString(),
+          denominator: appliedDenominator.toString(),
+        },
+      },
     };
   } finally {
     calculator.free(output);

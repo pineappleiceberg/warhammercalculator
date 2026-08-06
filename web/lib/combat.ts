@@ -1,4 +1,5 @@
 import { savingThrowTarget, woundTarget } from "./thresholds.mjs";
+import { allocateDamageToUnit } from "./allocation.mjs";
 
 export type CombatProfile = {
   attackDice: number;
@@ -44,12 +45,15 @@ export type RollDetail = {
   save: string;
   fnp: string;
   damage: number;
+  appliedDamage: number;
+  wastedDamage: number;
   outcome: string;
   tone: "failed" | "saved" | "prevented" | "damage";
 };
 
 export type RollResult = {
   attacks: number;
+  attacksResolved: number;
   hits: number;
   criticalHits: number;
   woundingAttacks: number;
@@ -58,6 +62,10 @@ export type RollResult = {
   fnpPrevented: number;
   successfulAttacks: number;
   totalDamage: number;
+  appliedDamage: number;
+  wastedDamage: number;
+  modelsDestroyed: number;
+  targetWoundsRemaining: number;
   hitsOn: number;
   woundsOn: number;
   savesOn: number;
@@ -239,6 +247,7 @@ export function simulateAttack(profile: CombatProfile): RollResult {
 
   const result: RollResult = {
     attacks,
+    attacksResolved: 0,
     hits: 0,
     criticalHits: 0,
     woundingAttacks: 0,
@@ -247,6 +256,10 @@ export function simulateAttack(profile: CombatProfile): RollResult {
     fnpPrevented: 0,
     successfulAttacks: 0,
     totalDamage: 0,
+    appliedDamage: 0,
+    wastedDamage: 0,
+    modelsDestroyed: 0,
+    targetWoundsRemaining: profile.wounds,
     hitsOn,
     woundsOn,
     savesOn,
@@ -270,6 +283,8 @@ export function simulateAttack(profile: CombatProfile): RollResult {
           save: "Not reached",
           fnp: "Not reached",
           damage: 0,
+          appliedDamage: 0,
+          wastedDamage: 0,
           outcome: "Failed to wound",
           tone: "failed",
         });
@@ -293,6 +308,8 @@ export function simulateAttack(profile: CombatProfile): RollResult {
           save: saveLabel,
           fnp: "Not reached",
           damage: 0,
+          appliedDamage: 0,
+          wastedDamage: 0,
           outcome: "Saved",
           tone: "saved",
         });
@@ -319,6 +336,16 @@ export function simulateAttack(profile: CombatProfile): RollResult {
     const damage = reducedDamage - prevented;
     result.fnpPrevented += prevented;
     result.totalDamage += damage;
+    const allocation = allocateDamageToUnit(
+      result.appliedDamage,
+      damage,
+      profile.wounds,
+      profile.targetModels,
+    );
+    result.appliedDamage = allocation.applied;
+    result.wastedDamage += allocation.wasted;
+    result.modelsDestroyed = allocation.modelsDestroyed;
+    result.targetWoundsRemaining = allocation.woundsRemaining;
     if (damage > 0) result.successfulAttacks += 1;
     result.details.push({
       label,
@@ -327,12 +354,21 @@ export function simulateAttack(profile: CombatProfile): RollResult {
       save: saveLabel,
       fnp: profile.feelNoPain > 0 ? `${prevented} prevented` : "None",
       damage,
-      outcome: damage > 0 ? `${damage} damage` : "Stopped by FNP",
+      appliedDamage: allocation.appliedThisAttack,
+      wastedDamage: allocation.wasted,
+      outcome:
+        damage === 0
+          ? "Stopped by FNP"
+          : allocation.wasted > 0
+            ? `${allocation.appliedThisAttack} applied · ${allocation.wasted} lost`
+            : `${allocation.appliedThisAttack} applied`,
       tone: damage > 0 ? "damage" : "prevented",
     });
   };
 
   for (let attack = 1; attack <= attacks; attack += 1) {
+    if (result.modelsDestroyed >= profile.targetModels) break;
+    result.attacksResolved += 1;
     if (profile.torrent) {
       resolveHit(`#${attack}`, "Auto ✓", false);
       continue;
@@ -349,6 +385,8 @@ export function simulateAttack(profile: CombatProfile): RollResult {
         save: "Not reached",
         fnp: "Not reached",
         damage: 0,
+        appliedDamage: 0,
+        wastedDamage: 0,
         outcome: "Missed",
         tone: "failed",
       });
@@ -358,6 +396,7 @@ export function simulateAttack(profile: CombatProfile): RollResult {
     resolveHit(`#${attack}`, hitLabel, criticalHit && profile.lethalHits);
     if (criticalHit) {
       for (let extra = 1; extra <= profile.sustainedHits; extra += 1) {
+        if (result.modelsDestroyed >= profile.targetModels) break;
         resolveHit(`#${attack}.S${extra}`, "Sustained ✓", false);
       }
     }

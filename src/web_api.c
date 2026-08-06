@@ -16,6 +16,7 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
     struct weapon_profile weapon;
     struct target_profile target;
     struct distribution_summary calculated;
+    struct distribution_summary applied;
     uint32_t attacks_per_weapon = attack_modifier;
     uint32_t total_attack_dice = 0;
     uint32_t total_attack_modifier = 0;
@@ -24,7 +25,7 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
     uint8_t effective_hits_on = hits_on;
     bool target_has_cover = false;
 
-    if (weapon_count == 0u || sustained_hits > 6u) {
+    if (weapon_count == 0u || target_models == 0u || sustained_hits > 6u) {
         return false;
     }
 
@@ -103,7 +104,9 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
     }
 
     if (summary == NULL ||
-        !calculate_attack_damage_summary(&weapon, &target, &workspace, &calculated)) {
+        !calculate_attack_damage_summary(&weapon, &target, &workspace, &calculated) ||
+        !calculate_attack_applied_damage_summary(&weapon, &target, target_models, &workspace,
+                                                 &applied)) {
         return false;
     }
 
@@ -116,6 +119,15 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
     summary->mean_numerator_high = (uint32_t)(calculated.mean.numerator >> 32u);
     summary->mean_denominator_low = (uint32_t)calculated.mean.denominator;
     summary->mean_denominator_high = (uint32_t)(calculated.mean.denominator >> 32u);
+    summary->applied_minimum = applied.minimum;
+    summary->applied_first_quartile = applied.first_quartile;
+    summary->applied_median = applied.median;
+    summary->applied_third_quartile = applied.third_quartile;
+    summary->applied_maximum = applied.maximum;
+    summary->applied_mean_numerator_low = (uint32_t)applied.mean.numerator;
+    summary->applied_mean_numerator_high = (uint32_t)(applied.mean.numerator >> 32u);
+    summary->applied_mean_denominator_low = (uint32_t)applied.mean.denominator;
+    summary->applied_mean_denominator_high = (uint32_t)(applied.mean.denominator >> 32u);
 
     return true;
 }

@@ -309,6 +309,60 @@ static bool probability_distribution_convolve_internal(const struct probability_
                                                  total_weight, result);
 }
 
+/*@ requires \valid_read(current) && \valid_read(incoming);
+    requires wounds_per_model > 0 && model_count > 0;
+    requires \valid(accumulator + (0 .. MAX_DISTRIBUTION_RESULT));
+    requires \valid(result);
+    requires \separated(accumulator + (0 .. MAX_DISTRIBUTION_RESULT), current, incoming, result);
+    assigns accumulator[0 .. MAX_DISTRIBUTION_RESULT], *result;
+*/
+static bool probability_distribution_allocate_attack_internal(
+    const struct probability_distribution *current, const struct probability_distribution *incoming,
+    uint16_t wounds_per_model, uint16_t model_count, uint64_t *accumulator,
+    struct probability_distribution *result) {
+    uint32_t applied = 0;
+    uint32_t maximum = 0;
+    uint64_t capacity = (uint64_t)wounds_per_model * model_count;
+    const uint64_t total_weight = (uint64_t)PROBABILITY_SCALE * PROBABILITY_SCALE;
+
+    if (current == NULL || incoming == NULL || accumulator == NULL || result == NULL ||
+        wounds_per_model == 0u || model_count == 0u || current->total_mass != PROBABILITY_SCALE ||
+        incoming->total_mass != PROBABILITY_SCALE || current->minimum > current->maximum ||
+        incoming->minimum > incoming->maximum) {
+        return false;
+    }
+
+    memset(accumulator, 0, sizeof(uint64_t) * (MAX_DISTRIBUTION_RESULT + 1u));
+    applied = current->minimum;
+    while (applied <= current->maximum) {
+        uint32_t damage = incoming->minimum;
+
+        while (damage <= incoming->maximum) {
+            if (current->mass[applied] != 0u && incoming->mass[damage] != 0u) {
+                uint32_t next =
+                    allocate_damage_to_unit(applied, damage, wounds_per_model, model_count);
+                uint64_t product = (uint64_t)current->mass[applied] * incoming->mass[damage];
+
+                if (next > MAX_DISTRIBUTION_RESULT ||
+                    !uint64_add_checked(accumulator[next], product, &accumulator[next])) {
+                    return false;
+                }
+                if (next > maximum) {
+                    maximum = next;
+                }
+            }
+            damage++;
+        }
+        applied++;
+    }
+
+    if (capacity < maximum) {
+        return false;
+    }
+
+    return probability_distribution_from_weights(accumulator, 0u, maximum, total_weight, result);
+}
+
 /*@ requires \valid_read(source) && \valid(result);
     requires \separated(source, result);
     assigns *result;
@@ -1129,8 +1183,7 @@ static bool compile_cover(struct attack_plan *plan, const struct weapon_profile 
         return false;
     }
 
-    plan->saves_on =
-        saves_on_with_cover(target->save, target->invulnerable_save, weapon->ap);
+    plan->saves_on = saves_on_with_cover(target->save, target->invulnerable_save, weapon->ap);
     return true;
 }
 
@@ -1927,10 +1980,34 @@ uint8_t saves_on_with_cover(uint8_t save, uint8_t invulnerable_save, uint16_t ap
     return best_save > 7u ? 7u : (uint8_t)best_save;
 }
 
-bool calculate_attack_damage_distribution(const struct weapon_profile *weapon,
-                                          const struct target_profile *target,
-                                          struct calculator_workspace *workspace,
-                                          struct probability_distribution *result) {
+uint32_t allocate_damage_to_unit(uint32_t applied_damage, uint32_t incoming_damage,
+                                 uint16_t wounds_per_model, uint16_t model_count) {
+    uint64_t capacity = (uint64_t)wounds_per_model * model_count;
+    uint32_t wounds_on_current = 0;
+    uint32_t remaining = 0;
+    uint32_t unit_remaining = 0;
+    uint32_t allocated = 0;
+
+    if (wounds_per_model == 0u || model_count == 0u || applied_damage >= capacity) {
+        return capacity > UINT32_MAX ? applied_damage : (uint32_t)capacity;
+    }
+
+    wounds_on_current = applied_damage % wounds_per_model;
+    remaining = (uint32_t)wounds_per_model - wounds_on_current;
+    unit_remaining = (uint32_t)capacity - applied_damage;
+    if (remaining > unit_remaining) {
+        remaining = unit_remaining;
+    }
+    allocated = incoming_damage < remaining ? incoming_damage : remaining;
+    return applied_damage + allocated;
+}
+
+static bool calculate_attack_damage_distribution_internal(const struct weapon_profile *weapon,
+                                                          const struct target_profile *target,
+                                                          uint16_t target_models,
+                                                          bool apply_to_unit,
+                                                          struct calculator_workspace *workspace,
+                                                          struct probability_distribution *result) {
     struct attack_plan plan;
     struct probability_distribution *attack_count = NULL;
     struct probability_distribution *single_attack = NULL;
@@ -1942,6 +2019,7 @@ bool calculate_attack_damage_distribution(const struct weapon_profile *weapon,
     const uint64_t total_weight = (uint64_t)PROBABILITY_SCALE * (uint64_t)PROBABILITY_SCALE;
 
     if (weapon == NULL || target == NULL || workspace == NULL || result == NULL ||
+        (apply_to_unit && (target_models == 0u || target->wounds == 0u)) ||
         !attack_plan_build(weapon, target, &plan) ||
         !build_single_attack_probability_distribution(weapon, &plan, workspace,
                                                       &workspace->probability_b) ||
@@ -1957,67 +2035,87 @@ bool calculate_attack_damage_distribution(const struct weapon_profile *weapon,
     current = &workspace->probability_c;
     next = &workspace->probability_d;
 
-    if (single_attack->maximum != 0 &&
+    if (single_attack->maximum != 0u &&
         attack_count->maximum > MAX_DISTRIBUTION_RESULT / single_attack->maximum) {
         return false;
     }
 
     maximum_damage = attack_count->maximum * single_attack->maximum;
+    if (apply_to_unit) {
+        uint64_t capacity = (uint64_t)target->wounds * target_models;
+        if (capacity < maximum_damage) {
+            maximum_damage = (uint32_t)capacity;
+        }
+    }
 
-    if (!probability_distribution_from_constant(0, current)) {
+    if (!probability_distribution_from_constant(0u, current)) {
         return false;
     }
 
     memset(workspace->mixture_accumulator, 0, sizeof(workspace->mixture_accumulator));
-
-    attack_number = 0;
+    attack_number = 0u;
     while (attack_number <= attack_count->maximum) {
         uint32_t attack_mass = attack_count->mass[attack_number];
 
-        if (attack_mass != 0) {
+        if (attack_mass != 0u) {
             uint32_t damage = current->minimum;
-
             while (damage <= current->maximum) {
-                if (current->mass[damage] != 0) {
-                    uint64_t product = (uint64_t)attack_mass * (uint64_t)current->mass[damage];
-
+                if (current->mass[damage] != 0u) {
+                    uint64_t product = (uint64_t)attack_mass * current->mass[damage];
                     if (!uint64_add_checked(workspace->mixture_accumulator[damage], product,
                                             &workspace->mixture_accumulator[damage])) {
                         return false;
                     }
                 }
-
                 damage++;
             }
         }
 
         if (attack_number < attack_count->maximum) {
             struct probability_distribution *swap = NULL;
-
-            if (!probability_distribution_convolve_internal(
-                    current, single_attack, workspace->convolution_accumulator, next)) {
+            bool advanced =
+                apply_to_unit
+                    ? probability_distribution_allocate_attack_internal(
+                          current, single_attack, target->wounds, target_models,
+                          workspace->convolution_accumulator, next)
+                    : probability_distribution_convolve_internal(
+                          current, single_attack, workspace->convolution_accumulator, next);
+            if (!advanced) {
                 return false;
             }
-
             swap = current;
             current = next;
             next = swap;
         }
-
         attack_number++;
     }
 
     final_distribution = next;
-
-    if (!probability_distribution_from_weights(workspace->mixture_accumulator, 0, maximum_damage,
+    if (!probability_distribution_from_weights(workspace->mixture_accumulator, 0u, maximum_damage,
                                                total_weight, final_distribution)) {
         return false;
     }
-
     if (result != final_distribution) {
         memcpy(result, final_distribution, sizeof(*result));
     }
     return true;
+}
+
+bool calculate_attack_damage_distribution(const struct weapon_profile *weapon,
+                                          const struct target_profile *target,
+                                          struct calculator_workspace *workspace,
+                                          struct probability_distribution *result) {
+    return calculate_attack_damage_distribution_internal(weapon, target, 0u, false, workspace,
+                                                         result);
+}
+
+bool calculate_attack_applied_damage_distribution(const struct weapon_profile *weapon,
+                                                  const struct target_profile *target,
+                                                  uint16_t target_models,
+                                                  struct calculator_workspace *workspace,
+                                                  struct probability_distribution *result) {
+    return calculate_attack_damage_distribution_internal(weapon, target, target_models, true,
+                                                         workspace, result);
 }
 
 bool calculate_attack_expected_damage(const struct weapon_profile *weapon,
@@ -2070,4 +2168,17 @@ bool calculate_attack_damage_summary(const struct weapon_profile *weapon,
 
     summary->mean = exact_mean;
     return true;
+}
+
+bool calculate_attack_applied_damage_summary(const struct weapon_profile *weapon,
+                                             const struct target_profile *target,
+                                             uint16_t target_models,
+                                             struct calculator_workspace *workspace,
+                                             struct distribution_summary *summary) {
+    if (workspace == NULL || summary == NULL ||
+        !calculate_attack_applied_damage_distribution(weapon, target, target_models, workspace,
+                                                      &workspace->probability_d)) {
+        return false;
+    }
+    return probability_distribution_summarize(&workspace->probability_d, summary);
 }

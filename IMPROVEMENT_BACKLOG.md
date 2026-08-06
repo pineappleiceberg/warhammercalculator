@@ -17,9 +17,9 @@ priority over feature count.
 ## Prioritized backlog
 
 1. Model complete unit loadouts and weapon quantities from datasheet options.
-2. Resolve attacks model by model, including casualties, overkill, and damage
-   that does not spill between models unless a rule says otherwise.
-3. Add phase-scale and multi-weapon simulations with reproducible seeded runs
+2. Combine complete multi-weapon volleys in player-selected order so casualties
+   and existing wounds carry between weapon profiles and mixed model profiles.
+3. Add phase-scale simulations with reproducible seeded runs
    alongside cryptographically random live rolls.
 4. Add property-based and fuzz testing at the C and API boundaries.
 5. Expand formal proofs from threshold helpers to attack-plan invariants and
@@ -34,3 +34,6 @@ priority over feature count.
 
 - 2026-08-06: Imported datasheet keywords and made Anti abilities activate only
   when the selected target has the matching keyword.
+- 2026-08-06: Added model-by-model damage allocation to C, WebAssembly, the API,
+  expected distributions, and live rolls, including casualties and lost
+  overkill damage.

@@ -127,13 +127,13 @@ export default function PlayMode() {
           attacker: attackerUnit.name,
           weapon: selectedWeapon.name,
           target: targetUnit.name,
-          damage: rolled.totalDamage,
+          damage: rolled.appliedDamage,
           successful: rolled.successfulAttacks,
         },
         ...current,
       ].slice(0, 30),
     );
-    setStatus(`${rolled.totalDamage} damage resolved`);
+    setStatus(`${rolled.appliedDamage} damage applied`);
   };
 
   const setNumber = (key: keyof CombatProfile, value: number) =>
@@ -299,8 +299,8 @@ export default function PlayMode() {
           {!result && <p>Choose an attack to begin.</p>}
           {result && (
             <>
-              <strong className="damage-callout">{result.totalDamage}</strong>
-              <span className="damage-label">total damage</span>
+              <strong className="damage-callout">{result.appliedDamage}</strong>
+              <span className="damage-label">damage applied</span>
               <div className="combat-flow">
                 <div>
                   <b>{result.attacks}</b>
@@ -328,7 +328,8 @@ export default function PlayMode() {
                 </div>
               </div>
               <p>
-                {result.totalDamage} damage from {result.successfulAttacks} successful attacks.
+                {result.modelsDestroyed} models destroyed · {result.wastedDamage} excess damage lost
+                · {result.totalDamage} damage rolled.
               </p>
             </>
           )}

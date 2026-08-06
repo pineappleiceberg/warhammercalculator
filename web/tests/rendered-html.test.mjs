@@ -156,6 +156,9 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const calculated = JSON.parse(calculateBody);
   assert.ok(calculated.data.mean > 0);
   assert.match(calculated.data.exact.numerator, /^\d+$/);
+  assert.ok(calculated.data.applied.mean > 0);
+  assert.ok(calculated.data.applied.mean <= calculated.data.mean);
+  assert.match(calculated.data.applied.estimated.numerator, /^\d+$/);
 
   const roll = await worker.fetch(
     new Request("http://localhost/api/v1/roll", {
@@ -170,7 +173,10 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.equal(roll.status, 200, rollBody);
   const rolled = JSON.parse(rollBody);
   assert.equal(rolled.data.attacks, 4);
-  assert.equal(rolled.data.details.length, 4);
+  assert.ok(rolled.data.attacksResolved >= 1 && rolled.data.attacksResolved <= 4);
+  assert.ok(rolled.data.details.length >= rolled.data.attacksResolved);
+  assert.ok(rolled.data.appliedDamage <= rolled.data.totalDamage);
+  assert.ok(rolled.data.modelsDestroyed <= 1);
 });
 
 test("creates, updates, lists, and deletes durable army lists", async () => {

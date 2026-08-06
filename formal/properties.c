@@ -60,3 +60,31 @@ bool whc_prove_cover_never_worsens_save(uint8_t save, uint8_t invulnerable_save,
     /*@ assert with_cover <= without_cover; */
     return with_cover <= without_cover;
 }
+
+/*@ requires wounds_per_model > 0 && model_count > 0;
+    requires applied_damage <= (uint64_t)wounds_per_model * model_count;
+    assigns \nothing;
+    ensures \result;
+*/
+bool whc_prove_allocation_respects_unit_capacity(uint32_t applied_damage, uint32_t incoming_damage,
+                                                 uint16_t wounds_per_model, uint16_t model_count) {
+    uint32_t result =
+        allocate_damage_to_unit(applied_damage, incoming_damage, wounds_per_model, model_count);
+    uint64_t capacity = (uint64_t)wounds_per_model * model_count;
+
+    /*@ assert result <= capacity; */
+    return result <= capacity;
+}
+
+/*@ requires wounds_per_model > 0 && model_count > 0;
+    requires applied_damage <= (uint64_t)wounds_per_model * model_count;
+    assigns \nothing;
+    ensures \result;
+*/
+bool whc_prove_zero_damage_changes_nothing(uint32_t applied_damage, uint16_t wounds_per_model,
+                                           uint16_t model_count) {
+    uint32_t result = allocate_damage_to_unit(applied_damage, 0u, wounds_per_model, model_count);
+
+    /*@ assert result == applied_damage; */
+    return result == applied_damage;
+}

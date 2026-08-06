@@ -432,6 +432,17 @@ uint8_t saves_on(uint8_t save, uint8_t invulnerable_save, uint16_t ap);
 */
 uint8_t saves_on_with_cover(uint8_t save, uint8_t invulnerable_save, uint16_t ap);
 
+/*@ requires wounds_per_model > 0 && model_count > 0;
+    requires applied_damage <= (uint64_t)wounds_per_model * model_count;
+    assigns \nothing;
+    ensures \result >= applied_damage;
+    ensures \result <= applied_damage + incoming_damage;
+    ensures \result <= applied_damage + wounds_per_model;
+    ensures \result <= (uint64_t)wounds_per_model * model_count;
+*/
+uint32_t allocate_damage_to_unit(uint32_t applied_damage, uint32_t incoming_damage,
+                                 uint16_t wounds_per_model, uint16_t model_count);
+
 /*@ requires \valid_read(weapon) && \valid_read(target);
     requires \valid(workspace) && \valid(result);
     assigns *workspace, *result;
@@ -441,6 +452,18 @@ bool calculate_attack_damage_distribution(const struct weapon_profile *weapon,
                                           const struct target_profile *target,
                                           struct calculator_workspace *workspace,
                                           struct probability_distribution *result);
+
+/*@ requires \valid_read(weapon) && \valid_read(target);
+    requires target_models > 0;
+    requires \valid(workspace) && \valid(result);
+    assigns *workspace, *result;
+    ensures \result ==> whc_normalized_probability_distribution(result);
+*/
+bool calculate_attack_applied_damage_distribution(const struct weapon_profile *weapon,
+                                                  const struct target_profile *target,
+                                                  uint16_t target_models,
+                                                  struct calculator_workspace *workspace,
+                                                  struct probability_distribution *result);
 
 /*@ requires \valid_read(weapon) && \valid_read(target);
     requires \valid(workspace) && \valid(result);
@@ -465,5 +488,21 @@ bool calculate_attack_damage_summary(const struct weapon_profile *weapon,
                                      const struct target_profile *target,
                                      struct calculator_workspace *workspace,
                                      struct distribution_summary *summary);
+
+/*@ requires \valid_read(weapon) && \valid_read(target);
+    requires target_models > 0;
+    requires \valid(workspace) && \valid(summary);
+    requires \separated(workspace, summary, weapon, target);
+    assigns *workspace, *summary;
+    ensures \result ==> summary->minimum <= summary->first_quartile;
+    ensures \result ==> summary->first_quartile <= summary->median;
+    ensures \result ==> summary->median <= summary->third_quartile;
+    ensures \result ==> summary->third_quartile <= summary->maximum;
+*/
+bool calculate_attack_applied_damage_summary(const struct weapon_profile *weapon,
+                                             const struct target_profile *target,
+                                             uint16_t target_models,
+                                             struct calculator_workspace *workspace,
+                                             struct distribution_summary *summary);
 
 #endif

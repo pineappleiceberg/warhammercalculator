@@ -6,6 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { savingThrowTarget, woundTarget } from "../lib/thresholds.mjs";
+import { allocateDamageToUnit } from "../lib/allocation.mjs";
 
 globalThis.require = createRequire(import.meta.url);
 globalThis.__dirname = dirname(fileURLToPath(import.meta.url));
@@ -24,7 +25,7 @@ function readUint64(pointer, lowIndex, highIndex) {
 }
 
 function exactMean({ ap = 0, save = 3, invulnerable = 0, feelNoPain = 0, flags = 0 } = {}) {
-  const output = calculator._malloc(36);
+  const output = calculator._malloc(72);
   try {
     const ok = calculator._whc_calculate_summary(
       0,
@@ -86,6 +87,22 @@ test("JavaScript and C agree on armour, invulnerable, AP, and cover thresholds",
           calculator._saves_on_with_cover(save, invulnerable, ap),
           savingThrowTarget(save, invulnerable, ap, true),
         );
+      }
+    }
+  }
+});
+
+test("JavaScript and C agree on model-by-model damage allocation", () => {
+  for (let wounds = 1; wounds <= 10; wounds += 1) {
+    for (let models = 1; models <= 10; models += 1) {
+      const capacity = wounds * models;
+      for (let applied = 0; applied <= capacity; applied += 1) {
+        for (let incoming = 0; incoming <= 20; incoming += 1) {
+          assert.equal(
+            calculator._allocate_damage_to_unit(applied, incoming, wounds, models),
+            allocateDamageToUnit(applied, incoming, wounds, models).applied,
+          );
+        }
       }
     }
   }

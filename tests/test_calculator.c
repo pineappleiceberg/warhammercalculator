@@ -134,6 +134,8 @@ static void test_web_api(void) {
     assert(summary.mean_numerator_high == 0);
     assert(summary.mean_denominator_low == 9);
     assert(summary.mean_denominator_high == 0);
+    assert(summary.applied_maximum == 2);
+    assert(summary.applied_mean_denominator_low != 0 || summary.applied_mean_denominator_high != 0);
 }
 
 /*@ terminates \true; */
@@ -216,6 +218,36 @@ static void test_save_thresholds(void) {
     assert(saves_on(6, 0, 2) == 7);
 }
 
+/*@ terminates \true; */
+static void test_unit_damage_allocation(void) {
+    struct weapon_profile weapon;
+    struct target_profile target;
+    struct calculator_workspace workspace;
+    struct distribution_summary potential;
+    struct distribution_summary applied;
+
+    assert(allocate_damage_to_unit(0, 3, 2, 3) == 2);
+    assert(allocate_damage_to_unit(2, 3, 2, 3) == 4);
+    assert(allocate_damage_to_unit(3, 3, 2, 3) == 4);
+    assert(allocate_damage_to_unit(6, 3, 2, 3) == 6);
+
+    initialize_profiles(&weapon, &target);
+    weapon.attacks = (struct dice_value){0, 0, 2};
+    weapon.hits_on = 2;
+    weapon.strength = 10;
+    weapon.damage = (struct dice_value){0, 0, 3};
+    target.toughness = 1;
+    target.save = 7;
+    target.wounds = 2;
+
+    assert(calculate_attack_damage_summary(&weapon, &target, &workspace, &potential));
+    assert(calculate_attack_applied_damage_summary(&weapon, &target, 2, &workspace, &applied));
+    assert(potential.maximum == 6);
+    assert(applied.maximum == 4);
+    assert(applied.mean.numerator * potential.mean.denominator <
+           potential.mean.numerator * applied.mean.denominator);
+}
+
 /*@ terminates \true;
     ensures \result == 0;
 */
@@ -229,6 +261,7 @@ int main(void) {
     test_sustained_hits_torrent_and_lance();
     test_web_api_context_rules();
     test_save_thresholds();
+    test_unit_damage_allocation();
     puts("all tests passed");
     return 0;
 }

@@ -210,7 +210,9 @@ The web test suite exhaustively compares the JavaScript and WebAssembly wound,
 armour, AP, invulnerable-save, and cover thresholds over their supported small
 domains. It also checks expected-damage monotonicity for AP, armour, Feel No
 Pain, invulnerable saves, and cover. Profile selection applies Anti abilities
-only when the selected target has the matching datasheet keyword.
+only when the selected target has the matching datasheet keyword. Damage
+allocation is exhaustively compared between C and JavaScript across model
+wound counts, unit sizes, prior damage states, and incoming damage values.
 
 ## WebAssembly build
 
@@ -231,9 +233,14 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
   than silently truncated.
 - Damage reduction uses a default floor of 1 for positive damage. A custom rule
   can change the floor.
-- The distribution reports uncapped inflicted damage. Capping at a target's
-  remaining wounds, model-by-model spill rules, and damage spill are not
-  silently approximated.
+- The original damage distribution reports uncapped potential damage. The
+  applied-damage distribution separately allocates each attack to one model,
+  loses ordinary excess damage, and caps results at the target unit's wounds.
+- Applied-damage means are derived from the Q31 probability distribution;
+  uncapped expected damage remains an exact reduced fraction.
+- Target units currently use one wound characteristic for every model. Mixed
+  profiles and sequential allocation across several weapon profiles require a
+  caller to choose the attack order.
 
 ## 10th edition profile database
 

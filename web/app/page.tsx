@@ -9,6 +9,7 @@ import {
 } from "../lib/combat";
 import { savingThrowTarget, woundTarget } from "../lib/thresholds.mjs";
 import { antiWoundThreshold } from "../lib/anti.mjs";
+import { allocateDamageToUnit } from "../lib/allocation.mjs";
 import { WorkflowNav } from "../components/workflow-nav";
 
 type Result = {
@@ -20,6 +21,14 @@ type Result = {
   numerator: bigint;
   denominator: bigint;
   mean: number;
+  appliedMinimum: number;
+  appliedFirstQuartile: number;
+  appliedMedian: number;
+  appliedThirdQuartile: number;
+  appliedMaximum: number;
+  appliedNumerator: bigint;
+  appliedDenominator: bigint;
+  appliedMean: number;
 };
 
 type WasmModule = {
@@ -134,7 +143,7 @@ function combineUint64(low: number, high: number): bigint {
 
 async function calculate(profile: Profile): Promise<Result> {
   const wasmModule = await loadCalculator();
-  const output = wasmModule._malloc(36);
+  const output = wasmModule._malloc(72);
   const flags =
     (profile.lethalHits ? 1 : 0) |
     (profile.devastatingWounds ? 2 : 0) |
@@ -183,6 +192,8 @@ async function calculate(profile: Profile): Promise<Result> {
     const read = (index: number) => wasmModule.getValue(output + index * 4, "i32") >>> 0;
     const numerator = combineUint64(read(5), read(6));
     const denominator = combineUint64(read(7), read(8));
+    const appliedNumerator = combineUint64(read(14), read(15));
+    const appliedDenominator = combineUint64(read(16), read(17));
 
     return {
       minimum: read(0),
@@ -193,6 +204,14 @@ async function calculate(profile: Profile): Promise<Result> {
       numerator,
       denominator,
       mean: Number(numerator) / Number(denominator),
+      appliedMinimum: read(9),
+      appliedFirstQuartile: read(10),
+      appliedMedian: read(11),
+      appliedThirdQuartile: read(12),
+      appliedMaximum: read(13),
+      appliedNumerator,
+      appliedDenominator,
+      appliedMean: Number(appliedNumerator) / Number(appliedDenominator),
     };
   } finally {
     wasmModule._free(output);
@@ -288,6 +307,7 @@ function simulateAttack(profile: Profile): RollResult {
 
   const result: RollResult = {
     attacks,
+    attacksResolved: 0,
     hits: 0,
     criticalHits: 0,
     woundingAttacks: 0,
@@ -296,6 +316,10 @@ function simulateAttack(profile: Profile): RollResult {
     fnpPrevented: 0,
     successfulAttacks: 0,
     totalDamage: 0,
+    appliedDamage: 0,
+    wastedDamage: 0,
+    modelsDestroyed: 0,
+    targetWoundsRemaining: profile.wounds,
     hitsOn,
     woundsOn,
     savesOn,
@@ -319,6 +343,8 @@ function simulateAttack(profile: Profile): RollResult {
           save: "Not reached",
           fnp: "Not reached",
           damage: 0,
+          appliedDamage: 0,
+          wastedDamage: 0,
           outcome: "Failed to wound",
           tone: "failed",
         });
@@ -342,6 +368,8 @@ function simulateAttack(profile: Profile): RollResult {
           save: saveLabel,
           fnp: "Not reached",
           damage: 0,
+          appliedDamage: 0,
+          wastedDamage: 0,
           outcome: "Saved",
           tone: "saved",
         });
@@ -369,6 +397,16 @@ function simulateAttack(profile: Profile): RollResult {
     const damage = reducedDamage - prevented;
     result.fnpPrevented += prevented;
     result.totalDamage += damage;
+    const allocation = allocateDamageToUnit(
+      result.appliedDamage,
+      damage,
+      profile.wounds,
+      profile.targetModels,
+    );
+    result.appliedDamage = allocation.applied;
+    result.wastedDamage += allocation.wasted;
+    result.modelsDestroyed = allocation.modelsDestroyed;
+    result.targetWoundsRemaining = allocation.woundsRemaining;
     if (damage > 0) result.successfulAttacks += 1;
     result.details.push({
       label,
@@ -377,12 +415,21 @@ function simulateAttack(profile: Profile): RollResult {
       save: saveLabel,
       fnp: profile.feelNoPain > 0 ? `${prevented} prevented` : "None",
       damage,
-      outcome: damage > 0 ? `${damage} damage` : "Stopped by FNP",
+      appliedDamage: allocation.appliedThisAttack,
+      wastedDamage: allocation.wasted,
+      outcome:
+        damage === 0
+          ? "Stopped by FNP"
+          : allocation.wasted > 0
+            ? `${allocation.appliedThisAttack} applied · ${allocation.wasted} lost`
+            : `${allocation.appliedThisAttack} applied`,
       tone: damage > 0 ? "damage" : "prevented",
     });
   };
 
   for (let attack = 1; attack <= attacks; attack += 1) {
+    if (result.modelsDestroyed >= profile.targetModels) break;
+    result.attacksResolved += 1;
     if (profile.torrent) {
       resolveHit(`#${attack}`, "Auto ✓", false);
       continue;
@@ -399,6 +446,8 @@ function simulateAttack(profile: Profile): RollResult {
         save: "Not reached",
         fnp: "Not reached",
         damage: 0,
+        appliedDamage: 0,
+        wastedDamage: 0,
         outcome: "Missed",
         tone: "failed",
       });
@@ -408,6 +457,7 @@ function simulateAttack(profile: Profile): RollResult {
     resolveHit(`#${attack}`, hitLabel, criticalHit && profile.lethalHits);
     if (criticalHit) {
       for (let extra = 1; extra <= profile.sustainedHits; extra += 1) {
+        if (result.modelsDestroyed >= profile.targetModels) break;
         resolveHit(`#${attack}.S${extra}`, "Sustained ✓", false);
       }
     }
@@ -1185,20 +1235,25 @@ export default function Home() {
                   </div>
                   <i aria-hidden="true">→</i>
                   <div className="flow-damage">
-                    <b>{rollResult.totalDamage}</b>
-                    <span>Damage</span>
+                    <b>{rollResult.appliedDamage}</b>
+                    <span>Applied</span>
                   </div>
                 </div>
                 <div className="roll-summary">
                   {[
-                    ["Attacks rolled", rollResult.attacks],
+                    ["Attacks generated", rollResult.attacks],
+                    ["Attacks resolved", rollResult.attacksResolved],
                     ["Successful hits", rollResult.hits],
                     ["Critical hit rolls", rollResult.criticalHits],
                     ["Successful wounds", rollResult.woundingAttacks],
                     ["Successful saves", rollResult.savedAttacks],
                     ["Damage prevented by FNP", rollResult.fnpPrevented],
                     ["Attacks dealing damage", rollResult.successfulAttacks],
-                    ["Total damage", rollResult.totalDamage],
+                    ["Damage rolled", rollResult.totalDamage],
+                    ["Damage applied", rollResult.appliedDamage],
+                    ["Excess damage lost", rollResult.wastedDamage],
+                    ["Models destroyed", rollResult.modelsDestroyed],
+                    ["Wounds on current model", rollResult.targetWoundsRemaining],
                   ].map(([label, value]) => (
                     <div key={label}>
                       <span>{label}</span>
@@ -1218,7 +1273,8 @@ export default function Home() {
                           Save ({rollResult.savesOn <= 6 ? `${rollResult.savesOn}+` : "none"})
                         </th>
                         <th>FNP</th>
-                        <th>Damage</th>
+                        <th>Rolled</th>
+                        <th>Applied</th>
                         <th>Outcome</th>
                       </tr>
                     </thead>
@@ -1232,6 +1288,12 @@ export default function Home() {
                           <td>{detail.fnp}</td>
                           <td>
                             <b>{detail.damage}</b>
+                          </td>
+                          <td>
+                            <b>{detail.appliedDamage}</b>
+                            {detail.wastedDamage > 0 && (
+                              <small> ({detail.wastedDamage} lost)</small>
+                            )}
                           </td>
                           <td>
                             <span className="outcome-label">{detail.outcome}</span>
@@ -1255,19 +1317,20 @@ export default function Home() {
 
         <aside className="results-panel" aria-live="polite">
           <div className="results-heading">
-            <span>OUTCOME // EXACT MEAN</span>
-            <p>Expected damage</p>
+            <span>OUTCOME // UNIT ALLOCATION</span>
+            <p>Expected applied damage</p>
           </div>
           <div className="mean-readout">
-            <strong>{result ? result.mean.toFixed(2) : "—"}</strong>
+            <strong>{result ? result.appliedMean.toFixed(2) : "—"}</strong>
             <span>WOUNDS</span>
           </div>
           {result && (
             <>
               <p className="fraction">
-                Exact{" "}
+                Potential before model caps{" "}
                 <b>
-                  {result.numerator.toString()} / {result.denominator.toString()}
+                  {result.mean.toFixed(2)} ({result.numerator.toString()} /{" "}
+                  {result.denominator.toString()})
                 </b>
               </p>
               <div className="quartile-title">
@@ -1277,17 +1340,17 @@ export default function Home() {
               <div className="damage-rail" aria-label="Damage quartiles">
                 <div className="rail-line" />
                 {[
-                  ["MIN", result.minimum],
-                  ["Q1", result.firstQuartile],
-                  ["MED", result.median],
-                  ["Q3", result.thirdQuartile],
-                  ["MAX", result.maximum],
+                  ["MIN", result.appliedMinimum],
+                  ["Q1", result.appliedFirstQuartile],
+                  ["MED", result.appliedMedian],
+                  ["Q3", result.appliedThirdQuartile],
+                  ["MAX", result.appliedMaximum],
                 ].map(([label, value], index) => (
                   <div
                     className={`rail-point point-${index}`}
                     key={label}
                     style={{
-                      left: `${result.maximum ? (Number(value) / result.maximum) * 100 : index * 25}%`,
+                      left: `${result.appliedMaximum ? (Number(value) / result.appliedMaximum) * 100 : index * 25}%`,
                     }}
                   >
                     <b>{value}</b>
@@ -1298,15 +1361,15 @@ export default function Home() {
               <div className="result-table">
                 <div>
                   <span>Likely floor</span>
-                  <b>{result.firstQuartile}</b>
+                  <b>{result.appliedFirstQuartile}</b>
                 </div>
                 <div>
                   <span>Median</span>
-                  <b>{result.median}</b>
+                  <b>{result.appliedMedian}</b>
                 </div>
                 <div>
                   <span>Likely ceiling</span>
-                  <b>{result.thirdQuartile}</b>
+                  <b>{result.appliedThirdQuartile}</b>
                 </div>
               </div>
             </>

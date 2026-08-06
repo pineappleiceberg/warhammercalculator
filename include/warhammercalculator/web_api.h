@@ -32,10 +32,20 @@ struct whc_web_summary {
     uint32_t mean_numerator_high;
     uint32_t mean_denominator_low;
     uint32_t mean_denominator_high;
+    uint32_t applied_minimum;
+    uint32_t applied_first_quartile;
+    uint32_t applied_median;
+    uint32_t applied_third_quartile;
+    uint32_t applied_maximum;
+    uint32_t applied_mean_numerator_low;
+    uint32_t applied_mean_numerator_high;
+    uint32_t applied_mean_denominator_low;
+    uint32_t applied_mean_denominator_high;
 };
 
 /*@ requires \valid(summary);
     requires weapon_count > 0;
+    requires target_models > 0;
     requires 2 <= hits_on && hits_on <= 6;
     requires strength > 0 && toughness > 0;
     requires 2 <= save && save <= 7;
@@ -49,6 +59,10 @@ struct whc_web_summary {
     ensures \result ==> summary->median <= summary->third_quartile;
     ensures \result ==> summary->third_quartile <= summary->maximum;
     ensures \result ==> summary->mean_denominator_low != 0 || summary->mean_denominator_high != 0;
+    ensures \result ==> summary->applied_minimum <= summary->applied_first_quartile;
+    ensures \result ==> summary->applied_first_quartile <= summary->applied_median;
+    ensures \result ==> summary->applied_median <= summary->applied_third_quartile;
+    ensures \result ==> summary->applied_third_quartile <= summary->applied_maximum;
 */
 bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_sides,
                            uint16_t attack_modifier, uint16_t weapon_count, uint8_t hits_on,

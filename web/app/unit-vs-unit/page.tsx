@@ -313,7 +313,7 @@ export default function UnitVsUnit() {
           Calculate full volley
         </button>
         <div className="volley-total">
-          <span>Expected unit damage</span>
+          <span>Potential damage before allocation</span>
           <strong>{total.toFixed(2)}</strong>
         </div>
         {results.length > 0 && (
@@ -323,9 +323,10 @@ export default function UnitVsUnit() {
                 <span>
                   {line.count} × {line.weapon.name}
                 </span>
-                <b>{line.result?.mean.toFixed(2)} damage</b>
+                <b>{line.result?.appliedMean.toFixed(2)} applied</b>
                 <small>
-                  Median {line.result?.median} · range {line.result?.minimum}–{line.result?.maximum}
+                  {line.result?.mean.toFixed(2)} potential · median {line.result?.appliedMedian} ·
+                  range {line.result?.appliedMinimum}–{line.result?.appliedMaximum}
                 </small>
               </div>
             ))}

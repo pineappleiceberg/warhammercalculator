@@ -7,6 +7,12 @@ export type DamageSummary = {
   thirdQuartile: number;
   maximum: number;
   mean: number;
+  appliedMinimum: number;
+  appliedFirstQuartile: number;
+  appliedMedian: number;
+  appliedThirdQuartile: number;
+  appliedMaximum: number;
+  appliedMean: number;
 };
 
 type WasmModule = {
@@ -36,7 +42,7 @@ async function loadCalculator() {
 
 export async function calculateProfile(profile: CombatProfile): Promise<DamageSummary> {
   const calculator = await loadCalculator();
-  const output = calculator._malloc(36);
+  const output = calculator._malloc(72);
   const flags =
     (profile.lethalHits ? 1 : 0) |
     (profile.devastatingWounds ? 2 : 0) |
@@ -82,6 +88,8 @@ export async function calculateProfile(profile: CombatProfile): Promise<DamageSu
     const read = (index: number) => calculator.getValue(output + index * 4, "i32") >>> 0;
     const numerator = (BigInt(read(6)) << BigInt(32)) | BigInt(read(5));
     const denominator = (BigInt(read(8)) << BigInt(32)) | BigInt(read(7));
+    const appliedNumerator = (BigInt(read(15)) << BigInt(32)) | BigInt(read(14));
+    const appliedDenominator = (BigInt(read(17)) << BigInt(32)) | BigInt(read(16));
     return {
       minimum: read(0),
       firstQuartile: read(1),
@@ -89,6 +97,12 @@ export async function calculateProfile(profile: CombatProfile): Promise<DamageSu
       thirdQuartile: read(3),
       maximum: read(4),
       mean: Number(numerator) / Number(denominator),
+      appliedMinimum: read(9),
+      appliedFirstQuartile: read(10),
+      appliedMedian: read(11),
+      appliedThirdQuartile: read(12),
+      appliedMaximum: read(13),
+      appliedMean: Number(appliedNumerator) / Number(appliedDenominator),
     };
   } finally {
     calculator._free(output);
