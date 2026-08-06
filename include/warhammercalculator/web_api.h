@@ -43,6 +43,58 @@ struct whc_web_summary {
     uint32_t applied_mean_denominator_high;
 };
 
+struct whc_web_weapon_input {
+    uint32_t attack_dice_count;
+    uint32_t attack_dice_sides;
+    uint32_t attack_modifier;
+    uint32_t weapon_count;
+    uint32_t hits_on;
+    uint32_t strength;
+    uint32_t ap;
+    uint32_t damage_dice_count;
+    uint32_t damage_dice_sides;
+    uint32_t damage_modifier;
+    uint32_t critical_hits_on;
+    uint32_t rule_flags;
+    uint32_t critical_wounds_on;
+    uint32_t sustained_hits_dice_count;
+    uint32_t sustained_hits_dice_sides;
+    uint32_t sustained_hits;
+    uint32_t rapid_fire_dice_count;
+    uint32_t rapid_fire_dice_sides;
+    uint32_t rapid_fire;
+    uint32_t melta;
+};
+
+struct whc_web_target_input {
+    uint32_t toughness;
+    uint32_t save;
+    uint32_t invulnerable_save;
+    uint32_t feel_no_pain;
+    uint32_t wounds;
+    uint32_t damage_reduction;
+    uint32_t model_count;
+};
+
+struct whc_web_applied_summary {
+    uint32_t minimum;
+    uint32_t first_quartile;
+    uint32_t median;
+    uint32_t third_quartile;
+    uint32_t maximum;
+    uint32_t mean_numerator_low;
+    uint32_t mean_numerator_high;
+    uint32_t mean_denominator_low;
+    uint32_t mean_denominator_high;
+};
+
+struct whc_web_mean {
+    uint32_t numerator_low;
+    uint32_t numerator_high;
+    uint32_t denominator_low;
+    uint32_t denominator_high;
+};
+
 /*@ requires \valid(summary);
     requires weapon_count > 0;
     requires target_models > 0;
@@ -75,5 +127,27 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
                            uint16_t sustained_hits, uint16_t rapid_fire_dice_count,
                            uint16_t rapid_fire_dice_sides, uint16_t rapid_fire, uint16_t melta,
                            struct whc_web_summary *summary);
+
+/*@ requires 1 <= weapon_count && weapon_count <= MAX_VOLLEY_WEAPONS;
+    requires 1 <= target_segment_count && target_segment_count <= MAX_TARGET_SEGMENTS;
+    requires \valid_read(weapons + (0 .. weapon_count - 1));
+    requires \valid_read(targets + (0 .. target_segment_count - 1));
+    requires \valid(summary);
+    requires \valid(cumulative_means + (0 .. weapon_count - 1));
+    assigns *summary, cumulative_means[0 .. weapon_count - 1];
+    ensures \result ==> summary->minimum <= summary->first_quartile;
+    ensures \result ==> summary->first_quartile <= summary->median;
+    ensures \result ==> summary->median <= summary->third_quartile;
+    ensures \result ==> summary->third_quartile <= summary->maximum;
+    ensures \result ==> summary->mean_denominator_low != 0 ||
+                         summary->mean_denominator_high != 0;
+*/
+bool whc_calculate_ordered_volley_summary(const struct whc_web_weapon_input *weapons,
+                                          uint16_t weapon_count,
+                                          const struct whc_web_target_input *targets,
+                                          uint16_t target_segment_count,
+                                          uint16_t initial_wounds_lost,
+                                          struct whc_web_applied_summary *summary,
+                                          struct whc_web_mean *cumulative_means);
 
 #endif

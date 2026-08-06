@@ -268,6 +268,89 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.ok(calculated.data.applied.mean <= calculated.data.mean);
   assert.match(calculated.data.applied.estimated.numerator, /^\d+$/);
 
+  const volleyProfile = (ap, damage) => ({
+    attackDice: 0,
+    attackSides: 0,
+    attacks: 1,
+    weaponCount: 1,
+    hitOn: 2,
+    strength: 10,
+    ap,
+    damageDice: 0,
+    damageSides: 0,
+    damage,
+    torrent: true,
+  });
+  const volleyTargets = [
+    {
+      toughness: 1,
+      save: 7,
+      invulnerable: 0,
+      feelNoPain: 0,
+      wounds: 1,
+      reduction: 0,
+      modelCount: 1,
+    },
+    {
+      toughness: 1,
+      save: 2,
+      invulnerable: 0,
+      feelNoPain: 0,
+      wounds: 2,
+      reduction: 0,
+      modelCount: 1,
+    },
+  ];
+  const requestVolley = async (profiles, targets = volleyTargets, initialWoundsLost = 0) => {
+    const response = await worker.fetch(
+      new Request("http://localhost/api/v1/volley", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ profiles, targets, initialWoundsLost }),
+      }),
+      testEnv,
+      context,
+    );
+    const text = await response.text();
+    assert.equal(response.status, 200, text);
+    return JSON.parse(text).data;
+  };
+  const forwardVolley = await requestVolley([volleyProfile(0, 1), volleyProfile(6, 2)]);
+  const reverseVolley = await requestVolley([volleyProfile(6, 2), volleyProfile(0, 1)]);
+  assert.ok(forwardVolley.mean > reverseVolley.mean);
+  assert.equal(forwardVolley.maximum, 3);
+  assert.equal(forwardVolley.cumulative.length, 2);
+  const partialVolley = await requestVolley(
+    [volleyProfile(6, 2)],
+    [{ ...volleyTargets[1], save: 7, modelCount: 2 }],
+    1,
+  );
+  assert.equal(partialVolley.maximum, 1);
+
+  const volleyRoll = await worker.fetch(
+    new Request("http://localhost/api/v1/volley/roll?details=false", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        profiles: [volleyProfile(0, 1), volleyProfile(6, 2)],
+        targets: volleyTargets,
+        initialWoundsLost: 0,
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  const volleyRollText = await volleyRoll.text();
+  assert.equal(volleyRoll.status, 200, volleyRollText);
+  const volleyRolled = JSON.parse(volleyRollText).data;
+  assert.equal(volleyRolled.lines.length, 2);
+  assert.ok(volleyRolled.appliedDamage >= 0 && volleyRolled.appliedDamage <= 3);
+  assert.equal(
+    volleyRolled.appliedDamage,
+    volleyRolled.lines.reduce((total, line) => total + line.appliedDamage, 0),
+  );
+  assert.ok(volleyRolled.lines.every((line) => line.details.length === 0));
+
   const roll = await worker.fetch(
     new Request("http://localhost/api/v1/roll", {
       method: "POST",

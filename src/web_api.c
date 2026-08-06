@@ -157,3 +157,246 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
 
     return true;
 }
+
+/*@ requires \valid_read(input) && \valid_read(target_input);
+    requires \valid(weapon) && \valid(target);
+    assigns *weapon, *target;
+*/
+static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
+                                      const struct whc_web_target_input *target_input,
+                                      uint16_t target_models, struct weapon_profile *weapon,
+                                      struct target_profile *target) {
+    uint32_t attacks_per_weapon = 0u;
+    uint32_t total_attack_dice = 0u;
+    uint32_t total_attack_modifier = 0u;
+    uint64_t total_attack_modifier_wide = 0u;
+    uint32_t effective_damage_modifier = 0u;
+    uint32_t combined_dice_count = 0u;
+    int16_t hit_modifier = 0;
+    uint8_t effective_hits_on = 0u;
+    uint16_t effective_attack_dice_count = 0u;
+    uint16_t effective_attack_dice_sides = 0u;
+    bool target_has_cover = false;
+    struct dice_value sustained_hits_value;
+    struct dice_value rapid_fire_value;
+
+    if (input == NULL || target_input == NULL || weapon == NULL || target == NULL ||
+        input->weapon_count == 0u || input->weapon_count > UINT16_MAX ||
+        input->attack_dice_count > UINT16_MAX || input->attack_dice_sides > UINT16_MAX ||
+        input->attack_modifier > UINT16_MAX || input->hits_on > UINT8_MAX ||
+        input->strength > UINT16_MAX || input->ap > UINT16_MAX ||
+        input->damage_dice_count > UINT16_MAX || input->damage_dice_sides > UINT16_MAX ||
+        input->damage_modifier > UINT16_MAX || input->critical_hits_on > UINT8_MAX ||
+        input->critical_wounds_on > UINT8_MAX || input->sustained_hits_dice_count > UINT16_MAX ||
+        input->sustained_hits_dice_sides > UINT16_MAX || input->sustained_hits > UINT16_MAX ||
+        input->rapid_fire_dice_count > UINT16_MAX || input->rapid_fire_dice_sides > UINT16_MAX ||
+        input->rapid_fire > UINT16_MAX || input->melta > UINT16_MAX ||
+        target_input->toughness > UINT16_MAX || target_input->save > UINT8_MAX ||
+        target_input->invulnerable_save > UINT8_MAX || target_input->feel_no_pain > UINT8_MAX ||
+        target_input->wounds > UINT16_MAX || target_input->damage_reduction > UINT16_MAX ||
+        target_models == 0u ||
+        ((input->rule_flags & WHC_RULE_INDIRECT_NOT_VISIBLE) != 0u &&
+         (input->rule_flags & WHC_RULE_TORRENT) != 0u)) {
+        return false;
+    }
+
+    attacks_per_weapon = input->attack_modifier;
+    effective_damage_modifier = input->damage_modifier;
+    effective_hits_on = (uint8_t)input->hits_on;
+    effective_attack_dice_count = (uint16_t)input->attack_dice_count;
+    effective_attack_dice_sides = (uint16_t)input->attack_dice_sides;
+    sustained_hits_value = (struct dice_value){
+        (uint16_t)input->sustained_hits_dice_count,
+        (uint16_t)input->sustained_hits_dice_sides,
+        (uint16_t)input->sustained_hits,
+    };
+    rapid_fire_value = (struct dice_value){
+        (uint16_t)input->rapid_fire_dice_count,
+        (uint16_t)input->rapid_fire_dice_sides,
+        (uint16_t)input->rapid_fire,
+    };
+    if (!dice_value_is_valid(sustained_hits_value) || !dice_value_is_valid(rapid_fire_value)) {
+        return false;
+    }
+
+    if ((input->rule_flags & WHC_RULE_RAPID_FIRE_ACTIVE) != 0u) {
+        if (input->rapid_fire_dice_count != 0u && input->attack_dice_count != 0u &&
+            input->rapid_fire_dice_sides != input->attack_dice_sides) {
+            return false;
+        }
+        combined_dice_count = input->attack_dice_count + input->rapid_fire_dice_count;
+        if (combined_dice_count > UINT16_MAX) {
+            return false;
+        }
+        effective_attack_dice_count = (uint16_t)combined_dice_count;
+        if (input->rapid_fire_dice_count != 0u) {
+            effective_attack_dice_sides = (uint16_t)input->rapid_fire_dice_sides;
+        }
+        attacks_per_weapon += input->rapid_fire;
+    }
+    if ((input->rule_flags & WHC_RULE_BLAST) != 0u) {
+        attacks_per_weapon += target_models / 5u;
+    }
+    if ((input->rule_flags & WHC_RULE_MELTA_ACTIVE) != 0u) {
+        effective_damage_modifier += input->melta;
+    }
+
+    total_attack_dice = effective_attack_dice_count * input->weapon_count;
+    total_attack_modifier_wide = (uint64_t)attacks_per_weapon * input->weapon_count;
+    if (total_attack_dice > UINT16_MAX || total_attack_modifier_wide > UINT16_MAX ||
+        effective_damage_modifier > UINT16_MAX) {
+        return false;
+    }
+    total_attack_modifier = (uint32_t)total_attack_modifier_wide;
+
+    if ((input->rule_flags & WHC_RULE_HEAVY_ACTIVE) != 0u) {
+        hit_modifier++;
+    }
+    if ((input->rule_flags & WHC_RULE_INDIRECT_NOT_VISIBLE) != 0u) {
+        hit_modifier--;
+    }
+    if (hit_modifier > 1) {
+        hit_modifier = 1;
+    } else if (hit_modifier < -1) {
+        hit_modifier = -1;
+    }
+    if (hit_modifier > 0 && effective_hits_on > 2u) {
+        effective_hits_on--;
+    } else if (hit_modifier < 0 && effective_hits_on < 6u) {
+        effective_hits_on++;
+    }
+
+    memset(weapon, 0, sizeof(*weapon));
+    memset(target, 0, sizeof(*target));
+    weapon->attacks = (struct dice_value){
+        (uint16_t)total_attack_dice,
+        effective_attack_dice_sides,
+        (uint16_t)total_attack_modifier,
+    };
+    weapon->hits_on = effective_hits_on;
+    weapon->strength = (uint16_t)input->strength;
+    weapon->ap = (uint16_t)input->ap;
+    weapon->damage = (struct dice_value){
+        (uint16_t)input->damage_dice_count,
+        (uint16_t)input->damage_dice_sides,
+        (uint16_t)effective_damage_modifier,
+    };
+    weapon->critical_hits_on = (uint8_t)input->critical_hits_on;
+
+    target->toughness = (uint16_t)target_input->toughness;
+    target->save = (uint8_t)target_input->save;
+    target->invulnerable_save = (uint8_t)target_input->invulnerable_save;
+    target->feel_no_pain = (uint8_t)target_input->feel_no_pain;
+    target->wounds = (uint16_t)target_input->wounds;
+    target->reduction = (uint16_t)target_input->damage_reduction;
+
+    target_has_cover = (input->rule_flags & WHC_RULE_TARGET_COVER) != 0u ||
+                       (input->rule_flags & WHC_RULE_INDIRECT_NOT_VISIBLE) != 0u;
+    if ((input->rule_flags & WHC_RULE_IGNORES_COVER) != 0u) {
+        target_has_cover = false;
+    }
+
+    return (((input->rule_flags & WHC_RULE_LETHAL_HITS) == 0u ||
+             rule_add_lethal_hits(&weapon->rules)) &&
+            ((input->rule_flags & WHC_RULE_DEVASTATING_WOUNDS) == 0u ||
+             rule_add_devastating_wounds(&weapon->rules)) &&
+            ((input->rule_flags & WHC_RULE_TWIN_LINKED) == 0u ||
+             rule_add_twin_linked(&weapon->rules)) &&
+            ((input->rule_flags & WHC_RULE_REROLL_FAILED_HITS) == 0u ||
+             rule_add_reroll_failed_hits(&weapon->rules)) &&
+            ((input->rule_flags & WHC_RULE_TORRENT) == 0u || rule_add_torrent(&weapon->rules)) &&
+            ((input->rule_flags & WHC_RULE_INDIRECT_NOT_VISIBLE) == 0u ||
+             rule_add_hit_auto_fails_through(&weapon->rules, 3u)) &&
+            ((input->sustained_hits_dice_count == 0u && input->sustained_hits == 0u) ||
+             rule_add_sustained_hits_dice(&weapon->rules, sustained_hits_value)) &&
+            ((input->rule_flags & WHC_RULE_LANCE_ACTIVE) == 0u ||
+             rule_add_wound_bonus(&weapon->rules, 1u)) &&
+            (input->critical_wounds_on == 0u ||
+             rule_add_critical_wounds_on(&weapon->rules, (uint8_t)input->critical_wounds_on)) &&
+            (!target_has_cover || (input->ap == 0u && target_input->save <= 3u) ||
+             rule_add_cover(&target->rules)));
+}
+
+bool whc_calculate_ordered_volley_summary(const struct whc_web_weapon_input *weapons,
+                                          uint16_t weapon_count,
+                                          const struct whc_web_target_input *targets,
+                                          uint16_t target_segment_count,
+                                          uint16_t initial_wounds_lost,
+                                          struct whc_web_applied_summary *summary,
+                                          struct whc_web_mean *cumulative_means) {
+    static struct calculator_workspace workspace;
+    static struct weapon_profile compiled_weapons[MAX_VOLLEY_WEAPONS];
+    static struct target_profile compiled_targets[MAX_VOLLEY_WEAPONS * MAX_TARGET_SEGMENTS];
+    static struct fraction means[MAX_VOLLEY_WEAPONS];
+    struct target_unit_layout layout;
+    struct distribution_summary calculated;
+    uint32_t total_models = 0u;
+    uint16_t weapon_index = 0u;
+    uint16_t segment_index = 0u;
+
+    if (weapons == NULL || targets == NULL || summary == NULL || cumulative_means == NULL ||
+        weapon_count == 0u || weapon_count > MAX_VOLLEY_WEAPONS || target_segment_count == 0u ||
+        target_segment_count > MAX_TARGET_SEGMENTS) {
+        return false;
+    }
+    memset(&layout, 0, sizeof(layout));
+    layout.segment_count = target_segment_count;
+    layout.initial_wounds_lost = initial_wounds_lost;
+    while (segment_index < target_segment_count) {
+        if (targets[segment_index].wounds == 0u || targets[segment_index].wounds > UINT16_MAX ||
+            targets[segment_index].model_count == 0u ||
+            targets[segment_index].model_count > UINT16_MAX ||
+            total_models + targets[segment_index].model_count > UINT16_MAX) {
+            return false;
+        }
+        layout.wounds_per_model[segment_index] = (uint16_t)targets[segment_index].wounds;
+        layout.model_counts[segment_index] = (uint16_t)targets[segment_index].model_count;
+        total_models += targets[segment_index].model_count;
+        segment_index++;
+    }
+    if (target_unit_capacity(&layout) == 0u) {
+        return false;
+    }
+
+    while (weapon_index < weapon_count) {
+        segment_index = 0u;
+        while (segment_index < target_segment_count) {
+            uint32_t target_index = (uint32_t)weapon_index * target_segment_count + segment_index;
+            if (!whc_build_volley_profiles(&weapons[weapon_index], &targets[segment_index],
+                                           (uint16_t)total_models, &compiled_weapons[weapon_index],
+                                           &compiled_targets[target_index])) {
+                return false;
+            }
+            segment_index++;
+        }
+        weapon_index++;
+    }
+
+    if (!calculate_ordered_volley_applied_damage_distribution(compiled_weapons, compiled_targets,
+                                                              weapon_count, &layout, &workspace,
+                                                              &workspace.probability_d, means) ||
+        !probability_distribution_summarize(&workspace.probability_d, &calculated)) {
+        return false;
+    }
+
+    summary->minimum = calculated.minimum;
+    summary->first_quartile = calculated.first_quartile;
+    summary->median = calculated.median;
+    summary->third_quartile = calculated.third_quartile;
+    summary->maximum = calculated.maximum;
+    summary->mean_numerator_low = (uint32_t)calculated.mean.numerator;
+    summary->mean_numerator_high = (uint32_t)(calculated.mean.numerator >> 32u);
+    summary->mean_denominator_low = (uint32_t)calculated.mean.denominator;
+    summary->mean_denominator_high = (uint32_t)(calculated.mean.denominator >> 32u);
+    weapon_index = 0u;
+    while (weapon_index < weapon_count) {
+        cumulative_means[weapon_index].numerator_low = (uint32_t)means[weapon_index].numerator;
+        cumulative_means[weapon_index].numerator_high =
+            (uint32_t)(means[weapon_index].numerator >> 32u);
+        cumulative_means[weapon_index].denominator_low = (uint32_t)means[weapon_index].denominator;
+        cumulative_means[weapon_index].denominator_high =
+            (uint32_t)(means[weapon_index].denominator >> 32u);
+        weapon_index++;
+    }
+    return true;
+}

@@ -33,7 +33,7 @@ as an exact reduced fraction.
 ## Fixed memory
 
 With `MAX_DISTRIBUTION_RESULT == 1024`, the calculator workspace is about
-49 KiB on a typical 64-bit build. Allocate it once and reuse it:
+121 KiB on a typical 64-bit build. Allocate it once and reuse it:
 
 ```c
 static struct calculator_workspace workspace;
@@ -217,6 +217,10 @@ Pain, invulnerable saves, and cover. Profile selection applies Anti abilities
 only when the selected target has the matching datasheet keyword. Damage
 allocation is exhaustively compared between C and JavaScript across model
 wound counts, unit sizes, prior damage states, and incoming damage values.
+Ordered volley tests additionally cover mixed target profiles, existing wounds,
+weapon-order-dependent casualties, per-profile cumulative means, and ordinary
+damage that cannot spill between models. The same ordered target state drives
+the cryptographically random full-volley resolver and its API.
 Indirect Fire applies its hit modifier and cover normally, forces unmodified Hit
 rolls of 1–3 to fail before critical-hit processing, and rejects Torrent attacks
 when no target model is visible.
@@ -251,9 +255,10 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
   loses ordinary excess damage, and caps results at the target unit's wounds.
 - Applied-damage means are derived from the Q31 probability distribution;
   uncapped expected damage remains an exact reduced fraction.
-- Target units currently use one wound characteristic for every model. Mixed
-  profiles and sequential allocation across several weapon profiles require a
-  caller to choose the attack order.
+- Ordered volleys support up to 32 weapon profiles and 16 consecutive target
+  profile segments. The caller chooses both orders, and existing wounds,
+  casualties, defensive characteristics, and lost overkill carry through the
+  sequence.
 
 ## 10th edition profile database
 

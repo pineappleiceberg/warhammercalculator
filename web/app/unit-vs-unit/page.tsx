@@ -2,8 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { WorkflowNav } from "../../components/workflow-nav";
-import { calculateProfile, type DamageSummary } from "../../lib/client-calculator";
-import { DEFAULT_PROFILE } from "../../lib/combat";
+import {
+  calculateOrderedVolley,
+  type OrderedTargetSegment,
+  type OrderedVolleySummary,
+} from "../../lib/client-calculator";
+import {
+  DEFAULT_PROFILE,
+  simulateOrderedVolley,
+  type OrderedVolleyRollResult,
+} from "../../lib/combat";
 import {
   equippedWeaponLines,
   groupWeaponProfiles,
@@ -13,14 +21,41 @@ import {
   weaponLimitMaximum,
 } from "../../lib/loadout.mjs";
 import {
-  applyTargetProfile,
   applyWeaponProfile,
   loadCatalogue,
   type Catalogue,
+  type CatalogueModel,
   type CatalogueWeapon,
 } from "../../lib/catalogue";
 
-type WeaponLine = { weapon: CatalogueWeapon; count: number; result?: DamageSummary };
+type TargetSegment = OrderedTargetSegment & {
+  id: string;
+  modelId: number;
+  name: string;
+  keywords: string[];
+};
+type WeaponLine = {
+  weapon: CatalogueWeapon;
+  count: number;
+  incrementalMean?: number;
+  cumulativeMean?: number;
+};
+
+function targetSegment(model: CatalogueModel, modelCount: number): TargetSegment {
+  return {
+    id: crypto.randomUUID(),
+    modelId: model.id,
+    name: model.name,
+    keywords: model.keywords,
+    toughness: model.t ?? 8,
+    save: model.save ?? 7,
+    invulnerable: model.invuln ?? 0,
+    feelNoPain: 0,
+    wounds: model.wounds ?? 1,
+    reduction: 0,
+    modelCount,
+  };
+}
 
 export default function UnitVsUnit() {
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
@@ -28,19 +63,18 @@ export default function UnitVsUnit() {
   const [attackerUnitId, setAttackerUnitId] = useState("");
   const [targetFaction, setTargetFaction] = useState("");
   const [targetUnitId, setTargetUnitId] = useState("");
-  const [targetModelId, setTargetModelId] = useState("");
   const [attackerModels, setAttackerModels] = useState(1);
-  const [targetModels, setTargetModels] = useState(1);
   const [weaponCounts, setWeaponCounts] = useState<Record<string, number>>({});
   const [optionCounts, setOptionCounts] = useState<Record<string, number>>({});
   const [profileCounts, setProfileCounts] = useState<Record<number, number>>({});
-  const [targetOverrides, setTargetOverrides] = useState({
-    toughness: 8,
-    save: 3,
-    invulnerable: 0,
-    wounds: 12,
-  });
+  const [weaponOrder, setWeaponOrder] = useState<number[]>([]);
+  const [targetSegments, setTargetSegments] = useState<TargetSegment[]>([]);
+  const [initialWoundsLost, setInitialWoundsLost] = useState(0);
   const [results, setResults] = useState<WeaponLine[]>([]);
+  const [volleySummary, setVolleySummary] = useState<OrderedVolleySummary | null>(null);
+  const [rollResult, setRollResult] = useState<OrderedVolleyRollResult | null>(null);
+  const [rollKey, setRollKey] = useState("");
+  const [resultKey, setResultKey] = useState("");
   const [status, setStatus] = useState("Choose both units");
 
   useEffect(() => {
@@ -71,6 +105,19 @@ export default function UnitVsUnit() {
     optionCounts,
     weaponCounts,
   );
+  const orderIndex = new Map(weaponOrder.map((weaponId, index) => [weaponId, index]));
+  const orderedLines = equippedWeaponLines(weaponGroups, weaponCounts, profileCounts).sort(
+    (left, right) =>
+      (orderIndex.get(left.weapon.id) ?? Number.MAX_SAFE_INTEGER) -
+      (orderIndex.get(right.weapon.id) ?? Number.MAX_SAFE_INTEGER),
+  );
+  const inputKey = JSON.stringify({
+    initialWoundsLost,
+    orderedLines: orderedLines.map((line) => [line.weapon.id, line.count]),
+    targetSegments,
+  });
+  const resultsAreCurrent = resultKey === inputKey;
+  const rollIsCurrent = rollKey === inputKey;
 
   const selectAttacker = (unitId: string) => {
     setAttackerUnitId(unitId);
@@ -84,7 +131,10 @@ export default function UnitVsUnit() {
         groups.flatMap((group) => group.profiles.map((profile) => [profile.id, 0])),
       ),
     );
+    setWeaponOrder(groups.flatMap((group) => group.profiles.map((profile) => profile.id)));
     setResults([]);
+    setVolleySummary(null);
+    setRollResult(null);
     setStatus(unit ? "Set the total equipped weapon quantities" : "Choose both units");
   };
 
@@ -92,47 +142,77 @@ export default function UnitVsUnit() {
     setTargetUnitId(unitId);
     const unit = targetUnits.find((entry) => entry.id === unitId);
     const model = unit?.models[0];
-    setTargetModels(unit?.suggestedModelCount ?? 1);
-    setTargetModelId(model ? String(model.id) : "");
-    if (model) {
-      setTargetOverrides({
-        toughness: model.t ?? 8,
-        save: model.save ?? 7,
-        invulnerable: model.invuln ?? 0,
-        wounds: model.wounds ?? 1,
-      });
-    }
+    setTargetSegments(model ? [targetSegment(model, unit?.suggestedModelCount ?? 1)] : []);
+    setInitialWoundsLost(0);
     setResults([]);
+    setVolleySummary(null);
+    setRollResult(null);
+  };
+
+  const moveWeapon = (weaponId: number, direction: -1 | 1) => {
+    setWeaponOrder((current) => {
+      const index = current.indexOf(weaponId);
+      const destination = index + direction;
+      if (index < 0 || destination < 0 || destination >= current.length) return current;
+      const next = [...current];
+      [next[index], next[destination]] = [next[destination], next[index]];
+      return next;
+    });
+    setResults([]);
+    setVolleySummary(null);
+    setRollResult(null);
+  };
+
+  const moveTarget = (id: string, direction: -1 | 1) => {
+    setTargetSegments((current) => {
+      const index = current.findIndex((segment) => segment.id === id);
+      const destination = index + direction;
+      if (index < 0 || destination < 0 || destination >= current.length) return current;
+      const next = [...current];
+      [next[index], next[destination]] = [next[destination], next[index]];
+      return next;
+    });
+    setInitialWoundsLost(0);
+    setResults([]);
+    setVolleySummary(null);
+    setRollResult(null);
   };
 
   const calculateUnit = async () => {
     if (!attackerUnit || !targetUnit) return;
     setStatus("Calculating unit volley…");
-    const model =
-      targetUnit.models.find((entry) => String(entry.id) === targetModelId) ?? targetUnit.models[0];
     const allocationErrors = weaponAllocationErrors(weaponGroups, weaponCounts, profileCounts);
     if (allocationErrors.length) {
       setStatus(allocationErrors[0]);
       return;
     }
-    const lines = equippedWeaponLines(weaponGroups, weaponCounts, profileCounts);
+    const lines = orderedLines;
     if (!lines.length) {
       setStatus("Enter at least one equipped weapon quantity");
       return;
     }
+    if (!targetSegments.length) {
+      setStatus("Add at least one target profile segment");
+      return;
+    }
     try {
-      const resolved = await Promise.all(
-        lines.map(async (line) => {
-          const target = applyTargetProfile(DEFAULT_PROFILE, model);
-          const profile = applyWeaponProfile(
-            { ...target, ...targetOverrides, targetModels, weaponCount: line.count },
-            line.weapon,
-            model.keywords,
-          );
-          return { ...line, result: await calculateProfile(profile) };
-        }),
+      const targetModels = targetSegments.reduce((sum, segment) => sum + segment.modelCount, 0);
+      const profiles = lines.map((line) =>
+        applyWeaponProfile(
+          { ...DEFAULT_PROFILE, targetModels, weaponCount: line.count },
+          line.weapon,
+          targetSegments[0].keywords,
+        ),
       );
+      const summary = await calculateOrderedVolley(profiles, targetSegments, initialWoundsLost);
+      const resolved = lines.map((line, index) => ({
+        ...line,
+        incrementalMean: summary.incrementalMeans[index],
+        cumulativeMean: summary.cumulativeMeans[index],
+      }));
       setResults(resolved);
+      setVolleySummary(summary);
+      setResultKey(inputKey);
       setStatus(
         loadoutWarnings.length ? "Volley calculated with loadout warnings" : "Volley calculated",
       );
@@ -141,7 +221,33 @@ export default function UnitVsUnit() {
     }
   };
 
-  const total = results.reduce((sum, line) => sum + (line.result?.mean ?? 0), 0);
+  const rollUnit = () => {
+    if (!attackerUnit || !targetUnit) return;
+    const allocationErrors = weaponAllocationErrors(weaponGroups, weaponCounts, profileCounts);
+    if (allocationErrors.length) {
+      setStatus(allocationErrors[0]);
+      return;
+    }
+    if (!orderedLines.length || !targetSegments.length) {
+      setStatus("Enter a weapon quantity and target profile first");
+      return;
+    }
+    try {
+      const targetModels = targetSegments.reduce((sum, segment) => sum + segment.modelCount, 0);
+      const profiles = orderedLines.map((line) =>
+        applyWeaponProfile(
+          { ...DEFAULT_PROFILE, targetModels, weaponCount: line.count },
+          line.weapon,
+          targetSegments[0].keywords,
+        ),
+      );
+      setRollResult(simulateOrderedVolley(profiles, targetSegments, initialWoundsLost));
+      setRollKey(inputKey);
+      setStatus("Full volley rolled with secure random dice");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Roll failed");
+    }
+  };
 
   return (
     <main>
@@ -371,42 +477,145 @@ export default function UnitVsUnit() {
                 ))}
               </select>
             </label>
-            <label>
-              <span>Profile</span>
-              <select
-                value={targetModelId}
-                onChange={(event) => {
-                  const model = targetUnit?.models.find(
-                    (entry) => String(entry.id) === event.target.value,
-                  );
-                  setTargetModelId(event.target.value);
-                  if (model)
-                    setTargetOverrides({
-                      toughness: model.t ?? 8,
-                      save: model.save ?? 7,
-                      invulnerable: model.invuln ?? 0,
-                      wounds: model.wounds ?? 1,
-                    });
-                }}
-              >
-                <option value="">Choose profile</option>
-                {targetUnit?.models.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.name}
-                  </option>
+            {targetUnit && (
+              <div className="target-sequence">
+                <div className="sequence-heading">
+                  <div>
+                    <h3>Damage allocation order</h3>
+                    <small>First surviving profile receives the next attack</small>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={targetSegments.length >= 16}
+                    onClick={() => {
+                      const model = targetUnit.models[0];
+                      if (model)
+                        setTargetSegments((current) => [...current, targetSegment(model, 1)]);
+                    }}
+                  >
+                    Add profile
+                  </button>
+                </div>
+                {targetSegments.map((segment, index) => (
+                  <article className="target-segment" key={segment.id}>
+                    <div className="sequence-heading">
+                      <strong>{index + 1}</strong>
+                      <select
+                        aria-label={`Target profile ${index + 1}`}
+                        value={segment.modelId}
+                        onChange={(event) => {
+                          const model = targetUnit.models.find(
+                            (entry) => entry.id === +event.target.value,
+                          );
+                          if (!model) return;
+                          setTargetSegments((current) =>
+                            current.map((entry) =>
+                              entry.id === segment.id
+                                ? { ...targetSegment(model, entry.modelCount), id: entry.id }
+                                : entry,
+                            ),
+                          );
+                          if (index === 0) setInitialWoundsLost(0);
+                        }}
+                      >
+                        {targetUnit.models.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.name}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="order-actions">
+                        <button
+                          type="button"
+                          aria-label={`Move ${segment.name} earlier`}
+                          disabled={index === 0}
+                          onClick={() => moveTarget(segment.id, -1)}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Move ${segment.name} later`}
+                          disabled={index === targetSegments.length - 1}
+                          onClick={() => moveTarget(segment.id, 1)}
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          disabled={targetSegments.length === 1}
+                          onClick={() =>
+                            setTargetSegments((current) =>
+                              current.filter((entry) => entry.id !== segment.id),
+                            )
+                          }
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                    <div className="stat-row target-stats">
+                      {(
+                        [
+                          ["modelCount", "Models"],
+                          ["toughness", "T"],
+                          ["save", "Save"],
+                          ["invulnerable", "Invuln"],
+                          ["wounds", "W/model"],
+                          ["feelNoPain", "FNP"],
+                          ["reduction", "-Damage"],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <label key={key}>
+                          <span>{label}</span>
+                          <input
+                            type="number"
+                            min={["invulnerable", "feelNoPain", "reduction"].includes(key) ? 0 : 1}
+                            max={key === "modelCount" ? 1000 : undefined}
+                            value={segment[key]}
+                            onChange={(event) => {
+                              const value = Math.max(
+                                ["invulnerable", "feelNoPain", "reduction"].includes(key) ? 0 : 1,
+                                +event.target.value,
+                              );
+                              setTargetSegments((current) =>
+                                current.map((entry) =>
+                                  entry.id === segment.id ? { ...entry, [key]: value } : entry,
+                                ),
+                              );
+                              if (index === 0 && key === "wounds") {
+                                setInitialWoundsLost((current) => Math.min(current, value - 1));
+                              }
+                            }}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </article>
                 ))}
-              </select>
-            </label>
-            <label>
-              <span>Models in target</span>
-              <input
-                type="number"
-                min={1}
-                max={targetUnit?.maximumModelCount ?? 1000}
-                value={targetModels}
-                onChange={(event) => setTargetModels(Math.max(1, +event.target.value))}
-              />
-            </label>
+                {targetSegments[0] && (
+                  <label>
+                    <span>
+                      Wounds already lost on first model
+                      <small>
+                        Carried into the first attack; damage cannot spill between models
+                      </small>
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={targetSegments[0].wounds - 1}
+                      value={initialWoundsLost}
+                      onChange={(event) =>
+                        setInitialWoundsLost(
+                          Math.max(0, Math.min(targetSegments[0].wounds - 1, +event.target.value)),
+                        )
+                      }
+                    />
+                  </label>
+                )}
+              </div>
+            )}
             {targetUnit && targetUnit.composition.length > 0 && (
               <details className="source-guidance" open>
                 <summary>Unit composition</summary>
@@ -417,35 +626,45 @@ export default function UnitVsUnit() {
                 </ul>
               </details>
             )}
-            <div className="stat-row">
-              {(
-                [
-                  ["toughness", "T"],
-                  ["save", "Save"],
-                  ["invulnerable", "Invuln"],
-                  ["wounds", "W/model"],
-                ] as const
-              ).map(([key, label]) => (
-                <label key={key}>
-                  <span>{label}</span>
-                  <input
-                    type="number"
-                    min={key === "invulnerable" ? 0 : 1}
-                    value={targetOverrides[key]}
-                    onChange={(event) =>
-                      setTargetOverrides((current) => ({
-                        ...current,
-                        [key]: Math.max(0, +event.target.value),
-                      }))
-                    }
-                  />
-                </label>
-              ))}
-            </div>
           </div>
         </section>
       </div>
       <section className="volley-results">
+        {orderedLines.length > 0 && (
+          <div className="volley-order">
+            <div className="sequence-heading">
+              <div>
+                <span>Attack sequence</span>
+                <strong>Weapon order changes who receives later attacks</strong>
+              </div>
+            </div>
+            {orderedLines.map((line, index) => (
+              <div key={line.weapon.id}>
+                <span>
+                  {index + 1}. {line.count} × {line.weapon.name}
+                </span>
+                <div className="order-actions">
+                  <button
+                    type="button"
+                    aria-label={`Move ${line.weapon.name} earlier`}
+                    disabled={index === 0}
+                    onClick={() => moveWeapon(line.weapon.id, -1)}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Move ${line.weapon.name} later`}
+                    disabled={index === orderedLines.length - 1}
+                    onClick={() => moveWeapon(line.weapon.id, 1)}
+                  >
+                    ↓
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         <button
           className="primary-action"
           type="button"
@@ -454,25 +673,92 @@ export default function UnitVsUnit() {
         >
           Calculate full volley
         </button>
+        <button
+          className="secondary-action"
+          type="button"
+          disabled={!attackerUnit || !targetUnit}
+          onClick={rollUnit}
+        >
+          Roll full volley
+        </button>
         <div className="volley-total">
-          <span>Potential damage before allocation</span>
-          <strong>{total.toFixed(2)}</strong>
+          <span>Expected applied damage after ordered allocation</span>
+          <strong>{resultsAreCurrent ? volleySummary?.mean.toFixed(2) : "—"}</strong>
         </div>
-        {results.length > 0 && (
+        {resultsAreCurrent && volleySummary && (
+          <div className="volley-distribution">
+            <span>Median {volleySummary.median}</span>
+            <span>
+              Middle half {volleySummary.firstQuartile}–{volleySummary.thirdQuartile}
+            </span>
+            <span>
+              Range {volleySummary.minimum}–{volleySummary.maximum}
+            </span>
+          </div>
+        )}
+        {resultsAreCurrent && results.length > 0 && volleySummary && (
           <div className="result-lines">
-            {results.map((line) => (
+            {results.map((line, index) => (
               <div key={line.weapon.id}>
                 <span>
-                  {line.count} × {line.weapon.name}
+                  {index + 1}. {line.count} × {line.weapon.name}
                 </span>
-                <b>{line.result?.appliedMean.toFixed(2)} applied</b>
-                <small>
-                  {line.result?.mean.toFixed(2)} potential · median {line.result?.appliedMedian} ·
-                  range {line.result?.appliedMinimum}–{line.result?.appliedMaximum}
-                </small>
+                <b>{line.incrementalMean?.toFixed(2)} expected damage added</b>
+                <small>{line.cumulativeMean?.toFixed(2)} cumulative after this profile</small>
               </div>
             ))}
           </div>
+        )}
+        {rollIsCurrent && rollResult && (
+          <section className="volley-roll" aria-live="polite">
+            <div className="sequence-heading">
+              <div>
+                <span>Rolled result</span>
+                <strong>{rollResult.appliedDamage} damage applied</strong>
+              </div>
+              <small>{rollResult.modelsDestroyed} models destroyed</small>
+            </div>
+            <div className="roll-summary-grid">
+              <span>
+                <b>{rollResult.attacksResolved}</b> attacks
+              </span>
+              <span>
+                <b>{rollResult.hits}</b> hits
+              </span>
+              <span>
+                <b>{rollResult.criticalHits}</b> critical hits
+              </span>
+              <span>
+                <b>{rollResult.woundingAttacks}</b> wounds
+              </span>
+              <span>
+                <b>{rollResult.savedAttacks}</b> saved
+              </span>
+              <span>
+                <b>{rollResult.fnpPrevented}</b> FNP prevented
+              </span>
+              <span>
+                <b>{rollResult.successfulAttacks}</b> damaging attacks
+              </span>
+              <span>
+                <b>{rollResult.wastedDamage}</b> damage lost
+              </span>
+            </div>
+            <div className="result-lines">
+              {rollResult.lines.map((line, index) => (
+                <div key={`${orderedLines[index]?.weapon.id ?? index}-roll`}>
+                  <span>
+                    {index + 1}. {orderedLines[index]?.weapon.name ?? "Weapon"}
+                  </span>
+                  <b>{line.appliedDamage} damage applied</b>
+                  <small>
+                    {line.hits} hits · {line.woundingAttacks} wounds · {line.savedAttacks} saved ·{" "}
+                    {line.fnpPrevented} FNP
+                  </small>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
       </section>
     </main>

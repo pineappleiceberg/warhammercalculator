@@ -8,6 +8,7 @@ import {
   DEFAULT_PROFILE,
   normalizeProfile,
   simulateAttack,
+  simulateOrderedVolley,
   type CombatProfile,
 } from "../lib/combat";
 import { createArmyList, deleteArmyList, listArmyLists, updateArmyList } from "../db/army-lists";
@@ -64,6 +65,17 @@ type CalculatorExports = {
   malloc(size: number): number;
   free(pointer: number): void;
   whc_calculate_summary(...values: number[]): number;
+  whc_calculate_ordered_volley_summary(...values: number[]): number;
+};
+
+type OrderedTargetSegment = {
+  toughness: number;
+  save: number;
+  invulnerable: number;
+  feelNoPain: number;
+  wounds: number;
+  reduction: number;
+  modelCount: number;
 };
 
 const API_HEADERS = {
@@ -134,10 +146,8 @@ async function loadCalculator(request: Request, env: Env) {
   return calculatorPromise;
 }
 
-async function exactCalculation(profile: CombatProfile, request: Request, env: Env) {
-  const calculator = await loadCalculator(request, env);
-  const output = calculator.malloc(72);
-  const flags =
+function profileFlags(profile: CombatProfile) {
+  return (
     (profile.lethalHits ? 1 : 0) |
     (profile.devastatingWounds ? 2 : 0) |
     (profile.twinLinked ? 4 : 0) |
@@ -150,7 +160,14 @@ async function exactCalculation(profile: CombatProfile, request: Request, env: E
     (profile.withinHalfRange && profile.melta > 0 ? 512 : 0) |
     (profile.targetCover ? 1024 : 0) |
     (profile.ignoresCover ? 2048 : 0) |
-    (profile.indirect ? 4096 : 0);
+    (profile.indirect ? 4096 : 0)
+  );
+}
+
+async function exactCalculation(profile: CombatProfile, request: Request, env: Env) {
+  const calculator = await loadCalculator(request, env);
+  const output = calculator.malloc(72);
+  const flags = profileFlags(profile);
 
   try {
     const ok = calculator.whc_calculate_summary(
@@ -216,6 +233,117 @@ async function exactCalculation(profile: CombatProfile, request: Request, env: E
   }
 }
 
+async function exactVolley(
+  profiles: CombatProfile[],
+  targets: OrderedTargetSegment[],
+  initialWoundsLost: number,
+  request: Request,
+  env: Env,
+) {
+  if (profiles.length < 1 || profiles.length > 32) {
+    throw new Error("profiles must contain 1 to 32 weapon profiles");
+  }
+  if (targets.length < 1 || targets.length > 16) {
+    throw new Error("targets must contain 1 to 16 ordered profile segments");
+  }
+  const capacity = targets.reduce((sum, target) => sum + target.wounds * target.modelCount, 0);
+  if (
+    !Number.isInteger(initialWoundsLost) ||
+    initialWoundsLost < 0 ||
+    initialWoundsLost >= targets[0].wounds ||
+    capacity > 1024
+  ) {
+    throw new Error("initialWoundsLost or target capacity exceeds the exact calculator limits");
+  }
+
+  const calculator = await loadCalculator(request, env);
+  const weaponFields = 20;
+  const targetFields = 7;
+  const weaponsPointer = calculator.malloc(profiles.length * weaponFields * 4);
+  const targetsPointer = calculator.malloc(targets.length * targetFields * 4);
+  const summaryPointer = calculator.malloc(9 * 4);
+  const meansPointer = calculator.malloc(profiles.length * 4 * 4);
+  try {
+    const view = new DataView(calculator.memory.buffer);
+    const write = (pointer: number, values: number[]) =>
+      values.forEach((value, index) => view.setUint32(pointer + index * 4, value, true));
+    const read = (pointer: number, index: number) => view.getUint32(pointer + index * 4, true);
+    const fraction = (pointer: number) => {
+      const numerator = (BigInt(read(pointer, 1)) << 32n) | BigInt(read(pointer, 0));
+      const denominator = (BigInt(read(pointer, 3)) << 32n) | BigInt(read(pointer, 2));
+      return {
+        mean: Number(numerator) / Number(denominator),
+        exact: { numerator: numerator.toString(), denominator: denominator.toString() },
+      };
+    };
+    profiles.forEach((profile, index) =>
+      write(weaponsPointer + index * weaponFields * 4, [
+        profile.attackDice,
+        profile.attackSides,
+        profile.attacks,
+        profile.weaponCount,
+        profile.hitOn,
+        profile.strength,
+        profile.ap,
+        profile.damageDice,
+        profile.damageSides,
+        profile.damage,
+        profile.criticalHits,
+        profileFlags(profile),
+        profile.criticalWounds,
+        profile.sustainedHitsDice,
+        profile.sustainedHitsSides,
+        profile.sustainedHits,
+        profile.rapidFireDice,
+        profile.rapidFireSides,
+        profile.rapidFire,
+        profile.melta,
+      ]),
+    );
+    targets.forEach((target, index) =>
+      write(targetsPointer + index * targetFields * 4, [
+        target.toughness,
+        target.save,
+        target.invulnerable,
+        target.feelNoPain,
+        target.wounds,
+        target.reduction,
+        target.modelCount,
+      ]),
+    );
+    const ok = calculator.whc_calculate_ordered_volley_summary(
+      weaponsPointer,
+      profiles.length,
+      targetsPointer,
+      targets.length,
+      initialWoundsLost,
+      summaryPointer,
+      meansPointer,
+    );
+    if (!ok) throw new Error("Ordered volley exceeds the exact calculator limits");
+    const cumulative = profiles.map((_, index) => fraction(meansPointer + index * 16));
+    const total = fraction(summaryPointer + 5 * 4);
+    return {
+      minimum: read(summaryPointer, 0),
+      firstQuartile: read(summaryPointer, 1),
+      median: read(summaryPointer, 2),
+      thirdQuartile: read(summaryPointer, 3),
+      maximum: read(summaryPointer, 4),
+      mean: total.mean,
+      exact: total.exact,
+      cumulative,
+      incrementalMeans: cumulative.map(
+        (entry, index) => entry.mean - (index === 0 ? 0 : cumulative[index - 1].mean),
+      ),
+    };
+  } finally {
+    calculator.free(weaponsPointer);
+    calculator.free(targetsPointer);
+    calculator.free(summaryPointer);
+    calculator.free(meansPointer);
+  }
+}
+
 async function requestProfile(request: Request) {
   let body: unknown;
   try {
@@ -228,6 +356,43 @@ async function requestProfile(request: Request) {
       ? (body as { profile: unknown }).profile
       : body;
   return normalizeProfile(candidate);
+}
+
+function orderedTargets(value: unknown): OrderedTargetSegment[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 16) {
+    throw new Error("targets must contain 1 to 16 ordered profile segments");
+  }
+  return value.map((candidate) => {
+    if (!candidate || typeof candidate !== "object") {
+      throw new Error("Each target segment must be an object");
+    }
+    const target = candidate as Record<string, unknown>;
+    const integer = (key: string, minimum: number, maximum: number) => {
+      const result = target[key];
+      if (
+        !Number.isInteger(result) ||
+        (result as number) < minimum ||
+        (result as number) > maximum
+      ) {
+        throw new Error(`${key} must be an integer from ${minimum} to ${maximum}`);
+      }
+      return result as number;
+    };
+    const optionalSave = (key: string) => {
+      const result = integer(key, 0, 6);
+      if (result === 1) throw new Error(`${key} must be 0 or an integer from 2 to 6`);
+      return result;
+    };
+    return {
+      toughness: integer("toughness", 1, 65535),
+      save: integer("save", 2, 7),
+      invulnerable: optionalSave("invulnerable"),
+      feelNoPain: optionalSave("feelNoPain"),
+      wounds: integer("wounds", 1, 1024),
+      reduction: integer("reduction", 0, 1024),
+      modelCount: integer("modelCount", 1, 1000),
+    };
+  });
 }
 
 async function requestArmyList(request: Request): Promise<ArmyListInput> {
@@ -298,7 +463,9 @@ async function handleApi(request: Request, env: Env) {
           targets: "GET /api/v1/targets?unit={datasheetId}",
           profiles: "GET /api/v1/profiles",
           calculate: "POST /api/v1/calculate",
+          volley: "POST /api/v1/volley",
           roll: "POST /api/v1/roll?details={true|false}",
+          volleyRoll: "POST /api/v1/volley/roll?details={true|false}",
           lists: "GET|POST /api/v1/lists; PUT|DELETE /api/v1/lists/{id}",
         },
         request: { profile: DEFAULT_PROFILE },
@@ -442,11 +609,63 @@ async function handleApi(request: Request, env: Env) {
       });
     }
 
+    if (url.pathname === "/api/v1/volley" && request.method === "POST") {
+      const body = (await request.json()) as {
+        profiles?: unknown;
+        targets?: unknown;
+        initialWoundsLost?: unknown;
+      };
+      if (!body || !Array.isArray(body.profiles)) {
+        return apiError("profiles must be an array");
+      }
+      const profiles = body.profiles.map((profile) => normalizeProfile(profile));
+      const targets = orderedTargets(body.targets);
+      const initialWoundsLost = body.initialWoundsLost ?? 0;
+      if (!Number.isInteger(initialWoundsLost)) {
+        return apiError("initialWoundsLost must be an integer");
+      }
+      return json({
+        data: await exactVolley(profiles, targets, initialWoundsLost as number, request, env),
+        profiles,
+        targets,
+        initialWoundsLost,
+        apiVersion: "v1",
+      });
+    }
+
     if (url.pathname === "/api/v1/roll" && request.method === "POST") {
       const profile = await requestProfile(request);
       const rolled = simulateAttack(profile);
       if (url.searchParams.get("details") === "false") rolled.details = [];
       return json({ data: rolled, profile, apiVersion: "v1" });
+    }
+
+    if (url.pathname === "/api/v1/volley/roll" && request.method === "POST") {
+      const body = (await request.json()) as {
+        profiles?: unknown;
+        targets?: unknown;
+        initialWoundsLost?: unknown;
+      };
+      if (!body || !Array.isArray(body.profiles)) {
+        return apiError("profiles must be an array");
+      }
+      const profiles = body.profiles.map((profile) => normalizeProfile(profile));
+      const targets = orderedTargets(body.targets);
+      const initialWoundsLost = body.initialWoundsLost ?? 0;
+      if (!Number.isInteger(initialWoundsLost)) {
+        return apiError("initialWoundsLost must be an integer");
+      }
+      const rolled = simulateOrderedVolley(profiles, targets, initialWoundsLost as number);
+      if (url.searchParams.get("details") === "false") {
+        for (const line of rolled.lines) line.details = [];
+      }
+      return json({
+        data: rolled,
+        profiles,
+        targets,
+        initialWoundsLost,
+        apiVersion: "v1",
+      });
     }
 
     if (url.pathname === "/api/v1/lists" && request.method === "GET") {

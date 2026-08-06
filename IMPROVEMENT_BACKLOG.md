@@ -16,20 +16,18 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Combine complete multi-weapon volleys in player-selected order so casualties
-   and existing wounds carry between weapon profiles and mixed model profiles.
-2. Extend structured wargear coverage to compound bundles, shared choice pools,
+1. Extend structured wargear coverage to compound bundles, shared choice pools,
    conditional replacements, and exact default-loadout reconciliation.
-3. Add phase-scale simulations with reproducible seeded runs
+2. Add phase-scale simulations with reproducible seeded runs
    alongside cryptographically random live rolls.
-4. Add property-based and fuzz testing at the C and API boundaries.
-5. Expand formal proofs from threshold helpers to attack-plan invariants and
+3. Add property-based and fuzz testing at the C and API boundaries.
+4. Expand formal proofs from threshold helpers to attack-plan invariants and
    probability-mass conservation.
-6. Improve list persistence, import/export, and mid-game state recovery.
-7. Add data freshness checks, change reports, and source-version pinning.
-8. Benchmark and profile large volleys in native and WebAssembly builds.
-9. Improve mobile play-mode ergonomics and accessibility.
-10. Add deployment health checks and clearer service-failure diagnostics.
+5. Improve list persistence, import/export, and mid-game state recovery.
+6. Add data freshness checks, change reports, and source-version pinning.
+7. Benchmark and profile large volleys in native and WebAssembly builds.
+8. Improve mobile play-mode ergonomics and accessibility.
+9. Add deployment health checks and clearer service-failure diagnostics.
 
 ## Completed cycles
 
@@ -56,3 +54,8 @@ priority over feature count.
   weapon groups; separated total equipped quantities from option-selected
   copies so editors and the API can flag illegal allowances without mistaking
   standard equipment for an upgrade, while retaining explicit overrides.
+- 2026-08-06: Added exact and cryptographically random ordered multi-weapon
+  volleys across the C engine, WebAssembly, API, and Unit vs Unit workflow.
+  Mixed target profiles, casualties, existing wounds, damage reduction, Feel
+  No Pain, and lost overkill now carry through an editable attack sequence;
+  regressions prove that weapon order can change the resulting distribution.

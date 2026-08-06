@@ -2091,6 +2091,308 @@ uint32_t allocate_damage_to_unit(uint32_t applied_damage, uint32_t incoming_dama
     return applied_damage + allocated;
 }
 
+uint32_t target_unit_capacity(const struct target_unit_layout *layout) {
+    uint32_t capacity = 0u;
+    uint16_t index = 0u;
+
+    if (layout == NULL || layout->segment_count == 0u ||
+        layout->segment_count > MAX_TARGET_SEGMENTS) {
+        return 0u;
+    }
+
+    while (index < layout->segment_count) {
+        uint32_t segment_capacity =
+            (uint32_t)layout->wounds_per_model[index] * layout->model_counts[index];
+        if (layout->wounds_per_model[index] == 0u || layout->model_counts[index] == 0u ||
+            segment_capacity > MAX_DISTRIBUTION_RESULT - capacity) {
+            return 0u;
+        }
+        capacity += segment_capacity;
+        index++;
+    }
+
+    if (layout->initial_wounds_lost >= layout->wounds_per_model[0]) {
+        return 0u;
+    }
+    return capacity;
+}
+
+/*@ requires whc_valid_target_unit_layout(layout);
+    requires applied_damage < whc_target_capacity(layout);
+    requires \valid(segment_index) && \valid(wounds_remaining);
+    assigns *segment_index, *wounds_remaining;
+    ensures \result ==> *segment_index < layout->segment_count;
+    ensures \result ==> 1 <= *wounds_remaining;
+*/
+static bool target_unit_position(const struct target_unit_layout *layout, uint32_t applied_damage,
+                                 uint16_t *segment_index, uint16_t *wounds_remaining) {
+    uint32_t offset = 0u;
+    uint16_t index = 0u;
+
+    if (layout == NULL || segment_index == NULL || wounds_remaining == NULL ||
+        applied_damage >= target_unit_capacity(layout)) {
+        return false;
+    }
+
+    while (index < layout->segment_count) {
+        uint32_t segment_capacity =
+            (uint32_t)layout->wounds_per_model[index] * layout->model_counts[index];
+        if (applied_damage < offset + segment_capacity) {
+            uint32_t within_model = (applied_damage - offset) % layout->wounds_per_model[index];
+            *segment_index = index;
+            *wounds_remaining = (uint16_t)(layout->wounds_per_model[index] - within_model);
+            return true;
+        }
+        offset += segment_capacity;
+        index++;
+    }
+    return false;
+}
+
+uint32_t allocate_damage_to_target_unit(const struct target_unit_layout *layout,
+                                        uint32_t applied_damage, uint32_t incoming_damage) {
+    uint32_t capacity = target_unit_capacity(layout);
+    uint16_t segment_index = 0u;
+    uint16_t wounds_remaining = 0u;
+    uint32_t allocated = 0u;
+
+    if (capacity == 0u || applied_damage >= capacity) {
+        return capacity == 0u ? applied_damage : capacity;
+    }
+    if (!target_unit_position(layout, applied_damage, &segment_index, &wounds_remaining)) {
+        return applied_damage;
+    }
+    (void)segment_index;
+    allocated = incoming_damage < wounds_remaining ? incoming_damage : wounds_remaining;
+    return applied_damage + allocated;
+}
+
+/*@ requires \valid_read(current);
+    requires \valid_read(incoming + (0 .. layout->segment_count - 1));
+    requires whc_valid_target_unit_layout(layout);
+    requires \valid(accumulator + (0 .. MAX_DISTRIBUTION_RESULT));
+    requires \valid(result);
+    assigns accumulator[0 .. MAX_DISTRIBUTION_RESULT], *result;
+    ensures \result ==> whc_normalized_probability_distribution(result);
+*/
+static bool probability_distribution_allocate_mixed_attack_internal(
+    const struct probability_distribution *current, const struct probability_distribution *incoming,
+    const struct target_unit_layout *layout, uint64_t *accumulator,
+    struct probability_distribution *result) {
+    uint32_t applied = 0u;
+    uint32_t maximum = 0u;
+    uint32_t capacity = target_unit_capacity(layout);
+    const uint64_t total_weight = (uint64_t)PROBABILITY_SCALE * PROBABILITY_SCALE;
+
+    if (current == NULL || incoming == NULL || layout == NULL || accumulator == NULL ||
+        result == NULL || capacity == 0u || current->total_mass != PROBABILITY_SCALE ||
+        current->minimum > current->maximum || current->maximum > capacity) {
+        return false;
+    }
+    memset(accumulator, 0, sizeof(uint64_t) * (MAX_DISTRIBUTION_RESULT + 1u));
+
+    applied = current->minimum;
+    while (applied <= current->maximum) {
+        uint32_t current_mass = current->mass[applied];
+        if (current_mass != 0u && applied == capacity) {
+            uint64_t product = (uint64_t)current_mass * PROBABILITY_SCALE;
+            if (!uint64_add_checked(accumulator[capacity], product, &accumulator[capacity])) {
+                return false;
+            }
+            maximum = capacity;
+        } else if (current_mass != 0u) {
+            uint16_t segment_index = 0u;
+            uint16_t wounds_remaining = 0u;
+            uint32_t damage = 0u;
+            const struct probability_distribution *attack = NULL;
+
+            if (!target_unit_position(layout, applied, &segment_index, &wounds_remaining)) {
+                return false;
+            }
+            (void)wounds_remaining;
+            attack = &incoming[segment_index];
+            if (attack->total_mass != PROBABILITY_SCALE || attack->minimum > attack->maximum) {
+                return false;
+            }
+            damage = attack->minimum;
+            while (damage <= attack->maximum) {
+                if (attack->mass[damage] != 0u) {
+                    uint32_t next = allocate_damage_to_target_unit(layout, applied, damage);
+                    uint64_t product = (uint64_t)current_mass * attack->mass[damage];
+                    if (!uint64_add_checked(accumulator[next], product, &accumulator[next])) {
+                        return false;
+                    }
+                    if (next > maximum) {
+                        maximum = next;
+                    }
+                }
+                damage++;
+            }
+        }
+        applied++;
+    }
+
+    return probability_distribution_from_weights(accumulator, 0u, maximum, total_weight, result);
+}
+
+bool advance_weapon_applied_damage_distribution(const struct weapon_profile *weapon,
+                                                const struct target_profile *targets,
+                                                const struct target_unit_layout *layout,
+                                                const struct probability_distribution *current,
+                                                struct calculator_workspace *workspace,
+                                                struct probability_distribution *result) {
+    struct probability_distribution *attack_count = NULL;
+    struct probability_distribution *state = NULL;
+    struct probability_distribution *next = NULL;
+    struct probability_distribution *final_distribution = NULL;
+    uint32_t capacity = target_unit_capacity(layout);
+    uint16_t segment_index = 0u;
+    uint32_t attack_number = 0u;
+    uint32_t mixture_minimum = capacity;
+    uint32_t mixture_maximum = 0u;
+    const uint64_t total_weight = (uint64_t)PROBABILITY_SCALE * PROBABILITY_SCALE;
+
+    if (weapon == NULL || targets == NULL || layout == NULL || current == NULL ||
+        workspace == NULL || result == NULL || capacity == 0u ||
+        current->total_mass != PROBABILITY_SCALE || current->minimum > current->maximum ||
+        current->minimum < layout->initial_wounds_lost || current->maximum > capacity) {
+        return false;
+    }
+
+    while (segment_index < layout->segment_count) {
+        struct attack_plan plan;
+        if (targets[segment_index].wounds != layout->wounds_per_model[segment_index] ||
+            !attack_plan_build(weapon, &targets[segment_index], &plan) ||
+            !build_single_attack_probability_distribution(weapon, &plan, workspace,
+                                                          &workspace->probability_b) ||
+            !apply_feel_no_pain(&workspace->probability_b, plan.feel_no_pain_on, workspace,
+                                &workspace->probability_b)) {
+            return false;
+        }
+        memcpy(&workspace->target_attacks[segment_index], &workspace->probability_b,
+               sizeof(workspace->probability_b));
+        segment_index++;
+    }
+
+    if (!distribution_from_dice_value(weapon->attacks, &workspace->exact_a) ||
+        !probability_distribution_from_exact(&workspace->exact_a, &workspace->probability_a)) {
+        return false;
+    }
+
+    attack_count = &workspace->probability_a;
+    state = &workspace->probability_c;
+    next = &workspace->probability_d;
+    memcpy(state, current, sizeof(*state));
+    memset(workspace->mixture_accumulator, 0, sizeof(workspace->mixture_accumulator));
+
+    attack_number = 0u;
+    while (attack_number <= attack_count->maximum) {
+        uint32_t attack_mass = attack_count->mass[attack_number];
+        if (attack_mass != 0u) {
+            uint32_t applied = state->minimum;
+            while (applied <= state->maximum) {
+                if (state->mass[applied] != 0u) {
+                    uint64_t product = (uint64_t)attack_mass * state->mass[applied];
+                    if (!uint64_add_checked(workspace->mixture_accumulator[applied], product,
+                                            &workspace->mixture_accumulator[applied])) {
+                        return false;
+                    }
+                    if (applied < mixture_minimum) {
+                        mixture_minimum = applied;
+                    }
+                    if (applied > mixture_maximum) {
+                        mixture_maximum = applied;
+                    }
+                }
+                applied++;
+            }
+        }
+        if (attack_number < attack_count->maximum) {
+            struct probability_distribution *swap = NULL;
+            if (!probability_distribution_allocate_mixed_attack_internal(
+                    state, workspace->target_attacks, layout, workspace->convolution_accumulator,
+                    next)) {
+                return false;
+            }
+            swap = state;
+            state = next;
+            next = swap;
+        }
+        attack_number++;
+    }
+
+    final_distribution = next;
+    if (mixture_minimum > mixture_maximum ||
+        !probability_distribution_from_weights(workspace->mixture_accumulator, mixture_minimum,
+                                               mixture_maximum, total_weight, final_distribution)) {
+        return false;
+    }
+    if (result != final_distribution) {
+        memcpy(result, final_distribution, sizeof(*result));
+    }
+    return true;
+}
+
+bool calculate_ordered_volley_applied_damage_distribution(const struct weapon_profile *weapons,
+                                                          const struct target_profile *targets,
+                                                          uint16_t weapon_count,
+                                                          const struct target_unit_layout *layout,
+                                                          struct calculator_workspace *workspace,
+                                                          struct probability_distribution *result,
+                                                          struct fraction *cumulative_means) {
+    struct probability_distribution *current = NULL;
+    struct probability_distribution *next = NULL;
+    uint16_t weapon_index = 0u;
+    uint32_t capacity = target_unit_capacity(layout);
+
+    if (weapons == NULL || targets == NULL || layout == NULL || workspace == NULL ||
+        result == NULL || cumulative_means == NULL || weapon_count == 0u ||
+        weapon_count > MAX_VOLLEY_WEAPONS || capacity == 0u ||
+        !probability_distribution_from_constant(layout->initial_wounds_lost,
+                                                &workspace->probability_e)) {
+        return false;
+    }
+
+    current = &workspace->probability_e;
+    next = &workspace->probability_f;
+    while (weapon_index < weapon_count) {
+        const struct target_profile *weapon_targets =
+            targets + (uint32_t)weapon_index * layout->segment_count;
+        uint64_t baseline = 0u;
+        if (!advance_weapon_applied_damage_distribution(&weapons[weapon_index], weapon_targets,
+                                                        layout, current, workspace, next) ||
+            !probability_distribution_mean(next, &cumulative_means[weapon_index]) ||
+            !uint64_multiply_checked(layout->initial_wounds_lost,
+                                     cumulative_means[weapon_index].denominator, &baseline) ||
+            cumulative_means[weapon_index].numerator < baseline) {
+            return false;
+        }
+        cumulative_means[weapon_index].numerator -= baseline;
+        if (!fraction_reduce(&cumulative_means[weapon_index])) {
+            return false;
+        }
+        {
+            struct probability_distribution *swap = current;
+            current = next;
+            next = swap;
+        }
+        weapon_index++;
+    }
+
+    memset(workspace->mixture_accumulator, 0, sizeof(workspace->mixture_accumulator));
+    {
+        uint32_t applied = current->minimum;
+        while (applied <= current->maximum) {
+            workspace->mixture_accumulator[applied - layout->initial_wounds_lost] =
+                current->mass[applied];
+            applied++;
+        }
+    }
+    return probability_distribution_from_weights(
+        workspace->mixture_accumulator, current->minimum - layout->initial_wounds_lost,
+        current->maximum - layout->initial_wounds_lost, PROBABILITY_SCALE, result);
+}
+
 static bool calculate_attack_damage_distribution_internal(const struct weapon_profile *weapon,
                                                           const struct target_profile *target,
                                                           uint16_t target_models,

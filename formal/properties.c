@@ -99,3 +99,30 @@ bool whc_prove_indirect_low_hit_rolls_fail(uint8_t face) {
     /*@ assert !result; */
     return !result;
 }
+
+/*@ requires whc_valid_target_unit_layout(layout);
+    requires applied_damage <= whc_target_capacity(layout);
+    assigns \nothing;
+    ensures \result;
+*/
+bool whc_prove_mixed_allocation_respects_capacity(const struct target_unit_layout *layout,
+                                                  uint32_t applied_damage,
+                                                  uint32_t incoming_damage) {
+    uint32_t result = allocate_damage_to_target_unit(layout, applied_damage, incoming_damage);
+
+    /*@ assert result <= whc_target_capacity(layout); */
+    return result <= target_unit_capacity(layout);
+}
+
+/*@ requires whc_valid_target_unit_layout(layout);
+    requires applied_damage <= whc_target_capacity(layout);
+    assigns \nothing;
+    ensures \result;
+*/
+bool whc_prove_zero_mixed_damage_changes_nothing(const struct target_unit_layout *layout,
+                                                 uint32_t applied_damage) {
+    uint32_t result = allocate_damage_to_target_unit(layout, applied_damage, 0u);
+
+    /*@ assert result == applied_damage; */
+    return result == applied_damage;
+}

@@ -273,6 +273,137 @@ static void test_unit_damage_allocation(void) {
            potential.mean.numerator * applied.mean.denominator);
 }
 
+/*@ terminates \true; */
+static void test_ordered_mixed_profile_volley(void) {
+    struct weapon_profile weapons[2];
+    struct weapon_profile reversed[2];
+    struct target_profile targets[4];
+    struct target_unit_layout layout = {
+        .wounds_per_model = {1u, 2u},
+        .model_counts = {1u, 1u},
+        .segment_count = 2u,
+        .initial_wounds_lost = 0u,
+    };
+    struct target_unit_layout wounded = {
+        .wounds_per_model = {2u, 2u},
+        .model_counts = {1u, 1u},
+        .segment_count = 2u,
+        .initial_wounds_lost = 1u,
+    };
+    struct calculator_workspace workspace;
+    struct probability_distribution forward_distribution;
+    struct probability_distribution reverse_distribution;
+    struct fraction forward_means[2];
+    struct fraction reverse_means[2];
+    struct fraction forward_final;
+    struct fraction reverse_final;
+    struct whc_web_weapon_input web_weapons[2];
+    struct whc_web_weapon_input web_reversed[2];
+    struct whc_web_target_input web_targets[2];
+    struct whc_web_applied_summary web_forward;
+    struct whc_web_applied_summary web_reverse;
+    struct whc_web_mean web_forward_means[2];
+    struct whc_web_mean web_reverse_means[2];
+    uint64_t web_forward_numerator = 0u;
+    uint64_t web_forward_denominator = 0u;
+    uint64_t web_reverse_numerator = 0u;
+    uint64_t web_reverse_denominator = 0u;
+    uint16_t index = 0u;
+
+    memset(weapons, 0, sizeof(weapons));
+    memset(targets, 0, sizeof(targets));
+    while (index < 2u) {
+        weapons[index].attacks = (struct dice_value){0u, 0u, 1u};
+        weapons[index].hits_on = 2u;
+        weapons[index].strength = 10u;
+        weapons[index].damage = (struct dice_value){0u, 0u, (uint16_t)(index + 1u)};
+        assert(rule_add_torrent(&weapons[index].rules));
+        index++;
+    }
+    weapons[0].ap = 0u;
+    weapons[1].ap = 6u;
+    reversed[0] = weapons[1];
+    reversed[1] = weapons[0];
+
+    index = 0u;
+    while (index < 4u) {
+        uint16_t segment = (uint16_t)(index % 2u);
+        targets[index].toughness = 1u;
+        targets[index].save = segment == 0u ? 7u : 2u;
+        targets[index].wounds = layout.wounds_per_model[segment];
+        index++;
+    }
+
+    assert(target_unit_capacity(&layout) == 3u);
+    assert(allocate_damage_to_target_unit(&wounded, 1u, 3u) == 2u);
+    assert(allocate_damage_to_target_unit(&wounded, 2u, 3u) == 4u);
+    assert(calculate_ordered_volley_applied_damage_distribution(
+        weapons, targets, 2u, &layout, &workspace, &forward_distribution, forward_means));
+    assert(calculate_ordered_volley_applied_damage_distribution(
+        reversed, targets, 2u, &layout, &workspace, &reverse_distribution, reverse_means));
+    assert(probability_distribution_mean(&forward_distribution, &forward_final));
+    assert(probability_distribution_mean(&reverse_distribution, &reverse_final));
+    assert(forward_distribution.maximum == 3u);
+    assert(reverse_distribution.maximum == 2u);
+    assert(forward_means[1].numerator * forward_means[0].denominator >=
+           forward_means[0].numerator * forward_means[1].denominator);
+    assert(forward_final.numerator * reverse_final.denominator >
+           reverse_final.numerator * forward_final.denominator);
+    targets[0].save = 7u;
+    targets[0].wounds = 2u;
+    assert(distribution_from_constant(1u, &workspace.exact_a));
+    assert(probability_distribution_from_exact(&workspace.exact_a, &workspace.probability_e));
+    assert(advance_weapon_applied_damage_distribution(&weapons[1], targets, &wounded,
+                                                      &workspace.probability_e, &workspace,
+                                                      &forward_distribution));
+    assert(forward_distribution.maximum == 2u);
+    assert(calculate_ordered_volley_applied_damage_distribution(
+        &weapons[1], targets, 1u, &wounded, &workspace, &forward_distribution, forward_means));
+    assert(forward_distribution.maximum == 1u);
+
+    memset(web_weapons, 0, sizeof(web_weapons));
+    memset(web_targets, 0, sizeof(web_targets));
+    index = 0u;
+    while (index < 2u) {
+        web_weapons[index].attack_modifier = 1u;
+        web_weapons[index].weapon_count = 1u;
+        web_weapons[index].hits_on = 2u;
+        web_weapons[index].strength = 10u;
+        web_weapons[index].damage_modifier = index + 1u;
+        web_weapons[index].rule_flags = WHC_RULE_TORRENT;
+        web_weapons[index].ap = index == 0u ? 0u : 6u;
+        web_targets[index].toughness = 1u;
+        web_targets[index].save = index == 0u ? 7u : 2u;
+        web_targets[index].wounds = index + 1u;
+        web_targets[index].model_count = 1u;
+        index++;
+    }
+    web_reversed[0] = web_weapons[1];
+    web_reversed[1] = web_weapons[0];
+    assert(whc_calculate_ordered_volley_summary(web_weapons, 2u, web_targets, 2u, 0u, &web_forward,
+                                                web_forward_means));
+    assert(whc_calculate_ordered_volley_summary(web_reversed, 2u, web_targets, 2u, 0u, &web_reverse,
+                                                web_reverse_means));
+    web_forward_numerator =
+        ((uint64_t)web_forward.mean_numerator_high << 32u) | web_forward.mean_numerator_low;
+    web_forward_denominator =
+        ((uint64_t)web_forward.mean_denominator_high << 32u) | web_forward.mean_denominator_low;
+    web_reverse_numerator =
+        ((uint64_t)web_reverse.mean_numerator_high << 32u) | web_reverse.mean_numerator_low;
+    web_reverse_denominator =
+        ((uint64_t)web_reverse.mean_denominator_high << 32u) | web_reverse.mean_denominator_low;
+    assert(web_forward_numerator * web_reverse_denominator >
+           web_reverse_numerator * web_forward_denominator);
+    assert(web_forward_means[1].denominator_low != 0u ||
+           web_forward_means[1].denominator_high != 0u);
+    web_targets[0].save = 7u;
+    web_targets[0].wounds = 2u;
+    web_targets[0].model_count = 2u;
+    assert(whc_calculate_ordered_volley_summary(&web_weapons[1], 1u, web_targets, 1u, 1u,
+                                                &web_forward, web_forward_means));
+    assert(web_forward.maximum == 1u);
+}
+
 /*@ terminates \true;
     ensures \result == 0;
 */
@@ -288,6 +419,7 @@ int main(void) {
     test_indirect_fire_restrictions();
     test_save_thresholds();
     test_unit_damage_allocation();
+    test_ordered_mixed_profile_volley();
     puts("all tests passed");
     return 0;
 }

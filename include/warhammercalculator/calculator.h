@@ -9,6 +9,8 @@
 #define MAX_DISTRIBUTION_RESULT 1024u
 #define MAX_PROFILE_RULES 8u
 #define MAX_DAMAGE_TRANSFORMS 4u
+#define MAX_TARGET_SEGMENTS 16u
+#define MAX_VOLLEY_WEAPONS 32u
 
 #define PROBABILITY_SCALE (UINT32_C(1) << 31)
 
@@ -132,6 +134,13 @@ struct target_profile {
     struct rule_set rules;
 };
 
+struct target_unit_layout {
+    uint16_t wounds_per_model[MAX_TARGET_SEGMENTS];
+    uint16_t model_counts[MAX_TARGET_SEGMENTS];
+    uint16_t segment_count;
+    uint16_t initial_wounds_lost;
+};
+
 struct calculator_workspace {
     struct distribution exact_a;
     struct distribution exact_b;
@@ -140,6 +149,9 @@ struct calculator_workspace {
     struct probability_distribution probability_b;
     struct probability_distribution probability_c;
     struct probability_distribution probability_d;
+    struct probability_distribution probability_e;
+    struct probability_distribution probability_f;
+    struct probability_distribution target_attacks[MAX_TARGET_SEGMENTS];
 
     uint64_t convolution_accumulator[MAX_DISTRIBUTION_RESULT + 1u];
     uint64_t mixture_accumulator[MAX_DISTRIBUTION_RESULT + 1u];
@@ -205,6 +217,61 @@ struct calculator_workspace {
       (target->feel_no_pain == 0 ||
        (2 <= target->feel_no_pain && target->feel_no_pain <= 6)) &&
       whc_valid_rule_set(&target->rules);
+
+  logic integer whc_target_capacity{L}(struct target_unit_layout *layout) =
+      (layout->segment_count > 0 ? layout->wounds_per_model[0] * layout->model_counts[0] : 0) +
+      (layout->segment_count > 1 ? layout->wounds_per_model[1] * layout->model_counts[1] : 0) +
+      (layout->segment_count > 2 ? layout->wounds_per_model[2] * layout->model_counts[2] : 0) +
+      (layout->segment_count > 3 ? layout->wounds_per_model[3] * layout->model_counts[3] : 0) +
+      (layout->segment_count > 4 ? layout->wounds_per_model[4] * layout->model_counts[4] : 0) +
+      (layout->segment_count > 5 ? layout->wounds_per_model[5] * layout->model_counts[5] : 0) +
+      (layout->segment_count > 6 ? layout->wounds_per_model[6] * layout->model_counts[6] : 0) +
+      (layout->segment_count > 7 ? layout->wounds_per_model[7] * layout->model_counts[7] : 0) +
+      (layout->segment_count > 8 ? layout->wounds_per_model[8] * layout->model_counts[8] : 0) +
+      (layout->segment_count > 9 ? layout->wounds_per_model[9] * layout->model_counts[9] : 0) +
+      (layout->segment_count > 10 ? layout->wounds_per_model[10] * layout->model_counts[10] : 0) +
+      (layout->segment_count > 11 ? layout->wounds_per_model[11] * layout->model_counts[11] : 0) +
+      (layout->segment_count > 12 ? layout->wounds_per_model[12] * layout->model_counts[12] : 0) +
+      (layout->segment_count > 13 ? layout->wounds_per_model[13] * layout->model_counts[13] : 0) +
+      (layout->segment_count > 14 ? layout->wounds_per_model[14] * layout->model_counts[14] : 0) +
+      (layout->segment_count > 15 ? layout->wounds_per_model[15] * layout->model_counts[15] : 0);
+
+  predicate whc_valid_target_unit_layout{L}(struct target_unit_layout *layout) =
+      \valid_read(layout) && 1 <= layout->segment_count &&
+      layout->segment_count <= MAX_TARGET_SEGMENTS &&
+      layout->wounds_per_model[0] > 0 && layout->model_counts[0] > 0 &&
+      (layout->segment_count <= 1 ||
+       (layout->wounds_per_model[1] > 0 && layout->model_counts[1] > 0)) &&
+      (layout->segment_count <= 2 ||
+       (layout->wounds_per_model[2] > 0 && layout->model_counts[2] > 0)) &&
+      (layout->segment_count <= 3 ||
+       (layout->wounds_per_model[3] > 0 && layout->model_counts[3] > 0)) &&
+      (layout->segment_count <= 4 ||
+       (layout->wounds_per_model[4] > 0 && layout->model_counts[4] > 0)) &&
+      (layout->segment_count <= 5 ||
+       (layout->wounds_per_model[5] > 0 && layout->model_counts[5] > 0)) &&
+      (layout->segment_count <= 6 ||
+       (layout->wounds_per_model[6] > 0 && layout->model_counts[6] > 0)) &&
+      (layout->segment_count <= 7 ||
+       (layout->wounds_per_model[7] > 0 && layout->model_counts[7] > 0)) &&
+      (layout->segment_count <= 8 ||
+       (layout->wounds_per_model[8] > 0 && layout->model_counts[8] > 0)) &&
+      (layout->segment_count <= 9 ||
+       (layout->wounds_per_model[9] > 0 && layout->model_counts[9] > 0)) &&
+      (layout->segment_count <= 10 ||
+       (layout->wounds_per_model[10] > 0 && layout->model_counts[10] > 0)) &&
+      (layout->segment_count <= 11 ||
+       (layout->wounds_per_model[11] > 0 && layout->model_counts[11] > 0)) &&
+      (layout->segment_count <= 12 ||
+       (layout->wounds_per_model[12] > 0 && layout->model_counts[12] > 0)) &&
+      (layout->segment_count <= 13 ||
+       (layout->wounds_per_model[13] > 0 && layout->model_counts[13] > 0)) &&
+      (layout->segment_count <= 14 ||
+       (layout->wounds_per_model[14] > 0 && layout->model_counts[14] > 0)) &&
+      (layout->segment_count <= 15 ||
+       (layout->wounds_per_model[15] > 0 && layout->model_counts[15] > 0)) &&
+      layout->initial_wounds_lost < layout->wounds_per_model[0] &&
+      whc_target_capacity(layout) <= MAX_DISTRIBUTION_RESULT;
 
   predicate whc_valid_attack_plan{L}(struct attack_plan *plan) =
       \valid_read(plan) && 2 <= plan->hits_on && plan->hits_on <= 6 &&
@@ -461,6 +528,55 @@ bool attack_roll_succeeds(uint8_t face, uint8_t succeeds_on, uint8_t critical_on
 */
 uint32_t allocate_damage_to_unit(uint32_t applied_damage, uint32_t incoming_damage,
                                  uint16_t wounds_per_model, uint16_t model_count);
+
+/*@ requires whc_valid_target_unit_layout(layout);
+    assigns \nothing;
+    ensures \result == whc_target_capacity(layout);
+*/
+uint32_t target_unit_capacity(const struct target_unit_layout *layout);
+
+/*@ requires whc_valid_target_unit_layout(layout);
+    requires applied_damage <= whc_target_capacity(layout);
+    assigns \nothing;
+    ensures \result >= applied_damage;
+    ensures \result <= applied_damage + incoming_damage;
+    ensures \result <= whc_target_capacity(layout);
+*/
+uint32_t allocate_damage_to_target_unit(const struct target_unit_layout *layout,
+                                        uint32_t applied_damage, uint32_t incoming_damage);
+
+/*@ requires \valid_read(weapon);
+    requires \valid_read(targets + (0 .. layout->segment_count - 1));
+    requires whc_valid_target_unit_layout(layout);
+    requires \valid_read(current) && \valid(workspace) && \valid(result);
+    assigns *workspace, *result;
+    ensures \result ==> whc_normalized_probability_distribution(result);
+*/
+bool advance_weapon_applied_damage_distribution(const struct weapon_profile *weapon,
+                                                const struct target_profile *targets,
+                                                const struct target_unit_layout *layout,
+                                                const struct probability_distribution *current,
+                                                struct calculator_workspace *workspace,
+                                                struct probability_distribution *result);
+
+/*@ requires 1 <= weapon_count && weapon_count <= MAX_VOLLEY_WEAPONS;
+    requires \valid_read(weapons + (0 .. weapon_count - 1));
+    requires whc_valid_target_unit_layout(layout);
+    requires \valid_read(targets + (0 .. weapon_count * layout->segment_count - 1));
+    requires \valid(workspace) && \valid(result);
+    requires \valid(cumulative_means + (0 .. weapon_count - 1));
+    assigns *workspace, *result, cumulative_means[0 .. weapon_count - 1];
+    ensures \result ==> whc_normalized_probability_distribution(result);
+    ensures \result ==> (\forall integer index; 0 <= index < weapon_count ==>
+        cumulative_means[index].denominator != 0);
+*/
+bool calculate_ordered_volley_applied_damage_distribution(const struct weapon_profile *weapons,
+                                                          const struct target_profile *targets,
+                                                          uint16_t weapon_count,
+                                                          const struct target_unit_layout *layout,
+                                                          struct calculator_workspace *workspace,
+                                                          struct probability_distribution *result,
+                                                          struct fraction *cumulative_means);
 
 /*@ requires \valid_read(weapon) && \valid_read(target);
     requires \valid(workspace) && \valid(result);

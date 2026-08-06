@@ -6,7 +6,11 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { attackRollSucceeds, savingThrowTarget, woundTarget } from "../lib/thresholds.mjs";
-import { allocateDamageToUnit } from "../lib/allocation.mjs";
+import {
+  allocateDamageToSequence,
+  allocateDamageToUnit,
+  targetSequencePosition,
+} from "../lib/allocation.mjs";
 import { abilityDiceValue } from "../lib/dice.mjs";
 import {
   armyListWeaponsFromGroups,
@@ -26,6 +30,27 @@ const wasmBinary = await readFile(new URL("calculator.wasm", wasmDirectory));
 const calculator = await createCalculator({
   locateFile: (file) => fileURLToPath(new URL(file, wasmDirectory)),
   wasmBinary,
+});
+
+test("mixed target allocation never spills damage between models", () => {
+  const targets = [
+    { wounds: 1, modelCount: 1 },
+    { wounds: 2, modelCount: 2 },
+  ];
+  const first = allocateDamageToSequence(0, 2, targets);
+  assert.deepEqual(first, {
+    applied: 1,
+    appliedThisAttack: 1,
+    wasted: 1,
+    modelsDestroyed: 1,
+    woundsRemaining: 2,
+    segmentIndex: 1,
+  });
+  const partial = allocateDamageToSequence(2, 4, targets);
+  assert.equal(partial.appliedThisAttack, 1);
+  assert.equal(partial.wasted, 3);
+  assert.equal(partial.modelsDestroyed, 2);
+  assert.equal(targetSequencePosition(3, targets).woundsRemaining, 2);
 });
 
 function readUint64(pointer, lowIndex, highIndex) {
@@ -79,6 +104,48 @@ function exactMean({ ap = 0, save = 3, invulnerable = 0, feelNoPain = 0, flags =
 
 function lessThanOrEqual(left, right) {
   return left.numerator * right.denominator <= right.numerator * left.denominator;
+}
+
+function orderedVolley(weapons, targets, initialWoundsLost = 0) {
+  const weaponFields = 20;
+  const targetFields = 7;
+  const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
+  const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
+  const summaryPointer = calculator._malloc(9 * 4);
+  const meansPointer = calculator._malloc(weapons.length * 4 * 4);
+  const write = (pointer, values) =>
+    values.forEach((value, index) => calculator.setValue(pointer + index * 4, value, "i32"));
+  try {
+    weapons.forEach((weapon, index) => write(weaponsPointer + index * weaponFields * 4, weapon));
+    targets.forEach((target, index) => write(targetsPointer + index * targetFields * 4, target));
+    assert.equal(
+      calculator._whc_calculate_ordered_volley_summary(
+        weaponsPointer,
+        weapons.length,
+        targetsPointer,
+        targets.length,
+        initialWoundsLost,
+        summaryPointer,
+        meansPointer,
+      ),
+      1,
+    );
+    const fraction = (pointer) => ({
+      numerator: readUint64(pointer, 0, 1),
+      denominator: readUint64(pointer, 2, 3),
+    });
+    return {
+      minimum: calculator.getValue(summaryPointer, "i32") >>> 0,
+      maximum: calculator.getValue(summaryPointer + 16, "i32") >>> 0,
+      mean: fraction(summaryPointer + 20),
+      cumulative: weapons.map((_, index) => fraction(meansPointer + index * 16)),
+    };
+  } finally {
+    calculator._free(weaponsPointer);
+    calculator._free(targetsPointer);
+    calculator._free(summaryPointer);
+    calculator._free(meansPointer);
+  }
 }
 
 function variableRuleMean({ flags = 0, sustained = [0, 0, 0], rapid = [0, 0, 0] }) {
@@ -218,6 +285,30 @@ test("source-backed loadout limits scale with unit size and remain overridable w
     unitLoadoutWarnings(unit, 10, { "assault:eviscerator": 2 }, { "assault:eviscerator": 1 })[0],
     /exceeds 1 total equipped/i,
   );
+});
+
+test("C/Wasm carries ordered damage across partial wounds and mixed target profiles", () => {
+  const light = [0, 0, 1, 1, 2, 10, 0, 0, 0, 1, 6, 16, 0, 0, 0, 0, 0, 0, 0, 0];
+  const heavy = [0, 0, 1, 1, 2, 10, 6, 0, 0, 2, 6, 16, 0, 0, 0, 0, 0, 0, 0, 0];
+  const mixedTargets = [
+    [1, 7, 0, 0, 1, 0, 1],
+    [1, 2, 0, 0, 2, 0, 1],
+  ];
+  const forward = orderedVolley([light, heavy], mixedTargets);
+  const reverse = orderedVolley([heavy, light], mixedTargets);
+  assert.equal(forward.maximum, 3);
+  assert.equal(reverse.maximum, 2);
+  assert.ok(
+    forward.mean.numerator * reverse.mean.denominator >
+      reverse.mean.numerator * forward.mean.denominator,
+  );
+  assert.ok(
+    forward.cumulative[1].numerator * forward.cumulative[0].denominator >=
+      forward.cumulative[0].numerator * forward.cumulative[1].denominator,
+  );
+
+  const partial = orderedVolley([heavy], [[1, 7, 0, 0, 2, 0, 2]], 1);
+  assert.equal(partial.maximum, 1);
 });
 
 test("JavaScript and C agree on wound thresholds", () => {

@@ -1,5 +1,10 @@
 import { attackRollSucceeds, savingThrowTarget, woundTarget } from "./thresholds.mjs";
-import { allocateDamageToUnit } from "./allocation.mjs";
+import {
+  allocateDamageToSequence,
+  allocateDamageToUnit,
+  targetSequenceCapacity,
+  targetSequencePosition,
+} from "./allocation.mjs";
 
 export type CombatProfile = {
   attackDice: number;
@@ -74,6 +79,34 @@ export type RollResult = {
   woundsOn: number;
   savesOn: number;
   details: RollDetail[];
+};
+
+export type VolleyTarget = {
+  toughness: number;
+  save: number;
+  invulnerable: number;
+  feelNoPain: number;
+  wounds: number;
+  reduction: number;
+  modelCount: number;
+};
+
+export type OrderedVolleyRollResult = {
+  attacks: number;
+  attacksResolved: number;
+  hits: number;
+  criticalHits: number;
+  woundingAttacks: number;
+  savedAttacks: number;
+  unsavedAttacks: number;
+  fnpPrevented: number;
+  successfulAttacks: number;
+  totalDamage: number;
+  appliedDamage: number;
+  wastedDamage: number;
+  modelsDestroyed: number;
+  targetWoundsRemaining: number;
+  lines: RollResult[];
 };
 
 export const DEFAULT_PROFILE: CombatProfile = {
@@ -446,4 +479,251 @@ export function simulateAttack(profile: CombatProfile): RollResult {
     }
   }
   return result;
+}
+
+export function simulateOrderedVolley(
+  profiles: CombatProfile[],
+  targets: VolleyTarget[],
+  initialWoundsLost = 0,
+): OrderedVolleyRollResult {
+  if (!Array.isArray(profiles) || profiles.length < 1 || profiles.length > 32) {
+    throw new Error("profiles must contain 1 to 32 weapon profiles");
+  }
+  const capacity = targetSequenceCapacity(targets);
+  if (
+    !Number.isSafeInteger(initialWoundsLost) ||
+    initialWoundsLost < 0 ||
+    initialWoundsLost >= targets[0].wounds
+  ) {
+    throw new Error("initialWoundsLost must fit on the first target model");
+  }
+  const targetModels = targets.reduce((total, target) => total + target.modelCount, 0);
+  let appliedState = initialWoundsLost;
+  const lines: RollResult[] = [];
+
+  for (const sourceProfile of profiles) {
+    if (sourceProfile.torrent && sourceProfile.indirect) {
+      throw new Error("Torrent weapons cannot fire indirectly when the target is not visible");
+    }
+    const profile = { ...sourceProfile, targetModels };
+    const attacksPerWeapon = profile.attacks + (profile.blast ? Math.floor(targetModels / 5) : 0);
+    const attacks =
+      rollDiceValue(
+        profile.attackDice * profile.weaponCount,
+        profile.attackSides,
+        attacksPerWeapon * profile.weaponCount,
+      ) +
+      (profile.withinHalfRange
+        ? rollDiceValue(
+            profile.rapidFireDice * profile.weaponCount,
+            profile.rapidFireSides,
+            profile.rapidFire * profile.weaponCount,
+          )
+        : 0);
+    if (attacks > 10_000) {
+      throw new Error("This roll is too large. Reduce the attack or weapon count.");
+    }
+    let hitModifier = (profile.heavyActive ? 1 : 0) - (profile.indirect ? 1 : 0);
+    hitModifier = Math.max(-1, Math.min(1, hitModifier));
+    const hitsOn = Math.max(2, Math.min(6, profile.hitOn - hitModifier));
+    const line: RollResult = {
+      attacks,
+      attacksResolved: 0,
+      hits: 0,
+      criticalHits: 0,
+      woundingAttacks: 0,
+      savedAttacks: 0,
+      unsavedAttacks: 0,
+      fnpPrevented: 0,
+      successfulAttacks: 0,
+      totalDamage: 0,
+      appliedDamage: 0,
+      wastedDamage: 0,
+      modelsDestroyed: 0,
+      targetWoundsRemaining: capacity - appliedState,
+      hitsOn,
+      woundsOn: 0,
+      savesOn: 0,
+      details: [],
+    };
+    const modelsBefore =
+      targetSequencePosition(appliedState, targets)?.modelsDestroyed ?? targetModels;
+
+    const resolveHit = (label: string, hitLabel: string, lethalWound: boolean) => {
+      const position = targetSequencePosition(appliedState, targets);
+      if (!position) return;
+      const target = targets[position.segmentIndex];
+      const woundsOn = Math.max(
+        2,
+        woundTarget(profile.strength, target.toughness) - (profile.lanceActive ? 1 : 0),
+      );
+      const savesOn = savingThrowTarget(
+        target.save,
+        target.invulnerable,
+        profile.ap,
+        (profile.targetCover || profile.indirect) && !profile.ignoresCover,
+      );
+      line.woundsOn = woundsOn;
+      line.savesOn = savesOn;
+      line.hits += 1;
+      let woundLabel = "Lethal ✓";
+      let criticalWound = false;
+      if (!lethalWound) {
+        const wound = rollCheck(woundsOn, profile.criticalWounds || 6, profile.twinLinked);
+        criticalWound = wound.face >= (profile.criticalWounds || 6);
+        const wounded = criticalWound || wound.face >= woundsOn;
+        woundLabel = `${wound.label}${criticalWound ? "★" : ""} ${wounded ? "✓" : "✕"}`;
+        if (!wounded) {
+          line.details.push({
+            label,
+            hit: hitLabel,
+            wound: woundLabel,
+            save: "Not reached",
+            fnp: "Not reached",
+            damage: 0,
+            appliedDamage: 0,
+            wastedDamage: 0,
+            outcome: "Failed to wound",
+            tone: "failed",
+          });
+          return;
+        }
+      }
+      line.woundingAttacks += 1;
+      const bypassSave = criticalWound && profile.devastatingWounds;
+      let saveLabel = "Bypassed";
+      if (!bypassSave) {
+        const save = rollDie();
+        const saved = save >= savesOn;
+        saveLabel = `${save} ${saved ? "✓" : "✕"}`;
+        if (saved) {
+          line.savedAttacks += 1;
+          line.details.push({
+            label,
+            hit: hitLabel,
+            wound: woundLabel,
+            save: saveLabel,
+            fnp: "Not reached",
+            damage: 0,
+            appliedDamage: 0,
+            wastedDamage: 0,
+            outcome: "Saved",
+            tone: "saved",
+          });
+          return;
+        }
+      }
+      line.unsavedAttacks += 1;
+      const rawDamage = rollDiceValue(
+        profile.damageDice,
+        profile.damageSides,
+        profile.damage + (profile.withinHalfRange ? profile.melta : 0),
+      );
+      const reducedDamage =
+        rawDamage > 0 && target.reduction > 0
+          ? Math.max(1, rawDamage - target.reduction)
+          : rawDamage;
+      let prevented = 0;
+      if (target.feelNoPain > 0) {
+        for (let point = 0; point < reducedDamage; point += 1) {
+          if (rollDie() >= target.feelNoPain) prevented += 1;
+        }
+      }
+      const damage = reducedDamage - prevented;
+      line.fnpPrevented += prevented;
+      line.totalDamage += damage;
+      const allocation = allocateDamageToSequence(appliedState, damage, targets);
+      appliedState = allocation.applied;
+      line.appliedDamage += allocation.appliedThisAttack;
+      line.wastedDamage += allocation.wasted;
+      if (damage > 0) line.successfulAttacks += 1;
+      line.details.push({
+        label,
+        hit: hitLabel,
+        wound: woundLabel,
+        save: saveLabel,
+        fnp: target.feelNoPain > 0 ? `${prevented} prevented` : "None",
+        damage,
+        appliedDamage: allocation.appliedThisAttack,
+        wastedDamage: allocation.wasted,
+        outcome:
+          damage === 0
+            ? "Stopped by FNP"
+            : allocation.wasted > 0
+              ? `${allocation.appliedThisAttack} applied · ${allocation.wasted} lost`
+              : `${allocation.appliedThisAttack} applied`,
+        tone: damage > 0 ? "damage" : "prevented",
+      });
+    };
+
+    for (let attack = 1; attack <= attacks && appliedState < capacity; attack += 1) {
+      line.attacksResolved += 1;
+      if (profile.torrent) {
+        resolveHit(`#${attack}`, "Auto ✓", false);
+        continue;
+      }
+      const autoFailsThrough = profile.indirect ? 3 : 0;
+      const hit = rollCheck(hitsOn, profile.criticalHits, profile.rerollHits, autoFailsThrough);
+      const hitSucceeded = attackRollSucceeds(
+        hit.face,
+        hitsOn,
+        profile.criticalHits,
+        autoFailsThrough,
+      );
+      const criticalHit = hitSucceeded && hit.face >= profile.criticalHits;
+      const hitLabel = `${hit.label}${criticalHit ? "★" : ""} ${hitSucceeded ? "✓" : "✕"}`;
+      if (!hitSucceeded) {
+        line.details.push({
+          label: `#${attack}`,
+          hit: hitLabel,
+          wound: "Not reached",
+          save: "Not reached",
+          fnp: "Not reached",
+          damage: 0,
+          appliedDamage: 0,
+          wastedDamage: 0,
+          outcome: "Missed",
+          tone: "failed",
+        });
+        continue;
+      }
+      if (criticalHit) line.criticalHits += 1;
+      resolveHit(`#${attack}`, hitLabel, criticalHit && profile.lethalHits);
+      if (criticalHit) {
+        const sustainedHits = rollDiceValue(
+          profile.sustainedHitsDice,
+          profile.sustainedHitsSides,
+          profile.sustainedHits,
+        );
+        for (let extra = 1; extra <= sustainedHits && appliedState < capacity; extra += 1) {
+          resolveHit(`#${attack}.S${extra}`, "Sustained ✓", false);
+        }
+      }
+    }
+    const modelsAfter =
+      targetSequencePosition(appliedState, targets)?.modelsDestroyed ?? targetModels;
+    line.modelsDestroyed = modelsAfter - modelsBefore;
+    line.targetWoundsRemaining = capacity - appliedState;
+    lines.push(line);
+  }
+
+  const sum = (key: keyof RollResult) =>
+    lines.reduce((total, line) => total + (line[key] as number), 0);
+  return {
+    attacks: sum("attacks"),
+    attacksResolved: sum("attacksResolved"),
+    hits: sum("hits"),
+    criticalHits: sum("criticalHits"),
+    woundingAttacks: sum("woundingAttacks"),
+    savedAttacks: sum("savedAttacks"),
+    unsavedAttacks: sum("unsavedAttacks"),
+    fnpPrevented: sum("fnpPrevented"),
+    successfulAttacks: sum("successfulAttacks"),
+    totalDamage: sum("totalDamage"),
+    appliedDamage: appliedState - initialWoundsLost,
+    wastedDamage: sum("wastedDamage"),
+    modelsDestroyed: targetSequencePosition(appliedState, targets)?.modelsDestroyed ?? targetModels,
+    targetWoundsRemaining: capacity - appliedState,
+    lines,
+  };
 }

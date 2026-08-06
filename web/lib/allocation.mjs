@@ -26,3 +26,79 @@ export function allocateDamageToUnit(appliedDamage, incomingDamage, woundsPerMod
     woundsRemaining,
   };
 }
+
+function validTargetSequence(targets) {
+  return (
+    Array.isArray(targets) &&
+    targets.length > 0 &&
+    targets.length <= 16 &&
+    targets.every(
+      (target) =>
+        target !== null &&
+        typeof target === "object" &&
+        Number.isSafeInteger(target.wounds) &&
+        Number.isSafeInteger(target.modelCount) &&
+        target.wounds >= 1 &&
+        target.modelCount >= 1,
+    )
+  );
+}
+
+export function targetSequenceCapacity(targets) {
+  if (!validTargetSequence(targets)) throw new Error("Invalid target sequence");
+  const capacity = targets.reduce((total, target) => total + target.wounds * target.modelCount, 0);
+  if (!Number.isSafeInteger(capacity)) throw new Error("Target sequence is too large");
+  return capacity;
+}
+
+export function targetSequencePosition(appliedDamage, targets) {
+  const capacity = targetSequenceCapacity(targets);
+  if (!Number.isSafeInteger(appliedDamage) || appliedDamage < 0 || appliedDamage >= capacity) {
+    return null;
+  }
+  let offset = 0;
+  let modelsDestroyed = 0;
+  for (let segmentIndex = 0; segmentIndex < targets.length; segmentIndex += 1) {
+    const target = targets[segmentIndex];
+    const segmentCapacity = target.wounds * target.modelCount;
+    if (appliedDamage < offset + segmentCapacity) {
+      const damageInSegment = appliedDamage - offset;
+      const woundsLost = damageInSegment % target.wounds;
+      return {
+        segmentIndex,
+        modelsDestroyed: modelsDestroyed + Math.floor(damageInSegment / target.wounds),
+        woundsRemaining: target.wounds - woundsLost,
+      };
+    }
+    offset += segmentCapacity;
+    modelsDestroyed += target.modelCount;
+  }
+  return null;
+}
+
+export function allocateDamageToSequence(appliedDamage, incomingDamage, targets) {
+  const capacity = targetSequenceCapacity(targets);
+  if (
+    !Number.isSafeInteger(appliedDamage) ||
+    !Number.isSafeInteger(incomingDamage) ||
+    appliedDamage < 0 ||
+    incomingDamage < 0
+  ) {
+    throw new Error("Invalid target sequence damage allocation");
+  }
+  const before = Math.min(appliedDamage, capacity);
+  const position = targetSequencePosition(before, targets);
+  const appliedThisAttack = position ? Math.min(incomingDamage, position.woundsRemaining) : 0;
+  const applied = before + appliedThisAttack;
+  const after = targetSequencePosition(applied, targets);
+  return {
+    applied,
+    appliedThisAttack,
+    wasted: incomingDamage - appliedThisAttack,
+    modelsDestroyed: after
+      ? after.modelsDestroyed
+      : targets.reduce((total, target) => total + target.modelCount, 0),
+    woundsRemaining: after?.woundsRemaining ?? 0,
+    segmentIndex: after?.segmentIndex ?? targets.length,
+  };
+}

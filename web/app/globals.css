@@ -1014,6 +1014,56 @@ select:focus {
     monospace;
   text-transform: uppercase;
 }
+.target-sequence,
+.volley-order {
+  display: grid;
+  gap: 10px;
+}
+.sequence-heading,
+.volley-order > div,
+.target-segment > .sequence-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.sequence-heading h3 {
+  margin: 0;
+}
+.sequence-heading small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+.target-segment {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #c8c0b1;
+  background: #f6f1e7;
+}
+.target-segment select {
+  flex: 1;
+}
+.target-stats {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.order-actions {
+  display: flex;
+  gap: 5px;
+}
+.order-actions button,
+.sequence-heading > button {
+  min-height: 32px;
+  padding: 5px 9px;
+  color: var(--red);
+  background: transparent;
+  border: 1px solid currentColor;
+}
+.order-actions button:disabled,
+.sequence-heading > button:disabled {
+  opacity: 0.35;
+}
 .volley-results,
 .battle-log {
   width: min(1500px, calc(100% - 40px));
@@ -1063,6 +1113,60 @@ select:focus {
   font:
     700 48px var(--font-geist-mono),
     monospace;
+}
+.volley-order {
+  margin-bottom: 18px;
+  padding: 14px;
+  color: #fff;
+  background: #242422;
+  border: 1px solid #504e49;
+}
+.volley-order > div:not(.sequence-heading) {
+  padding-top: 8px;
+  border-top: 1px solid #45433f;
+}
+.volley-order .order-actions button {
+  color: var(--gold);
+}
+.volley-order .sequence-heading span,
+.volley-order .sequence-heading strong {
+  display: block;
+}
+.volley-distribution {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: -8px 0 18px;
+  color: #aaa69d;
+  font-size: 12px;
+}
+
+.volley-roll {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 88%, var(--accent));
+}
+
+.roll-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.55rem;
+}
+
+.roll-summary-grid span {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.65rem;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.roll-summary-grid b {
+  color: var(--accent);
+  font-size: 1.25rem;
 }
 .result-lines {
   display: grid;
@@ -1282,6 +1386,9 @@ select:focus {
   }
   .override-strip > div {
     grid-template-columns: repeat(4, minmax(58px, 1fr));
+  }
+  .target-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
