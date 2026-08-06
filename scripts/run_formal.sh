@@ -7,7 +7,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build_dir="${root}/build/formal"
 frama_c="${FRAMA_C:-frama-c}"
 e_acsl_gcc="${E_ACSL_GCC:-e-acsl-gcc.sh}"
-wp_functions="saves_on,saves_on_with_cover,allocate_damage_to_unit,whc_prove_ap4_against_save2,whc_prove_ap_monotonic,whc_prove_invulnerable_save_caps_ap,whc_prove_cover_does_not_improve_good_save_against_ap0,whc_prove_cover_never_worsens_save,whc_prove_allocation_respects_unit_capacity,whc_prove_zero_damage_changes_nothing"
+wp_functions="saves_on,saves_on_with_cover,allocate_damage_to_unit,attack_roll_succeeds,whc_prove_ap4_against_save2,whc_prove_ap_monotonic,whc_prove_invulnerable_save_caps_ap,whc_prove_cover_does_not_improve_good_save_against_ap0,whc_prove_cover_never_worsens_save,whc_prove_allocation_respects_unit_capacity,whc_prove_zero_damage_changes_nothing,whc_prove_indirect_low_hit_rolls_fail"
 
 mkdir -p "${build_dir}"
 cd "${root}"

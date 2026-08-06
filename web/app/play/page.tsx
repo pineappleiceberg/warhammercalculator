@@ -118,7 +118,13 @@ export default function PlayMode() {
 
   const roll = () => {
     if (!attackerUnit || !targetUnit || !selectedWeapon || !weaponProfile) return;
-    const rolled = simulateAttack(profile);
+    let rolled: RollResult;
+    try {
+      rolled = simulateAttack(profile);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Attack could not be resolved");
+      return;
+    }
     setResult(rolled);
     setHistory((current) =>
       [

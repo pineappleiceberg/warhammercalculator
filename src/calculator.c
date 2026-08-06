@@ -426,24 +426,23 @@ static bool distribution_add_uniform_die(const struct distribution *source, uint
     return true;
 }
 
-/*@ assigns \nothing;
-    ensures \result <==> ((critical_on >= 2 && face >= critical_on) || face >= succeeds_on);
-*/
-static bool roll_is_success(uint8_t face, uint8_t succeeds_on, uint8_t critical_on) {
+bool attack_roll_succeeds(uint8_t face, uint8_t succeeds_on, uint8_t critical_on,
+                          uint8_t auto_fails_through) {
     bool critical = critical_on >= 2u && critical_on <= 6u && face >= critical_on;
 
-    return critical || (succeeds_on <= 6u && face >= succeeds_on);
+    return face > auto_fails_through && (critical || (succeeds_on <= 6u && face >= succeeds_on));
 }
 
 /*@ assigns \nothing;
     ensures (\result & ~VALID_D6_FACE_MASK) == 0;
 */
-static uint8_t failed_roll_mask(uint8_t succeeds_on, uint8_t critical_on) {
+static uint8_t failed_roll_mask(uint8_t succeeds_on, uint8_t critical_on,
+                                uint8_t auto_fails_through) {
     uint8_t mask = 0;
     uint8_t face = 1;
 
     while (face <= 6u) {
-        if (!roll_is_success(face, succeeds_on, critical_on)) {
+        if (!attack_roll_succeeds(face, succeeds_on, critical_on, auto_fails_through)) {
             mask |= (uint8_t)(UINT8_C(1) << face);
         }
         face++;
@@ -501,18 +500,20 @@ static bool roll_table_build(uint8_t reroll_mask, struct roll_table *table) {
     ensures categories->failed + categories->normal + categories->critical == categories->total;
 */
 static void classify_attack_rolls(const struct roll_table *table, uint8_t succeeds_on,
-                                  uint8_t critical_on, struct roll_categories *categories) {
+                                  uint8_t critical_on, uint8_t auto_fails_through,
+                                  struct roll_categories *categories) {
     uint8_t face = 1;
 
     memset(categories, 0, sizeof(*categories));
 
     while (face <= 6u) {
         uint64_t ways = table->ways[face];
-        bool critical = critical_on >= 2u && critical_on <= 6u && face >= critical_on;
+        bool succeeds = attack_roll_succeeds(face, succeeds_on, critical_on, auto_fails_through);
+        bool critical = succeeds && critical_on >= 2u && critical_on <= 6u && face >= critical_on;
 
         if (critical) {
             categories->critical += ways;
-        } else if (succeeds_on <= 6u && face >= succeeds_on) {
+        } else if (succeeds) {
             categories->normal += ways;
         } else {
             categories->failed += ways;
@@ -624,8 +625,9 @@ static bool build_single_attack_exact_distribution(const struct weapon_profile *
         return false;
     }
 
-    classify_attack_rolls(&hit_table, plan->hits_on, plan->critical_hits_on, &hit_categories);
-    classify_attack_rolls(&wound_table, plan->wounds_on, plan->critical_wounds_on,
+    classify_attack_rolls(&hit_table, plan->hits_on, plan->critical_hits_on,
+                          plan->hit_auto_fails_through, &hit_categories);
+    classify_attack_rolls(&wound_table, plan->wounds_on, plan->critical_wounds_on, 0u,
                           &wound_categories);
     classify_saves(&save_table, plan->saves_on, &save_categories);
 
@@ -757,6 +759,7 @@ static bool build_conditional_hit_exact_distribution(const struct weapon_profile
     conditional.hits_on = 1u;
     conditional.critical_hits_on = 0u;
     conditional.hit_reroll_mask = 0u;
+    conditional.hit_auto_fails_through = 0u;
     conditional.sustained_hits = 0u;
     conditional.flags &=
         (uint32_t)~((uint32_t)ATTACK_PLAN_LETHAL_HITS | (uint32_t)ATTACK_PLAN_AUTO_HITS);
@@ -844,7 +847,8 @@ static bool build_single_attack_probability_distribution(const struct weapon_pro
         extra_hit++;
     }
 
-    classify_attack_rolls(&hit_table, plan->hits_on, plan->critical_hits_on, &hit_categories);
+    classify_attack_rolls(&hit_table, plan->hits_on, plan->critical_hits_on,
+                          plan->hit_auto_fails_through, &hit_categories);
 
     maximum =
         normal_hit->maximum > critical_hit->maximum ? normal_hit->maximum : critical_hit->maximum;
@@ -936,7 +940,8 @@ static bool build_single_attack_expected_damage(const struct weapon_profile *wea
     if (!roll_table_build(plan->hit_reroll_mask, &hit_table)) {
         return false;
     }
-    classify_attack_rolls(&hit_table, plan->hits_on, plan->critical_hits_on, &hit_categories);
+    classify_attack_rolls(&hit_table, plan->hits_on, plan->critical_hits_on,
+                          plan->hit_auto_fails_through, &hit_categories);
 
     weight.numerator = hit_categories.normal;
     weight.denominator = hit_categories.total;
@@ -1130,6 +1135,26 @@ static bool compile_or_wound_reroll_mask(struct attack_plan *plan,
     }
 
     plan->wound_reroll_mask |= payload->u8[0] & VALID_D6_FACE_MASK;
+    return true;
+}
+
+/*@ requires \valid(plan) && \valid_read(weapon) && \valid_read(target) && \valid_read(payload);
+    assigns *plan;
+*/
+static bool compile_hit_auto_fails_through(struct attack_plan *plan,
+                                           const struct weapon_profile *weapon,
+                                           const struct target_profile *target,
+                                           const union rule_payload *payload) {
+    (void)weapon;
+    (void)target;
+
+    if (plan == NULL || payload == NULL || payload->u8[0] > 6u) {
+        return false;
+    }
+
+    if (payload->u8[0] > plan->hit_auto_fails_through) {
+        plan->hit_auto_fails_through = payload->u8[0];
+    }
     return true;
 }
 
@@ -1810,6 +1835,16 @@ bool rule_add_wound_reroll_mask(struct rule_set *rules, uint8_t face_mask) {
     return rule_set_add(rules, compile_or_wound_reroll_mask, payload);
 }
 
+bool rule_add_hit_auto_fails_through(struct rule_set *rules, uint8_t face) {
+    union rule_payload payload = {0};
+
+    if (face > 6u) {
+        return false;
+    }
+    payload.u8[0] = face;
+    return rule_set_add(rules, compile_hit_auto_fails_through, payload);
+}
+
 bool rule_add_sustained_hits(struct rule_set *rules, uint8_t additional_hits) {
     union rule_payload payload = {0};
 
@@ -1914,22 +1949,23 @@ bool attack_plan_build(const struct weapon_profile *weapon, const struct target_
     if (plan->hits_on < 2u || plan->hits_on > 6u || plan->wounds_on < 2u || plan->wounds_on > 6u ||
         plan->saves_on < 2u || plan->saves_on > 7u || plan->critical_hits_on < 2u ||
         plan->critical_hits_on > 6u || plan->critical_wounds_on < 2u ||
-        plan->critical_wounds_on > 6u ||
+        plan->critical_wounds_on > 6u || plan->hit_auto_fails_through > 6u ||
         (plan->feel_no_pain_on != 0 &&
          (plan->feel_no_pain_on < 2u || plan->feel_no_pain_on > 6u))) {
         return false;
     }
 
     if ((plan->flags & ATTACK_PLAN_REROLL_FAILED_HITS) != 0) {
-        plan->hit_reroll_mask |= failed_roll_mask(plan->hits_on, plan->critical_hits_on);
+        plan->hit_reroll_mask |=
+            failed_roll_mask(plan->hits_on, plan->critical_hits_on, plan->hit_auto_fails_through);
     }
 
     if ((plan->flags & ATTACK_PLAN_REROLL_FAILED_WOUNDS) != 0) {
-        plan->wound_reroll_mask |= failed_roll_mask(plan->wounds_on, plan->critical_wounds_on);
+        plan->wound_reroll_mask |= failed_roll_mask(plan->wounds_on, plan->critical_wounds_on, 0u);
     }
 
     if ((plan->flags & ATTACK_PLAN_REROLL_FAILED_SAVES) != 0) {
-        plan->save_reroll_mask |= failed_roll_mask(plan->saves_on, 0);
+        plan->save_reroll_mask |= failed_roll_mask(plan->saves_on, 0u, 0u);
     }
 
     plan->hit_reroll_mask &= VALID_D6_FACE_MASK;

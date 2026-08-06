@@ -88,3 +88,14 @@ bool whc_prove_zero_damage_changes_nothing(uint32_t applied_damage, uint16_t wou
     /*@ assert result == applied_damage; */
     return result == applied_damage;
 }
+
+/*@ requires 1 <= face && face <= 3;
+    assigns \nothing;
+    ensures \result;
+*/
+bool whc_prove_indirect_low_hit_rolls_fail(uint8_t face) {
+    bool result = attack_roll_succeeds(face, 2u, 2u, 3u);
+
+    /*@ assert !result; */
+    return !result;
+}

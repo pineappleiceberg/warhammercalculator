@@ -12,3 +12,8 @@ export function savingThrowTarget(save, invulnerable, ap, cover = false) {
   const bestSave = invulnerable > 0 ? Math.min(armourSave, invulnerable) : armourSave;
   return Math.max(2, Math.min(7, bestSave));
 }
+
+export function attackRollSucceeds(face, succeedsOn, criticalOn = 0, autoFailsThrough = 0) {
+  if (face <= autoFailsThrough) return false;
+  return (criticalOn >= 2 && face >= criticalOn) || (succeedsOn <= 6 && face >= succeedsOn);
+}

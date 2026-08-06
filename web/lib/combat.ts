@@ -1,4 +1,4 @@
-import { savingThrowTarget, woundTarget } from "./thresholds.mjs";
+import { attackRollSucceeds, savingThrowTarget, woundTarget } from "./thresholds.mjs";
 import { allocateDamageToUnit } from "./allocation.mjs";
 
 export type CombatProfile = {
@@ -209,15 +209,24 @@ function rollDiceValue(count: number, sides: number, modifier: number) {
   return total;
 }
 
-function rollCheck(succeedsOn: number, criticalOn = 0, rerollFailures = false) {
+function rollCheck(
+  succeedsOn: number,
+  criticalOn = 0,
+  rerollFailures = false,
+  autoFailsThrough = 0,
+) {
   const first = rollDie();
-  const succeeds = (face: number) => (criticalOn >= 2 && face >= criticalOn) || face >= succeedsOn;
+  const succeeds = (face: number) =>
+    attackRollSucceeds(face, succeedsOn, criticalOn, autoFailsThrough);
   if (!rerollFailures || succeeds(first)) return { face: first, label: String(first) };
   const second = rollDie();
   return { face: second, label: `${first}→${second}` };
 }
 
 export function simulateAttack(profile: CombatProfile): RollResult {
+  if (profile.torrent && profile.indirect) {
+    throw new Error("Torrent weapons cannot fire indirectly when the target is not visible");
+  }
   const attacksPerWeapon =
     profile.attacks +
     (profile.withinHalfRange ? profile.rapidFire : 0) +
@@ -373,9 +382,15 @@ export function simulateAttack(profile: CombatProfile): RollResult {
       resolveHit(`#${attack}`, "Auto ✓", false);
       continue;
     }
-    const hit = rollCheck(hitsOn, profile.criticalHits, profile.rerollHits);
-    const criticalHit = hit.face >= profile.criticalHits;
-    const hitSucceeded = criticalHit || hit.face >= hitsOn;
+    const autoFailsThrough = profile.indirect ? 3 : 0;
+    const hit = rollCheck(hitsOn, profile.criticalHits, profile.rerollHits, autoFailsThrough);
+    const hitSucceeded = attackRollSucceeds(
+      hit.face,
+      hitsOn,
+      profile.criticalHits,
+      autoFailsThrough,
+    );
+    const criticalHit = hitSucceeded && hit.face >= profile.criticalHits;
     const hitLabel = `${hit.label}${criticalHit ? "★" : ""} ${hitSucceeded ? "✓" : "✕"}`;
     if (!hitSucceeded) {
       result.details.push({

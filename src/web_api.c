@@ -25,7 +25,9 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
     uint8_t effective_hits_on = hits_on;
     bool target_has_cover = false;
 
-    if (weapon_count == 0u || target_models == 0u || sustained_hits > 6u) {
+    if (weapon_count == 0u || target_models == 0u || sustained_hits > 6u ||
+        ((rule_flags & WHC_RULE_INDIRECT_NOT_VISIBLE) != 0u &&
+         (rule_flags & WHC_RULE_TORRENT) != 0u)) {
         return false;
     }
 
@@ -95,6 +97,8 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
         ((rule_flags & WHC_RULE_REROLL_FAILED_HITS) != 0u &&
          !rule_add_reroll_failed_hits(&weapon.rules)) ||
         ((rule_flags & WHC_RULE_TORRENT) != 0u && !rule_add_torrent(&weapon.rules)) ||
+        ((rule_flags & WHC_RULE_INDIRECT_NOT_VISIBLE) != 0u &&
+         !rule_add_hit_auto_fails_through(&weapon.rules, 3u)) ||
         (sustained_hits != 0u && !rule_add_sustained_hits(&weapon.rules, sustained_hits)) ||
         ((rule_flags & WHC_RULE_LANCE_ACTIVE) != 0u && !rule_add_wound_bonus(&weapon.rules, 1u)) ||
         (critical_wounds_on != 0u &&

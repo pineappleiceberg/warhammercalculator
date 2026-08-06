@@ -7,7 +7,7 @@ import {
   type CombatProfile as Profile,
   type RollResult,
 } from "../lib/combat";
-import { savingThrowTarget, woundTarget } from "../lib/thresholds.mjs";
+import { attackRollSucceeds, savingThrowTarget, woundTarget } from "../lib/thresholds.mjs";
 import { antiWoundThreshold } from "../lib/anti.mjs";
 import { allocateDamageToUnit } from "../lib/allocation.mjs";
 import { WorkflowNav } from "../components/workflow-nav";
@@ -267,9 +267,15 @@ function rollDiceValue(count: number, sides: number, modifier: number) {
   return total;
 }
 
-function rollCheck(succeedsOn: number, criticalOn = 0, rerollFailures = false) {
+function rollCheck(
+  succeedsOn: number,
+  criticalOn = 0,
+  rerollFailures = false,
+  autoFailsThrough = 0,
+) {
   const first = rollDie();
-  const succeeds = (face: number) => (criticalOn >= 2 && face >= criticalOn) || face >= succeedsOn;
+  const succeeds = (face: number) =>
+    attackRollSucceeds(face, succeedsOn, criticalOn, autoFailsThrough);
   if (!rerollFailures || succeeds(first)) {
     return { face: first, label: String(first) };
   }
@@ -278,6 +284,9 @@ function rollCheck(succeedsOn: number, criticalOn = 0, rerollFailures = false) {
 }
 
 function simulateAttack(profile: Profile): RollResult {
+  if (profile.torrent && profile.indirect) {
+    throw new Error("Torrent weapons cannot fire indirectly when the target is not visible");
+  }
   const attacksPerWeapon =
     profile.attacks +
     (profile.withinHalfRange ? profile.rapidFire : 0) +
@@ -434,9 +443,15 @@ function simulateAttack(profile: Profile): RollResult {
       resolveHit(`#${attack}`, "Auto ✓", false);
       continue;
     }
-    const hit = rollCheck(hitsOn, profile.criticalHits, profile.rerollHits);
-    const criticalHit = hit.face >= profile.criticalHits;
-    const hitSucceeded = criticalHit || hit.face >= hitsOn;
+    const autoFailsThrough = profile.indirect ? 3 : 0;
+    const hit = rollCheck(hitsOn, profile.criticalHits, profile.rerollHits, autoFailsThrough);
+    const hitSucceeded = attackRollSucceeds(
+      hit.face,
+      hitsOn,
+      profile.criticalHits,
+      autoFailsThrough,
+    );
+    const criticalHit = hitSucceeded && hit.face >= profile.criticalHits;
     const hitLabel = `${hit.label}${criticalHit ? "★" : ""} ${hitSucceeded ? "✓" : "✕"}`;
     if (!hitSucceeded) {
       result.details.push({

@@ -5,7 +5,7 @@ import { dirname } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { savingThrowTarget, woundTarget } from "../lib/thresholds.mjs";
+import { attackRollSucceeds, savingThrowTarget, woundTarget } from "../lib/thresholds.mjs";
 import { allocateDamageToUnit } from "../lib/allocation.mjs";
 
 globalThis.require = createRequire(import.meta.url);
@@ -101,6 +101,21 @@ test("JavaScript and C agree on model-by-model damage allocation", () => {
           assert.equal(
             calculator._allocate_damage_to_unit(applied, incoming, wounds, models),
             allocateDamageToUnit(applied, incoming, wounds, models).applied,
+          );
+        }
+      }
+    }
+  }
+});
+
+test("JavaScript and C agree on hit rolls that always fail", () => {
+  for (let face = 1; face <= 6; face += 1) {
+    for (let succeedsOn = 2; succeedsOn <= 7; succeedsOn += 1) {
+      for (let criticalOn = 0; criticalOn <= 6; criticalOn += 1) {
+        for (let autoFailsThrough = 0; autoFailsThrough <= 3; autoFailsThrough += 1) {
+          assert.equal(
+            calculator._attack_roll_succeeds(face, succeedsOn, criticalOn, autoFailsThrough),
+            Number(attackRollSucceeds(face, succeedsOn, criticalOn, autoFailsThrough)),
           );
         }
       }

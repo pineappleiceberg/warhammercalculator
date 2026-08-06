@@ -213,6 +213,9 @@ Pain, invulnerable saves, and cover. Profile selection applies Anti abilities
 only when the selected target has the matching datasheet keyword. Damage
 allocation is exhaustively compared between C and JavaScript across model
 wound counts, unit sizes, prior damage states, and incoming damage values.
+Indirect Fire applies its hit modifier and cover normally, forces unmodified Hit
+rolls of 1–3 to fail before critical-hit processing, and rejects Torrent attacks
+when no target model is visible.
 
 ## WebAssembly build
 

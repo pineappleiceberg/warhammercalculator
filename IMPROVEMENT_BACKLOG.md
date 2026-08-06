@@ -37,3 +37,5 @@ priority over feature count.
 - 2026-08-06: Added model-by-model damage allocation to C, WebAssembly, the API,
   expected distributions, and live rolls, including casualties and lost
   overkill damage.
+- 2026-08-06: Corrected Indirect Fire so unmodified Hit rolls of 1–3 always fail
+  and Torrent weapons cannot fire indirectly at a non-visible target.

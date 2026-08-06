@@ -95,6 +95,7 @@ struct attack_plan {
     uint8_t critical_hits_on;
     uint8_t critical_wounds_on;
     uint8_t feel_no_pain_on;
+    uint8_t hit_auto_fails_through;
 
     uint8_t hit_reroll_mask;
     uint8_t wound_reroll_mask;
@@ -209,6 +210,7 @@ struct calculator_workspace {
       \valid_read(plan) && 2 <= plan->hits_on && plan->hits_on <= 6 &&
       2 <= plan->wounds_on && plan->wounds_on <= 6 &&
       2 <= plan->saves_on && plan->saves_on <= 7 &&
+      plan->hit_auto_fails_through <= 6 &&
       plan->damage_transform_count <= MAX_DAMAGE_TRANSFORMS;
 */
 
@@ -386,6 +388,8 @@ bool rule_add_hit_reroll_mask(struct rule_set *rules, uint8_t face_mask);
 /*@ requires \valid(rules); assigns *rules; */
 bool rule_add_wound_reroll_mask(struct rule_set *rules, uint8_t face_mask);
 /*@ requires \valid(rules); assigns *rules; */
+bool rule_add_hit_auto_fails_through(struct rule_set *rules, uint8_t face);
+/*@ requires \valid(rules); assigns *rules; */
 bool rule_add_sustained_hits(struct rule_set *rules, uint8_t additional_hits);
 /*@ requires \valid(rules); assigns *rules; */
 bool rule_add_torrent(struct rule_set *rules);
@@ -431,6 +435,19 @@ uint8_t saves_on(uint8_t save, uint8_t invulnerable_save, uint16_t ap);
     ensures invulnerable_save != 0 ==> \result <= invulnerable_save;
 */
 uint8_t saves_on_with_cover(uint8_t save, uint8_t invulnerable_save, uint16_t ap);
+
+/*@ requires face <= 6;
+    requires succeeds_on <= 7;
+    requires critical_on <= 6;
+    requires auto_fails_through <= 6;
+    assigns \nothing;
+    ensures face <= auto_fails_through ==> !\result;
+    ensures face > auto_fails_through ==>
+        (\result <==> ((critical_on >= 2 && face >= critical_on) ||
+                       (succeeds_on <= 6 && face >= succeeds_on)));
+*/
+bool attack_roll_succeeds(uint8_t face, uint8_t succeeds_on, uint8_t critical_on,
+                          uint8_t auto_fails_through);
 
 /*@ requires wounds_per_model > 0 && model_count > 0;
     requires applied_damage <= (uint64_t)wounds_per_model * model_count;

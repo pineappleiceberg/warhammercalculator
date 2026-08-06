@@ -230,6 +230,23 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
   assert.equal(deleted.status, 200);
 });
 
+test("rejects Torrent attacks fired indirectly without visibility", async () => {
+  const worker = await loadWorker();
+  const context = { waitUntil() {}, passThroughOnException() {} };
+  const response = await worker.fetch(
+    new Request("http://localhost/api/v1/calculate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ profile: { torrent: true, indirect: true } }),
+    }),
+    testEnv,
+    context,
+  );
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error.message, /exceeds|indirect|torrent/i);
+});
+
 test("ships the WebAssembly calculator assets", async () => {
   await Promise.all([
     access(new URL("public/wasm/calculator.js", projectRoot)),

@@ -54,7 +54,7 @@ if(EMSCRIPTEN)
         "SHELL:-s EXPORT_NAME=createWarhammerCalculator"
         "SHELL:-s ENVIRONMENT=web,node"
         "SHELL:-s MINIFY_HTML=0"
-        "SHELL:-s EXPORTED_FUNCTIONS=['_main','_malloc','_free','_whc_calculate_summary','_calculate_attack_damage_distribution','_calculate_attack_applied_damage_distribution','_calculate_attack_expected_damage','_calculate_attack_damage_summary','_calculate_attack_applied_damage_summary','_allocate_damage_to_unit','_rule_set_clear','_rule_add_lethal_hits','_rule_add_devastating_wounds','_rule_add_twin_linked','_rule_add_reroll_failed_hits','_rule_add_wounds_on','_rule_add_critical_wounds_on','_rule_add_hit_reroll_mask','_rule_add_wound_reroll_mask','_wounds_on','_saves_on','_saves_on_with_cover']"
+        "SHELL:-s EXPORTED_FUNCTIONS=['_main','_malloc','_free','_whc_calculate_summary','_calculate_attack_damage_distribution','_calculate_attack_applied_damage_distribution','_calculate_attack_expected_damage','_calculate_attack_damage_summary','_calculate_attack_applied_damage_summary','_allocate_damage_to_unit','_attack_roll_succeeds','_rule_set_clear','_rule_add_lethal_hits','_rule_add_devastating_wounds','_rule_add_twin_linked','_rule_add_reroll_failed_hits','_rule_add_wounds_on','_rule_add_critical_wounds_on','_rule_add_hit_reroll_mask','_rule_add_wound_reroll_mask','_rule_add_hit_auto_fails_through','_wounds_on','_saves_on','_saves_on_with_cover']"
         "SHELL:-s EXPORTED_RUNTIME_METHODS=['ccall','cwrap','getValue']"
     )
 endif()

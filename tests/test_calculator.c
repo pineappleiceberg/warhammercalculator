@@ -209,6 +209,22 @@ static void test_web_api_context_rules(void) {
 }
 
 /*@ terminates \true; */
+static void test_indirect_fire_restrictions(void) {
+    struct whc_web_summary summary;
+    uint32_t indirect = WHC_RULE_INDIRECT_NOT_VISIBLE | WHC_RULE_IGNORES_COVER;
+
+    assert(whc_calculate_summary(0, 0, 1, 1, 2, 10, 0, 0, 0, 1, 3, 1, 7, 0, 0, 2, 0, indirect, 0, 1,
+                                 0, 0, 0, &summary));
+    assert(summary.mean_numerator_low == 5);
+    assert(summary.mean_numerator_high == 0);
+    assert(summary.mean_denominator_low == 12);
+    assert(summary.mean_denominator_high == 0);
+
+    assert(!whc_calculate_summary(0, 0, 1, 1, 2, 10, 0, 0, 0, 1, 6, 1, 7, 0, 0, 2, 0,
+                                  indirect | WHC_RULE_TORRENT, 0, 1, 0, 0, 0, &summary));
+}
+
+/*@ terminates \true; */
 static void test_save_thresholds(void) {
     assert(saves_on(2, 0, 4) == 6);
     assert(saves_on_with_cover(2, 0, 4) == 5);
@@ -260,6 +276,7 @@ int main(void) {
     test_web_api();
     test_sustained_hits_torrent_and_lance();
     test_web_api_context_rules();
+    test_indirect_fire_restrictions();
     test_save_thresholds();
     test_unit_damage_allocation();
     puts("all tests passed");
