@@ -127,6 +127,7 @@ test("server-renders every battle workflow", async () => {
     ["/unit-vs-unit", "Unit vs Unit"],
     ["/lists", "Army Lists"],
     ["/play", "Play Mode"],
+    ["/agent", "Parameterized Calculator"],
   ]) {
     const response = await render(pathname);
     assert.equal(response.status, 200, pathname);
@@ -145,6 +146,11 @@ test("server-renders every battle workflow", async () => {
       assert.match(html, /aria-live="polite"/);
       assert.match(html, /Quick overrides/);
       assert.match(html, /play-action-hint/);
+    }
+    if (pathname === "/agent") {
+      assert.match(html, /Call with a URL/);
+      assert.match(html, /MACHINE-READABLE OUTPUT/);
+      assert.match(html, /Doom Scythe/);
     }
   }
 });

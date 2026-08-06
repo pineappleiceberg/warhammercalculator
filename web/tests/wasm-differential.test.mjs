@@ -17,6 +17,7 @@ import {
   targetSequencePosition,
 } from "../lib/allocation.mjs";
 import { abilityDiceValue } from "../lib/dice.mjs";
+import { parseAgentProfile } from "../lib/agent-parameters.mjs";
 import {
   applyCombatPresets,
   combatPresetEffects,
@@ -557,6 +558,102 @@ function readUint64(pointer, lowIndex, highIndex) {
   const high = calculator.getValue(pointer + highIndex * 4, "i32") >>> 0;
   return (BigInt(high) << 32n) | BigInt(low);
 }
+
+test("parameterized agent profile reaches the C/Wasm exact engine unchanged", () => {
+  const profile = parseAgentProfile(
+    "attacks=1&hit=2&strength=4&ap=0&damage=1&toughness=4&save=7&wounds=10",
+    {
+      attackDice: 0,
+      attackSides: 0,
+      attacks: 1,
+      weaponCount: 1,
+      hitOn: 4,
+      strength: 4,
+      ap: 0,
+      damageDice: 0,
+      damageSides: 0,
+      damage: 1,
+      criticalHits: 6,
+      toughness: 4,
+      save: 3,
+      invulnerable: 0,
+      feelNoPain: 0,
+      wounds: 1,
+      targetModels: 1,
+      reduction: 0,
+      criticalWounds: 0,
+      hitModifier: 0,
+      woundModifier: 0,
+      sustainedHitsDice: 0,
+      sustainedHitsSides: 0,
+      sustainedHits: 0,
+      rapidFireDice: 0,
+      rapidFireSides: 0,
+      rapidFire: 0,
+      melta: 0,
+      withinHalfRange: false,
+      torrent: false,
+      blast: false,
+      heavyActive: false,
+      lanceActive: false,
+      targetCover: false,
+      ignoresCover: false,
+      indirect: false,
+      lethalHits: false,
+      devastatingWounds: false,
+      twinLinked: false,
+      rerollHits: false,
+      rerollHitOnes: false,
+      rerollWounds: false,
+      rerollWoundOnes: false,
+    },
+  );
+  const output = calculator._malloc(72);
+  try {
+    const ok = calculator._whc_calculate_summary(
+      profile.attackDice,
+      profile.attackSides,
+      profile.attacks,
+      profile.weaponCount,
+      profile.hitOn,
+      profile.strength,
+      profile.ap,
+      profile.damageDice,
+      profile.damageSides,
+      profile.damage,
+      profile.criticalHits,
+      profile.toughness,
+      profile.save,
+      profile.invulnerable,
+      profile.feelNoPain,
+      profile.wounds,
+      profile.reduction,
+      0,
+      profile.criticalWounds,
+      profile.targetModels,
+      profile.sustainedHitsDice,
+      profile.sustainedHitsSides,
+      profile.sustainedHits,
+      profile.rapidFireDice,
+      profile.rapidFireSides,
+      profile.rapidFire,
+      profile.melta,
+      profile.hitModifier,
+      profile.woundModifier,
+      output,
+    );
+    assert.equal(ok, 1);
+    const expectedNumerator = readUint64(output, 5, 6);
+    const expectedDenominator = readUint64(output, 7, 8);
+    const appliedNumerator = readUint64(output, 14, 15);
+    const appliedDenominator = readUint64(output, 16, 17);
+
+    assert.deepEqual([expectedNumerator, expectedDenominator], [5n, 12n]);
+    assert.ok(Math.abs(Number(appliedNumerator) / Number(appliedDenominator) - 5 / 12) < 1e-9);
+  } finally {
+    calculator._free(output);
+  }
+});
 
 function interactionMeans(testCase) {
   const output = calculator._malloc(72);

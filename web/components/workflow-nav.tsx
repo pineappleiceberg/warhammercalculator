@@ -5,6 +5,7 @@ const links = [
   ["/unit-vs-unit", "Unit vs unit"],
   ["/lists", "Army lists"],
   ["/play", "Play mode"],
+  ["/agent", "Agent URL"],
 ] as const;
 
 export function WorkflowNav({ current }: { current: string }) {

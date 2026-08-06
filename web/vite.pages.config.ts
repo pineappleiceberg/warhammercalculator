@@ -19,6 +19,7 @@ export default defineConfig({
         "unit-vs-unit": path.join(webRoot, "static-site/unit-vs-unit/index.html"),
         lists: path.join(webRoot, "static-site/lists/index.html"),
         play: path.join(webRoot, "static-site/play/index.html"),
+        agent: path.join(webRoot, "static-site/agent/index.html"),
       },
     },
   },

@@ -16,5 +16,6 @@ test("builds a GitHub Pages application with its calculator assets", async () =>
     access(new URL("unit-vs-unit/index.html", output)),
     access(new URL("lists/index.html", output)),
     access(new URL("play/index.html", output)),
+    access(new URL("agent/index.html", output)),
   ]);
 });

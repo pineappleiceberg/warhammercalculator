@@ -349,6 +349,46 @@ old equipment before adding the selected alternative. Alternate profiles are
 grouped by their shared weapon name even when the export assigns their modes
 different source-line identifiers.
 
+## Static agent interface
+
+The `/agent/` page is a versioned, parameter-driven interface for browser-capable
+AI agents and automation. It runs entirely in the browser against the same
+C/WebAssembly engine and profile catalogue as the interactive calculator, so it
+does not require an API server, Worker, database connection, or secret.
+
+A catalogue matchup can use exact catalogue IDs or unambiguous names:
+
+```text
+/agent/?attacker=Doom%20Scythe&weapon=Heavy%20death%20ray&target=Brutalis%20Dreadnought
+```
+
+A direct profile supplies `attacks`, `hit`, `strength`, `ap`, `damage`,
+`toughness`, `save`, and `wounds`:
+
+```text
+/agent/?attacks=4&hit=3&strength=12&ap=3&damage=D6%2B1&toughness=10&save=2&invuln=4&wounds=12
+```
+
+`attacks`, `damage`, `sustainedHits`, and `rapidFire` accept a number or dice
+expression such as `D6+2`. Optional parameters include `weaponCount`, `model`,
+`models`, `invuln`, `fnp`, `reduction`, `criticalHits`, `criticalWounds`,
+`melta`, Hit/Wound modifiers and re-roll modes, repeated `attackerPreset` or
+`targetPreset` values, and individual rule flags. The `rules` parameter accepts
+comma-separated `torrent`, `blast`, `heavy`, `lance`, `cover`, `ignores-cover`,
+`indirect`, `lethal-hits`, `devastating-wounds`, `twin-linked`, and
+`half-range` values. AP is a nonnegative magnitude, so AP -4 is passed as
+`ap=4`.
+
+Automation should wait for `[data-agent-status="ready"]`, then read the JSON in
+`#warhammer-agent-result` or `window.__WARHAMMER_CALC_RESULT__`. Invalid,
+unknown, duplicate, missing, or ambiguous parameters produce
+`data-agent-status="error"` and a readable error object. `format=json` can be
+included to make the intended output contract explicit. The returned schema is
+currently version 1 and includes the normalized editable input, source IDs,
+damage quartiles, decimal expectations, deterministic engine fractions, and
+target capacity. This remains a static webpage: a plain HTTP client receives
+HTML, while an agent with a browser runtime receives the computed result.
+
 ## Deployment health and API diagnostics
 
 The hosted API exposes `GET /api/v1/health`. It independently loads the pinned

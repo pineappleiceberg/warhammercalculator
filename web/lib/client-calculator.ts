@@ -7,12 +7,14 @@ export type DamageSummary = {
   thirdQuartile: number;
   maximum: number;
   mean: number;
+  exactMean: { numerator: string; denominator: string };
   appliedMinimum: number;
   appliedFirstQuartile: number;
   appliedMedian: number;
   appliedThirdQuartile: number;
   appliedMaximum: number;
   appliedMean: number;
+  exactAppliedMean: { numerator: string; denominator: string };
 };
 
 export type OrderedTargetSegment = {
@@ -67,7 +69,8 @@ let modulePromise: Promise<WasmModule> | null = null;
 
 async function loadCalculator() {
   modulePromise ??= (async () => {
-    const modulePath = new URL("wasm/calculator.js", document.baseURI).href;
+    const publicRoot = new URL(import.meta.env.BASE_URL, window.location.origin);
+    const modulePath = new URL("wasm/calculator.js", publicRoot).href;
     const importModule = Function("specifier", "return import(specifier)") as (
       specifier: string,
     ) => Promise<{
@@ -75,7 +78,7 @@ async function loadCalculator() {
     }>;
     const imported = await importModule(modulePath);
     return imported.default({
-      locateFile: (file) => new URL(`wasm/${file}`, document.baseURI).href,
+      locateFile: (file) => new URL("wasm/" + file, publicRoot).href,
     });
   })();
   return modulePromise;
@@ -191,12 +194,17 @@ export async function calculateProfile(profile: CombatProfile): Promise<DamageSu
       thirdQuartile: read(3),
       maximum: read(4),
       mean: Number(numerator) / Number(denominator),
+      exactMean: { numerator: numerator.toString(), denominator: denominator.toString() },
       appliedMinimum: read(9),
       appliedFirstQuartile: read(10),
       appliedMedian: read(11),
       appliedThirdQuartile: read(12),
       appliedMaximum: read(13),
       appliedMean: Number(appliedNumerator) / Number(appliedDenominator),
+      exactAppliedMean: {
+        numerator: appliedNumerator.toString(),
+        denominator: appliedDenominator.toString(),
+      },
     };
   } finally {
     calculator._free(output);

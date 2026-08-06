@@ -259,7 +259,8 @@ export function applyTargetProfile(profile: CombatProfile, model: CatalogueModel
 }
 
 export async function loadCatalogue() {
-  const response = await fetch(new URL("profile-data.json", document.baseURI));
+  const publicRoot = new URL(import.meta.env.BASE_URL, window.location.origin);
+  const response = await fetch(new URL("profile-data.json", publicRoot));
   if (!response.ok) throw new Error("Profile catalogue unavailable");
   return response.json() as Promise<Catalogue>;
 }

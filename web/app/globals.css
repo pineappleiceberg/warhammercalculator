@@ -192,6 +192,119 @@ main {
   align-items: start;
 }
 
+.agent-layout {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 32px clamp(20px, 4vw, 64px);
+  display: grid;
+  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr);
+  gap: clamp(24px, 3vw, 48px);
+  align-items: start;
+}
+
+.agent-content {
+  padding: 22px;
+}
+
+.agent-content p {
+  line-height: 1.55;
+}
+
+.agent-content h3 {
+  margin: 24px 0 8px;
+  font:
+    700 12px var(--font-geist-mono),
+    monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.agent-content code,
+.agent-result-panel pre {
+  font-family: var(--font-geist-mono), monospace;
+}
+
+.agent-example {
+  display: block;
+  padding: 12px;
+  overflow-wrap: anywhere;
+  background: #ded8cb;
+  border-left: 4px solid var(--gold);
+  line-height: 1.5;
+}
+
+.agent-run-link {
+  display: inline-block;
+  margin-top: 10px;
+  color: var(--red);
+  font:
+    700 11px var(--font-geist-mono),
+    monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.agent-parameter-list {
+  color: var(--muted);
+}
+
+.agent-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  margin-bottom: 14px;
+}
+
+.agent-result-actions button {
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+
+.agent-result-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.agent-result-actions span {
+  color: var(--muted);
+  font:
+    11px var(--font-geist-mono),
+    monospace;
+}
+
+#warhammer-agent-result {
+  display: block;
+}
+
+#warhammer-agent-result pre {
+  min-height: 420px;
+  max-height: 70vh;
+  margin: 0;
+  padding: 18px;
+  overflow: auto;
+  background: #171715;
+  color: #e9e4da;
+  border-top: 5px solid var(--green);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+#warhammer-agent-result[data-agent-status="error"] pre {
+  border-top-color: #e55353;
+}
+
+@media (max-width: 900px) {
+  .agent-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .form-stack {
   display: grid;
   gap: 24px;

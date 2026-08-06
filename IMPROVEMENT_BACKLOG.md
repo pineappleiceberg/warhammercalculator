@@ -26,6 +26,15 @@ priority over feature count.
 
 ## Completed cycles
 
+- 2026-08-06: Added a versioned static `/agent/` URL interface for browser-capable
+  AI agents. It resolves catalogue matchups by stable ID or unambiguous name,
+  accepts complete editable profiles and conditional presets as query
+  parameters, rejects ambiguous or malformed input, and publishes normalized
+  machine-readable results through stable DOM and JavaScript contracts. The
+  calculation runs locally in the existing C/WebAssembly engine, requiring
+  only static hosting rather than an API service; parser, catalogue,
+  C/WebAssembly, rendered-page, and GitHub Pages regressions cover the surface.
+
 - 2026-08-06: Added source-backed direct positive Attacks, Strength, and Damage
   modifiers to conditional combat presets. The conservative parser imports 110
   exact effects across the pinned catalogue, detects melee/ranged weapon scope,
