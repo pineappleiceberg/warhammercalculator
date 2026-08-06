@@ -32,6 +32,16 @@ def export(database: Path, output: Path) -> None:
             )
         }
 
+        keywords: dict[str, list[str]] = {}
+        for row in connection.execute(
+            """SELECT datasheet_id, keyword
+               FROM datasheet_keywords
+               ORDER BY datasheet_id, position"""
+        ):
+            values = keywords.setdefault(row["datasheet_id"], [])
+            if row["keyword"] not in values:
+                values.append(row["keyword"])
+
         for row in connection.execute(
             """SELECT id, datasheet_id, name, toughness, save_target,
                       invulnerable_save_target, wounds
@@ -46,6 +56,7 @@ def export(database: Path, output: Path) -> None:
                     "save": row["save_target"],
                     "invuln": row["invulnerable_save_target"],
                     "wounds": row["wounds"],
+                    "keywords": keywords.get(row["datasheet_id"], []),
                 }
             )
 

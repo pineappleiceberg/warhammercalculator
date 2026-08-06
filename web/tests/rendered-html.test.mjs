@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
+import { antiWoundThreshold } from "../lib/anti.mjs";
 
 const projectRoot = new URL("../", import.meta.url);
 
@@ -228,4 +229,27 @@ test("ships the WebAssembly calculator assets", async () => {
     access(new URL("public/wasm/calculator.js", projectRoot)),
     access(new URL("public/wasm/calculator.wasm", projectRoot)),
   ]);
+});
+
+test("applies Anti only to matching target keywords", () => {
+  const abilities = [
+    { name: "anti-infantry", value: "3+" },
+    { name: "anti-vehicle", value: "4+" },
+  ];
+
+  assert.equal(antiWoundThreshold(abilities, ["Infantry", "Character"]), 3);
+  assert.equal(antiWoundThreshold(abilities, ["VEHICLE"]), 4);
+  assert.equal(antiWoundThreshold(abilities, ["Monster"]), 0);
+});
+
+test("catalogue includes target keywords for Anti rules", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const models = catalogue.units.flatMap((unit) => unit.models);
+
+  assert.ok(models.length > 0);
+  assert.ok(models.every((model) => Array.isArray(model.keywords)));
+  assert.ok(models.some((model) => model.keywords.includes("vehicle")));
+  assert.ok(models.some((model) => model.keywords.includes("infantry")));
 });

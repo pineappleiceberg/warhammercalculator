@@ -209,7 +209,8 @@ cmake --build build --target formal-e-acsl
 The web test suite exhaustively compares the JavaScript and WebAssembly wound,
 armour, AP, invulnerable-save, and cover thresholds over their supported small
 domains. It also checks expected-damage monotonicity for AP, armour, Feel No
-Pain, invulnerable saves, and cover.
+Pain, invulnerable saves, and cover. Profile selection applies Anti abilities
+only when the selected target has the matching datasheet keyword.
 
 ## WebAssembly build
 

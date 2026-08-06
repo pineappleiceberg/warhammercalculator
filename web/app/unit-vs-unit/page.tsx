@@ -93,6 +93,7 @@ export default function UnitVsUnit() {
           const profile = applyWeaponProfile(
             { ...target, ...targetOverrides, targetModels, weaponCount: line.count },
             line.weapon,
+            model.keywords,
           );
           return { ...line, result: await calculateProfile(profile) };
         }),

@@ -1,4 +1,5 @@
 import type { CombatProfile } from "./combat";
+import { antiWoundThreshold } from "./anti.mjs";
 
 export type CatalogueFaction = { id: string; name: string };
 export type CatalogueAbility = { name: string; value: string | null };
@@ -21,6 +22,7 @@ export type CatalogueModel = {
   save: number | null;
   invuln: number | null;
   wounds: number | null;
+  keywords: string[];
 };
 export type CatalogueUnit = {
   id: string;
@@ -53,13 +55,15 @@ function fixedAbilityValue(ability: CatalogueAbility | undefined) {
   return Number(ability.value);
 }
 
-export function applyWeaponProfile(profile: CombatProfile, weapon: CatalogueWeapon) {
+export function applyWeaponProfile(
+  profile: CombatProfile,
+  weapon: CatalogueWeapon,
+  targetKeywords: string[] = [],
+) {
   const attacks = parseDice(weapon.attacks);
   const damage = parseDice(weapon.damage);
   const names = new Set(weapon.abilities.map((ability) => ability.name));
   const ability = (name: string) => weapon.abilities.find((entry) => entry.name === name);
-  const anti = weapon.abilities.find((entry) => entry.name.startsWith("anti-"));
-  const antiTarget = anti?.value ? Number(anti.value.replace("+", "")) : 0;
   return {
     ...profile,
     ...(attacks
@@ -71,7 +75,7 @@ export function applyWeaponProfile(profile: CombatProfile, weapon: CatalogueWeap
     ...(weapon.skill ? { hitOn: weapon.skill } : {}),
     ...(/^\d+$/.test(weapon.strength) ? { strength: Number(weapon.strength) } : {}),
     ...(weapon.ap !== null ? { ap: Math.abs(weapon.ap) } : {}),
-    criticalWounds: Number.isFinite(antiTarget) ? antiTarget : 0,
+    criticalWounds: antiWoundThreshold(weapon.abilities, targetKeywords),
     sustainedHits: fixedAbilityValue(ability("sustained hits")),
     rapidFire: fixedAbilityValue(ability("rapid fire")),
     melta: fixedAbilityValue(ability("melta")),

@@ -8,6 +8,7 @@ import {
   type RollResult,
 } from "../lib/combat";
 import { savingThrowTarget, woundTarget } from "../lib/thresholds.mjs";
+import { antiWoundThreshold } from "../lib/anti.mjs";
 import { WorkflowNav } from "../components/workflow-nav";
 
 type Result = {
@@ -49,6 +50,7 @@ type CatalogueModel = {
   save: number | null;
   invuln: number | null;
   wounds: number | null;
+  keywords: string[];
 };
 type CatalogueUnit = {
   id: string;
@@ -663,8 +665,6 @@ export default function Home() {
     const damage = parseDice(weapon.damage);
     const names = new Set(weapon.abilities.map((ability) => ability.name));
     const ability = (name: string) => weapon.abilities.find((entry) => entry.name === name);
-    const anti = weapon.abilities.find((entry) => entry.name.startsWith("anti-"));
-    const antiTarget = anti?.value ? Number(anti.value.replace("+", "")) : 0;
 
     setProfile((current) => ({
       ...current,
@@ -685,7 +685,7 @@ export default function Home() {
       ...(weapon.skill ? { hitOn: weapon.skill } : {}),
       ...(/^\d+$/.test(weapon.strength) ? { strength: Number(weapon.strength) } : {}),
       ...(weapon.ap !== null ? { ap: Math.abs(weapon.ap) } : {}),
-      criticalWounds: Number.isFinite(antiTarget) ? antiTarget : 0,
+      criticalWounds: antiWoundThreshold(weapon.abilities, selectedTargetModel?.keywords ?? []),
       sustainedHits: fixedAbilityValue(ability("sustained hits")),
       rapidFire: fixedAbilityValue(ability("rapid fire")),
       melta: fixedAbilityValue(ability("melta")),
@@ -709,6 +709,9 @@ export default function Home() {
       ...(model.save ? { save: model.save } : {}),
       invulnerable: model.invuln ?? 0,
       ...(model.wounds ? { wounds: model.wounds } : {}),
+      criticalWounds: selectedWeapon
+        ? antiWoundThreshold(selectedWeapon.abilities, model.keywords)
+        : 0,
     }));
   };
 

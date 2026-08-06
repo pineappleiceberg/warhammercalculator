@@ -21,6 +21,7 @@ FILES = (
     "Factions.csv",
     "Datasheets.csv",
     "Datasheets_models.csv",
+    "Datasheets_keywords.csv",
     "Datasheets_wargear.csv",
 )
 
@@ -93,6 +94,15 @@ CREATE TABLE weapon_profiles (
     abilities_text TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE datasheet_keywords (
+    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    keyword TEXT NOT NULL,
+    model TEXT,
+    is_faction_keyword INTEGER NOT NULL CHECK (is_faction_keyword IN (0, 1)),
+    PRIMARY KEY (datasheet_id, position)
+) WITHOUT ROWID;
+
 CREATE TABLE weapon_abilities (
     weapon_profile_id INTEGER NOT NULL REFERENCES weapon_profiles(id) ON DELETE CASCADE,
     position INTEGER NOT NULL,
@@ -107,6 +117,7 @@ CREATE INDEX idx_models_datasheet_name ON model_profiles(datasheet_id, name);
 CREATE INDEX idx_weapons_datasheet_name ON weapon_profiles(datasheet_id, name);
 CREATE INDEX idx_weapons_type ON weapon_profiles(weapon_type);
 CREATE INDEX idx_weapon_abilities_name ON weapon_abilities(name);
+CREATE INDEX idx_datasheet_keywords_keyword ON datasheet_keywords(keyword);
 
 CREATE VIEW attacker_profiles AS
 SELECT
@@ -267,7 +278,7 @@ def create_database(output: Path) -> dict[str, int]:
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "1"),
+                    ("schema_version", "2"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
@@ -336,6 +347,25 @@ def create_database(output: Path) -> dict[str, int]:
                     for row in model_rows
                 ),
             )
+            keyword_positions: dict[str, int] = {}
+            for row in rows["Datasheets_keywords.csv"]:
+                datasheet_id = row["datasheet_id"]
+                if datasheet_id not in datasheet_ids or not row["keyword"].strip():
+                    continue
+                position = keyword_positions.get(datasheet_id, 0) + 1
+                keyword_positions[datasheet_id] = position
+                connection.execute(
+                    """INSERT INTO datasheet_keywords
+                       (datasheet_id, position, keyword, model, is_faction_keyword)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (
+                        datasheet_id,
+                        position,
+                        row["keyword"].strip().lower(),
+                        row["model"].strip() or None,
+                        boolean(row["is_faction_keyword"]),
+                    ),
+                )
 
             for row in weapon_rows:
                 weapon_type = row["type"].strip().title()
@@ -388,6 +418,7 @@ def create_database(output: Path) -> dict[str, int]:
                 "factions",
                 "datasheets",
                 "model_profiles",
+                "datasheet_keywords",
                 "weapon_profiles",
                 "weapon_abilities",
             )

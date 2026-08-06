@@ -80,6 +80,7 @@ export default function PlayMode() {
           targetModels: targetUnit?.modelCount ?? 1,
         },
         weapon,
+        model.keywords,
       ),
     );
     setResult(null);
@@ -109,6 +110,7 @@ export default function PlayMode() {
           targetModels: nextTarget.modelCount,
         },
         weaponProfile,
+        model.keywords,
       ),
     );
     setResult(null);
