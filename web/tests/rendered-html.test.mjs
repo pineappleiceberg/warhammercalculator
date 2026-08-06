@@ -8,6 +8,9 @@ const projectRoot = new URL("../", import.meta.url);
 function createD1Mock() {
   const rows = [];
   return {
+    async batch(statements) {
+      return Promise.all(statements.map((statement) => statement.run()));
+    },
     prepare(sql) {
       let values = [];
       return {
@@ -17,14 +20,17 @@ function createD1Mock() {
         },
         async run() {
           if (sql.startsWith("INSERT")) {
-            rows.push({
+            const next = {
               id: values[0],
               name: values[1],
               faction_id: values[2],
               roster: values[3],
               created_at: values[4],
               updated_at: values[5],
-            });
+            };
+            const existing = rows.find((entry) => entry.id === values[0]);
+            if (existing) Object.assign(existing, next);
+            else rows.push(next);
             return { meta: { changes: 1 } };
           }
           if (sql.startsWith("UPDATE")) {
@@ -119,7 +125,16 @@ test("server-renders every battle workflow", async () => {
   ]) {
     const response = await render(pathname);
     assert.equal(response.status, 200, pathname);
-    assert.match(await response.text(), new RegExp(heading, "i"));
+    const html = await response.text();
+    assert.match(html, new RegExp(heading, "i"));
+    if (pathname === "/lists") {
+      assert.match(html, /Export backup/);
+      assert.match(html, /Import backup/);
+    }
+    if (pathname === "/play") {
+      assert.match(html, /Reset battle/);
+      assert.match(html, /recover automatically/i);
+    }
   }
 });
 
@@ -134,6 +149,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.equal(documented.apiVersion, "v1");
   assert.match(documented.endpoints.calculate, /POST \/api\/v1\/calculate/);
   assert.match(documented.endpoints.volleySimulate, /POST \/api\/v1\/volley\/simulate/);
+  assert.match(documented.endpoints.lists, /lists\/export/);
 
   const factions = await worker.fetch(
     new Request("http://localhost/api/v1/factions"),
@@ -720,6 +736,17 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
   const listed = await worker.fetch(new Request("http://localhost/api/v1/lists"), testEnv, context);
   assert.equal((await listed.json()).data.length, 1);
 
+  const exported = await worker.fetch(
+    new Request("http://localhost/api/v1/lists/export"),
+    testEnv,
+    context,
+  );
+  const backup = await exported.json();
+  assert.equal(backup.kind, "warhammer-calculator-army-lists");
+  assert.equal(backup.version, 1);
+  assert.equal(typeof backup.profileSourceUpdatedAt, "string");
+  assert.equal(backup.lists[0].id, created.id);
+
   const updated = await worker.fetch(
     new Request(`http://localhost/api/v1/lists/${created.id}`, {
       method: "PUT",
@@ -737,6 +764,32 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
     context,
   );
   assert.equal(deleted.status, 200);
+
+  const imported = await worker.fetch(
+    new Request("http://localhost/api/v1/lists/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(backup),
+    }),
+    testEnv,
+    context,
+  );
+  const importedBody = await imported.json();
+  assert.equal(imported.status, 200);
+  assert.equal(importedBody.imported, 1);
+  assert.equal(importedBody.data[0].id, created.id);
+
+  const incompatible = await worker.fetch(
+    new Request("http://localhost/api/v1/lists/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...backup, version: 2 }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(incompatible.status, 400);
+  assert.match((await incompatible.json()).error.message, /unsupported/i);
 
   const invalid = await worker.fetch(
     new Request("http://localhost/api/v1/lists", {

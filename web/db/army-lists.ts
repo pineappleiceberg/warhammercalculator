@@ -96,3 +96,33 @@ export async function deleteArmyList(db: D1Database, id: string) {
   const result = await db.prepare("DELETE FROM army_lists_v2 WHERE id = ?").bind(id).run();
   return Boolean(result.meta.changes);
 }
+
+export async function importArmyLists(db: D1Database, records: ArmyListRecord[]) {
+  await ensureArmyLists(db);
+  if (records.length > 0) {
+    await db.batch(
+      records.map((record) =>
+        db
+          .prepare(
+            `INSERT INTO army_lists_v2 (id, name, faction_id, roster, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET
+               name = excluded.name,
+               faction_id = excluded.faction_id,
+               roster = excluded.roster,
+               created_at = excluded.created_at,
+               updated_at = excluded.updated_at`,
+          )
+          .bind(
+            record.id,
+            record.name,
+            record.factionId,
+            JSON.stringify(record.units),
+            record.createdAt,
+            record.updatedAt,
+          ),
+      ),
+    );
+  }
+  return listArmyLists(db);
+}

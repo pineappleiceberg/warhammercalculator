@@ -16,16 +16,21 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Improve list persistence, import/export, and mid-game state recovery.
-2. Add an explicit per-model composition editor for the 88 conditional or
+1. Add an explicit per-model composition editor for the 88 conditional or
    multi-variable loadout subjects that total unit size alone cannot resolve.
-3. Add data freshness checks, change reports, and source-version pinning.
-4. Benchmark and profile large volleys in native and WebAssembly builds.
-5. Improve mobile play-mode ergonomics and accessibility.
-6. Add deployment health checks and clearer service-failure diagnostics.
+2. Add data freshness checks, change reports, and source-version pinning.
+3. Benchmark and profile large volleys in native and WebAssembly builds.
+4. Improve mobile play-mode ergonomics and accessibility.
+5. Add deployment health checks and clearer service-failure diagnostics.
 
 ## Completed cycles
 
+- 2026-08-06: Added resilient army-list persistence with D1 as the hosted source
+  of truth, validated device caching for offline and static-site use, automatic
+  reconciliation of newer edits, and deletion tombstones. Versioned JSON
+  backups preserve IDs, timestamps, loadout choices, and profile-source
+  provenance across cloud and device storage. Unfinished roster drafts plus
+  Play Mode selections, overrides, and attack history now recover after reloads.
 - 2026-08-06: Strengthened formal verification from threshold helpers to
   compiled attack plans and actual Q31 probability-mass conservation. The C
   validators reject unknown plan flags, invalid reroll masks, malformed

@@ -260,6 +260,14 @@ Indirect Fire applies its hit modifier and cover normally, forces unmodified Hit
 rolls of 1–3 to fail before critical-hit processing, and rejects Torrent attacks
 when no target model is visible.
 
+Army lists remain authoritative in D1 when the hosted API is available and keep
+a validated device copy for offline use and the static GitHub Pages build. Newer
+offline edits synchronize on reconnect, while deletion tombstones prevent removed
+lists from reappearing. The list screen can export and import a versioned JSON
+backup that includes the profile-source timestamp. Imports preserve list IDs and
+update matching records. Unfinished list drafts and Play Mode selections,
+overrides, and attack history recover automatically on the current device.
+
 The checked profile-data suite also verifies conservative structured wargear
 constraints. Fixed limits, per-model allowances, and rules such as "for every 5
 models" are exposed to the web editor and API with their original source text.

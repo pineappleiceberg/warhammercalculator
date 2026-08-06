@@ -12,8 +12,20 @@ import {
   simulateOrderedVolleyPhase,
   type CombatProfile,
 } from "../lib/combat";
-import { createArmyList, deleteArmyList, listArmyLists, updateArmyList } from "../db/army-lists";
-import type { ArmyListInput } from "../lib/army-list";
+import {
+  createArmyList,
+  deleteArmyList,
+  importArmyLists,
+  listArmyLists,
+  updateArmyList,
+} from "../db/army-lists";
+import type { ArmyListInput, ArmyListRecord } from "../lib/army-list";
+import {
+  createArmyListBackup,
+  normalizeArmyListInput,
+  normalizeArmyListRecord,
+  parseArmyListBackup,
+} from "../lib/army-list-codec.mjs";
 import {
   choiceSelectionWeaponCounts,
   sourceEquippedWeaponCounts,
@@ -428,60 +440,7 @@ function orderedTargets(value: unknown): OrderedTargetSegment[] {
 }
 
 async function requestArmyList(request: Request): Promise<ArmyListInput> {
-  const body = (await request.json()) as Partial<ArmyListInput> | null;
-  if (!body || typeof body !== "object") throw new Error("Request body must be a JSON object");
-  if (typeof body.name !== "string" || !body.name.trim() || body.name.length > 100) {
-    throw new Error("name must contain 1 to 100 characters");
-  }
-  if (typeof body.factionId !== "string" || !body.factionId) {
-    throw new Error("factionId is required");
-  }
-  if (!Array.isArray(body.units) || body.units.length > 100) {
-    throw new Error("units must be an array containing at most 100 entries");
-  }
-  for (const unit of body.units) {
-    if (
-      !unit ||
-      typeof unit.id !== "string" ||
-      typeof unit.unitId !== "string" ||
-      typeof unit.name !== "string" ||
-      !Number.isInteger(unit.modelCount) ||
-      unit.modelCount < 1 ||
-      unit.modelCount > 1000 ||
-      !Array.isArray(unit.weapons) ||
-      unit.weapons.length > 200 ||
-      (unit.choiceSelections !== undefined &&
-        (!unit.choiceSelections ||
-          typeof unit.choiceSelections !== "object" ||
-          Array.isArray(unit.choiceSelections) ||
-          Object.keys(unit.choiceSelections).length > 500 ||
-          Object.values(unit.choiceSelections).some(
-            (count) => !Number.isInteger(count) || count < 0 || count > 100,
-          )))
-    ) {
-      throw new Error("Each unit must have an id, unitId, name, model count, and weapons");
-    }
-    for (const weapon of unit.weapons) {
-      if (
-        !weapon ||
-        !Number.isInteger(weapon.weaponId) ||
-        weapon.weaponId < 1 ||
-        (weapon.groupId !== undefined && typeof weapon.groupId !== "string") ||
-        typeof weapon.name !== "string" ||
-        !weapon.name ||
-        !Number.isInteger(weapon.count) ||
-        weapon.count < 0 ||
-        weapon.count > 100 ||
-        (weapon.optionCount !== undefined &&
-          (!Number.isInteger(weapon.optionCount) ||
-            weapon.optionCount < 0 ||
-            weapon.optionCount > weapon.count))
-      ) {
-        throw new Error("Each weapon must have a profile id, name, and 0 to 100 equipped copies");
-      }
-    }
-  }
-  return { name: body.name.trim(), factionId: body.factionId, units: body.units };
+  return normalizeArmyListInput(await request.json()) as ArmyListInput;
 }
 
 async function handleApi(request: Request, env: Env) {
@@ -507,7 +466,8 @@ async function handleApi(request: Request, env: Env) {
           roll: "POST /api/v1/roll?details={true|false}",
           volleyRoll: "POST /api/v1/volley/roll?details={true|false}",
           volleySimulate: "POST /api/v1/volley/simulate",
-          lists: "GET|POST /api/v1/lists; PUT|DELETE /api/v1/lists/{id}",
+          lists:
+            "GET|POST /api/v1/lists; PUT|DELETE /api/v1/lists/{id}; GET /api/v1/lists/export; POST /api/v1/lists/import",
         },
         request: { profile: DEFAULT_PROFILE },
       });
@@ -791,7 +751,32 @@ async function handleApi(request: Request, env: Env) {
     }
 
     if (url.pathname === "/api/v1/lists" && request.method === "POST") {
+      if ((await listArmyLists(env.ARMY_DB)).length >= 100) {
+        throw new Error("Cloud storage supports at most 100 army lists");
+      }
       return json({ data: await createArmyList(env.ARMY_DB, await requestArmyList(request)) }, 201);
+    }
+
+    if (url.pathname === "/api/v1/lists/export" && request.method === "GET") {
+      const catalogue = await loadCatalogue(request, env);
+      return json(
+        createArmyListBackup(
+          await listArmyLists(env.ARMY_DB),
+          new Date().toISOString(),
+          catalogue.sourceUpdatedAt,
+        ),
+      );
+    }
+
+    if (url.pathname === "/api/v1/lists/import" && request.method === "POST") {
+      const backup = parseArmyListBackup(await request.json()) as { lists: unknown[] };
+      const records = backup.lists.map(
+        (record) => normalizeArmyListRecord(record) as ArmyListRecord,
+      );
+      const mergedIds = new Set((await listArmyLists(env.ARMY_DB)).map((record) => record.id));
+      for (const record of records) mergedIds.add(record.id);
+      if (mergedIds.size > 100) throw new Error("Cloud storage supports at most 100 army lists");
+      return json({ data: await importArmyLists(env.ARMY_DB, records), imported: records.length });
     }
 
     const listMatch = /^\/api\/v1\/lists\/([0-9a-f-]+)$/i.exec(url.pathname);

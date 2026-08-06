@@ -1373,6 +1373,17 @@ select:focus {
   display: grid;
   gap: 12px;
 }
+.backup-actions,
+.battle-log-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.storage-note {
+  display: block;
+  color: var(--muted);
+  line-height: 1.45;
+}
 .saved-lists article > div:last-child {
   display: grid;
   gap: 8px;

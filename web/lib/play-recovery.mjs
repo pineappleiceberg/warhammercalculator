@@ -1,0 +1,63 @@
+export const PLAY_RECOVERY_KEY = "warhammer-calculator:play-state:v1";
+export const PLAY_RECOVERY_VERSION = 1;
+
+const selectorKeys = [
+  "attackerListId",
+  "targetListId",
+  "attackerUnitId",
+  "targetUnitId",
+  "weaponId",
+  "profileId",
+  "targetModelId",
+];
+
+function object(value, message) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(message);
+  return value;
+}
+
+export function createPlayRecovery(state, savedAt = Date.now()) {
+  const value = object(state, "Play recovery state must be an object");
+  const recovery = { version: PLAY_RECOVERY_VERSION, savedAt };
+  if (!Number.isSafeInteger(savedAt) || savedAt < 0) throw new Error("savedAt is invalid");
+  for (const key of selectorKeys) {
+    if (typeof value[key] !== "string" || value[key].length > 100) {
+      throw new Error(`${key} must be a string of at most 100 characters`);
+    }
+    recovery[key] = value[key];
+  }
+  recovery.profile = object(value.profile, "profile must be an object");
+  if (!Array.isArray(value.history) || value.history.length > 30) {
+    throw new Error("history must contain at most 30 attacks");
+  }
+  recovery.history = value.history.map((candidate) => {
+    const entry = object(candidate, "Each history entry must be an object");
+    for (const key of ["id", "attacker", "weapon", "target"]) {
+      if (typeof entry[key] !== "string" || !entry[key] || entry[key].length > 200) {
+        throw new Error(`History ${key} is invalid`);
+      }
+    }
+    for (const key of ["damage", "successful"]) {
+      if (!Number.isSafeInteger(entry[key]) || entry[key] < 0 || entry[key] > 1_000_000) {
+        throw new Error(`History ${key} is invalid`);
+      }
+    }
+    return {
+      id: entry.id,
+      attacker: entry.attacker,
+      weapon: entry.weapon,
+      target: entry.target,
+      damage: entry.damage,
+      successful: entry.successful,
+    };
+  });
+  return recovery;
+}
+
+export function parsePlayRecovery(value) {
+  const recovery = object(value, "Play recovery state must be an object");
+  if (recovery.version !== PLAY_RECOVERY_VERSION) {
+    throw new Error(`Unsupported play recovery version: ${String(recovery.version)}`);
+  }
+  return createPlayRecovery(recovery, recovery.savedAt);
+}

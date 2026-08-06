@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { WorkflowNav } from "../../components/workflow-nav";
 import {
-  fetchArmyLists,
+  importArmyLists,
+  loadArmyLists,
+  removeArmyList,
+  saveArmyList,
+  serializeArmyLists,
   type ArmyListInput,
   type ArmyListRecord,
   type ArmyListUnit,
 } from "../../lib/army-list";
+import { normalizeArmyListInput } from "../../lib/army-list-codec.mjs";
 import { loadCatalogue, type Catalogue } from "../../lib/catalogue";
 import {
   applyChoiceSelectionChange,
@@ -21,6 +26,7 @@ import {
 } from "../../lib/loadout.mjs";
 
 const emptyList: ArmyListInput = { name: "", factionId: "", units: [] };
+const DRAFT_KEY = "warhammer-calculator:army-list-draft:v1";
 
 export default function ArmyLists() {
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
@@ -29,14 +35,16 @@ export default function ArmyLists() {
   const [editingId, setEditingId] = useState("");
   const [unitId, setUnitId] = useState("");
   const [status, setStatus] = useState("Loading lists…");
+  const [draftReady, setDraftReady] = useState(false);
+  const importInput = useRef<HTMLInputElement>(null);
 
   const reload = () =>
-    fetchArmyLists()
-      .then((items) => {
+    loadArmyLists()
+      .then(({ lists: items, source }) => {
         setLists(items);
-        setStatus("Lists ready");
+        setStatus(source === "cloud" ? "Lists saved to cloud" : "Lists saved on this device");
       })
-      .catch(() => setStatus("List storage unavailable in this deployment"));
+      .catch(() => setStatus("List storage is unavailable"));
 
   useEffect(() => {
     loadCatalogue()
@@ -44,6 +52,41 @@ export default function ArmyLists() {
       .catch(() => setStatus("Profile catalogue unavailable"));
     reload();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      try {
+        const saved = JSON.parse(window.localStorage.getItem(DRAFT_KEY) ?? "null") as {
+          version?: unknown;
+          editingId?: unknown;
+          draft?: unknown;
+        } | null;
+        if (saved?.version === 1 && typeof saved.editingId === "string" && saved.draft) {
+          setDraft(normalizeArmyListInput(saved.draft) as ArmyListInput);
+          setEditingId(saved.editingId);
+          setStatus("Recovered an unfinished list");
+        }
+      } catch {
+        setStatus("Ignored an invalid saved draft");
+      } finally {
+        setDraftReady(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    if (!draft.name && !draft.factionId && draft.units.length === 0) {
+      window.localStorage.removeItem(DRAFT_KEY);
+      return;
+    }
+    window.localStorage.setItem(DRAFT_KEY, JSON.stringify({ version: 1, editingId, draft }));
+  }, [draft, draftReady, editingId]);
 
   const units = useMemo(
     () => catalogue?.units.filter((unit) => unit.factionId === draft.factionId) ?? [],
@@ -81,18 +124,24 @@ export default function ArmyLists() {
   const save = async () => {
     if (!draft.name.trim() || !draft.factionId) return;
     setStatus("Saving…");
-    const response = await fetch(editingId ? `/api/v1/lists/${editingId}` : "/api/v1/lists", {
-      method: editingId ? "PUT" : "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(draft),
-    });
-    if (!response.ok) {
-      setStatus("Could not save this list");
-      return;
+    try {
+      const saved = await saveArmyList(draft, editingId);
+      setLists((current) => [
+        saved.record,
+        ...current.filter((entry) => entry.id !== saved.record.id),
+      ]);
+      setDraft(emptyList);
+      setEditingId("");
+      setStatus(
+        saved.source === "device"
+          ? "List saved on this device"
+          : saved.cached
+            ? "List saved to cloud"
+            : "List saved to cloud · device copy unavailable",
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not save this list");
     }
-    setDraft(emptyList);
-    setEditingId("");
-    reload();
   };
 
   const edit = (list: ArmyListRecord) => {
@@ -102,8 +151,51 @@ export default function ArmyLists() {
   };
 
   const remove = async (id: string) => {
-    await fetch(`/api/v1/lists/${id}`, { method: "DELETE" });
-    reload();
+    const source = await removeArmyList(id);
+    setLists((current) => current.filter((entry) => entry.id !== id));
+    setStatus(source === "cloud" ? "List deleted" : "Device copy deleted");
+  };
+
+  const downloadBackup = () => {
+    const blob = new Blob([serializeArmyLists(lists, catalogue?.sourceUpdatedAt ?? null)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `warhammer-calculator-lists-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setStatus(`Exported ${lists.length} ${lists.length === 1 ? "list" : "lists"}`);
+  };
+
+  const importBackup = async (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > 2_000_000) {
+      setStatus("Backup is larger than the 2 MB limit");
+      return;
+    }
+    try {
+      const value = JSON.parse(await file.text()) as unknown;
+      if (!window.confirm("Import this backup? Matching list IDs will be updated.")) return;
+      const imported = await importArmyLists(value);
+      setLists(imported.lists);
+      const sourceWarning =
+        imported.profileSourceUpdatedAt &&
+        catalogue?.sourceUpdatedAt &&
+        imported.profileSourceUpdatedAt !== catalogue.sourceUpdatedAt
+          ? " · backup used a different profile-data release"
+          : "";
+      setStatus(
+        `${imported.lists.length} lists available ${
+          imported.source === "cloud" ? "in cloud storage" : "on this device"
+        }${imported.cached ? "" : " · device copy unavailable"}${sourceWarning}`,
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Backup could not be imported");
+    } finally {
+      if (importInput.current) importInput.current.value = "";
+    }
   };
 
   return (
@@ -418,7 +510,7 @@ export default function ArmyLists() {
               >
                 {editingId ? "Update list" : "Save list"}
               </button>
-              {editingId && (
+              {(editingId || draft.name || draft.factionId || draft.units.length > 0) && (
                 <button
                   type="button"
                   onClick={() => {
@@ -426,7 +518,7 @@ export default function ArmyLists() {
                     setEditingId("");
                   }}
                 >
-                  Cancel
+                  Clear draft
                 </button>
               )}
             </div>
@@ -434,6 +526,24 @@ export default function ArmyLists() {
         </section>
         <aside className="saved-lists">
           <div className="section-kicker">Saved rosters</div>
+          <div className="backup-actions">
+            <button type="button" disabled={lists.length === 0} onClick={downloadBackup}>
+              Export backup
+            </button>
+            <button type="button" onClick={() => importInput.current?.click()}>
+              Import backup
+            </button>
+            <input
+              ref={importInput}
+              type="file"
+              accept="application/json,.json"
+              hidden
+              onChange={(event) => void importBackup(event.target.files?.[0])}
+            />
+          </div>
+          <small className="storage-note">
+            Lists use cloud storage when available and keep a device copy.
+          </small>
           {lists.length === 0 && <p>No saved lists yet.</p>}
           {lists.map((list) => (
             <article key={list.id}>

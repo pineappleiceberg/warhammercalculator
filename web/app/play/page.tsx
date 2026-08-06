@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { WorkflowNav } from "../../components/workflow-nav";
 import { fetchArmyLists, type ArmyListRecord } from "../../lib/army-list";
 import {
   DEFAULT_PROFILE,
+  normalizeProfile,
   simulateAttack,
   type CombatProfile,
   type RollResult,
@@ -16,6 +17,11 @@ import {
   type Catalogue,
 } from "../../lib/catalogue";
 import { groupWeaponProfiles } from "../../lib/loadout.mjs";
+import {
+  createPlayRecovery,
+  parsePlayRecovery,
+  PLAY_RECOVERY_KEY,
+} from "../../lib/play-recovery.mjs";
 
 type LogEntry = {
   id: string;
@@ -40,16 +46,91 @@ export default function PlayMode() {
   const [result, setResult] = useState<RollResult | null>(null);
   const [history, setHistory] = useState<LogEntry[]>([]);
   const [status, setStatus] = useState("Select two saved lists");
+  const [recoveryReady, setRecoveryReady] = useState(false);
+  const recovered = useRef(false);
+  const suppressRecoverySave = useRef(false);
 
   useEffect(() => {
     Promise.all([loadCatalogue(), fetchArmyLists()])
       .then(([profiles, saved]) => {
         setCatalogue(profiles);
         setLists(saved);
-        setStatus("Battle console ready");
+        setStatus(recovered.current ? "Recovered battle · autosave on" : "Battle console ready");
       })
       .catch(() => setStatus("Saved lists are unavailable in this deployment"));
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      try {
+        const raw = window.localStorage.getItem(PLAY_RECOVERY_KEY);
+        if (raw) {
+          const saved = parsePlayRecovery(JSON.parse(raw)) as {
+            attackerListId: string;
+            targetListId: string;
+            attackerUnitId: string;
+            targetUnitId: string;
+            weaponId: string;
+            profileId: string;
+            targetModelId: string;
+            profile: unknown;
+            history: LogEntry[];
+          };
+          setAttackerListId(saved.attackerListId);
+          setTargetListId(saved.targetListId);
+          setAttackerUnitId(saved.attackerUnitId);
+          setTargetUnitId(saved.targetUnitId);
+          setWeaponId(saved.weaponId);
+          setProfileId(saved.profileId);
+          setTargetModelId(saved.targetModelId);
+          setProfile(normalizeProfile(saved.profile));
+          setHistory(saved.history);
+          recovered.current = true;
+        }
+      } catch {
+        window.localStorage.removeItem(PLAY_RECOVERY_KEY);
+        setStatus("Ignored invalid recovered battle data");
+      } finally {
+        setRecoveryReady(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!recoveryReady) return;
+    if (suppressRecoverySave.current) {
+      suppressRecoverySave.current = false;
+      return;
+    }
+    const saved = createPlayRecovery({
+      attackerListId,
+      targetListId,
+      attackerUnitId,
+      targetUnitId,
+      weaponId,
+      profileId,
+      targetModelId,
+      profile,
+      history,
+    });
+    window.localStorage.setItem(PLAY_RECOVERY_KEY, JSON.stringify(saved));
+  }, [
+    attackerListId,
+    attackerUnitId,
+    history,
+    profile,
+    profileId,
+    recoveryReady,
+    targetListId,
+    targetModelId,
+    targetUnitId,
+    weaponId,
+  ]);
 
   const attackerList = lists.find((list) => list.id === attackerListId);
   const targetList = lists.find((list) => list.id === targetListId);
@@ -182,6 +263,22 @@ export default function PlayMode() {
   const ready = Boolean(
     attackerUnit && targetUnit && selectedWeapon && weaponProfile && targetModelId,
   );
+
+  const resetBattle = () => {
+    suppressRecoverySave.current = true;
+    setAttackerListId("");
+    setTargetListId("");
+    setAttackerUnitId("");
+    setTargetUnitId("");
+    setWeaponId("");
+    setProfileId("");
+    setTargetModelId("");
+    setProfile(DEFAULT_PROFILE);
+    setResult(null);
+    setHistory([]);
+    window.localStorage.removeItem(PLAY_RECOVERY_KEY);
+    setStatus("Battle reset");
+  };
 
   return (
     <main>
@@ -397,12 +494,20 @@ export default function PlayMode() {
             <span className="section-kicker">Attack history</span>
             <h2>Battle log</h2>
           </div>
-          {history.length > 0 && (
-            <button type="button" onClick={() => setHistory([])}>
-              Clear
+          <div className="battle-log-actions">
+            {history.length > 0 && (
+              <button type="button" onClick={() => setHistory([])}>
+                Clear log
+              </button>
+            )}
+            <button type="button" onClick={resetBattle}>
+              Reset battle
             </button>
-          )}
+          </div>
         </div>
+        <small className="storage-note">
+          Selections, overrides, and the attack log recover automatically on this device.
+        </small>
         {history.length === 0 ? (
           <p>Resolved attacks will appear here for this play session.</p>
         ) : (
