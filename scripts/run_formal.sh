@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -Eeuo pipefail
 
 mode="${1:-all}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -42,10 +42,14 @@ run_parse() {
 
 run_wp() {
     echo "formal: wp"
-    "${frama_c}" -wp -wp-rte -wp-fct "${wp_functions}" -wp-prover alt-ergo \
+    why3 config detect >/dev/null
+    if ! "${frama_c}" -wp -wp-rte -wp-fct "${wp_functions}" -wp-prover alt-ergo \
         -wp-timeout 10 -wp-report-json "${build_dir}/wp.json" \
         -cpp-extra-args=-Iinclude src/calculator.c formal/properties.c \
-        >"${build_dir}/wp.log" 2>&1
+        >"${build_dir}/wp.log" 2>&1; then
+        cat "${build_dir}/wp.log"
+        return 1
+    fi
     python3 - "${build_dir}/wp.json" <<'PY'
 import json
 import sys
