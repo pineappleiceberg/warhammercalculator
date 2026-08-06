@@ -220,11 +220,12 @@ class ProfileDataTests(unittest.TestCase):
                 "to that model, subtract 1 from the Damage characteristic of that attack."
             )
         )
-        self.assertIsNone(
+        self.assertEqual(
             combat_preset(
                 "Each time an attack is made by a model in this unit, subtract 1 from the "
                 "Damage characteristic of that attack."
-            )
+            )["additional_effects"][0]["value"],
+            -1,
         )
         self.assertIsNone(
             combat_preset(
@@ -238,7 +239,7 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertIsNone(conflicting)
 
-    def test_combat_preset_parser_omits_characteristic_changes_it_cannot_apply_exactly(self):
+    def test_combat_preset_parser_supports_signed_generic_characteristic_modifiers(self):
         named_weapon = combat_preset(
             "Add 2 to the Attacks characteristic of this model’s Frostfang weapon."
         )
@@ -247,7 +248,19 @@ class ProfileDataTests(unittest.TestCase):
             "Select one enemy unit. Subtract 1 from the Attacks characteristic of weapons "
             "equipped by models in that unit."
         )
-        self.assertIsNone(negative_dice_modifier)
+        self.assertEqual(
+            negative_dice_modifier["additional_effects"],
+            [
+                {
+                    "type": "attacks_modifier",
+                    "value": -1,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "role": "target",
+                    "subject": "enemy_unit",
+                }
+            ],
+        )
         replacement = combat_preset(
             "Melee weapons equipped by models in this unit have an Attacks characteristic of 4."
         )
@@ -407,7 +420,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "15",
+                "16",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -436,10 +449,19 @@ class ProfileDataTests(unittest.TestCase):
                        GROUP BY effect_type ORDER BY effect_type"""
                 ).fetchall(),
                 [
-                    ("attacks_modifier", 17),
-                    ("damage_modifier", 3),
+                    ("attacks_modifier", 19),
+                    ("damage_modifier", 5),
                     ("strength_modifier", 90),
                 ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT effect_type, count(*) FROM unit_combat_preset_effects
+                       WHERE value < 0 AND effect_type IN
+                           ('attacks_modifier', 'strength_modifier', 'damage_modifier')
+                       GROUP BY effect_type ORDER BY effect_type"""
+                ).fetchall(),
+                [("attacks_modifier", 2), ("damage_modifier", 2)],
             )
             self.assertEqual(
                 connection.execute(
@@ -460,7 +482,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("inherent", 28), ("situational", 1359)],
+                [("inherent", 28), ("situational", 1363)],
             )
             self.assertEqual(
                 connection.execute(
@@ -680,6 +702,27 @@ class ProfileDataTests(unittest.TestCase):
                     "role": "attacker",
                     "subject": "self",
                 },
+            ],
+        )
+        winged_hive_tyrant = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Winged Hive Tyrant"
+        )
+        paroxysm = next(
+            preset
+            for preset in winged_hive_tyrant["combatPresets"]
+            if preset["name"] == "Paroxysm (Psychic) — roll 2+"
+        )
+        self.assertEqual(
+            paroxysm["effects"],
+            [
+                {
+                    "type": "attacks_modifier",
+                    "value": -1,
+                    "diceCount": 0,
+                    "diceSides": 0,
+                    "role": "target",
+                    "subject": "enemy_unit",
+                }
             ],
         )
         redemptor = next(

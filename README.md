@@ -312,18 +312,20 @@ choices and are never silently enabled.
 Saved lists can mark battle- or turn-long conditions as Play Mode defaults, and
 Play Mode keeps changes in its local recovery state. Offensive modifiers,
 re-rolls, weapon-keyword grants, AP changes, Critical Hit/Wound thresholds, and
-direct positive Attacks, Strength, and Damage changes come from the correctly
+direct signed Attacks, Strength, and Damage changes come from the correctly
 classified source; replacement Save targets, invulnerable saves, unrestricted
 Feel No Pain thresholds, and per-attack damage reduction come from the target
 unit. Unit vs Unit applies those defenses to every ordered target segment and
 asks ranged and melee weapons to be resolved separately only when a scoped
 defense produces incompatible target values. Melee/ranged scope is respected
 per weapon. Bearer-only, subset-model, friendly-aura, affected-model,
-attack-type-limited, named-weapon-only, conflicting,
-replacement-value, random, and negative characteristic changes are omitted
+attack-type-limited, named-weapon-only, conflicting, replacement-value, and
+random characteristic changes are omitted
 until they can be represented exactly. Ambiguous subjects are not imported,
 mutually exclusive modes cannot be combined, and the resulting profile remains
-editable.
+editable. Fixed characteristic penalties remain separate from the printed dice
+value, and the native engine applies the minimum of 1 independently to each
+weapon before combining their attacks.
 Indirect Fire applies its hit modifier and cover normally, forces unmodified Hit
 rolls of 1–3 to fail before critical-hit processing, and rejects Torrent attacks
 when no target model is visible.
@@ -379,7 +381,8 @@ A direct profile supplies `attacks`, `hit`, `strength`, `ap`, `damage`,
 `attacks`, `damage`, `sustainedHits`, and `rapidFire` accept a number or dice
 expression such as `D6+2`. Optional parameters include `weaponCount`, `model`,
 `models`, `invuln`, `fnp`, `reduction`, `criticalHits`, `criticalWounds`,
-`melta`, Hit/Wound modifiers and re-roll modes, repeated `attackerPreset` or
+`melta`, `attacksModifier`, `strengthModifier`, `damageModifier`, Hit/Wound
+modifiers and re-roll modes, repeated `attackerPreset` or
 `targetPreset` values, and individual rule flags. The `rules` parameter accepts
 comma-separated `torrent`, `blast`, `heavy`, `lance`, `cover`, `ignores-cover`,
 `indirect`, `lethal-hits`, `devastating-wounds`, `twin-linked`, and

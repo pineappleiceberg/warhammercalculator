@@ -14,16 +14,15 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
                            uint16_t sustained_hits, uint16_t rapid_fire_dice_count,
                            uint16_t rapid_fire_dice_sides, uint16_t rapid_fire, uint16_t melta,
                            int16_t explicit_hit_modifier, int16_t explicit_wound_modifier,
-                           struct whc_web_summary *summary) {
+                           int16_t explicit_attacks_modifier, int16_t explicit_strength_modifier,
+                           int16_t explicit_damage_modifier, struct whc_web_summary *summary) {
     static struct calculator_workspace workspace;
     struct weapon_profile weapon;
     struct target_profile target;
     struct distribution_summary calculated;
     struct distribution_summary applied;
-    uint32_t attacks_per_weapon = attack_modifier;
-    uint32_t total_attack_dice = 0;
-    uint32_t total_attack_modifier = 0;
-    uint32_t effective_damage_modifier = damage_modifier;
+    int32_t attacks_characteristic_modifier = explicit_attacks_modifier;
+    int32_t damage_characteristic_modifier = explicit_damage_modifier;
     int32_t hit_modifier = explicit_hit_modifier;
     int32_t wound_modifier = explicit_wound_modifier;
     bool target_has_cover = false;
@@ -54,19 +53,18 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
         if (rapid_fire_dice_count != 0u) {
             effective_attack_dice_sides = rapid_fire_dice_sides;
         }
-        attacks_per_weapon += rapid_fire;
+        attacks_characteristic_modifier += rapid_fire;
     }
     if ((rule_flags & WHC_RULE_BLAST) != 0u) {
-        attacks_per_weapon += target_models / 5u;
+        attacks_characteristic_modifier += (int32_t)(target_models / 5u);
     }
     if ((rule_flags & WHC_RULE_MELTA_ACTIVE) != 0u) {
-        effective_damage_modifier += melta;
+        damage_characteristic_modifier += melta;
     }
 
-    total_attack_dice = (uint32_t)effective_attack_dice_count * weapon_count;
-    total_attack_modifier = attacks_per_weapon * weapon_count;
-    if (total_attack_dice > UINT16_MAX || total_attack_modifier > UINT16_MAX ||
-        effective_damage_modifier > UINT16_MAX) {
+    if (attacks_characteristic_modifier < INT16_MIN ||
+        attacks_characteristic_modifier > INT16_MAX || damage_characteristic_modifier < INT16_MIN ||
+        damage_characteristic_modifier > INT16_MAX) {
         return false;
     }
 
@@ -99,13 +97,16 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
     memset(&weapon, 0, sizeof(weapon));
     memset(&target, 0, sizeof(target));
 
-    weapon.attacks = (struct dice_value){(uint16_t)total_attack_dice, effective_attack_dice_sides,
-                                         (uint16_t)total_attack_modifier};
+    weapon.attacks = (struct dice_value){effective_attack_dice_count, effective_attack_dice_sides,
+                                         attack_modifier};
+    weapon.attacks_modifier = (int16_t)attacks_characteristic_modifier;
+    weapon.weapon_count = weapon_count;
     weapon.hits_on = hits_on;
     weapon.strength = strength;
+    weapon.strength_modifier = explicit_strength_modifier;
     weapon.ap = ap;
-    weapon.damage = (struct dice_value){damage_dice_count, damage_dice_sides,
-                                        (uint16_t)effective_damage_modifier};
+    weapon.damage = (struct dice_value){damage_dice_count, damage_dice_sides, damage_modifier};
+    weapon.damage_modifier = (int16_t)damage_characteristic_modifier;
     weapon.critical_hits_on = critical_hits_on;
     weapon.hit_modifier = (int8_t)hit_modifier;
     weapon.wound_modifier = (int8_t)wound_modifier;
@@ -178,11 +179,8 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
                                       const struct whc_web_target_input *target_input,
                                       uint16_t target_models, struct weapon_profile *weapon,
                                       struct target_profile *target) {
-    uint32_t attacks_per_weapon = 0u;
-    uint32_t total_attack_dice = 0u;
-    uint32_t total_attack_modifier = 0u;
-    uint64_t total_attack_modifier_wide = 0u;
-    uint32_t effective_damage_modifier = 0u;
+    int32_t attacks_characteristic_modifier = 0;
+    int32_t damage_characteristic_modifier = 0;
     uint32_t combined_dice_count = 0u;
     int32_t hit_modifier = 0;
     int32_t wound_modifier = 0;
@@ -205,17 +203,22 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
         input->rapid_fire > UINT16_MAX || input->melta > UINT16_MAX ||
         input->hit_modifier < INT16_MIN || input->hit_modifier > INT16_MAX ||
         input->wound_modifier < INT16_MIN || input->wound_modifier > INT16_MAX ||
-        target_input->toughness > UINT16_MAX || target_input->save > UINT8_MAX ||
-        target_input->invulnerable_save > UINT8_MAX || target_input->feel_no_pain > UINT8_MAX ||
-        target_input->wounds > UINT16_MAX || target_input->damage_reduction > UINT16_MAX ||
-        target_models == 0u ||
+        input->attacks_characteristic_modifier < INT16_MIN ||
+        input->attacks_characteristic_modifier > INT16_MAX ||
+        input->strength_characteristic_modifier < INT16_MIN ||
+        input->strength_characteristic_modifier > INT16_MAX ||
+        input->damage_characteristic_modifier < INT16_MIN ||
+        input->damage_characteristic_modifier > INT16_MAX || target_input->toughness > UINT16_MAX ||
+        target_input->save > UINT8_MAX || target_input->invulnerable_save > UINT8_MAX ||
+        target_input->feel_no_pain > UINT8_MAX || target_input->wounds > UINT16_MAX ||
+        target_input->damage_reduction > UINT16_MAX || target_models == 0u ||
         ((input->rule_flags & WHC_RULE_INDIRECT_NOT_VISIBLE) != 0u &&
          (input->rule_flags & WHC_RULE_TORRENT) != 0u)) {
         return false;
     }
 
-    attacks_per_weapon = input->attack_modifier;
-    effective_damage_modifier = input->damage_modifier;
+    attacks_characteristic_modifier = input->attacks_characteristic_modifier;
+    damage_characteristic_modifier = input->damage_characteristic_modifier;
     hit_modifier = input->hit_modifier;
     wound_modifier = input->wound_modifier;
     effective_attack_dice_count = (uint16_t)input->attack_dice_count;
@@ -247,22 +250,20 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
         if (input->rapid_fire_dice_count != 0u) {
             effective_attack_dice_sides = (uint16_t)input->rapid_fire_dice_sides;
         }
-        attacks_per_weapon += input->rapid_fire;
+        attacks_characteristic_modifier += (int32_t)input->rapid_fire;
     }
     if ((input->rule_flags & WHC_RULE_BLAST) != 0u) {
-        attacks_per_weapon += target_models / 5u;
+        attacks_characteristic_modifier += (int32_t)(target_models / 5u);
     }
     if ((input->rule_flags & WHC_RULE_MELTA_ACTIVE) != 0u) {
-        effective_damage_modifier += input->melta;
+        damage_characteristic_modifier += (int32_t)input->melta;
     }
 
-    total_attack_dice = effective_attack_dice_count * input->weapon_count;
-    total_attack_modifier_wide = (uint64_t)attacks_per_weapon * input->weapon_count;
-    if (total_attack_dice > UINT16_MAX || total_attack_modifier_wide > UINT16_MAX ||
-        effective_damage_modifier > UINT16_MAX) {
+    if (attacks_characteristic_modifier < INT16_MIN ||
+        attacks_characteristic_modifier > INT16_MAX || damage_characteristic_modifier < INT16_MIN ||
+        damage_characteristic_modifier > INT16_MAX) {
         return false;
     }
-    total_attack_modifier = (uint32_t)total_attack_modifier_wide;
 
     if ((input->rule_flags & WHC_RULE_HEAVY_ACTIVE) != 0u) {
         hit_modifier++;
@@ -287,18 +288,22 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
     memset(weapon, 0, sizeof(*weapon));
     memset(target, 0, sizeof(*target));
     weapon->attacks = (struct dice_value){
-        (uint16_t)total_attack_dice,
+        effective_attack_dice_count,
         effective_attack_dice_sides,
-        (uint16_t)total_attack_modifier,
+        (uint16_t)input->attack_modifier,
     };
+    weapon->attacks_modifier = (int16_t)attacks_characteristic_modifier;
+    weapon->weapon_count = (uint16_t)input->weapon_count;
     weapon->hits_on = (uint8_t)input->hits_on;
     weapon->strength = (uint16_t)input->strength;
+    weapon->strength_modifier = (int16_t)input->strength_characteristic_modifier;
     weapon->ap = (uint16_t)input->ap;
     weapon->damage = (struct dice_value){
         (uint16_t)input->damage_dice_count,
         (uint16_t)input->damage_dice_sides,
-        (uint16_t)effective_damage_modifier,
+        (uint16_t)input->damage_modifier,
     };
+    weapon->damage_modifier = (int16_t)damage_characteristic_modifier;
     weapon->critical_hits_on = (uint8_t)input->critical_hits_on;
     weapon->hit_modifier = (int8_t)hit_modifier;
     weapon->wound_modifier = (int8_t)wound_modifier;

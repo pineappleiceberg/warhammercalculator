@@ -108,6 +108,9 @@ function weaponValues(profile: CombatProfile) {
     profile.melta,
     profile.hitModifier,
     profile.woundModifier,
+    profile.attacksModifier,
+    profile.strengthModifier,
+    profile.damageModifier,
   ];
 }
 
@@ -179,6 +182,9 @@ export async function calculateProfile(profile: CombatProfile): Promise<DamageSu
       profile.melta,
       profile.hitModifier,
       profile.woundModifier,
+      profile.attacksModifier,
+      profile.strengthModifier,
+      profile.damageModifier,
       output,
     );
     if (!ok) throw new Error("That unit profile exceeds the exact calculator limits");
@@ -233,7 +239,7 @@ export async function calculateOrderedVolley(
   }
 
   const calculator = await loadCalculator();
-  const weaponFields = 22;
+  const weaponFields = 25;
   const targetFields = 7;
   const weaponsPointer = calculator._malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
@@ -297,7 +303,7 @@ export async function estimateOrderedVolleyComplexity(
     throw new Error("Choose a valid weapon and target sequence first");
   }
   const calculator = await loadCalculator();
-  const weaponFields = 22;
+  const weaponFields = 25;
   const targetFields = 7;
   const weaponsPointer = calculator._malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);

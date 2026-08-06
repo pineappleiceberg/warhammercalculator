@@ -14,8 +14,10 @@ const catalogueParameters = new Set([
 
 const integerParameters = [
   ["weaponCount", ["weaponCount"]],
+  ["attacksModifier", ["attacksModifier"]],
   ["hitOn", ["hitOn", "hit"]],
   ["strength", ["strength"]],
+  ["strengthModifier", ["strengthModifier"]],
   ["ap", ["ap"]],
   ["criticalHits", ["criticalHits"]],
   ["toughness", ["toughness"]],
@@ -28,6 +30,7 @@ const integerParameters = [
   ["criticalWounds", ["criticalWounds"]],
   ["hitModifier", ["hitModifier"]],
   ["woundModifier", ["woundModifier"]],
+  ["damageModifier", ["damageModifier"]],
   ["melta", ["melta"]],
 ];
 
@@ -265,10 +268,13 @@ export function canonicalAgentParameters(profile) {
   search.set("format", "json");
   search.set("attacks", diceText(profile.attackDice, profile.attackSides, profile.attacks));
   search.set("weaponCount", String(profile.weaponCount));
+  search.set("attacksModifier", String(profile.attacksModifier ?? 0));
   search.set("hit", String(profile.hitOn));
   search.set("strength", String(profile.strength));
+  search.set("strengthModifier", String(profile.strengthModifier ?? 0));
   search.set("ap", String(profile.ap));
   search.set("damage", diceText(profile.damageDice, profile.damageSides, profile.damage));
+  search.set("damageModifier", String(profile.damageModifier ?? 0));
   search.set("toughness", String(profile.toughness));
   search.set("save", String(profile.save));
   search.set("invuln", String(profile.invulnerable));

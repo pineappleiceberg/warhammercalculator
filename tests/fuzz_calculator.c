@@ -87,6 +87,9 @@ static void generate_weapon(struct fuzz_input *input, struct whc_web_weapon_inpu
     weapon->melta = next_byte(input) % 4u;
     weapon->hit_modifier = (int32_t)(next_byte(input) % 5u) - 2;
     weapon->wound_modifier = (int32_t)(next_byte(input) % 5u) - 2;
+    weapon->attacks_characteristic_modifier = (int32_t)(next_byte(input) % 7u) - 3;
+    weapon->strength_characteristic_modifier = (int32_t)(next_byte(input) % 7u) - 3;
+    weapon->damage_characteristic_modifier = (int32_t)(next_byte(input) % 7u) - 3;
 }
 
 /*@ requires \valid(input) && \valid(target);
@@ -149,15 +152,18 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         (uint16_t)weapons[0].sustained_hits_dice_sides, (uint16_t)weapons[0].sustained_hits,
         (uint16_t)weapons[0].rapid_fire_dice_count, (uint16_t)weapons[0].rapid_fire_dice_sides,
         (uint16_t)weapons[0].rapid_fire, (uint16_t)weapons[0].melta,
-        (int16_t)weapons[0].hit_modifier, (int16_t)weapons[0].wound_modifier, &summary);
+        (int16_t)weapons[0].hit_modifier, (int16_t)weapons[0].wound_modifier,
+        (int16_t)weapons[0].attacks_characteristic_modifier,
+        (int16_t)weapons[0].strength_characteristic_modifier,
+        (int16_t)weapons[0].damage_characteristic_modifier, &summary);
     if (valid) {
         assert_summary(&summary);
     }
 
     memset(cumulative, 0, sizeof(cumulative));
     initial_wounds_lost = (uint16_t)(next_byte(&input) % targets[0].wounds);
-    estimated = whc_estimate_ordered_volley_complexity(
-        weapons, weapon_count, targets, target_count, initial_wounds_lost, &complexity);
+    estimated = whc_estimate_ordered_volley_complexity(weapons, weapon_count, targets, target_count,
+                                                       initial_wounds_lost, &complexity);
     valid = whc_calculate_ordered_volley_summary(weapons, weapon_count, targets, target_count,
                                                  initial_wounds_lost, &volley_summary, cumulative);
     if (valid) {

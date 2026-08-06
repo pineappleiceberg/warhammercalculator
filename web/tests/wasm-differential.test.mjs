@@ -64,6 +64,53 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_estimate_ordered_volley_complexity, "function");
 });
 
+test("signed characteristic modifiers use per-weapon floors in C/Wasm", () => {
+  const output = calculator._malloc(72);
+  try {
+    assert.equal(
+      calculator._whc_calculate_summary(
+        1,
+        6,
+        0,
+        2,
+        2,
+        10,
+        0,
+        0,
+        0,
+        1,
+        6,
+        1,
+        7,
+        0,
+        0,
+        10,
+        0,
+        16,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        -1,
+        0,
+        0,
+        output,
+      ),
+      1,
+    );
+    assert.deepEqual([readUint64(output, 5, 6), readUint64(output, 7, 8)], [40n, 9n]);
+  } finally {
+    calculator._free(output);
+  }
+});
+
 test("source choice pools share allowances and preserve compound bundles", () => {
   const unit = {
     name: "Dreadnought",
@@ -362,9 +409,12 @@ test("unit ability presets compose direct weapon characteristic modifiers", () =
     [],
     "Melee",
   );
-  assert.deepEqual([applied.attackDice, applied.attackSides, applied.attacks], [1, 6, 1]);
-  assert.equal(applied.strength, 10);
-  assert.deepEqual([applied.damageDice, applied.damageSides, applied.damage], [1, 3, 2]);
+  assert.deepEqual([applied.attackDice, applied.attackSides, applied.attacks], [1, 6, 0]);
+  assert.equal(applied.attacksModifier, 1);
+  assert.equal(applied.strength, 8);
+  assert.equal(applied.strengthModifier, 2);
+  assert.deepEqual([applied.damageDice, applied.damageSides, applied.damage], [1, 3, 1]);
+  assert.equal(applied.damageModifier, 1);
   assert.equal(combatPresetEffects([preset], "Ranged", "attacker").attacksModifier, 0);
 });
 
@@ -723,6 +773,9 @@ test("parameterized agent profile reaches the C/Wasm exact engine unchanged", ()
       profile.melta,
       profile.hitModifier,
       profile.woundModifier,
+      profile.attacksModifier,
+      profile.strengthModifier,
+      profile.damageModifier,
       output,
     );
     assert.equal(ok, 1);
@@ -771,6 +824,9 @@ function interactionMeans(testCase) {
       0,
       testCase.hitModifier,
       testCase.woundModifier,
+      0,
+      0,
+      0,
       output,
     );
     assert.equal(ok, 1, testCase.name);
@@ -831,6 +887,9 @@ function exactMean({
       0,
       hitModifier,
       woundModifier,
+      0,
+      0,
+      0,
       output,
     );
     assert.equal(ok, 1);
@@ -848,7 +907,7 @@ function lessThanOrEqual(left, right) {
 }
 
 function orderedVolley(weapons, targets, initialWoundsLost = 0) {
-  const weaponFields = 22;
+  const weaponFields = 25;
   const targetFields = 7;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
@@ -857,7 +916,12 @@ function orderedVolley(weapons, targets, initialWoundsLost = 0) {
   const write = (pointer, values) =>
     values.forEach((value, index) => calculator.setValue(pointer + index * 4, value, "i32"));
   try {
-    weapons.forEach((weapon, index) => write(weaponsPointer + index * weaponFields * 4, weapon));
+    weapons.forEach((weapon, index) =>
+      write(
+        weaponsPointer + index * weaponFields * 4,
+        weapon.length === weaponFields ? weapon : [...weapon, 0, 0, 0],
+      ),
+    );
     targets.forEach((target, index) => write(targetsPointer + index * targetFields * 4, target));
     assert.equal(
       calculator._whc_calculate_ordered_volley_summary(
@@ -891,7 +955,7 @@ function orderedVolley(weapons, targets, initialWoundsLost = 0) {
 }
 
 function orderedVolleyComplexity(weapons, targets, initialWoundsLost = 0) {
-  const weaponFields = 22;
+  const weaponFields = 25;
   const targetFields = 7;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
@@ -899,7 +963,12 @@ function orderedVolleyComplexity(weapons, targets, initialWoundsLost = 0) {
   const write = (pointer, values) =>
     values.forEach((value, index) => calculator.setValue(pointer + index * 4, value, "i32"));
   try {
-    weapons.forEach((weapon, index) => write(weaponsPointer + index * weaponFields * 4, weapon));
+    weapons.forEach((weapon, index) =>
+      write(
+        weaponsPointer + index * weaponFields * 4,
+        weapon.length === weaponFields ? weapon : [...weapon, 0, 0, 0],
+      ),
+    );
     targets.forEach((target, index) => write(targetsPointer + index * targetFields * 4, target));
     assert.equal(
       calculator._whc_estimate_ordered_volley_complexity(
@@ -973,6 +1042,9 @@ function variableRuleMean({ flags = 0, sustained = [0, 0, 0], rapid = [0, 0, 0] 
       1,
       ...sustained,
       ...rapid,
+      0,
+      0,
+      0,
       0,
       0,
       0,

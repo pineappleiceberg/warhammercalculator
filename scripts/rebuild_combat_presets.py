@@ -79,7 +79,7 @@ def main() -> None:
     with sqlite3.connect(args.database) as connection:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
-        connection.execute("UPDATE metadata SET value = '15' WHERE key = 'schema_version'")
+        connection.execute("UPDATE metadata SET value = '16' WHERE key = 'schema_version'")
     print(f"Rebuilt {count} unit combat presets in {args.database}")
 
 

@@ -69,6 +69,9 @@ struct whc_web_weapon_input {
     uint32_t melta;
     int32_t hit_modifier;
     int32_t wound_modifier;
+    int32_t attacks_characteristic_modifier;
+    int32_t strength_characteristic_modifier;
+    int32_t damage_characteristic_modifier;
 };
 
 struct whc_web_target_input {
@@ -139,7 +142,8 @@ bool whc_calculate_summary(
     uint8_t critical_wounds_on, uint16_t target_models, uint16_t sustained_hits_dice_count,
     uint16_t sustained_hits_dice_sides, uint16_t sustained_hits, uint16_t rapid_fire_dice_count,
     uint16_t rapid_fire_dice_sides, uint16_t rapid_fire, uint16_t melta, int16_t hit_modifier,
-    int16_t wound_modifier, struct whc_web_summary *summary);
+    int16_t wound_modifier, int16_t attacks_modifier, int16_t strength_modifier,
+    int16_t damage_characteristic_modifier, struct whc_web_summary *summary);
 
 /*@ requires 1 <= weapon_count && weapon_count <= MAX_VOLLEY_WEAPONS;
     requires 1 <= target_segment_count && target_segment_count <= MAX_TARGET_SEGMENTS;

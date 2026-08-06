@@ -665,8 +665,6 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
                 direction, amount_text, names, subject_text = match.groups()
             else:
                 direction, names, subject_text, amount_text = match.groups()
-            if direction.casefold() in {"subtract", "worsen"}:
-                continue
             lowered_subject = subject_text.casefold().strip()
             generic_subject = bool(
                 re.match(r"(?:that|the) attack\b", lowered_subject)
@@ -696,6 +694,8 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
             ):
                 continue
             amount = int(amount_text)
+            if direction.casefold() in {"subtract", "worsen"}:
+                amount = -amount
             parsed_characteristics = re.findall(
                 r"Attacks|Strength|Damage", names, re.IGNORECASE
             )
@@ -709,6 +709,16 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
                 continue
             for characteristic in parsed_characteristics:
                 effect_type = characteristic_types[characteristic.casefold()]
+                if (
+                    effect_type == "damage_modifier"
+                    and amount < 0
+                    and re.search(
+                        r"attack[^.;]{0,180}\b(?:allocated to|made against)\b",
+                        clause_prefix,
+                        re.IGNORECASE,
+                    )
+                ):
+                    continue
                 identity = (effect_type, role, subject)
                 existing = characteristic_effects.get(identity)
                 if identity in characteristic_effects and (
@@ -1215,7 +1225,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "15"),
+                    ("schema_version", "16"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

@@ -49,6 +49,12 @@ struct deferred_state_table {
     uint32_t peak_count;
 };
 
+static bool distribution_from_weapon_attacks(const struct weapon_profile *weapon,
+                                             struct distribution *result);
+static bool distribution_from_weapon_damage(const struct weapon_profile *weapon,
+                                            struct distribution *result);
+static uint16_t weapon_modified_strength(const struct weapon_profile *weapon);
+
 /*@ behavior null_result:
         assumes result == \null;
         assigns \nothing;
@@ -644,7 +650,7 @@ static bool build_single_attack_exact_distribution(const struct weapon_profile *
 
     if (weapon == NULL || plan == NULL || damage_distribution == NULL || result == NULL ||
         damage_distribution == result ||
-        !distribution_from_dice_value(weapon->damage, damage_distribution) ||
+        !distribution_from_weapon_damage(weapon, damage_distribution) ||
         !roll_table_build(plan->hit_reroll_mask, &hit_table) ||
         !roll_table_build(plan->wound_reroll_mask, &wound_table) ||
         !roll_table_build(plan->save_reroll_mask, &save_table)) {
@@ -1594,6 +1600,106 @@ bool distribution_from_dice_value(struct dice_value dice, struct distribution *r
     return true;
 }
 
+bool distribution_from_modified_dice_value(struct dice_value dice, int32_t modifier,
+                                           uint32_t minimum, struct distribution *result) {
+    struct distribution base;
+    uint32_t outcome = 0u;
+
+    if (result == NULL || minimum > MAX_DISTRIBUTION_RESULT ||
+        !distribution_from_dice_value(dice, &base)) {
+        return false;
+    }
+
+    distribution_clear(result);
+    outcome = base.minimum;
+    /*@ loop invariant base.minimum <= outcome && outcome <= base.maximum + 1;
+        loop assigns outcome, *result;
+        loop variant base.maximum + 1 - outcome;
+    */
+    while (outcome <= base.maximum) {
+        int64_t modified = (int64_t)outcome + modifier;
+        uint32_t mapped = minimum;
+
+        if (modified > (int64_t)minimum) {
+            if (modified > MAX_DISTRIBUTION_RESULT) {
+                distribution_clear(result);
+                return false;
+            }
+            mapped = (uint32_t)modified;
+        }
+        if (base.ways[outcome] != 0u &&
+            !distribution_add_outcome(result, mapped, base.ways[outcome])) {
+            distribution_clear(result);
+            return false;
+        }
+        outcome++;
+    }
+    return distribution_reduce_weights(result);
+}
+
+/*@ requires \valid_read(weapon);
+    assigns \nothing;
+    ensures 1 <= \result;
+*/
+static uint16_t weapon_profile_count(const struct weapon_profile *weapon) {
+    return weapon->weapon_count == 0u ? 1u : weapon->weapon_count;
+}
+
+/*@ requires \valid_read(weapon) && \valid(result);
+    assigns *result;
+*/
+static bool distribution_from_weapon_attacks(const struct weapon_profile *weapon,
+                                             struct distribution *result) {
+    struct distribution per_weapon;
+    struct distribution current;
+    struct distribution next;
+    uint16_t count = 0u;
+    uint16_t repeat_count = 0u;
+
+    if (weapon == NULL || result == NULL ||
+        !distribution_from_modified_dice_value(weapon->attacks, weapon->attacks_modifier, 1u,
+                                               &per_weapon) ||
+        !distribution_from_constant(0u, &current)) {
+        return false;
+    }
+    repeat_count = weapon_profile_count(weapon);
+    /*@ loop invariant count <= repeat_count;
+        loop assigns count, current, next;
+        loop variant repeat_count - count;
+    */
+    while (count < repeat_count) {
+        if (!distribution_convolve(&current, &per_weapon, &next)) {
+            return false;
+        }
+        memcpy(&current, &next, sizeof(current));
+        count++;
+    }
+    memcpy(result, &current, sizeof(*result));
+    return true;
+}
+
+/*@ requires \valid_read(weapon) && \valid(result);
+    assigns *result;
+*/
+static bool distribution_from_weapon_damage(const struct weapon_profile *weapon,
+                                            struct distribution *result) {
+    return weapon != NULL && distribution_from_modified_dice_value(
+                                 weapon->damage, weapon->damage_modifier, 1u, result);
+}
+
+/*@ requires \valid_read(weapon);
+    assigns \nothing;
+    ensures 1 <= \result;
+*/
+static uint16_t weapon_modified_strength(const struct weapon_profile *weapon) {
+    int32_t modified = (int32_t)weapon->strength + weapon->strength_modifier;
+
+    if (modified < 1) {
+        return 1u;
+    }
+    return modified > UINT16_MAX ? UINT16_MAX : (uint16_t)modified;
+}
+
 bool distribution_convolve(const struct distribution *left, const struct distribution *right,
                            struct distribution *result) {
     struct distribution temporary;
@@ -2120,7 +2226,7 @@ bool attack_plan_build(const struct weapon_profile *weapon, const struct target_
 
     memset(plan, 0, sizeof(*plan));
     plan->hits_on = weapon->hits_on;
-    plan->wounds_on = wounds_on(weapon->strength, target->toughness);
+    plan->wounds_on = wounds_on(weapon_modified_strength(weapon), target->toughness);
     plan->saves_on = saves_on(target->save, target->invulnerable_save, weapon->ap);
     plan->critical_hits_on = weapon->critical_hits_on == 0 ? 6u : weapon->critical_hits_on;
     plan->critical_wounds_on = 6u;
@@ -2622,7 +2728,7 @@ static bool build_successful_damage_packet(const struct weapon_profile *weapon,
                                            struct probability_distribution *result) {
     uint32_t raw_damage = 0u;
 
-    if (!distribution_from_dice_value(weapon->damage, &workspace->exact_a)) {
+    if (!distribution_from_weapon_damage(weapon, &workspace->exact_a)) {
         return false;
     }
     distribution_clear(&workspace->exact_b);
@@ -3130,7 +3236,7 @@ static bool deferred_resolve_weapon_ordinary(const struct weapon_profile *weapon
     sustained = calloc(layout->segment_count, sizeof(*sustained));
     if (sustained == NULL ||
         !deferred_prepare_weapon(weapon, targets, layout, workspace, plans, sustained) ||
-        !distribution_from_dice_value(weapon->attacks, &workspace->exact_a) ||
+        !distribution_from_weapon_attacks(weapon, &workspace->exact_a) ||
         !deferred_sample_attack_count(*current, *next, &workspace->exact_a)) {
         goto cleanup;
     }
@@ -3398,7 +3504,7 @@ bool advance_weapon_applied_damage_distribution(const struct weapon_profile *wea
         segment_index++;
     }
 
-    if (!distribution_from_dice_value(weapon->attacks, &workspace->exact_a) ||
+    if (!distribution_from_weapon_attacks(weapon, &workspace->exact_a) ||
         !probability_distribution_from_exact(&workspace->exact_a, &workspace->probability_a)) {
         return false;
     }
@@ -3575,7 +3681,7 @@ static bool calculate_attack_damage_distribution_internal(const struct weapon_pr
                                                       &workspace->probability_b) ||
         !apply_feel_no_pain(&workspace->probability_b, plan.feel_no_pain_on, workspace,
                             &workspace->probability_b) ||
-        !distribution_from_dice_value(weapon->attacks, &workspace->exact_a) ||
+        !distribution_from_weapon_attacks(weapon, &workspace->exact_a) ||
         !probability_distribution_from_exact(&workspace->exact_a, &workspace->probability_a)) {
         return false;
     }
@@ -3691,7 +3797,7 @@ bool calculate_attack_expected_damage(const struct weapon_profile *weapon,
         }
     }
 
-    if (!distribution_from_dice_value(weapon->attacks, &workspace->exact_a) ||
+    if (!distribution_from_weapon_attacks(weapon, &workspace->exact_a) ||
         !distribution_mean(&workspace->exact_a, &attack_mean)) {
         return false;
     }

@@ -16,8 +16,9 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Represent negative, random, and replacement-value Attacks, Strength, and
-   Damage changes exactly in native C and WebAssembly before importing them.
+1. Represent random, multiplicative, and replacement-value Attacks, Strength,
+   and Damage changes exactly in native C and WebAssembly before importing them,
+   including named-weapon scope where required.
 2. Add a source-backed rules eligibility layer for target keywords and phase or
    range conditions that currently require manual interpretation.
 3. Link bearer- and subset-model defensive abilities to structured wargear and
@@ -25,6 +26,16 @@ priority over feature count.
    affecting models that do not have them.
 
 ## Completed cycles
+
+- 2026-08-06: Added exact signed fixed modifiers for Attacks, Strength, and
+  Damage across native C, WebAssembly, exact APIs, CSPRNG rolls, seeded
+  simulations, editable profiles, and static agent URLs. Base dice values now
+  remain distinct from modifiers; Attacks penalties are floored at 1 for each
+  weapon before weapon counts are combined, rather than incorrectly flooring a
+  whole volley. The conservative source importer now includes two Paroxysm
+  Attacks penalties and two conditional Damage penalties that were previously
+  discarded. Hand-derived native and Wasm fractions, deterministic roll tests,
+  URL round trips, catalogue snapshots, and formal parsing cover the change.
 
 - 2026-08-06: Distinguished inherent defenses from situational combat presets.
   Twenty-eight unconditional, whole-model/unit damage-reduction abilities now

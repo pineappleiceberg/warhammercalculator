@@ -74,6 +74,18 @@ bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
         attack_maximum = uint32_saturating_add(
             attack_maximum,
             uint32_saturating_product(weapon->attacks.dice_count, weapon->attacks.dice_sides));
+        if (weapon->attacks_modifier < 0) {
+            uint32_t penalty = (uint32_t)(-(int32_t)weapon->attacks_modifier);
+            attack_maximum = attack_maximum > penalty ? attack_maximum - penalty : 1u;
+        } else {
+            attack_maximum =
+                uint32_saturating_add(attack_maximum, (uint32_t)weapon->attacks_modifier);
+        }
+        if (attack_maximum == 0u) {
+            attack_maximum = 1u;
+        }
+        attack_maximum = uint32_saturating_product(
+            attack_maximum, weapon->weapon_count == 0u ? 1u : weapon->weapon_count);
         sustained_maximum = representative.sustained_hits.modifier;
         sustained_maximum = uint32_saturating_add(
             sustained_maximum, uint32_saturating_product(representative.sustained_hits.dice_count,
@@ -89,8 +101,7 @@ bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
             prefix_deferred_dimensions = uint32_saturating_product(
                 prefix_deferred_dimensions, uint32_saturating_add(1u, hit_events));
         }
-        stage_dimension = uint32_saturating_product(stage_dimension,
-                                                    prefix_deferred_dimensions);
+        stage_dimension = uint32_saturating_product(stage_dimension, prefix_deferred_dimensions);
         if (stage_dimension > estimated_state_upper_bound) {
             estimated_state_upper_bound = stage_dimension;
         }

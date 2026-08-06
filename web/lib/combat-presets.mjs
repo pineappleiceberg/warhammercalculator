@@ -267,15 +267,12 @@ export function applyCombatPresets(profile, attackerPresets, targetPresets, weap
   return applyDefensiveEffects(
     {
       ...profile,
-      ...(typeof profile.attacks === "number"
-        ? { attacks: profile.attacks + attacker.attacksModifier + target.attacksModifier }
-        : {}),
-      ...(typeof profile.strength === "number"
-        ? { strength: profile.strength + attacker.strengthModifier + target.strengthModifier }
-        : {}),
-      ...(typeof profile.damage === "number"
-        ? { damage: profile.damage + attacker.damageModifier + target.damageModifier }
-        : {}),
+      attacksModifier:
+        (profile.attacksModifier ?? 0) + attacker.attacksModifier + target.attacksModifier,
+      strengthModifier:
+        (profile.strengthModifier ?? 0) + attacker.strengthModifier + target.strengthModifier,
+      damageModifier:
+        (profile.damageModifier ?? 0) + attacker.damageModifier + target.damageModifier,
       ap: Math.max(0, (profile.ap ?? 0) + attacker.apModifier + target.apModifier),
       criticalHits: criticalHits.length ? Math.min(...criticalHits) : 0,
       criticalWounds: criticalWounds.length ? Math.min(...criticalWounds) : 0,

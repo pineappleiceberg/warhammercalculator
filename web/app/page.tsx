@@ -234,6 +234,9 @@ async function calculate(profile: Profile): Promise<Result> {
       profile.melta,
       profile.hitModifier,
       profile.woundModifier,
+      profile.attacksModifier,
+      profile.strengthModifier,
+      profile.damageModifier,
       output,
     );
 
@@ -843,6 +846,9 @@ export default function Home() {
               }
             : {}),
           ...(/^\d+$/.test(weapon.strength) ? { strength: Number(weapon.strength) } : {}),
+          attacksModifier: 0,
+          strengthModifier: 0,
+          damageModifier: 0,
           ap: Math.abs(weapon.ap ?? 0),
           criticalHits: 6,
           criticalWounds: antiWoundThreshold(weapon.abilities, targetKeywords),
@@ -896,6 +902,9 @@ export default function Home() {
             : {}),
           ...(weapon.skill ? { hitOn: weapon.skill } : {}),
           ...(/^\d+$/.test(weapon.strength) ? { strength: Number(weapon.strength) } : {}),
+          attacksModifier: 0,
+          strengthModifier: 0,
+          damageModifier: 0,
           ...(weapon.ap !== null ? { ap: Math.abs(weapon.ap) } : {}),
           criticalWounds: antiWoundThreshold(weapon.abilities, selectedTargetModel?.keywords ?? []),
           sustainedHitsDice: sustainedHits.count,
@@ -1405,6 +1414,27 @@ export default function Home() {
                 min={-10}
                 max={10}
                 onChange={(value) => set("woundModifier", value)}
+              />
+              <NumberField
+                label="Attacks characteristic modifier"
+                value={profile.attacksModifier}
+                min={-1024}
+                max={1024}
+                onChange={(value) => set("attacksModifier", value)}
+              />
+              <NumberField
+                label="Strength characteristic modifier"
+                value={profile.strengthModifier}
+                min={-1024}
+                max={1024}
+                onChange={(value) => set("strengthModifier", value)}
+              />
+              <NumberField
+                label="Damage characteristic modifier"
+                value={profile.damageModifier}
+                min={-1024}
+                max={1024}
+                onChange={(value) => set("damageModifier", value)}
               />
               <NumberField
                 label="Sustained Hits dice"

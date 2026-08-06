@@ -15,13 +15,16 @@ export type CombatProfile = {
   attackDice: number;
   attackSides: number;
   attacks: number;
+  attacksModifier: number;
   weaponCount: number;
   hitOn: number;
   strength: number;
+  strengthModifier: number;
   ap: number;
   damageDice: number;
   damageSides: number;
   damage: number;
+  damageModifier: number;
   criticalHits: number;
   toughness: number;
   save: number;
@@ -157,13 +160,16 @@ export const DEFAULT_PROFILE: CombatProfile = {
   attackDice: 0,
   attackSides: 0,
   attacks: 4,
+  attacksModifier: 0,
   weaponCount: 1,
   hitOn: 3,
   strength: 8,
+  strengthModifier: 0,
   ap: 2,
   damageDice: 1,
   damageSides: 6,
   damage: 1,
+  damageModifier: 0,
   criticalHits: 6,
   toughness: 8,
   save: 3,
@@ -231,13 +237,16 @@ export function normalizeProfile(input: unknown): CombatProfile {
     attackDice: numberValue("attackDice", 0, 20),
     attackSides: numberValue("attackSides", 0, 100),
     attacks: numberValue("attacks", 0, 1024),
+    attacksModifier: numberValue("attacksModifier", -1024, 1024),
     weaponCount: numberValue("weaponCount", 1, 100),
     hitOn: numberValue("hitOn", 2, 6),
     strength: numberValue("strength", 1, 1024),
+    strengthModifier: numberValue("strengthModifier", -1024, 1024),
     ap: numberValue("ap", 0, 100),
     damageDice: numberValue("damageDice", 0, 20),
     damageSides: numberValue("damageSides", 0, 100),
     damage: numberValue("damage", 0, 1024),
+    damageModifier: numberValue("damageModifier", -1024, 1024),
     criticalHits: numberValue("criticalHits", 2, 6),
     toughness: numberValue("toughness", 1, 1024),
     save: numberValue("save", 2, 7),
@@ -357,6 +366,29 @@ function rollDiceValue(count: number, sides: number, modifier: number, randomUin
   return total;
 }
 
+function modifiedCharacteristic(value: number, modifier: number) {
+  return Math.max(1, value + modifier);
+}
+
+function rollAttackCount(profile: CombatProfile, targetModels: number, randomUint32: RandomUint32) {
+  let total = 0;
+  for (let weapon = 0; weapon < profile.weaponCount; weapon += 1) {
+    const base =
+      rollDiceValue(profile.attackDice, profile.attackSides, profile.attacks, randomUint32) +
+      (profile.withinHalfRange
+        ? rollDiceValue(
+            profile.rapidFireDice,
+            profile.rapidFireSides,
+            profile.rapidFire,
+            randomUint32,
+          )
+        : 0) +
+      (profile.blast ? Math.floor(targetModels / 5) : 0);
+    total += modifiedCharacteristic(base, profile.attacksModifier);
+  }
+  return total;
+}
+
 function rollCheck(
   succeedsOn: number,
   criticalOn = 0,
@@ -381,23 +413,7 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
   if (profile.torrent && profile.indirect) {
     throw new Error("Torrent weapons cannot fire indirectly when the target is not visible");
   }
-  const attacksPerWeapon =
-    profile.attacks + (profile.blast ? Math.floor(profile.targetModels / 5) : 0);
-  const attacks =
-    rollDiceValue(
-      profile.attackDice * profile.weaponCount,
-      profile.attackSides,
-      attacksPerWeapon * profile.weaponCount,
-      randomUint32,
-    ) +
-    (profile.withinHalfRange
-      ? rollDiceValue(
-          profile.rapidFireDice * profile.weaponCount,
-          profile.rapidFireSides,
-          profile.rapidFire * profile.weaponCount,
-          randomUint32,
-        )
-      : 0);
+  const attacks = rollAttackCount(profile, profile.targetModels, randomUint32);
   if (attacks > 10_000) {
     throw new Error("This roll is too large. Reduce the attack or weapon count.");
   }
@@ -407,7 +423,10 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
     profile.hitModifier + (profile.heavyActive ? 1 : 0) - (profile.indirect ? 1 : 0),
   );
   const woundsOn = modifiedRollTarget(
-    woundTarget(profile.strength, profile.toughness),
+    woundTarget(
+      modifiedCharacteristic(profile.strength, profile.strengthModifier),
+      profile.toughness,
+    ),
     profile.woundModifier + (profile.lanceActive ? 1 : 0),
   );
   const savesOn = savingThrowTarget(
@@ -500,11 +519,14 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
     }
 
     result.unsavedAttacks += 1;
-    const rawDamage = rollDiceValue(
-      profile.damageDice,
-      profile.damageSides,
-      profile.damage + (profile.withinHalfRange ? profile.melta : 0),
-      randomUint32,
+    const rawDamage = modifiedCharacteristic(
+      rollDiceValue(
+        profile.damageDice,
+        profile.damageSides,
+        profile.damage + (profile.withinHalfRange ? profile.melta : 0),
+        randomUint32,
+      ),
+      profile.damageModifier,
     );
     const reducedDamage =
       rawDamage > 0 && profile.reduction > 0
@@ -635,22 +657,7 @@ export function simulateOrderedVolley(
       throw new Error("Torrent weapons cannot fire indirectly when the target is not visible");
     }
     const profile = { ...sourceProfile, targetModels };
-    const attacksPerWeapon = profile.attacks + (profile.blast ? Math.floor(targetModels / 5) : 0);
-    const attacks =
-      rollDiceValue(
-        profile.attackDice * profile.weaponCount,
-        profile.attackSides,
-        attacksPerWeapon * profile.weaponCount,
-        randomUint32,
-      ) +
-      (profile.withinHalfRange
-        ? rollDiceValue(
-            profile.rapidFireDice * profile.weaponCount,
-            profile.rapidFireSides,
-            profile.rapidFire * profile.weaponCount,
-            randomUint32,
-          )
-        : 0);
+    const attacks = rollAttackCount(profile, targetModels, randomUint32);
     if (attacks > 10_000) {
       throw new Error("This roll is too large. Reduce the attack or weapon count.");
     }
@@ -686,7 +693,10 @@ export function simulateOrderedVolley(
       if (!position) return;
       const target = targets[position.segmentIndex];
       const woundsOn = modifiedRollTarget(
-        woundTarget(profile.strength, target.toughness),
+        woundTarget(
+          modifiedCharacteristic(profile.strength, profile.strengthModifier),
+          target.toughness,
+        ),
         profile.woundModifier + (profile.lanceActive ? 1 : 0),
       );
       const savesOn = savingThrowTarget(
@@ -776,11 +786,14 @@ export function simulateOrderedVolley(
           return;
         }
         const allocationTarget = targets[allocationPosition.segmentIndex];
-        const rawDamage = rollDiceValue(
-          profile.damageDice,
-          profile.damageSides,
-          profile.damage + (profile.withinHalfRange ? profile.melta : 0),
-          randomUint32,
+        const rawDamage = modifiedCharacteristic(
+          rollDiceValue(
+            profile.damageDice,
+            profile.damageSides,
+            profile.damage + (profile.withinHalfRange ? profile.melta : 0),
+            randomUint32,
+          ),
+          profile.damageModifier,
         );
         const reducedDamage =
           rawDamage > 0 && allocationTarget.reduction > 0
@@ -922,19 +935,24 @@ export function simulateOrderedVolleyPhase(
       : 0;
     const maximumAttacks =
       profile.weaponCount *
-        (profile.attacks +
+      modifiedCharacteristic(
+        profile.attacks +
           profile.attackDice * profile.attackSides +
-          (profile.blast ? Math.floor(targetModels / 5) : 0)) +
-      (profile.withinHalfRange
-        ? profile.weaponCount * (profile.rapidFire + profile.rapidFireDice * profile.rapidFireSides)
-        : 0);
+          (profile.blast ? Math.floor(targetModels / 5) : 0) +
+          (profile.withinHalfRange
+            ? profile.rapidFire + profile.rapidFireDice * profile.rapidFireSides
+            : 0),
+        profile.attacksModifier,
+      );
     const maximumSustainedHits =
       profile.sustainedHits + profile.sustainedHitsDice * profile.sustainedHitsSides;
     const maximumResolvedHits = maximumAttacks * (1 + maximumSustainedHits);
-    const maximumDamage =
+    const maximumDamage = modifiedCharacteristic(
       profile.damage +
-      (profile.withinHalfRange ? profile.melta : 0) +
-      profile.damageDice * profile.damageSides;
+        (profile.withinHalfRange ? profile.melta : 0) +
+        profile.damageDice * profile.damageSides,
+      profile.damageModifier,
+    );
     const drawsPerResolvedHit =
       (profile.torrent ? 0 : profile.rerollHits || profile.rerollHitOnes ? 2 : 1) +
       (profile.twinLinked || profile.rerollWounds || profile.rerollWoundOnes ? 2 : 1) +

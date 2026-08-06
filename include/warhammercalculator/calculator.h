@@ -128,10 +128,14 @@ struct attack_plan {
 struct weapon_profile {
     char name[NAME_LENGTH];
     struct dice_value attacks;
+    int16_t attacks_modifier;
+    uint16_t weapon_count;
     uint8_t hits_on;
     uint16_t strength;
+    int16_t strength_modifier;
     uint16_t ap;
     struct dice_value damage;
+    int16_t damage_modifier;
     uint8_t critical_hits_on;
     int8_t hit_modifier;
     int8_t wound_modifier;
@@ -426,6 +430,13 @@ bool distribution_from_die(uint16_t sides, struct distribution *result);
     ensures \result ==> result->maximum <= MAX_DISTRIBUTION_RESULT;
 */
 bool distribution_from_dice_value(struct dice_value dice, struct distribution *result);
+/*@ requires \valid(result);
+    assigns *result;
+    ensures \result ==> whc_bounded_distribution(result);
+    ensures \result ==> result->minimum >= minimum;
+*/
+bool distribution_from_modified_dice_value(struct dice_value dice, int32_t modifier,
+                                           uint32_t minimum, struct distribution *result);
 /*@ requires \valid_read(left) && \valid_read(right) && \valid(result);
     assigns *result;
     ensures \result ==> result->minimum <= result->maximum;

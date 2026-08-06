@@ -467,6 +467,39 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.ok(calculated.data.applied.mean <= calculated.data.mean);
   assert.match(calculated.data.applied.estimated.numerator, /^\d+$/);
 
+  const signedProfile = {
+    attackDice: 1,
+    attackSides: 6,
+    attacks: 0,
+    attacksModifier: -100,
+    weaponCount: 2,
+    hitOn: 2,
+    strength: 10,
+    ap: 0,
+    damageDice: 0,
+    damageSides: 0,
+    damage: 1,
+    toughness: 1,
+    save: 7,
+    invulnerable: 0,
+    feelNoPain: 0,
+    wounds: 10,
+    targetModels: 1,
+    torrent: true,
+  };
+  const signedCalculation = await worker.fetch(
+    new Request("http://localhost/api/v1/calculate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ profile: signedProfile }),
+    }),
+    testEnv,
+    context,
+  );
+  const signedCalculationBody = await signedCalculation.json();
+  assert.equal(signedCalculation.status, 200);
+  assert.deepEqual(signedCalculationBody.data.exact, { numerator: "5", denominator: "3" });
+
   const volleyProfile = (ap, damage) => ({
     attackDice: 0,
     attackSides: 0,
@@ -795,6 +828,45 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.ok(rolled.data.details.length >= rolled.data.attacksResolved);
   assert.ok(rolled.data.appliedDamage <= rolled.data.totalDamage);
   assert.ok(rolled.data.modelsDestroyed <= 1);
+
+  const signedRoll = await worker.fetch(
+    new Request("http://localhost/api/v1/roll?details=false", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ profile: signedProfile }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(signedRoll.status, 200);
+  assert.equal((await signedRoll.json()).data.attacks, 2);
+
+  const signedSimulation = await worker.fetch(
+    new Request("http://localhost/api/v1/volley/simulate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        profiles: [signedProfile],
+        targets: [
+          {
+            toughness: 1,
+            save: 7,
+            invulnerable: 0,
+            feelNoPain: 0,
+            wounds: 10,
+            reduction: 0,
+            modelCount: 1,
+          },
+        ],
+        seed: 1,
+        trials: 100,
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(signedSimulation.status, 200);
+  assert.equal((await signedSimulation.json()).data.means.attacksResolved, 2);
 });
 
 test("API exact and seeded simulation paths match the shared rules interaction corpus", async () => {
