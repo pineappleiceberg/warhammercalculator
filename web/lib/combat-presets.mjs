@@ -50,6 +50,20 @@ export function combatPresetEffects(presets, weaponType, role) {
   };
 }
 
+export function updateCombatPresetSelection(presets, selectedIds, presetId, checked) {
+  const preset = presets.find((candidate) => candidate.id === presetId);
+  if (!preset) return selectedIds;
+  if (!checked) return selectedIds.filter((id) => id !== presetId);
+  const incompatible = new Set(
+    preset.choiceGroup
+      ? presets
+          .filter((candidate) => candidate.choiceGroup === preset.choiceGroup)
+          .map((candidate) => candidate.id)
+      : [],
+  );
+  return [...selectedIds.filter((id) => !incompatible.has(id) && id !== presetId), presetId];
+}
+
 export function applyCombatPresets(profile, attackerPresets, targetPresets, weaponType) {
   const attacker = combatPresetEffects(attackerPresets, weaponType, "attacker");
   const target = combatPresetEffects(targetPresets, weaponType, "target");

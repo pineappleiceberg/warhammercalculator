@@ -93,6 +93,7 @@ export type CatalogueUnresolvedLoadoutSubject = {
 };
 export type CatalogueCombatPreset = {
   id: string;
+  choiceGroup: string | null;
   name: string;
   description: string;
   weaponScope: "Any" | "Ranged" | "Melee";

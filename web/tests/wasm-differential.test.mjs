@@ -21,6 +21,7 @@ import {
   applyCombatPresets,
   combatPresetEffects,
   combatPresetSupportsRole,
+  updateCombatPresetSelection,
 } from "../lib/combat-presets.mjs";
 import { rulesInteractionCases } from "./rules-interaction-corpus.mjs";
 import {
@@ -191,6 +192,19 @@ test("unit ability presets separate attacking and defensive effects", () => {
     ).hitModifier,
     1,
   );
+});
+
+test("mutually exclusive ability modes replace the prior selection", () => {
+  const presets = [
+    { id: "unit:3", choiceGroup: "unit:3" },
+    { id: "unit:3:2", choiceGroup: "unit:3" },
+    { id: "unit:7", choiceGroup: null },
+  ];
+  assert.deepEqual(updateCombatPresetSelection(presets, ["unit:3", "unit:7"], "unit:3:2", true), [
+    "unit:7",
+    "unit:3:2",
+  ]);
+  assert.deepEqual(updateCombatPresetSelection(presets, ["unit:3:2"], "unit:3:2", false), []);
 });
 
 test("source defaults scale with model count without discarding editable overrides", () => {

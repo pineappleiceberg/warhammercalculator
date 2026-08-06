@@ -16,14 +16,22 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Split source abilities that contain mutually exclusive modes into separate
-   selectable effects, and expose defensive target abilities in Model vs Model
-   without combining effects that cannot be active together.
+1. Classify the subject and recipient of imported ability clauses so selectors
+   can distinguish self, led-unit, friendly-unit, and enemy-unit effects instead
+   of relying only on the sign of a modifier.
 2. Record the observed peak sparse-state count from exact Devastating Wounds
    volleys and use benchmark evidence to tighten the conservative preflight
    without ever hiding a valid exact option.
 
 ## Completed cycles
+
+- 2026-08-06: Split imported abilities with named modes or rolled outcomes into
+  atomic combat presets and added stable exclusive-choice groups to SQLite and
+  the browser catalogue. Selecting one mode now replaces its sibling instead
+  of combining impossible effects. Model vs Model gained explicit attacking
+  and defensive ability selectors while retaining editable characteristics;
+  parser, artifact, selection, build, and C/WebAssembly regressions cover the
+  workflow.
 
 - 2026-08-06: Added source-backed conditional ability selection to Unit vs
   Unit, saved lists, and Play Mode. Saved defaults follow a unit into battle,

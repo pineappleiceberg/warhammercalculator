@@ -17,7 +17,11 @@ import { antiWoundThreshold } from "../lib/anti.mjs";
 import { allocateDamageToUnit } from "../lib/allocation.mjs";
 import { abilityDiceValue, parseDice } from "../lib/dice.mjs";
 import { WorkflowNav } from "../components/workflow-nav";
-import { combatPresetEffects, combatPresetSupportsRole } from "../lib/combat-presets.mjs";
+import { CombatPresetSelector } from "../components/combat-preset-selector";
+import {
+  applyCombatPresets as applySelectedCombatPresets,
+  combatPresetSupportsRole,
+} from "../lib/combat-presets.mjs";
 
 type Result = {
   minimum: number;
@@ -70,6 +74,7 @@ type CatalogueModel = {
 };
 type CatalogueCombatPreset = {
   id: string;
+  choiceGroup: string | null;
   name: string;
   description: string;
   weaponScope: "Any" | "Ranged" | "Melee";
@@ -691,6 +696,8 @@ export default function Home() {
   const [targetFaction, setTargetFaction] = useState("");
   const [targetUnit, setTargetUnit] = useState("");
   const [targetModel, setTargetModel] = useState("");
+  const [activeAttackerPresetIds, setActiveAttackerPresetIds] = useState<string[]>([]);
+  const [activeTargetPresetIds, setActiveTargetPresetIds] = useState<string[]>([]);
   const [rollResult, setRollResult] = useState<RollResult | null>(null);
   const [rollError, setRollError] = useState("");
   const [shareStatus, setShareStatus] = useState("Share matchup");
@@ -787,6 +794,20 @@ export default function Home() {
   const selectedTargetModel = selectedTargetUnit?.models.find(
     (model) => String(model.id) === targetModel,
   );
+  const selectedPresets = (unit: CatalogueUnit | undefined, ids: string[]) =>
+    unit?.combatPresets.filter((preset) => ids.includes(preset.id)) ?? [];
+  const withActivePresets = (
+    current: Profile,
+    weapon: CatalogueWeapon | undefined = selectedWeapon,
+    attackerIds = activeAttackerPresetIds,
+    targetIds = activeTargetPresetIds,
+  ) =>
+    applySelectedCombatPresets(
+      current,
+      selectedPresets(selectedAttackerUnit, attackerIds),
+      selectedPresets(selectedTargetUnit, targetIds),
+      weapon?.type ?? "Ranged",
+    ) as Profile;
 
   const applyWeapon = (weapon: CatalogueWeapon) => {
     const attacks = parseDice(weapon.attacks);
@@ -796,65 +817,81 @@ export default function Home() {
     const sustainedHits = abilityDiceValue(ability("sustained hits"));
     const rapidFire = abilityDiceValue(ability("rapid fire"));
 
-    setProfile((current) => ({
-      ...current,
-      ...(attacks
-        ? {
-            attackDice: attacks.count,
-            attackSides: attacks.sides,
-            attacks: attacks.modifier,
-          }
-        : {}),
-      ...(damage
-        ? {
-            damageDice: damage.count,
-            damageSides: damage.sides,
-            damage: damage.modifier,
-          }
-        : {}),
-      ...(weapon.skill ? { hitOn: weapon.skill } : {}),
-      ...(/^\d+$/.test(weapon.strength) ? { strength: Number(weapon.strength) } : {}),
-      ...(weapon.ap !== null ? { ap: Math.abs(weapon.ap) } : {}),
-      criticalWounds: antiWoundThreshold(weapon.abilities, selectedTargetModel?.keywords ?? []),
-      sustainedHitsDice: sustainedHits.count,
-      sustainedHitsSides: sustainedHits.sides,
-      sustainedHits: sustainedHits.modifier,
-      rapidFireDice: rapidFire.count,
-      rapidFireSides: rapidFire.sides,
-      rapidFire: rapidFire.modifier,
-      melta: abilityDiceValue(ability("melta")).modifier,
-      torrent: names.has("torrent"),
-      blast: names.has("blast"),
-      ignoresCover: names.has("ignores cover"),
-      lethalHits: names.has("lethal hits"),
-      devastatingWounds: names.has("devastating wounds"),
-      twinLinked: names.has("twin-linked"),
-      withinHalfRange: false,
-      heavyActive: false,
-      lanceActive: false,
-      indirect: false,
-    }));
+    setProfile((current) =>
+      withActivePresets(
+        {
+          ...current,
+          ...(attacks
+            ? {
+                attackDice: attacks.count,
+                attackSides: attacks.sides,
+                attacks: attacks.modifier,
+              }
+            : {}),
+          ...(damage
+            ? {
+                damageDice: damage.count,
+                damageSides: damage.sides,
+                damage: damage.modifier,
+              }
+            : {}),
+          ...(weapon.skill ? { hitOn: weapon.skill } : {}),
+          ...(/^\d+$/.test(weapon.strength) ? { strength: Number(weapon.strength) } : {}),
+          ...(weapon.ap !== null ? { ap: Math.abs(weapon.ap) } : {}),
+          criticalWounds: antiWoundThreshold(weapon.abilities, selectedTargetModel?.keywords ?? []),
+          sustainedHitsDice: sustainedHits.count,
+          sustainedHitsSides: sustainedHits.sides,
+          sustainedHits: sustainedHits.modifier,
+          rapidFireDice: rapidFire.count,
+          rapidFireSides: rapidFire.sides,
+          rapidFire: rapidFire.modifier,
+          melta: abilityDiceValue(ability("melta")).modifier,
+          torrent: names.has("torrent"),
+          blast: names.has("blast"),
+          ignoresCover: names.has("ignores cover"),
+          lethalHits: names.has("lethal hits"),
+          devastatingWounds: names.has("devastating wounds"),
+          twinLinked: names.has("twin-linked"),
+          withinHalfRange: false,
+          heavyActive: false,
+          lanceActive: false,
+          indirect: false,
+        },
+        weapon,
+      ),
+    );
   };
 
-  const applyTarget = (model: CatalogueModel) => {
-    setProfile((current) => ({
-      ...current,
-      ...(model.t ? { toughness: model.t } : {}),
-      ...(model.save ? { save: model.save } : {}),
-      invulnerable: model.invuln ?? 0,
-      ...(model.wounds ? { wounds: model.wounds } : {}),
-      criticalWounds: selectedWeapon
-        ? antiWoundThreshold(selectedWeapon.abilities, model.keywords)
-        : 0,
-    }));
+  const applyTarget = (model: CatalogueModel, targetIds = activeTargetPresetIds) => {
+    setProfile((current) =>
+      withActivePresets(
+        {
+          ...current,
+          ...(model.t ? { toughness: model.t } : {}),
+          ...(model.save ? { save: model.save } : {}),
+          invulnerable: model.invuln ?? 0,
+          ...(model.wounds ? { wounds: model.wounds } : {}),
+          criticalWounds: selectedWeapon
+            ? antiWoundThreshold(selectedWeapon.abilities, model.keywords)
+            : 0,
+        },
+        selectedWeapon,
+        activeAttackerPresetIds,
+        targetIds,
+      ),
+    );
   };
 
-  const applyCombatPreset = (preset: CatalogueCombatPreset) => {
-    const effects = combatPresetEffects([preset], selectedWeapon?.type ?? "Ranged", "attacker");
-    setProfile((current) => ({
-      ...current,
-      ...effects,
-    }));
+  const chooseAttackerPresets = (ids: string[]) => {
+    setActiveAttackerPresetIds(ids);
+    setProfile((current) => withActivePresets(current, selectedWeapon, ids));
+  };
+
+  const chooseTargetPresets = (ids: string[]) => {
+    setActiveTargetPresetIds(ids);
+    setProfile((current) =>
+      withActivePresets(current, selectedWeapon, activeAttackerPresetIds, ids),
+    );
   };
 
   const shareMatchup = async () => {
@@ -901,7 +938,14 @@ export default function Home() {
           <button className="share-matchup" type="button" onClick={shareMatchup} aria-live="polite">
             {shareStatus}
           </button>
-          <button type="button" onClick={() => setProfile(DEFAULT_PROFILE)}>
+          <button
+            type="button"
+            onClick={() => {
+              setProfile(DEFAULT_PROFILE);
+              setActiveAttackerPresetIds([]);
+              setActiveTargetPresetIds([]);
+            }}
+          >
             Reset profile
           </button>
         </div>
@@ -929,6 +973,10 @@ export default function Home() {
                       setAttackerFaction(event.target.value);
                       setAttackerUnit("");
                       setAttackerWeapon("");
+                      setActiveAttackerPresetIds([]);
+                      setProfile((current) =>
+                        withActivePresets(current, selectedWeapon, [], activeTargetPresetIds),
+                      );
                     }}
                   >
                     <option value="">{catalogue ? "Choose faction" : "Loading profiles…"}</option>
@@ -947,15 +995,10 @@ export default function Home() {
                     onChange={(event) => {
                       setAttackerUnit(event.target.value);
                       setAttackerWeapon("");
-                      setProfile((current) => ({
-                        ...current,
-                        hitModifier: 0,
-                        woundModifier: 0,
-                        rerollHits: false,
-                        rerollHitOnes: false,
-                        rerollWounds: false,
-                        rerollWoundOnes: false,
-                      }));
+                      setActiveAttackerPresetIds([]);
+                      setProfile((current) =>
+                        withActivePresets(current, selectedWeapon, [], activeTargetPresetIds),
+                      );
                     }}
                   >
                     <option value="">Choose unit</option>
@@ -994,40 +1037,19 @@ export default function Home() {
                   <span>{selectedWeapon.rules || "No weapon keywords"}</span>
                 </p>
               )}
-              {selectedWeapon &&
-                selectedAttackerUnit &&
-                selectedAttackerUnit.combatPresets.some(
-                  (preset) =>
-                    combatPresetSupportsRole(preset, "attacker") &&
-                    (preset.weaponScope === "Any" || preset.weaponScope === selectedWeapon.type),
-                ) && (
-                  <div className="ability-presets" aria-label="Unit ability presets">
-                    <div>
-                      <b>Unit abilities</b>
-                      <span>
-                        Apply only when the printed condition is active. Values remain editable.
-                      </span>
-                    </div>
-                    {selectedAttackerUnit.combatPresets
-                      .filter(
-                        (preset) =>
-                          combatPresetSupportsRole(preset, "attacker") &&
-                          (preset.weaponScope === "Any" ||
-                            preset.weaponScope === selectedWeapon.type),
-                      )
-                      .map((preset) => (
-                        <button
-                          type="button"
-                          key={preset.id}
-                          title={preset.description}
-                          onClick={() => applyCombatPreset(preset)}
-                        >
-                          <b>{preset.name}</b>
-                          <span>{preset.description}</span>
-                        </button>
-                      ))}
-                  </div>
-                )}
+              {selectedWeapon && selectedAttackerUnit && (
+                <CombatPresetSelector
+                  presets={selectedAttackerUnit.combatPresets.filter(
+                    (preset) =>
+                      combatPresetSupportsRole(preset, "attacker") &&
+                      (preset.weaponScope === "Any" || preset.weaponScope === selectedWeapon.type),
+                  )}
+                  role="attacker"
+                  selectedIds={activeAttackerPresetIds}
+                  onChange={chooseAttackerPresets}
+                  title="Active attacking abilities"
+                />
+              )}
               <DiceField
                 label="Attacks"
                 count={profile.attackDice}
@@ -1118,6 +1140,10 @@ export default function Home() {
                       setTargetFaction(event.target.value);
                       setTargetUnit("");
                       setTargetModel("");
+                      setActiveTargetPresetIds([]);
+                      setProfile((current) =>
+                        withActivePresets(current, selectedWeapon, activeAttackerPresetIds, []),
+                      );
                     }}
                   >
                     <option value="">{catalogue ? "Choose faction" : "Loading profiles…"}</option>
@@ -1136,10 +1162,14 @@ export default function Home() {
                     onChange={(event) => {
                       setTargetUnit(event.target.value);
                       setTargetModel("");
+                      setActiveTargetPresetIds([]);
+                      setProfile((current) =>
+                        withActivePresets(current, selectedWeapon, activeAttackerPresetIds, []),
+                      );
                       const unit = targetUnits.find((item) => item.id === event.target.value);
                       if (unit?.models.length === 1) {
                         setTargetModel(String(unit.models[0].id));
-                        applyTarget(unit.models[0]);
+                        applyTarget(unit.models[0], []);
                       }
                     }}
                   >
@@ -1178,6 +1208,17 @@ export default function Home() {
                   <b>Profile loaded</b>
                   <span>Adjust wounds, models, and defensive rules as needed</span>
                 </p>
+              )}
+              {selectedTargetUnit && (
+                <CombatPresetSelector
+                  presets={selectedTargetUnit.combatPresets.filter((preset) =>
+                    combatPresetSupportsRole(preset, "target"),
+                  )}
+                  role="target"
+                  selectedIds={activeTargetPresetIds}
+                  onChange={chooseTargetPresets}
+                  title="Active defensive abilities"
+                />
               )}
               <div className="field-grid three">
                 <NumberField

@@ -17,7 +17,9 @@ The main tables are:
 - `abilities` and `datasheet_abilities` for resolved shared and unit-specific
   ability names, conditions, scope, and source ordering
 - `unit_combat_presets` for conservatively extracted Hit/Wound modifiers and
-  re-roll modes; these preserve the full condition and are never assumed active
+  re-roll modes; mutually exclusive named modes and rolled outcomes are stored
+  as separate ordered choices, while every choice preserves its full condition
+  and is never assumed active
 - `unit_composition` and `unit_composition_models` for source ordering, display
   text, safely parsed unit-size ranges, and the named model components within
   each composition row
@@ -71,6 +73,15 @@ python3 scripts/build_profiles_db.py --update-source-lock
 python3 scripts/export_profiles_json.py data/warhammer_10e.sqlite web/public/profile-data.json
 python3 scripts/profile_freshness.py --offline
 python3 -m unittest discover -s tests -p test_profiles_data.py
+```
+
+When only the derived combat-preset parser or schema changes, rebuild that table
+without downloading or replacing the pinned source exports, then regenerate the
+browser catalogue:
+
+```sh
+python3 scripts/rebuild_combat_presets.py data/warhammer_10e.sqlite
+python3 scripts/export_profiles_json.py data/warhammer_10e.sqlite web/public/profile-data.json
 ```
 
 CI verifies the lock against both SQLite and the browser catalogue without

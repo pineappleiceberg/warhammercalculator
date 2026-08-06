@@ -6,6 +6,7 @@ from pathlib import Path
 
 from scripts.build_profiles_db import (
     combat_preset,
+    combat_presets,
     composition_components,
     composition_range,
     plain_text,
@@ -55,6 +56,37 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(preset["reroll_hit_ones"], 1)
         self.assertEqual(preset["reroll_hits"], 0)
         self.assertIsNone(combat_preset("Add 1 to this model's Leadership characteristic."))
+
+    def test_combat_preset_parser_splits_exclusive_modes_and_roll_outcomes(self):
+        dance = combat_presets(
+            "Dance of Death",
+            "At the start of the Fight phase, select one of the following abilities: "
+            "Hero’s Prowess: Each time a model in this unit makes an attack, re-roll a Hit roll of 1. "
+            "Villain’s Doom: Each time a model in this unit makes an attack, add 1 to the Wound roll. "
+            "Trickster’s Grace: Each time an attack targets this unit, subtract 1 from the Hit roll.",
+        )
+        self.assertEqual([preset["name"] for preset in dance], [
+            "Dance of Death — Hero’s Prowess",
+            "Dance of Death — Villain’s Doom",
+            "Dance of Death — Trickster’s Grace",
+        ])
+        self.assertEqual([preset["is_exclusive_choice"] for preset in dance], [1, 1, 1])
+        self.assertEqual(dance[0]["reroll_hit_ones"], 1)
+        self.assertEqual(dance[1]["wound_modifier"], 1)
+        self.assertEqual(dance[2]["hit_modifier"], -1)
+
+        outcomes = combat_presets(
+            "Mind Control",
+            "Select a unit and roll one D6: on a 1, nothing happens; on a 2-5, each time it "
+            "makes an attack, subtract 1 from the Hit roll; on a 6, each time it makes an "
+            "attack, subtract 1 from the Hit roll and subtract 1 from the Wound roll.",
+        )
+        self.assertEqual([preset["name"] for preset in outcomes], [
+            "Mind Control — roll 2–5",
+            "Mind Control — roll 6",
+        ])
+        self.assertEqual(outcomes[0]["wound_modifier"], 0)
+        self.assertEqual(outcomes[1]["wound_modifier"], -1)
 
     def test_checked_artifacts_match_the_pinned_source_manifest(self):
         lock = json.loads(SOURCE_LOCK.read_text(encoding="utf-8"))
@@ -177,7 +209,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "9",
+                "10",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -194,6 +226,20 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute("SELECT count(*) FROM unit_combat_presets").fetchone()[0],
                 900,
             )
+            dance = connection.execute(
+                """SELECT preset_position, name, hit_modifier, wound_modifier,
+                          reroll_hit_ones, is_exclusive_choice
+                   FROM unit_combat_presets
+                   WHERE datasheet_id = '000002536' AND ability_position = 3
+                   ORDER BY preset_position"""
+            ).fetchall()
+            self.assertEqual(len(dance), 3)
+            self.assertEqual([row[1] for row in dance], [
+                "Dance of Death — Hero’s Prowess",
+                "Dance of Death — Villain’s Doom",
+                "Dance of Death — Trickster’s Grace",
+            ])
+            self.assertEqual([row[5] for row in dance], [1, 1, 1])
             self.assertEqual(
                 connection.execute(
                     """SELECT weapon_scope, hit_modifier, wound_modifier
@@ -326,6 +372,12 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(might["weaponScope"], "Melee")
         self.assertEqual(might["hitModifier"], 1)
         self.assertIn("leading a unit", might["description"])
+        troupe = next(unit for unit in catalogue["units"] if unit["id"] == "000002536")
+        dance = [preset for preset in troupe["combatPresets"] if preset["choiceGroup"]]
+        self.assertEqual(len(dance), 3)
+        self.assertEqual(dance[0]["id"], "000002536:3")
+        self.assertEqual(dance[1]["id"], "000002536:3:2")
+        self.assertEqual({preset["choiceGroup"] for preset in dance}, {"000002536:3"})
         for unit in catalogue["units"]:
             weapon_group_ids = {weapon["groupId"] for weapon in unit["weapons"]}
             for limit in unit["weaponLimits"]:

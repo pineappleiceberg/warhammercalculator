@@ -150,8 +150,10 @@ CREATE TABLE datasheet_abilities (
 CREATE TABLE unit_combat_presets (
     datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
     ability_position INTEGER NOT NULL,
+    preset_position INTEGER NOT NULL CHECK (preset_position >= 1),
     name TEXT NOT NULL,
     description_text TEXT NOT NULL,
+    is_exclusive_choice INTEGER NOT NULL CHECK (is_exclusive_choice IN (0, 1)),
     weapon_scope TEXT NOT NULL CHECK (weapon_scope IN ('Any', 'Ranged', 'Melee')),
     hit_modifier INTEGER NOT NULL CHECK (hit_modifier BETWEEN -1 AND 1),
     wound_modifier INTEGER NOT NULL CHECK (wound_modifier BETWEEN -1 AND 1),
@@ -159,7 +161,7 @@ CREATE TABLE unit_combat_presets (
     reroll_hit_ones INTEGER NOT NULL CHECK (reroll_hit_ones IN (0, 1)),
     reroll_wounds INTEGER NOT NULL CHECK (reroll_wounds IN (0, 1)),
     reroll_wound_ones INTEGER NOT NULL CHECK (reroll_wound_ones IN (0, 1)),
-    PRIMARY KEY (datasheet_id, ability_position),
+    PRIMARY KEY (datasheet_id, ability_position, preset_position),
     FOREIGN KEY (datasheet_id, ability_position)
         REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
 ) WITHOUT ROWID;
@@ -363,6 +365,103 @@ def combat_preset(description: str) -> dict[str, int | str] | None:
     return effects
 
 
+def combat_presets(name: str, description: str) -> list[dict[str, int | str]]:
+    text = plain_text(description)
+    choice = re.search(r"\b(?:select|choose) one of the following\b[^:]{0,160}:\s*", text, re.IGNORECASE)
+    candidates: list[tuple[str, str]] = []
+    if choice:
+        tail = text[choice.end() :]
+        modes = list(
+            re.finditer(
+                r"(?:^|(?<=[.:]))\s*([A-Z][A-Za-z0-9À-ÖØ-öø-ÿ’'&(), -]{1,80}):\s*",
+                tail,
+            )
+        )
+        if len(modes) >= 2:
+            introduction = text[: choice.end()]
+            for index, mode in enumerate(modes):
+                body_end = modes[index + 1].start() if index + 1 < len(modes) else len(tail)
+                mode_name = mode.group(1).strip()
+                mode_text = f"{introduction}{mode_name}: {tail[mode.end() : body_end].strip()}"
+                candidates.append((mode_name, mode_text))
+
+    if not candidates:
+        outcomes = list(
+            re.finditer(r"\bon (?:a |an )?(\d+(?:-\d+)?\+?),\s*", text, re.IGNORECASE)
+        )
+        if len(outcomes) >= 2:
+            introduction = text[: outcomes[0].start()]
+            for index, outcome in enumerate(outcomes):
+                body_end = outcomes[index + 1].start() if index + 1 < len(outcomes) else len(text)
+                outcome_text = text[outcome.start() : body_end].strip(" ;")
+                candidates.append(
+                    (f"roll {outcome.group(1).replace('-', '–')}", f"{introduction}{outcome_text}")
+                )
+
+    parsed = []
+    for variant_name, variant_description in candidates:
+        effects = combat_preset(variant_description)
+        if effects:
+            parsed.append(
+                {
+                    "name": f"{name} — {variant_name}",
+                    "description": variant_description,
+                    **effects,
+                }
+            )
+    if parsed:
+        for preset in parsed:
+            preset["is_exclusive_choice"] = int(len(parsed) > 1)
+        return parsed
+
+    effects = combat_preset(text)
+    if not effects:
+        return []
+    return [
+        {
+            "name": name,
+            "description": text,
+            "is_exclusive_choice": 0,
+            **effects,
+        }
+    ]
+
+
+def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
+    connection.execute("DELETE FROM unit_combat_presets")
+    inserted = 0
+    abilities = connection.execute(
+        """SELECT datasheet_id, position, name, description_text
+           FROM datasheet_abilities ORDER BY datasheet_id, position"""
+    ).fetchall()
+    for datasheet_id, ability_position, name, description in abilities:
+        for preset_position, preset in enumerate(combat_presets(name, description), start=1):
+            connection.execute(
+                """INSERT INTO unit_combat_presets
+                   (datasheet_id, ability_position, preset_position, name, description_text,
+                    is_exclusive_choice, weapon_scope, hit_modifier, wound_modifier,
+                    reroll_hits, reroll_hit_ones, reroll_wounds, reroll_wound_ones)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    datasheet_id,
+                    ability_position,
+                    preset_position,
+                    preset["name"],
+                    preset["description"],
+                    preset["is_exclusive_choice"],
+                    preset["weapon_scope"],
+                    preset["hit_modifier"],
+                    preset["wound_modifier"],
+                    preset["reroll_hits"],
+                    preset["reroll_hit_ones"],
+                    preset["reroll_wounds"],
+                    preset["reroll_wound_ones"],
+                ),
+            )
+            inserted += 1
+    return inserted
+
+
 def composition_components(value: str) -> list[tuple[str, int, int]]:
     normalized = plain_text(value).replace("‑", "-").replace("–", "-")
     if re.search(r"\bor\b", normalized, re.IGNORECASE):
@@ -496,7 +595,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "9"),
+                    ("schema_version", "10"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
@@ -603,28 +702,7 @@ def create_database(
                         row["parameter"].strip() or None,
                     ),
                 )
-                preset = combat_preset(description)
-                if preset:
-                    connection.execute(
-                        """INSERT INTO unit_combat_presets
-                           (datasheet_id, ability_position, name, description_text,
-                            weapon_scope, hit_modifier, wound_modifier, reroll_hits,
-                            reroll_hit_ones, reroll_wounds, reroll_wound_ones)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (
-                            datasheet_id,
-                            position,
-                            name,
-                            description,
-                            preset["weapon_scope"],
-                            preset["hit_modifier"],
-                            preset["wound_modifier"],
-                            preset["reroll_hits"],
-                            preset["reroll_hit_ones"],
-                            preset["reroll_wounds"],
-                            preset["reroll_wound_ones"],
-                        ),
-                    )
+            rebuild_combat_presets(connection)
             connection.executemany(
                 """INSERT INTO model_profiles
                    (datasheet_id, source_line, name, movement, movement_inches,

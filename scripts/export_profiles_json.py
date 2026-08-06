@@ -160,15 +160,17 @@ def export(database: Path, output: Path) -> None:
             )
 
         for row in connection.execute(
-            """SELECT datasheet_id, ability_position, name, description_text,
-                      weapon_scope, hit_modifier, wound_modifier, reroll_hits,
+            """SELECT datasheet_id, ability_position, preset_position, name, description_text,
+                      is_exclusive_choice, weapon_scope, hit_modifier, wound_modifier, reroll_hits,
                       reroll_hit_ones, reroll_wounds, reroll_wound_ones
                FROM unit_combat_presets
-               ORDER BY datasheet_id, ability_position"""
+               ORDER BY datasheet_id, ability_position, preset_position"""
         ):
+            base_id = f"{row['datasheet_id']}:{row['ability_position']}"
             units[row["datasheet_id"]]["combatPresets"].append(
                 {
-                    "id": f"{row['datasheet_id']}:{row['ability_position']}",
+                    "id": base_id if row["preset_position"] == 1 else f"{base_id}:{row['preset_position']}",
+                    "choiceGroup": base_id if row["is_exclusive_choice"] else None,
                     "name": row["name"],
                     "description": row["description_text"],
                     "weaponScope": row["weapon_scope"],
