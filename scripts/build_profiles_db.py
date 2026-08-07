@@ -178,10 +178,16 @@ CREATE TABLE unit_combat_presets (
         CHECK (requires_source_controls_objective IN (0, 1)),
     requires_target_on_objective_not_controlled_by_source INTEGER NOT NULL DEFAULT 0
         CHECK (requires_target_on_objective_not_controlled_by_source IN (0, 1)),
+    requires_source_on_selected_objective INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_source_on_selected_objective IN (0, 1)),
+    requires_target_on_source_selected_objective INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_target_on_source_selected_objective IN (0, 1)),
     requires_target_battle_shocked INTEGER NOT NULL DEFAULT 0
         CHECK (requires_target_battle_shocked IN (0, 1)),
     requires_attacker_not_battle_shocked INTEGER NOT NULL DEFAULT 0
         CHECK (requires_attacker_not_battle_shocked IN (0, 1)),
+    requires_source_not_battle_shocked INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_source_not_battle_shocked IN (0, 1)),
     required_target_strength_state TEXT
         CHECK (required_target_strength_state IN
             ('below_starting', 'below_half', 'not_below_half')),
@@ -703,6 +709,52 @@ def combat_direct_objective_presets(
         effects = combat_preset(normalized, allow_bearer_defenses)
         if effects:
             effects["requires_source_controls_objective"] = True
+            return [
+                {
+                    "name": name,
+                    "description": normalized,
+                    "is_exclusive_choice": 0,
+                    "activation": "automatic",
+                    **effects,
+                }
+            ]
+    selected_objective_patterns = {
+        "Archon’s Will": (
+            r"At the start of the first battle round, select one objective marker on the "
+            r"battlefield\. Until the end of the battle, while this unit is within range "
+            r"of that objective marker, unless this unit is Battle-shocked, models in "
+            r"this unit have a 5\+ invulnerable save and an Objective Control "
+            r"characteristic of 3\.",
+            "source",
+        ),
+        "Priority Objective Identified": (
+            r"At the start of the first battle round, if your army includes one or more "
+            r"models with this ability, you can select one objective marker on the "
+            r"battlefield\. Until the end of the battle, while one or more models with "
+            r"this ability are on the battlefield, each time a friendly ADEPTUS ASTARTES "
+            r"model makes an attack that targets an enemy unit that is within range of "
+            r"that objective marker, re-roll a Wound roll of 1\.",
+            "target",
+        ),
+        "Seeker of the Unfound": (
+            r"The first time this model is set up on the battlefield, select one objective "
+            r"marker on the battlefield\. While this model is within range of that "
+            r"objective marker, this model has an Objective Control characteristic of 10, "
+            r"a Leadership characteristic of 5\+ and the Feel No Pain 4\+ ability\.",
+            "source",
+        ),
+    }
+    selected_pattern = selected_objective_patterns.get(name)
+    if selected_pattern and re.fullmatch(selected_pattern[0], normalized, re.IGNORECASE):
+        effects = combat_preset(normalized, allow_bearer_defenses)
+        if effects:
+            effects[
+                "requires_source_on_selected_objective"
+                if selected_pattern[1] == "source"
+                else "requires_target_on_source_selected_objective"
+            ] = True
+            if name == "Archon’s Will":
+                effects["requires_source_not_battle_shocked"] = True
             return [
                 {
                     "name": name,
@@ -1874,6 +1926,9 @@ def combat_preset(
     effects["requires_target_on_objective"] = False
     effects["requires_source_controls_objective"] = False
     effects["requires_target_on_objective_not_controlled_by_source"] = False
+    effects["requires_source_on_selected_objective"] = False
+    effects["requires_target_on_source_selected_objective"] = False
+    effects["requires_source_not_battle_shocked"] = False
     (
         effects["requires_target_battle_shocked"],
         effects["requires_attacker_not_battle_shocked"],
@@ -1897,8 +1952,11 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
             "requires_target_on_objective",
             "requires_source_controls_objective",
             "requires_target_on_objective_not_controlled_by_source",
+            "requires_source_on_selected_objective",
+            "requires_target_on_source_selected_objective",
             "requires_target_battle_shocked",
             "requires_attacker_not_battle_shocked",
+            "requires_source_not_battle_shocked",
             "required_target_strength_state",
         )
     ):
@@ -2264,15 +2322,18 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     requires_source_on_objective, requires_target_on_objective,
                     requires_source_controls_objective,
                     requires_target_on_objective_not_controlled_by_source,
+                    requires_source_on_selected_objective,
+                    requires_target_on_source_selected_objective,
                     requires_target_battle_shocked,
                     requires_attacker_not_battle_shocked,
+                    requires_source_not_battle_shocked,
                     required_target_strength_state,
                     hit_modifier, hit_modifier_role,
                     hit_modifier_subject, wound_modifier, wound_modifier_role,
                     wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                     hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
                     wound_reroll_subject)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     ability_position,
@@ -2293,8 +2354,11 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     int(preset["requires_target_on_objective"]),
                     int(preset["requires_source_controls_objective"]),
                     int(preset["requires_target_on_objective_not_controlled_by_source"]),
+                    int(preset["requires_source_on_selected_objective"]),
+                    int(preset["requires_target_on_source_selected_objective"]),
                     int(preset["requires_target_battle_shocked"]),
                     int(preset["requires_attacker_not_battle_shocked"]),
+                    int(preset["requires_source_not_battle_shocked"]),
                     preset["required_target_strength_state"],
                     preset["hit_modifier"],
                     preset.get("hit_modifier_role"),
@@ -2477,7 +2541,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "39"),
+                    ("schema_version", "40"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

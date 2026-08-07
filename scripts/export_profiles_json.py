@@ -173,8 +173,11 @@ def export(database: Path, output: Path) -> None:
                       requires_source_on_objective, requires_target_on_objective,
                       requires_source_controls_objective,
                       requires_target_on_objective_not_controlled_by_source,
+                      requires_source_on_selected_objective,
+                      requires_target_on_source_selected_objective,
                       requires_target_battle_shocked,
                       requires_attacker_not_battle_shocked, required_target_strength_state,
+                      requires_source_not_battle_shocked,
                       hit_modifier, hit_modifier_role,
                       hit_modifier_subject, wound_modifier, wound_modifier_role,
                       wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
@@ -247,6 +250,16 @@ def export(database: Path, output: Path) -> None:
                         else {}
                     ),
                     **(
+                        {"requiresSourceOnSelectedObjective": True}
+                        if row["requires_source_on_selected_objective"]
+                        else {}
+                    ),
+                    **(
+                        {"requiresTargetOnSourceSelectedObjective": True}
+                        if row["requires_target_on_source_selected_objective"]
+                        else {}
+                    ),
+                    **(
                         {"requiresTargetBattleShocked": True}
                         if row["requires_target_battle_shocked"]
                         else {}
@@ -254,6 +267,11 @@ def export(database: Path, output: Path) -> None:
                     **(
                         {"requiresAttackerNotBattleShocked": True}
                         if row["requires_attacker_not_battle_shocked"]
+                        else {}
+                    ),
+                    **(
+                        {"requiresSourceNotBattleShocked": True}
+                        if row["requires_source_not_battle_shocked"]
                         else {}
                     ),
                     **(

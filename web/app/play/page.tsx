@@ -189,6 +189,9 @@ export default function PlayMode() {
     targetUnitOnObjective = false,
     sourceUnitControlsObjective = false,
     targetUnitOnObjectiveNotControlledBySource = false,
+    sourceUnitOnSelectedObjective = false,
+    targetUnitOnSourceSelectedObjective = false,
+    sourceUnitBattleShocked = false,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -211,6 +214,9 @@ export default function PlayMode() {
       targetUnitOnObjective,
       sourceUnitControlsObjective,
       targetUnitOnObjectiveNotControlledBySource,
+      sourceUnitOnSelectedObjective,
+      targetUnitOnSourceSelectedObjective,
+      sourceUnitBattleShocked,
     );
 
   const refreshProfile = (
@@ -237,6 +243,10 @@ export default function PlayMode() {
     nextTargetOnObjective = profile.targetOnObjective,
     nextAttackerObjectiveOwner = profile.attackerObjectiveOwner,
     nextTargetObjectiveOwner = profile.targetObjectiveOwner,
+    nextAttackerOnAttackerSelectedObjective = profile.attackerOnAttackerSelectedObjective,
+    nextTargetOnAttackerSelectedObjective = profile.targetOnAttackerSelectedObjective,
+    nextAttackerOnTargetSelectedObjective = profile.attackerOnTargetSelectedObjective,
+    nextTargetOnTargetSelectedObjective = profile.targetOnTargetSelectedObjective,
   ) => {
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
@@ -274,6 +284,10 @@ export default function PlayMode() {
             targetOnObjective: nextTargetOnObjective,
             attackerObjectiveOwner: nextAttackerObjectiveOwner,
             targetObjectiveOwner: nextTargetObjectiveOwner,
+            attackerOnAttackerSelectedObjective: nextAttackerOnAttackerSelectedObjective,
+            targetOnAttackerSelectedObjective: nextTargetOnAttackerSelectedObjective,
+            attackerOnTargetSelectedObjective: nextAttackerOnTargetSelectedObjective,
+            targetOnTargetSelectedObjective: nextTargetOnTargetSelectedObjective,
             attackerBattleShocked: nextAttackerBattleShocked,
             targetBattleShocked: nextTargetBattleShocked,
             targetStrengthState: nextTargetStrengthState,
@@ -300,6 +314,9 @@ export default function PlayMode() {
           nextTargetOnObjective,
           nextAttackerOnObjective && nextAttackerObjectiveOwner === "attacker",
           nextTargetOnObjective && ["target", "uncontrolled"].includes(nextTargetObjectiveOwner),
+          nextAttackerOnAttackerSelectedObjective,
+          nextTargetOnAttackerSelectedObjective,
+          nextAttackerBattleShocked,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -321,6 +338,9 @@ export default function PlayMode() {
           nextTargetOnObjective && nextTargetObjectiveOwner === "target",
           nextAttackerOnObjective &&
             ["attacker", "uncontrolled"].includes(nextAttackerObjectiveOwner),
+          nextTargetOnTargetSelectedObjective,
+          nextAttackerOnTargetSelectedObjective,
+          nextTargetBattleShocked,
         ),
         weapon.type,
         {
@@ -341,6 +361,10 @@ export default function PlayMode() {
           targetOnObjective: nextTargetOnObjective,
           attackerObjectiveOwner: nextAttackerObjectiveOwner,
           targetObjectiveOwner: nextTargetObjectiveOwner,
+          attackerOnAttackerSelectedObjective: nextAttackerOnAttackerSelectedObjective,
+          targetOnAttackerSelectedObjective: nextTargetOnAttackerSelectedObjective,
+          attackerOnTargetSelectedObjective: nextAttackerOnTargetSelectedObjective,
+          targetOnTargetSelectedObjective: nextTargetOnTargetSelectedObjective,
           attackerBattleShocked: nextAttackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
@@ -403,6 +427,42 @@ export default function PlayMode() {
     refreshProfile(weaponId, targetModelId, id);
   };
 
+  const refreshSelectedObjectiveState = (
+    attackerOnAttackerSelectedObjective: boolean,
+    targetOnAttackerSelectedObjective: boolean,
+    attackerOnTargetSelectedObjective: boolean,
+    targetOnTargetSelectedObjective: boolean,
+  ) =>
+    refreshProfile(
+      weaponId,
+      targetModelId,
+      profileId,
+      activeAttackerPresetIds,
+      activeTargetPresetIds,
+      profile.targetDistance,
+      profile.attackerCharged,
+      profile.attackerBattleShocked,
+      profile.targetBattleShocked,
+      profile.targetStrengthState,
+      profile.attackerRemainedStationary,
+      profile.attackerAttached,
+      profile.targetAttached,
+      profile.attackerWaaaghActive,
+      profile.targetWaaaghActive,
+      profile.targetOathOfMoment,
+      profile.attackerOathWoundBonusEligible,
+      profile.attackerUnitModels,
+      profile.nearbyEnemyModels,
+      profile.attackerOnObjective,
+      profile.targetOnObjective,
+      profile.attackerObjectiveOwner,
+      profile.targetObjectiveOwner,
+      attackerOnAttackerSelectedObjective,
+      targetOnAttackerSelectedObjective,
+      attackerOnTargetSelectedObjective,
+      targetOnTargetSelectedObjective,
+    );
+
   const chooseTargetProfile = (id: string) => {
     setTargetModelId(id);
     refreshProfile(weaponId, id, profileId);
@@ -420,6 +480,9 @@ export default function PlayMode() {
     const nextTargetOathOfMoment = false;
     const nextTargetOnObjective = false;
     const nextTargetObjectiveOwner = "unknown" as const;
+    const nextTargetOnAttackerSelectedObjective = false;
+    const nextAttackerOnTargetSelectedObjective = false;
+    const nextTargetOnTargetSelectedObjective = false;
     const nextTargetStrengthState = "full" as const;
     setTargetModelId(model ? String(model.id) : "");
     setActiveTargetPresetIds(nextTargetPresetIds);
@@ -431,6 +494,9 @@ export default function PlayMode() {
         targetOathOfMoment: nextTargetOathOfMoment,
         targetOnObjective: nextTargetOnObjective,
         targetObjectiveOwner: nextTargetObjectiveOwner,
+        targetOnAttackerSelectedObjective: nextTargetOnAttackerSelectedObjective,
+        attackerOnTargetSelectedObjective: nextAttackerOnTargetSelectedObjective,
+        targetOnTargetSelectedObjective: nextTargetOnTargetSelectedObjective,
         targetBattleShocked: nextTargetBattleShocked,
         targetStrengthState: nextTargetStrengthState,
       }));
@@ -460,6 +526,10 @@ export default function PlayMode() {
             targetOnObjective: nextTargetOnObjective,
             attackerObjectiveOwner: profile.attackerObjectiveOwner,
             targetObjectiveOwner: nextTargetObjectiveOwner,
+            attackerOnAttackerSelectedObjective: profile.attackerOnAttackerSelectedObjective,
+            targetOnAttackerSelectedObjective: nextTargetOnAttackerSelectedObjective,
+            attackerOnTargetSelectedObjective: nextAttackerOnTargetSelectedObjective,
+            targetOnTargetSelectedObjective: nextTargetOnTargetSelectedObjective,
             targetStrengthState: nextTargetStrengthState,
           },
           weaponProfile,
@@ -484,6 +554,9 @@ export default function PlayMode() {
           nextTargetOnObjective,
           profile.attackerOnObjective && profile.attackerObjectiveOwner === "attacker",
           false,
+          profile.attackerOnAttackerSelectedObjective,
+          nextTargetOnAttackerSelectedObjective,
+          profile.attackerBattleShocked,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -505,6 +578,9 @@ export default function PlayMode() {
           false,
           profile.attackerOnObjective &&
             ["attacker", "uncontrolled"].includes(profile.attackerObjectiveOwner),
+          nextTargetOnTargetSelectedObjective,
+          nextAttackerOnTargetSelectedObjective,
+          nextTargetBattleShocked,
         ),
         weaponProfile.type,
         {
@@ -525,6 +601,10 @@ export default function PlayMode() {
           targetOnObjective: nextTargetOnObjective,
           attackerObjectiveOwner: profile.attackerObjectiveOwner,
           targetObjectiveOwner: nextTargetObjectiveOwner,
+          attackerOnAttackerSelectedObjective: profile.attackerOnAttackerSelectedObjective,
+          targetOnAttackerSelectedObjective: nextTargetOnAttackerSelectedObjective,
+          attackerOnTargetSelectedObjective: nextAttackerOnTargetSelectedObjective,
+          targetOnTargetSelectedObjective: nextTargetOnTargetSelectedObjective,
           attackerBattleShocked: profile.attackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
@@ -650,6 +730,10 @@ export default function PlayMode() {
                         attackerOathWoundBonusEligible: false,
                         attackerOnObjective: false,
                         attackerObjectiveOwner: "unknown",
+                        attackerOnAttackerSelectedObjective: false,
+                        targetOnAttackerSelectedObjective: false,
+                        attackerOnTargetSelectedObjective: false,
+                        targetOnTargetSelectedObjective: false,
                         attackerUnitModels: 0,
                         nearbyEnemyModels: 0,
                         attackerBattleShocked: false,
@@ -688,6 +772,10 @@ export default function PlayMode() {
                         attackerOathWoundBonusEligible: false,
                         attackerOnObjective: false,
                         attackerObjectiveOwner: "unknown",
+                        attackerOnAttackerSelectedObjective: false,
+                        targetOnAttackerSelectedObjective: false,
+                        attackerOnTargetSelectedObjective: false,
+                        targetOnTargetSelectedObjective: false,
                         attackerUnitModels: 0,
                         nearbyEnemyModels: 0,
                         attackerBattleShocked: false,
@@ -754,6 +842,10 @@ export default function PlayMode() {
                         targetOathOfMoment: false,
                         targetOnObjective: false,
                         targetObjectiveOwner: "unknown",
+                        attackerOnAttackerSelectedObjective: false,
+                        targetOnAttackerSelectedObjective: false,
+                        attackerOnTargetSelectedObjective: false,
+                        targetOnTargetSelectedObjective: false,
                         targetBattleShocked: false,
                         targetStrengthState: "full",
                       }));
@@ -1044,6 +1136,76 @@ export default function PlayMode() {
                     <option value="target">Target</option>
                     <option value="uncontrolled">Neither player</option>
                   </select>
+                </label>
+                <label>
+                  <span>Attacker-selected objective</span>
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Attacker is within range of its selected objective"
+                      type="checkbox"
+                      checked={profile.attackerOnAttackerSelectedObjective}
+                      onChange={(event) =>
+                        refreshSelectedObjectiveState(
+                          event.target.checked,
+                          profile.targetOnAttackerSelectedObjective,
+                          profile.attackerOnTargetSelectedObjective,
+                          profile.targetOnTargetSelectedObjective,
+                        )
+                      }
+                    />
+                    Attacker
+                  </span>
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Target is within range of the attacker-selected objective"
+                      type="checkbox"
+                      checked={profile.targetOnAttackerSelectedObjective}
+                      onChange={(event) =>
+                        refreshSelectedObjectiveState(
+                          profile.attackerOnAttackerSelectedObjective,
+                          event.target.checked,
+                          profile.attackerOnTargetSelectedObjective,
+                          profile.targetOnTargetSelectedObjective,
+                        )
+                      }
+                    />
+                    Target
+                  </span>
+                </label>
+                <label>
+                  <span>Target-selected objective</span>
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Attacker is within range of the target-selected objective"
+                      type="checkbox"
+                      checked={profile.attackerOnTargetSelectedObjective}
+                      onChange={(event) =>
+                        refreshSelectedObjectiveState(
+                          profile.attackerOnAttackerSelectedObjective,
+                          profile.targetOnAttackerSelectedObjective,
+                          event.target.checked,
+                          profile.targetOnTargetSelectedObjective,
+                        )
+                      }
+                    />
+                    Attacker
+                  </span>
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Target is within range of its selected objective"
+                      type="checkbox"
+                      checked={profile.targetOnTargetSelectedObjective}
+                      onChange={(event) =>
+                        refreshSelectedObjectiveState(
+                          profile.attackerOnAttackerSelectedObjective,
+                          profile.targetOnAttackerSelectedObjective,
+                          profile.attackerOnTargetSelectedObjective,
+                          event.target.checked,
+                        )
+                      }
+                    />
+                    Target
+                  </span>
                 </label>
                 <label>
                   <span>Movement</span>

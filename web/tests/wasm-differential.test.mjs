@@ -2115,6 +2115,49 @@ test("source-backed objective ownership upgrades the exact C/Wasm re-roll bounda
   assert.ok(lessThanOrEqual(exactMean({ flags: 8192 }), exactMean({ flags: 8 })));
 });
 
+test("source-backed selected objective activates the exact C/Wasm re-roll boundary", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const lieutenant = catalogue.units.find((unit) => unit.name === "Lieutenant With Combi-weapon");
+  const weapon = lieutenant.weapons.find((entry) => entry.type === "Ranged");
+  const selected = (targetOnSelectedObjective) =>
+    selectedAndAutomaticCombatPresets(
+      lieutenant.combatPresets,
+      [],
+      weapon.type,
+      weapon.name,
+      [],
+      attackKeywordsForWeapon(weapon),
+      0,
+      false,
+      false,
+      false,
+      "full",
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      targetOnSelectedObjective,
+    );
+  const inactive = applyCombatPresets({}, selected(false), [], weapon.type);
+  const active = applyCombatPresets(
+    { targetOnAttackerSelectedObjective: true },
+    selected(true),
+    [],
+    weapon.type,
+  );
+  assert.equal(inactive.rerollWoundOnes, false);
+  assert.equal(active.rerollWoundOnes, true);
+  assert.ok(lessThanOrEqual(exactMean(), exactMean({ flags: 32768 })));
+});
+
 test("source-backed target distance changes preset composition at its exact boundary", async () => {
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),

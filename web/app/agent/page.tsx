@@ -111,6 +111,13 @@ export default function AgentCalculator() {
           const targetOnObjective = requestedContext.targetOnObjective;
           const attackerObjectiveOwner = requestedContext.attackerObjectiveOwner;
           const targetObjectiveOwner = requestedContext.targetObjectiveOwner;
+          const attackerOnAttackerSelectedObjective =
+            requestedContext.attackerOnAttackerSelectedObjective;
+          const targetOnAttackerSelectedObjective =
+            requestedContext.targetOnAttackerSelectedObjective;
+          const attackerOnTargetSelectedObjective =
+            requestedContext.attackerOnTargetSelectedObjective;
+          const targetOnTargetSelectedObjective = requestedContext.targetOnTargetSelectedObjective;
           const attackerBattleShocked = requestedContext.attackerBattleShocked;
           const targetBattleShocked = requestedContext.targetBattleShocked;
           const targetStrengthState = requestedContext.targetStrengthState;
@@ -133,6 +140,10 @@ export default function AgentCalculator() {
             targetOnObjective,
             attackerObjectiveOwner,
             targetObjectiveOwner,
+            attackerOnAttackerSelectedObjective,
+            targetOnAttackerSelectedObjective,
+            attackerOnTargetSelectedObjective,
+            targetOnTargetSelectedObjective,
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
@@ -158,6 +169,9 @@ export default function AgentCalculator() {
             targetOnObjective,
             attackerOnObjective && attackerObjectiveOwner === "attacker",
             targetOnObjective && ["target", "uncontrolled"].includes(targetObjectiveOwner),
+            attackerOnAttackerSelectedObjective,
+            targetOnAttackerSelectedObjective,
+            attackerBattleShocked,
           );
           const targetPresets = selectedAndAutomaticCombatPresets(
             selection.target.combatPresets,
@@ -180,6 +194,9 @@ export default function AgentCalculator() {
             attackerOnObjective,
             targetOnObjective && targetObjectiveOwner === "target",
             attackerOnObjective && ["attacker", "uncontrolled"].includes(attackerObjectiveOwner),
+            targetOnTargetSelectedObjective,
+            attackerOnTargetSelectedObjective,
+            targetBattleShocked,
           );
           profile = applyCombatPresets(
             profile,
@@ -204,6 +221,10 @@ export default function AgentCalculator() {
               targetOnObjective,
               attackerObjectiveOwner,
               targetObjectiveOwner,
+              attackerOnAttackerSelectedObjective,
+              targetOnAttackerSelectedObjective,
+              attackerOnTargetSelectedObjective,
+              targetOnTargetSelectedObjective,
               attackerBattleShocked,
               targetBattleShocked,
               targetStrengthState,
@@ -339,7 +360,10 @@ export default function AgentCalculator() {
               charged, stationary, attackerAttached, targetAttached, attackerWaaaghActive,
               targetWaaaghActive, oathTarget, oathWoundBonus, attackerObjective, targetObjective,
               attackerObjectiveOwner, targetObjectiveOwner, attackerBattleShocked,
-              targetBattleShocked, targetStrength, attackerPreset, targetPreset, and rules.
+              targetBattleShocked, attackerOnAttackerSelectedObjective,
+              targetOnAttackerSelectedObjective, attackerOnTargetSelectedObjective,
+              targetOnTargetSelectedObjective, targetStrength, attackerPreset, targetPreset, and
+              rules.
             </p>
             <p>
               <code>rules</code> accepts comma-separated values such as{" "}

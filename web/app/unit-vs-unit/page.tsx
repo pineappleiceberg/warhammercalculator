@@ -114,6 +114,11 @@ export default function UnitVsUnit() {
   const [targetOnObjective, setTargetOnObjective] = useState(false);
   const [attackerObjectiveOwner, setAttackerObjectiveOwner] = useState<ObjectiveOwner>("unknown");
   const [targetObjectiveOwner, setTargetObjectiveOwner] = useState<ObjectiveOwner>("unknown");
+  const [attackerOnAttackerSelectedObjective, setAttackerOnAttackerSelectedObjective] =
+    useState(false);
+  const [targetOnAttackerSelectedObjective, setTargetOnAttackerSelectedObjective] = useState(false);
+  const [attackerOnTargetSelectedObjective, setAttackerOnTargetSelectedObjective] = useState(false);
+  const [targetOnTargetSelectedObjective, setTargetOnTargetSelectedObjective] = useState(false);
   const [attackerBattleShocked, setAttackerBattleShocked] = useState(false);
   const [targetBattleShocked, setTargetBattleShocked] = useState(false);
   const [targetStrengthState, setTargetStrengthState] = useState<TargetStrengthState>("full");
@@ -195,6 +200,10 @@ export default function UnitVsUnit() {
     targetOnObjective,
     attackerObjectiveOwner,
     targetObjectiveOwner,
+    attackerOnAttackerSelectedObjective,
+    targetOnAttackerSelectedObjective,
+    attackerOnTargetSelectedObjective,
+    targetOnTargetSelectedObjective,
     attackerBattleShocked,
     targetBattleShocked,
     targetStrengthState,
@@ -218,6 +227,10 @@ export default function UnitVsUnit() {
     setAttackerOathWoundBonusEligible(false);
     setAttackerOnObjective(false);
     setAttackerObjectiveOwner("unknown");
+    setAttackerOnAttackerSelectedObjective(false);
+    setTargetOnAttackerSelectedObjective(false);
+    setAttackerOnTargetSelectedObjective(false);
+    setTargetOnTargetSelectedObjective(false);
     setAttackerUnitModels(0);
     setNearbyEnemyModels(0);
     setAttackerBattleShocked(false);
@@ -257,6 +270,10 @@ export default function UnitVsUnit() {
     setTargetOathOfMoment(false);
     setTargetOnObjective(false);
     setTargetObjectiveOwner("unknown");
+    setAttackerOnAttackerSelectedObjective(false);
+    setTargetOnAttackerSelectedObjective(false);
+    setAttackerOnTargetSelectedObjective(false);
+    setTargetOnTargetSelectedObjective(false);
     setTargetBattleShocked(false);
     setTargetStrengthState("full");
     const unit = targetUnits.find((entry) => entry.id === unitId);
@@ -322,6 +339,10 @@ export default function UnitVsUnit() {
             targetOnObjective,
             attackerObjectiveOwner,
             targetObjectiveOwner,
+            attackerOnAttackerSelectedObjective,
+            targetOnAttackerSelectedObjective,
+            attackerOnTargetSelectedObjective,
+            targetOnTargetSelectedObjective,
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
@@ -350,6 +371,9 @@ export default function UnitVsUnit() {
           targetOnObjective,
           attackerOnObjective && attackerObjectiveOwner === "attacker",
           targetOnObjective && ["target", "uncontrolled"].includes(targetObjectiveOwner),
+          attackerOnAttackerSelectedObjective,
+          targetOnAttackerSelectedObjective,
+          attackerBattleShocked,
         ),
         selectedAndAutomaticCombatPresets(
           targetUnit?.combatPresets ?? [],
@@ -372,6 +396,9 @@ export default function UnitVsUnit() {
           attackerOnObjective,
           targetOnObjective && targetObjectiveOwner === "target",
           attackerOnObjective && ["attacker", "uncontrolled"].includes(attackerObjectiveOwner),
+          targetOnTargetSelectedObjective,
+          attackerOnTargetSelectedObjective,
+          targetBattleShocked,
         ),
         line.weapon.type,
         {
@@ -395,6 +422,10 @@ export default function UnitVsUnit() {
           targetOnObjective,
           attackerObjectiveOwner,
           targetObjectiveOwner,
+          attackerOnAttackerSelectedObjective,
+          targetOnAttackerSelectedObjective,
+          attackerOnTargetSelectedObjective,
+          targetOnTargetSelectedObjective,
         },
       ),
     );
@@ -426,6 +457,9 @@ export default function UnitVsUnit() {
               attackerOnObjective,
               targetOnObjective && targetObjectiveOwner === "target",
               attackerOnObjective && ["attacker", "uncontrolled"].includes(attackerObjectiveOwner),
+              targetOnTargetSelectedObjective,
+              attackerOnTargetSelectedObjective,
+              targetBattleShocked,
             ),
           )
           .map((preset) => [preset.id, preset]),
@@ -452,6 +486,10 @@ export default function UnitVsUnit() {
         targetOnObjective,
         attackerObjectiveOwner,
         targetObjectiveOwner,
+        attackerOnAttackerSelectedObjective,
+        targetOnAttackerSelectedObjective,
+        attackerOnTargetSelectedObjective,
+        targetOnTargetSelectedObjective,
       })),
     );
   };
@@ -1080,6 +1118,48 @@ export default function UnitVsUnit() {
                 <option value="target">Target</option>
                 <option value="uncontrolled">Neither player</option>
               </select>
+            </label>
+            <label>
+              <span>Attacker-selected objective</span>
+              <span className="inline-checkbox">
+                <input
+                  aria-label="Attacker is within range of its selected objective"
+                  type="checkbox"
+                  checked={attackerOnAttackerSelectedObjective}
+                  onChange={(event) => setAttackerOnAttackerSelectedObjective(event.target.checked)}
+                />
+                Attacker
+              </span>
+              <span className="inline-checkbox">
+                <input
+                  aria-label="Target is within range of the attacker-selected objective"
+                  type="checkbox"
+                  checked={targetOnAttackerSelectedObjective}
+                  onChange={(event) => setTargetOnAttackerSelectedObjective(event.target.checked)}
+                />
+                Target
+              </span>
+            </label>
+            <label>
+              <span>Target-selected objective</span>
+              <span className="inline-checkbox">
+                <input
+                  aria-label="Attacker is within range of the target-selected objective"
+                  type="checkbox"
+                  checked={attackerOnTargetSelectedObjective}
+                  onChange={(event) => setAttackerOnTargetSelectedObjective(event.target.checked)}
+                />
+                Attacker
+              </span>
+              <span className="inline-checkbox">
+                <input
+                  aria-label="Target is within range of its selected objective"
+                  type="checkbox"
+                  checked={targetOnTargetSelectedObjective}
+                  onChange={(event) => setTargetOnTargetSelectedObjective(event.target.checked)}
+                />
+                Target
+              </span>
             </label>
             <label>
               <span>Target distance</span>

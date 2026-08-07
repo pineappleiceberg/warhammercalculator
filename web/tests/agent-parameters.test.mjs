@@ -208,6 +208,10 @@ test("canonical agent parameters round-trip every supported profile field", () =
     targetOnObjective: true,
     attackerObjectiveOwner: "attacker",
     targetObjectiveOwner: "target",
+    attackerOnAttackerSelectedObjective: true,
+    targetOnAttackerSelectedObjective: true,
+    attackerOnTargetSelectedObjective: true,
+    targetOnTargetSelectedObjective: true,
     attackerBattleShocked: true,
     targetBattleShocked: true,
     targetStrengthState: "below_half",
@@ -309,6 +313,16 @@ test("catalogue agent Attached-unit state selects exact automatic leader rules",
   assert.equal(
     parseAgentProfile("targetObjectiveControl=uncontrolled", defaults, false).targetObjectiveOwner,
     "uncontrolled",
+  );
+  assert.equal(
+    parseAgentProfile("attackerOnOwnSelectedObjective=true", defaults, false)
+      .attackerOnAttackerSelectedObjective,
+    true,
+  );
+  assert.equal(
+    parseAgentProfile("targetOnOwnSelectedObjective=true", defaults, false)
+      .targetOnTargetSelectedObjective,
+    true,
   );
   assert.equal(parseAgentProfile("unitModels=12", defaults, false).attackerUnitModels, 12);
   assert.equal(parseAgentProfile("nearbyEnemyModels=9", defaults, false).nearbyEnemyModels, 9);
@@ -524,6 +538,100 @@ test("catalogue agent objective ownership activates only exact control relations
   assert.equal(unknown.rerollHits, false);
   assert.equal(opponent.rerollHits, true);
   assert.equal(opponent.rerollHitOnes, false);
+});
+
+test("catalogue agent selected-objective state activates only the exact directional relationship", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const lieutenant = catalogue.units.find((unit) => unit.name === "Lieutenant With Combi-weapon");
+  const priority = lieutenant.combatPresets.find(
+    (preset) => preset.name === "Priority Objective Identified",
+  );
+  const weapon = lieutenant.weapons.find((entry) => entry.type === "Ranged");
+  const selected = (targetOnSelectedObjective) =>
+    selectedAndAutomaticCombatPresets(
+      lieutenant.combatPresets,
+      [],
+      weapon.type,
+      weapon.name,
+      [],
+      attackKeywordsForWeapon(weapon),
+      0,
+      false,
+      false,
+      false,
+      "full",
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      targetOnSelectedObjective,
+    );
+  assert.equal(priority.activation, "automatic");
+  assert.equal(priority.requiresTargetOnSourceSelectedObjective, true);
+  assert.deepEqual(selected(false), []);
+  assert.deepEqual(
+    selected(true).map((preset) => preset.name),
+    ["Priority Objective Identified"],
+  );
+  const inactive = applyCombatPresets(defaults, selected(false), [], weapon.type);
+  const active = applyCombatPresets(
+    { ...defaults, targetOnAttackerSelectedObjective: true },
+    selected(true),
+    [],
+    weapon.type,
+  );
+  assert.equal(inactive.rerollWoundOnes, false);
+  assert.equal(active.rerollWoundOnes, true);
+
+  const hand = catalogue.units.find((unit) => unit.name === "Hand of the Archon");
+  const archon = hand.combatPresets.find((preset) => preset.name === "Archon’s Will");
+  const archonWeapon = hand.weapons.find((entry) => entry.type === "Ranged");
+  const selectedArchon = (sourceOnSelectedObjective, sourceBattleShocked) =>
+    selectedAndAutomaticCombatPresets(
+      hand.combatPresets,
+      [],
+      archonWeapon.type,
+      archonWeapon.name,
+      [],
+      attackKeywordsForWeapon(archonWeapon),
+      0,
+      false,
+      false,
+      false,
+      "full",
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      sourceOnSelectedObjective,
+      false,
+      sourceBattleShocked,
+    );
+  assert.equal(archon.requiresSourceOnSelectedObjective, true);
+  assert.equal(archon.requiresSourceNotBattleShocked, true);
+  assert.deepEqual(selectedArchon(false, false), []);
+  assert.deepEqual(selectedArchon(true, true), []);
+  const defended = applyCombatPresets(
+    defaults,
+    [],
+    selectedArchon(true, false),
+    archonWeapon.type,
+    { targetOnTargetSelectedObjective: true, targetBattleShocked: false },
+  );
+  assert.equal(defended.invulnerable, 5);
 });
 
 test("catalogue agent model counts compose exact automatic Attacks scaling", async () => {

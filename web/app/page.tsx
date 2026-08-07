@@ -908,6 +908,9 @@ export default function Home() {
     targetUnitOnObjective = false,
     sourceUnitControlsObjective = false,
     targetUnitOnObjectiveNotControlledBySource = false,
+    sourceUnitOnSelectedObjective = false,
+    targetUnitOnSourceSelectedObjective = false,
+    sourceUnitBattleShocked = false,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -930,6 +933,9 @@ export default function Home() {
       targetUnitOnObjective,
       sourceUnitControlsObjective,
       targetUnitOnObjectiveNotControlledBySource,
+      sourceUnitOnSelectedObjective,
+      targetUnitOnSourceSelectedObjective,
+      sourceUnitBattleShocked,
     );
   const withActivePresets = (
     current: Profile,
@@ -1024,6 +1030,9 @@ export default function Home() {
         baseProfile.attackerOnObjective && baseProfile.attackerObjectiveOwner === "attacker",
         baseProfile.targetOnObjective &&
           ["target", "uncontrolled"].includes(baseProfile.targetObjectiveOwner),
+        baseProfile.attackerOnAttackerSelectedObjective,
+        baseProfile.targetOnAttackerSelectedObjective,
+        baseProfile.attackerBattleShocked,
       ),
       selectedPresets(
         selectedTargetUnit,
@@ -1045,6 +1054,9 @@ export default function Home() {
         baseProfile.targetOnObjective && baseProfile.targetObjectiveOwner === "target",
         baseProfile.attackerOnObjective &&
           ["attacker", "uncontrolled"].includes(baseProfile.attackerObjectiveOwner),
+        baseProfile.targetOnTargetSelectedObjective,
+        baseProfile.attackerOnTargetSelectedObjective,
+        baseProfile.targetBattleShocked,
       ),
       weapon?.type ?? "Ranged",
       {
@@ -1068,6 +1080,10 @@ export default function Home() {
         targetOnObjective: baseProfile.targetOnObjective,
         attackerObjectiveOwner: baseProfile.attackerObjectiveOwner,
         targetObjectiveOwner: baseProfile.targetObjectiveOwner,
+        attackerOnAttackerSelectedObjective: baseProfile.attackerOnAttackerSelectedObjective,
+        targetOnAttackerSelectedObjective: baseProfile.targetOnAttackerSelectedObjective,
+        attackerOnTargetSelectedObjective: baseProfile.attackerOnTargetSelectedObjective,
+        targetOnTargetSelectedObjective: baseProfile.targetOnTargetSelectedObjective,
       },
     ) as Profile;
   };
@@ -1281,6 +1297,10 @@ export default function Home() {
                             attackerOathWoundBonusEligible: false,
                             attackerOnObjective: false,
                             attackerObjectiveOwner: "unknown",
+                            attackerOnAttackerSelectedObjective: false,
+                            targetOnAttackerSelectedObjective: false,
+                            attackerOnTargetSelectedObjective: false,
+                            targetOnTargetSelectedObjective: false,
                             attackerUnitModels: 0,
                             nearbyEnemyModels: 0,
                             attackerBattleShocked: false,
@@ -1321,6 +1341,10 @@ export default function Home() {
                             attackerOathWoundBonusEligible: false,
                             attackerOnObjective: false,
                             attackerObjectiveOwner: "unknown",
+                            attackerOnAttackerSelectedObjective: false,
+                            targetOnAttackerSelectedObjective: false,
+                            attackerOnTargetSelectedObjective: false,
+                            targetOnTargetSelectedObjective: false,
                             attackerUnitModels: 0,
                             nearbyEnemyModels: 0,
                             attackerBattleShocked: false,
@@ -1490,6 +1514,10 @@ export default function Home() {
                             targetOathOfMoment: false,
                             targetOnObjective: false,
                             targetObjectiveOwner: "unknown",
+                            attackerOnAttackerSelectedObjective: false,
+                            targetOnAttackerSelectedObjective: false,
+                            attackerOnTargetSelectedObjective: false,
+                            targetOnTargetSelectedObjective: false,
                             targetStrengthState: "full",
                           },
                           selectedWeapon,
@@ -1526,6 +1554,10 @@ export default function Home() {
                             targetOathOfMoment: false,
                             targetOnObjective: false,
                             targetObjectiveOwner: "unknown",
+                            attackerOnAttackerSelectedObjective: false,
+                            targetOnAttackerSelectedObjective: false,
+                            attackerOnTargetSelectedObjective: false,
+                            targetOnTargetSelectedObjective: false,
                             targetStrengthState: "full",
                           },
                           selectedWeapon,
@@ -2098,6 +2130,62 @@ export default function Home() {
                   <option value="uncontrolled">Neither player</option>
                 </select>
               </label>
+              <Toggle
+                label="Attacker is within range of the objective it selected"
+                checked={profile.attackerOnAttackerSelectedObjective}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({
+                      ...current,
+                      attackerOnAttackerSelectedObjective: value,
+                    }),
+                  )
+                }
+              />
+              <Toggle
+                label="Target is within range of the objective selected by the attacker"
+                checked={profile.targetOnAttackerSelectedObjective}
+                onChange={(value) =>
+                  selectedTargetModel
+                    ? applyTarget(selectedTargetModel, activeTargetPresetIds, {
+                        targetOnAttackerSelectedObjective: value,
+                      })
+                    : setProfile((current) =>
+                        withActivePresets({
+                          ...current,
+                          targetOnAttackerSelectedObjective: value,
+                        }),
+                      )
+                }
+              />
+              <Toggle
+                label="Attacker is within range of the objective selected by the target"
+                checked={profile.attackerOnTargetSelectedObjective}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({
+                      ...current,
+                      attackerOnTargetSelectedObjective: value,
+                    }),
+                  )
+                }
+              />
+              <Toggle
+                label="Target is within range of the objective it selected"
+                checked={profile.targetOnTargetSelectedObjective}
+                onChange={(value) =>
+                  selectedTargetModel
+                    ? applyTarget(selectedTargetModel, activeTargetPresetIds, {
+                        targetOnTargetSelectedObjective: value,
+                      })
+                    : setProfile((current) =>
+                        withActivePresets({
+                          ...current,
+                          targetOnTargetSelectedObjective: value,
+                        }),
+                      )
+                }
+              />
               <Toggle
                 label="Attacker is Battle-shocked"
                 checked={profile.attackerBattleShocked}

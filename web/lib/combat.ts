@@ -77,6 +77,10 @@ export type CombatProfile = {
   targetOnObjective: boolean;
   attackerObjectiveOwner: ObjectiveOwner;
   targetObjectiveOwner: ObjectiveOwner;
+  attackerOnAttackerSelectedObjective: boolean;
+  targetOnAttackerSelectedObjective: boolean;
+  attackerOnTargetSelectedObjective: boolean;
+  targetOnTargetSelectedObjective: boolean;
   attackerBattleShocked: boolean;
   targetBattleShocked: boolean;
   targetStrengthState: TargetStrengthState;
@@ -267,6 +271,10 @@ export const DEFAULT_PROFILE: CombatProfile = {
   targetOnObjective: false,
   attackerObjectiveOwner: "unknown",
   targetObjectiveOwner: "unknown",
+  attackerOnAttackerSelectedObjective: false,
+  targetOnAttackerSelectedObjective: false,
+  attackerOnTargetSelectedObjective: false,
+  targetOnTargetSelectedObjective: false,
   attackerBattleShocked: false,
   targetBattleShocked: false,
   targetStrengthState: "full",
@@ -438,6 +446,10 @@ export function normalizeProfile(input: unknown): CombatProfile {
     targetOnObjective: booleanValue("targetOnObjective"),
     attackerObjectiveOwner: objectiveOwner("attackerObjectiveOwner"),
     targetObjectiveOwner: objectiveOwner("targetObjectiveOwner"),
+    attackerOnAttackerSelectedObjective: booleanValue("attackerOnAttackerSelectedObjective"),
+    targetOnAttackerSelectedObjective: booleanValue("targetOnAttackerSelectedObjective"),
+    attackerOnTargetSelectedObjective: booleanValue("attackerOnTargetSelectedObjective"),
+    targetOnTargetSelectedObjective: booleanValue("targetOnTargetSelectedObjective"),
     attackerBattleShocked: booleanValue("attackerBattleShocked"),
     targetBattleShocked: booleanValue("targetBattleShocked"),
     targetStrengthState: targetStrengthState as TargetStrengthState,

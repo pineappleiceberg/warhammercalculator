@@ -17,9 +17,9 @@ priority over feature count.
 ## Prioritized backlog
 
 1. Extend the source-backed rules eligibility layer beyond the now-covered
-   direct objective position and ownership to selected-marker relationships,
-   observer/marked-target relationships, aura proximity, closest-target state,
-   and other compound conditions that still require manual interpretation.
+   direct and selected-objective relationships to observer/marked-target
+   relationships, aura proximity, closest-target state, and other compound
+   conditions that still require manual interpretation.
 2. Represent casualty- and nearby-unit-count-scaled Attacks modifiers as
    explicit reproducible state instead of requiring manual arithmetic; direct
    source-unit and nearby-enemy model counts are now covered.
@@ -28,6 +28,17 @@ priority over feature count.
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added exact directional selected-objective relationships. SQLite
+  schema 40 marks Archon’s Will, Priority Objective Identified, and Seeker of
+  the Unfound automatic only when the source or target is within range of the
+  objective selected by the correct side; Archon’s Will independently requires
+  its source unit not to be Battle-shocked. Four editable matchup facts preserve
+  both sides without conflating a selected marker with any objective marker.
+  Model vs Model, Unit vs Unit, Play recovery, normalized APIs, share links, and
+  static agent URLs carry the state. Exact parser negatives, generated database
+  snapshots, directional offensive and defensive composition, URL/recovery
+  round trips, and C/WebAssembly damage monotonicity cover the boundary.
 
 - 2026-08-07: Added exact objective ownership. SQLite schema 39 distinguishes
   objectives controlled by the attacker, target, neither player, or an unknown

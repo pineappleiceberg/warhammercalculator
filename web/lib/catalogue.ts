@@ -112,8 +112,11 @@ export type CatalogueCombatPreset = {
   requiresTargetOnObjective?: boolean;
   requiresSourceControlsObjective?: boolean;
   requiresTargetOnObjectiveNotControlledBySource?: boolean;
+  requiresSourceOnSelectedObjective?: boolean;
+  requiresTargetOnSourceSelectedObjective?: boolean;
   requiresTargetBattleShocked?: boolean;
   requiresAttackerNotBattleShocked?: boolean;
+  requiresSourceNotBattleShocked?: boolean;
   requiredTargetStrengthState?: "below_starting" | "below_half" | "not_below_half";
   hitModifier: number;
   hitModifierRole: CombatPresetRole | null;
@@ -242,6 +245,10 @@ type CombatPresetContext = {
   targetOnObjective?: boolean;
   attackerObjectiveOwner?: ObjectiveOwner;
   targetObjectiveOwner?: ObjectiveOwner;
+  attackerOnAttackerSelectedObjective?: boolean;
+  targetOnAttackerSelectedObjective?: boolean;
+  attackerOnTargetSelectedObjective?: boolean;
+  targetOnTargetSelectedObjective?: boolean;
   attackerBattleShocked?: boolean;
   targetBattleShocked?: boolean;
   targetStrengthState?: CombatProfile["targetStrengthState"];

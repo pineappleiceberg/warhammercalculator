@@ -101,6 +101,9 @@ export function combatPresetMeetsEligibility(
   targetUnitOnObjective = false,
   sourceUnitControlsObjective = false,
   targetUnitOnObjectiveNotControlledBySource = false,
+  sourceUnitOnSelectedObjective = false,
+  targetUnitOnSourceSelectedObjective = false,
+  sourceUnitBattleShocked = false,
 ) {
   const targets = new Set(targetKeywords.map(normalizedKeyword));
   const attacks = new Set(attackKeywords.map(normalizedKeyword));
@@ -127,6 +130,9 @@ export function combatPresetMeetsEligibility(
     (!preset.requiresSourceControlsObjective || sourceUnitControlsObjective) &&
     (!preset.requiresTargetOnObjectiveNotControlledBySource ||
       targetUnitOnObjectiveNotControlledBySource) &&
+    (!preset.requiresSourceOnSelectedObjective || sourceUnitOnSelectedObjective) &&
+    (!preset.requiresTargetOnSourceSelectedObjective || targetUnitOnSourceSelectedObjective) &&
+    (!preset.requiresSourceNotBattleShocked || !sourceUnitBattleShocked) &&
     (!preset.requiresTargetBattleShocked || targetBattleShocked) &&
     (!preset.requiresAttackerNotBattleShocked || !attackerBattleShocked) &&
     (preset.effects ?? []).every(
@@ -160,6 +166,9 @@ export function selectedAndAutomaticCombatPresets(
   targetUnitOnObjective = false,
   sourceUnitControlsObjective = false,
   targetUnitOnObjectiveNotControlledBySource = false,
+  sourceUnitOnSelectedObjective = false,
+  targetUnitOnSourceSelectedObjective = false,
+  sourceUnitBattleShocked = false,
 ) {
   const selected = new Set(selectedIds);
   return presets.filter(
@@ -184,6 +193,9 @@ export function selectedAndAutomaticCombatPresets(
         targetUnitOnObjective,
         sourceUnitControlsObjective,
         targetUnitOnObjectiveNotControlledBySource,
+        sourceUnitOnSelectedObjective,
+        targetUnitOnSourceSelectedObjective,
+        sourceUnitBattleShocked,
       ),
   );
 }
@@ -241,6 +253,9 @@ export function combatPresetEffects(
   targetUnitOnObjective = false,
   sourceUnitControlsObjective = false,
   targetUnitOnObjectiveNotControlledBySource = false,
+  sourceUnitOnSelectedObjective = false,
+  targetUnitOnSourceSelectedObjective = false,
+  sourceUnitBattleShocked = false,
 ) {
   const applicable = presets.filter(
     (preset) =>
@@ -264,6 +279,9 @@ export function combatPresetEffects(
         targetUnitOnObjective,
         sourceUnitControlsObjective,
         targetUnitOnObjectiveNotControlledBySource,
+        sourceUnitOnSelectedObjective,
+        targetUnitOnSourceSelectedObjective,
+        sourceUnitBattleShocked,
       ),
   );
   const hitModifiers = applicable.filter((preset) =>
@@ -525,6 +543,9 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
         context.attackerObjectiveOwner ?? "unknown",
         "target",
       ),
+      context.targetOnTargetSelectedObjective ?? false,
+      context.attackerOnTargetSelectedObjective ?? false,
+      context.targetBattleShocked ?? false,
     ),
   );
   const candidates = effects.map((effect) =>
@@ -612,6 +633,11 @@ export function applyCombatPresets(
       context.targetObjectiveOwner ?? profile.targetObjectiveOwner ?? "unknown",
       "attacker",
     ),
+    context.attackerOnAttackerSelectedObjective ??
+      profile.attackerOnAttackerSelectedObjective ??
+      false,
+    context.targetOnAttackerSelectedObjective ?? profile.targetOnAttackerSelectedObjective ?? false,
+    context.attackerBattleShocked ?? profile.attackerBattleShocked ?? false,
   );
   const target = combatPresetEffects(
     targetPresets,
@@ -644,6 +670,9 @@ export function applyCombatPresets(
       context.attackerObjectiveOwner ?? profile.attackerObjectiveOwner ?? "unknown",
       "target",
     ),
+    context.targetOnTargetSelectedObjective ?? profile.targetOnTargetSelectedObjective ?? false,
+    context.attackerOnTargetSelectedObjective ?? profile.attackerOnTargetSelectedObjective ?? false,
+    context.targetBattleShocked ?? profile.targetBattleShocked ?? false,
   );
   const attacksReplacements = [attacker.attacksReplacement, target.attacksReplacement].filter(
     (value) => value > 0,

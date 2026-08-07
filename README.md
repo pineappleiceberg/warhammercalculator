@@ -201,9 +201,13 @@ while the stronger objective re-roll activates only in range. The separate
 `attackerObjectiveOwner` and `targetObjectiveOwner` states record whether the
 attacker, target, or neither player controls that marker; `unknown` is the safe
 default. Exact rules for an objective the source controls or does not control
-use this ownership without guessing. Conditions that name a selected marker or
-combine the marker with an aura, token, closest-target, or alternative condition
-remain explicit choices. Objective Control characteristic text that does not
+use this ownership without guessing. Four directional selected-marker facts
+record whether either unit is at the objective selected by the attacker or by
+the target. This activates Archon’s Will, Priority Objective Identified, and
+Seeker of the Unfound exactly; Archon’s Will also requires its source unit not
+to be Battle-shocked. Conditions that combine a marker with an aura, token,
+closest-target, or alternative condition remain explicit choices. Objective
+Control characteristic text that does not
 condition the combat effect no longer makes Black Rage or Voice of Experience
 manual.
 
@@ -519,6 +523,8 @@ expression such as `D6+2`. Optional parameters include `weaponCount`, `model`,
 `oathTarget` (alias for `targetOathOfMoment`),
 `oathWoundBonus` (alias for `attackerOathWoundBonusEligible`),
 `attackerBattleShocked`, `targetBattleShocked` (booleans),
+`attackerOnAttackerSelectedObjective`, `targetOnAttackerSelectedObjective`,
+`attackerOnTargetSelectedObjective`, `targetOnTargetSelectedObjective`,
 `targetStrength` (`full`, `below-starting`, or `below-half`), `damageDivisor`,
 `attacksReplacement`, `attacksMultiplier`, `attacksModifier`,
 `strengthReplacement`, `strengthMultiplier`, `strengthModifier`, `damageReplacement`,
@@ -556,6 +562,11 @@ Use `attackerObjectiveOwner` and `targetObjectiveOwner` with `attacker`,
 `target`, `uncontrolled`, or `unknown` to resolve objective-control conditions;
 the aliases `attackerObjectiveControl` and `targetObjectiveControl` are also
 accepted. Ownership-dependent rules remain inactive when ownership is unknown.
+Selected-marker relationships use `attackerOnAttackerSelectedObjective`,
+`targetOnAttackerSelectedObjective`, `attackerOnTargetSelectedObjective`, and
+`targetOnTargetSelectedObjective`. The shorter aliases
+`attackerOnOwnSelectedObjective` and `targetOnOwnSelectedObjective` are accepted
+for the two same-side facts.
 Likewise, `targetBattleShocked=true` or `attackerBattleShocked=true` resolves
 compatible exact source rules before later numeric overrides are applied.
 `targetStrength=below-half` and the other two strength values likewise resolve

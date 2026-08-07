@@ -69,8 +69,11 @@ The main tables are:
   objective state. Ownership rules additionally carry
   `requires_source_controls_objective` or
   `requires_target_on_objective_not_controlled_by_source`; exact ownership is
-  required, while selected markers and compound alternatives remain situational
-  rather than being inferred
+  required. Three exact selected-marker rules additionally carry
+  `requires_source_on_selected_objective` or
+  `requires_target_on_source_selected_objective`; Archon’s Will also carries
+  `requires_source_not_battle_shocked`. Compound alternatives remain
+  situational rather than being inferred
 - exact bearer Save, invulnerable-save, Feel No Pain, and Damage-reduction
   effects are imported as optional situational presets only when structured
   composition proves that the datasheet contains exactly one model; bearer

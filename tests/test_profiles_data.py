@@ -63,8 +63,11 @@ class ProfileDataTests(unittest.TestCase):
                 "requires_target_on_objective": False,
                 "requires_source_controls_objective": False,
                 "requires_target_on_objective_not_controlled_by_source": False,
+                "requires_source_on_selected_objective": False,
+                "requires_target_on_source_selected_objective": False,
                 "requires_target_battle_shocked": False,
                 "requires_attacker_not_battle_shocked": False,
+                "requires_source_not_battle_shocked": False,
                 "required_target_strength_state": None,
                 "hit_modifier_role": "attacker",
                 "hit_modifier_subject": "led_unit",
@@ -273,6 +276,41 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(preset["activation"], "automatic")
         self.assertTrue(preset["requires_attached_unit"])
         self.assertEqual(preset["hit_modifier"], 1)
+
+    def test_combat_preset_parser_gates_exact_selected_objective_rules(self):
+        archon = combat_presets(
+            "Archon’s Will",
+            "At the start of the first battle round, select one objective marker on the "
+            "battlefield. Until the end of the battle, while this unit is within range "
+            "of that objective marker, unless this unit is Battle-shocked, models in "
+            "this unit have a 5+ invulnerable save and an Objective Control "
+            "characteristic of 3.",
+        )[0]
+        self.assertEqual(archon["activation"], "automatic")
+        self.assertTrue(archon["requires_source_on_selected_objective"])
+        self.assertTrue(archon["requires_source_not_battle_shocked"])
+        self.assertEqual(
+            [(effect["type"], effect["value"]) for effect in archon["additional_effects"]],
+            [("invulnerable_save", 5)],
+        )
+
+        priority = combat_presets(
+            "Priority Objective Identified",
+            "At the start of the first battle round, if your army includes one or more "
+            "models with this ability, you can select one objective marker on the "
+            "battlefield. Until the end of the battle, while one or more models with "
+            "this ability are on the battlefield, each time a friendly ADEPTUS ASTARTES "
+            "model makes an attack that targets an enemy unit that is within range of "
+            "that objective marker, re-roll a Wound roll of 1.",
+        )[0]
+        self.assertEqual(priority["activation"], "automatic")
+        self.assertTrue(priority["requires_target_on_source_selected_objective"])
+        self.assertEqual((priority["reroll_wounds"], priority["reroll_wound_ones"]), (0, 1))
+
+        changed = priority["description"].replace("one objective marker", "two objective markers")
+        conservative = combat_presets("Priority Objective Identified", changed)[0]
+        self.assertEqual(conservative["activation"], "situational")
+        self.assertFalse(conservative["requires_target_on_source_selected_objective"])
 
     def test_combat_preset_parser_classifies_each_effect_without_using_its_sign(self):
         self_penalty = combat_preset(
@@ -1179,7 +1217,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "39",
+                "40",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1464,7 +1502,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 1011), ("inherent", 32), ("situational", 904)],
+                [("automatic", 1014), ("inherent", 32), ("situational", 901)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1559,6 +1597,31 @@ class ProfileDataTests(unittest.TestCase):
             )
             self.assertIn(
                 ("Stand Vigil — Objective-control re-roll", 1, 0, 2), ownership_rows
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT sum(requires_source_on_selected_objective),
+                              sum(requires_target_on_source_selected_objective)
+                       FROM unit_combat_presets"""
+                ).fetchone(),
+                (2, 1),
+            )
+            selected_objective_rows = connection.execute(
+                """SELECT name, requires_source_on_selected_objective,
+                          requires_target_on_source_selected_objective,
+                          requires_source_not_battle_shocked, activation
+                   FROM unit_combat_presets
+                   WHERE requires_source_on_selected_objective = 1
+                      OR requires_target_on_source_selected_objective = 1
+                   ORDER BY name"""
+            ).fetchall()
+            self.assertEqual(
+                selected_objective_rows,
+                [
+                    ("Archon’s Will", 1, 0, 1, "automatic"),
+                    ("Priority Objective Identified", 0, 1, 0, "automatic"),
+                    ("Seeker of the Unfound", 1, 0, 0, "automatic"),
+                ],
             )
             oath_rows = connection.execute(
                 """SELECT preset.name, preset.requires_oath_wound_bonus,
