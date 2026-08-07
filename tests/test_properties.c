@@ -6,6 +6,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef NDEBUG
+#error "Property tests require active assertions"
+#endif
+
 /*@ requires \valid(state);
     assigns *state;
     ensures \result <= UINT32_MAX;
@@ -163,6 +167,7 @@ static void generate_profiles(struct weapon_profile *weapon, struct target_profi
     target->feel_no_pain = 0u;
     target->wounds = (uint16_t)(1u + random_below(state, 10u));
     target->reduction = (uint16_t)random_below(state, 3u);
+    target->damage_divisor = (uint16_t)(1u + random_below(state, 4u));
     if ((flags & 8u) != 0u) {
         assert(rule_add_lethal_hits(&weapon->rules));
     }

@@ -37,6 +37,7 @@ export type CombatProfile = {
   wounds: number;
   targetModels: number;
   reduction: number;
+  damageDivisor: number;
   criticalWounds: number;
   hitModifier: number;
   woundModifier: number;
@@ -105,6 +106,7 @@ export type VolleyTarget = {
   feelNoPain: number;
   wounds: number;
   reduction: number;
+  damageDivisor: number;
   modelCount: number;
 };
 
@@ -186,6 +188,7 @@ export const DEFAULT_PROFILE: CombatProfile = {
   wounds: 12,
   targetModels: 1,
   reduction: 0,
+  damageDivisor: 1,
   criticalWounds: 0,
   hitModifier: 0,
   woundModifier: 0,
@@ -284,6 +287,7 @@ export function normalizeProfile(input: unknown): CombatProfile {
     wounds: numberValue("wounds", 1, 1024),
     targetModels: numberValue("targetModels", 1, 1000),
     reduction: numberValue("reduction", 0, 1024),
+    damageDivisor: numberValue("damageDivisor", 1, 1024),
     criticalWounds: numberValue("criticalWounds", 0, 6),
     hitModifier: numberValue("hitModifier", -10, 10),
     woundModifier: numberValue("woundModifier", -10, 10),
@@ -399,9 +403,16 @@ function modifiedCharacteristic(value: number, modifier: number) {
   return Math.max(1, value + modifier);
 }
 
-function modifiedDamageCharacteristic(profile: CombatProfile, base: number) {
+function modifiedDamageCharacteristic(
+  profile: CombatProfile,
+  base: number,
+  damageDivisor = profile.damageDivisor,
+  reduction = profile.reduction,
+) {
   const minimum = profile.damageReplacement === 0 ? 0 : 1;
-  return Math.max(minimum, base + profile.damageModifier);
+  const additions =
+    profile.damageModifier + (profile.withinHalfRange ? profile.melta : 0) - reduction;
+  return Math.max(minimum, Math.ceil(base / damageDivisor + additions));
 }
 
 function rollAttackCount(profile: CombatProfile, targetModels: number, randomUint32: RandomUint32) {
@@ -560,21 +571,17 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
     result.unsavedAttacks += 1;
     const rawDamage = modifiedDamageCharacteristic(
       profile,
-      (profile.damageReplacement === null
+      profile.damageReplacement === null
         ? rollDiceValue(profile.damageDice, profile.damageSides, profile.damage, randomUint32)
-        : profile.damageReplacement) + (profile.withinHalfRange ? profile.melta : 0),
+        : profile.damageReplacement,
     );
-    const reducedDamage =
-      rawDamage > 0 && profile.reduction > 0
-        ? Math.max(1, rawDamage - profile.reduction)
-        : rawDamage;
     let prevented = 0;
     if (profile.feelNoPain > 0) {
-      for (let point = 0; point < reducedDamage; point += 1) {
+      for (let point = 0; point < rawDamage; point += 1) {
         if (rollDie(6, randomUint32) >= profile.feelNoPain) prevented += 1;
       }
     }
-    const damage = reducedDamage - prevented;
+    const damage = rawDamage - prevented;
     result.fnpPrevented += prevented;
     result.totalDamage += damage;
     const allocation = allocateDamageToUnit(
@@ -829,21 +836,19 @@ export function simulateOrderedVolley(
         const allocationTarget = targets[allocationPosition.segmentIndex];
         const rawDamage = modifiedDamageCharacteristic(
           profile,
-          (profile.damageReplacement === null
+          profile.damageReplacement === null
             ? rollDiceValue(profile.damageDice, profile.damageSides, profile.damage, randomUint32)
-            : profile.damageReplacement) + (profile.withinHalfRange ? profile.melta : 0),
+            : profile.damageReplacement,
+          allocationTarget.damageDivisor,
+          allocationTarget.reduction,
         );
-        const reducedDamage =
-          rawDamage > 0 && allocationTarget.reduction > 0
-            ? Math.max(1, rawDamage - allocationTarget.reduction)
-            : rawDamage;
         let prevented = 0;
         if (allocationTarget.feelNoPain > 0) {
-          for (let point = 0; point < reducedDamage; point += 1) {
+          for (let point = 0; point < rawDamage; point += 1) {
             if (rollDie(6, randomUint32) >= allocationTarget.feelNoPain) prevented += 1;
           }
         }
-        const damage = reducedDamage - prevented;
+        const damage = rawDamage - prevented;
         line.fnpPrevented += prevented;
         line.totalDamage += damage;
         const modelsBefore = allocationPosition.modelsDestroyed;
@@ -991,9 +996,11 @@ export function simulateOrderedVolleyPhase(
     const maximumResolvedHits = maximumAttacks * (1 + maximumSustainedHits);
     const maximumDamage = modifiedDamageCharacteristic(
       profile,
-      (profile.damageReplacement === null
+      profile.damageReplacement === null
         ? profile.damage + profile.damageDice * profile.damageSides
-        : profile.damageReplacement) + (profile.withinHalfRange ? profile.melta : 0),
+        : profile.damageReplacement,
+      1,
+      0,
     );
     const drawsPerResolvedHit =
       (profile.torrent ? 0 : profile.rerollHits || profile.rerollHitOnes ? 2 : 1) +

@@ -201,6 +201,25 @@ class ProfileDataTests(unittest.TestCase):
             "in that unit, subtract 1 from the Damage characteristic of that attack.",
         )
         self.assertEqual(conditional[0]["activation"], "situational")
+        halved = combat_presets(
+            "Molten Form",
+            "Each time an attack is allocated to this model, halve the Damage "
+            "characteristic of that attack.",
+        )
+        self.assertEqual(halved[0]["activation"], "inherent")
+        self.assertEqual(
+            halved[0]["additional_effects"],
+            [
+                {
+                    "type": "damage_divisor",
+                    "value": 2,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "role": "target",
+                    "subject": "self",
+                }
+            ],
+        )
 
     def test_combat_preset_parser_omits_unsupported_defensive_effects(self):
         psychic = combat_presets(
@@ -505,7 +524,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "20",
+                "21",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -592,10 +611,11 @@ class ProfileDataTests(unittest.TestCase):
                     """SELECT effect_type, count(*) FROM unit_combat_preset_effects
                        WHERE effect_type IN
                            ('save_target', 'invulnerable_save', 'feel_no_pain',
-                            'damage_reduction')
+                            'damage_reduction', 'damage_divisor')
                        GROUP BY effect_type ORDER BY effect_type"""
                 ).fetchall(),
                 [
+                    ("damage_divisor", 4),
                     ("damage_reduction", 30),
                     ("feel_no_pain", 39),
                     ("invulnerable_save", 34),
@@ -606,7 +626,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 2), ("inherent", 28), ("situational", 1379)],
+                [("automatic", 2), ("inherent", 32), ("situational", 1379)],
             )
             self.assertEqual(
                 connection.execute(
@@ -975,6 +995,25 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(duty_eternal["activation"], "inherent")
         self.assertEqual(redemptor["models"][0]["reduction"], 1)
         self.assertEqual(redemptor["models"][0]["feelNoPain"], 0)
+        avatar = next(unit for unit in catalogue["units"] if unit["name"] == "Avatar of Khaine")
+        molten_form = next(
+            preset for preset in avatar["combatPresets"] if preset["name"] == "Molten Form"
+        )
+        self.assertEqual(molten_form["activation"], "inherent")
+        self.assertEqual(
+            molten_form["effects"],
+            [
+                {
+                    "type": "damage_divisor",
+                    "value": 2,
+                    "diceCount": 0,
+                    "diceSides": 0,
+                    "role": "target",
+                    "subject": "self",
+                }
+            ],
+        )
+        self.assertEqual(avatar["models"][0]["damageDivisor"], 2)
         self.assertFalse(
             any(
                 preset["name"] == "Impossible Form (Psychic)"

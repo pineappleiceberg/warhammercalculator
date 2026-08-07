@@ -72,6 +72,9 @@ type CatalogueModel = {
   t: number | null;
   save: number | null;
   invuln: number | null;
+  feelNoPain: number;
+  reduction: number;
+  damageDivisor: number;
   wounds: number | null;
   keywords: string[];
 };
@@ -248,6 +251,7 @@ async function calculate(profile: Profile): Promise<Result> {
       profile.strengthReplacement,
       profile.damageReplacement ?? 0,
       profile.damageReplacement === null ? 0 : 1,
+      profile.damageDivisor,
       output,
     );
 
@@ -448,15 +452,18 @@ function simulateAttack(profile: Profile): RollResult {
 
     result.unsavedAttacks += 1;
 
-    const rawDamage = rollDiceValue(
-      profile.damageDice,
-      profile.damageSides,
-      profile.damage + (profile.withinHalfRange ? profile.melta : 0),
+    const baseDamage =
+      profile.damageReplacement === null
+        ? rollDiceValue(profile.damageDice, profile.damageSides, profile.damage)
+        : profile.damageReplacement;
+    const damageFloor = profile.damageReplacement === 0 ? 0 : 1;
+    const reducedDamage = Math.max(
+      damageFloor,
+      Math.ceil(baseDamage / profile.damageDivisor) +
+        profile.damageModifier +
+        (profile.withinHalfRange ? profile.melta : 0) -
+        profile.reduction,
     );
-    const reducedDamage =
-      rawDamage > 0 && profile.reduction > 0
-        ? Math.max(1, rawDamage - profile.reduction)
-        : rawDamage;
     let prevented = 0;
     if (profile.feelNoPain > 0) {
       for (let point = 0; point < reducedDamage; point += 1) {
@@ -972,6 +979,7 @@ export default function Home() {
           invulnerable: model.invuln ?? 0,
           feelNoPain: model.feelNoPain ?? 0,
           reduction: model.reduction ?? 0,
+          damageDivisor: model.damageDivisor ?? 1,
           ...(model.wounds ? { wounds: model.wounds } : {}),
           criticalWounds: selectedWeapon
             ? antiWoundThreshold(selectedWeapon.abilities, model.keywords)
@@ -1368,6 +1376,13 @@ export default function Home() {
                   value={profile.reduction}
                   onChange={(value) => set("reduction", value)}
                   suffix="−D"
+                />
+                <NumberField
+                  label="Damage divisor"
+                  value={profile.damageDivisor}
+                  min={1}
+                  onChange={(value) => set("damageDivisor", value)}
+                  suffix="÷D"
                 />
               </div>
             </div>

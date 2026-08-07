@@ -86,6 +86,7 @@ struct whc_web_target_input {
     uint32_t wounds;
     uint32_t damage_reduction;
     uint32_t model_count;
+    uint32_t damage_divisor;
 };
 
 struct whc_web_applied_summary {
@@ -140,8 +141,7 @@ struct whc_web_exact_complexity {
 bool whc_calculate_summary(
     uint16_t attack_dice_count, uint16_t attack_dice_sides, uint16_t attack_modifier,
     uint16_t attacks_replacement, uint16_t weapon_count, uint8_t hits_on, uint16_t strength,
-    uint16_t ap,
-    uint16_t damage_dice_count, uint16_t damage_dice_sides, uint16_t damage_modifier,
+    uint16_t ap, uint16_t damage_dice_count, uint16_t damage_dice_sides, uint16_t damage_modifier,
     uint8_t critical_hits_on, uint16_t toughness, uint8_t save, uint8_t invulnerable_save,
     uint8_t feel_no_pain, uint16_t wounds, uint16_t damage_reduction, uint32_t rule_flags,
     uint8_t critical_wounds_on, uint16_t target_models, uint16_t sustained_hits_dice_count,
@@ -149,7 +149,7 @@ bool whc_calculate_summary(
     uint16_t rapid_fire_dice_sides, uint16_t rapid_fire, uint16_t melta, int16_t hit_modifier,
     int16_t wound_modifier, int16_t attacks_modifier, int16_t strength_modifier,
     int16_t damage_characteristic_modifier, uint16_t strength_replacement,
-    uint16_t damage_replacement, bool damage_replacement_active,
+    uint16_t damage_replacement, bool damage_replacement_active, uint16_t damage_divisor,
     struct whc_web_summary *summary);
 
 /*@ requires 1 <= weapon_count && weapon_count <= MAX_VOLLEY_WEAPONS;

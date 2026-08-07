@@ -235,6 +235,9 @@ export function combatPresetEffects(
     damageReduction: additional
       .filter((effect) => effect.type === "damage_reduction")
       .reduce((strongest, effect) => Math.max(strongest, effect.value), 0),
+    damageDivisor: additional
+      .filter((effect) => effect.type === "damage_divisor")
+      .reduce((product, effect) => product * effect.value, 1),
     criticalHits: threshold("critical_hits"),
     criticalWounds: threshold("critical_wounds"),
     lethalHits: additional.some((effect) => effect.type === "lethal_hits"),
@@ -265,6 +268,7 @@ function applyDefensiveEffects(profile, effects) {
     invulnerable: strongestSave(profile.invulnerable, effects.invulnerableSave),
     feelNoPain: strongestSave(profile.feelNoPain, effects.feelNoPain),
     reduction: Math.max(profile.reduction ?? 0, effects.damageReduction),
+    damageDivisor: (profile.damageDivisor ?? 1) * effects.damageDivisor,
   };
 }
 
@@ -301,6 +305,7 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
         target.invulnerable,
         target.feelNoPain,
         target.reduction,
+        target.damageDivisor,
       ]),
     ),
   );

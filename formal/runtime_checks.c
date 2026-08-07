@@ -3,6 +3,10 @@
 #include <assert.h>
 #include <stdint.h>
 
+#ifdef NDEBUG
+#error "Runtime contract checks require active assertions"
+#endif
+
 /*@ terminates \true;
     ensures \result == 0;
 */
@@ -75,6 +79,7 @@ int main(void) {
     target.toughness = 10u;
     target.save = 2u;
     target.wounds = 12u;
+    target.damage_divisor = 2u;
 
     assert(attack_plan_build(&weapon, &target, &plan));
     assert(attack_plan_is_valid(&plan));
@@ -82,6 +87,7 @@ int main(void) {
     assert(plan.wounds_on == 5u);
     assert(plan.hit_reroll_mask == (UINT8_C(1) << 1u));
     assert(plan.wound_reroll_mask == (UINT8_C(1) << 1u));
+    assert(plan.damage_divisor == 2u);
     assert(calculate_attack_damage_distribution(&weapon, &target, &workspace, &distribution));
     assert(probability_distribution_is_normalized(&distribution));
     assert(distribution.minimum <= distribution.maximum);

@@ -70,8 +70,7 @@ static void generate_weapon(struct fuzz_input *input, struct whc_web_weapon_inpu
     weapon->weapon_count = 1u + next_byte(input) % 4u;
     weapon->hits_on = 2u + next_byte(input) % 5u;
     weapon->strength = 1u + next_byte(input) % 16u;
-    weapon->strength_replacement =
-        next_byte(input) % 4u == 0u ? 1u + next_byte(input) % 16u : 0u;
+    weapon->strength_replacement = next_byte(input) % 4u == 0u ? 1u + next_byte(input) % 16u : 0u;
     weapon->ap = next_byte(input) % 6u;
     weapon->damage_dice_count = next_byte(input) % 2u;
     weapon->damage_dice_sides = weapon->damage_dice_count == 0u ? 0u : 2u + next_byte(input) % 5u;
@@ -110,6 +109,7 @@ static void generate_target(struct fuzz_input *input, struct whc_web_target_inpu
     target->feel_no_pain = next_byte(input) % 3u == 0u ? 0u : 2u + next_byte(input) % 5u;
     target->wounds = 1u + next_byte(input) % 12u;
     target->damage_reduction = next_byte(input) % 4u;
+    target->damage_divisor = next_byte(input) % 4u + 1u;
     target->model_count = 1u + next_byte(input) % 5u;
 }
 
@@ -146,8 +146,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     valid = whc_calculate_summary(
         (uint16_t)weapons[0].attack_dice_count, (uint16_t)weapons[0].attack_dice_sides,
         (uint16_t)weapons[0].attack_modifier, (uint16_t)weapons[0].attacks_replacement,
-        (uint16_t)weapons[0].weapon_count,
-        (uint8_t)weapons[0].hits_on, (uint16_t)weapons[0].strength, (uint16_t)weapons[0].ap,
+        (uint16_t)weapons[0].weapon_count, (uint8_t)weapons[0].hits_on,
+        (uint16_t)weapons[0].strength, (uint16_t)weapons[0].ap,
         (uint16_t)weapons[0].damage_dice_count, (uint16_t)weapons[0].damage_dice_sides,
         (uint16_t)weapons[0].damage_modifier, (uint8_t)weapons[0].critical_hits_on,
         (uint16_t)targets[0].toughness, (uint8_t)targets[0].save,
@@ -162,9 +162,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         (int16_t)weapons[0].attacks_characteristic_modifier,
         (int16_t)weapons[0].strength_characteristic_modifier,
         (int16_t)weapons[0].damage_characteristic_modifier,
-        (uint16_t)weapons[0].strength_replacement,
-        (uint16_t)weapons[0].damage_replacement,
-        weapons[0].damage_replacement_active != 0u, &summary);
+        (uint16_t)weapons[0].strength_replacement, (uint16_t)weapons[0].damage_replacement,
+        weapons[0].damage_replacement_active != 0u, (uint16_t)targets[0].damage_divisor, &summary);
     if (valid) {
         assert_summary(&summary);
     }

@@ -22,7 +22,8 @@ The main tables are:
   Damage modifiers, and fixed Attacks, Strength, and Damage replacements with
   optional exact weapon names and required target or attack keywords, plus
   defensive Save targets, invulnerable saves, unrestricted Feel No Pain
-  thresholds, and per-attack damage reduction; mutually exclusive named modes
+  thresholds, per-attack damage reduction, and unconditional incoming-Damage
+  divisors; mutually exclusive named modes
   and rolled outcomes are stored as separate ordered choices. Each extracted
   Hit, Wound, and re-roll effect
   records whether it applies from the attacking or target side and whether its

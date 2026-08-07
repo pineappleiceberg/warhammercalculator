@@ -116,7 +116,8 @@ struct attack_plan {
     int16_t hit_modifier;
     int16_t wound_modifier;
 
-    uint16_t damage_reduction;
+    int32_t damage_modifier;
+    uint16_t damage_divisor;
     uint16_t damage_floor;
     struct dice_value sustained_hits;
     uint32_t flags;
@@ -156,6 +157,7 @@ struct target_profile {
     uint8_t feel_no_pain;
     uint16_t wounds;
     uint16_t reduction;
+    uint16_t damage_divisor;
     struct rule_set rules;
 };
 
@@ -351,7 +353,7 @@ struct calculator_workspace {
 
   predicate whc_valid_attack_damage_values{L}(struct attack_plan *plan) =
       \valid_read(plan) && whc_valid_dice_value(plan->sustained_hits) &&
-      plan->damage_floor > 0 &&
+      plan->damage_divisor > 0 && plan->damage_floor <= 1 &&
       (plan->flags & ~0x3f) == 0 &&
       plan->damage_transform_count <= MAX_DAMAGE_TRANSFORMS;
 
@@ -587,7 +589,7 @@ bool rule_add_cover(struct rule_set *rules);
     ensures \result ==> whc_valid_attack_thresholds(plan);
     ensures \result ==> whc_valid_attack_rerolls(plan);
     ensures \result ==> whc_valid_dice_value(plan->sustained_hits);
-    ensures \result ==> plan->damage_floor > 0;
+    ensures \result ==> plan->damage_divisor > 0 && plan->damage_floor <= 1;
     ensures \result ==> (plan->flags & ~0x3f) == 0;
     ensures \result ==> plan->damage_transform_count <= MAX_DAMAGE_TRANSFORMS;
     ensures \result ==> (\forall integer index;
@@ -600,7 +602,7 @@ bool rule_add_cover(struct rule_set *rules);
     ensures \result ==> whc_valid_attack_thresholds(plan);
     ensures \result ==> whc_valid_attack_rerolls(plan);
     ensures \result ==> whc_valid_dice_value(plan->sustained_hits);
-    ensures \result ==> plan->damage_floor > 0;
+    ensures \result ==> plan->damage_divisor > 0 && plan->damage_floor <= 1;
     ensures \result ==> (plan->flags & ~0x3f) == 0;
     ensures \result ==> plan->damage_transform_count <= MAX_DAMAGE_TRANSFORMS;
 */
@@ -618,7 +620,7 @@ bool attack_plan_add_damage_transform(struct attack_plan *plan, damage_transform
     ensures \result ==> whc_valid_attack_thresholds(plan);
     ensures \result ==> whc_valid_attack_rerolls(plan);
     ensures \result ==> whc_valid_dice_value(plan->sustained_hits);
-    ensures \result ==> plan->damage_floor > 0;
+    ensures \result ==> plan->damage_divisor > 0 && plan->damage_floor <= 1;
     ensures \result ==> (plan->flags & ~0x3f) == 0;
     ensures \result ==> plan->damage_transform_count <= MAX_DAMAGE_TRANSFORMS;
     ensures \result ==> (\forall integer index;
@@ -631,7 +633,7 @@ bool attack_plan_add_damage_transform(struct attack_plan *plan, damage_transform
     ensures \result ==> whc_valid_attack_thresholds(plan);
     ensures \result ==> whc_valid_attack_rerolls(plan);
     ensures \result ==> whc_valid_dice_value(plan->sustained_hits);
-    ensures \result ==> plan->damage_floor > 0;
+    ensures \result ==> plan->damage_divisor > 0 && plan->damage_floor <= 1;
     ensures \result ==> (plan->flags & ~0x3f) == 0;
     ensures \result ==> plan->damage_transform_count <= MAX_DAMAGE_TRANSFORMS;
 */

@@ -147,6 +147,7 @@ def export(database: Path, output: Path) -> None:
                     "invuln": row["invulnerable_save_target"],
                     "feelNoPain": 0,
                     "reduction": 0,
+                    "damageDivisor": 1,
                     "wounds": row["wounds"],
                     "keywords": keywords.get(row["datasheet_id"], []),
                 }
@@ -248,6 +249,8 @@ def export(database: Path, output: Path) -> None:
                         model["feelNoPain"] = min(model["feelNoPain"] or value, value)
                     elif effect["type"] == "damage_reduction":
                         model["reduction"] = max(model["reduction"], value)
+                    elif effect["type"] == "damage_divisor":
+                        model["damageDivisor"] *= value
 
         for row in connection.execute(
             """SELECT datasheet_id, description_text, min_models, max_models

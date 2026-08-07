@@ -612,6 +612,65 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     denominator: "1",
   });
 
+  const dividedDamageProfile = {
+    ...signedProfile,
+    attackDice: 0,
+    attackSides: 0,
+    attacks: 1,
+    attacksModifier: 0,
+    weaponCount: 1,
+    damage: 5,
+    damageModifier: 1,
+    damageDivisor: 2,
+  };
+  const dividedDamageCalculation = await worker.fetch(
+    new Request("http://localhost/api/v1/calculate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ profile: dividedDamageProfile }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(dividedDamageCalculation.status, 200);
+  assert.deepEqual((await dividedDamageCalculation.json()).data.exact, {
+    numerator: "10",
+    denominator: "3",
+  });
+
+  const simulateDamageDivisor = async (damageDivisor) => {
+    const response = await worker.fetch(
+      new Request("http://localhost/api/v1/volley/simulate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          profiles: [{ ...dividedDamageProfile, damageDivisor: 1 }],
+          targets: [
+            {
+              toughness: 1,
+              save: 7,
+              invulnerable: 0,
+              feelNoPain: 0,
+              wounds: 1000,
+              reduction: 0,
+              damageDivisor,
+              modelCount: 1,
+            },
+          ],
+          seed: 17,
+          trials: 100,
+        }),
+      }),
+      testEnv,
+      context,
+    );
+    assert.equal(response.status, 200);
+    return (await response.json()).data.mean;
+  };
+  const undividedSimulationMean = await simulateDamageDivisor(1);
+  const dividedSimulationMean = await simulateDamageDivisor(2);
+  assert.equal(dividedSimulationMean * 1.5, undividedSimulationMean);
+
   const volleyProfile = (ap, damage) => ({
     attackDice: 0,
     attackSides: 0,

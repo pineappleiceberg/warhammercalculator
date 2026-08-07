@@ -2,23 +2,19 @@
 
 #include <string.h>
 
-bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_sides,
-                           uint16_t attack_modifier, uint16_t attacks_replacement,
-                           uint16_t weapon_count, uint8_t hits_on, uint16_t strength, uint16_t ap,
-                           uint16_t damage_dice_count,
-                           uint16_t damage_dice_sides, uint16_t damage_modifier,
-                           uint8_t critical_hits_on, uint16_t toughness, uint8_t save,
-                           uint8_t invulnerable_save, uint8_t feel_no_pain, uint16_t wounds,
-                           uint16_t damage_reduction, uint32_t rule_flags,
-                           uint8_t critical_wounds_on, uint16_t target_models,
-                           uint16_t sustained_hits_dice_count, uint16_t sustained_hits_dice_sides,
-                           uint16_t sustained_hits, uint16_t rapid_fire_dice_count,
-                           uint16_t rapid_fire_dice_sides, uint16_t rapid_fire, uint16_t melta,
-                           int16_t explicit_hit_modifier, int16_t explicit_wound_modifier,
-                           int16_t explicit_attacks_modifier, int16_t explicit_strength_modifier,
-                           int16_t explicit_damage_modifier, uint16_t strength_replacement,
-                           uint16_t damage_replacement, bool damage_replacement_active,
-                           struct whc_web_summary *summary) {
+bool whc_calculate_summary(
+    uint16_t attack_dice_count, uint16_t attack_dice_sides, uint16_t attack_modifier,
+    uint16_t attacks_replacement, uint16_t weapon_count, uint8_t hits_on, uint16_t strength,
+    uint16_t ap, uint16_t damage_dice_count, uint16_t damage_dice_sides, uint16_t damage_modifier,
+    uint8_t critical_hits_on, uint16_t toughness, uint8_t save, uint8_t invulnerable_save,
+    uint8_t feel_no_pain, uint16_t wounds, uint16_t damage_reduction, uint32_t rule_flags,
+    uint8_t critical_wounds_on, uint16_t target_models, uint16_t sustained_hits_dice_count,
+    uint16_t sustained_hits_dice_sides, uint16_t sustained_hits, uint16_t rapid_fire_dice_count,
+    uint16_t rapid_fire_dice_sides, uint16_t rapid_fire, uint16_t melta,
+    int16_t explicit_hit_modifier, int16_t explicit_wound_modifier,
+    int16_t explicit_attacks_modifier, int16_t explicit_strength_modifier,
+    int16_t explicit_damage_modifier, uint16_t strength_replacement, uint16_t damage_replacement,
+    bool damage_replacement_active, uint16_t damage_divisor, struct whc_web_summary *summary) {
     static struct calculator_workspace workspace;
     struct weapon_profile weapon;
     struct target_profile target;
@@ -136,6 +132,7 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
     target.feel_no_pain = feel_no_pain;
     target.wounds = wounds;
     target.reduction = damage_reduction;
+    target.damage_divisor = damage_divisor == 0u ? 1u : damage_divisor;
 
     if (((rule_flags & WHC_RULE_LETHAL_HITS) != 0u && !rule_add_lethal_hits(&weapon.rules)) ||
         ((rule_flags & WHC_RULE_DEVASTATING_WOUNDS) != 0u &&
@@ -208,8 +205,7 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
         input->weapon_count == 0u || input->weapon_count > UINT16_MAX ||
         input->attack_dice_count > UINT16_MAX || input->attack_dice_sides > UINT16_MAX ||
         input->attack_modifier > UINT16_MAX || input->attacks_replacement > UINT16_MAX ||
-        input->hits_on > UINT8_MAX ||
-        input->strength > UINT16_MAX || input->ap > UINT16_MAX ||
+        input->hits_on > UINT8_MAX || input->strength > UINT16_MAX || input->ap > UINT16_MAX ||
         input->damage_dice_count > UINT16_MAX || input->damage_dice_sides > UINT16_MAX ||
         input->damage_modifier > UINT16_MAX || input->critical_hits_on > UINT8_MAX ||
         input->critical_wounds_on > UINT8_MAX || input->sustained_hits_dice_count > UINT16_MAX ||
@@ -228,7 +224,8 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
         input->damage_replacement_active > 1u || target_input->toughness > UINT16_MAX ||
         target_input->save > UINT8_MAX || target_input->invulnerable_save > UINT8_MAX ||
         target_input->feel_no_pain > UINT8_MAX || target_input->wounds > UINT16_MAX ||
-        target_input->damage_reduction > UINT16_MAX || target_models == 0u ||
+        target_input->damage_reduction > UINT16_MAX || target_input->damage_divisor > UINT16_MAX ||
+        target_models == 0u ||
         ((input->rule_flags & WHC_RULE_INDIRECT_NOT_VISIBLE) != 0u &&
          (input->rule_flags & WHC_RULE_TORRENT) != 0u)) {
         return false;
@@ -347,6 +344,8 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
     target->feel_no_pain = (uint8_t)target_input->feel_no_pain;
     target->wounds = (uint16_t)target_input->wounds;
     target->reduction = (uint16_t)target_input->damage_reduction;
+    target->damage_divisor =
+        target_input->damage_divisor == 0u ? 1u : (uint16_t)target_input->damage_divisor;
 
     target_has_cover = (input->rule_flags & WHC_RULE_TARGET_COVER) != 0u ||
                        (input->rule_flags & WHC_RULE_INDIRECT_NOT_VISIBLE) != 0u;

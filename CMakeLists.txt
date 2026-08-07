@@ -104,6 +104,17 @@ if(BUILD_TESTING)
         PRIVATE warhammercalculator::warhammercalculator
     )
     add_test(NAME warhammercalculator_contract_checks COMMAND warhammercalculator_contract_checks)
+
+    foreach(test_target
+            warhammercalculator_tests
+            warhammercalculator_property_tests
+            warhammercalculator_contract_checks)
+        if(MSVC)
+            target_compile_options(${test_target} PRIVATE /UNDEBUG)
+        else()
+            target_compile_options(${test_target} PRIVATE -UNDEBUG)
+        endif()
+    endforeach()
 endif()
 
 if(WHC_BUILD_FUZZER)

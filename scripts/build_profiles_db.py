@@ -190,7 +190,7 @@ CREATE TABLE unit_combat_preset_effects (
          'critical_hits', 'critical_wounds', 'attacks_replacement', 'strength_replacement',
          'damage_replacement', 'attacks_modifier',
          'strength_modifier', 'damage_modifier', 'save_target',
-         'invulnerable_save', 'feel_no_pain', 'damage_reduction')),
+         'invulnerable_save', 'feel_no_pain', 'damage_reduction', 'damage_divisor')),
     value INTEGER NOT NULL,
     dice_count INTEGER NOT NULL DEFAULT 0 CHECK (dice_count >= 0),
     dice_sides INTEGER NOT NULL DEFAULT 0 CHECK (dice_sides >= 0),
@@ -927,6 +927,22 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
         }
     if len(damage_reductions) == 1:
         effects.append(next(iter(damage_reductions.values())))
+    damage_divisor_pattern = re.compile(
+        r"each time an attack is allocated to (?:this model|a model in this unit), "
+        r"halve the Damage characteristic of that attack\.",
+        re.IGNORECASE,
+    )
+    if damage_divisor_pattern.fullmatch(text.strip()):
+        effects.append(
+            {
+                "type": "damage_divisor",
+                "value": 2,
+                "dice_count": 0,
+                "dice_sides": 0,
+                "role": "target",
+                "subject": "self",
+            }
+        )
     return [effect for effect in effects if effect["subject"] != "unknown"]
 
 
@@ -1019,6 +1035,7 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
             "invulnerable_save",
             "feel_no_pain",
             "damage_reduction",
+            "damage_divisor",
             "damage_replacement",
         }
         or effect["role"] != "target"
@@ -1041,6 +1058,13 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
         r"(?:this model|a model in this unit|this FORTIFICATION\s*), subtract \d+ from "
         r"(?:(?:the|that) attack(?:’s|'s) Damage characteristic|"
         r"the Damage characteristic of that attack)\.",
+        text,
+        re.IGNORECASE,
+    ):
+        return "inherent"
+    if re.fullmatch(
+        r"Each time an attack is allocated to "
+        r"(?:this model|a model in this unit), halve the Damage characteristic of that attack\.",
         text,
         re.IGNORECASE,
     ):
@@ -1368,7 +1392,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "20"),
+                    ("schema_version", "21"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

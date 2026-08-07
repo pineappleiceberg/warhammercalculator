@@ -566,6 +566,8 @@ export default function PlayMode() {
                     ["invulnerable", "Invuln"],
                     ["feelNoPain", "FNP"],
                     ["targetModels", "Targets"],
+                    ["reduction", "-Damage"],
+                    ["damageDivisor", "÷Damage"],
                   ] as const
                 ).map(([key, label]) => (
                   <label key={key}>
@@ -573,7 +575,11 @@ export default function PlayMode() {
                     <input
                       type="number"
                       inputMode="numeric"
-                      min={key === "invulnerable" || key === "feelNoPain" ? 0 : 1}
+                      min={
+                        key === "invulnerable" || key === "feelNoPain" || key === "reduction"
+                          ? 0
+                          : 1
+                      }
                       value={profile[key] as number}
                       onChange={(event) => setNumber(key, Math.max(0, +event.target.value))}
                     />

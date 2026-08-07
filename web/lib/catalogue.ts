@@ -30,6 +30,7 @@ export type CatalogueModel = {
   invuln: number | null;
   feelNoPain: number;
   reduction: number;
+  damageDivisor: number;
   wounds: number | null;
   keywords: string[];
 };
@@ -146,7 +147,8 @@ export type CatalogueCombatPresetEffect = {
     | "save_target"
     | "invulnerable_save"
     | "feel_no_pain"
-    | "damage_reduction";
+    | "damage_reduction"
+    | "damage_divisor";
   value: number;
   diceCount: number;
   diceSides: number;
@@ -283,6 +285,7 @@ export function applyTargetProfile(profile: CombatProfile, model: CatalogueModel
     invulnerable: model.invuln ?? 0,
     feelNoPain: model.feelNoPain ?? 0,
     reduction: model.reduction ?? 0,
+    damageDivisor: model.damageDivisor ?? 1,
     ...(model.wounds ? { wounds: model.wounds } : {}),
   } satisfies CombatProfile;
 }

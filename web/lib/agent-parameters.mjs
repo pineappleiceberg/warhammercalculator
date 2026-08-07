@@ -29,6 +29,7 @@ const integerParameters = [
   ["wounds", ["wounds"]],
   ["targetModels", ["targetModels", "models"]],
   ["reduction", ["reduction"]],
+  ["damageDivisor", ["damageDivisor"]],
   ["criticalWounds", ["criticalWounds"]],
   ["hitModifier", ["hitModifier"]],
   ["woundModifier", ["woundModifier"]],
@@ -290,6 +291,7 @@ export function canonicalAgentParameters(profile) {
   search.set("wounds", String(profile.wounds));
   search.set("models", String(profile.targetModels));
   search.set("reduction", String(profile.reduction));
+  search.set("damageDivisor", String(profile.damageDivisor));
   search.set("criticalHits", String(profile.criticalHits));
   search.set("criticalWounds", String(profile.criticalWounds));
   search.set("hitModifier", String(profile.hitModifier));

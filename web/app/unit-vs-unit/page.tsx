@@ -71,6 +71,7 @@ function targetSegment(model: CatalogueModel, modelCount: number): TargetSegment
     feelNoPain: model.feelNoPain ?? 0,
     wounds: model.wounds ?? 1,
     reduction: model.reduction ?? 0,
+    damageDivisor: model.damageDivisor ?? 1,
     modelCount,
   };
 }
@@ -833,6 +834,7 @@ export default function UnitVsUnit() {
                           ["wounds", "W/model"],
                           ["feelNoPain", "FNP"],
                           ["reduction", "-Damage"],
+                          ["damageDivisor", "÷Damage"],
                         ] as const
                       ).map(([key, label]) => (
                         <label key={key}>

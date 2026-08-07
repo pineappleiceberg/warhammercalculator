@@ -109,6 +109,7 @@ test("signed characteristic modifiers use per-weapon floors in C/Wasm", () => {
         0,
         0,
         0,
+        1,
         output,
       ),
       1,
@@ -152,6 +153,7 @@ test("signed characteristic modifiers use per-weapon floors in C/Wasm", () => {
         0,
         0,
         0,
+        1,
         output,
       ),
       1,
@@ -197,6 +199,7 @@ test("signed characteristic modifiers use per-weapon floors in C/Wasm", () => {
         0,
         0,
         0,
+        1,
         output,
       ),
       1,
@@ -240,6 +243,7 @@ test("signed characteristic modifiers use per-weapon floors in C/Wasm", () => {
         0,
         8,
         0,
+        1,
         1,
         output,
       ),
@@ -1158,6 +1162,7 @@ test("parameterized agent profile reaches the C/Wasm exact engine unchanged", ()
       profile.strengthReplacement,
       profile.damageReplacement ?? 0,
       profile.damageReplacement === null ? 0 : 1,
+      profile.damageDivisor,
       output,
     );
     assert.equal(ok, 1);
@@ -1213,6 +1218,7 @@ function interactionMeans(testCase) {
       0,
       0,
       0,
+      1,
       output,
     );
     assert.equal(ok, 1, testCase.name);
@@ -1237,6 +1243,7 @@ function exactMean({
   invulnerable = 0,
   feelNoPain = 0,
   reduction = 0,
+  damageDivisor = 1,
   flags = 0,
   hitModifier = 0,
   woundModifier = 0,
@@ -1280,6 +1287,7 @@ function exactMean({
       0,
       0,
       0,
+      damageDivisor,
       output,
     );
     assert.equal(ok, 1);
@@ -1304,9 +1312,13 @@ function currentWeaponInput(weapon) {
   return [...current, 0, 0, 0];
 }
 
+function currentTargetInput(target) {
+  return target.length === 8 ? target : [...target, 1];
+}
+
 function orderedVolley(weapons, targets, initialWoundsLost = 0) {
   const weaponFields = 29;
-  const targetFields = 7;
+  const targetFields = 8;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
   const summaryPointer = calculator._malloc(10 * 4);
@@ -1317,7 +1329,9 @@ function orderedVolley(weapons, targets, initialWoundsLost = 0) {
     weapons.forEach((weapon, index) =>
       write(weaponsPointer + index * weaponFields * 4, currentWeaponInput(weapon)),
     );
-    targets.forEach((target, index) => write(targetsPointer + index * targetFields * 4, target));
+    targets.forEach((target, index) =>
+      write(targetsPointer + index * targetFields * 4, currentTargetInput(target)),
+    );
     assert.equal(
       calculator._whc_calculate_ordered_volley_summary(
         weaponsPointer,
@@ -1351,7 +1365,7 @@ function orderedVolley(weapons, targets, initialWoundsLost = 0) {
 
 function orderedVolleyComplexity(weapons, targets, initialWoundsLost = 0) {
   const weaponFields = 29;
-  const targetFields = 7;
+  const targetFields = 8;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
   const outputPointer = calculator._malloc(24);
@@ -1361,7 +1375,9 @@ function orderedVolleyComplexity(weapons, targets, initialWoundsLost = 0) {
     weapons.forEach((weapon, index) =>
       write(weaponsPointer + index * weaponFields * 4, currentWeaponInput(weapon)),
     );
-    targets.forEach((target, index) => write(targetsPointer + index * targetFields * 4, target));
+    targets.forEach((target, index) =>
+      write(targetsPointer + index * targetFields * 4, currentTargetInput(target)),
+    );
     assert.equal(
       calculator._whc_estimate_ordered_volley_complexity(
         weaponsPointer,
@@ -1444,6 +1460,7 @@ function variableRuleMean({ flags = 0, sustained = [0, 0, 0], rapid = [0, 0, 0] 
       0,
       0,
       0,
+      1,
       output,
     );
     assert.equal(ok, 1);
@@ -1742,4 +1759,21 @@ test("source-backed defensive profile values reduce C/Wasm exact damage", async 
   });
   assert.ok(lessThanOrEqual(defended, baseline));
   assert.notDeepEqual(defended, baseline);
+
+  const avatar = catalogue.units.find((unit) => unit.name === "Avatar of Khaine");
+  const avatarModel = avatar.models[0];
+  assert.equal(avatarModel.damageDivisor, 2);
+  const undivided = exactMean({
+    ap: 2,
+    save: avatarModel.save,
+    invulnerable: avatarModel.invuln ?? 0,
+  });
+  const divided = exactMean({
+    ap: 2,
+    save: avatarModel.save,
+    invulnerable: avatarModel.invuln ?? 0,
+    damageDivisor: avatarModel.damageDivisor,
+  });
+  assert.ok(lessThanOrEqual(divided, undivided));
+  assert.notDeepEqual(divided, undivided);
 });

@@ -16,9 +16,10 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Represent random and multiplicative Attacks, Strength, and Damage changes,
-   context-dependent Attacks replacements, and limited-use single-attack Damage
-   replacements exactly in native C and WebAssembly before importing them.
+1. Represent random and multiplicative Attacks and Strength changes, shared-roll
+   characteristic effects, offensive Damage multiplication, context-dependent
+   Attacks replacements, and limited-use single-attack Damage replacements
+   exactly in native C and WebAssembly before importing them.
 2. Extend the source-backed rules eligibility layer beyond exact target and
    Psychic attack keywords to phase, range, and other compound conditions that
    currently require manual interpretation.
@@ -27,6 +28,19 @@ priority over feature count.
    affecting models that do not have them.
 
 ## Completed cycles
+
+- 2026-08-06: Added exact incoming-Damage division for unconditional rules such
+  as Avatar of Khaine's Molten Form. Four source-backed datasheet abilities now
+  load as editable target divisors across Model vs Model, Unit vs Unit, Play
+  Mode, API requests, seeded and cryptographically random rolls, and static
+  agent URLs. Native C and WebAssembly now apply the official sequence of
+  replacement, division, addition/subtraction, round-up, and minimum, fixing
+  cases where a Damage bonus was previously applied before halving. SQLite
+  schema 21, catalogue snapshots, hand-derived native/Wasm fractions, API
+  exact/simulation checks, generated property/fuzz inputs, and formal runtime
+  checks cover the behavior. Release-mode C test targets now explicitly retain
+  assertions, so the GitHub Actions native job executes these checks instead of
+  compiling them out through `NDEBUG`.
 
 - 2026-08-06: Added source-backed attacking-weapon keyword eligibility and
   imported 15 exact Psychic-only Feel No Pain effects. Culexus Assassin's

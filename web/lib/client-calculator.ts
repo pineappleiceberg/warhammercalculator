@@ -24,6 +24,7 @@ export type OrderedTargetSegment = {
   feelNoPain: number;
   wounds: number;
   reduction: number;
+  damageDivisor: number;
   modelCount: number;
 };
 
@@ -127,6 +128,7 @@ function targetValues(target: OrderedTargetSegment) {
     target.wounds,
     target.reduction,
     target.modelCount,
+    target.damageDivisor,
   ];
 }
 
@@ -193,6 +195,7 @@ export async function calculateProfile(profile: CombatProfile): Promise<DamageSu
       profile.strengthReplacement,
       profile.damageReplacement ?? 0,
       profile.damageReplacement === null ? 0 : 1,
+      profile.damageDivisor,
       output,
     );
     if (!ok) throw new Error("That unit profile exceeds the exact calculator limits");
@@ -248,7 +251,7 @@ export async function calculateOrderedVolley(
 
   const calculator = await loadCalculator();
   const weaponFields = 29;
-  const targetFields = 7;
+  const targetFields = 8;
   const weaponsPointer = calculator._malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
   const summaryPointer = calculator._malloc(10 * 4);
@@ -312,7 +315,7 @@ export async function estimateOrderedVolleyComplexity(
   }
   const calculator = await loadCalculator();
   const weaponFields = 29;
-  const targetFields = 7;
+  const targetFields = 8;
   const weaponsPointer = calculator._malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
   const outputPointer = calculator._malloc(6 * 4);

@@ -584,23 +584,26 @@ static void classify_saves(const struct roll_table *table, uint8_t saves_on_valu
 */
 static bool apply_damage_plan(const struct attack_plan *plan, uint32_t raw_damage,
                               uint32_t *result) {
-    uint32_t damage = raw_damage;
+    int64_t modified_damage = 0;
+    int64_t modifier_numerator = 0;
+    uint32_t damage = 0;
     uint8_t transform_index = 0;
 
-    if (plan == NULL || result == NULL) {
+    if (plan == NULL || result == NULL || plan->damage_divisor == 0u) {
         return false;
     }
 
-    if (damage != 0 && plan->damage_reduction != 0) {
-        if (damage > plan->damage_reduction) {
-            damage -= plan->damage_reduction;
-        } else {
-            damage = 0;
-        }
-
-        if (damage < plan->damage_floor) {
-            damage = plan->damage_floor;
-        }
+    modifier_numerator =
+        (int64_t)raw_damage + (int64_t)plan->damage_modifier * plan->damage_divisor;
+    modified_damage = modifier_numerator > 0
+                          ? (modifier_numerator + plan->damage_divisor - 1u) / plan->damage_divisor
+                          : modifier_numerator / plan->damage_divisor;
+    if (modified_damage < plan->damage_floor) {
+        damage = plan->damage_floor;
+    } else if (modified_damage > MAX_DISTRIBUTION_RESULT) {
+        return false;
+    } else {
+        damage = (uint32_t)modified_damage;
     }
 
     while (transform_index < plan->damage_transform_count) {
@@ -1663,7 +1666,8 @@ static bool distribution_from_weapon_attacks(const struct weapon_profile *weapon
     attacks = weapon->attacks_replacement == 0u
                   ? weapon->attacks
                   : (struct dice_value){0u, 0u, weapon->attacks_replacement};
-    if (!distribution_from_modified_dice_value(attacks, weapon->attacks_modifier, 1u, &per_weapon) ||
+    if (!distribution_from_modified_dice_value(attacks, weapon->attacks_modifier, 1u,
+                                               &per_weapon) ||
         !distribution_from_constant(0u, &current)) {
         return false;
     }
@@ -1689,7 +1693,6 @@ static bool distribution_from_weapon_attacks(const struct weapon_profile *weapon
 static bool distribution_from_weapon_damage(const struct weapon_profile *weapon,
                                             struct distribution *result) {
     struct dice_value damage;
-    uint32_t minimum;
 
     if (weapon == NULL) {
         return false;
@@ -1697,8 +1700,7 @@ static bool distribution_from_weapon_damage(const struct weapon_profile *weapon,
     damage = weapon->damage_replacement_active
                  ? (struct dice_value){0u, 0u, weapon->damage_replacement}
                  : weapon->damage;
-    minimum = weapon->damage_replacement_active && weapon->damage_replacement == 0u ? 0u : 1u;
-    return distribution_from_modified_dice_value(damage, weapon->damage_modifier, minimum, result);
+    return distribution_from_dice_value(damage, result);
 }
 
 /*@ requires \valid_read(weapon);
@@ -1706,8 +1708,8 @@ static bool distribution_from_weapon_damage(const struct weapon_profile *weapon,
     ensures 1 <= \result;
 */
 static uint16_t weapon_modified_strength(const struct weapon_profile *weapon) {
-    uint16_t strength = weapon->strength_replacement == 0u ? weapon->strength
-                                                           : weapon->strength_replacement;
+    uint16_t strength =
+        weapon->strength_replacement == 0u ? weapon->strength : weapon->strength_replacement;
     int32_t modified = (int32_t)strength + weapon->strength_modifier;
 
     if (modified < 1) {
@@ -2185,8 +2187,8 @@ bool attack_plan_is_valid(const struct attack_plan *plan) {
         (plan->hit_reroll_mask & (uint8_t)~VALID_D6_FACE_MASK) != 0u ||
         (plan->wound_reroll_mask & (uint8_t)~VALID_D6_FACE_MASK) != 0u ||
         (plan->save_reroll_mask & (uint8_t)~VALID_D6_FACE_MASK) != 0u ||
-        !dice_value_is_valid(plan->sustained_hits) || plan->damage_floor == 0u ||
-        (plan->flags & ~allowed_flags) != 0u ||
+        !dice_value_is_valid(plan->sustained_hits) || plan->damage_divisor == 0u ||
+        plan->damage_floor > 1u || (plan->flags & ~allowed_flags) != 0u ||
         plan->damage_transform_count > MAX_DAMAGE_TRANSFORMS) {
         return false;
     }
@@ -2215,7 +2217,7 @@ bool attack_plan_is_valid(const struct attack_plan *plan) {
     /*@ assert (plan->wound_reroll_mask & 0x81) == 0; */
     /*@ assert (plan->save_reroll_mask & 0x81) == 0; */
     /*@ assert whc_valid_dice_value(plan->sustained_hits); */
-    /*@ assert plan->damage_floor > 0; */
+    /*@ assert plan->damage_divisor > 0 && plan->damage_floor <= 1; */
     /*@ assert (plan->flags & ~0x3f) == 0; */
     /*@ assert plan->damage_transform_count <= MAX_DAMAGE_TRANSFORMS; */
     /*@ assert \forall integer index; 0 <= index < plan->damage_transform_count ==>
@@ -2247,8 +2249,10 @@ bool attack_plan_build(const struct weapon_profile *weapon, const struct target_
     plan->critical_hits_on = weapon->critical_hits_on == 0 ? 6u : weapon->critical_hits_on;
     plan->critical_wounds_on = 6u;
     plan->feel_no_pain_on = target->feel_no_pain;
-    plan->damage_reduction = target->reduction;
-    plan->damage_floor = 1;
+    plan->damage_modifier = (int32_t)weapon->damage_modifier - target->reduction;
+    plan->damage_divisor = target->damage_divisor == 0u ? 1u : target->damage_divisor;
+    plan->damage_floor =
+        (uint16_t)(weapon->damage_replacement_active && weapon->damage_replacement == 0u ? 0u : 1u);
     plan->hit_modifier = weapon->hit_modifier;
     plan->wound_modifier = weapon->wound_modifier;
     plan->hit_reroll_mask = weapon->hit_reroll_mask & VALID_D6_FACE_MASK;

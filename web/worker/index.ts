@@ -133,6 +133,7 @@ type OrderedTargetSegment = {
   feelNoPain: number;
   wounds: number;
   reduction: number;
+  damageDivisor: number;
   modelCount: number;
 };
 
@@ -374,6 +375,7 @@ async function exactCalculation(profile: CombatProfile, request: Request, env: E
       profile.strengthReplacement,
       profile.damageReplacement ?? 0,
       profile.damageReplacement === null ? 0 : 1,
+      profile.damageDivisor,
       output,
     );
     if (!ok) throw new Error("Profile exceeds the calculator's exact-distribution limits");
@@ -434,7 +436,7 @@ async function exactVolley(
 
   const calculator = await loadCalculator(request, env);
   const weaponFields = 29;
-  const targetFields = 7;
+  const targetFields = 8;
   const weaponsPointer = calculator.malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator.malloc(targets.length * targetFields * 4);
   const summaryPointer = calculator.malloc(10 * 4);
@@ -494,6 +496,7 @@ async function exactVolley(
         target.wounds,
         target.reduction,
         target.modelCount,
+        target.damageDivisor,
       ]),
     );
     const ok = calculator.whc_calculate_ordered_volley_summary(
@@ -546,7 +549,7 @@ async function volleyComplexity(
   }
   const calculator = await loadCalculator(request, env);
   const weaponFields = 29;
-  const targetFields = 7;
+  const targetFields = 8;
   const weaponsPointer = calculator.malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator.malloc(targets.length * targetFields * 4);
   const outputPointer = calculator.malloc(6 * 4);
@@ -596,6 +599,7 @@ async function volleyComplexity(
         target.wounds,
         target.reduction,
         target.modelCount,
+        target.damageDivisor,
       ]),
     );
     const ok = calculator.whc_estimate_ordered_volley_complexity(
@@ -672,6 +676,7 @@ function orderedTargets(value: unknown): OrderedTargetSegment[] {
       feelNoPain: optionalSave("feelNoPain"),
       wounds: integer("wounds", 1, 1024),
       reduction: integer("reduction", 0, 1024),
+      damageDivisor: target.damageDivisor === undefined ? 1 : integer("damageDivisor", 1, 1024),
       modelCount: integer("modelCount", 1, 1000),
     };
   });
