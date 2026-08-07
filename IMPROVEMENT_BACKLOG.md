@@ -17,7 +17,7 @@ priority over feature count.
 ## Prioritized backlog
 
 1. Represent random and multiplicative Attacks, Strength, and Damage changes,
-   fixed Strength/Damage replacements, and context-dependent Attacks
+   context-dependent Attacks replacements, and limited-use single-attack Damage
    replacements exactly in native C and WebAssembly before importing them.
 2. Add a source-backed rules eligibility layer for target keywords and phase or
    range conditions that currently require manual interpretation.
@@ -26,6 +26,18 @@ priority over feature count.
    affecting models that do not have them.
 
 ## Completed cycles
+
+- 2026-08-06: Added fixed Strength and Damage characteristic replacements in
+  the official replace-before-add order across native C, WebAssembly, exact
+  APIs, CSPRNG rolls, seeded simulations, editable profiles, and static agent
+  URLs. Damage replacements use an explicit active state so 0 is represented
+  exactly; the official exception keeps it below the normal minimum of 1 while
+  later additions such as Melta still apply. The conservative source importer
+  now exposes Shield-captain in Allarus Terminator Armour's phase-long Auramite
+  and Adamantine replacement, while once-per-turn, phase, or battle
+  single-attack replacements remain omitted until allocation-level uses can be
+  tracked. Native/Wasm fractions, API exact results, URL round trips,
+  catalogue snapshots, and generated sanitizer profiles cover the change.
 
 - 2026-08-06: Added fixed Attacks characteristic replacement in the official
   replace-before-add order across native C, WebAssembly, exact APIs, complexity

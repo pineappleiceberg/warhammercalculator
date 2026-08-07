@@ -21,11 +21,13 @@ export type CombatProfile = {
   weaponCount: number;
   hitOn: number;
   strength: number;
+  strengthReplacement: number;
   strengthModifier: number;
   ap: number;
   damageDice: number;
   damageSides: number;
   damage: number;
+  damageReplacement: number | null;
   damageModifier: number;
   criticalHits: number;
   toughness: number;
@@ -168,11 +170,13 @@ export const DEFAULT_PROFILE: CombatProfile = {
   weaponCount: 1,
   hitOn: 3,
   strength: 8,
+  strengthReplacement: 0,
   strengthModifier: 0,
   ap: 2,
   damageDice: 1,
   damageSides: 6,
   damage: 1,
+  damageReplacement: null,
   damageModifier: 0,
   criticalHits: 6,
   toughness: 8,
@@ -236,6 +240,19 @@ export function normalizeProfile(input: unknown): CombatProfile {
     if (typeof value !== "boolean") throw new Error(`${key} must be a boolean`);
     return value;
   };
+  const nullableNumberValue = (key: "damageReplacement", minimum: number, maximum: number) => {
+    const value = Object.hasOwn(source, key) ? source[key] : DEFAULT_PROFILE[key];
+    if (value === null) return null;
+    if (
+      typeof value !== "number" ||
+      !Number.isInteger(value) ||
+      value < minimum ||
+      value > maximum
+    ) {
+      throw new Error(`${key} must be null or an integer from ${minimum} to ${maximum}`);
+    }
+    return value;
+  };
   const weaponName = Object.hasOwn(source, "weaponName") ? source.weaponName : "";
   if (typeof weaponName !== "string" || weaponName.length > 160) {
     throw new Error("weaponName must be a string no longer than 160 characters");
@@ -251,11 +268,13 @@ export function normalizeProfile(input: unknown): CombatProfile {
     weaponCount: numberValue("weaponCount", 1, 100),
     hitOn: numberValue("hitOn", 2, 6),
     strength: numberValue("strength", 1, 1024),
+    strengthReplacement: numberValue("strengthReplacement", 0, 1024),
     strengthModifier: numberValue("strengthModifier", -1024, 1024),
     ap: numberValue("ap", 0, 100),
     damageDice: numberValue("damageDice", 0, 20),
     damageSides: numberValue("damageSides", 0, 100),
     damage: numberValue("damage", 0, 1024),
+    damageReplacement: nullableNumberValue("damageReplacement", 0, 1024),
     damageModifier: numberValue("damageModifier", -1024, 1024),
     criticalHits: numberValue("criticalHits", 2, 6),
     toughness: numberValue("toughness", 1, 1024),
@@ -380,6 +399,11 @@ function modifiedCharacteristic(value: number, modifier: number) {
   return Math.max(1, value + modifier);
 }
 
+function modifiedDamageCharacteristic(profile: CombatProfile, base: number) {
+  const minimum = profile.damageReplacement === 0 ? 0 : 1;
+  return Math.max(minimum, base + profile.damageModifier);
+}
+
 function rollAttackCount(profile: CombatProfile, targetModels: number, randomUint32: RandomUint32) {
   let total = 0;
   for (let weapon = 0; weapon < profile.weaponCount; weapon += 1) {
@@ -436,7 +460,10 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
   );
   const woundsOn = modifiedRollTarget(
     woundTarget(
-      modifiedCharacteristic(profile.strength, profile.strengthModifier),
+      modifiedCharacteristic(
+        profile.strengthReplacement > 0 ? profile.strengthReplacement : profile.strength,
+        profile.strengthModifier,
+      ),
       profile.toughness,
     ),
     profile.woundModifier + (profile.lanceActive ? 1 : 0),
@@ -531,14 +558,11 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
     }
 
     result.unsavedAttacks += 1;
-    const rawDamage = modifiedCharacteristic(
-      rollDiceValue(
-        profile.damageDice,
-        profile.damageSides,
-        profile.damage + (profile.withinHalfRange ? profile.melta : 0),
-        randomUint32,
-      ),
-      profile.damageModifier,
+    const rawDamage = modifiedDamageCharacteristic(
+      profile,
+      (profile.damageReplacement === null
+        ? rollDiceValue(profile.damageDice, profile.damageSides, profile.damage, randomUint32)
+        : profile.damageReplacement) + (profile.withinHalfRange ? profile.melta : 0),
     );
     const reducedDamage =
       rawDamage > 0 && profile.reduction > 0
@@ -575,7 +599,9 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
       wastedDamage: allocation.wasted,
       outcome:
         damage === 0
-          ? "Stopped by FNP"
+          ? rawDamage === 0
+            ? "Damage changed to 0"
+            : "Stopped by FNP"
           : allocation.wasted > 0
             ? `${allocation.appliedThisAttack} applied · ${allocation.wasted} lost`
             : `${allocation.appliedThisAttack} applied`,
@@ -706,7 +732,10 @@ export function simulateOrderedVolley(
       const target = targets[position.segmentIndex];
       const woundsOn = modifiedRollTarget(
         woundTarget(
-          modifiedCharacteristic(profile.strength, profile.strengthModifier),
+          modifiedCharacteristic(
+            profile.strengthReplacement > 0 ? profile.strengthReplacement : profile.strength,
+            profile.strengthModifier,
+          ),
           target.toughness,
         ),
         profile.woundModifier + (profile.lanceActive ? 1 : 0),
@@ -798,14 +827,11 @@ export function simulateOrderedVolley(
           return;
         }
         const allocationTarget = targets[allocationPosition.segmentIndex];
-        const rawDamage = modifiedCharacteristic(
-          rollDiceValue(
-            profile.damageDice,
-            profile.damageSides,
-            profile.damage + (profile.withinHalfRange ? profile.melta : 0),
-            randomUint32,
-          ),
-          profile.damageModifier,
+        const rawDamage = modifiedDamageCharacteristic(
+          profile,
+          (profile.damageReplacement === null
+            ? rollDiceValue(profile.damageDice, profile.damageSides, profile.damage, randomUint32)
+            : profile.damageReplacement) + (profile.withinHalfRange ? profile.melta : 0),
         );
         const reducedDamage =
           rawDamage > 0 && allocationTarget.reduction > 0
@@ -834,7 +860,9 @@ export function simulateOrderedVolley(
         detail.wastedDamage = allocation.wasted;
         detail.outcome =
           damage === 0
-            ? "Stopped by FNP"
+            ? rawDamage === 0
+              ? "Damage changed to 0"
+              : "Stopped by FNP"
             : allocation.wasted > 0
               ? `${allocation.appliedThisAttack} applied · ${allocation.wasted} lost`
               : `${allocation.appliedThisAttack} applied`;
@@ -961,17 +989,17 @@ export function simulateOrderedVolleyPhase(
     const maximumSustainedHits =
       profile.sustainedHits + profile.sustainedHitsDice * profile.sustainedHitsSides;
     const maximumResolvedHits = maximumAttacks * (1 + maximumSustainedHits);
-    const maximumDamage = modifiedCharacteristic(
-      profile.damage +
-        (profile.withinHalfRange ? profile.melta : 0) +
-        profile.damageDice * profile.damageSides,
-      profile.damageModifier,
+    const maximumDamage = modifiedDamageCharacteristic(
+      profile,
+      (profile.damageReplacement === null
+        ? profile.damage + profile.damageDice * profile.damageSides
+        : profile.damageReplacement) + (profile.withinHalfRange ? profile.melta : 0),
     );
     const drawsPerResolvedHit =
       (profile.torrent ? 0 : profile.rerollHits || profile.rerollHitOnes ? 2 : 1) +
       (profile.twinLinked || profile.rerollWounds || profile.rerollWoundOnes ? 2 : 1) +
       1 +
-      profile.damageDice +
+      (profile.damageReplacement === null ? profile.damageDice : 0) +
       (hasFeelNoPain ? maximumDamage : 0);
     return (
       total +

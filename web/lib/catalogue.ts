@@ -138,6 +138,8 @@ export type CatalogueCombatPresetEffect = {
     | "critical_hits"
     | "critical_wounds"
     | "attacks_replacement"
+    | "strength_replacement"
+    | "damage_replacement"
     | "attacks_modifier"
     | "strength_modifier"
     | "damage_modifier"
@@ -238,7 +240,9 @@ export function applyWeaponProfile(
     ...(/^\d+$/.test(weapon.strength) ? { strength: Number(weapon.strength) } : {}),
     attacksReplacement: 0,
     attacksModifier: 0,
+    strengthReplacement: 0,
     strengthModifier: 0,
+    damageReplacement: null,
     damageModifier: 0,
     ...(weapon.ap !== null ? { ap: Math.abs(weapon.ap) } : {}),
     criticalWounds: antiWoundThreshold(weapon.abilities, targetKeywords),

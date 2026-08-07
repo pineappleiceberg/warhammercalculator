@@ -533,6 +533,55 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     denominator: "1",
   });
 
+  const zeroDamageReplacement = {
+    ...signedProfile,
+    attackDice: 0,
+    attackSides: 0,
+    attacks: 1,
+    attacksModifier: 0,
+    weaponCount: 1,
+    strength: 2,
+    strengthReplacement: 8,
+    strengthModifier: -1,
+    damageDice: 1,
+    damageSides: 6,
+    damage: 0,
+    damageReplacement: 0,
+    damageModifier: 0,
+    toughness: 7,
+  };
+  const zeroDamageCalculation = await worker.fetch(
+    new Request("http://localhost/api/v1/calculate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ profile: zeroDamageReplacement }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(zeroDamageCalculation.status, 200);
+  assert.deepEqual((await zeroDamageCalculation.json()).data.exact, {
+    numerator: "0",
+    denominator: "1",
+  });
+
+  const meltaAfterReplacement = await worker.fetch(
+    new Request("http://localhost/api/v1/calculate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        profile: { ...zeroDamageReplacement, withinHalfRange: true, melta: 2 },
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(meltaAfterReplacement.status, 200);
+  assert.deepEqual((await meltaAfterReplacement.json()).data.exact, {
+    numerator: "1",
+    denominator: "1",
+  });
+
   const volleyProfile = (ap, damage) => ({
     attackDice: 0,
     attackSides: 0,

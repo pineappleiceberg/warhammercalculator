@@ -1688,8 +1688,17 @@ static bool distribution_from_weapon_attacks(const struct weapon_profile *weapon
 */
 static bool distribution_from_weapon_damage(const struct weapon_profile *weapon,
                                             struct distribution *result) {
-    return weapon != NULL && distribution_from_modified_dice_value(
-                                 weapon->damage, weapon->damage_modifier, 1u, result);
+    struct dice_value damage;
+    uint32_t minimum;
+
+    if (weapon == NULL) {
+        return false;
+    }
+    damage = weapon->damage_replacement_active
+                 ? (struct dice_value){0u, 0u, weapon->damage_replacement}
+                 : weapon->damage;
+    minimum = weapon->damage_replacement_active && weapon->damage_replacement == 0u ? 0u : 1u;
+    return distribution_from_modified_dice_value(damage, weapon->damage_modifier, minimum, result);
 }
 
 /*@ requires \valid_read(weapon);
@@ -1697,7 +1706,9 @@ static bool distribution_from_weapon_damage(const struct weapon_profile *weapon,
     ensures 1 <= \result;
 */
 static uint16_t weapon_modified_strength(const struct weapon_profile *weapon) {
-    int32_t modified = (int32_t)weapon->strength + weapon->strength_modifier;
+    uint16_t strength = weapon->strength_replacement == 0u ? weapon->strength
+                                                           : weapon->strength_replacement;
+    int32_t modified = (int32_t)strength + weapon->strength_modifier;
 
     if (modified < 1) {
         return 1u;

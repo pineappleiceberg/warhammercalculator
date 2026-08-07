@@ -265,6 +265,46 @@ class ProfileDataTests(unittest.TestCase):
             "Melee weapons equipped by models in this unit have an Attacks characteristic of 4."
         )
         self.assertIsNone(replacement)
+        strength_replacement = combat_preset(
+            "Until the end of the phase, change the Strength characteristic of melee weapons "
+            "equipped by this model to 9."
+        )
+        self.assertEqual(
+            strength_replacement["additional_effects"],
+            [
+                {
+                    "type": "strength_replacement",
+                    "value": 9,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "weapon_name": None,
+                    "role": "attacker",
+                    "subject": "self",
+                }
+            ],
+        )
+        damage_replacement = combat_preset(
+            "Until the end of the phase, each time an attack is allocated to this model, "
+            "change the Damage characteristic of that attack to 0."
+        )
+        self.assertEqual(
+            damage_replacement["additional_effects"],
+            [
+                {
+                    "type": "damage_replacement",
+                    "value": 0,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "role": "target",
+                    "subject": "self",
+                }
+            ],
+        )
+        limited_damage_replacement = combat_preset(
+            "Once per turn, the first time a saving throw is failed for this unit, change the "
+            "Damage characteristic of that attack to 0."
+        )
+        self.assertIsNone(limited_damage_replacement)
         conflicting = combat_preset(
             "Each time this model makes a melee attack that targets a MONSTER unit, add 1 to "
             "the Damage characteristic of that attack. If it targets a TITANIC unit, add 2 to "
@@ -420,7 +460,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "17",
+                "18",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -454,6 +494,20 @@ class ProfileDataTests(unittest.TestCase):
                 [
                     ("Embittered", "Any", 12, "Dead Man’s Hand", "attacker", "self"),
                     ("Thrilling Spectacle", "Melee", 12, None, "attacker", "self"),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT preset.name, preset.weapon_scope, effect.value,
+                              effect.application_role, effect.subject
+                       FROM unit_combat_preset_effects AS effect
+                       JOIN unit_combat_presets AS preset
+                         USING (datasheet_id, ability_position, preset_position)
+                       WHERE effect.effect_type = 'damage_replacement'
+                       ORDER BY preset.name"""
+                ).fetchall(),
+                [
+                    ("Auramite and Adamantine", "Any", 1, "target", "self"),
                 ],
             )
             self.assertEqual(
@@ -497,7 +551,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("inherent", 28), ("situational", 1364)],
+                [("inherent", 28), ("situational", 1365)],
             )
             self.assertEqual(
                 connection.execute(
@@ -769,6 +823,30 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(replacement["value"], 12)
         self.assertIsNone(replacement.get("weaponName"))
+        allarus_captain = next(
+            unit
+            for unit in catalogue["units"]
+            if unit["name"] == "Shield-captain In Allarus Terminator Armour"
+        )
+        auramite = next(
+            preset
+            for preset in allarus_captain["combatPresets"]
+            if preset["name"] == "Auramite and Adamantine"
+        )
+        self.assertEqual(
+            auramite["effects"],
+            [
+                {
+                    "type": "damage_replacement",
+                    "value": 1,
+                    "diceCount": 0,
+                    "diceSides": 0,
+                    "role": "target",
+                    "subject": "self",
+                }
+            ],
+        )
+        self.assertEqual(auramite["activation"], "situational")
         redemptor = next(
             unit for unit in catalogue["units"] if unit["name"] == "Redemptor Dreadnought"
         )

@@ -146,14 +146,19 @@ export function combatPresetEffects(presets, weaponType, role, weaponName = "") 
       .map((effect) => effect.value);
     return values.length ? Math.min(...values) : 0;
   };
-  const replacements = additional
-    .filter((effect) => effect.type === "attacks_replacement")
-    .map((effect) => effect.value);
-  if (new Set(replacements).size > 1) {
-    throw new Error("Choose only one Attacks characteristic replacement");
-  }
+  const replacement = (type, label) => {
+    const values = additional
+      .filter((effect) => effect.type === type)
+      .map((effect) => effect.value);
+    if (new Set(values).size > 1) {
+      throw new Error(`Choose only one ${label} characteristic replacement`);
+    }
+    return values.length ? values[0] : null;
+  };
   return {
-    attacksReplacement: replacements[0] ?? 0,
+    attacksReplacement: replacement("attacks_replacement", "Attacks") ?? 0,
+    strengthReplacement: replacement("strength_replacement", "Strength") ?? 0,
+    damageReplacement: replacement("damage_replacement", "Damage"),
     hitModifier: hitModifiers.reduce((sum, preset) => sum + preset.hitModifier, 0),
     woundModifier: woundModifiers.reduce((sum, preset) => sum + preset.woundModifier, 0),
     rerollHits: hitRerolls.some((preset) => preset.rerollHits),
@@ -271,6 +276,18 @@ export function applyCombatPresets(profile, attackerPresets, targetPresets, weap
   if (new Set(attacksReplacements).size > 1) {
     throw new Error("Choose only one Attacks characteristic replacement");
   }
+  const strengthReplacements = [attacker.strengthReplacement, target.strengthReplacement].filter(
+    (value) => value > 0,
+  );
+  if (new Set(strengthReplacements).size > 1) {
+    throw new Error("Choose only one Strength characteristic replacement");
+  }
+  const damageReplacements = [attacker.damageReplacement, target.damageReplacement].filter(
+    (value) => value !== null,
+  );
+  if (new Set(damageReplacements).size > 1) {
+    throw new Error("Choose only one Damage characteristic replacement");
+  }
   const combined = {
     sustainedHits: strongerDiceEffect(
       {
@@ -311,6 +328,8 @@ export function applyCombatPresets(profile, attackerPresets, targetPresets, weap
     {
       ...profile,
       attacksReplacement: attacksReplacements[0] ?? profile.attacksReplacement ?? 0,
+      strengthReplacement: strengthReplacements[0] ?? profile.strengthReplacement ?? 0,
+      damageReplacement: damageReplacements[0] ?? profile.damageReplacement ?? null,
       attacksModifier:
         (profile.attacksModifier ?? 0) + attacker.attacksModifier + target.attacksModifier,
       strengthModifier:

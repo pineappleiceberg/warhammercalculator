@@ -16,7 +16,9 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
                            uint16_t rapid_fire_dice_sides, uint16_t rapid_fire, uint16_t melta,
                            int16_t explicit_hit_modifier, int16_t explicit_wound_modifier,
                            int16_t explicit_attacks_modifier, int16_t explicit_strength_modifier,
-                           int16_t explicit_damage_modifier, struct whc_web_summary *summary) {
+                           int16_t explicit_damage_modifier, uint16_t strength_replacement,
+                           uint16_t damage_replacement, bool damage_replacement_active,
+                           struct whc_web_summary *summary) {
     static struct calculator_workspace workspace;
     struct weapon_profile weapon;
     struct target_profile target;
@@ -111,9 +113,12 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
     weapon.weapon_count = weapon_count;
     weapon.hits_on = hits_on;
     weapon.strength = strength;
+    weapon.strength_replacement = strength_replacement;
     weapon.strength_modifier = explicit_strength_modifier;
     weapon.ap = ap;
     weapon.damage = (struct dice_value){damage_dice_count, damage_dice_sides, damage_modifier};
+    weapon.damage_replacement = damage_replacement;
+    weapon.damage_replacement_active = damage_replacement_active;
     weapon.damage_modifier = (int16_t)damage_characteristic_modifier;
     weapon.critical_hits_on = critical_hits_on;
     weapon.hit_modifier = (int8_t)hit_modifier;
@@ -218,7 +223,9 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
         input->strength_characteristic_modifier < INT16_MIN ||
         input->strength_characteristic_modifier > INT16_MAX ||
         input->damage_characteristic_modifier < INT16_MIN ||
-        input->damage_characteristic_modifier > INT16_MAX || target_input->toughness > UINT16_MAX ||
+        input->damage_characteristic_modifier > INT16_MAX ||
+        input->strength_replacement > UINT16_MAX || input->damage_replacement > UINT16_MAX ||
+        input->damage_replacement_active > 1u || target_input->toughness > UINT16_MAX ||
         target_input->save > UINT8_MAX || target_input->invulnerable_save > UINT8_MAX ||
         target_input->feel_no_pain > UINT8_MAX || target_input->wounds > UINT16_MAX ||
         target_input->damage_reduction > UINT16_MAX || target_models == 0u ||
@@ -313,6 +320,7 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
     weapon->weapon_count = (uint16_t)input->weapon_count;
     weapon->hits_on = (uint8_t)input->hits_on;
     weapon->strength = (uint16_t)input->strength;
+    weapon->strength_replacement = (uint16_t)input->strength_replacement;
     weapon->strength_modifier = (int16_t)input->strength_characteristic_modifier;
     weapon->ap = (uint16_t)input->ap;
     weapon->damage = (struct dice_value){
@@ -320,6 +328,8 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
         (uint16_t)input->damage_dice_sides,
         (uint16_t)input->damage_modifier,
     };
+    weapon->damage_replacement = (uint16_t)input->damage_replacement;
+    weapon->damage_replacement_active = input->damage_replacement_active != 0u;
     weapon->damage_modifier = (int16_t)damage_characteristic_modifier;
     weapon->critical_hits_on = (uint8_t)input->critical_hits_on;
     weapon->hit_modifier = (int8_t)hit_modifier;

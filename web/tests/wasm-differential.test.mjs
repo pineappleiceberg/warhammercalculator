@@ -103,6 +103,9 @@ test("signed characteristic modifiers use per-weapon floors in C/Wasm", () => {
         -1,
         0,
         0,
+        0,
+        0,
+        0,
         output,
       ),
       1,
@@ -141,6 +144,9 @@ test("signed characteristic modifiers use per-weapon floors in C/Wasm", () => {
         0,
         0,
         -1,
+        0,
+        0,
+        0,
         0,
         0,
         output,
@@ -185,12 +191,58 @@ test("signed characteristic modifiers use per-weapon floors in C/Wasm", () => {
         -1,
         0,
         0,
+        0,
+        0,
+        0,
         output,
       ),
       1,
     );
     assert.equal(calculator.getValue(output + 16, "i32") >>> 0, 6);
     assert.deepEqual([readUint64(output, 5, 6), readUint64(output, 7, 8)], [25n, 6n]);
+    assert.equal(
+      calculator._whc_calculate_summary(
+        0,
+        0,
+        1,
+        0,
+        1,
+        2,
+        2,
+        0,
+        1,
+        6,
+        0,
+        6,
+        7,
+        7,
+        0,
+        0,
+        10,
+        0,
+        528,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        0,
+        -1,
+        0,
+        8,
+        0,
+        1,
+        output,
+      ),
+      1,
+    );
+    assert.deepEqual([readUint64(output, 5, 6), readUint64(output, 7, 8)], [1n, 1n]);
   } finally {
     calculator._free(output);
   }
@@ -503,7 +555,7 @@ test("unit ability presets compose direct weapon characteristic modifiers", () =
   assert.equal(combatPresetEffects([preset], "Ranged", "attacker").attacksModifier, 0);
 });
 
-test("fixed Attacks replacements apply before modifiers and respect named weapon scope", () => {
+test("fixed characteristic replacements apply before modifiers and respect scope", () => {
   const preset = {
     weaponScope: "Any",
     hitModifier: 0,
@@ -564,6 +616,36 @@ test("fixed Attacks replacements apply before modifiers and respect named weapon
       .attacksReplacement,
     0,
   );
+
+  const characteristicPreset = {
+    ...preset,
+    effects: [
+      {
+        type: "strength_replacement",
+        value: 9,
+        diceCount: 0,
+        diceSides: 0,
+        role: "attacker",
+        subject: "self",
+      },
+      {
+        type: "damage_replacement",
+        value: 0,
+        diceCount: 0,
+        diceSides: 0,
+        role: "target",
+        subject: "self",
+      },
+    ],
+  };
+  const replaced = applyCombatPresets(
+    { ...base, strengthReplacement: 0, damageReplacement: null },
+    [characteristicPreset],
+    [characteristicPreset],
+    "Melee",
+  );
+  assert.equal(replaced.strengthReplacement, 9);
+  assert.equal(replaced.damageReplacement, 0);
 });
 
 test("defensive presets compose editable profiles and every ordered target segment", () => {
@@ -847,13 +929,19 @@ test("parameterized agent profile reaches the C/Wasm exact engine unchanged", ()
       attackDice: 0,
       attackSides: 0,
       attacks: 1,
+      attacksReplacement: 0,
+      attacksModifier: 0,
       weaponCount: 1,
       hitOn: 4,
       strength: 4,
+      strengthReplacement: 0,
+      strengthModifier: 0,
       ap: 0,
       damageDice: 0,
       damageSides: 0,
       damage: 1,
+      damageReplacement: null,
+      damageModifier: 0,
       criticalHits: 6,
       toughness: 4,
       save: 3,
@@ -925,6 +1013,9 @@ test("parameterized agent profile reaches the C/Wasm exact engine unchanged", ()
       profile.attacksModifier,
       profile.strengthModifier,
       profile.damageModifier,
+      profile.strengthReplacement,
+      profile.damageReplacement ?? 0,
+      profile.damageReplacement === null ? 0 : 1,
       output,
     );
     assert.equal(ok, 1);
@@ -974,6 +1065,9 @@ function interactionMeans(testCase) {
       0,
       testCase.hitModifier,
       testCase.woundModifier,
+      0,
+      0,
+      0,
       0,
       0,
       0,
@@ -1041,6 +1135,9 @@ function exactMean({
       0,
       0,
       0,
+      0,
+      0,
+      0,
       output,
     );
     assert.equal(ok, 1);
@@ -1058,13 +1155,15 @@ function lessThanOrEqual(left, right) {
 }
 
 function currentWeaponInput(weapon) {
-  if (weapon.length === 26) return weapon;
+  if (weapon.length === 29) return weapon;
+  if (weapon.length === 26) return [...weapon, 0, 0, 0];
   const withReplacement = [...weapon.slice(0, 3), 0, ...weapon.slice(3)];
-  return withReplacement.length === 26 ? withReplacement : [...withReplacement, 0, 0, 0];
+  const current = withReplacement.length === 26 ? withReplacement : [...withReplacement, 0, 0, 0];
+  return [...current, 0, 0, 0];
 }
 
 function orderedVolley(weapons, targets, initialWoundsLost = 0) {
-  const weaponFields = 26;
+  const weaponFields = 29;
   const targetFields = 7;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
@@ -1109,7 +1208,7 @@ function orderedVolley(weapons, targets, initialWoundsLost = 0) {
 }
 
 function orderedVolleyComplexity(weapons, targets, initialWoundsLost = 0) {
-  const weaponFields = 26;
+  const weaponFields = 29;
   const targetFields = 7;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
@@ -1194,6 +1293,9 @@ function variableRuleMean({ flags = 0, sustained = [0, 0, 0], rapid = [0, 0, 0] 
       1,
       ...sustained,
       ...rapid,
+      0,
+      0,
+      0,
       0,
       0,
       0,

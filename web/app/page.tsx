@@ -240,6 +240,9 @@ async function calculate(profile: Profile): Promise<Result> {
       profile.attacksModifier,
       profile.strengthModifier,
       profile.damageModifier,
+      profile.strengthReplacement,
+      profile.damageReplacement ?? 0,
+      profile.damageReplacement === null ? 0 : 1,
       output,
     );
 
@@ -852,7 +855,9 @@ export default function Home() {
           ...(/^\d+$/.test(weapon.strength) ? { strength: Number(weapon.strength) } : {}),
           attacksReplacement: 0,
           attacksModifier: 0,
+          strengthReplacement: 0,
           strengthModifier: 0,
+          damageReplacement: null,
           damageModifier: 0,
           ap: Math.abs(weapon.ap ?? 0),
           criticalHits: 6,
@@ -910,7 +915,9 @@ export default function Home() {
           ...(/^\d+$/.test(weapon.strength) ? { strength: Number(weapon.strength) } : {}),
           attacksReplacement: 0,
           attacksModifier: 0,
+          strengthReplacement: 0,
           strengthModifier: 0,
+          damageReplacement: null,
           damageModifier: 0,
           ...(weapon.ap !== null ? { ap: Math.abs(weapon.ap) } : {}),
           criticalWounds: antiWoundThreshold(weapon.abilities, selectedTargetModel?.keywords ?? []),
@@ -1436,12 +1443,31 @@ export default function Home() {
                 onChange={(value) => set("attacksModifier", value)}
               />
               <NumberField
+                label="Replace Strength characteristic (0 = off)"
+                value={profile.strengthReplacement}
+                max={1024}
+                onChange={(value) => set("strengthReplacement", value)}
+              />
+              <NumberField
                 label="Strength characteristic modifier"
                 value={profile.strengthModifier}
                 min={-1024}
                 max={1024}
                 onChange={(value) => set("strengthModifier", value)}
               />
+              <Toggle
+                label="Replace Damage characteristic"
+                checked={profile.damageReplacement !== null}
+                onChange={(checked) => set("damageReplacement", checked ? 0 : null)}
+              />
+              {profile.damageReplacement !== null && (
+                <NumberField
+                  label="Replacement Damage"
+                  value={profile.damageReplacement}
+                  max={1024}
+                  onChange={(value) => set("damageReplacement", value)}
+                />
+              )}
               <NumberField
                 label="Damage characteristic modifier"
                 value={profile.damageModifier}

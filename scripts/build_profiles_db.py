@@ -187,7 +187,8 @@ CREATE TABLE unit_combat_preset_effects (
     effect_type TEXT NOT NULL CHECK (effect_type IN
         ('lethal_hits', 'devastating_wounds', 'twin_linked', 'ignores_cover',
          'sustained_hits', 'rapid_fire', 'lance', 'heavy', 'ap_modifier',
-         'critical_hits', 'critical_wounds', 'attacks_replacement', 'attacks_modifier',
+         'critical_hits', 'critical_wounds', 'attacks_replacement', 'strength_replacement',
+         'damage_replacement', 'attacks_modifier',
          'strength_modifier', 'damage_modifier', 'save_target',
          'invulnerable_save', 'feel_no_pain', 'damage_reduction')),
     value INTEGER NOT NULL,
@@ -742,11 +743,12 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
     )
 
     replacement_pattern = re.compile(
-        r"\bchange the Attacks characteristic of ([^.;]+?) to (\d+)\b",
+        r"\bchange the (Attacks|Strength) characteristic of ([^.;]+?) to (\d+)\b",
         re.IGNORECASE,
     )
     for match in replacement_pattern.finditer(text):
-        affected = match.group(1).strip()
+        characteristic = match.group(1).casefold()
+        affected = match.group(2).strip()
         weapon_name = None
         if affected.casefold() == "this weapon":
             continue
@@ -762,12 +764,28 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
             weapon_name = named.group(1).strip()
         effects.append(
             {
-                "type": "attacks_replacement",
-                "value": int(match.group(2)),
+                "type": f"{characteristic}_replacement",
+                "value": int(match.group(3)),
                 "dice_count": 0,
                 "dice_sides": 0,
                 "weapon_name": weapon_name,
                 "role": "attacker",
+                "subject": "self",
+            }
+        )
+    damage_replacement_pattern = re.compile(
+        r"\beach time an attack is allocated to this model, change the Damage "
+        r"characteristic of that attack to (\d+)\b",
+        re.IGNORECASE,
+    )
+    for match in damage_replacement_pattern.finditer(text):
+        effects.append(
+            {
+                "type": "damage_replacement",
+                "value": int(match.group(1)),
+                "dice_count": 0,
+                "dice_sides": 0,
+                "role": "target",
                 "subject": "self",
             }
         )
@@ -938,7 +956,13 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
         return "situational"
     if any(
         effect["type"]
-        not in {"save_target", "invulnerable_save", "feel_no_pain", "damage_reduction"}
+        not in {
+            "save_target",
+            "invulnerable_save",
+            "feel_no_pain",
+            "damage_reduction",
+            "damage_replacement",
+        }
         or effect["role"] != "target"
         or effect["subject"] not in {"self", "enemy_unit"}
         for effect in additional
@@ -1259,7 +1283,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "17"),
+                    ("schema_version", "18"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

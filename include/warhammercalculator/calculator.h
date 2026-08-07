@@ -133,9 +133,12 @@ struct weapon_profile {
     uint16_t weapon_count;
     uint8_t hits_on;
     uint16_t strength;
+    uint16_t strength_replacement;
     int16_t strength_modifier;
     uint16_t ap;
     struct dice_value damage;
+    uint16_t damage_replacement;
+    bool damage_replacement_active;
     int16_t damage_modifier;
     uint8_t critical_hits_on;
     int8_t hit_modifier;
