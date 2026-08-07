@@ -362,7 +362,9 @@ def parse_ability(raw: str) -> tuple[str, str | None]:
     anti = re.fullmatch(r"(anti-[a-z0-9 -]+?)\s+(\d+\+)", token, re.IGNORECASE)
     if anti:
         return anti.group(1).lower(), anti.group(2)
-    valued = re.fullmatch(r"(rapid fire|melta|sustained hits)\s+(.+)", token, re.IGNORECASE)
+    valued = re.fullmatch(
+        r"(rapid fire|melta|sustained hits)\s+(.+)", token, re.IGNORECASE
+    )
     if valued:
         return valued.group(1).lower(), valued.group(2).strip()
     return token.lower(), None
@@ -389,7 +391,9 @@ def combat_effect_application(text: str, effect_start: int) -> tuple[str, str]:
     )
     if re.search(defensive, context):
         return "target", "enemy_unit"
-    if "leading a unit" in window and re.search(r"attacks? (?:that )?targets? that unit", context):
+    if "leading a unit" in window and re.search(
+        r"attacks? (?:that )?targets? that unit", context
+    ):
         return "target", "enemy_unit"
     if re.search(
         r"enemy unit[^.;]{0,180}targets? this (?:model|unit)|"
@@ -477,7 +481,10 @@ def combat_effect_application(text: str, effect_start: int) -> tuple[str, str]:
         context,
     ):
         return "attacker", "friendly_unit"
-    if "selected as the target of ranged attacks" in window and "such an attack is made" in context:
+    if (
+        "selected as the target of ranged attacks" in window
+        and "such an attack is made" in context
+    ):
         return "attacker", "friendly_unit"
     if re.search(
         r"(?:model|unit) affected by this ability[^.;]{0,120}"
@@ -523,7 +530,9 @@ def combat_effect_application(text: str, effect_start: int) -> tuple[str, str]:
 
 
 def dice_effect_value(value: str) -> tuple[int, int, int] | None:
-    match = re.fullmatch(r"\s*(?:(\d*)D(\d+)|0)(?:\s*\+\s*(\d+))?\s*", value, re.IGNORECASE)
+    match = re.fullmatch(
+        r"\s*(?:(\d*)D(\d+)|0)(?:\s*\+\s*(\d+))?\s*", value, re.IGNORECASE
+    )
     if match:
         if match.group(2):
             return (
@@ -554,7 +563,9 @@ def keyword_is_granted(text: str, match: re.Match[str]) -> bool:
         return True
     bracket_count = len(re.findall(r"\[[^\]]+\]", text))
     return bracket_count == 1 and bool(
-        re.search(r"(?:select|choose) one of the following|gain the ability below", lowered)
+        re.search(
+            r"(?:select|choose) one of the following|gain the ability below", lowered
+        )
     )
 
 
@@ -663,6 +674,56 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
         "strength": "strength_modifier",
         "damage": "damage_modifier",
     }
+    random_characteristic_pattern = re.compile(
+        rf"\badd (?:(\d+))?D(\d+)(?:\+(\d+))? to the {characteristic_list} "
+        r"characteristics? of ([^.;]+)",
+        re.IGNORECASE,
+    )
+    for match in random_characteristic_pattern.finditer(text):
+        dice_count_text, dice_sides_text, bonus_text, names, subject_text = (
+            match.groups()
+        )
+        lowered_subject = subject_text.casefold().strip()
+        generic_subject = bool(
+            re.match(
+                r"(?:(?:melee|ranged|psychic) )?weapons equipped by "
+                r"(?:this model|models? in (?:this|that|the|the bearer’s|the bearer's) unit)",
+                lowered_subject,
+            )
+            or re.match(
+                r"(?:this|that|the|the bearer’s|the bearer's) unit(?:’s|'s) "
+                r"(?:melee|ranged|psychic) weapons\b",
+                lowered_subject,
+            )
+        )
+        if not generic_subject:
+            continue
+        role, subject = combat_effect_application(text, match.start())
+        if subject == "unknown":
+            role, subject = combat_effect_application(text, match.end())
+        if subject == "unknown":
+            continue
+        required_attack_keyword = (
+            "psychic" if re.match(r"psychic weapons\b", lowered_subject) else None
+        )
+        for characteristic in re.findall(
+            r"Attacks|Strength|Damage", names, re.IGNORECASE
+        ):
+            effects.append(
+                {
+                    "type": characteristic_types[characteristic.casefold()],
+                    "value": int(bonus_text or 0),
+                    "dice_count": int(dice_count_text or 1),
+                    "dice_sides": int(dice_sides_text),
+                    **(
+                        {"required_attack_keyword": required_attack_keyword}
+                        if required_attack_keyword
+                        else {}
+                    ),
+                    "role": role,
+                    "subject": subject,
+                }
+            )
     characteristic_effects: dict[tuple[str, str, str], dict[str, int | str] | None] = {}
     characteristic_values: dict[str, set[int]] = {}
     for pattern_index, pattern in enumerate(characteristic_patterns):
@@ -702,7 +763,9 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
             amount = int(amount_text)
             if direction.casefold() in {"subtract", "worsen"}:
                 amount = -amount
-            parsed_characteristics = re.findall(r"Attacks|Strength|Damage", names, re.IGNORECASE)
+            parsed_characteristics = re.findall(
+                r"Attacks|Strength|Damage", names, re.IGNORECASE
+            )
             for characteristic in parsed_characteristics:
                 effect_type = characteristic_types[characteristic.casefold()]
                 characteristic_values.setdefault(effect_type, set()).add(amount)
@@ -913,13 +976,17 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
             if effect_type == "feel_no_pain" and re.match(
                 r"\s+against\b", clause_tail, re.IGNORECASE
             ):
-                scoped = re.match(r"\s+against Psychic Attacks\.", clause_tail, re.IGNORECASE)
+                scoped = re.match(
+                    r"\s+against Psychic Attacks\.", clause_tail, re.IGNORECASE
+                )
                 if not scoped:
                     continue
                 required_attack_keyword = "psychic"
             value = int(match.group(1))
             source = subjects[-1]
-            role, subject = defensive_subject(source.group(1), sentence_start + 1 + source.start())
+            role, subject = defensive_subject(
+                source.group(1), sentence_start + 1 + source.start()
+            )
             if subject not in {"self", "led_unit"}:
                 continue
             candidates[value] = {
@@ -997,13 +1064,17 @@ def combat_preset(description: str) -> dict[str, object] | None:
         "reroll_wound_ones": 0,
     }
     for roll, field in (("hit", "hit_modifier"), ("wound", "wound_modifier")):
-        modifier = re.search(rf"\b(add|subtract) 1 (?:to|from) the {roll} roll\b", lowered)
+        modifier = re.search(
+            rf"\b(add|subtract) 1 (?:to|from) the {roll} roll\b", lowered
+        )
         if modifier:
             effects[field] = 1 if modifier.group(1) == "add" else -1
             role, subject = combat_effect_application(text, modifier.start())
             effects[f"{field}_role"] = role
             effects[f"{field}_subject"] = subject
-        rerolls = list(re.finditer(rf"\bre-roll (?:a|the) {roll} roll(?: of 1)?\b", lowered))
+        rerolls = list(
+            re.finditer(rf"\bre-roll (?:a|the) {roll} roll(?: of 1)?\b", lowered)
+        )
         if rerolls:
             first = rerolls[0].group(0)
             effects[f"reroll_{roll}_ones"] = int(first.endswith("of 1"))
@@ -1088,7 +1159,9 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
         lowered,
     ):
         return "situational"
-    if lowered.startswith(("this model has ", "this unit has ", "models in this unit have ")):
+    if lowered.startswith(
+        ("this model has ", "this unit has ", "models in this unit have ")
+    ):
         return "inherent"
     if re.fullmatch(
         r"Each time an attack is allocated to "
@@ -1135,9 +1208,13 @@ def combat_presets(name: str, description: str) -> list[dict[str, object]]:
         if len(modes) >= 2:
             introduction = text[: choice.end()]
             for index, mode in enumerate(modes):
-                body_end = modes[index + 1].start() if index + 1 < len(modes) else len(tail)
+                body_end = (
+                    modes[index + 1].start() if index + 1 < len(modes) else len(tail)
+                )
                 mode_name = mode.group(1).strip()
-                mode_text = f"{introduction}{mode_name}: {tail[mode.end() : body_end].strip()}"
+                mode_text = (
+                    f"{introduction}{mode_name}: {tail[mode.end() : body_end].strip()}"
+                )
                 candidates.append((mode_name, mode_text))
 
         if not candidates:
@@ -1160,11 +1237,17 @@ def combat_presets(name: str, description: str) -> list[dict[str, object]]:
                     )
 
     if not candidates:
-        outcomes = list(re.finditer(r"\bon (?:a |an )?(\d+(?:-\d+)?\+?),\s*", text, re.IGNORECASE))
+        outcomes = list(
+            re.finditer(r"\bon (?:a |an )?(\d+(?:-\d+)?\+?),\s*", text, re.IGNORECASE)
+        )
         if len(outcomes) >= 2:
             introduction = text[: outcomes[0].start()]
             for index, outcome in enumerate(outcomes):
-                body_end = outcomes[index + 1].start() if index + 1 < len(outcomes) else len(text)
+                body_end = (
+                    outcomes[index + 1].start()
+                    if index + 1 < len(outcomes)
+                    else len(text)
+                )
                 outcome_text = text[outcome.start() : body_end].strip(" ;")
                 candidates.append(
                     (
@@ -1216,7 +1299,9 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
            FROM datasheet_abilities ORDER BY datasheet_id, position"""
     ).fetchall()
     for datasheet_id, ability_position, name, description in abilities:
-        for preset_position, preset in enumerate(combat_presets(name, description), start=1):
+        for preset_position, preset in enumerate(
+            combat_presets(name, description), start=1
+        ):
             resolved_effects = []
             for effect in preset["additional_effects"]:
                 ability_name = effect.get("weapon_ability_name")
@@ -1236,7 +1321,8 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     (datasheet_id, ability_name),
                 ).fetchall()
                 resolved_effects.extend(
-                    {**effect, "weapon_name": weapon_name} for (weapon_name,) in weapon_names
+                    {**effect, "weapon_name": weapon_name}
+                    for (weapon_name,) in weapon_names
                 )
             if preset["additional_effects"] and not resolved_effects:
                 continue
@@ -1382,10 +1468,14 @@ def create_database(
     rows = {name: read_rows(data) for name, data in exports.items()}
     datasheet_ids = {row["id"] for row in rows["Datasheets.csv"]}
     model_rows = [
-        row for row in rows["Datasheets_models.csv"] if row["datasheet_id"] in datasheet_ids
+        row
+        for row in rows["Datasheets_models.csv"]
+        if row["datasheet_id"] in datasheet_ids
     ]
     linked_weapon_rows = [
-        row for row in rows["Datasheets_wargear.csv"] if row["datasheet_id"] in datasheet_ids
+        row
+        for row in rows["Datasheets_wargear.csv"]
+        if row["datasheet_id"] in datasheet_ids
     ]
     weapon_rows = [
         row
@@ -1398,15 +1488,21 @@ def create_database(
         if row["datasheet_id"] in datasheet_ids
     ]
     option_rows = [
-        row for row in rows["Datasheets_options.csv"] if row["datasheet_id"] in datasheet_ids
+        row
+        for row in rows["Datasheets_options.csv"]
+        if row["datasheet_id"] in datasheet_ids
     ]
     ability_rows = [
-        row for row in rows["Datasheets_abilities.csv"] if row["datasheet_id"] in datasheet_ids
+        row
+        for row in rows["Datasheets_abilities.csv"]
+        if row["datasheet_id"] in datasheet_ids
     ]
     orphan_model_count = len(rows["Datasheets_models.csv"]) - len(model_rows)
     orphan_weapon_count = len(rows["Datasheets_wargear.csv"]) - len(linked_weapon_rows)
     placeholder_weapon_count = len(linked_weapon_rows) - len(weapon_rows)
-    orphan_composition_count = len(rows["Datasheets_unit_composition.csv"]) - len(composition_rows)
+    orphan_composition_count = len(rows["Datasheets_unit_composition.csv"]) - len(
+        composition_rows
+    )
     orphan_option_count = len(rows["Datasheets_options.csv"]) - len(option_rows)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(output.suffix + ".tmp")
@@ -1425,7 +1521,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "22"),
+                    ("schema_version", "23"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
@@ -1491,7 +1587,9 @@ def create_database(
             definitions: dict[str, list[dict[str, str]]] = {}
             for row in rows["Abilities.csv"]:
                 definitions.setdefault(row["id"], []).append(row)
-            datasheet_factions = {row["id"]: row["faction_id"] for row in rows["Datasheets.csv"]}
+            datasheet_factions = {
+                row["id"]: row["faction_id"] for row in rows["Datasheets.csv"]
+            }
             ability_positions: dict[str, int] = {}
             for row in ability_rows:
                 datasheet_id = row["datasheet_id"]
@@ -1503,7 +1601,11 @@ def create_database(
                     candidates = definitions.get(row["ability_id"], [])
                     faction_id = datasheet_factions[datasheet_id]
                     resolved = next(
-                        (item for item in candidates if item["faction_id"] == faction_id),
+                        (
+                            item
+                            for item in candidates
+                            if item["faction_id"] == faction_id
+                        ),
                         next(
                             (item for item in candidates if not item["faction_id"]),
                             candidates[0] if candidates else None,
@@ -1667,7 +1769,9 @@ def create_database(
                 )
                 weapon_id = cursor.lastrowid
                 abilities = [
-                    token.strip() for token in row["description"].split(",") if token.strip()
+                    token.strip()
+                    for token in row["description"].split(",")
+                    if token.strip()
                 ]
                 for position, raw in enumerate(abilities, start=1):
                     name, value = parse_ability(raw)

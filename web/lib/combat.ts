@@ -32,6 +32,13 @@ export type CombatProfile = {
   damageReplacement: number | null;
   damageMultiplier: number;
   damageModifier: number;
+  characteristicModifierDice: number;
+  characteristicModifierSides: number;
+  characteristicModifierBonus: number;
+  characteristicModifierAttacks: boolean;
+  characteristicModifierStrength: boolean;
+  characteristicModifierDamage: boolean;
+  characteristicModifierGroup: string;
   criticalHits: number;
   toughness: number;
   save: number;
@@ -186,6 +193,13 @@ export const DEFAULT_PROFILE: CombatProfile = {
   damageReplacement: null,
   damageMultiplier: 1,
   damageModifier: 0,
+  characteristicModifierDice: 0,
+  characteristicModifierSides: 0,
+  characteristicModifierBonus: 0,
+  characteristicModifierAttacks: false,
+  characteristicModifierStrength: false,
+  characteristicModifierDamage: false,
+  characteristicModifierGroup: "",
   criticalHits: 6,
   toughness: 8,
   save: 3,
@@ -266,6 +280,12 @@ export function normalizeProfile(input: unknown): CombatProfile {
   if (typeof weaponName !== "string" || weaponName.length > 160) {
     throw new Error("weaponName must be a string no longer than 160 characters");
   }
+  const characteristicModifierGroup = Object.hasOwn(source, "characteristicModifierGroup")
+    ? source.characteristicModifierGroup
+    : "";
+  if (typeof characteristicModifierGroup !== "string" || characteristicModifierGroup.length > 160) {
+    throw new Error("characteristicModifierGroup must be a string no longer than 160 characters");
+  }
 
   const profile: CombatProfile = {
     weaponName,
@@ -288,6 +308,13 @@ export function normalizeProfile(input: unknown): CombatProfile {
     damageReplacement: nullableNumberValue("damageReplacement", 0, 1024),
     damageMultiplier: numberValue("damageMultiplier", 1, 1024),
     damageModifier: numberValue("damageModifier", -1024, 1024),
+    characteristicModifierDice: numberValue("characteristicModifierDice", 0, 20),
+    characteristicModifierSides: numberValue("characteristicModifierSides", 0, 100),
+    characteristicModifierBonus: numberValue("characteristicModifierBonus", 0, 1024),
+    characteristicModifierAttacks: booleanValue("characteristicModifierAttacks"),
+    characteristicModifierStrength: booleanValue("characteristicModifierStrength"),
+    characteristicModifierDamage: booleanValue("characteristicModifierDamage"),
+    characteristicModifierGroup,
     criticalHits: numberValue("criticalHits", 2, 6),
     toughness: numberValue("toughness", 1, 1024),
     save: numberValue("save", 2, 7),
@@ -337,6 +364,29 @@ export function normalizeProfile(input: unknown): CombatProfile {
   }
   if (profile.rapidFireDice > 0 && profile.rapidFireSides < 2) {
     throw new Error("rapidFireSides must be at least 2 when rapidFireDice is non-zero");
+  }
+  const hasCharacteristicModifier =
+    profile.characteristicModifierAttacks ||
+    profile.characteristicModifierStrength ||
+    profile.characteristicModifierDamage;
+  if (hasCharacteristicModifier && profile.characteristicModifierDice === 0) {
+    throw new Error("A random characteristic modifier must roll at least one die");
+  }
+  if (profile.characteristicModifierDice > 0 && profile.characteristicModifierSides < 2) {
+    throw new Error(
+      "characteristicModifierSides must be at least 2 when characteristicModifierDice is non-zero",
+    );
+  }
+  if (
+    !hasCharacteristicModifier &&
+    (profile.characteristicModifierDice !== 0 ||
+      profile.characteristicModifierSides !== 0 ||
+      profile.characteristicModifierBonus !== 0)
+  ) {
+    throw new Error("Select at least one characteristic for the random modifier");
+  }
+  if (!hasCharacteristicModifier && profile.characteristicModifierGroup) {
+    throw new Error("A shared characteristic-roll group requires a random modifier");
   }
   if (profile.rerollHits && profile.rerollHitOnes) {
     throw new Error("Choose either Hit re-rolls of 1 or failed Hit re-rolls");
@@ -408,6 +458,62 @@ function rollDiceValue(count: number, sides: number, modifier: number, randomUin
   return total;
 }
 
+type SharedCharacteristicRoll = {
+  dice: number;
+  sides: number;
+  bonus: number;
+  outcome: number;
+};
+
+function resolveCharacteristicModifier(
+  profile: CombatProfile,
+  randomUint32: RandomUint32,
+  sharedRolls?: Map<string, SharedCharacteristicRoll>,
+) {
+  if (profile.characteristicModifierDice === 0) return profile;
+  const group = profile.characteristicModifierGroup;
+  const shared = group && sharedRolls ? sharedRolls.get(group) : undefined;
+  if (
+    shared &&
+    (shared.dice !== profile.characteristicModifierDice ||
+      shared.sides !== profile.characteristicModifierSides ||
+      shared.bonus !== profile.characteristicModifierBonus)
+  ) {
+    throw new Error("Profiles in one shared characteristic-roll group must use the same dice");
+  }
+  const modifier =
+    shared?.outcome ??
+    rollDiceValue(
+      profile.characteristicModifierDice,
+      profile.characteristicModifierSides,
+      profile.characteristicModifierBonus,
+      randomUint32,
+    );
+  if (group && sharedRolls && !shared) {
+    sharedRolls.set(group, {
+      dice: profile.characteristicModifierDice,
+      sides: profile.characteristicModifierSides,
+      bonus: profile.characteristicModifierBonus,
+      outcome: modifier,
+    });
+  }
+  return {
+    ...profile,
+    attacksModifier:
+      profile.attacksModifier + (profile.characteristicModifierAttacks ? modifier : 0),
+    strengthModifier:
+      profile.strengthModifier + (profile.characteristicModifierStrength ? modifier : 0),
+    damageModifier: profile.damageModifier + (profile.characteristicModifierDamage ? modifier : 0),
+    characteristicModifierDice: 0,
+    characteristicModifierSides: 0,
+    characteristicModifierBonus: 0,
+    characteristicModifierAttacks: false,
+    characteristicModifierStrength: false,
+    characteristicModifierDamage: false,
+    characteristicModifierGroup: "",
+  };
+}
+
 function modifiedCharacteristic(value: number, modifier: number, multiplier = 1) {
   return Math.max(1, value * multiplier + modifier);
 }
@@ -471,6 +577,7 @@ function rollCheck(
 export function simulateAttack(profile: CombatProfile, options: RollOptions = {}): RollResult {
   const randomUint32 = options.randomUint32 ?? secureRandomUint32;
   const includeDetails = options.details ?? true;
+  profile = resolveCharacteristicModifier(profile, randomUint32);
   if (profile.torrent && profile.indirect) {
     throw new Error("Torrent weapons cannot fire indirectly when the target is not visible");
   }
@@ -710,13 +817,18 @@ export function simulateOrderedVolley(
   const targetModels = targets.reduce((total, target) => total + target.modelCount, 0);
   let appliedState = initialWoundsLost;
   const lines: RollResult[] = [];
+  const sharedCharacteristicRolls = new Map<string, SharedCharacteristicRoll>();
   const deferredDevastatingWounds: Array<() => void> = [];
 
   for (const sourceProfile of profiles) {
     if (sourceProfile.torrent && sourceProfile.indirect) {
       throw new Error("Torrent weapons cannot fire indirectly when the target is not visible");
     }
-    const profile = { ...sourceProfile, targetModels };
+    const profile = resolveCharacteristicModifier(
+      { ...sourceProfile, targetModels },
+      randomUint32,
+      sharedCharacteristicRolls,
+    );
     const attacks = rollAttackCount(profile, targetModels, randomUint32);
     if (attacks > 10_000) {
       throw new Error("This roll is too large. Reduce the attack or weapon count.");
@@ -989,7 +1101,11 @@ export function simulateOrderedVolleyPhase(
   targetSequenceCapacity(targets);
   const targetModels = targets.reduce((total, target) => total + target.modelCount, 0);
   const hasFeelNoPain = targets.some((target) => target.feelNoPain > 0);
+  const countedCharacteristicGroups = new Set<string>();
   const randomDrawsPerVolley = profiles.reduce((total, profile) => {
+    const maximumCharacteristicModifier =
+      profile.characteristicModifierBonus +
+      profile.characteristicModifierDice * profile.characteristicModifierSides;
     const randomAttackDraws =
       profile.attacksReplacement > 0 ? 0 : profile.attackDice * profile.weaponCount;
     const rapidFireDraws = profile.withinHalfRange
@@ -1001,6 +1117,7 @@ export function simulateOrderedVolleyPhase(
         : profile.attacks + profile.attackDice * profile.attackSides;
     const maximumAdditionalAttacks =
       profile.attacksModifier +
+      (profile.characteristicModifierAttacks ? maximumCharacteristicModifier : 0) +
       (profile.blast ? Math.floor(targetModels / 5) : 0) +
       (profile.withinHalfRange
         ? profile.rapidFire + profile.rapidFireDice * profile.rapidFireSides
@@ -1016,7 +1133,12 @@ export function simulateOrderedVolleyPhase(
       profile.sustainedHits + profile.sustainedHitsDice * profile.sustainedHitsSides;
     const maximumResolvedHits = maximumAttacks * (1 + maximumSustainedHits);
     const maximumDamage = modifiedDamageCharacteristic(
-      profile,
+      {
+        ...profile,
+        damageModifier:
+          profile.damageModifier +
+          (profile.characteristicModifierDamage ? maximumCharacteristicModifier : 0),
+      },
       profile.damageReplacement === null
         ? profile.damage + profile.damageDice * profile.damageSides
         : profile.damageReplacement,
@@ -1029,8 +1151,17 @@ export function simulateOrderedVolleyPhase(
       1 +
       (profile.damageReplacement === null ? profile.damageDice : 0) +
       (hasFeelNoPain ? maximumDamage : 0);
+    const characteristicDraws =
+      profile.characteristicModifierGroup &&
+      countedCharacteristicGroups.has(profile.characteristicModifierGroup)
+        ? 0
+        : profile.characteristicModifierDice;
+    if (profile.characteristicModifierGroup) {
+      countedCharacteristicGroups.add(profile.characteristicModifierGroup);
+    }
     return (
       total +
+      characteristicDraws +
       randomAttackDraws +
       rapidFireDraws +
       maximumAttacks * profile.sustainedHitsDice +

@@ -12,6 +12,7 @@
 #define MAX_TARGET_SEGMENTS 16u
 #define MAX_VOLLEY_WEAPONS 32u
 #define MAX_EXACT_DEFERRED_STATES 2047u
+#define MAX_CHARACTERISTIC_ROLL_COMBINATIONS 4096u
 
 #define PROBABILITY_SCALE (UINT32_C(1) << 31)
 
@@ -56,6 +57,12 @@ struct exact_complexity {
     uint32_t target_capacity;
     bool uses_deferred_states;
     bool exact_guaranteed_by_bound;
+};
+
+enum characteristic_roll_flags {
+    CHARACTERISTIC_ROLL_ATTACKS = UINT8_C(1) << 0,
+    CHARACTERISTIC_ROLL_STRENGTH = UINT8_C(1) << 1,
+    CHARACTERISTIC_ROLL_DAMAGE = UINT8_C(1) << 2
 };
 
 struct attack_plan;
@@ -146,6 +153,9 @@ struct weapon_profile {
     bool damage_replacement_active;
     uint16_t damage_multiplier;
     int16_t damage_modifier;
+    struct dice_value characteristic_modifier_roll;
+    uint8_t characteristic_modifier_roll_flags;
+    uint16_t characteristic_modifier_roll_group;
     uint8_t critical_hits_on;
     int8_t hit_modifier;
     int8_t wound_modifier;
@@ -272,6 +282,14 @@ struct calculator_workspace {
       \valid_read(weapon) && whc_valid_dice_value(weapon->attacks) &&
       whc_valid_dice_value(weapon->attacks_addition) &&
       whc_valid_dice_value(weapon->damage) &&
+      whc_valid_dice_value(weapon->characteristic_modifier_roll) &&
+      (weapon->characteristic_modifier_roll_flags & ~0x7) == 0 &&
+      (weapon->characteristic_modifier_roll_flags == 0
+           ? weapon->characteristic_modifier_roll.dice_count == 0 &&
+                 weapon->characteristic_modifier_roll.dice_sides == 0 &&
+                 weapon->characteristic_modifier_roll.modifier == 0 &&
+                 weapon->characteristic_modifier_roll_group == 0
+           : weapon->characteristic_modifier_roll.dice_count > 0) &&
       2 <= weapon->hits_on && weapon->hits_on <= 6 && weapon->strength > 0 &&
       (weapon->hit_reroll_mask & 0x81) == 0 &&
       (weapon->wound_reroll_mask & 0x81) == 0 &&
@@ -620,6 +638,16 @@ bool attack_plan_is_valid(const struct attack_plan *plan);
 */
 bool attack_plan_add_damage_transform(struct attack_plan *plan, damage_transform_function transform,
                                       union rule_payload payload);
+/*@ requires \valid_read(source) && \valid(result);
+    assigns *result;
+    ensures \result ==> result->characteristic_modifier_roll_flags == 0;
+    ensures \result ==> result->characteristic_modifier_roll.dice_count == 0;
+    ensures \result ==> result->characteristic_modifier_roll.dice_sides == 0;
+    ensures \result ==> result->characteristic_modifier_roll.modifier == 0;
+    ensures \result ==> result->characteristic_modifier_roll_group == 0;
+*/
+bool weapon_profile_resolve_characteristic_roll(const struct weapon_profile *source,
+                                                uint16_t outcome, struct weapon_profile *result);
 #ifndef WHC_E_ACSL
 /*@ requires \valid_read(weapon) && \valid_read(target) && \valid(plan);
     assigns *plan;

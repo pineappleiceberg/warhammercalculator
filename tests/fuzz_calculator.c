@@ -97,6 +97,13 @@ static void generate_weapon(struct fuzz_input *input, struct whc_web_weapon_inpu
     weapon->attacks_characteristic_modifier = (int32_t)(next_byte(input) % 7u) - 3;
     weapon->strength_characteristic_modifier = (int32_t)(next_byte(input) % 7u) - 3;
     weapon->damage_characteristic_modifier = (int32_t)(next_byte(input) % 7u) - 3;
+    if (next_byte(input) % 4u == 0u) {
+        weapon->characteristic_modifier_dice_count = 1u;
+        weapon->characteristic_modifier_dice_sides = 2u + next_byte(input) % 3u;
+        weapon->characteristic_modifier_bonus = next_byte(input) % 2u;
+        weapon->characteristic_modifier_flags = 1u + next_byte(input) % 7u;
+        weapon->characteristic_modifier_group = next_byte(input) % 4u;
+    }
 }
 
 /*@ requires \valid(input) && \valid(target);
@@ -146,7 +153,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         index++;
     }
 
-    valid = whc_calculate_summary(
+    valid = whc_calculate_summary_with_characteristic_roll(
         (uint16_t)weapons[0].attack_dice_count, (uint16_t)weapons[0].attack_dice_sides,
         (uint16_t)weapons[0].attack_modifier, (uint16_t)weapons[0].attacks_replacement,
         (uint16_t)weapons[0].weapon_count, (uint8_t)weapons[0].hits_on,
@@ -168,7 +175,11 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         (uint16_t)weapons[0].strength_replacement, (uint16_t)weapons[0].damage_replacement,
         weapons[0].damage_replacement_active != 0u, (uint16_t)targets[0].damage_divisor,
         (uint16_t)weapons[0].attacks_multiplier, (uint16_t)weapons[0].strength_multiplier,
-        (uint16_t)weapons[0].damage_multiplier, &summary);
+        (uint16_t)weapons[0].damage_multiplier,
+        (uint16_t)weapons[0].characteristic_modifier_dice_count,
+        (uint16_t)weapons[0].characteristic_modifier_dice_sides,
+        (uint16_t)weapons[0].characteristic_modifier_bonus,
+        (uint8_t)weapons[0].characteristic_modifier_flags, &summary);
     if (valid) {
         assert_summary(&summary);
     }

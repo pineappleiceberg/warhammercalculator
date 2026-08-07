@@ -953,6 +953,114 @@ static void test_characteristic_multiplier_order(void) {
     assert(web_numerator * 100u <= web_denominator * 2801u);
 }
 
+/*@ terminates \true; */
+static void test_shared_random_characteristic_modifier(void) {
+    struct weapon_profile weapon;
+    struct target_profile target;
+    struct calculator_workspace workspace;
+    struct probability_distribution distribution;
+    struct fraction mean;
+    struct attack_plan unresolved_plan;
+    struct target_unit_layout layout;
+    struct fraction cumulative_mean;
+    struct fraction cumulative_means[2];
+    struct exact_complexity complexity;
+    struct weapon_profile grouped_weapons[2];
+    struct target_profile grouped_targets[2];
+    struct whc_web_summary web_summary;
+    uint64_t web_numerator = 0u;
+    uint64_t web_denominator = 0u;
+    long double ordered_mean = 0.0L;
+    uint64_t grouped_zero_mass = 0u;
+
+    initialize_profiles(&weapon, &target);
+    weapon.attacks = (struct dice_value){0u, 0u, 1u};
+    weapon.hits_on = 2u;
+    weapon.strength = 3u;
+    weapon.damage = (struct dice_value){0u, 0u, 1u};
+    weapon.characteristic_modifier_roll = (struct dice_value){1u, 3u, 0u};
+    weapon.characteristic_modifier_roll_flags =
+        CHARACTERISTIC_ROLL_ATTACKS | CHARACTERISTIC_ROLL_STRENGTH;
+    target.toughness = 5u;
+    target.save = 7u;
+    target.wounds = 20u;
+    assert(rule_add_torrent(&weapon.rules));
+    assert(!attack_plan_build(&weapon, &target, &unresolved_plan));
+    assert(calculate_attack_damage_distribution(&weapon, &target, &workspace, &distribution));
+    assert(distribution.maximum == 4u);
+    assert(calculate_attack_expected_damage(&weapon, &target, &workspace, &mean));
+    assert(mean.numerator == 29u);
+    assert(mean.denominator == 18u);
+
+    weapon.attacks = (struct dice_value){0u, 0u, 2u};
+    weapon.strength = 10u;
+    weapon.characteristic_modifier_roll_flags = CHARACTERISTIC_ROLL_DAMAGE;
+    target.toughness = 1u;
+    assert(calculate_attack_damage_distribution(&weapon, &target, &workspace, &distribution));
+    assert(calculate_attack_expected_damage(&weapon, &target, &workspace, &mean));
+    assert(mean.numerator == 5u);
+    assert(mean.denominator == 1u);
+    assert(distribution.maximum == 8u);
+    assert(distribution.mass[5] == 0u);
+    assert(distribution.mass[7] == 0u);
+
+    weapon.attacks = (struct dice_value){0u, 0u, 1u};
+    weapon.strength = 3u;
+    weapon.characteristic_modifier_roll_flags =
+        CHARACTERISTIC_ROLL_ATTACKS | CHARACTERISTIC_ROLL_STRENGTH;
+    target.toughness = 5u;
+
+    assert(whc_calculate_summary_with_characteristic_roll(
+        0u, 0u, 1u, 0u, 1u, 2u, 3u, 0u, 0u, 0u, 1u, 6u, 5u, 7u, 0u, 0u, 20u, 0u, WHC_RULE_TORRENT,
+        0u, 1u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0, 0, 0, 0, 0, 0u, 0u, false, 1u, 1u, 1u, 1u, 1u, 3u,
+        0u, CHARACTERISTIC_ROLL_ATTACKS | CHARACTERISTIC_ROLL_STRENGTH, &web_summary));
+    web_numerator =
+        web_summary.mean_numerator_low | ((uint64_t)web_summary.mean_numerator_high << 32u);
+    web_denominator =
+        web_summary.mean_denominator_low | ((uint64_t)web_summary.mean_denominator_high << 32u);
+    assert(web_numerator == 29u);
+    assert(web_denominator == 18u);
+
+    target.save = 2u;
+    assert(rule_add_devastating_wounds(&weapon.rules));
+    memset(&layout, 0, sizeof(layout));
+    layout.wounds_per_model[0] = 20u;
+    layout.model_counts[0] = 1u;
+    layout.segment_count = 1u;
+    assert(estimate_ordered_volley_complexity(&weapon, &target, 1u, &layout, &complexity));
+    assert(complexity.maximum_attack_events == 4u);
+    assert(calculate_ordered_volley_applied_damage_distribution(
+        &weapon, &target, 1u, &layout, &workspace, &distribution, &cumulative_mean));
+    assert(probability_distribution_mean(&distribution, &mean));
+    ordered_mean = (long double)mean.numerator / mean.denominator;
+    assert(ordered_mean > 0.68517L);
+    assert(ordered_mean < 0.68520L);
+
+    weapon.rules.count = 0u;
+    target.save = 7u;
+    assert(rule_add_torrent(&weapon.rules));
+    grouped_weapons[0] = weapon;
+    grouped_weapons[1] = weapon;
+    grouped_weapons[0].characteristic_modifier_roll_group = 42u;
+    grouped_weapons[1].characteristic_modifier_roll_group = 42u;
+    grouped_targets[0] = target;
+    grouped_targets[1] = target;
+    assert(calculate_ordered_volley_applied_damage_distribution(grouped_weapons, grouped_targets,
+                                                                2u, &layout, &workspace,
+                                                                &distribution, cumulative_means));
+    grouped_zero_mass = distribution.mass[0];
+    grouped_weapons[1].characteristic_modifier_roll_group = 0u;
+    assert(calculate_ordered_volley_applied_damage_distribution(grouped_weapons, grouped_targets,
+                                                                2u, &layout, &workspace,
+                                                                &distribution, cumulative_means));
+    assert(distribution.mass[0] != grouped_zero_mass);
+    grouped_weapons[1].characteristic_modifier_roll_group = 42u;
+    grouped_weapons[1].characteristic_modifier_roll.dice_sides = 4u;
+    assert(!calculate_ordered_volley_applied_damage_distribution(grouped_weapons, grouped_targets,
+                                                                 2u, &layout, &workspace,
+                                                                 &distribution, cumulative_means));
+}
+
 /*@ terminates \true;
     ensures \result == 0;
 */
@@ -976,6 +1084,7 @@ int main(void) {
     test_signed_characteristic_modifiers();
     test_damage_division_modifier_order();
     test_characteristic_multiplier_order();
+    test_shared_random_characteristic_modifier();
     puts("all tests passed");
     return 0;
 }

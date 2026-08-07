@@ -59,7 +59,7 @@ export class ExactCalculationLimitError extends Error {
 type WasmModule = {
   _malloc(size: number): number;
   _free(pointer: number): void;
-  _whc_calculate_summary(...values: number[]): number;
+  _whc_calculate_summary_with_characteristic_roll(...values: number[]): number;
   _whc_calculate_ordered_volley_summary(...values: number[]): number;
   _whc_estimate_ordered_volley_complexity(...values: number[]): number;
   getValue(pointer: number, type: "i32"): number;
@@ -85,7 +85,7 @@ async function loadCalculator() {
   return modulePromise;
 }
 
-function weaponValues(profile: CombatProfile) {
+function weaponValues(profile: CombatProfile, characteristicModifierGroup = 0) {
   return [
     profile.attackDice,
     profile.attackSides,
@@ -119,7 +119,31 @@ function weaponValues(profile: CombatProfile) {
     profile.attacksMultiplier,
     profile.strengthMultiplier,
     profile.damageMultiplier,
+    profile.characteristicModifierDice,
+    profile.characteristicModifierSides,
+    profile.characteristicModifierBonus,
+    characteristicModifierFlags(profile),
+    characteristicModifierGroup,
   ];
+}
+
+function characteristicModifierGroups(profiles: CombatProfile[]) {
+  const groups = new Map<string, number>();
+  return profiles.map((profile) => {
+    if (!profile.characteristicModifierGroup) return 0;
+    if (!groups.has(profile.characteristicModifierGroup)) {
+      groups.set(profile.characteristicModifierGroup, groups.size + 1);
+    }
+    return groups.get(profile.characteristicModifierGroup) ?? 0;
+  });
+}
+
+function characteristicModifierFlags(profile: CombatProfile) {
+  return (
+    (profile.characteristicModifierAttacks ? 1 : 0) |
+    (profile.characteristicModifierStrength ? 2 : 0) |
+    (profile.characteristicModifierDamage ? 4 : 0)
+  );
 }
 
 function targetValues(target: OrderedTargetSegment) {
@@ -161,7 +185,7 @@ export async function calculateProfile(profile: CombatProfile): Promise<DamageSu
   const output = calculator._malloc(72);
   const flags = profileFlags(profile);
   try {
-    const ok = calculator._whc_calculate_summary(
+    const ok = calculator._whc_calculate_summary_with_characteristic_roll(
       profile.attackDice,
       profile.attackSides,
       profile.attacks,
@@ -202,6 +226,10 @@ export async function calculateProfile(profile: CombatProfile): Promise<DamageSu
       profile.attacksMultiplier,
       profile.strengthMultiplier,
       profile.damageMultiplier,
+      profile.characteristicModifierDice,
+      profile.characteristicModifierSides,
+      profile.characteristicModifierBonus,
+      characteristicModifierFlags(profile),
       output,
     );
     if (!ok) throw new Error("That unit profile exceeds the exact calculator limits");
@@ -256,7 +284,7 @@ export async function calculateOrderedVolley(
   }
 
   const calculator = await loadCalculator();
-  const weaponFields = 32;
+  const weaponFields = 37;
   const targetFields = 8;
   const weaponsPointer = calculator._malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
@@ -266,6 +294,7 @@ export async function calculateOrderedVolley(
     values.forEach((value, index) => calculator.setValue(pointer + index * 4, value, "i32"));
   const read = (pointer: number, index: number) =>
     calculator.getValue(pointer + index * 4, "i32") >>> 0;
+  const characteristicGroups = characteristicModifierGroups(profiles);
   const fraction = (pointer: number) => {
     const numerator = (BigInt(read(pointer, 1)) << 32n) | BigInt(read(pointer, 0));
     const denominator = (BigInt(read(pointer, 3)) << 32n) | BigInt(read(pointer, 2));
@@ -274,7 +303,10 @@ export async function calculateOrderedVolley(
 
   try {
     profiles.forEach((profile, index) => {
-      write(weaponsPointer + index * weaponFields * 4, weaponValues(profile));
+      write(
+        weaponsPointer + index * weaponFields * 4,
+        weaponValues(profile, characteristicGroups[index]),
+      );
     });
     targets.forEach((target, index) => {
       write(targetsPointer + index * targetFields * 4, targetValues(target));
@@ -320,7 +352,7 @@ export async function estimateOrderedVolleyComplexity(
     throw new Error("Choose a valid weapon and target sequence first");
   }
   const calculator = await loadCalculator();
-  const weaponFields = 32;
+  const weaponFields = 37;
   const targetFields = 8;
   const weaponsPointer = calculator._malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
@@ -328,9 +360,13 @@ export async function estimateOrderedVolleyComplexity(
   const write = (pointer: number, values: number[]) =>
     values.forEach((value, index) => calculator.setValue(pointer + index * 4, value, "i32"));
   const read = (index: number) => calculator.getValue(outputPointer + index * 4, "i32") >>> 0;
+  const characteristicGroups = characteristicModifierGroups(profiles);
   try {
     profiles.forEach((profile, index) =>
-      write(weaponsPointer + index * weaponFields * 4, weaponValues(profile)),
+      write(
+        weaponsPointer + index * weaponFields * 4,
+        weaponValues(profile, characteristicGroups[index]),
+      ),
     );
     targets.forEach((target, index) =>
       write(targetsPointer + index * targetFields * 4, targetValues(target)),

@@ -564,6 +564,9 @@ export default function PlayMode() {
                     ["ap", "AP"],
                     ["damage", "Damage"],
                     ["damageMultiplier", "×Damage"],
+                    ["characteristicModifierDice", "Shared dice"],
+                    ["characteristicModifierSides", "Shared sides"],
+                    ["characteristicModifierBonus", "Shared bonus"],
                     ["toughness", "T"],
                     ["save", "Save"],
                     ["invulnerable", "Invuln"],
@@ -585,6 +588,24 @@ export default function PlayMode() {
                       }
                       value={profile[key] as number}
                       onChange={(event) => setNumber(key, Math.max(0, +event.target.value))}
+                    />
+                  </label>
+                ))}
+                {(
+                  [
+                    ["characteristicModifierAttacks", "Shared roll → Attacks"],
+                    ["characteristicModifierStrength", "Shared roll → Strength"],
+                    ["characteristicModifierDamage", "Shared roll → Damage"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <label key={key}>
+                    <span>{label}</span>
+                    <input
+                      type="checkbox"
+                      checked={profile[key]}
+                      onChange={(event) =>
+                        setProfile((current) => ({ ...current, [key]: event.target.checked }))
+                      }
                     />
                   </label>
                 ))}

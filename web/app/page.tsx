@@ -48,7 +48,7 @@ type Result = {
 type WasmModule = {
   _malloc: (size: number) => number;
   _free: (pointer: number) => void;
-  _whc_calculate_summary: (...values: number[]) => number;
+  _whc_calculate_summary_with_characteristic_roll: (...values: number[]) => number;
   getValue: (pointer: number, type: "i32") => number;
 };
 
@@ -214,7 +214,7 @@ async function calculate(profile: Profile): Promise<Result> {
     (profile.rerollWoundOnes ? 32768 : 0);
 
   try {
-    const ok = wasmModule._whc_calculate_summary(
+    const ok = wasmModule._whc_calculate_summary_with_characteristic_roll(
       profile.attackDice,
       profile.attackSides,
       profile.attacks,
@@ -255,6 +255,12 @@ async function calculate(profile: Profile): Promise<Result> {
       profile.attacksMultiplier,
       profile.strengthMultiplier,
       profile.damageMultiplier,
+      profile.characteristicModifierDice,
+      profile.characteristicModifierSides,
+      profile.characteristicModifierBonus,
+      (profile.characteristicModifierAttacks ? 1 : 0) |
+        (profile.characteristicModifierStrength ? 2 : 0) |
+        (profile.characteristicModifierDamage ? 4 : 0),
       output,
     );
 
@@ -891,6 +897,13 @@ export default function Home() {
           damageReplacement: null,
           damageMultiplier: 1,
           damageModifier: 0,
+          characteristicModifierDice: 0,
+          characteristicModifierSides: 0,
+          characteristicModifierBonus: 0,
+          characteristicModifierAttacks: false,
+          characteristicModifierStrength: false,
+          characteristicModifierDamage: false,
+          characteristicModifierGroup: "",
           ap: Math.abs(weapon.ap ?? 0),
           criticalHits: 6,
           criticalWounds: antiWoundThreshold(weapon.abilities, targetKeywords),
@@ -955,6 +968,13 @@ export default function Home() {
           damageReplacement: null,
           damageMultiplier: 1,
           damageModifier: 0,
+          characteristicModifierDice: 0,
+          characteristicModifierSides: 0,
+          characteristicModifierBonus: 0,
+          characteristicModifierAttacks: false,
+          characteristicModifierStrength: false,
+          characteristicModifierDamage: false,
+          characteristicModifierGroup: "",
           ...(weapon.ap !== null ? { ap: Math.abs(weapon.ap) } : {}),
           criticalWounds: antiWoundThreshold(weapon.abilities, selectedTargetModel?.keywords ?? []),
           sustainedHitsDice: sustainedHits.count,
@@ -1539,6 +1559,39 @@ export default function Home() {
                 min={-1024}
                 max={1024}
                 onChange={(value) => set("damageModifier", value)}
+              />
+              <NumberField
+                label="Shared characteristic modifier dice"
+                value={profile.characteristicModifierDice}
+                max={20}
+                onChange={(value) => set("characteristicModifierDice", value)}
+              />
+              <NumberField
+                label="Shared characteristic modifier sides"
+                value={profile.characteristicModifierSides}
+                max={100}
+                onChange={(value) => set("characteristicModifierSides", value)}
+              />
+              <NumberField
+                label="Shared characteristic modifier bonus"
+                value={profile.characteristicModifierBonus}
+                max={1024}
+                onChange={(value) => set("characteristicModifierBonus", value)}
+              />
+              <Toggle
+                label="Apply shared roll to Attacks"
+                checked={profile.characteristicModifierAttacks}
+                onChange={(value) => set("characteristicModifierAttacks", value)}
+              />
+              <Toggle
+                label="Apply shared roll to Strength"
+                checked={profile.characteristicModifierStrength}
+                onChange={(value) => set("characteristicModifierStrength", value)}
+              />
+              <Toggle
+                label="Apply shared roll to Damage"
+                checked={profile.characteristicModifierDamage}
+                onChange={(value) => set("characteristicModifierDamage", value)}
               />
               <NumberField
                 label="Sustained Hits dice"

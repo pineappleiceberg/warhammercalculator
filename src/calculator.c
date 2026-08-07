@@ -1812,6 +1812,57 @@ static uint16_t weapon_modified_strength(const struct weapon_profile *weapon) {
     return modified > UINT16_MAX ? UINT16_MAX : (uint16_t)modified;
 }
 
+bool weapon_profile_resolve_characteristic_roll(const struct weapon_profile *source,
+                                                uint16_t outcome, struct weapon_profile *result) {
+    uint32_t minimum = 0u;
+    uint32_t maximum = 0u;
+    int32_t adjusted = 0;
+
+    if (source == NULL || result == NULL ||
+        (source->characteristic_modifier_roll_flags &
+         (uint8_t)~(CHARACTERISTIC_ROLL_ATTACKS | CHARACTERISTIC_ROLL_STRENGTH |
+                    CHARACTERISTIC_ROLL_DAMAGE)) != 0u ||
+        source->characteristic_modifier_roll_flags == 0u ||
+        !dice_value_is_valid(source->characteristic_modifier_roll) ||
+        source->characteristic_modifier_roll.dice_count == 0u) {
+        return false;
+    }
+    minimum = (uint32_t)source->characteristic_modifier_roll.modifier +
+              source->characteristic_modifier_roll.dice_count;
+    maximum = (uint32_t)source->characteristic_modifier_roll.modifier +
+              (uint32_t)source->characteristic_modifier_roll.dice_count *
+                  source->characteristic_modifier_roll.dice_sides;
+    if (outcome < minimum || outcome > maximum) {
+        return false;
+    }
+    memcpy(result, source, sizeof(*result));
+    if ((source->characteristic_modifier_roll_flags & CHARACTERISTIC_ROLL_ATTACKS) != 0u) {
+        adjusted = (int32_t)result->attacks_modifier + outcome;
+        if (adjusted > INT16_MAX) {
+            return false;
+        }
+        result->attacks_modifier = (int16_t)adjusted;
+    }
+    if ((source->characteristic_modifier_roll_flags & CHARACTERISTIC_ROLL_STRENGTH) != 0u) {
+        adjusted = (int32_t)result->strength_modifier + outcome;
+        if (adjusted > INT16_MAX) {
+            return false;
+        }
+        result->strength_modifier = (int16_t)adjusted;
+    }
+    if ((source->characteristic_modifier_roll_flags & CHARACTERISTIC_ROLL_DAMAGE) != 0u) {
+        adjusted = (int32_t)result->damage_modifier + outcome;
+        if (adjusted > INT16_MAX) {
+            return false;
+        }
+        result->damage_modifier = (int16_t)adjusted;
+    }
+    result->characteristic_modifier_roll = (struct dice_value){0u, 0u, 0u};
+    result->characteristic_modifier_roll_flags = 0u;
+    result->characteristic_modifier_roll_group = 0u;
+    return true;
+}
+
 bool distribution_convolve(const struct distribution *left, const struct distribution *right,
                            struct distribution *result) {
     struct distribution temporary;
@@ -2328,8 +2379,13 @@ bool attack_plan_build(const struct weapon_profile *weapon, const struct target_
 
     if (weapon == NULL || target == NULL || plan == NULL || !dice_value_is_valid(weapon->attacks) ||
         !dice_value_is_valid(weapon->attacks_addition) || !dice_value_is_valid(weapon->damage) ||
-        weapon->hits_on < 2u || weapon->hits_on > 6u || weapon->strength == 0 ||
-        target->toughness == 0 || target->save < 2u || target->save > 7u ||
+        weapon->characteristic_modifier_roll_flags != 0u ||
+        weapon->characteristic_modifier_roll_group != 0u ||
+        weapon->characteristic_modifier_roll.dice_count != 0u ||
+        weapon->characteristic_modifier_roll.dice_sides != 0u ||
+        weapon->characteristic_modifier_roll.modifier != 0u || weapon->hits_on < 2u ||
+        weapon->hits_on > 6u || weapon->strength == 0 || target->toughness == 0 ||
+        target->save < 2u || target->save > 7u ||
         (target->invulnerable_save != 0 &&
          (target->invulnerable_save < 2u || target->invulnerable_save > 6u)) ||
         (target->feel_no_pain != 0 && (target->feel_no_pain < 2u || target->feel_no_pain > 6u)) ||
@@ -3583,12 +3639,14 @@ cleanup:
     return success;
 }
 
-bool advance_weapon_applied_damage_distribution(const struct weapon_profile *weapon,
-                                                const struct target_profile *targets,
-                                                const struct target_unit_layout *layout,
-                                                const struct probability_distribution *current,
-                                                struct calculator_workspace *workspace,
-                                                struct probability_distribution *result) {
+/*@ requires \valid_read(weapon) && \valid_read(targets) && \valid_read(layout);
+    requires \valid_read(current) && \valid(workspace) && \valid(result);
+    assigns *workspace, *result;
+*/
+static bool advance_resolved_weapon_applied_damage_distribution(
+    const struct weapon_profile *weapon, const struct target_profile *targets,
+    const struct target_unit_layout *layout, const struct probability_distribution *current,
+    struct calculator_workspace *workspace, struct probability_distribution *result) {
     struct probability_distribution *attack_count = NULL;
     struct probability_distribution *state = NULL;
     struct probability_distribution *next = NULL;
@@ -3681,13 +3739,83 @@ bool advance_weapon_applied_damage_distribution(const struct weapon_profile *wea
     return true;
 }
 
-bool calculate_ordered_volley_applied_damage_distribution(const struct weapon_profile *weapons,
-                                                          const struct target_profile *targets,
-                                                          uint16_t weapon_count,
-                                                          const struct target_unit_layout *layout,
-                                                          struct calculator_workspace *workspace,
-                                                          struct probability_distribution *result,
-                                                          struct fraction *cumulative_means) {
+bool advance_weapon_applied_damage_distribution(const struct weapon_profile *weapon,
+                                                const struct target_profile *targets,
+                                                const struct target_unit_layout *layout,
+                                                const struct probability_distribution *current,
+                                                struct calculator_workspace *workspace,
+                                                struct probability_distribution *result) {
+    struct distribution characteristic_roll;
+    uint64_t accumulator[MAX_DISTRIBUTION_RESULT + 1u];
+    uint64_t total_weight = 0u;
+    uint32_t minimum = MAX_DISTRIBUTION_RESULT;
+    uint32_t maximum = 0u;
+    uint32_t outcome = 0u;
+
+    if (weapon == NULL || targets == NULL || layout == NULL || current == NULL ||
+        workspace == NULL || result == NULL) {
+        return false;
+    }
+    if (weapon->characteristic_modifier_roll_flags == 0u) {
+        if (weapon->characteristic_modifier_roll.dice_count != 0u ||
+            weapon->characteristic_modifier_roll.dice_sides != 0u ||
+            weapon->characteristic_modifier_roll.modifier != 0u ||
+            weapon->characteristic_modifier_roll_group != 0u) {
+            return false;
+        }
+        return advance_resolved_weapon_applied_damage_distribution(weapon, targets, layout, current,
+                                                                   workspace, result);
+    }
+    if (!distribution_from_dice_value(weapon->characteristic_modifier_roll, &characteristic_roll) ||
+        !uint64_multiply_checked(PROBABILITY_SCALE, characteristic_roll.total_ways,
+                                 &total_weight)) {
+        return false;
+    }
+    memset(accumulator, 0, sizeof(accumulator));
+    outcome = characteristic_roll.minimum;
+    while (outcome <= characteristic_roll.maximum) {
+        uint64_t ways = characteristic_roll.ways[outcome];
+        if (ways != 0u) {
+            struct weapon_profile resolved;
+            struct probability_distribution conditional;
+            uint32_t applied = 0u;
+            if (!weapon_profile_resolve_characteristic_roll(weapon, (uint16_t)outcome, &resolved) ||
+                !advance_resolved_weapon_applied_damage_distribution(
+                    &resolved, targets, layout, current, workspace, &conditional)) {
+                return false;
+            }
+            applied = conditional.minimum;
+            while (applied <= conditional.maximum) {
+                uint64_t weighted = 0u;
+                if (conditional.mass[applied] != 0u &&
+                    (!uint64_multiply_checked(conditional.mass[applied], ways, &weighted) ||
+                     !uint64_add_checked(accumulator[applied], weighted, &accumulator[applied]))) {
+                    return false;
+                }
+                applied++;
+            }
+            if (conditional.minimum < minimum) {
+                minimum = conditional.minimum;
+            }
+            if (conditional.maximum > maximum) {
+                maximum = conditional.maximum;
+            }
+        }
+        outcome++;
+    }
+    return minimum <= maximum && probability_distribution_from_weights(
+                                     accumulator, minimum, maximum, total_weight, result);
+}
+
+/*@ requires \valid_read(weapons) && \valid_read(targets) && \valid_read(layout);
+    requires \valid(workspace) && \valid(result) && \valid(cumulative_means);
+    assigns *workspace, *result, *cumulative_means;
+*/
+static bool calculate_resolved_ordered_volley_applied_damage_distribution(
+    const struct weapon_profile *weapons, const struct target_profile *targets,
+    uint16_t weapon_count, const struct target_unit_layout *layout,
+    struct calculator_workspace *workspace, struct probability_distribution *result,
+    struct fraction *cumulative_means) {
     struct probability_distribution *current = NULL;
     struct probability_distribution *next = NULL;
     uint16_t weapon_index = 0u;
@@ -3776,7 +3904,207 @@ bool calculate_ordered_volley_applied_damage_distribution(const struct weapon_pr
         current->maximum - layout->initial_wounds_lost, PROBABILITY_SCALE, result);
 }
 
-static bool calculate_attack_damage_distribution_internal(const struct weapon_profile *weapon,
+bool calculate_ordered_volley_applied_damage_distribution(const struct weapon_profile *weapons,
+                                                          const struct target_profile *targets,
+                                                          uint16_t weapon_count,
+                                                          const struct target_unit_layout *layout,
+                                                          struct calculator_workspace *workspace,
+                                                          struct probability_distribution *result,
+                                                          struct fraction *cumulative_means) {
+    struct distribution *rolls = NULL;
+    struct dice_value *roll_values = NULL;
+    struct weapon_profile *resolved = NULL;
+    uint16_t *outcomes = NULL;
+    uint16_t *roll_groups = NULL;
+    uint16_t *weapon_dimensions = NULL;
+    struct fraction cumulative_sums[MAX_VOLLEY_WEAPONS];
+    uint64_t accumulator[MAX_DISTRIBUTION_RESULT + 1u];
+    uint64_t total_combination_ways = 1u;
+    uint64_t total_weight = 0u;
+    uint32_t combination_count = 1u;
+    uint32_t minimum = MAX_DISTRIBUTION_RESULT;
+    uint32_t maximum = 0u;
+    uint32_t peak_sparse_states = 0u;
+    uint16_t weapon_index = 0u;
+    uint16_t dimension_count = 0u;
+    bool has_roll = false;
+    bool success = false;
+    bool done = false;
+
+    if (weapons == NULL || targets == NULL || layout == NULL || workspace == NULL ||
+        result == NULL || cumulative_means == NULL || weapon_count == 0u ||
+        weapon_count > MAX_VOLLEY_WEAPONS) {
+        return false;
+    }
+    rolls = calloc(weapon_count, sizeof(*rolls));
+    roll_values = calloc(weapon_count, sizeof(*roll_values));
+    resolved = calloc(weapon_count, sizeof(*resolved));
+    outcomes = calloc(weapon_count, sizeof(*outcomes));
+    roll_groups = calloc(weapon_count, sizeof(*roll_groups));
+    weapon_dimensions = calloc(weapon_count, sizeof(*weapon_dimensions));
+    if (rolls == NULL || roll_values == NULL || resolved == NULL || outcomes == NULL ||
+        roll_groups == NULL || weapon_dimensions == NULL) {
+        goto cleanup;
+    }
+    while (weapon_index < weapon_count) {
+        const struct weapon_profile *weapon = &weapons[weapon_index];
+        cumulative_sums[weapon_index] = (struct fraction){0u, 1u};
+        if (weapon->characteristic_modifier_roll_flags == 0u) {
+            if (weapon->characteristic_modifier_roll.dice_count != 0u ||
+                weapon->characteristic_modifier_roll.dice_sides != 0u ||
+                weapon->characteristic_modifier_roll.modifier != 0u ||
+                weapon->characteristic_modifier_roll_group != 0u) {
+                goto cleanup;
+            }
+            weapon_dimensions[weapon_index] = UINT16_MAX;
+        } else {
+            uint16_t dimension = dimension_count;
+            uint32_t support = 0u;
+            has_roll = true;
+            if (weapon->characteristic_modifier_roll_group != 0u) {
+                dimension = 0u;
+                while (dimension < dimension_count &&
+                       roll_groups[dimension] != weapon->characteristic_modifier_roll_group) {
+                    dimension++;
+                }
+            }
+            if (dimension < dimension_count) {
+                if (roll_values[dimension].dice_count !=
+                        weapon->characteristic_modifier_roll.dice_count ||
+                    roll_values[dimension].dice_sides !=
+                        weapon->characteristic_modifier_roll.dice_sides ||
+                    roll_values[dimension].modifier !=
+                        weapon->characteristic_modifier_roll.modifier) {
+                    goto cleanup;
+                }
+            } else {
+                if (!distribution_from_dice_value(weapon->characteristic_modifier_roll,
+                                                  &rolls[dimension])) {
+                    goto cleanup;
+                }
+                roll_values[dimension] = weapon->characteristic_modifier_roll;
+                roll_groups[dimension] = weapon->characteristic_modifier_roll_group;
+                outcomes[dimension] = (uint16_t)rolls[dimension].minimum;
+                support = rolls[dimension].maximum - rolls[dimension].minimum + 1u;
+                if (support > MAX_CHARACTERISTIC_ROLL_COMBINATIONS / combination_count ||
+                    !uint64_multiply_checked(total_combination_ways, rolls[dimension].total_ways,
+                                             &total_combination_ways)) {
+                    goto cleanup;
+                }
+                combination_count *= support;
+                dimension_count++;
+            }
+            weapon_dimensions[weapon_index] = dimension;
+        }
+        weapon_index++;
+    }
+    if (!has_roll) {
+        success = calculate_resolved_ordered_volley_applied_damage_distribution(
+            weapons, targets, weapon_count, layout, workspace, result, cumulative_means);
+        goto cleanup;
+    }
+    if (!uint64_multiply_checked(PROBABILITY_SCALE, total_combination_ways, &total_weight)) {
+        goto cleanup;
+    }
+    memset(accumulator, 0, sizeof(accumulator));
+    while (!done) {
+        struct probability_distribution conditional;
+        struct fraction conditional_means[MAX_VOLLEY_WEAPONS];
+        uint64_t combination_ways = 1u;
+        uint32_t damage = 0u;
+        bool advanced = false;
+
+        weapon_index = 0u;
+        while (weapon_index < weapon_count) {
+            if (weapons[weapon_index].characteristic_modifier_roll_flags == 0u) {
+                resolved[weapon_index] = weapons[weapon_index];
+            } else if (!weapon_profile_resolve_characteristic_roll(
+                           &weapons[weapon_index], outcomes[weapon_dimensions[weapon_index]],
+                           &resolved[weapon_index])) {
+                goto cleanup;
+            }
+            weapon_index++;
+        }
+        weapon_index = 0u;
+        while (weapon_index < dimension_count) {
+            if (!uint64_multiply_checked(combination_ways,
+                                         rolls[weapon_index].ways[outcomes[weapon_index]],
+                                         &combination_ways)) {
+                goto cleanup;
+            }
+            weapon_index++;
+        }
+        if (!calculate_resolved_ordered_volley_applied_damage_distribution(
+                resolved, targets, weapon_count, layout, workspace, &conditional,
+                conditional_means)) {
+            goto cleanup;
+        }
+        if (workspace->peak_sparse_states > peak_sparse_states) {
+            peak_sparse_states = workspace->peak_sparse_states;
+        }
+        damage = conditional.minimum;
+        while (damage <= conditional.maximum) {
+            uint64_t weighted = 0u;
+            if (conditional.mass[damage] != 0u &&
+                (!uint64_multiply_checked(conditional.mass[damage], combination_ways, &weighted) ||
+                 !uint64_add_checked(accumulator[damage], weighted, &accumulator[damage]))) {
+                goto cleanup;
+            }
+            damage++;
+        }
+        if (conditional.minimum < minimum) {
+            minimum = conditional.minimum;
+        }
+        if (conditional.maximum > maximum) {
+            maximum = conditional.maximum;
+        }
+        weapon_index = 0u;
+        while (weapon_index < weapon_count) {
+            struct fraction weight = {combination_ways, total_combination_ways};
+            struct fraction weighted = conditional_means[weapon_index];
+            if (!fraction_multiply(weighted, weight, &weighted) ||
+                !fraction_add(cumulative_sums[weapon_index], weighted,
+                              &cumulative_sums[weapon_index])) {
+                goto cleanup;
+            }
+            weapon_index++;
+        }
+
+        weapon_index = dimension_count;
+        while (weapon_index > 0u) {
+            weapon_index--;
+            if (outcomes[weapon_index] < rolls[weapon_index].maximum) {
+                outcomes[weapon_index]++;
+                advanced = true;
+                break;
+            }
+            outcomes[weapon_index] = (uint16_t)rolls[weapon_index].minimum;
+        }
+        done = !advanced;
+    }
+    if (minimum > maximum || !probability_distribution_from_weights(accumulator, minimum, maximum,
+                                                                    total_weight, result)) {
+        goto cleanup;
+    }
+    memcpy(cumulative_means, cumulative_sums, sizeof(*cumulative_means) * (size_t)weapon_count);
+    workspace->peak_sparse_states = peak_sparse_states;
+    success = true;
+
+cleanup:
+    free(rolls);
+    free(roll_values);
+    free(resolved);
+    free(outcomes);
+    free(roll_groups);
+    free(weapon_dimensions);
+    return success;
+}
+
+/*@ requires \valid_read(weapon) && \valid_read(target);
+    requires \valid(workspace) && \valid(result);
+    assigns *workspace, *result;
+*/
+static bool calculate_resolved_attack_damage_distribution(const struct weapon_profile *weapon,
                                                           const struct target_profile *target,
                                                           uint16_t target_models,
                                                           bool apply_to_unit,
@@ -3875,6 +4203,77 @@ static bool calculate_attack_damage_distribution_internal(const struct weapon_pr
     return true;
 }
 
+/*@ requires \valid_read(weapon) && \valid_read(target);
+    requires \valid(workspace) && \valid(result);
+    assigns *workspace, *result;
+*/
+static bool calculate_attack_damage_distribution_internal(const struct weapon_profile *weapon,
+                                                          const struct target_profile *target,
+                                                          uint16_t target_models,
+                                                          bool apply_to_unit,
+                                                          struct calculator_workspace *workspace,
+                                                          struct probability_distribution *result) {
+    struct distribution characteristic_roll;
+    uint64_t accumulator[MAX_DISTRIBUTION_RESULT + 1u];
+    uint64_t total_weight = 0u;
+    uint32_t minimum = MAX_DISTRIBUTION_RESULT;
+    uint32_t maximum = 0u;
+    uint32_t outcome = 0u;
+
+    if (weapon == NULL || target == NULL || workspace == NULL || result == NULL) {
+        return false;
+    }
+    if (weapon->characteristic_modifier_roll_flags == 0u) {
+        if (weapon->characteristic_modifier_roll.dice_count != 0u ||
+            weapon->characteristic_modifier_roll.dice_sides != 0u ||
+            weapon->characteristic_modifier_roll.modifier != 0u ||
+            weapon->characteristic_modifier_roll_group != 0u) {
+            return false;
+        }
+        return calculate_resolved_attack_damage_distribution(weapon, target, target_models,
+                                                             apply_to_unit, workspace, result);
+    }
+    if (!distribution_from_dice_value(weapon->characteristic_modifier_roll, &characteristic_roll) ||
+        !uint64_multiply_checked(PROBABILITY_SCALE, characteristic_roll.total_ways,
+                                 &total_weight)) {
+        return false;
+    }
+    memset(accumulator, 0, sizeof(accumulator));
+    outcome = characteristic_roll.minimum;
+    while (outcome <= characteristic_roll.maximum) {
+        uint64_t ways = characteristic_roll.ways[outcome];
+        if (ways != 0u) {
+            struct weapon_profile resolved;
+            struct probability_distribution conditional;
+            uint32_t damage = 0u;
+            if (!weapon_profile_resolve_characteristic_roll(weapon, (uint16_t)outcome, &resolved) ||
+                !calculate_resolved_attack_damage_distribution(
+                    &resolved, target, target_models, apply_to_unit, workspace, &conditional)) {
+                return false;
+            }
+            damage = conditional.minimum;
+            while (damage <= conditional.maximum) {
+                uint64_t weighted = 0u;
+                if (conditional.mass[damage] != 0u &&
+                    (!uint64_multiply_checked(conditional.mass[damage], ways, &weighted) ||
+                     !uint64_add_checked(accumulator[damage], weighted, &accumulator[damage]))) {
+                    return false;
+                }
+                damage++;
+            }
+            if (conditional.minimum < minimum) {
+                minimum = conditional.minimum;
+            }
+            if (conditional.maximum > maximum) {
+                maximum = conditional.maximum;
+            }
+        }
+        outcome++;
+    }
+    return minimum <= maximum && probability_distribution_from_weights(
+                                     accumulator, minimum, maximum, total_weight, result);
+}
+
 bool calculate_attack_damage_distribution(const struct weapon_profile *weapon,
                                           const struct target_profile *target,
                                           struct calculator_workspace *workspace,
@@ -3892,10 +4291,14 @@ bool calculate_attack_applied_damage_distribution(const struct weapon_profile *w
                                                          workspace, result);
 }
 
-bool calculate_attack_expected_damage(const struct weapon_profile *weapon,
-                                      const struct target_profile *target,
-                                      struct calculator_workspace *workspace,
-                                      struct fraction *result) {
+/*@ requires \valid_read(weapon) && \valid_read(target);
+    requires \valid(workspace) && \valid(result);
+    assigns *workspace, *result;
+*/
+static bool calculate_resolved_attack_expected_damage(const struct weapon_profile *weapon,
+                                                      const struct target_profile *target,
+                                                      struct calculator_workspace *workspace,
+                                                      struct fraction *result) {
     struct attack_plan plan;
     struct fraction attack_mean;
     struct fraction single_attack_mean;
@@ -3921,6 +4324,50 @@ bool calculate_attack_expected_damage(const struct weapon_profile *weapon,
     }
 
     return fraction_multiply(attack_mean, single_attack_mean, result);
+}
+
+bool calculate_attack_expected_damage(const struct weapon_profile *weapon,
+                                      const struct target_profile *target,
+                                      struct calculator_workspace *workspace,
+                                      struct fraction *result) {
+    struct distribution characteristic_roll;
+    struct fraction mean = {0u, 1u};
+    uint32_t outcome = 0u;
+
+    if (weapon == NULL || target == NULL || workspace == NULL || result == NULL) {
+        return false;
+    }
+    if (weapon->characteristic_modifier_roll_flags == 0u) {
+        if (weapon->characteristic_modifier_roll.dice_count != 0u ||
+            weapon->characteristic_modifier_roll.dice_sides != 0u ||
+            weapon->characteristic_modifier_roll.modifier != 0u ||
+            weapon->characteristic_modifier_roll_group != 0u) {
+            return false;
+        }
+        return calculate_resolved_attack_expected_damage(weapon, target, workspace, result);
+    }
+    if (!distribution_from_dice_value(weapon->characteristic_modifier_roll, &characteristic_roll)) {
+        return false;
+    }
+    outcome = characteristic_roll.minimum;
+    while (outcome <= characteristic_roll.maximum) {
+        uint64_t ways = characteristic_roll.ways[outcome];
+        if (ways != 0u) {
+            struct weapon_profile resolved;
+            struct fraction conditional;
+            struct fraction weight = {ways, characteristic_roll.total_ways};
+            if (!weapon_profile_resolve_characteristic_roll(weapon, (uint16_t)outcome, &resolved) ||
+                !calculate_resolved_attack_expected_damage(&resolved, target, workspace,
+                                                           &conditional) ||
+                !fraction_multiply(conditional, weight, &conditional) ||
+                !fraction_add(mean, conditional, &mean)) {
+                return false;
+            }
+        }
+        outcome++;
+    }
+    *result = mean;
+    return true;
 }
 
 bool calculate_attack_damage_summary(const struct weapon_profile *weapon,

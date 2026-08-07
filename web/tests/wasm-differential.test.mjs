@@ -567,6 +567,77 @@ test("unit ability presets compose direct weapon characteristic modifiers", () =
   assert.equal(combatPresetEffects([preset], "Ranged", "attacker").attacksModifier, 0);
 });
 
+test("one source roll remains shared across random characteristic modifiers", () => {
+  const preset = {
+    id: "shared-d3",
+    weaponScope: "Any",
+    hitModifier: 0,
+    woundModifier: 0,
+    rerollHits: false,
+    rerollHitOnes: false,
+    rerollWounds: false,
+    rerollWoundOnes: false,
+    effects: ["attacks_modifier", "strength_modifier"].map((type) => ({
+      type,
+      value: 0,
+      diceCount: 1,
+      diceSides: 3,
+      role: "attacker",
+      subject: "self",
+    })),
+  };
+  const applied = applyCombatPresets(
+    {
+      weaponName: "Psychic weapon",
+      attacksModifier: 0,
+      strengthModifier: 0,
+      damageModifier: 0,
+      ap: 0,
+      criticalHits: 6,
+      criticalWounds: 0,
+      lethalHits: false,
+      devastatingWounds: false,
+      twinLinked: false,
+      ignoresCover: false,
+      lanceActive: false,
+      heavyActive: false,
+      sustainedHits: 0,
+      sustainedHitsDice: 0,
+      sustainedHitsSides: 0,
+      rapidFire: 0,
+      rapidFireDice: 0,
+      rapidFireSides: 0,
+      hitModifier: 0,
+      woundModifier: 0,
+      rerollHits: false,
+      rerollHitOnes: false,
+      rerollWounds: false,
+      rerollWoundOnes: false,
+      save: 7,
+      invulnerable: 0,
+      feelNoPain: 0,
+      reduction: 0,
+    },
+    [preset],
+    [],
+    "Ranged",
+  );
+  assert.deepEqual(
+    [
+      applied.characteristicModifierDice,
+      applied.characteristicModifierSides,
+      applied.characteristicModifierBonus,
+      applied.characteristicModifierAttacks,
+      applied.characteristicModifierStrength,
+      applied.characteristicModifierDamage,
+      applied.characteristicModifierGroup,
+    ],
+    [1, 3, 0, true, true, false, "shared-d3"],
+  );
+  assert.equal(applied.attacksModifier, 0);
+  assert.equal(applied.strengthModifier, 0);
+});
+
 test("fixed characteristic replacements and multipliers compose and respect scope", () => {
   const preset = {
     weaponScope: "Any",
@@ -1327,12 +1398,14 @@ function lessThanOrEqual(left, right) {
 }
 
 function currentWeaponInput(weapon) {
-  if (weapon.length === 32) return weapon;
-  if (weapon.length === 29) return [...weapon, 1, 1, 1];
-  if (weapon.length === 26) return [...weapon, 0, 0, 0, 1, 1, 1];
+  if (weapon.length === 37) return weapon;
+  if (weapon.length === 36) return [...weapon, 0];
+  if (weapon.length === 32) return [...weapon, 0, 0, 0, 0, 0];
+  if (weapon.length === 29) return [...weapon, 1, 1, 1, 0, 0, 0, 0, 0];
+  if (weapon.length === 26) return [...weapon, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0];
   const withReplacement = [...weapon.slice(0, 3), 0, ...weapon.slice(3)];
   const current = withReplacement.length === 26 ? withReplacement : [...withReplacement, 0, 0, 0];
-  return [...current, 0, 0, 0, 1, 1, 1];
+  return [...current, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0];
 }
 
 function currentTargetInput(target) {
@@ -1340,7 +1413,7 @@ function currentTargetInput(target) {
 }
 
 function orderedVolley(weapons, targets, initialWoundsLost = 0) {
-  const weaponFields = 32;
+  const weaponFields = 37;
   const targetFields = 8;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
@@ -1387,7 +1460,7 @@ function orderedVolley(weapons, targets, initialWoundsLost = 0) {
 }
 
 function orderedVolleyComplexity(weapons, targets, initialWoundsLost = 0) {
-  const weaponFields = 32;
+  const weaponFields = 37;
   const targetFields = 8;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
@@ -1618,6 +1691,21 @@ test("C/Wasm carries ordered damage across partial wounds and mixed target profi
 
   const partial = orderedVolley([heavy], [[1, 7, 0, 0, 2, 0, 2]], 1);
   assert.equal(partial.maximum, 1);
+});
+
+test("C/Wasm shares one characteristic roll across grouped ordered weapon profiles", () => {
+  const weapon = [
+    0, 0, 1, 0, 1, 2, 3, 0, 0, 0, 1, 6, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1,
+    1, 3, 0, 3, 42,
+  ];
+  const grouped = orderedVolley([weapon, weapon], [[5, 7, 0, 0, 2, 0, 1, 1]]);
+  const independentWeapon = [...weapon];
+  independentWeapon[36] = 43;
+  const independent = orderedVolley([weapon, independentWeapon], [[5, 7, 0, 0, 2, 0, 1, 1]]);
+  assert.notEqual(
+    grouped.mean.numerator * independent.mean.denominator,
+    independent.mean.numerator * grouped.mean.denominator,
+  );
 });
 
 test("JavaScript and C agree on wound thresholds", () => {

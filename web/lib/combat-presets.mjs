@@ -169,7 +169,12 @@ export function combatPresetEffects(
     matchesRole(rerollRole(preset, "woundReroll"), role),
   );
   const additional = applicable
-    .flatMap((preset) => preset.effects ?? [])
+    .flatMap((preset, presetIndex) =>
+      (preset.effects ?? []).map((effect) => ({
+        ...effect,
+        presetId: preset.id ?? `selection:${presetIndex}`,
+      })),
+    )
     .filter(
       (effect) =>
         matchesRole(effect.role, role) &&
@@ -207,6 +212,40 @@ export function combatPresetEffects(
     additional
       .filter((effect) => effect.type === type)
       .reduce((product, effect) => product * effect.value, 1);
+  const randomCharacteristicEffects = additional.filter(
+    (effect) =>
+      ["attacks_modifier", "strength_modifier", "damage_modifier"].includes(effect.type) &&
+      effect.diceCount > 0,
+  );
+  const randomCharacteristicGroups = new Map();
+  for (const effect of randomCharacteristicEffects) {
+    const key = effect.presetId;
+    const current = randomCharacteristicGroups.get(key);
+    const roll = {
+      diceCount: effect.diceCount,
+      diceSides: effect.diceSides,
+      bonus: effect.value,
+      group: String(key),
+    };
+    if (
+      current &&
+      (current.diceCount !== roll.diceCount ||
+        current.diceSides !== roll.diceSides ||
+        current.bonus !== roll.bonus)
+    ) {
+      throw new Error("A shared characteristic roll must use one dice expression");
+    }
+    randomCharacteristicGroups.set(key, current ?? roll);
+  }
+  if (randomCharacteristicGroups.size > 1) {
+    throw new Error("Resolve independent random characteristic modifiers separately");
+  }
+  const randomCharacteristicRoll = [...randomCharacteristicGroups.values()][0] ?? {
+    diceCount: 0,
+    diceSides: 0,
+    bonus: 0,
+    group: "",
+  };
   return {
     attacksReplacement: replacement("attacks_replacement", "Attacks") ?? 0,
     attacksMultiplier: multiplier("attacks_multiplier"),
@@ -228,14 +267,27 @@ export function combatPresetEffects(
       .filter((effect) => effect.type === "ap_modifier")
       .reduce((sum, effect) => sum + effect.value, 0),
     attacksModifier: additional
-      .filter((effect) => effect.type === "attacks_modifier")
+      .filter((effect) => effect.type === "attacks_modifier" && effect.diceCount === 0)
       .reduce((sum, effect) => sum + effect.value, 0),
     strengthModifier: additional
-      .filter((effect) => effect.type === "strength_modifier")
+      .filter((effect) => effect.type === "strength_modifier" && effect.diceCount === 0)
       .reduce((sum, effect) => sum + effect.value, 0),
     damageModifier: additional
-      .filter((effect) => effect.type === "damage_modifier")
+      .filter((effect) => effect.type === "damage_modifier" && effect.diceCount === 0)
       .reduce((sum, effect) => sum + effect.value, 0),
+    characteristicModifierDice: randomCharacteristicRoll.diceCount,
+    characteristicModifierSides: randomCharacteristicRoll.diceSides,
+    characteristicModifierBonus: randomCharacteristicRoll.bonus,
+    characteristicModifierAttacks: randomCharacteristicEffects.some(
+      (effect) => effect.type === "attacks_modifier",
+    ),
+    characteristicModifierStrength: randomCharacteristicEffects.some(
+      (effect) => effect.type === "strength_modifier",
+    ),
+    characteristicModifierDamage: randomCharacteristicEffects.some(
+      (effect) => effect.type === "damage_modifier",
+    ),
+    characteristicModifierGroup: randomCharacteristicRoll.group,
     saveTarget: strongestDefense("save_target"),
     invulnerableSave: strongestDefense("invulnerable_save"),
     feelNoPain: strongestDefense("feel_no_pain"),
@@ -386,6 +438,47 @@ export function applyCombatPresets(
   if (new Set(damageReplacements).size > 1) {
     throw new Error("Choose only one Damage characteristic replacement");
   }
+  const characteristicRolls = [
+    {
+      dice: profile.characteristicModifierDice ?? 0,
+      sides: profile.characteristicModifierSides ?? 0,
+      bonus: profile.characteristicModifierBonus ?? 0,
+      attacks: profile.characteristicModifierAttacks ?? false,
+      strength: profile.characteristicModifierStrength ?? false,
+      damage: profile.characteristicModifierDamage ?? false,
+      group: profile.characteristicModifierGroup ?? "",
+    },
+    {
+      dice: attacker.characteristicModifierDice,
+      sides: attacker.characteristicModifierSides,
+      bonus: attacker.characteristicModifierBonus,
+      attacks: attacker.characteristicModifierAttacks,
+      strength: attacker.characteristicModifierStrength,
+      damage: attacker.characteristicModifierDamage,
+      group: attacker.characteristicModifierGroup,
+    },
+    {
+      dice: target.characteristicModifierDice,
+      sides: target.characteristicModifierSides,
+      bonus: target.characteristicModifierBonus,
+      attacks: target.characteristicModifierAttacks,
+      strength: target.characteristicModifierStrength,
+      damage: target.characteristicModifierDamage,
+      group: target.characteristicModifierGroup,
+    },
+  ].filter((roll) => roll.dice > 0);
+  if (characteristicRolls.length > 1) {
+    throw new Error("Resolve independent random characteristic modifiers separately");
+  }
+  const characteristicRoll = characteristicRolls[0] ?? {
+    dice: 0,
+    sides: 0,
+    bonus: 0,
+    attacks: false,
+    strength: false,
+    damage: false,
+    group: "",
+  };
   const combined = {
     sustainedHits: strongerDiceEffect(
       {
@@ -440,6 +533,13 @@ export function applyCombatPresets(
         (profile.strengthModifier ?? 0) + attacker.strengthModifier + target.strengthModifier,
       damageModifier:
         (profile.damageModifier ?? 0) + attacker.damageModifier + target.damageModifier,
+      characteristicModifierDice: characteristicRoll.dice,
+      characteristicModifierSides: characteristicRoll.sides,
+      characteristicModifierBonus: characteristicRoll.bonus,
+      characteristicModifierAttacks: characteristicRoll.attacks,
+      characteristicModifierStrength: characteristicRoll.strength,
+      characteristicModifierDamage: characteristicRoll.damage,
+      characteristicModifierGroup: characteristicRoll.group,
       ap: Math.max(0, (profile.ap ?? 0) + attacker.apModifier + target.apModifier),
       criticalHits: criticalHits.length ? Math.min(...criticalHits) : 0,
       criticalWounds: criticalWounds.length ? Math.min(...criticalWounds) : 0,

@@ -79,13 +79,20 @@ CREATE INDEX idx_unit_combat_preset_effects_datasheet
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Rebuild derived unit combat presets in place")
-    parser.add_argument("database", nargs="?", type=Path, default=Path("data/warhammer_10e.sqlite"))
+    parser = argparse.ArgumentParser(
+        description="Rebuild derived unit combat presets in place"
+    )
+    parser.add_argument(
+        "database", nargs="?", type=Path, default=Path("data/warhammer_10e.sqlite")
+    )
     args = parser.parse_args()
     with closing(sqlite3.connect(args.database)) as connection:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
-        connection.execute("UPDATE metadata SET value = '22' WHERE key = 'schema_version'")
+        connection.execute(
+            "UPDATE metadata SET value = '23' WHERE key = 'schema_version'"
+        )
+        connection.execute("PRAGMA optimize")
         connection.commit()
     print(f"Rebuilt {count} unit combat presets in {args.database}")
 

@@ -16,10 +16,9 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Represent random Attacks, Strength, and Damage changes, including correlated
-   shared-roll characteristic effects, plus context-dependent Attacks
-   replacements and limited-use single-attack Damage replacements exactly in
-   native C and WebAssembly before importing them.
+1. Represent context-dependent Attacks replacements and limited-use
+   single-attack Damage replacements exactly in native C and WebAssembly before
+   importing them.
 2. Extend the source-backed rules eligibility layer beyond exact target and
    Psychic attack keywords to phase, range, and other compound conditions that
    currently require manual interpretation.
@@ -28,6 +27,17 @@ priority over feature count.
    affecting models that do not have them.
 
 ## Completed cycles
+
+- 2026-08-06: Added exact random Attacks, Strength, and Damage characteristic
+  modifiers with one source roll shared across every affected characteristic
+  and weapon profile. Native C, WebAssembly, exact ordered volleys, complexity
+  estimates, CSPRNG rolls, seeded simulations, APIs, editable profiles, and
+  static agent URLs now preserve the correlation instead of multiplying
+  independently averaged values. SQLite schema 23 conservatively imports
+  Exalted Champion's Aspire to Glory and Tzaangor Shaman's Psychic-only
+  Sacrificial Blessing from the pinned catalogue. Hand-derived single-profile,
+  capped-volley, cross-weapon group, malformed-group, Wasm ABI, API simulation,
+  parser, generated-data, formal, and sanitizer regressions cover the change.
 
 - 2026-08-06: Added fixed Attacks, Strength, and Damage characteristic
   multiplication across native C, WebAssembly, exact and seeded APIs, CSPRNG

@@ -42,6 +42,9 @@ const integerParameters = [
 ];
 
 const booleanParameters = [
+  ["characteristicModifierAttacks", ["characteristicModifierAttacks"]],
+  ["characteristicModifierStrength", ["characteristicModifierStrength"]],
+  ["characteristicModifierDamage", ["characteristicModifierDamage"]],
   ["withinHalfRange", ["withinHalfRange", "halfRange"]],
   ["torrent", ["torrent"]],
   ["blast", ["blast"]],
@@ -63,6 +66,7 @@ const knownParameters = new Set([
   "damage",
   "sustainedHits",
   "rapidFire",
+  "characteristicModifier",
   "rerollHits",
   "rerollWounds",
   "rules",
@@ -192,6 +196,13 @@ export function parseAgentProfile(input, baseProfile, requireDirectParameters = 
   }
   const rapidFire = singleValue(search, ["rapidFire"]);
   if (rapidFire !== null) setDice(profile, "rapidFire", diceValue(rapidFire, "rapidFire"));
+  const characteristicModifier = singleValue(search, ["characteristicModifier"]);
+  if (characteristicModifier !== null) {
+    const parsed = diceValue(characteristicModifier, "characteristicModifier");
+    profile.characteristicModifierDice = parsed.count;
+    profile.characteristicModifierSides = parsed.sides;
+    profile.characteristicModifierBonus = parsed.modifier;
+  }
 
   for (const [field, aliases] of integerParameters) {
     const value = singleValue(search, aliases);
@@ -290,6 +301,14 @@ export function canonicalAgentParameters(profile) {
   }
   search.set("damageMultiplier", String(profile.damageMultiplier ?? 1));
   search.set("damageModifier", String(profile.damageModifier ?? 0));
+  search.set(
+    "characteristicModifier",
+    diceText(
+      profile.characteristicModifierDice,
+      profile.characteristicModifierSides,
+      profile.characteristicModifierBonus,
+    ),
+  );
   search.set("toughness", String(profile.toughness));
   search.set("save", String(profile.save));
   search.set("invuln", String(profile.invulnerable));

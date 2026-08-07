@@ -122,7 +122,7 @@ type CalculatorExports = {
   __wasm_call_ctors(): void;
   malloc(size: number): number;
   free(pointer: number): void;
-  whc_calculate_summary(...values: number[]): number;
+  whc_calculate_summary_with_characteristic_roll(...values: number[]): number;
   whc_calculate_ordered_volley_summary(...values: number[]): number;
   whc_estimate_ordered_volley_complexity(...values: number[]): number;
 };
@@ -250,7 +250,7 @@ async function loadCalculator() {
     calculator = instantiated.exports as unknown as CalculatorExports;
     if (
       typeof calculator.__wasm_call_ctors !== "function" ||
-      typeof calculator.whc_calculate_summary !== "function" ||
+      typeof calculator.whc_calculate_summary_with_characteristic_roll !== "function" ||
       typeof calculator.whc_calculate_ordered_volley_summary !== "function" ||
       typeof calculator.whc_estimate_ordered_volley_complexity !== "function"
     ) {
@@ -324,13 +324,32 @@ function profileFlags(profile: CombatProfile) {
   );
 }
 
+function characteristicModifierFlags(profile: CombatProfile) {
+  return (
+    (profile.characteristicModifierAttacks ? 1 : 0) |
+    (profile.characteristicModifierStrength ? 2 : 0) |
+    (profile.characteristicModifierDamage ? 4 : 0)
+  );
+}
+
+function characteristicModifierGroups(profiles: CombatProfile[]) {
+  const groups = new Map<string, number>();
+  return profiles.map((profile) => {
+    if (!profile.characteristicModifierGroup) return 0;
+    if (!groups.has(profile.characteristicModifierGroup)) {
+      groups.set(profile.characteristicModifierGroup, groups.size + 1);
+    }
+    return groups.get(profile.characteristicModifierGroup) ?? 0;
+  });
+}
+
 async function exactCalculation(profile: CombatProfile) {
   const calculator = await loadCalculator();
   const output = calculator.malloc(72);
   const flags = profileFlags(profile);
 
   try {
-    const ok = calculator.whc_calculate_summary(
+    const ok = calculator.whc_calculate_summary_with_characteristic_roll(
       profile.attackDice,
       profile.attackSides,
       profile.attacks,
@@ -371,6 +390,10 @@ async function exactCalculation(profile: CombatProfile) {
       profile.attacksMultiplier,
       profile.strengthMultiplier,
       profile.damageMultiplier,
+      profile.characteristicModifierDice,
+      profile.characteristicModifierSides,
+      profile.characteristicModifierBonus,
+      characteristicModifierFlags(profile),
       output,
     );
     if (!ok) throw new Error("Profile exceeds the calculator's exact-distribution limits");
@@ -428,12 +451,13 @@ async function exactVolley(
   }
 
   const calculator = await loadCalculator();
-  const weaponFields = 32;
+  const weaponFields = 37;
   const targetFields = 8;
   const weaponsPointer = calculator.malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator.malloc(targets.length * targetFields * 4);
   const summaryPointer = calculator.malloc(10 * 4);
   const meansPointer = calculator.malloc(profiles.length * 4 * 4);
+  const characteristicGroups = characteristicModifierGroups(profiles);
   try {
     let view = new DataView(calculator.memory.buffer);
     const write = (pointer: number, values: number[]) =>
@@ -481,6 +505,11 @@ async function exactVolley(
         profile.attacksMultiplier,
         profile.strengthMultiplier,
         profile.damageMultiplier,
+        profile.characteristicModifierDice,
+        profile.characteristicModifierSides,
+        profile.characteristicModifierBonus,
+        characteristicModifierFlags(profile),
+        characteristicGroups[index],
       ]),
     );
     targets.forEach((target, index) =>
@@ -542,11 +571,12 @@ async function volleyComplexity(
     throw new Error("targets must contain 1 to 16 ordered profile segments");
   }
   const calculator = await loadCalculator();
-  const weaponFields = 32;
+  const weaponFields = 37;
   const targetFields = 8;
   const weaponsPointer = calculator.malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator.malloc(targets.length * targetFields * 4);
   const outputPointer = calculator.malloc(6 * 4);
+  const characteristicGroups = characteristicModifierGroups(profiles);
   try {
     let view = new DataView(calculator.memory.buffer);
     const write = (pointer: number, values: number[]) =>
@@ -585,6 +615,11 @@ async function volleyComplexity(
         profile.attacksMultiplier,
         profile.strengthMultiplier,
         profile.damageMultiplier,
+        profile.characteristicModifierDice,
+        profile.characteristicModifierSides,
+        profile.characteristicModifierBonus,
+        characteristicModifierFlags(profile),
+        characteristicGroups[index],
       ]),
     );
     targets.forEach((target, index) =>

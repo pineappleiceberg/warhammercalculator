@@ -34,6 +34,10 @@ bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
     uint32_t maximum_attack_events = 0u;
     uint32_t prefix_deferred_dimensions = 1u;
     uint32_t estimated_state_upper_bound = 1u;
+    uint32_t characteristic_combinations = 1u;
+    struct dice_value characteristic_rolls[MAX_VOLLEY_WEAPONS];
+    uint16_t characteristic_groups[MAX_VOLLEY_WEAPONS];
+    uint16_t characteristic_dimension_count = 0u;
     uint16_t weapon_index = 0u;
     bool uses_deferred_states = false;
 
@@ -44,7 +48,9 @@ bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
     }
 
     while (weapon_index < weapon_count) {
-        const struct weapon_profile *weapon = &weapons[weapon_index];
+        const struct weapon_profile *source_weapon = &weapons[weapon_index];
+        const struct weapon_profile *weapon = source_weapon;
+        struct weapon_profile resolved_weapon;
         struct attack_plan representative;
         uint32_t attack_maximum = 0u;
         uint32_t sustained_maximum = 0u;
@@ -54,6 +60,52 @@ bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
         bool weapon_defers = false;
 
         memset(&representative, 0, sizeof(representative));
+        if (source_weapon->characteristic_modifier_roll_flags == 0u) {
+            if (source_weapon->characteristic_modifier_roll.dice_count != 0u ||
+                source_weapon->characteristic_modifier_roll.dice_sides != 0u ||
+                source_weapon->characteristic_modifier_roll.modifier != 0u ||
+                source_weapon->characteristic_modifier_roll_group != 0u) {
+                return false;
+            }
+        } else {
+            struct distribution roll;
+            uint16_t dimension = characteristic_dimension_count;
+            uint32_t support = 0u;
+            if (!distribution_from_dice_value(source_weapon->characteristic_modifier_roll, &roll) ||
+                !weapon_profile_resolve_characteristic_roll(source_weapon, (uint16_t)roll.maximum,
+                                                            &resolved_weapon)) {
+                return false;
+            }
+            if (source_weapon->characteristic_modifier_roll_group != 0u) {
+                dimension = 0u;
+                while (dimension < characteristic_dimension_count &&
+                       characteristic_groups[dimension] !=
+                           source_weapon->characteristic_modifier_roll_group) {
+                    dimension++;
+                }
+            }
+            if (dimension < characteristic_dimension_count) {
+                if (characteristic_rolls[dimension].dice_count !=
+                        source_weapon->characteristic_modifier_roll.dice_count ||
+                    characteristic_rolls[dimension].dice_sides !=
+                        source_weapon->characteristic_modifier_roll.dice_sides ||
+                    characteristic_rolls[dimension].modifier !=
+                        source_weapon->characteristic_modifier_roll.modifier) {
+                    return false;
+                }
+            } else {
+                support = roll.maximum - roll.minimum + 1u;
+                if (support > MAX_CHARACTERISTIC_ROLL_COMBINATIONS / characteristic_combinations) {
+                    return false;
+                }
+                characteristic_combinations *= support;
+                characteristic_rolls[dimension] = source_weapon->characteristic_modifier_roll;
+                characteristic_groups[dimension] =
+                    source_weapon->characteristic_modifier_roll_group;
+                characteristic_dimension_count++;
+            }
+            weapon = &resolved_weapon;
+        }
         while (segment_index < layout->segment_count) {
             struct attack_plan plan;
             const struct target_profile *target =

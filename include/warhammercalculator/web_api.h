@@ -79,6 +79,11 @@ struct whc_web_weapon_input {
     uint32_t attacks_multiplier;
     uint32_t strength_multiplier;
     uint32_t damage_multiplier;
+    uint32_t characteristic_modifier_dice_count;
+    uint32_t characteristic_modifier_dice_sides;
+    uint32_t characteristic_modifier_bonus;
+    uint32_t characteristic_modifier_flags;
+    uint32_t characteristic_modifier_group;
 };
 
 struct whc_web_target_input {
@@ -140,6 +145,39 @@ struct whc_web_exact_complexity {
     ensures \result ==> summary->applied_first_quartile <= summary->applied_median;
     ensures \result ==> summary->applied_median <= summary->applied_third_quartile;
     ensures \result ==> summary->applied_third_quartile <= summary->applied_maximum;
+*/
+bool whc_calculate_summary_with_characteristic_roll(
+    uint16_t attack_dice_count, uint16_t attack_dice_sides, uint16_t attack_modifier,
+    uint16_t attacks_replacement, uint16_t weapon_count, uint8_t hits_on, uint16_t strength,
+    uint16_t ap, uint16_t damage_dice_count, uint16_t damage_dice_sides, uint16_t damage_modifier,
+    uint8_t critical_hits_on, uint16_t toughness, uint8_t save, uint8_t invulnerable_save,
+    uint8_t feel_no_pain, uint16_t wounds, uint16_t damage_reduction, uint32_t rule_flags,
+    uint8_t critical_wounds_on, uint16_t target_models, uint16_t sustained_hits_dice_count,
+    uint16_t sustained_hits_dice_sides, uint16_t sustained_hits, uint16_t rapid_fire_dice_count,
+    uint16_t rapid_fire_dice_sides, uint16_t rapid_fire, uint16_t melta, int16_t hit_modifier,
+    int16_t wound_modifier, int16_t attacks_modifier, int16_t strength_modifier,
+    int16_t damage_characteristic_modifier, uint16_t strength_replacement,
+    uint16_t damage_replacement, bool damage_replacement_active, uint16_t damage_divisor,
+    uint16_t attacks_multiplier, uint16_t strength_multiplier, uint16_t damage_multiplier,
+    uint16_t characteristic_modifier_dice_count, uint16_t characteristic_modifier_dice_sides,
+    uint16_t characteristic_modifier_bonus, uint8_t characteristic_modifier_flags,
+    struct whc_web_summary *summary);
+
+/*@ requires 2 <= hits_on && hits_on <= 6;
+    requires strength > 0 && toughness > 0;
+    requires 2 <= save && save <= 7;
+    requires invulnerable_save == 0 || (2 <= invulnerable_save && invulnerable_save <= 6);
+    requires feel_no_pain == 0 || (2 <= feel_no_pain && feel_no_pain <= 6);
+    requires critical_hits_on == 0 || (2 <= critical_hits_on && critical_hits_on <= 6);
+    requires critical_wounds_on == 0 || (2 <= critical_wounds_on && critical_wounds_on <= 6);
+    requires \valid(summary);
+    assigns *summary;
+    ensures \result ==> summary->minimum <= summary->first_quartile;
+    ensures \result ==> summary->first_quartile <= summary->median;
+    ensures \result ==> summary->median <= summary->third_quartile;
+    ensures \result ==> summary->third_quartile <= summary->maximum;
+    ensures \result ==> summary->mean_denominator_low != 0 ||
+                         summary->mean_denominator_high != 0;
 */
 bool whc_calculate_summary(
     uint16_t attack_dice_count, uint16_t attack_dice_sides, uint16_t attack_modifier,

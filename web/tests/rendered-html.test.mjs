@@ -697,6 +697,113 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.equal(multipliedSimulation.status, 200);
   assert.ok(Math.abs((await multipliedSimulation.json()).data.mean - 28) < 0.25);
 
+  const sharedCharacteristicProfile = {
+    ...signedProfile,
+    attackDice: 0,
+    attackSides: 0,
+    attacks: 1,
+    attacksModifier: 0,
+    weaponCount: 1,
+    strength: 3,
+    strengthModifier: 0,
+    toughness: 5,
+    damage: 1,
+    characteristicModifierDice: 1,
+    characteristicModifierSides: 3,
+    characteristicModifierBonus: 0,
+    characteristicModifierAttacks: true,
+    characteristicModifierStrength: true,
+    characteristicModifierDamage: false,
+  };
+  const sharedCharacteristicCalculation = await worker.fetch(
+    new Request("http://localhost/api/v1/calculate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ profile: sharedCharacteristicProfile }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(sharedCharacteristicCalculation.status, 200);
+  assert.deepEqual((await sharedCharacteristicCalculation.json()).data.exact, {
+    numerator: "29",
+    denominator: "18",
+  });
+  const sharedCharacteristicSimulation = await worker.fetch(
+    new Request("http://localhost/api/v1/volley/simulate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        profiles: [sharedCharacteristicProfile],
+        targets: [
+          {
+            toughness: 5,
+            save: 7,
+            invulnerable: 0,
+            feelNoPain: 0,
+            wounds: 100,
+            reduction: 0,
+            damageDivisor: 1,
+            modelCount: 1,
+          },
+        ],
+        seed: 1701,
+        trials: 10000,
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(sharedCharacteristicSimulation.status, 200);
+  assert.ok(Math.abs((await sharedCharacteristicSimulation.json()).data.mean - 29 / 18) < 0.04);
+
+  const groupedProfiles = [
+    { ...sharedCharacteristicProfile, characteristicModifierGroup: "shared-d3" },
+    { ...sharedCharacteristicProfile, characteristicModifierGroup: "shared-d3" },
+  ];
+  const groupedTargets = [
+    {
+      toughness: 5,
+      save: 7,
+      invulnerable: 0,
+      feelNoPain: 0,
+      wounds: 2,
+      reduction: 0,
+      damageDivisor: 1,
+      modelCount: 1,
+    },
+  ];
+  const volleyResult = async (path, profiles, extra = {}) => {
+    const response = await worker.fetch(
+      new Request(`http://localhost${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ profiles, targets: groupedTargets, ...extra }),
+      }),
+      testEnv,
+      context,
+    );
+    assert.equal(response.status, 200);
+    return (await response.json()).data;
+  };
+  const groupedExact = await volleyResult("/api/v1/volley", groupedProfiles);
+  const independentProfiles = [
+    groupedProfiles[0],
+    { ...groupedProfiles[1], characteristicModifierGroup: "another-d3" },
+  ];
+  const independentExact = await volleyResult("/api/v1/volley", independentProfiles);
+  assert.notEqual(groupedExact.mean, independentExact.mean);
+  const groupedSimulation = await volleyResult("/api/v1/volley/simulate", groupedProfiles, {
+    seed: 1701,
+    trials: 20000,
+  });
+  const independentSimulation = await volleyResult("/api/v1/volley/simulate", independentProfiles, {
+    seed: 1701,
+    trials: 20000,
+  });
+  assert.ok(Math.abs(groupedSimulation.mean - groupedExact.mean) < 0.025);
+  assert.ok(Math.abs(independentSimulation.mean - independentExact.mean) < 0.025);
+
   const simulateDamageDivisor = async (damageDivisor) => {
     const response = await worker.fetch(
       new Request("http://localhost/api/v1/volley/simulate", {

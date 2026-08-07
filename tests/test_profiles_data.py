@@ -67,7 +67,9 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(preset["reroll_hits"], 0)
         self.assertEqual(preset["hit_reroll_role"], "attacker")
         self.assertEqual(preset["hit_reroll_subject"], "self")
-        self.assertIsNone(combat_preset("Add 1 to this model's Leadership characteristic."))
+        self.assertIsNone(
+            combat_preset("Add 1 to this model's Leadership characteristic.")
+        )
 
     def test_combat_preset_parser_classifies_each_effect_without_using_its_sign(self):
         self_penalty = combat_preset(
@@ -149,7 +151,9 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(effects["ap_modifier"]["value"], 1)
         self.assertEqual(effects["critical_hits"]["value"], 5)
-        self.assertTrue(all(effect["role"] == "attacker" for effect in effects.values()))
+        self.assertTrue(
+            all(effect["role"] == "attacker" for effect in effects.values())
+        )
         self.assertTrue(all(effect["subject"] == "self" for effect in effects.values()))
         qualifier = combat_preset(
             "Provided it Remained Stationary, all [HEAVY] weapons equipped by models in this "
@@ -424,6 +428,52 @@ class ProfileDataTests(unittest.TestCase):
             )
         )
 
+    def test_combat_preset_parser_preserves_shared_random_characteristic_rolls(self):
+        random_strength = combat_preset(
+            "Each time this model’s unit makes a Dark Pact, until the end of the phase, "
+            "add D3 to the Strength characteristic of weapons equipped by this model."
+        )
+        self.assertEqual(
+            random_strength["additional_effects"],
+            [
+                {
+                    "type": "strength_modifier",
+                    "value": 0,
+                    "dice_count": 1,
+                    "dice_sides": 3,
+                    "role": "attacker",
+                    "subject": "self",
+                }
+            ],
+        )
+        shared = combat_preset(
+            "Until the end of the phase, add D3 to the Attacks and Strength "
+            "characteristics of Psychic weapons equipped by this model."
+        )
+        self.assertEqual(
+            shared["additional_effects"],
+            [
+                {
+                    "type": "attacks_modifier",
+                    "value": 0,
+                    "dice_count": 1,
+                    "dice_sides": 3,
+                    "required_attack_keyword": "psychic",
+                    "role": "attacker",
+                    "subject": "self",
+                },
+                {
+                    "type": "strength_modifier",
+                    "value": 0,
+                    "dice_count": 1,
+                    "dice_sides": 3,
+                    "required_attack_keyword": "psychic",
+                    "role": "attacker",
+                    "subject": "self",
+                },
+            ],
+        )
+
     def test_combat_preset_parser_splits_keyword_choices(self):
         choices = combat_presets(
             "Weapon Doctrine",
@@ -466,22 +516,30 @@ class ProfileDataTests(unittest.TestCase):
             second = Path(directory) / "second.sqlite"
             for path, row_id, value in ((first, 1, "same"), (second, 99, "same")):
                 with closing(sqlite3.connect(path)) as connection:
-                    connection.execute("CREATE TABLE sample(id INTEGER PRIMARY KEY, value TEXT)")
+                    connection.execute(
+                        "CREATE TABLE sample(id INTEGER PRIMARY KEY, value TEXT)"
+                    )
                     connection.execute(
                         "INSERT INTO sample(id, value) VALUES (?, ?)", (row_id, value)
                     )
                     connection.commit()
-            self.assertEqual(table_snapshot(first, "sample"), table_snapshot(second, "sample"))
+            self.assertEqual(
+                table_snapshot(first, "sample"), table_snapshot(second, "sample")
+            )
             with closing(sqlite3.connect(second)) as connection:
                 connection.execute("UPDATE sample SET value = 'changed'")
                 connection.commit()
-            self.assertNotEqual(table_snapshot(first, "sample"), table_snapshot(second, "sample"))
+            self.assertNotEqual(
+                table_snapshot(first, "sample"), table_snapshot(second, "sample")
+            )
 
     def test_composition_parser_handles_export_markup_and_unicode_hyphens(self):
         self.assertEqual(composition_range("10-20 Necron Warriors"), (10, 20))
         self.assertEqual(composition_range("3‑10 Kill Team Infiltrators"), (3, 10))
         self.assertEqual(
-            composition_components("1 Master of Ordnance, 1 Officer of the Fleet and 1 Astropath."),
+            composition_components(
+                "1 Master of Ordnance, 1 Officer of the Fleet and 1 Astropath."
+            ),
             [
                 ("Master of Ordnance", 1, 1),
                 ("Officer of the Fleet", 1, 1),
@@ -489,7 +547,9 @@ class ProfileDataTests(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            composition_range("1 Master of Ordnance, 1 Officer of the Fleet and 1 Astropath."),
+            composition_range(
+                "1 Master of Ordnance, 1 Officer of the Fleet and 1 Astropath."
+            ),
             (3, 3),
         )
         self.assertEqual(
@@ -511,14 +571,22 @@ class ProfileDataTests(unittest.TestCase):
             allowance("For every 5 models in this unit, 1 model can replace it."),
             (0, 1, 5),
         )
-        self.assertEqual(allowance("Any number of models can each replace it."), (0, 1, 1))
-        self.assertEqual(normalized_name("Power weapon’s – profile"), "power weapon s profile")
         self.assertEqual(
-            option_choices("Choose:<ul><li>1 flamer</li><li>1 meltagun</li></ul>", "Choose"),
+            allowance("Any number of models can each replace it."), (0, 1, 1)
+        )
+        self.assertEqual(
+            normalized_name("Power weapon’s – profile"), "power weapon s profile"
+        )
+        self.assertEqual(
+            option_choices(
+                "Choose:<ul><li>1 flamer</li><li>1 meltagun</li></ul>", "Choose"
+            ),
             ["1 flamer", "1 meltagun"],
         )
         self.assertEqual(
-            profile_group_names(["Plasma pistol – standard", "Plasma pistol – supercharge"]),
+            profile_group_names(
+                ["Plasma pistol – standard", "Plasma pistol – supercharge"]
+            ),
             ("Plasma pistol", ["standard", "supercharge"]),
         )
         known = {
@@ -560,12 +628,14 @@ class ProfileDataTests(unittest.TestCase):
     def test_checked_database_preserves_loadout_sources_and_provenance(self):
         connection = sqlite3.connect(DATABASE)
         try:
-            self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+            self.assertEqual(
+                connection.execute("PRAGMA integrity_check").fetchone()[0], "ok"
+            )
             self.assertEqual(
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "22",
+                "23",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -579,11 +649,15 @@ class ProfileDataTests(unittest.TestCase):
                 self.assertGreater(row[0], minimum_rows)
                 self.assertEqual(len(row[1]), 64)
             self.assertGreater(
-                connection.execute("SELECT count(*) FROM unit_combat_presets").fetchone()[0],
+                connection.execute(
+                    "SELECT count(*) FROM unit_combat_presets"
+                ).fetchone()[0],
                 900,
             )
             self.assertGreater(
-                connection.execute("SELECT count(*) FROM unit_combat_preset_effects").fetchone()[0],
+                connection.execute(
+                    "SELECT count(*) FROM unit_combat_preset_effects"
+                ).fetchone()[0],
                 500,
             )
             self.assertEqual(
@@ -649,9 +723,28 @@ class ProfileDataTests(unittest.TestCase):
                        GROUP BY effect_type ORDER BY effect_type"""
                 ).fetchall(),
                 [
-                    ("attacks_modifier", 19),
+                    ("attacks_modifier", 20),
                     ("damage_modifier", 5),
-                    ("strength_modifier", 90),
+                    ("strength_modifier", 92),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT preset.name, effect.effect_type, effect.value,
+                              effect.dice_count, effect.dice_sides,
+                              effect.required_attack_keyword
+                       FROM unit_combat_preset_effects AS effect
+                       JOIN unit_combat_presets AS preset
+                         USING (datasheet_id, ability_position, preset_position)
+                       WHERE effect.dice_count > 0
+                         AND effect.effect_type IN
+                             ('attacks_modifier', 'strength_modifier', 'damage_modifier')
+                       ORDER BY preset.name, effect.effect_position"""
+                ).fetchall(),
+                [
+                    ("Aspire to Glory", "strength_modifier", 0, 1, 3, None),
+                    ("Sacrificial Blessing", "attacks_modifier", 0, 1, 3, "psychic"),
+                    ("Sacrificial Blessing", "strength_modifier", 0, 1, 3, "psychic"),
                 ],
             )
             self.assertEqual(
@@ -683,7 +776,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 2), ("inherent", 32), ("situational", 1379)],
+                [("automatic", 2), ("inherent", 32), ("situational", 1381)],
             )
             self.assertEqual(
                 connection.execute(
@@ -767,19 +860,27 @@ class ProfileDataTests(unittest.TestCase):
                 self.assertEqual(len(row[1]), 64)
                 self.assertTrue(row[2].endswith(filename))
             self.assertGreater(
-                connection.execute("SELECT count(*) FROM unit_composition").fetchone()[0],
+                connection.execute("SELECT count(*) FROM unit_composition").fetchone()[
+                    0
+                ],
                 2_000,
             )
             self.assertGreater(
-                connection.execute("SELECT count(*) FROM wargear_options").fetchone()[0],
+                connection.execute("SELECT count(*) FROM wargear_options").fetchone()[
+                    0
+                ],
                 2_500,
             )
             self.assertGreater(
-                connection.execute("SELECT count(*) FROM default_weapon_loadout").fetchone()[0],
+                connection.execute(
+                    "SELECT count(*) FROM default_weapon_loadout"
+                ).fetchone()[0],
                 4_400,
             )
             self.assertEqual(
-                connection.execute("SELECT count(*) FROM default_loadout_subjects").fetchone()[0],
+                connection.execute(
+                    "SELECT count(*) FROM default_loadout_subjects"
+                ).fetchone()[0],
                 1_971,
             )
             self.assertEqual(
@@ -812,7 +913,9 @@ class ProfileDataTests(unittest.TestCase):
                 1_000,
             )
             self.assertGreater(
-                connection.execute("SELECT count(*) FROM wargear_choice_pools").fetchone()[0],
+                connection.execute(
+                    "SELECT count(*) FROM wargear_choice_pools"
+                ).fetchone()[0],
                 1_900,
             )
             self.assertGreater(
@@ -826,11 +929,15 @@ class ProfileDataTests(unittest.TestCase):
                 200,
             )
             self.assertGreater(
-                connection.execute("SELECT count(*) FROM wargear_constraints").fetchone()[0],
+                connection.execute(
+                    "SELECT count(*) FROM wargear_constraints"
+                ).fetchone()[0],
                 1_500,
             )
             self.assertGreater(
-                connection.execute("SELECT count(*) FROM wargear_constraint_weapons").fetchone()[0],
+                connection.execute(
+                    "SELECT count(*) FROM wargear_constraint_weapons"
+                ).fetchone()[0],
                 2_500,
             )
         finally:
@@ -838,45 +945,68 @@ class ProfileDataTests(unittest.TestCase):
 
     def test_browser_catalogue_exposes_editable_necron_loadout_guidance(self):
         catalogue = json.loads(CATALOGUE.read_text(encoding="utf-8"))
-        warriors = next(unit for unit in catalogue["units"] if unit["name"] == "Necron Warriors")
+        warriors = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Necron Warriors"
+        )
         self.assertEqual(warriors["suggestedModelCount"], 10)
         self.assertEqual(warriors["maximumModelCount"], 20)
         self.assertEqual(warriors["composition"][0]["text"], "10-20 Necron Warriors")
         self.assertTrue(
-            any("gauss reaper" in option.lower() for option in warriors["wargearOptions"])
+            any(
+                "gauss reaper" in option.lower()
+                for option in warriors["wargearOptions"]
+            )
         )
         reaper = next(
-            limit for limit in warriors["weaponLimits"] if limit["groupName"] == "Gauss reaper"
+            limit
+            for limit in warriors["weaponLimits"]
+            if limit["groupName"] == "Gauss reaper"
         )
         self.assertEqual(reaper["terms"][0]["perIncrement"], 1)
         self.assertEqual(reaper["terms"][0]["modelsPerIncrement"], 1)
 
-        assault = next(unit for unit in catalogue["units"] if unit["name"] == "Assault Squad")
+        assault = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Assault Squad"
+        )
         eviscerator = next(
-            limit for limit in assault["weaponLimits"] if limit["groupName"] == "Eviscerator"
+            limit
+            for limit in assault["weaponLimits"]
+            if limit["groupName"] == "Eviscerator"
         )
         self.assertEqual(eviscerator["terms"][0]["modelsPerIncrement"], 5)
         self.assertEqual(catalogue["structuredWargear"]["constraintCount"], 1798)
         self.assertEqual(catalogue["structuredWargear"]["choicePoolCount"], 2009)
-        self.assertEqual(catalogue["structuredWargear"]["compoundAlternativeCount"], 241)
+        self.assertEqual(
+            catalogue["structuredWargear"]["compoundAlternativeCount"], 241
+        )
         self.assertEqual(catalogue["structuredWargear"]["defaultWeaponCount"], 4349)
         self.assertEqual(catalogue["structuredWargear"]["defaultWeaponTermCount"], 4494)
         self.assertEqual(catalogue["structuredWargear"]["loadoutSubjectCount"], 1971)
-        self.assertEqual(catalogue["structuredWargear"]["resolvedLoadoutSubjectCount"], 1883)
-        self.assertEqual(catalogue["structuredWargear"]["unresolvedLoadoutSubjectCount"], 88)
-        self.assertEqual(catalogue["structuredWargear"]["loadoutSubjectWeaponCount"], 4701)
+        self.assertEqual(
+            catalogue["structuredWargear"]["resolvedLoadoutSubjectCount"], 1883
+        )
+        self.assertEqual(
+            catalogue["structuredWargear"]["unresolvedLoadoutSubjectCount"], 88
+        )
+        self.assertEqual(
+            catalogue["structuredWargear"]["loadoutSubjectWeaponCount"], 4701
+        )
         self.assertEqual(catalogue["structuredWargear"]["replacementWeaponCount"], 1172)
         self.assertTrue(catalogue["structuredWargear"]["conservative"])
         warboss = next(unit for unit in catalogue["units"] if unit["name"] == "Warboss")
         might = next(
-            preset for preset in warboss["combatPresets"] if preset["name"] == "Might is Right"
+            preset
+            for preset in warboss["combatPresets"]
+            if preset["name"] == "Might is Right"
         )
         self.assertEqual(might["weaponScope"], "Melee")
         self.assertEqual(might["hitModifier"], 1)
         self.assertEqual(might["hitModifierRole"], "attacker")
         self.assertEqual(might["hitModifierSubject"], "led_unit")
         self.assertIn("leading a unit", might["description"])
-        castigator = next(unit for unit in catalogue["units"] if unit["name"] == "Castigator")
+        castigator = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Castigator"
+        )
         rites = next(
             preset
             for preset in castigator["combatPresets"]
@@ -897,7 +1027,9 @@ class ProfileDataTests(unittest.TestCase):
         )
         captain = next(unit for unit in catalogue["units"] if unit["id"] == "000000073")
         finest_hour = next(
-            preset for preset in captain["combatPresets"] if preset["name"] == "Finest Hour"
+            preset
+            for preset in captain["combatPresets"]
+            if preset["name"] == "Finest Hour"
         )
         self.assertEqual(finest_hour["weaponScope"], "Melee")
         self.assertEqual(
@@ -942,9 +1074,13 @@ class ProfileDataTests(unittest.TestCase):
                 }
             ],
         )
-        captain_tycho = next(unit for unit in catalogue["units"] if unit["id"] == "000000152")
+        captain_tycho = next(
+            unit for unit in catalogue["units"] if unit["id"] == "000000152"
+        )
         embittered = next(
-            preset for preset in captain_tycho["combatPresets"] if preset["name"] == "Embittered"
+            preset
+            for preset in captain_tycho["combatPresets"]
+            if preset["name"] == "Embittered"
         )
         self.assertEqual(
             embittered["effects"],
@@ -962,10 +1098,14 @@ class ProfileDataTests(unittest.TestCase):
         )
         lelith = next(unit for unit in catalogue["units"] if unit["id"] == "000000640")
         thrilling = next(
-            preset for preset in lelith["combatPresets"] if preset["name"] == "Thrilling Spectacle"
+            preset
+            for preset in lelith["combatPresets"]
+            if preset["name"] == "Thrilling Spectacle"
         )
         replacement = next(
-            effect for effect in thrilling["effects"] if effect["type"] == "attacks_replacement"
+            effect
+            for effect in thrilling["effects"]
+            if effect["type"] == "attacks_replacement"
         )
         self.assertEqual(replacement["value"], 12)
         self.assertIsNone(replacement.get("weaponName"))
@@ -993,9 +1133,13 @@ class ProfileDataTests(unittest.TestCase):
             ],
         )
         self.assertEqual(auramite["activation"], "situational")
-        culexus = next(unit for unit in catalogue["units"] if unit["name"] == "Culexus Assassin")
+        culexus = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Culexus Assassin"
+        )
         psychic_assassin = next(
-            preset for preset in culexus["combatPresets"] if preset["name"] == "Psychic Assassin"
+            preset
+            for preset in culexus["combatPresets"]
+            if preset["name"] == "Psychic Assassin"
         )
         self.assertEqual(psychic_assassin["activation"], "automatic")
         self.assertEqual(
@@ -1014,7 +1158,9 @@ class ProfileDataTests(unittest.TestCase):
             ],
         )
         abomination = next(
-            preset for preset in culexus["combatPresets"] if preset["name"] == "Abomination"
+            preset
+            for preset in culexus["combatPresets"]
+            if preset["name"] == "Abomination"
         )
         self.assertEqual(abomination["activation"], "automatic")
         self.assertEqual(
@@ -1032,10 +1178,14 @@ class ProfileDataTests(unittest.TestCase):
             ],
         )
         redemptor = next(
-            unit for unit in catalogue["units"] if unit["name"] == "Redemptor Dreadnought"
+            unit
+            for unit in catalogue["units"]
+            if unit["name"] == "Redemptor Dreadnought"
         )
         duty_eternal = next(
-            preset for preset in redemptor["combatPresets"] if preset["name"] == "Duty Eternal"
+            preset
+            for preset in redemptor["combatPresets"]
+            if preset["name"] == "Duty Eternal"
         )
         self.assertEqual(
             duty_eternal["effects"],
@@ -1053,9 +1203,13 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(duty_eternal["activation"], "inherent")
         self.assertEqual(redemptor["models"][0]["reduction"], 1)
         self.assertEqual(redemptor["models"][0]["feelNoPain"], 0)
-        avatar = next(unit for unit in catalogue["units"] if unit["name"] == "Avatar of Khaine")
+        avatar = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Avatar of Khaine"
+        )
         molten_form = next(
-            preset for preset in avatar["combatPresets"] if preset["name"] == "Molten Form"
+            preset
+            for preset in avatar["combatPresets"]
+            if preset["name"] == "Molten Form"
         )
         self.assertEqual(molten_form["activation"], "inherent")
         self.assertEqual(
@@ -1079,7 +1233,9 @@ class ProfileDataTests(unittest.TestCase):
                 for preset in unit["combatPresets"]
             )
         )
-        imagifier = next(unit for unit in catalogue["units"] if unit["name"] == "Imagifier")
+        imagifier = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Imagifier"
+        )
         martyrs = next(
             preset
             for preset in imagifier["combatPresets"]
@@ -1130,19 +1286,26 @@ class ProfileDataTests(unittest.TestCase):
                     self.assertIn(weapon["groupId"], weapon_group_ids)
                     self.assertGreater(weapon["quantity"], 0)
 
-        accursed = next(unit for unit in catalogue["units"] if unit["name"] == "Accursed Cultists")
+        accursed = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Accursed Cultists"
+        )
         torment = next(
             subject
             for subject in accursed["unresolvedLoadoutSubjects"]
             if subject["subject"] == "Every Torment"
         )
         self.assertEqual(
-            [(weapon["groupName"], weapon["quantity"]) for weapon in torment["weapons"]],
+            [
+                (weapon["groupName"], weapon["quantity"])
+                for weapon in torment["weapons"]
+            ],
             [("Hideous mutations", 1)],
         )
 
         achillus = next(
-            unit for unit in catalogue["units"] if unit["name"] == "Contemptor-achillus Dreadnought"
+            unit
+            for unit in catalogue["units"]
+            if unit["name"] == "Contemptor-achillus Dreadnought"
         )
         self.assertEqual(len(achillus["wargearChoicePools"]), 1)
         pool = achillus["wargearChoicePools"][0]
@@ -1198,10 +1361,18 @@ class ProfileDataTests(unittest.TestCase):
         }
         self.assertEqual(len(grouped), 787)
         sisters = next(
-            unit for unit in catalogue["units"] if unit["name"] == "Battle Sisters Squad"
+            unit
+            for unit in catalogue["units"]
+            if unit["name"] == "Battle Sisters Squad"
         )
-        plasma = [weapon for weapon in sisters["weapons"] if weapon["groupName"] == "Plasma pistol"]
-        self.assertEqual({weapon["profileName"] for weapon in plasma}, {"standard", "supercharge"})
+        plasma = [
+            weapon
+            for weapon in sisters["weapons"]
+            if weapon["groupName"] == "Plasma pistol"
+        ]
+        self.assertEqual(
+            {weapon["profileName"] for weapon in plasma}, {"standard", "supercharge"}
+        )
         self.assertEqual(len({weapon["groupId"] for weapon in plasma}), 1)
         drazhar = next(unit for unit in catalogue["units"] if unit["name"] == "Drazhar")
         demiklaives = [
@@ -1221,18 +1392,28 @@ class ProfileDataTests(unittest.TestCase):
         )
 
         boyz = next(unit for unit in catalogue["units"] if unit["name"] == "Boyz")
-        self.assertEqual((boyz["suggestedModelCount"], boyz["maximumModelCount"]), (10, 20))
+        self.assertEqual(
+            (boyz["suggestedModelCount"], boyz["maximumModelCount"]), (10, 20)
+        )
         choppa = next(
-            weapon for weapon in boyz["defaultWeapons"] if weapon["groupName"] == "Choppa"
+            weapon
+            for weapon in boyz["defaultWeapons"]
+            if weapon["groupName"] == "Choppa"
         )
         self.assertEqual(
             (choppa["terms"][0]["fixed"], choppa["terms"][0]["perModel"]),
             (-1, 1),
         )
-        cadian = next(unit for unit in catalogue["units"] if unit["name"] == "Cadian Shock Troops")
-        self.assertEqual((cadian["suggestedModelCount"], cadian["maximumModelCount"]), (10, 20))
+        cadian = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Cadian Shock Troops"
+        )
+        self.assertEqual(
+            (cadian["suggestedModelCount"], cadian["maximumModelCount"]), (10, 20)
+        )
         lasgun = next(
-            weapon for weapon in cadian["defaultWeapons"] if weapon["groupName"] == "Lasgun"
+            weapon
+            for weapon in cadian["defaultWeapons"]
+            if weapon["groupName"] == "Lasgun"
         )
         self.assertEqual(
             (
@@ -1246,9 +1427,13 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(attaches["suggestedModelCount"], 3)
         laspistol = next(
-            weapon for weapon in attaches["defaultWeapons"] if weapon["groupName"] == "Laspistol"
+            weapon
+            for weapon in attaches["defaultWeapons"]
+            if weapon["groupName"] == "Laspistol"
         )
-        self.assertEqual(sum(term["fixed"] * term["quantity"] for term in laspistol["terms"]), 3)
+        self.assertEqual(
+            sum(term["fixed"] * term["quantity"] for term in laspistol["terms"]), 3
+        )
 
 
 if __name__ == "__main__":
