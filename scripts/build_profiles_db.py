@@ -189,7 +189,8 @@ CREATE TABLE unit_combat_preset_effects (
         ('lethal_hits', 'devastating_wounds', 'twin_linked', 'ignores_cover',
          'sustained_hits', 'rapid_fire', 'lance', 'heavy', 'ap_modifier',
          'critical_hits', 'critical_wounds', 'attacks_replacement', 'strength_replacement',
-         'damage_replacement', 'attacks_multiplier', 'strength_multiplier',
+         'damage_replacement', 'first_failed_save_damage_replacement',
+         'attacks_multiplier', 'strength_multiplier',
          'damage_multiplier', 'attacks_modifier', 'strength_modifier',
          'damage_modifier', 'save_target',
          'invulnerable_save', 'feel_no_pain', 'damage_reduction', 'damage_divisor')),
@@ -896,6 +897,25 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
             }
         )
 
+    first_failed_save_damage_replacement_pattern = re.compile(
+        r"\bonce per (?:turn|phase), the first time a saving throw is failed for "
+        r"(this unit|the bearer[’']s unit|a model in the bearer[’']s unit), change the "
+        r"Damage characteristic of that attack to (\d+)\b",
+        re.IGNORECASE,
+    )
+    for match in first_failed_save_damage_replacement_pattern.finditer(text):
+        subject = "self" if match.group(1).casefold() == "this unit" else "led_unit"
+        effects.append(
+            {
+                "type": "first_failed_save_damage_replacement",
+                "value": int(match.group(2)),
+                "dice_count": 0,
+                "dice_sides": 0,
+                "role": "target",
+                "subject": subject,
+            }
+        )
+
     keyword_attacks_replacement_pattern = re.compile(
         r"\beach time you select an? ([A-Z][A-Z0-9 -]+) unit as the target for this weapon, "
         r"until those attacks are resolved, change the Attacks characteristic of this weapon "
@@ -1145,6 +1165,7 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
             "damage_reduction",
             "damage_divisor",
             "damage_replacement",
+            "first_failed_save_damage_replacement",
         }
         or effect["role"] != "target"
         or effect["subject"] not in {"self", "enemy_unit"}
@@ -1521,7 +1542,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "23"),
+                    ("schema_version", "24"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

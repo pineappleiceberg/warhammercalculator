@@ -591,6 +591,37 @@ export default function PlayMode() {
                     />
                   </label>
                 ))}
+                <label>
+                  <span>First failed save replacement</span>
+                  <input
+                    type="checkbox"
+                    checked={profile.firstFailedSaveDamageReplacement !== null}
+                    onChange={(event) =>
+                      setProfile((current) => ({
+                        ...current,
+                        firstFailedSaveDamageReplacement: event.target.checked ? 0 : null,
+                      }))
+                    }
+                  />
+                </label>
+                {profile.firstFailedSaveDamageReplacement !== null && (
+                  <label>
+                    <span>First failed save Damage</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={1024}
+                      value={profile.firstFailedSaveDamageReplacement}
+                      onChange={(event) =>
+                        setProfile((current) => ({
+                          ...current,
+                          firstFailedSaveDamageReplacement: Math.max(0, +event.target.value),
+                        }))
+                      }
+                    />
+                  </label>
+                )}
                 {(
                   [
                     ["characteristicModifierAttacks", "Shared roll → Attacks"],

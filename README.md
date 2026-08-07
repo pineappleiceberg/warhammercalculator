@@ -329,14 +329,20 @@ Strength, and Damage replacements come from the correctly classified source;
 replacement Save targets, invulnerable saves, unrestricted
 Feel No Pain thresholds, and per-attack damage reduction come from the target
 unit. Unconditional rules that halve incoming Damage are imported as editable
-Damage divisors. The exact engine follows the official characteristic sequence:
+Damage divisors. Mandatory rules that change the Damage characteristic to 0
+the first time that unit fails a saving throw are imported as situational,
+editable target effects. The exact engine consumes the effect only after an
+actual failed save, preserves it when Devastating Wounds bypass a save, and
+carries the state across every weapon and ordered target allocation. The exact
+engine follows the official characteristic sequence:
 replacement, division, multiplication, addition/subtraction, rounding up, then
 the applicable minimum. Unit vs Unit applies those defenses to every ordered target segment and
 asks ranged and melee weapons to be resolved separately only when a scoped
 defense produces incompatible target values. Melee/ranged scope is respected
 per weapon. Bearer-only, subset-model, friendly-aura, affected-model,
 unrepresented attack-type conditions, conflicting, random, subset-model multiplicative,
-limited-use single-attack, and other context-dependent replacement
+optional allocation-time limited-use damage replacement, context-dependent
+Attacks replacement, and other context-dependent replacement
 characteristic changes are omitted until they can be represented exactly.
 Ambiguous subjects are not imported, mutually exclusive modes cannot be
 combined, and the resulting profile remains editable. Fixed weapon
@@ -402,7 +408,7 @@ expression such as `D6+2`. Optional parameters include `weaponCount`, `model`,
 `models`, `invuln`, `fnp`, `reduction`, `criticalHits`, `criticalWounds`,
 `melta`, `damageDivisor`, `attacksReplacement`, `attacksMultiplier`, `attacksModifier`,
 `strengthReplacement`, `strengthMultiplier`, `strengthModifier`, `damageReplacement`,
-`damageMultiplier`, `damageModifier`, Hit/Wound
+`damageMultiplier`, `damageModifier`, `firstFailedSaveDamageReplacement`, Hit/Wound
 modifiers and re-roll modes, repeated `attackerPreset` or
 `targetPreset` values, and individual rule flags. The `rules` parameter accepts
 comma-separated `torrent`, `blast`, `heavy`, `lance`, `cover`, `ignores-cover`,

@@ -261,6 +261,8 @@ async function calculate(profile: Profile): Promise<Result> {
       (profile.characteristicModifierAttacks ? 1 : 0) |
         (profile.characteristicModifierStrength ? 2 : 0) |
         (profile.characteristicModifierDamage ? 4 : 0),
+      profile.firstFailedSaveDamageReplacement ?? 0,
+      profile.firstFailedSaveDamageReplacement === null ? 0 : 1,
       output,
     );
 
@@ -401,6 +403,7 @@ function simulateAttack(profile: Profile): RollResult {
     savesOn,
     details: [],
   };
+  let firstFailedSaveReplacementRemaining = profile.firstFailedSaveDamageReplacement !== null;
 
   const resolveHit = (label: string, hitLabel: string, lethalWound: boolean) => {
     result.hits += 1;
@@ -461,11 +464,18 @@ function simulateAttack(profile: Profile): RollResult {
 
     result.unsavedAttacks += 1;
 
+    const failedSaveDamageReplacement =
+      !bypassSave && firstFailedSaveReplacementRemaining
+        ? profile.firstFailedSaveDamageReplacement
+        : null;
+    if (failedSaveDamageReplacement !== null) firstFailedSaveReplacementRemaining = false;
+
     const baseDamage =
-      profile.damageReplacement === null
+      failedSaveDamageReplacement ??
+      (profile.damageReplacement === null
         ? rollDiceValue(profile.damageDice, profile.damageSides, profile.damage)
-        : profile.damageReplacement;
-    const damageFloor = profile.damageReplacement === 0 ? 0 : 1;
+        : profile.damageReplacement);
+    const damageFloor = (failedSaveDamageReplacement ?? profile.damageReplacement) === 0 ? 0 : 1;
     const reducedDamage = Math.max(
       damageFloor,
       Math.ceil(
@@ -506,7 +516,9 @@ function simulateAttack(profile: Profile): RollResult {
       wastedDamage: allocation.wasted,
       outcome:
         damage === 0
-          ? "Stopped by FNP"
+          ? reducedDamage === 0
+            ? "Damage changed to 0"
+            : "Stopped by FNP"
           : allocation.wasted > 0
             ? `${allocation.appliedThisAttack} applied · ${allocation.wasted} lost`
             : `${allocation.appliedThisAttack} applied`,
@@ -1011,6 +1023,7 @@ export default function Home() {
           feelNoPain: model.feelNoPain ?? 0,
           reduction: model.reduction ?? 0,
           damageDivisor: model.damageDivisor ?? 1,
+          firstFailedSaveDamageReplacement: null,
           ...(model.wounds ? { wounds: model.wounds } : {}),
           criticalWounds: selectedWeapon
             ? antiWoundThreshold(selectedWeapon.abilities, model.keywords)
@@ -1415,6 +1428,21 @@ export default function Home() {
                   onChange={(value) => set("damageDivisor", value)}
                   suffix="÷D"
                 />
+                <Toggle
+                  label="Replace Damage on first failed save"
+                  checked={profile.firstFailedSaveDamageReplacement !== null}
+                  onChange={(checked) =>
+                    set("firstFailedSaveDamageReplacement", checked ? 0 : null)
+                  }
+                />
+                {profile.firstFailedSaveDamageReplacement !== null && (
+                  <NumberField
+                    label="First failed save Damage"
+                    value={profile.firstFailedSaveDamageReplacement}
+                    max={1024}
+                    onChange={(value) => set("firstFailedSaveDamageReplacement", value)}
+                  />
+                )}
               </div>
             </div>
           </section>

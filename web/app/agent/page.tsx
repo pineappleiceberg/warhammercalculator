@@ -244,10 +244,11 @@ export default function AgentCalculator() {
               weaponCount, attacksReplacement, attacksMultiplier, attacksModifier,
               strengthReplacement, strengthMultiplier, strengthModifier, damageReplacement,
               damageMultiplier, damageModifier, characteristicModifier,
-              characteristicModifierAttacks, characteristicModifierStrength,
-              characteristicModifierDamage, model, models, fnp, reduction, damageDivisor,
-              criticalHits, criticalWounds, sustainedHits, rapidFire, melta, hitModifier,
-              woundModifier, rerollHits, rerollWounds, attackerPreset, targetPreset, and rules.
+              firstFailedSaveDamageReplacement, characteristicModifierAttacks,
+              characteristicModifierStrength, characteristicModifierDamage, model, models, fnp,
+              reduction, damageDivisor, criticalHits, criticalWounds, sustainedHits, rapidFire,
+              melta, hitModifier, woundModifier, rerollHits, rerollWounds, attackerPreset,
+              targetPreset, and rules.
             </p>
             <p>
               <code>rules</code> accepts comma-separated values such as{" "}

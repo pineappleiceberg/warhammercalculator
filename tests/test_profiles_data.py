@@ -368,7 +368,19 @@ class ProfileDataTests(unittest.TestCase):
             "Once per turn, the first time a saving throw is failed for this unit, change the "
             "Damage characteristic of that attack to 0."
         )
-        self.assertIsNone(limited_damage_replacement)
+        self.assertEqual(
+            limited_damage_replacement["additional_effects"],
+            [
+                {
+                    "type": "first_failed_save_damage_replacement",
+                    "value": 0,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "role": "target",
+                    "subject": "self",
+                }
+            ],
+        )
         psychic_assassin = combat_presets(
             "Psychic Assassin",
             "Each time you select a PSYKER unit as the target for this weapon, until those "
@@ -635,7 +647,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "23",
+                "24",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -717,6 +729,24 @@ class ProfileDataTests(unittest.TestCase):
             )
             self.assertEqual(
                 connection.execute(
+                    """SELECT preset.name, effect.value, effect.application_role,
+                              effect.subject, count(*)
+                       FROM unit_combat_preset_effects AS effect
+                       JOIN unit_combat_presets AS preset
+                         USING (datasheet_id, ability_position, preset_position)
+                       WHERE effect.effect_type =
+                           'first_failed_save_damage_replacement'
+                       GROUP BY preset.name, effect.value, effect.application_role,
+                                effect.subject
+                       ORDER BY preset.name"""
+                ).fetchall(),
+                [
+                    ("Channeller Stones", 0, "target", "led_unit", 2),
+                    ("Stimm-needler", 0, "target", "led_unit", 1),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
                     """SELECT effect_type, count(*) FROM unit_combat_preset_effects
                        WHERE effect_type IN
                            ('attacks_modifier', 'strength_modifier', 'damage_modifier')
@@ -776,7 +806,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 2), ("inherent", 32), ("situational", 1381)],
+                [("automatic", 2), ("inherent", 32), ("situational", 1384)],
             )
             self.assertEqual(
                 connection.execute(

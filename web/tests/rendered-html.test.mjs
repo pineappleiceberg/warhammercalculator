@@ -563,6 +563,64 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     denominator: "1",
   });
 
+  const firstFailedSaveProfile = {
+    ...signedProfile,
+    attackDice: 0,
+    attackSides: 0,
+    attacks: 2,
+    attacksModifier: 0,
+    weaponCount: 1,
+    damage: 3,
+    firstFailedSaveDamageReplacement: 0,
+    wounds: 20,
+  };
+  const firstFailedSaveCalculation = await worker.fetch(
+    new Request("http://localhost/api/v1/calculate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ profile: firstFailedSaveProfile }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(firstFailedSaveCalculation.status, 200);
+  const firstFailedSaveExact = (await firstFailedSaveCalculation.json()).data;
+  assert.equal(firstFailedSaveExact.maximum, 3);
+  assert.ok(Math.abs(firstFailedSaveExact.mean - 25 / 12) < 1e-8);
+
+  const firstFailedSaveSimulation = await worker.fetch(
+    new Request("http://localhost/api/v1/volley/simulate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        profiles: [firstFailedSaveProfile],
+        targets: [
+          {
+            toughness: 1,
+            save: 7,
+            invulnerable: 0,
+            feelNoPain: 0,
+            wounds: 20,
+            reduction: 0,
+            damageDivisor: 1,
+            firstFailedSaveDamageReplacement: 0,
+            modelCount: 1,
+          },
+        ],
+        seed: 404,
+        trials: 10_000,
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(firstFailedSaveSimulation.status, 200);
+  const firstFailedSaveSimulated = (await firstFailedSaveSimulation.json()).data;
+  assert.ok(
+    Math.abs(firstFailedSaveSimulated.mean - 25 / 12) < 0.08,
+    JSON.stringify(firstFailedSaveSimulated),
+  );
+
   const zeroDamageReplacement = {
     ...signedProfile,
     attackDice: 0,

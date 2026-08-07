@@ -252,6 +252,10 @@ export function combatPresetEffects(
     strengthReplacement: replacement("strength_replacement", "Strength") ?? 0,
     strengthMultiplier: multiplier("strength_multiplier"),
     damageReplacement: replacement("damage_replacement", "Damage"),
+    firstFailedSaveDamageReplacement: replacement(
+      "first_failed_save_damage_replacement",
+      "first failed save Damage",
+    ),
     damageMultiplier: multiplier("damage_multiplier"),
     hitModifier: hitModifiers.reduce((sum, preset) => sum + preset.hitModifier, 0),
     woundModifier: woundModifiers.reduce((sum, preset) => sum + preset.woundModifier, 0),
@@ -328,6 +332,8 @@ function applyDefensiveEffects(profile, effects) {
     feelNoPain: strongestSave(profile.feelNoPain, effects.feelNoPain),
     reduction: Math.max(profile.reduction ?? 0, effects.damageReduction),
     damageDivisor: (profile.damageDivisor ?? 1) * effects.damageDivisor,
+    firstFailedSaveDamageReplacement:
+      effects.firstFailedSaveDamageReplacement ?? profile.firstFailedSaveDamageReplacement ?? null,
   };
 }
 
@@ -365,6 +371,7 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
         target.feelNoPain,
         target.reduction,
         target.damageDivisor,
+        target.firstFailedSaveDamageReplacement,
       ]),
     ),
   );
@@ -437,6 +444,13 @@ export function applyCombatPresets(
   );
   if (new Set(damageReplacements).size > 1) {
     throw new Error("Choose only one Damage characteristic replacement");
+  }
+  const firstFailedSaveDamageReplacements = [
+    attacker.firstFailedSaveDamageReplacement,
+    target.firstFailedSaveDamageReplacement,
+  ].filter((value) => value !== null);
+  if (new Set(firstFailedSaveDamageReplacements).size > 1) {
+    throw new Error("Choose only one first-failed-save Damage replacement");
   }
   const characteristicRolls = [
     {
@@ -521,6 +535,8 @@ export function applyCombatPresets(
       attacksReplacement: attacksReplacements[0] ?? profile.attacksReplacement ?? 0,
       strengthReplacement: strengthReplacements[0] ?? profile.strengthReplacement ?? 0,
       damageReplacement: damageReplacements[0] ?? profile.damageReplacement ?? null,
+      firstFailedSaveDamageReplacement:
+        firstFailedSaveDamageReplacements[0] ?? profile.firstFailedSaveDamageReplacement ?? null,
       attacksMultiplier:
         (profile.attacksMultiplier ?? 1) * attacker.attacksMultiplier * target.attacksMultiplier,
       strengthMultiplier:

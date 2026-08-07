@@ -1013,7 +1013,7 @@ static void test_shared_random_characteristic_modifier(void) {
     assert(whc_calculate_summary_with_characteristic_roll(
         0u, 0u, 1u, 0u, 1u, 2u, 3u, 0u, 0u, 0u, 1u, 6u, 5u, 7u, 0u, 0u, 20u, 0u, WHC_RULE_TORRENT,
         0u, 1u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0, 0, 0, 0, 0, 0u, 0u, false, 1u, 1u, 1u, 1u, 1u, 3u,
-        0u, CHARACTERISTIC_ROLL_ATTACKS | CHARACTERISTIC_ROLL_STRENGTH, &web_summary));
+        0u, CHARACTERISTIC_ROLL_ATTACKS | CHARACTERISTIC_ROLL_STRENGTH, 0u, false, &web_summary));
     web_numerator =
         web_summary.mean_numerator_low | ((uint64_t)web_summary.mean_numerator_high << 32u);
     web_denominator =
@@ -1061,6 +1061,84 @@ static void test_shared_random_characteristic_modifier(void) {
                                                                  &distribution, cumulative_means));
 }
 
+/*@ terminates \true; */
+static void test_first_failed_save_damage_replacement(void) {
+    struct weapon_profile weapons[2];
+    struct target_profile targets[2];
+    struct calculator_workspace workspace;
+    struct probability_distribution distribution;
+    struct distribution_summary summary;
+    struct target_unit_layout layout;
+    struct fraction cumulative_means[2];
+    struct exact_complexity complexity;
+    struct whc_web_weapon_input web_weapon;
+    struct whc_web_target_input web_target;
+    struct whc_web_applied_summary web_summary;
+    struct whc_web_mean web_mean;
+    long double mean = 0.0L;
+
+    initialize_profiles(&weapons[0], &targets[0]);
+    weapons[0].attacks = (struct dice_value){0u, 0u, 2u};
+    weapons[0].hits_on = 2u;
+    weapons[0].strength = 10u;
+    weapons[0].damage = (struct dice_value){0u, 0u, 3u};
+    targets[0].toughness = 1u;
+    targets[0].save = 7u;
+    targets[0].wounds = 20u;
+    targets[0].first_failed_save_damage_replacement = 0u;
+    targets[0].first_failed_save_damage_replacement_active = true;
+    assert(rule_add_torrent(&weapons[0].rules));
+
+    assert(calculate_attack_damage_summary(&weapons[0], &targets[0], &workspace, &summary));
+    mean = (long double)summary.mean.numerator / summary.mean.denominator;
+    assert(mean > 2.08332L && mean < 2.08335L);
+    assert(summary.maximum == 3u);
+    assert(calculate_attack_applied_damage_distribution(&weapons[0], &targets[0], 1u, &workspace,
+                                                        &distribution));
+    assert(distribution.maximum == 3u);
+
+    memset(&layout, 0, sizeof(layout));
+    layout.wounds_per_model[0] = 20u;
+    layout.model_counts[0] = 1u;
+    layout.segment_count = 1u;
+    weapons[0].attacks.modifier = 1u;
+    weapons[1] = weapons[0];
+    targets[1] = targets[0];
+    assert(estimate_ordered_volley_complexity(weapons, targets, 2u, &layout, &complexity));
+    assert(complexity.uses_deferred_states);
+    assert(calculate_ordered_volley_applied_damage_distribution(
+        weapons, targets, 2u, &layout, &workspace, &distribution, cumulative_means));
+    assert(cumulative_means[0].numerator == 0u);
+    mean = (long double)cumulative_means[1].numerator / cumulative_means[1].denominator;
+    assert(mean > 2.08332L && mean < 2.08335L);
+
+    assert(rule_add_devastating_wounds(&weapons[0].rules));
+    weapons[0].attacks.modifier = 2u;
+    assert(calculate_attack_damage_summary(&weapons[0], &targets[0], &workspace, &summary));
+    mean = (long double)summary.mean.numerator / summary.mean.denominator;
+    assert(mean > 2.33332L && mean < 2.33335L);
+
+    memset(&web_weapon, 0, sizeof(web_weapon));
+    memset(&web_target, 0, sizeof(web_target));
+    web_weapon.attack_modifier = 2u;
+    web_weapon.weapon_count = 1u;
+    web_weapon.hits_on = 2u;
+    web_weapon.strength = 10u;
+    web_weapon.damage_modifier = 3u;
+    web_weapon.critical_hits_on = 6u;
+    web_weapon.rule_flags = WHC_RULE_TORRENT;
+    web_target.toughness = 1u;
+    web_target.save = 7u;
+    web_target.wounds = 20u;
+    web_target.model_count = 1u;
+    web_target.damage_divisor = 1u;
+    web_target.first_failed_save_damage_replacement_active = 1u;
+    assert(whc_calculate_ordered_volley_summary(&web_weapon, 1u, &web_target, 1u, 0u, &web_summary,
+                                                &web_mean));
+    assert(web_summary.maximum == 3u);
+    assert(web_summary.peak_sparse_states > 0u);
+}
+
 /*@ terminates \true;
     ensures \result == 0;
 */
@@ -1085,6 +1163,7 @@ int main(void) {
     test_damage_division_modifier_order();
     test_characteristic_multiplier_order();
     test_shared_random_characteristic_modifier();
+    test_first_failed_save_damage_replacement();
     puts("all tests passed");
     return 0;
 }

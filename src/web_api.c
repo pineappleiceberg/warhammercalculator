@@ -18,6 +18,7 @@ bool whc_calculate_summary_with_characteristic_roll(
     uint16_t strength_multiplier, uint16_t damage_multiplier,
     uint16_t characteristic_modifier_dice_count, uint16_t characteristic_modifier_dice_sides,
     uint16_t characteristic_modifier_bonus, uint8_t characteristic_modifier_flags,
+    uint16_t first_failed_save_damage_replacement, bool first_failed_save_damage_replacement_active,
     struct whc_web_summary *summary) {
     static struct calculator_workspace workspace;
     struct weapon_profile weapon;
@@ -144,6 +145,9 @@ bool whc_calculate_summary_with_characteristic_roll(
     target.wounds = wounds;
     target.reduction = damage_reduction;
     target.damage_divisor = damage_divisor == 0u ? 1u : damage_divisor;
+    target.first_failed_save_damage_replacement = first_failed_save_damage_replacement;
+    target.first_failed_save_damage_replacement_active =
+        first_failed_save_damage_replacement_active;
 
     if (((rule_flags & WHC_RULE_LETHAL_HITS) != 0u && !rule_add_lethal_hits(&weapon.rules)) ||
         ((rule_flags & WHC_RULE_DEVASTATING_WOUNDS) != 0u &&
@@ -215,7 +219,8 @@ bool whc_calculate_summary(
         rapid_fire, melta, explicit_hit_modifier, explicit_wound_modifier,
         explicit_attacks_modifier, explicit_strength_modifier, explicit_damage_modifier,
         strength_replacement, damage_replacement, damage_replacement_active, damage_divisor,
-        attacks_multiplier, strength_multiplier, damage_multiplier, 0u, 0u, 0u, 0u, summary);
+        attacks_multiplier, strength_multiplier, damage_multiplier, 0u, 0u, 0u, 0u, 0u, false,
+        summary);
 }
 
 /*@ requires \valid_read(input) && \valid_read(target_input);
@@ -267,7 +272,9 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
         target_input->toughness > UINT16_MAX || target_input->save > UINT8_MAX ||
         target_input->invulnerable_save > UINT8_MAX || target_input->feel_no_pain > UINT8_MAX ||
         target_input->wounds > UINT16_MAX || target_input->damage_reduction > UINT16_MAX ||
-        target_input->damage_divisor > UINT16_MAX || target_models == 0u ||
+        target_input->damage_divisor > UINT16_MAX ||
+        target_input->first_failed_save_damage_replacement > UINT16_MAX ||
+        target_input->first_failed_save_damage_replacement_active > 1u || target_models == 0u ||
         ((input->rule_flags & WHC_RULE_INDIRECT_NOT_VISIBLE) != 0u &&
          (input->rule_flags & WHC_RULE_TORRENT) != 0u)) {
         return false;
@@ -407,6 +414,10 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
     target->reduction = (uint16_t)target_input->damage_reduction;
     target->damage_divisor =
         target_input->damage_divisor == 0u ? 1u : (uint16_t)target_input->damage_divisor;
+    target->first_failed_save_damage_replacement =
+        (uint16_t)target_input->first_failed_save_damage_replacement;
+    target->first_failed_save_damage_replacement_active =
+        target_input->first_failed_save_damage_replacement_active != 0u;
 
     target_has_cover = (input->rule_flags & WHC_RULE_TARGET_COVER) != 0u ||
                        (input->rule_flags & WHC_RULE_INDIRECT_NOT_VISIBLE) != 0u;

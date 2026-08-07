@@ -1,6 +1,7 @@
 #include "warhammercalculator/calculator.h"
 
 #include <limits.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -31,6 +32,7 @@ struct deferred_volley_state {
     uint16_t attacks_remaining;
     uint16_t wounds_remaining;
     uint8_t automatic_wound_pending;
+    uint8_t first_failed_save_replacement_remaining;
     uint16_t devastating_wounds[MAX_VOLLEY_WEAPONS];
 };
 
@@ -47,6 +49,7 @@ struct deferred_state_table {
     uint32_t generation;
     uint32_t count;
     uint32_t peak_count;
+    size_t state_size;
 };
 
 static bool distribution_from_weapon_attacks(const struct weapon_profile *weapon,
@@ -169,6 +172,16 @@ static bool quantile_required_mass(uint64_t total, uint64_t quantile_numerator,
     ensures \result <= PROBABILITY_SCALE;
 */
 static uint32_t ratio_to_probability_mass(uint64_t numerator, uint64_t denominator) {
+#if defined(__SIZEOF_INT128__)
+    if (denominator == 0 || numerator == 0) {
+        return 0;
+    }
+    if (numerator >= denominator) {
+        return PROBABILITY_SCALE;
+    }
+    return (uint32_t)(((__uint128_t)numerator * (__uint128_t)PROBABILITY_SCALE) /
+                      (__uint128_t)denominator);
+#else
     uint32_t result = 0;
     uint32_t bit = 0;
     uint64_t remainder = numerator;
@@ -200,6 +213,7 @@ static uint32_t ratio_to_probability_mass(uint64_t numerator, uint64_t denominat
     }
 
     return result;
+#endif
 }
 
 /*@ requires minimum <= maximum && maximum <= MAX_DISTRIBUTION_RESULT;
@@ -2722,12 +2736,12 @@ static bool probability_distribution_allocate_mixed_attack_internal(
 /*@ requires \valid_read(state);
     assigns \nothing;
 */
-static uint32_t deferred_state_hash(const struct deferred_volley_state *state) {
+static uint32_t deferred_state_hash(const struct deferred_volley_state *state, size_t state_size) {
     const uint8_t *bytes = (const uint8_t *)state;
     uint32_t hash = UINT32_C(2166136261);
     size_t index = 0u;
 
-    while (index < sizeof(*state)) {
+    while (index < state_size) {
         hash ^= bytes[index];
         hash *= UINT32_C(16777619);
         index++;
@@ -2736,9 +2750,10 @@ static uint32_t deferred_state_hash(const struct deferred_volley_state *state) {
 }
 
 /*@ requires \valid(table);
+    requires 1 <= weapon_count <= MAX_VOLLEY_WEAPONS;
     assigns *table;
 */
-static bool deferred_state_table_create(struct deferred_state_table *table) {
+static bool deferred_state_table_create(struct deferred_state_table *table, uint16_t weapon_count) {
     if (table == NULL) {
         return false;
     }
@@ -2752,6 +2767,9 @@ static bool deferred_state_table_create(struct deferred_state_table *table) {
         return false;
     }
     table->generation = 1u;
+    table->state_size =
+        offsetof(struct deferred_volley_state, devastating_wounds) +
+        (size_t)weapon_count * sizeof(table->entries[0].state.devastating_wounds[0]);
     return true;
 }
 
@@ -2791,7 +2809,7 @@ static bool deferred_state_table_add_weight(struct deferred_state_table *table,
     if (weight == 0u) {
         return true;
     }
-    slot = deferred_state_hash(state) % DEFERRED_STATE_TABLE_CAPACITY;
+    slot = deferred_state_hash(state, table->state_size) % DEFERRED_STATE_TABLE_CAPACITY;
     while (probes < DEFERRED_STATE_TABLE_CAPACITY) {
         struct deferred_state_entry *entry = &table->entries[slot];
         if (entry->generation != table->generation) {
@@ -2809,7 +2827,7 @@ static bool deferred_state_table_add_weight(struct deferred_state_table *table,
             }
             return true;
         }
-        if (memcmp(&entry->state, state, sizeof(*state)) == 0) {
+        if (memcmp(&entry->state, state, table->state_size) == 0) {
             return uint64_add_checked(entry->weight, weight, &entry->weight);
         }
         slot++;
@@ -3166,14 +3184,15 @@ static bool deferred_resolve_hit(const struct deferred_state_table *source,
     requires \valid(destination) && destination->entries != \null;
     requires \valid_read(plans + (0 .. layout->segment_count - 1));
     requires \valid_read(packets + (0 .. layout->segment_count - 1));
+    requires \valid_read(first_failed_save_packets + (0 .. layout->segment_count - 1));
     requires \valid_read(layout);
     assigns destination->entries[0 .. DEFERRED_STATE_TABLE_CAPACITY - 1], *destination;
 */
-static bool deferred_resolve_automatic_wound(const struct deferred_state_table *source,
-                                             struct deferred_state_table *destination,
-                                             const struct attack_plan *plans,
-                                             const struct probability_distribution *packets,
-                                             const struct target_unit_layout *layout) {
+static bool deferred_resolve_automatic_wound(
+    const struct deferred_state_table *source, struct deferred_state_table *destination,
+    const struct attack_plan *plans, const struct probability_distribution *packets,
+    const struct probability_distribution *first_failed_save_packets,
+    const struct target_unit_layout *layout) {
     uint32_t capacity = target_unit_capacity(layout);
     uint32_t index = 0u;
     deferred_state_table_reset(destination);
@@ -3217,7 +3236,12 @@ static bool deferred_resolve_automatic_wound(const struct deferred_state_table *
                                                       total, &cumulative, &previous)) {
                     return false;
                 }
-                packet = &packets[segment];
+                packet = base.first_failed_save_replacement_remaining != 0u
+                             ? &first_failed_save_packets[segment]
+                             : &packets[segment];
+                if (save.failed != 0u && base.first_failed_save_replacement_remaining != 0u) {
+                    base.first_failed_save_replacement_remaining = 0u;
+                }
                 damage = packet->minimum;
                 while (damage <= packet->maximum) {
                     if (packet->mass[damage] != 0u && save.failed != 0u) {
@@ -3246,16 +3270,16 @@ static bool deferred_resolve_automatic_wound(const struct deferred_state_table *
     requires \valid(destination) && destination->entries != \null;
     requires \valid_read(plans + (0 .. layout->segment_count - 1));
     requires \valid_read(packets + (0 .. layout->segment_count - 1));
+    requires \valid_read(first_failed_save_packets + (0 .. layout->segment_count - 1));
     requires \valid_read(layout);
     requires weapon_index < MAX_VOLLEY_WEAPONS;
     assigns destination->entries[0 .. DEFERRED_STATE_TABLE_CAPACITY - 1], *destination;
 */
-static bool deferred_resolve_rolling_wound(const struct deferred_state_table *source,
-                                           struct deferred_state_table *destination,
-                                           const struct attack_plan *plans,
-                                           const struct probability_distribution *packets,
-                                           const struct target_unit_layout *layout,
-                                           uint16_t weapon_index) {
+static bool deferred_resolve_rolling_wound(
+    const struct deferred_state_table *source, struct deferred_state_table *destination,
+    const struct attack_plan *plans, const struct probability_distribution *packets,
+    const struct probability_distribution *first_failed_save_packets,
+    const struct target_unit_layout *layout, uint16_t weapon_index) {
     uint32_t capacity = target_unit_capacity(layout);
     uint32_t index = 0u;
     deferred_state_table_reset(destination);
@@ -3291,6 +3315,7 @@ static bool deferred_resolve_rolling_wound(const struct deferred_state_table *so
                 uint64_t bypassing = 0u;
                 uint32_t damage = 0u;
                 bool devastating = false;
+                struct deferred_volley_state failed_save_base;
                 const struct attack_plan *plan = NULL;
                 const struct probability_distribution *packet = NULL;
                 if (!target_unit_position_with_capacity(layout, capacity, base.applied, &segment,
@@ -3298,7 +3323,9 @@ static bool deferred_resolve_rolling_wound(const struct deferred_state_table *so
                     return false;
                 }
                 plan = &plans[segment];
-                packet = &packets[segment];
+                packet = base.first_failed_save_replacement_remaining != 0u
+                             ? &first_failed_save_packets[segment]
+                             : &packets[segment];
                 if (!roll_table_build(plan->wound_reroll_mask, &wound_table) ||
                     !roll_table_build(plan->save_reroll_mask, &save_table) ||
                     !uint64_product3_checked(wound_table.total_ways, save_table.total_ways,
@@ -3324,11 +3351,17 @@ static bool deferred_resolve_rolling_wound(const struct deferred_state_table *so
                                                       total, &cumulative, &previous)) {
                     return false;
                 }
+                failed_save_base = base;
+                if (saveable != 0u && save.failed != 0u &&
+                    failed_save_base.first_failed_save_replacement_remaining != 0u) {
+                    failed_save_base.first_failed_save_replacement_remaining = 0u;
+                }
                 damage = packet->minimum;
                 while (damage <= packet->maximum) {
                     if (packet->mass[damage] != 0u && saveable != 0u && save.failed != 0u) {
                         struct deferred_volley_state allocated;
-                        if (!deferred_allocate_packet(layout, &base, damage, &allocated) ||
+                        if (!deferred_allocate_packet(layout, &failed_save_base, damage,
+                                                      &allocated) ||
                             !uint64_multiply_checked(saveable, save.failed, &wounded) ||
                             !uint64_multiply_checked(wounded, packet->mass[damage], &weight) ||
                             !deferred_state_add_scaled_branch(destination, &allocated, entry->mass,
@@ -3376,12 +3409,30 @@ static bool deferred_prepare_weapon(const struct weapon_profile *weapon,
                                     struct attack_plan *plans, struct distribution *sustained) {
     uint16_t segment = 0u;
     while (segment < layout->segment_count) {
+        struct weapon_profile replacement_weapon;
+        struct attack_plan replacement_plan;
         if (targets[segment].wounds != layout->wounds_per_model[segment] ||
             !attack_plan_build(weapon, &targets[segment], &plans[segment]) ||
             !distribution_from_dice_value(plans[segment].sustained_hits, &sustained[segment]) ||
             !build_successful_damage_packet(weapon, &plans[segment], workspace,
                                             &workspace->target_attacks[segment])) {
             return false;
+        }
+        replacement_weapon = *weapon;
+        replacement_weapon.damage_replacement =
+            targets[segment].first_failed_save_damage_replacement;
+        replacement_weapon.damage_replacement_active =
+            targets[segment].first_failed_save_damage_replacement_active;
+        if (replacement_weapon.damage_replacement_active) {
+            if (!attack_plan_build(&replacement_weapon, &targets[segment], &replacement_plan) ||
+                !build_successful_damage_packet(
+                    &replacement_weapon, &replacement_plan, workspace,
+                    &workspace->target_first_failed_save_attacks[segment])) {
+                return false;
+            }
+        } else {
+            memcpy(&workspace->target_first_failed_save_attacks[segment],
+                   &workspace->target_attacks[segment], sizeof(workspace->target_attacks[segment]));
         }
         segment++;
     }
@@ -3427,6 +3478,7 @@ static bool deferred_resolve_weapon_ordinary(const struct weapon_profile *weapon
         *next = swap;
         while (deferred_states_have_wounds(*current)) {
             if (!deferred_resolve_automatic_wound(*current, *next, plans, workspace->target_attacks,
+                                                  workspace->target_first_failed_save_attacks,
                                                   layout)) {
                 goto cleanup;
             }
@@ -3434,7 +3486,8 @@ static bool deferred_resolve_weapon_ordinary(const struct weapon_profile *weapon
             *current = *next;
             *next = swap;
             if (!deferred_resolve_rolling_wound(*current, *next, plans, workspace->target_attacks,
-                                                layout, weapon_index)) {
+                                                workspace->target_first_failed_save_attacks, layout,
+                                                weapon_index)) {
                 goto cleanup;
             }
             swap = *current;
@@ -3579,29 +3632,66 @@ static bool deferred_states_to_distribution(const struct deferred_state_table *s
                                                  PROBABILITY_SCALE, result);
 }
 
+/*@ requires \valid_read(targets + (0 .. weapon_count * segment_count - 1));
+    requires 1 <= weapon_count <= MAX_VOLLEY_WEAPONS;
+    requires 1 <= segment_count <= MAX_TARGET_SEGMENTS;
+    requires \valid(active);
+    assigns *active;
+*/
+static bool target_first_failed_save_replacement(const struct target_profile *targets,
+                                                 uint16_t weapon_count, uint16_t segment_count,
+                                                 bool *active) {
+    uint32_t count = (uint32_t)weapon_count * segment_count;
+    uint32_t index = 0u;
+    uint16_t value = 0u;
+
+    if (targets == NULL || active == NULL || weapon_count == 0u ||
+        weapon_count > MAX_VOLLEY_WEAPONS || segment_count == 0u ||
+        segment_count > MAX_TARGET_SEGMENTS) {
+        return false;
+    }
+    *active = targets[0].first_failed_save_damage_replacement_active;
+    value = targets[0].first_failed_save_damage_replacement;
+    while (index < count) {
+        if (targets[index].first_failed_save_damage_replacement_active != *active ||
+            (*active && targets[index].first_failed_save_damage_replacement != value)) {
+            return false;
+        }
+        index++;
+    }
+    return true;
+}
+
 /*@ requires \valid_read(weapons + (0 .. weapon_count - 1));
     requires \valid_read(targets + (0 .. weapon_count * layout->segment_count - 1));
     requires \valid_read(layout) && \valid(workspace) && \valid(result);
+    requires \valid(cumulative_means + (0 .. weapon_count - 1));
     requires 1 <= weapon_count <= MAX_VOLLEY_WEAPONS;
-    assigns *workspace, *result;
+    assigns *workspace, *result, cumulative_means[0 .. weapon_count - 1];
 */
-static bool calculate_deferred_ordered_volley_prefix(const struct weapon_profile *weapons,
-                                                     const struct target_profile *targets,
-                                                     uint16_t weapon_count,
-                                                     const struct target_unit_layout *layout,
-                                                     struct calculator_workspace *workspace,
-                                                     struct probability_distribution *result) {
+static bool calculate_deferred_ordered_volley_prefix(
+    const struct weapon_profile *weapons, const struct target_profile *targets,
+    uint16_t weapon_count, const struct target_unit_layout *layout,
+    struct calculator_workspace *workspace, struct probability_distribution *result,
+    struct fraction *cumulative_means, bool collect_ordinary_means) {
     struct deferred_state_table tables[2];
     struct deferred_state_table *current = &tables[0];
     struct deferred_state_table *next = &tables[1];
     struct deferred_volley_state initial;
     uint16_t weapon_index = 0u;
+    bool replacement_active = false;
     bool success = false;
 
     memset(tables, 0, sizeof(tables));
     memset(&initial, 0, sizeof(initial));
     initial.applied = layout->initial_wounds_lost;
-    if (!deferred_state_table_create(current) || !deferred_state_table_create(next) ||
+    if (!target_first_failed_save_replacement(targets, weapon_count, layout->segment_count,
+                                              &replacement_active)) {
+        goto cleanup;
+    }
+    initial.first_failed_save_replacement_remaining = replacement_active ? 1u : 0u;
+    if (!deferred_state_table_create(current, weapon_count) ||
+        !deferred_state_table_create(next, weapon_count) ||
         !deferred_state_table_add_weight(current, &initial, PROBABILITY_SCALE) ||
         !deferred_state_table_normalize(current)) {
         goto cleanup;
@@ -3611,6 +3701,11 @@ static bool calculate_deferred_ordered_volley_prefix(const struct weapon_profile
             targets + (uint32_t)weapon_index * layout->segment_count;
         if (!deferred_resolve_weapon_ordinary(&weapons[weapon_index], weapon_targets, layout,
                                               weapon_index, workspace, &current, &next)) {
+            goto cleanup;
+        }
+        if (collect_ordinary_means &&
+            (!deferred_states_to_distribution(current, layout, workspace, result) ||
+             !probability_distribution_mean(result, &cumulative_means[weapon_index]))) {
             goto cleanup;
         }
         weapon_index++;
@@ -3667,7 +3762,8 @@ static bool advance_resolved_weapon_applied_damage_distribution(
 
     while (segment_index < layout->segment_count) {
         struct attack_plan plan;
-        if (targets[segment_index].wounds != layout->wounds_per_model[segment_index] ||
+        if (targets[segment_index].first_failed_save_damage_replacement_active ||
+            targets[segment_index].wounds != layout->wounds_per_model[segment_index] ||
             !attack_plan_build(weapon, &targets[segment_index], &plan) ||
             !build_single_attack_probability_distribution(weapon, &plan, workspace,
                                                           &workspace->probability_b) ||
@@ -3820,7 +3916,9 @@ static bool calculate_resolved_ordered_volley_applied_damage_distribution(
     struct probability_distribution *next = NULL;
     uint16_t weapon_index = 0u;
     uint32_t capacity = target_unit_capacity(layout);
-    bool has_devastating_wounds = false;
+    bool replacement_active = false;
+    bool uses_deferred_states = false;
+    bool uses_deferred_packets = false;
 
     if (weapons == NULL || targets == NULL || layout == NULL || workspace == NULL ||
         result == NULL || cumulative_means == NULL || weapon_count == 0u ||
@@ -3829,10 +3927,15 @@ static bool calculate_resolved_ordered_volley_applied_damage_distribution(
                                                 &workspace->probability_e)) {
         return false;
     }
+    if (!target_first_failed_save_replacement(targets, weapon_count, layout->segment_count,
+                                              &replacement_active)) {
+        return false;
+    }
     workspace->peak_sparse_states = 0u;
+    uses_deferred_states = replacement_active;
 
     weapon_index = 0u;
-    while (weapon_index < weapon_count && !has_devastating_wounds) {
+    while (weapon_index < weapon_count) {
         uint16_t segment_index = 0u;
         while (segment_index < layout->segment_count) {
             struct attack_plan plan;
@@ -3842,19 +3945,24 @@ static bool calculate_resolved_ordered_volley_applied_damage_distribution(
                 return false;
             }
             if ((plan.flags & ATTACK_PLAN_CRITICAL_WOUNDS_BYPASS_SAVE) != 0u) {
-                has_devastating_wounds = true;
-                break;
+                uses_deferred_states = true;
+                uses_deferred_packets = true;
             }
             segment_index++;
         }
         weapon_index++;
     }
 
-    if (has_devastating_wounds) {
+    if (uses_deferred_states) {
+        if (replacement_active && !uses_deferred_packets) {
+            return calculate_deferred_ordered_volley_prefix(
+                weapons, targets, weapon_count, layout, workspace, result, cumulative_means, true);
+        }
         weapon_index = 0u;
         while (weapon_index < weapon_count) {
             if (!calculate_deferred_ordered_volley_prefix(
-                    weapons, targets, (uint16_t)(weapon_index + 1u), layout, workspace, result) ||
+                    weapons, targets, (uint16_t)(weapon_index + 1u), layout, workspace, result,
+                    cumulative_means, false) ||
                 !probability_distribution_mean(result, &cumulative_means[weapon_index])) {
                 return false;
             }
@@ -4121,8 +4229,30 @@ static bool calculate_resolved_attack_damage_distribution(const struct weapon_pr
     const uint64_t total_weight = (uint64_t)PROBABILITY_SCALE * (uint64_t)PROBABILITY_SCALE;
 
     if (weapon == NULL || target == NULL || workspace == NULL || result == NULL ||
-        (apply_to_unit && (target_models == 0u || target->wounds == 0u)) ||
-        !attack_plan_build(weapon, target, &plan) ||
+        (apply_to_unit && (target_models == 0u || target->wounds == 0u))) {
+        return false;
+    }
+    if (target->first_failed_save_damage_replacement_active) {
+        struct target_profile deferred_target = *target;
+        struct target_unit_layout layout;
+        struct fraction cumulative_mean;
+        memset(&layout, 0, sizeof(layout));
+        layout.segment_count = 1u;
+        if (apply_to_unit) {
+            layout.wounds_per_model[0] = target->wounds;
+            layout.model_counts[0] = target_models;
+        } else {
+            deferred_target.wounds = MAX_DISTRIBUTION_RESULT;
+            layout.wounds_per_model[0] = MAX_DISTRIBUTION_RESULT;
+            layout.model_counts[0] = 1u;
+        }
+        if (target_unit_capacity(&layout) == 0u) {
+            return false;
+        }
+        return calculate_deferred_ordered_volley_prefix(weapon, &deferred_target, 1u, &layout,
+                                                        workspace, result, &cumulative_mean, false);
+    }
+    if (!attack_plan_build(weapon, target, &plan) ||
         !build_single_attack_probability_distribution(weapon, &plan, workspace,
                                                       &workspace->probability_b) ||
         !apply_feel_no_pain(&workspace->probability_b, plan.feel_no_pain_on, workspace,
@@ -4303,8 +4433,17 @@ static bool calculate_resolved_attack_expected_damage(const struct weapon_profil
     struct fraction attack_mean;
     struct fraction single_attack_mean;
 
-    if (weapon == NULL || target == NULL || workspace == NULL || result == NULL ||
-        !attack_plan_build(weapon, target, &plan) ||
+    if (weapon == NULL || target == NULL || workspace == NULL || result == NULL) {
+        return false;
+    }
+    if (target->first_failed_save_damage_replacement_active) {
+        if (!calculate_resolved_attack_damage_distribution(weapon, target, 0u, false, workspace,
+                                                           &workspace->probability_d)) {
+            return false;
+        }
+        return probability_distribution_mean(&workspace->probability_d, result);
+    }
+    if (!attack_plan_build(weapon, target, &plan) ||
         !build_single_attack_expected_damage(weapon, &plan, workspace, &single_attack_mean)) {
         return false;
     }

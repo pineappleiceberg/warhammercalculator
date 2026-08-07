@@ -72,6 +72,7 @@ function targetSegment(model: CatalogueModel, modelCount: number): TargetSegment
     wounds: model.wounds ?? 1,
     reduction: model.reduction ?? 0,
     damageDivisor: model.damageDivisor ?? 1,
+    firstFailedSaveDamageReplacement: null,
     modelCount,
   };
 }
@@ -861,6 +862,49 @@ export default function UnitVsUnit() {
                           />
                         </label>
                       ))}
+                      {index === 0 && (
+                        <>
+                          <label>
+                            <span>First failed save replacement</span>
+                            <input
+                              type="checkbox"
+                              checked={segment.firstFailedSaveDamageReplacement !== null}
+                              onChange={(event) =>
+                                setTargetSegments((current) =>
+                                  current.map((entry) => ({
+                                    ...entry,
+                                    firstFailedSaveDamageReplacement: event.target.checked
+                                      ? 0
+                                      : null,
+                                  })),
+                                )
+                              }
+                            />
+                          </label>
+                          {segment.firstFailedSaveDamageReplacement !== null && (
+                            <label>
+                              <span>First failed save Damage</span>
+                              <input
+                                type="number"
+                                min={0}
+                                max={1024}
+                                value={segment.firstFailedSaveDamageReplacement}
+                                onChange={(event) =>
+                                  setTargetSegments((current) =>
+                                    current.map((entry) => ({
+                                      ...entry,
+                                      firstFailedSaveDamageReplacement: Math.max(
+                                        0,
+                                        +event.target.value,
+                                      ),
+                                    })),
+                                  )
+                                }
+                              />
+                            </label>
+                          )}
+                        </>
+                      )}
                     </div>
                   </article>
                 ))}

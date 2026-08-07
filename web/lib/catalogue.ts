@@ -141,6 +141,7 @@ export type CatalogueCombatPresetEffect = {
     | "attacks_replacement"
     | "strength_replacement"
     | "damage_replacement"
+    | "first_failed_save_damage_replacement"
     | "attacks_modifier"
     | "strength_modifier"
     | "damage_modifier"
@@ -256,6 +257,7 @@ export function applyWeaponProfile(
     strengthMultiplier: 1,
     strengthModifier: 0,
     damageReplacement: null,
+    firstFailedSaveDamageReplacement: null,
     damageMultiplier: 1,
     damageModifier: 0,
     characteristicModifierDice: 0,

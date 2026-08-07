@@ -901,6 +901,7 @@ test("defensive presets compose editable profiles and every ordered target segme
       ["invulnerable_save", 4],
       ["feel_no_pain", 5],
       ["damage_reduction", 1],
+      ["first_failed_save_damage_replacement", 0],
     ].map(([type, value]) => ({
       type,
       value,
@@ -915,13 +916,20 @@ test("defensive presets compose editable profiles and every ordered target segme
     invulnerable: 0,
     feelNoPain: 0,
     reduction: 0,
+    firstFailedSaveDamageReplacement: null,
     hitModifier: 0,
     woundModifier: 0,
   };
   const applied = applyCombatPresets(base, [], [preset], "Ranged");
   assert.deepEqual(
-    [applied.save, applied.invulnerable, applied.feelNoPain, applied.reduction],
-    [2, 4, 5, 1],
+    [
+      applied.save,
+      applied.invulnerable,
+      applied.feelNoPain,
+      applied.reduction,
+      applied.firstFailedSaveDamageReplacement,
+    ],
+    [2, 4, 5, 1, 0],
   );
   const targets = applyTargetCombatPresets(
     [
@@ -937,10 +945,11 @@ test("defensive presets compose editable profiles and every ordered target segme
       target.invulnerable,
       target.feelNoPain,
       target.reduction,
+      target.firstFailedSaveDamageReplacement,
     ]),
     [
-      [2, 4, 5, 1],
-      [2, 3, 5, 2],
+      [2, 4, 5, 1, 0],
+      [2, 3, 5, 2, 0],
     ],
   );
   const rangedOnly = { ...preset, weaponScope: "Ranged" };
@@ -1409,12 +1418,14 @@ function currentWeaponInput(weapon) {
 }
 
 function currentTargetInput(target) {
-  return target.length === 8 ? target : [...target, 1];
+  if (target.length === 10) return target;
+  const current = target.length === 8 ? target : [...target, 1];
+  return [...current, 0, 0];
 }
 
 function orderedVolley(weapons, targets, initialWoundsLost = 0) {
   const weaponFields = 37;
-  const targetFields = 8;
+  const targetFields = 10;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
   const summaryPointer = calculator._malloc(10 * 4);
@@ -1461,7 +1472,7 @@ function orderedVolley(weapons, targets, initialWoundsLost = 0) {
 
 function orderedVolleyComplexity(weapons, targets, initialWoundsLost = 0) {
   const weaponFields = 37;
-  const targetFields = 8;
+  const targetFields = 10;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
   const outputPointer = calculator._malloc(24);
@@ -1518,6 +1529,45 @@ test("C/Wasm reports conservative deferred-state complexity before exact volleys
   const exact = orderedVolley([prefixOrdinary, devastating], [[1, 7, 0, 0, 3, 0, 2]]);
   assert.equal(exact.peakSparseStates, 13);
   assert.ok(exact.peakSparseStates <= tightened[0]);
+});
+
+test("C/Wasm consumes first-failed-save Damage replacement exactly once", () => {
+  const weapon = Array(37).fill(0);
+  weapon[2] = 2;
+  weapon[4] = 1;
+  weapon[5] = 2;
+  weapon[6] = 10;
+  weapon[10] = 3;
+  weapon[11] = 6;
+  weapon[12] = 16;
+  weapon[29] = 1;
+  weapon[30] = 1;
+  weapon[31] = 1;
+  const protectedTarget = [1, 7, 0, 0, 20, 0, 1, 1, 0, 1];
+  const unprotectedTarget = [1, 7, 0, 0, 20, 0, 1, 1, 0, 0];
+
+  const protectedResult = orderedVolley([weapon], [protectedTarget]);
+  const unprotectedResult = orderedVolley([weapon], [unprotectedTarget]);
+  assert.equal(protectedResult.maximum, 3);
+  assert.equal(unprotectedResult.maximum, 6);
+  assert.ok(
+    Math.abs(
+      Number(protectedResult.mean.numerator) / Number(protectedResult.mean.denominator) - 25 / 12,
+    ) < 1e-8,
+  );
+  assert.ok(
+    Math.abs(
+      Number(unprotectedResult.mean.numerator) / Number(unprotectedResult.mean.denominator) - 5,
+    ) < 1e-8,
+  );
+  assert.equal(orderedVolleyComplexity([weapon], [protectedTarget])[4], 1);
+
+  weapon[12] = 16 | 2;
+  const devastating = orderedVolley([weapon], [protectedTarget]);
+  assert.ok(
+    Math.abs(Number(devastating.mean.numerator) / Number(devastating.mean.denominator) - 7 / 3) <
+      1e-8,
+  );
 });
 
 function variableRuleMean({ flags = 0, sustained = [0, 0, 0], rapid = [0, 0, 0] }) {

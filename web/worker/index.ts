@@ -135,6 +135,7 @@ type OrderedTargetSegment = {
   wounds: number;
   reduction: number;
   damageDivisor: number;
+  firstFailedSaveDamageReplacement: number | null;
   modelCount: number;
 };
 
@@ -394,6 +395,8 @@ async function exactCalculation(profile: CombatProfile) {
       profile.characteristicModifierSides,
       profile.characteristicModifierBonus,
       characteristicModifierFlags(profile),
+      profile.firstFailedSaveDamageReplacement ?? 0,
+      profile.firstFailedSaveDamageReplacement === null ? 0 : 1,
       output,
     );
     if (!ok) throw new Error("Profile exceeds the calculator's exact-distribution limits");
@@ -452,7 +455,7 @@ async function exactVolley(
 
   const calculator = await loadCalculator();
   const weaponFields = 37;
-  const targetFields = 8;
+  const targetFields = 10;
   const weaponsPointer = calculator.malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator.malloc(targets.length * targetFields * 4);
   const summaryPointer = calculator.malloc(10 * 4);
@@ -522,6 +525,8 @@ async function exactVolley(
         target.reduction,
         target.modelCount,
         target.damageDivisor,
+        target.firstFailedSaveDamageReplacement ?? 0,
+        target.firstFailedSaveDamageReplacement === null ? 0 : 1,
       ]),
     );
     const ok = calculator.whc_calculate_ordered_volley_summary(
@@ -572,7 +577,7 @@ async function volleyComplexity(
   }
   const calculator = await loadCalculator();
   const weaponFields = 37;
-  const targetFields = 8;
+  const targetFields = 10;
   const weaponsPointer = calculator.malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator.malloc(targets.length * targetFields * 4);
   const outputPointer = calculator.malloc(6 * 4);
@@ -632,6 +637,8 @@ async function volleyComplexity(
         target.reduction,
         target.modelCount,
         target.damageDivisor,
+        target.firstFailedSaveDamageReplacement ?? 0,
+        target.firstFailedSaveDamageReplacement === null ? 0 : 1,
       ]),
     );
     const ok = calculator.whc_estimate_ordered_volley_complexity(
@@ -680,7 +687,7 @@ function orderedTargets(value: unknown): OrderedTargetSegment[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > 16) {
     throw new Error("targets must contain 1 to 16 ordered profile segments");
   }
-  return value.map((candidate) => {
+  const targets = value.map((candidate) => {
     if (!candidate || typeof candidate !== "object") {
       throw new Error("Each target segment must be an object");
     }
@@ -709,9 +716,18 @@ function orderedTargets(value: unknown): OrderedTargetSegment[] {
       wounds: integer("wounds", 1, 1024),
       reduction: integer("reduction", 0, 1024),
       damageDivisor: target.damageDivisor === undefined ? 1 : integer("damageDivisor", 1, 1024),
+      firstFailedSaveDamageReplacement:
+        target.firstFailedSaveDamageReplacement === undefined ||
+        target.firstFailedSaveDamageReplacement === null
+          ? null
+          : integer("firstFailedSaveDamageReplacement", 0, 1024),
       modelCount: integer("modelCount", 1, 1000),
     };
   });
+  if (new Set(targets.map((target) => String(target.firstFailedSaveDamageReplacement))).size > 1) {
+    throw new Error("Target segments must share the same first-failed-save Damage replacement");
+  }
+  return targets;
 }
 
 async function requestArmyList(request: Request): Promise<ArmyListInput> {

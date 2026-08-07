@@ -39,6 +39,7 @@ bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
     uint16_t characteristic_groups[MAX_VOLLEY_WEAPONS];
     uint16_t characteristic_dimension_count = 0u;
     uint16_t weapon_index = 0u;
+    bool uses_first_failed_save_state = false;
     bool uses_deferred_states = false;
 
     if (weapons == NULL || targets == NULL || layout == NULL || result == NULL ||
@@ -46,6 +47,8 @@ bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
         layout->segment_count > MAX_TARGET_SEGMENTS || capacity == 0u) {
         return false;
     }
+    uses_first_failed_save_state = targets[0].first_failed_save_damage_replacement_active;
+    uses_deferred_states = uses_first_failed_save_state;
 
     while (weapon_index < weapon_count) {
         const struct weapon_profile *source_weapon = &weapons[weapon_index];
@@ -110,7 +113,12 @@ bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
             struct attack_plan plan;
             const struct target_profile *target =
                 &targets[(uint32_t)weapon_index * layout->segment_count + segment_index];
-            if (!attack_plan_build(weapon, target, &plan)) {
+            if (target->first_failed_save_damage_replacement_active !=
+                    uses_first_failed_save_state ||
+                (uses_first_failed_save_state &&
+                 target->first_failed_save_damage_replacement !=
+                     targets[0].first_failed_save_damage_replacement) ||
+                !attack_plan_build(weapon, target, &plan)) {
                 return false;
             }
             if (segment_index == 0u) {
@@ -178,6 +186,10 @@ bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
     if (uses_deferred_states) {
         result->estimated_state_upper_bound = uint32_saturating_product(
             uint32_saturating_add(1u, capacity), estimated_state_upper_bound);
+        if (uses_first_failed_save_state) {
+            result->estimated_state_upper_bound =
+                uint32_saturating_product(result->estimated_state_upper_bound, 2u);
+        }
     } else {
         result->estimated_state_upper_bound = uint32_saturating_add(1u, capacity);
     }

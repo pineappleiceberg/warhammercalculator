@@ -32,6 +32,7 @@ const defaults = {
   damageSides: 0,
   damage: 1,
   damageReplacement: null,
+  firstFailedSaveDamageReplacement: null,
   damageMultiplier: 1,
   damageModifier: 0,
   characteristicModifierDice: 0,
@@ -82,6 +83,7 @@ test("agent query parses a complete direct profile and compact rule names", () =
   const profile = parseAgentProfile(
     "attacks=D6%2B2&weaponCount=2&hit=3&strength=12&ap=4&damage=D3%2B1" +
       "&toughness=10&save=2&invuln=4&fnp=5&wounds=12&models=2&reduction=1&damageDivisor=2" +
+      "&firstFailedSaveDamageReplacement=0" +
       "&sustainedHits=D3&rerollHits=ones&rules=lethal-hits%2Ctwin-linked%2Chalf-range",
     defaults,
   );
@@ -104,6 +106,7 @@ test("agent query parses a complete direct profile and compact rule names", () =
   assert.equal(profile.twinLinked, true);
   assert.equal(profile.withinHalfRange, true);
   assert.equal(profile.damageDivisor, 2);
+  assert.equal(profile.firstFailedSaveDamageReplacement, 0);
 });
 
 test("agent query rejects incomplete, unknown, duplicate, and inexact values", () => {
@@ -153,6 +156,7 @@ test("canonical agent parameters round-trip every supported profile field", () =
     damageSides: 6,
     damage: 2,
     damageReplacement: 0,
+    firstFailedSaveDamageReplacement: 0,
     damageMultiplier: 4,
     damageModifier: -1,
     characteristicModifierDice: 1,

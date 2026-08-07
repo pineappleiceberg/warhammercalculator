@@ -95,6 +95,8 @@ struct whc_web_target_input {
     uint32_t damage_reduction;
     uint32_t model_count;
     uint32_t damage_divisor;
+    uint32_t first_failed_save_damage_replacement;
+    uint32_t first_failed_save_damage_replacement_active;
 };
 
 struct whc_web_applied_summary {
@@ -161,6 +163,7 @@ bool whc_calculate_summary_with_characteristic_roll(
     uint16_t attacks_multiplier, uint16_t strength_multiplier, uint16_t damage_multiplier,
     uint16_t characteristic_modifier_dice_count, uint16_t characteristic_modifier_dice_sides,
     uint16_t characteristic_modifier_bonus, uint8_t characteristic_modifier_flags,
+    uint16_t first_failed_save_damage_replacement, bool first_failed_save_damage_replacement_active,
     struct whc_web_summary *summary);
 
 /*@ requires 2 <= hits_on && hits_on <= 6;

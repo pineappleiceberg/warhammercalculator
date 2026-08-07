@@ -121,6 +121,8 @@ static void generate_target(struct fuzz_input *input, struct whc_web_target_inpu
     target->damage_reduction = next_byte(input) % 4u;
     target->damage_divisor = next_byte(input) % 4u + 1u;
     target->model_count = 1u + next_byte(input) % 5u;
+    target->first_failed_save_damage_replacement = next_byte(input) % 4u;
+    target->first_failed_save_damage_replacement_active = next_byte(input) % 3u == 0u;
 }
 
 /*@ requires size == 0 || \valid_read(data + (0 .. size - 1));
@@ -150,6 +152,12 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     index = 0u;
     while (index < target_count) {
         generate_target(&input, &targets[index]);
+        if (index != 0u) {
+            targets[index].first_failed_save_damage_replacement =
+                targets[0].first_failed_save_damage_replacement;
+            targets[index].first_failed_save_damage_replacement_active =
+                targets[0].first_failed_save_damage_replacement_active;
+        }
         index++;
     }
 
@@ -179,7 +187,9 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         (uint16_t)weapons[0].characteristic_modifier_dice_count,
         (uint16_t)weapons[0].characteristic_modifier_dice_sides,
         (uint16_t)weapons[0].characteristic_modifier_bonus,
-        (uint8_t)weapons[0].characteristic_modifier_flags, &summary);
+        (uint8_t)weapons[0].characteristic_modifier_flags,
+        (uint16_t)targets[0].first_failed_save_damage_replacement,
+        targets[0].first_failed_save_damage_replacement_active != 0u, &summary);
     if (valid) {
         assert_summary(&summary);
     }

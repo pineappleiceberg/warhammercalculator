@@ -36,6 +36,7 @@ const integerParameters = [
   ["hitModifier", ["hitModifier"]],
   ["woundModifier", ["woundModifier"]],
   ["damageReplacement", ["damageReplacement"]],
+  ["firstFailedSaveDamageReplacement", ["firstFailedSaveDamageReplacement"]],
   ["damageMultiplier", ["damageMultiplier"]],
   ["damageModifier", ["damageModifier"]],
   ["melta", ["melta"]],
@@ -298,6 +299,15 @@ export function canonicalAgentParameters(profile) {
   search.set("damage", diceText(profile.damageDice, profile.damageSides, profile.damage));
   if (profile.damageReplacement !== null && profile.damageReplacement !== undefined) {
     search.set("damageReplacement", String(profile.damageReplacement));
+  }
+  if (
+    profile.firstFailedSaveDamageReplacement !== null &&
+    profile.firstFailedSaveDamageReplacement !== undefined
+  ) {
+    search.set(
+      "firstFailedSaveDamageReplacement",
+      String(profile.firstFailedSaveDamageReplacement),
+    );
   }
   search.set("damageMultiplier", String(profile.damageMultiplier ?? 1));
   search.set("damageModifier", String(profile.damageModifier ?? 0));

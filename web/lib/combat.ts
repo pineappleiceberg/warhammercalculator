@@ -30,6 +30,7 @@ export type CombatProfile = {
   damageSides: number;
   damage: number;
   damageReplacement: number | null;
+  firstFailedSaveDamageReplacement: number | null;
   damageMultiplier: number;
   damageModifier: number;
   characteristicModifierDice: number;
@@ -117,6 +118,7 @@ export type VolleyTarget = {
   wounds: number;
   reduction: number;
   damageDivisor: number;
+  firstFailedSaveDamageReplacement: number | null;
   modelCount: number;
 };
 
@@ -191,6 +193,7 @@ export const DEFAULT_PROFILE: CombatProfile = {
   damageSides: 6,
   damage: 1,
   damageReplacement: null,
+  firstFailedSaveDamageReplacement: null,
   damageMultiplier: 1,
   damageModifier: 0,
   characteristicModifierDice: 0,
@@ -263,7 +266,11 @@ export function normalizeProfile(input: unknown): CombatProfile {
     if (typeof value !== "boolean") throw new Error(`${key} must be a boolean`);
     return value;
   };
-  const nullableNumberValue = (key: "damageReplacement", minimum: number, maximum: number) => {
+  const nullableNumberValue = (
+    key: "damageReplacement" | "firstFailedSaveDamageReplacement",
+    minimum: number,
+    maximum: number,
+  ) => {
     const value = Object.hasOwn(source, key) ? source[key] : DEFAULT_PROFILE[key];
     if (value === null) return null;
     if (
@@ -306,6 +313,11 @@ export function normalizeProfile(input: unknown): CombatProfile {
     damageSides: numberValue("damageSides", 0, 100),
     damage: numberValue("damage", 0, 1024),
     damageReplacement: nullableNumberValue("damageReplacement", 0, 1024),
+    firstFailedSaveDamageReplacement: nullableNumberValue(
+      "firstFailedSaveDamageReplacement",
+      0,
+      1024,
+    ),
     damageMultiplier: numberValue("damageMultiplier", 1, 1024),
     damageModifier: numberValue("damageModifier", -1024, 1024),
     characteristicModifierDice: numberValue("characteristicModifierDice", 0, 20),
@@ -523,8 +535,9 @@ function modifiedDamageCharacteristic(
   base: number,
   damageDivisor = profile.damageDivisor,
   reduction = profile.reduction,
+  replacement = profile.damageReplacement,
 ) {
-  const minimum = profile.damageReplacement === 0 ? 0 : 1;
+  const minimum = replacement === 0 ? 0 : 1;
   const additions =
     profile.damageModifier + (profile.withinHalfRange ? profile.melta : 0) - reduction;
   return Math.max(
@@ -631,6 +644,7 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
   const addDetail = (detail: RollDetail) => {
     if (includeDetails) result.details.push(detail);
   };
+  let firstFailedSaveReplacementRemaining = profile.firstFailedSaveDamageReplacement !== null;
 
   const resolveHit = (label: string, hitLabel: string, lethalWound: boolean) => {
     result.hits += 1;
@@ -691,11 +705,20 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
     }
 
     result.unsavedAttacks += 1;
+    const failedSaveDamageReplacement =
+      !bypassSave && firstFailedSaveReplacementRemaining
+        ? profile.firstFailedSaveDamageReplacement
+        : null;
+    if (failedSaveDamageReplacement !== null) firstFailedSaveReplacementRemaining = false;
     const rawDamage = modifiedDamageCharacteristic(
       profile,
-      profile.damageReplacement === null
-        ? rollDiceValue(profile.damageDice, profile.damageSides, profile.damage, randomUint32)
-        : profile.damageReplacement,
+      failedSaveDamageReplacement ??
+        (profile.damageReplacement === null
+          ? rollDiceValue(profile.damageDice, profile.damageSides, profile.damage, randomUint32)
+          : profile.damageReplacement),
+      profile.damageDivisor,
+      profile.reduction,
+      failedSaveDamageReplacement ?? profile.damageReplacement,
     );
     let prevented = 0;
     if (profile.feelNoPain > 0) {
@@ -818,6 +841,11 @@ export function simulateOrderedVolley(
   let appliedState = initialWoundsLost;
   const lines: RollResult[] = [];
   const sharedCharacteristicRolls = new Map<string, SharedCharacteristicRoll>();
+  const replacementValues = targets.map((target) => target.firstFailedSaveDamageReplacement);
+  if (new Set(replacementValues.map((value) => String(value))).size > 1) {
+    throw new Error("Target segments must share the same first-failed-save Damage replacement");
+  }
+  let firstFailedSaveReplacementRemaining = replacementValues[0] !== null;
   const deferredDevastatingWounds: Array<() => void> = [];
 
   for (const sourceProfile of profiles) {
@@ -939,6 +967,11 @@ export function simulateOrderedVolley(
         }
       }
       line.unsavedAttacks += 1;
+      const failedSaveDamageReplacement =
+        !bypassSave && firstFailedSaveReplacementRemaining
+          ? target.firstFailedSaveDamageReplacement
+          : null;
+      if (failedSaveDamageReplacement !== null) firstFailedSaveReplacementRemaining = false;
       const detail: RollDetail = {
         label,
         hit: hitLabel,
@@ -964,11 +997,13 @@ export function simulateOrderedVolley(
         const allocationTarget = targets[allocationPosition.segmentIndex];
         const rawDamage = modifiedDamageCharacteristic(
           profile,
-          profile.damageReplacement === null
-            ? rollDiceValue(profile.damageDice, profile.damageSides, profile.damage, randomUint32)
-            : profile.damageReplacement,
+          failedSaveDamageReplacement ??
+            (profile.damageReplacement === null
+              ? rollDiceValue(profile.damageDice, profile.damageSides, profile.damage, randomUint32)
+              : profile.damageReplacement),
           allocationTarget.damageDivisor,
           allocationTarget.reduction,
+          failedSaveDamageReplacement ?? profile.damageReplacement,
         );
         let prevented = 0;
         if (allocationTarget.feelNoPain > 0) {
