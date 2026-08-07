@@ -175,6 +175,7 @@ export default function PlayMode() {
     weapon = weaponProfile,
     targetKeywords = targetProfiles.find((entry) => String(entry.id) === targetModelId)?.keywords ??
       [],
+    targetDistance = profile.targetDistance,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -183,6 +184,7 @@ export default function PlayMode() {
       weapon?.name ?? "",
       targetKeywords,
       attackKeywordsForWeapon(weapon),
+      targetDistance,
     );
 
   const refreshProfile = (
@@ -191,6 +193,7 @@ export default function PlayMode() {
     nextProfileId = profileId,
     nextAttackerPresetIds = activeAttackerPresetIds,
     nextTargetPresetIds = activeTargetPresetIds,
+    nextTargetDistance = profile.targetDistance,
   ) => {
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
@@ -213,14 +216,31 @@ export default function PlayMode() {
             ...applyTargetProfile(DEFAULT_PROFILE, model),
             weaponCount: listWeapon?.count ?? 1,
             targetModels: targetUnit?.modelCount ?? 1,
+            targetDistance: nextTargetDistance,
           },
           weapon,
           model.keywords,
         ),
-        selectedCombatPresets(nextAttackerPresetIds, attackerCatalogueUnit, weapon, model.keywords),
-        selectedCombatPresets(nextTargetPresetIds, targetCatalogueUnit, weapon, model.keywords),
+        selectedCombatPresets(
+          nextAttackerPresetIds,
+          attackerCatalogueUnit,
+          weapon,
+          model.keywords,
+          nextTargetDistance,
+        ),
+        selectedCombatPresets(
+          nextTargetPresetIds,
+          targetCatalogueUnit,
+          weapon,
+          model.keywords,
+          nextTargetDistance,
+        ),
         weapon.type,
-        { targetKeywords: model.keywords, attackKeywords: attackKeywordsForWeapon(weapon) },
+        {
+          targetKeywords: model.keywords,
+          attackKeywords: attackKeywordsForWeapon(weapon),
+          targetDistance: nextTargetDistance,
+        },
       ),
     );
     setResult(null);
@@ -268,6 +288,7 @@ export default function PlayMode() {
             ...applyTargetProfile(DEFAULT_PROFILE, model),
             weaponCount: selectedWeapon?.count ?? 1,
             targetModels: nextTarget.modelCount,
+            targetDistance: profile.targetDistance,
           },
           weaponProfile,
           model.keywords,
@@ -277,17 +298,20 @@ export default function PlayMode() {
           attackerCatalogueUnit,
           weaponProfile,
           model.keywords,
+          profile.targetDistance,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
           nextTargetCatalogueUnit,
           weaponProfile,
           model.keywords,
+          profile.targetDistance,
         ),
         weaponProfile.type,
         {
           targetKeywords: model.keywords,
           attackKeywords: attackKeywordsForWeapon(weaponProfile),
+          targetDistance: profile.targetDistance,
         },
       ),
     );
@@ -520,6 +544,27 @@ export default function PlayMode() {
                     ))}
                   </select>
                 </label>
+                <label>
+                  <span>Distance</span>
+                  <input
+                    aria-label="Target distance in inches"
+                    type="number"
+                    min={0}
+                    max={1000}
+                    value={profile.targetDistance}
+                    onChange={(event) =>
+                      refreshProfile(
+                        weaponId,
+                        targetModelId,
+                        profileId,
+                        activeAttackerPresetIds,
+                        activeTargetPresetIds,
+                        Math.min(1000, Math.max(0, +event.target.value || 0)),
+                      )
+                    }
+                  />
+                  <small>Inches; 0 means unknown</small>
+                </label>
               </fieldset>
             </div>
             <div className="play-ability-selectors">
@@ -533,6 +578,7 @@ export default function PlayMode() {
                     applyActivePresetSelection(ids, activeTargetPresetIds);
                   }}
                   title="Active attacking abilities"
+                  targetDistance={profile.targetDistance}
                 />
               )}
               {targetCatalogueUnit && (
@@ -545,6 +591,7 @@ export default function PlayMode() {
                     applyActivePresetSelection(activeAttackerPresetIds, ids);
                   }}
                   title="Active defensive abilities"
+                  targetDistance={profile.targetDistance}
                 />
               )}
             </div>

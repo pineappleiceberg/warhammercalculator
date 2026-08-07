@@ -445,6 +445,10 @@ comma-separated `torrent`, `blast`, `heavy`, `lance`, `cover`, `ignores-cover`,
 `half-range` values. AP is a nonnegative magnitude, so AP -4 is passed as
 `ap=4`.
 
+Model vs Model, Unit vs Unit, and Play Mode expose the same target distance.
+Distance-gated source abilities apply only when the value is known and within
+their published limit; `0` deliberately means unknown and leaves them inactive.
+
 Automation should wait for `[data-agent-status="ready"]`, then read the JSON in
 `#warhammer-agent-result` or `window.__WARHAMMER_CALC_RESULT__`. Invalid,
 unknown, duplicate, missing, or ambiguous parameters produce

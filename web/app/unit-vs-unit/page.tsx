@@ -97,6 +97,7 @@ export default function UnitVsUnit() {
   const [weaponOrder, setWeaponOrder] = useState<number[]>([]);
   const [targetSegments, setTargetSegments] = useState<TargetSegment[]>([]);
   const [initialWoundsLost, setInitialWoundsLost] = useState(0);
+  const [targetDistance, setTargetDistance] = useState(0);
   const [results, setResults] = useState<WeaponLine[]>([]);
   const [volleySummary, setVolleySummary] = useState<OrderedVolleySummary | null>(null);
   const [rollResult, setRollResult] = useState<OrderedVolleyRollResult | null>(null);
@@ -160,6 +161,7 @@ export default function UnitVsUnit() {
   );
   const inputKey = JSON.stringify({
     initialWoundsLost,
+    targetDistance,
     orderedLines: orderedLines.map((line) => [line.weapon.id, line.count]),
     targetSegments,
     activeAttackerPresetIds,
@@ -247,7 +249,7 @@ export default function UnitVsUnit() {
     return orderedLines.map((line) =>
       applyCombatPresets(
         applyWeaponProfile(
-          { ...DEFAULT_PROFILE, targetModels, weaponCount: line.count },
+          { ...DEFAULT_PROFILE, targetModels, weaponCount: line.count, targetDistance },
           line.weapon,
           targetSegments[0]?.keywords ?? [],
         ),
@@ -258,6 +260,7 @@ export default function UnitVsUnit() {
           line.weapon.name,
           targetSegments[0]?.keywords ?? [],
           attackKeywordsForWeapon(line.weapon),
+          targetDistance,
         ),
         selectedAndAutomaticCombatPresets(
           targetUnit?.combatPresets ?? [],
@@ -266,11 +269,13 @@ export default function UnitVsUnit() {
           line.weapon.name,
           targetSegments[0]?.keywords ?? [],
           attackKeywordsForWeapon(line.weapon),
+          targetDistance,
         ),
         line.weapon.type,
         {
           targetKeywords: targetSegments[0]?.keywords ?? [],
           attackKeywords: attackKeywordsForWeapon(line.weapon),
+          targetDistance,
         },
       ),
     );
@@ -288,6 +293,7 @@ export default function UnitVsUnit() {
               line.weapon.name,
               targetSegments[0]?.keywords ?? [],
               attackKeywordsForWeapon(line.weapon),
+              targetDistance,
             ),
           )
           .map((preset) => [preset.id, preset]),
@@ -300,6 +306,7 @@ export default function UnitVsUnit() {
         weaponType: line.weapon.type,
         weaponName: line.weapon.name,
         attackKeywords: attackKeywordsForWeapon(line.weapon),
+        targetDistance,
       })),
     );
   };
@@ -484,6 +491,7 @@ export default function UnitVsUnit() {
                   selectedIds={activeAttackerPresetIds}
                   onChange={setActiveAttackerPresetIds}
                   title="Active attacking abilities"
+                  targetDistance={targetDistance}
                 />
                 {attackerUnit.unresolvedLoadoutSubjects.length > 0 && (
                   <details className="source-choice-pools model-composition-editor" open>
@@ -744,6 +752,20 @@ export default function UnitVsUnit() {
                 ))}
               </select>
             </label>
+            <label>
+              <span>Target distance</span>
+              <input
+                aria-label="Target distance in inches"
+                type="number"
+                min={0}
+                max={1000}
+                value={targetDistance}
+                onChange={(event) =>
+                  setTargetDistance(Math.min(1000, Math.max(0, +event.target.value || 0)))
+                }
+              />
+              <small>Inches; 0 means unknown</small>
+            </label>
             {targetUnit && (
               <div className="target-sequence">
                 <CombatPresetSelector
@@ -752,6 +774,7 @@ export default function UnitVsUnit() {
                   selectedIds={activeTargetPresetIds}
                   onChange={setActiveTargetPresetIds}
                   title="Active defensive abilities"
+                  targetDistance={targetDistance}
                 />
                 <div className="sequence-heading">
                   <div>

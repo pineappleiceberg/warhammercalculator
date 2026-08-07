@@ -146,6 +146,10 @@ test("server-renders every battle workflow", async () => {
       assert.match(html, /aria-live="polite"/);
       assert.match(html, /Quick overrides/);
       assert.match(html, /play-action-hint/);
+      assert.match(html, /aria-label="Target distance in inches"/);
+    }
+    if (pathname === "/unit-vs-unit") {
+      assert.match(html, /aria-label="Target distance in inches"/);
     }
     if (pathname === "/agent") {
       assert.match(html, /Call with a URL/);

@@ -1970,6 +1970,18 @@ test("defensive rules cannot increase exact expected damage", () => {
   assert.ok(lessThanOrEqual(cover, baseline));
 });
 
+test("source-backed target distance changes preset composition at its exact boundary", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const warbikers = catalogue.units.find((unit) => unit.name === "Warbikers");
+  const driveBy = warbikers.combatPresets.find((preset) => preset.name === "Drive-by Dakka");
+  const base = { weaponName: "Twin dakkagun", ap: 0, targetDistance: 0 };
+  assert.equal(applyCombatPresets(base, [driveBy], [], "Ranged").ap, 0);
+  assert.equal(applyCombatPresets({ ...base, targetDistance: 9 }, [driveBy], [], "Ranged").ap, 1);
+  assert.equal(applyCombatPresets({ ...base, targetDistance: 10 }, [driveBy], [], "Ranged").ap, 0);
+});
+
 test("source-backed situational Attacks replacements reach C/Wasm exactly", async () => {
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),

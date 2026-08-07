@@ -32,8 +32,10 @@ priority over feature count.
   an unambiguous attacker-to-target condition, currently covering both
   Drive-by Dakka datasheets and Way of the Short Blade. Distance 0 means
   unknown and never activates a distance-gated preset. The static agent URL,
-  normalized profile, catalogue export, and preset composer preserve the
-  editable distance, with parser, data-snapshot, and boundary regressions.
+  Model vs Model, Unit vs Unit, Play Mode recovery, normalized profile,
+  catalogue export, and preset composer all preserve the editable distance,
+  with parser, exact data-snapshot, composition-boundary, and recovery
+  regressions.
 
 - 2026-08-07: Added conservative phase eligibility for source-backed combat
   presets. Effects with explicit Shooting- or Fight-phase timing that expire at

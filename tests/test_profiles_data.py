@@ -1271,6 +1271,27 @@ class ProfileDataTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def test_checked_database_has_only_unambiguous_target_distance_presets(self):
+        connection = sqlite3.connect(DATABASE)
+        try:
+            self.assertEqual(
+                connection.execute(
+                    """SELECT datasheets.name, unit_combat_presets.name,
+                              unit_combat_presets.maximum_target_distance
+                       FROM unit_combat_presets
+                       JOIN datasheets ON datasheets.id = unit_combat_presets.datasheet_id
+                       WHERE maximum_target_distance IS NOT NULL
+                       ORDER BY datasheets.name"""
+                ).fetchall(),
+                [
+                    ("Commander Farsight", "Way of the Short Blade", 9),
+                    ("Warbikers", "Drive-by Dakka", 9),
+                    ("Wartrakks", "Drive-by Dakka", 9),
+                ],
+            )
+        finally:
+            connection.close()
+
     def test_browser_catalogue_exposes_editable_necron_loadout_guidance(self):
         catalogue = json.loads(CATALOGUE.read_text(encoding="utf-8"))
         warriors = next(
