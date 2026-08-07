@@ -28,6 +28,13 @@ priority over feature count.
 
 ## Completed cycles
 
+- 2026-08-07: Corrected Lance activation in every catalogue-backed workflow.
+  A weapon's native Lance keyword and Lance granted by a selected source rule
+  now provide +1 Wound only when the editable attacker charge state is active.
+  Direct profiles retain `lanceActive` as an explicit override. Catalogue,
+  granted-rule, inactive-state, and C/Wasm expected-damage regressions cover
+  the boundary.
+
 - 2026-08-07: Added exact attacker stationary eligibility and corrected Heavy
   activation in catalogue workflows. SQLite schema 33 marks eight unambiguous
   Remains Stationary rules automatic across Bastion of Firepower, Mark the

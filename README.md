@@ -156,7 +156,10 @@ available to either attack type.
 
 Unambiguous rules triggered by the attacking unit making a Charge move are
 automatic when the editable `attackerCharged` state is enabled and inert when it
-is disabled. Rules that also allow being charged, combine a charge with a
+is disabled. The same state activates the +1 Wound benefit of a catalogue
+weapon with the Lance ability, including Lance granted by a selected source
+rule. An explicit `lanceActive` profile value remains an editable override.
+Rules that also allow being charged, combine a charge with a
 closest-target alternative, or change how exclusive modes are selected remain
 explicit choices until every branch can be represented exactly.
 
@@ -483,7 +486,7 @@ Model vs Model, Unit vs Unit, and Play Mode expose the same target distance,
 attacker charge and stationary states, attacker/target Battle-shock state, and
 target unit-strength state. A catalogue agent request can pass `charged=true` to
 activate every compatible, unambiguous charge-triggered source rule without an
-`attackerPreset` parameter.
+`attackerPreset` parameter and activate Lance for compatible catalogue weapons.
 `stationary=true` likewise activates exact stationary rules and the Heavy bonus
 for compatible catalogue weapons.
 Likewise, `targetBattleShocked=true` or `attackerBattleShocked=true` resolves

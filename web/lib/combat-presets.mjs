@@ -664,7 +664,14 @@ export function applyCombatPresets(
         profile.devastatingWounds || attacker.devastatingWounds || target.devastatingWounds,
       twinLinked: profile.twinLinked || attacker.twinLinked || target.twinLinked,
       ignoresCover: profile.ignoresCover || attacker.ignoresCover || target.ignoresCover,
-      lanceActive: profile.lanceActive || attacker.lanceActive || target.lanceActive,
+      lanceActive:
+        profile.lanceActive ||
+        ((context.attackerCharged ?? profile.attackerCharged ?? false) &&
+          (attacker.lanceActive ||
+            target.lanceActive ||
+            (context.attackKeywords ?? []).some(
+              (keyword) => normalizedKeyword(keyword) === "lance",
+            ))),
       heavyActive:
         profile.heavyActive ||
         ((context.attackerRemainedStationary ?? profile.attackerRemainedStationary ?? false) &&

@@ -2079,6 +2079,45 @@ test("stationary state activates exact source rules and Heavy weapons", async ()
   assert.ok(lessThanOrEqual(exactMean(), exactMean({ flags: 32 })));
 });
 
+test("charge state activates Lance weapons and granted Lance rules", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const lanceUnit = catalogue.units.find((unit) =>
+    unit.weapons.some((weapon) =>
+      weapon.abilities.some((ability) => ability.name.toLowerCase() === "lance"),
+    ),
+  );
+  const lanceWeapon = lanceUnit.weapons.find((weapon) =>
+    weapon.abilities.some((ability) => ability.name.toLowerCase() === "lance"),
+  );
+  const base = {
+    weaponName: lanceWeapon.name,
+    attackerCharged: false,
+    lanceActive: false,
+  };
+  const lanceContext = { attackKeywords: attackKeywordsForWeapon(lanceWeapon) };
+  assert.equal(applyCombatPresets(base, [], [], lanceWeapon.type, lanceContext).lanceActive, false);
+  assert.equal(
+    applyCombatPresets({ ...base, attackerCharged: true }, [], [], lanceWeapon.type, lanceContext)
+      .lanceActive,
+    true,
+  );
+
+  const grantingUnit = catalogue.units.find((unit) =>
+    unit.combatPresets.some((preset) => preset.effects.some((effect) => effect.type === "lance")),
+  );
+  const grantedLance = grantingUnit.combatPresets.find((preset) =>
+    preset.effects.some((effect) => effect.type === "lance"),
+  );
+  assert.equal(applyCombatPresets(base, [grantedLance], [], "Melee").lanceActive, false);
+  assert.equal(
+    applyCombatPresets({ ...base, attackerCharged: true }, [grantedLance], [], "Melee").lanceActive,
+    true,
+  );
+  assert.ok(lessThanOrEqual(exactMean(), exactMean({ flags: 64 })));
+});
+
 test("source-backed Battle-shock rules require their exact attacker or target state", async () => {
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
