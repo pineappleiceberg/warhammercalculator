@@ -4,6 +4,7 @@ import {
   DEFAULT_IMAGE_SIZES,
 } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import calculatorWasm from "../public/wasm/calculator.wasm?module";
 import {
   DEFAULT_PROFILE,
   normalizeProfile,
@@ -221,17 +222,8 @@ async function loadCatalogue(request: Request, env: Env) {
   return cataloguePromise;
 }
 
-async function loadCalculator(request: Request, env: Env) {
+async function loadCalculator() {
   calculatorPromise ??= (async () => {
-    const response = await env.ASSETS.fetch(
-      new Request(new URL("/wasm/calculator.wasm", request.url)),
-    );
-    if (!response.ok) {
-      throw new ServiceUnavailableError(
-        "Calculator engine is unavailable",
-        "CALCULATOR_ENGINE_UNAVAILABLE",
-      );
-    }
     let calculator: CalculatorExports | null = null;
     const imports = {
       env: {
@@ -254,8 +246,8 @@ async function loadCalculator(request: Request, env: Env) {
         },
       },
     };
-    const instantiated = await WebAssembly.instantiate(await response.arrayBuffer(), imports);
-    calculator = instantiated.instance.exports as unknown as CalculatorExports;
+    const instantiated = await WebAssembly.instantiate(calculatorWasm, imports);
+    calculator = instantiated.exports as unknown as CalculatorExports;
     if (
       typeof calculator.__wasm_call_ctors !== "function" ||
       typeof calculator.whc_calculate_summary !== "function" ||
@@ -332,8 +324,8 @@ function profileFlags(profile: CombatProfile) {
   );
 }
 
-async function exactCalculation(profile: CombatProfile, request: Request, env: Env) {
-  const calculator = await loadCalculator(request, env);
+async function exactCalculation(profile: CombatProfile) {
+  const calculator = await loadCalculator();
   const output = calculator.malloc(72);
   const flags = profileFlags(profile);
 
@@ -415,8 +407,6 @@ async function exactVolley(
   profiles: CombatProfile[],
   targets: OrderedTargetSegment[],
   initialWoundsLost: number,
-  request: Request,
-  env: Env,
 ) {
   if (profiles.length < 1 || profiles.length > 32) {
     throw new Error("profiles must contain 1 to 32 weapon profiles");
@@ -434,7 +424,7 @@ async function exactVolley(
     throw new Error("initialWoundsLost or target capacity exceeds the exact calculator limits");
   }
 
-  const calculator = await loadCalculator(request, env);
+  const calculator = await loadCalculator();
   const weaponFields = 29;
   const targetFields = 8;
   const weaponsPointer = calculator.malloc(profiles.length * weaponFields * 4);
@@ -538,8 +528,6 @@ async function volleyComplexity(
   profiles: CombatProfile[],
   targets: OrderedTargetSegment[],
   initialWoundsLost: number,
-  request: Request,
-  env: Env,
 ) {
   if (profiles.length < 1 || profiles.length > 32) {
     throw new Error("profiles must contain 1 to 32 weapon profiles");
@@ -547,7 +535,7 @@ async function volleyComplexity(
   if (targets.length < 1 || targets.length > 16) {
     throw new Error("targets must contain 1 to 16 ordered profile segments");
   }
-  const calculator = await loadCalculator(request, env);
+  const calculator = await loadCalculator();
   const weaponFields = 29;
   const targetFields = 8;
   const weaponsPointer = calculator.malloc(profiles.length * weaponFields * 4);
@@ -729,7 +717,7 @@ async function handleApi(request: Request, env: Env) {
           };
         }),
         healthCheck("calculator-engine", async () => {
-          await loadCalculator(request, env);
+          await loadCalculator();
         }),
         healthCheck("list-storage", async () => {
           await withStorage(() => env.ARMY_DB.prepare("SELECT 1 AS healthy").first());
@@ -940,7 +928,7 @@ async function handleApi(request: Request, env: Env) {
     if (url.pathname === "/api/v1/calculate" && request.method === "POST") {
       const profile = await requestProfile(request);
       return json({
-        data: await exactCalculation(profile, request, env),
+        data: await exactCalculation(profile),
         profile,
         apiVersion: "v1",
       });
@@ -962,7 +950,7 @@ async function handleApi(request: Request, env: Env) {
         return apiError("initialWoundsLost must be an integer");
       }
       return json({
-        data: await exactVolley(profiles, targets, initialWoundsLost as number, request, env),
+        data: await exactVolley(profiles, targets, initialWoundsLost as number),
         profiles,
         targets,
         initialWoundsLost,
@@ -986,7 +974,7 @@ async function handleApi(request: Request, env: Env) {
         return apiError("initialWoundsLost must be an integer");
       }
       return json({
-        data: await volleyComplexity(profiles, targets, initialWoundsLost as number, request, env),
+        data: await volleyComplexity(profiles, targets, initialWoundsLost as number),
         profiles,
         targets,
         initialWoundsLost,

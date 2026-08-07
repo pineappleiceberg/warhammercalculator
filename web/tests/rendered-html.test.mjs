@@ -1221,8 +1221,9 @@ test("reports dependency health, retryable outages, and request diagnostics", as
   assert.equal(degradedBody.status, "degraded");
   assert.deepEqual(
     degradedBody.checks.map((entry) => entry.code),
-    ["PROFILE_CATALOGUE_UNAVAILABLE", "CALCULATOR_ENGINE_UNAVAILABLE", "LIST_STORAGE_UNAVAILABLE"],
+    ["PROFILE_CATALOGUE_UNAVAILABLE", undefined, "LIST_STORAGE_UNAVAILABLE"],
   );
+  assert.equal(degradedBody.checks[1].status, "ok");
 
   const recovered = await worker.fetch(
     new Request("http://localhost/api/v1/health"),
@@ -1528,6 +1529,10 @@ test("ships the WebAssembly calculator assets", async () => {
     access(new URL("public/wasm/calculator.js", projectRoot)),
     access(new URL("public/wasm/calculator.wasm", projectRoot)),
   ]);
+
+  const workerBundle = await readFile(new URL("../dist/server/index.js", import.meta.url), "utf8");
+  assert.match(workerBundle, /import calculatorWasm from ["'].+\.wasm["']/);
+  assert.doesNotMatch(workerBundle, /ASSETS\.fetch\(.+calculator\.wasm/s);
 });
 
 test("applies Anti only to matching target keywords", () => {

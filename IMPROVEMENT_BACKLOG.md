@@ -29,6 +29,16 @@ priority over feature count.
 
 ## Completed cycles
 
+- 2026-08-06: Repaired the hosted API's calculator-engine dependency by
+  importing the C/WebAssembly binary as a precompiled Worker module instead of
+  fetching raw static bytes and attempting runtime compilation, which the
+  production Workers runtime rejects. The browser and static agent surfaces
+  retain their existing public Wasm asset, while API calculations, volleys,
+  complexity estimates, and health checks share the deployment-bundled module.
+  Node API tests now load the same compiled-module shape, assert that the
+  production bundle cannot regress to an asset fetch, and prove that a static
+  asset outage no longer takes the server calculator offline.
+
 - 2026-08-06: Added exact incoming-Damage division for unconditional rules such
   as Avatar of Khaine's Molten Form. Four source-backed datasheet abilities now
   load as editable target divisors across Model vs Model, Unit vs Unit, Play
