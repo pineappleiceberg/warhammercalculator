@@ -149,11 +149,15 @@ test("server-renders every battle workflow", async () => {
       assert.match(html, /aria-label="Target distance in inches"/);
       assert.match(html, /aria-label="Models in the attacker unit"/);
       assert.match(html, /aria-label="Enemy models within the ability range"/);
+      assert.match(html, /aria-label="Attacker is gaining Waaagh! benefits"/);
+      assert.match(html, /aria-label="Target is gaining Waaagh! benefits"/);
     }
     if (pathname === "/unit-vs-unit") {
       assert.match(html, /aria-label="Target distance in inches"/);
       assert.match(html, /aria-label="Models in the attacker unit"/);
       assert.match(html, /aria-label="Enemy models within the ability range"/);
+      assert.match(html, /aria-label="Attacker is gaining Waaagh! benefits"/);
+      assert.match(html, /aria-label="Target is gaining Waaagh! benefits"/);
     }
     if (pathname === "/agent") {
       assert.match(html, /Call with a URL/);
@@ -1660,6 +1664,8 @@ test("generated API profiles preserve combat invariants and reject malformed fie
     "attackerRemainedStationary",
     "attackerAttached",
     "targetAttached",
+    "attackerWaaaghActive",
+    "targetWaaaghActive",
     "torrent",
     "blast",
     "heavyActive",

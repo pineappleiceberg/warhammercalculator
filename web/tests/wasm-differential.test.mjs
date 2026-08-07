@@ -2230,6 +2230,68 @@ test("model-count-scaled Attacks use explicit source-unit and nearby-enemy count
   assert.ok(lessThanOrEqual(exactMean({ attacks: 4 }), exactMean({ attacks: 8 })));
 });
 
+test("Waaagh benefit state composes universal and direct Orks rules into C/Wasm", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const boyz = catalogue.units.find((unit) => unit.name === "Boyz");
+  const choppa = boyz.weapons.find((weapon) => weapon.type === "Melee");
+  const waaagh = boyz.combatPresets.filter((preset) => preset.name.startsWith("Waaagh! —"));
+  const attackBase = {
+    weaponName: choppa.name,
+    attacksModifier: 0,
+    strengthModifier: 0,
+    attackerWaaaghActive: false,
+  };
+  const inactive = applyCombatPresets(attackBase, waaagh, [], "Melee");
+  const active = applyCombatPresets(
+    { ...attackBase, attackerWaaaghActive: true },
+    waaagh,
+    [],
+    "Melee",
+  );
+  assert.equal(inactive.attacksModifier, 0);
+  assert.equal(inactive.strengthModifier, 0);
+  assert.equal(active.attacksModifier, 1);
+  assert.equal(active.strengthModifier, 1);
+  assert.ok(
+    lessThanOrEqual(
+      exactMean({ attacks: 3, strength: 4 }),
+      exactMean({ attacks: 3, attacksModifier: 1, strength: 4, strengthModifier: 1 }),
+    ),
+  );
+
+  const targetBase = { weaponName: "Test weapon", invulnerable: 0, targetWaaaghActive: false };
+  assert.equal(applyCombatPresets(targetBase, [], waaagh, "Ranged").invulnerable, 0);
+  assert.equal(
+    applyCombatPresets({ ...targetBase, targetWaaaghActive: true }, [], waaagh, "Ranged")
+      .invulnerable,
+    5,
+  );
+  assert.ok(lessThanOrEqual(exactMean({ invulnerable: 5 }), exactMean({ invulnerable: 0 })));
+
+  const warboss = catalogue.units.find((unit) => unit.name === "Warboss In Mega Armour");
+  const deadBrutal = warboss.combatPresets.find((preset) => preset.name === "Dead Brutal");
+  assert.equal(
+    applyCombatPresets(
+      { weaponName: "’uge choppa", damageReplacement: null, attackerWaaaghActive: true },
+      [deadBrutal],
+      [],
+      "Melee",
+    ).damageReplacement,
+    3,
+  );
+  assert.equal(
+    applyCombatPresets(
+      { weaponName: "Kustom shoota", damageReplacement: null, attackerWaaaghActive: true },
+      [deadBrutal],
+      [],
+      "Ranged",
+    ).damageReplacement,
+    null,
+  );
+});
+
 test("source-backed Battle-shock rules require their exact attacker or target state", async () => {
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),

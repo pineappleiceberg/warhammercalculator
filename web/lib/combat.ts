@@ -69,6 +69,8 @@ export type CombatProfile = {
   attackerRemainedStationary: boolean;
   attackerAttached: boolean;
   targetAttached: boolean;
+  attackerWaaaghActive: boolean;
+  targetWaaaghActive: boolean;
   attackerBattleShocked: boolean;
   targetBattleShocked: boolean;
   targetStrengthState: TargetStrengthState;
@@ -250,6 +252,8 @@ export const DEFAULT_PROFILE: CombatProfile = {
   attackerRemainedStationary: false,
   attackerAttached: false,
   targetAttached: false,
+  attackerWaaaghActive: false,
+  targetWaaaghActive: false,
   attackerBattleShocked: false,
   targetBattleShocked: false,
   targetStrengthState: "full",
@@ -401,6 +405,8 @@ export function normalizeProfile(input: unknown): CombatProfile {
     attackerRemainedStationary: booleanValue("attackerRemainedStationary"),
     attackerAttached: booleanValue("attackerAttached"),
     targetAttached: booleanValue("targetAttached"),
+    attackerWaaaghActive: booleanValue("attackerWaaaghActive"),
+    targetWaaaghActive: booleanValue("targetWaaaghActive"),
     attackerBattleShocked: booleanValue("attackerBattleShocked"),
     targetBattleShocked: booleanValue("targetBattleShocked"),
     targetStrengthState: targetStrengthState as TargetStrengthState,

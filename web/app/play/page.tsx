@@ -182,6 +182,7 @@ export default function PlayMode() {
     targetStrengthState = profile.targetStrengthState,
     attackerRemainedStationary = profile.attackerRemainedStationary,
     sourceUnitAttached = false,
+    sourceUnitWaaaghActive = false,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -197,6 +198,7 @@ export default function PlayMode() {
       targetStrengthState,
       attackerRemainedStationary,
       sourceUnitAttached,
+      sourceUnitWaaaghActive,
     );
 
   const refreshProfile = (
@@ -213,6 +215,8 @@ export default function PlayMode() {
     nextAttackerRemainedStationary = profile.attackerRemainedStationary,
     nextAttackerAttached = profile.attackerAttached,
     nextTargetAttached = profile.targetAttached,
+    nextAttackerWaaaghActive = profile.attackerWaaaghActive,
+    nextTargetWaaaghActive = profile.targetWaaaghActive,
     nextAttackerUnitModels = profile.attackerUnitModels,
     nextNearbyEnemyModels = profile.nearbyEnemyModels,
   ) => {
@@ -244,6 +248,8 @@ export default function PlayMode() {
             attackerRemainedStationary: nextAttackerRemainedStationary,
             attackerAttached: nextAttackerAttached,
             targetAttached: nextTargetAttached,
+            attackerWaaaghActive: nextAttackerWaaaghActive,
+            targetWaaaghActive: nextTargetWaaaghActive,
             attackerBattleShocked: nextAttackerBattleShocked,
             targetBattleShocked: nextTargetBattleShocked,
             targetStrengthState: nextTargetStrengthState,
@@ -263,6 +269,7 @@ export default function PlayMode() {
           nextTargetStrengthState,
           nextAttackerRemainedStationary,
           nextAttackerAttached,
+          nextAttackerWaaaghActive,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -276,6 +283,7 @@ export default function PlayMode() {
           nextTargetStrengthState,
           nextAttackerRemainedStationary,
           nextTargetAttached,
+          nextTargetWaaaghActive,
         ),
         weapon.type,
         {
@@ -288,6 +296,8 @@ export default function PlayMode() {
           attackerRemainedStationary: nextAttackerRemainedStationary,
           attackerAttached: nextAttackerAttached,
           targetAttached: nextTargetAttached,
+          attackerWaaaghActive: nextAttackerWaaaghActive,
+          targetWaaaghActive: nextTargetWaaaghActive,
           attackerBattleShocked: nextAttackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
@@ -331,6 +341,7 @@ export default function PlayMode() {
     setTargetUnitId(id);
     const nextTargetBattleShocked = false;
     const nextTargetAttached = false;
+    const nextTargetWaaaghActive = false;
     const nextTargetStrengthState = "full" as const;
     setTargetModelId(model ? String(model.id) : "");
     setActiveTargetPresetIds(nextTargetPresetIds);
@@ -338,6 +349,7 @@ export default function PlayMode() {
       setProfile((current) => ({
         ...current,
         targetAttached: nextTargetAttached,
+        targetWaaaghActive: nextTargetWaaaghActive,
         targetBattleShocked: nextTargetBattleShocked,
         targetStrengthState: nextTargetStrengthState,
       }));
@@ -359,6 +371,8 @@ export default function PlayMode() {
             attackerBattleShocked: profile.attackerBattleShocked,
             targetBattleShocked: nextTargetBattleShocked,
             targetAttached: nextTargetAttached,
+            attackerWaaaghActive: profile.attackerWaaaghActive,
+            targetWaaaghActive: nextTargetWaaaghActive,
             targetStrengthState: nextTargetStrengthState,
           },
           weaponProfile,
@@ -376,6 +390,7 @@ export default function PlayMode() {
           nextTargetStrengthState,
           profile.attackerRemainedStationary,
           profile.attackerAttached,
+          profile.attackerWaaaghActive,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -389,6 +404,7 @@ export default function PlayMode() {
           nextTargetStrengthState,
           profile.attackerRemainedStationary,
           nextTargetAttached,
+          nextTargetWaaaghActive,
         ),
         weaponProfile.type,
         {
@@ -401,6 +417,8 @@ export default function PlayMode() {
           attackerRemainedStationary: profile.attackerRemainedStationary,
           attackerAttached: profile.attackerAttached,
           targetAttached: nextTargetAttached,
+          attackerWaaaghActive: profile.attackerWaaaghActive,
+          targetWaaaghActive: nextTargetWaaaghActive,
           attackerBattleShocked: profile.attackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
@@ -521,6 +539,7 @@ export default function PlayMode() {
                         attackerCharged: false,
                         attackerRemainedStationary: false,
                         attackerAttached: false,
+                        attackerWaaaghActive: false,
                         attackerUnitModels: 0,
                         nearbyEnemyModels: 0,
                         attackerBattleShocked: false,
@@ -554,6 +573,7 @@ export default function PlayMode() {
                         attackerCharged: false,
                         attackerRemainedStationary: false,
                         attackerAttached: false,
+                        attackerWaaaghActive: false,
                         attackerUnitModels: 0,
                         nearbyEnemyModels: 0,
                         attackerBattleShocked: false,
@@ -616,6 +636,7 @@ export default function PlayMode() {
                       setProfile((current) => ({
                         ...current,
                         targetAttached: false,
+                        targetWaaaghActive: false,
                         targetBattleShocked: false,
                         targetStrengthState: "full",
                       }));
@@ -726,6 +747,8 @@ export default function PlayMode() {
                         profile.attackerRemainedStationary,
                         profile.attackerAttached,
                         profile.targetAttached,
+                        profile.attackerWaaaghActive,
+                        profile.targetWaaaghActive,
                         Math.min(1000, Math.max(0, +event.target.value || 0)),
                         profile.nearbyEnemyModels,
                       )
@@ -756,6 +779,8 @@ export default function PlayMode() {
                         profile.attackerRemainedStationary,
                         profile.attackerAttached,
                         profile.targetAttached,
+                        profile.attackerWaaaghActive,
+                        profile.targetWaaaghActive,
                         profile.attackerUnitModels,
                         Math.min(1000, Math.max(0, +event.target.value || 0)),
                       )
@@ -888,6 +913,63 @@ export default function PlayMode() {
                   </span>
                 </label>
                 <label>
+                  <span>Waaagh! benefits</span>
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Attacker is gaining Waaagh! benefits"
+                      type="checkbox"
+                      checked={profile.attackerWaaaghActive}
+                      onChange={(event) =>
+                        refreshProfile(
+                          weaponId,
+                          targetModelId,
+                          profileId,
+                          activeAttackerPresetIds,
+                          activeTargetPresetIds,
+                          profile.targetDistance,
+                          profile.attackerCharged,
+                          profile.attackerBattleShocked,
+                          profile.targetBattleShocked,
+                          profile.targetStrengthState,
+                          profile.attackerRemainedStationary,
+                          profile.attackerAttached,
+                          profile.targetAttached,
+                          event.target.checked,
+                          profile.targetWaaaghActive,
+                        )
+                      }
+                    />
+                    Attacker
+                  </span>
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Target is gaining Waaagh! benefits"
+                      type="checkbox"
+                      checked={profile.targetWaaaghActive}
+                      onChange={(event) =>
+                        refreshProfile(
+                          weaponId,
+                          targetModelId,
+                          profileId,
+                          activeAttackerPresetIds,
+                          activeTargetPresetIds,
+                          profile.targetDistance,
+                          profile.attackerCharged,
+                          profile.attackerBattleShocked,
+                          profile.targetBattleShocked,
+                          profile.targetStrengthState,
+                          profile.attackerRemainedStationary,
+                          profile.attackerAttached,
+                          profile.targetAttached,
+                          profile.attackerWaaaghActive,
+                          event.target.checked,
+                        )
+                      }
+                    />
+                    Target
+                  </span>
+                </label>
+                <label>
                   <span>Target unit strength</span>
                   <select
                     value={profile.targetStrengthState}
@@ -928,6 +1010,7 @@ export default function PlayMode() {
                   attackerCharged={profile.attackerCharged}
                   attackerRemainedStationary={profile.attackerRemainedStationary}
                   sourceUnitAttached={profile.attackerAttached}
+                  sourceUnitWaaaghActive={profile.attackerWaaaghActive}
                   attackerBattleShocked={profile.attackerBattleShocked}
                   targetBattleShocked={profile.targetBattleShocked}
                   targetStrengthState={profile.targetStrengthState}
@@ -947,6 +1030,7 @@ export default function PlayMode() {
                   attackerCharged={profile.attackerCharged}
                   attackerRemainedStationary={profile.attackerRemainedStationary}
                   sourceUnitAttached={profile.targetAttached}
+                  sourceUnitWaaaghActive={profile.targetWaaaghActive}
                   attackerBattleShocked={profile.attackerBattleShocked}
                   targetBattleShocked={profile.targetBattleShocked}
                   targetStrengthState={profile.targetStrengthState}

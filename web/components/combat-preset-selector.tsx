@@ -19,6 +19,7 @@ type Props = {
   attackerCharged?: boolean;
   attackerRemainedStationary?: boolean;
   sourceUnitAttached?: boolean;
+  sourceUnitWaaaghActive?: boolean;
   attackerBattleShocked?: boolean;
   targetBattleShocked?: boolean;
   targetStrengthState?: "full" | "below_starting" | "below_half";
@@ -35,6 +36,7 @@ export function CombatPresetSelector({
   attackerCharged = false,
   attackerRemainedStationary = false,
   sourceUnitAttached = false,
+  sourceUnitWaaaghActive = false,
   attackerBattleShocked = false,
   targetBattleShocked = false,
   targetStrengthState = "full",
@@ -94,6 +96,12 @@ export function CombatPresetSelector({
               <small>
                 Requires an Attached unit
                 {sourceUnitAttached ? " · active" : " · inactive"}
+              </small>
+            ) : null}
+            {preset.requiresWaaaghActive ? (
+              <small>
+                Requires this unit to be gaining Waaagh! benefits
+                {sourceUnitWaaaghActive ? " · active" : " · inactive"}
               </small>
             ) : null}
             {preset.requiresTargetBattleShocked ? (

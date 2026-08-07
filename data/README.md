@@ -35,8 +35,8 @@ The main tables are:
   whole-model/unit defenses are `inherent` and become editable model-profile
   defaults. Rules whose complete eligibility is an exact selected-target,
   attacking-weapon keyword, unambiguous attacker-charge or stationary test, or
-  direct attacker/target Battle-shock, target unit-strength, or simple
-  Attached-unit test are `automatic`;
+  direct attacker/target Battle-shock, target unit-strength, simple
+  Attached-unit, or exact direct Waaagh-benefit test are `automatic`;
   they apply only to matching weapon, target, and battlefield state. Charge-or-
   charged, Order-dependent, aura-, compound leader-, objective-, observer-,
   alternative-branch, and combined-mode wording remains situational. Target
@@ -51,6 +51,11 @@ The main tables are:
 - exact model-count-scaled Attacks modifiers store the count source and models
   per increment on the affected named weapon. The browser and API provide the
   current count; zero is conservative unknown state and never invents a bonus
+- the universal Orks Waaagh! ability is stored as separate automatic melee
+  offense and unrestricted defense presets so +1 Strength/Attacks cannot leak
+  onto ranged weapons and its 5+ invulnerable save cannot be limited to melee
+  attacks. Direct dependent abilities carry `requires_waaagh_active`; compound
+  aura and leader clauses remain situational
 - exact bearer Save, invulnerable-save, Feel No Pain, and Damage-reduction
   effects are imported as optional situational presets only when structured
   composition proves that the datasheet contains exactly one model; bearer

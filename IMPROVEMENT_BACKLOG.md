@@ -19,8 +19,8 @@ priority over feature count.
 1. Extend the source-backed rules eligibility layer beyond phase, exact
    target/Psychic keywords, direct target distance, charge state, direct
    Battle-shock state, direct target unit-strength state, attacker stationary
-   state, and simple Attached-unit state to compound conditions that currently
-   require manual interpretation.
+   state, simple Attached-unit state, and direct Waaagh-benefit state to
+   compound conditions that currently require manual interpretation.
 2. Represent casualty- and nearby-unit-count-scaled Attacks modifiers as
    explicit reproducible state instead of requiring manual arithmetic; direct
    source-unit and nearby-enemy model counts are now covered.
@@ -29,6 +29,18 @@ priority over feature count.
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added exact Waaagh-benefit state. SQLite schema 36 splits the
+  universal Orks Waaagh! rule into melee-only +1 Strength/Attacks and an
+  unrestricted 5+ invulnerable save across 87 source datasheets, preventing
+  either effect from inheriting the other's weapon scope. Six direct dependent
+  abilities are automatic for Gorkanaut, Morkanaut, Meganobz, Warboss, Nob with
+  Waaagh! Banner, and Warboss in Mega Armour; Ghazghkull's compound aura and
+  leader clauses remain conservative manual choices. Model vs Model, Unit vs
+  Unit, Play recovery, normalized API profiles, and static agent URLs preserve
+  separate editable attacker and target state. Exact parser negatives,
+  generated-data snapshots, URL/recovery round trips, weapon-scope checks, and
+  native C/WebAssembly damage monotonicity cover the behavior.
 
 - 2026-08-07: Added exact model-count-scaled Attacks. SQLite schema 35 imports
   Gabriel Seth's Whirlwind of Gore and Wurrboy's Unstable Oracle with the

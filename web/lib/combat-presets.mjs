@@ -94,6 +94,7 @@ export function combatPresetMeetsEligibility(
   targetStrengthState = "full",
   attackerRemainedStationary = false,
   sourceUnitAttached = false,
+  sourceUnitWaaaghActive = false,
 ) {
   const targets = new Set(targetKeywords.map(normalizedKeyword));
   const attacks = new Set(attackKeywords.map(normalizedKeyword));
@@ -112,6 +113,7 @@ export function combatPresetMeetsEligibility(
     (!preset.requiresAttackerCharge || attackerCharged) &&
     (!preset.requiresAttackerStationary || attackerRemainedStationary) &&
     (!preset.requiresAttachedUnit || sourceUnitAttached) &&
+    (!preset.requiresWaaaghActive || sourceUnitWaaaghActive) &&
     (!preset.requiresTargetBattleShocked || targetBattleShocked) &&
     (!preset.requiresAttackerNotBattleShocked || !attackerBattleShocked) &&
     (preset.effects ?? []).every(
@@ -138,6 +140,7 @@ export function selectedAndAutomaticCombatPresets(
   targetStrengthState = "full",
   attackerRemainedStationary = false,
   sourceUnitAttached = false,
+  sourceUnitWaaaghActive = false,
 ) {
   const selected = new Set(selectedIds);
   return presets.filter(
@@ -155,6 +158,7 @@ export function selectedAndAutomaticCombatPresets(
         targetStrengthState,
         attackerRemainedStationary,
         sourceUnitAttached,
+        sourceUnitWaaaghActive,
       ),
   );
 }
@@ -203,6 +207,7 @@ export function combatPresetEffects(
   targetStrengthState = "full",
   attackerRemainedStationary = false,
   sourceUnitAttached = false,
+  sourceUnitWaaaghActive = false,
   attackerUnitModels = 0,
   nearbyEnemyModels = 0,
 ) {
@@ -221,6 +226,7 @@ export function combatPresetEffects(
         targetStrengthState,
         attackerRemainedStationary,
         sourceUnitAttached,
+        sourceUnitWaaaghActive,
       ),
   );
   const hitModifiers = applicable.filter((preset) =>
@@ -457,6 +463,7 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
       context.targetStrengthState ?? "full",
       context.attackerRemainedStationary ?? false,
       context.targetAttached ?? false,
+      context.targetWaaaghActive ?? false,
       context.attackerUnitModels ?? 0,
       context.nearbyEnemyModels ?? 0,
     ),
@@ -529,6 +536,7 @@ export function applyCombatPresets(
     context.targetStrengthState ?? profile.targetStrengthState ?? "full",
     context.attackerRemainedStationary ?? profile.attackerRemainedStationary ?? false,
     context.attackerAttached ?? profile.attackerAttached ?? false,
+    context.attackerWaaaghActive ?? profile.attackerWaaaghActive ?? false,
     context.attackerUnitModels ?? profile.attackerUnitModels ?? 0,
     context.nearbyEnemyModels ?? profile.nearbyEnemyModels ?? 0,
   );
@@ -546,6 +554,7 @@ export function applyCombatPresets(
     context.targetStrengthState ?? profile.targetStrengthState ?? "full",
     context.attackerRemainedStationary ?? profile.attackerRemainedStationary ?? false,
     context.targetAttached ?? profile.targetAttached ?? false,
+    context.targetWaaaghActive ?? profile.targetWaaaghActive ?? false,
     context.attackerUnitModels ?? profile.attackerUnitModels ?? 0,
     context.nearbyEnemyModels ?? profile.nearbyEnemyModels ?? 0,
   );

@@ -105,6 +105,7 @@ export type CatalogueCombatPreset = {
   requiresAttackerCharge?: boolean;
   requiresAttackerStationary?: boolean;
   requiresAttachedUnit?: boolean;
+  requiresWaaaghActive?: boolean;
   requiresTargetBattleShocked?: boolean;
   requiresAttackerNotBattleShocked?: boolean;
   requiredTargetStrengthState?: "below_starting" | "below_half" | "not_below_half";
@@ -227,6 +228,8 @@ type CombatPresetContext = {
   attackerRemainedStationary?: boolean;
   attackerAttached?: boolean;
   targetAttached?: boolean;
+  attackerWaaaghActive?: boolean;
+  targetWaaaghActive?: boolean;
   attackerBattleShocked?: boolean;
   targetBattleShocked?: boolean;
   targetStrengthState?: CombatProfile["targetStrengthState"];

@@ -176,6 +176,16 @@ become automatic only for the matching attacking or defending side. Leader
 rules with casualty thresholds, Waaagh!, distance, named-model, objective,
 choice, or other independent conditions remain explicit choices.
 
+Orks units use separately editable `attackerWaaaghActive` and
+`targetWaaaghActive` state to represent whether that particular unit is gaining
+the benefits of Waaagh!, including a Nob with Waaagh! Banner when appropriate.
+The universal rule is split by scope: +1 Strength and Attacks applies only to
+melee weapons, while the 5+ invulnerable save applies against every attack.
+Direct Waaagh-dependent rules for Gorkanaut, Morkanaut, Meganobz, Warboss, Nob
+with Waaagh! Banner, and Warboss in Mega Armour are also automatic. Ghazghkull's
+range-dependent aura and compound leader rule remain explicit because Waaagh!
+state alone does not satisfy their other conditions.
+
 Published Attacks modifiers that scale by a count use explicit editable state
 instead of an assumed average. `attackerUnitModels` records the total models in
 the attacking unit, while `nearbyEnemyModels` records enemy models inside the
@@ -484,6 +494,7 @@ expression such as `D6+2`. Optional parameters include `weaponCount`, `model`,
 `melta`, `distance` (in inches; `0` means unknown), `charged`, `stationary`,
 `unitModels`, `nearbyEnemyModels`,
 `attackerAttached`, `targetAttached`,
+`waaaghActive` (alias for `attackerWaaaghActive`), `targetWaaaghActive`,
 `attackerBattleShocked`, `targetBattleShocked` (booleans),
 `targetStrength` (`full`, `below-starting`, or `below-half`), `damageDivisor`,
 `attacksReplacement`, `attacksMultiplier`, `attacksModifier`,
@@ -510,6 +521,9 @@ bonuses at their published rounding boundaries; `0` means unknown.
 for compatible catalogue weapons.
 `attackerAttached=true` and `targetAttached=true` likewise activate compatible,
 unambiguous leader rules on the corresponding side of the matchup.
+`waaaghActive=true` and `targetWaaaghActive=true` activate the universal and
+direct Waaagh-dependent rules for the corresponding Orks unit without requiring
+manual profile arithmetic.
 Likewise, `targetBattleShocked=true` or `attackerBattleShocked=true` resolves
 compatible exact source rules before later numeric overrides are applied.
 `targetStrength=below-half` and the other two strength values likewise resolve

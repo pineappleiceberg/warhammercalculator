@@ -56,6 +56,7 @@ class ProfileDataTests(unittest.TestCase):
                 "requires_attacker_charge": False,
                 "requires_attacker_stationary": False,
                 "requires_attached_unit": True,
+                "requires_waaagh_active": False,
                 "requires_target_battle_shocked": False,
                 "requires_attacker_not_battle_shocked": False,
                 "required_target_strength_state": None,
@@ -76,6 +77,47 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(preset["hit_reroll_subject"], "self")
         self.assertIsNone(
             combat_preset("Add 1 to this model's Leadership characteristic.")
+        )
+
+    def test_combat_preset_parser_splits_and_gates_exact_waaagh_rules(self):
+        description = (
+            "If your Army Faction is ORKS , once per battle, at the start of your Command "
+            "phase, you can call a Waaagh!. If you do, until the start of your next Command "
+            "phase, the Waaagh! is active for your army and: Units from your army with this "
+            "ability are eligible to declare a charge in a turn in which they Advanced. Add "
+            "1 to the Strength and Attacks characteristics of melee weapons equipped by "
+            "models from your army with this ability. Models from your army with this ability "
+            "have a 5+ invulnerable save."
+        )
+        presets = combat_presets("Waaagh!", description)
+        self.assertEqual(
+            [(preset["name"], preset["weapon_scope"]) for preset in presets],
+            [
+                ("Waaagh! — Melee weapons", "Melee"),
+                ("Waaagh! — Invulnerable save", "Any"),
+            ],
+        )
+        self.assertTrue(all(preset["requires_waaagh_active"] for preset in presets))
+        self.assertEqual(
+            [(effect["type"], effect["value"]) for effect in presets[0]["additional_effects"]],
+            [("attacks_modifier", 1), ("strength_modifier", 1)],
+        )
+        self.assertEqual(
+            [(effect["type"], effect["value"]) for effect in presets[1]["additional_effects"]],
+            [("invulnerable_save", 5)],
+        )
+        self.assertTrue(
+            combat_preset(
+                "Each time this model makes a melee attack, if the Waaagh! is active for "
+                "your army, add 1 to the Hit roll."
+            )["requires_waaagh_active"]
+        )
+        self.assertFalse(
+            combat_preset(
+                "While a friendly ORKS unit is within 12\" of Makari, if the Waaagh! is "
+                "active for your army, melee weapons equipped by models in that unit have "
+                "the [LETHAL HITS] ability."
+            )["requires_waaagh_active"]
         )
 
     def test_combat_preset_parser_classifies_each_effect_without_using_its_sign(self):
@@ -983,7 +1025,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "35",
+                "36",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1186,6 +1228,7 @@ class ProfileDataTests(unittest.TestCase):
                 ).fetchall(),
                 [
                     ("Auramite and Adamantine", "Any", 1, "target", "self"),
+                    ("Dead Brutal", "Any", 3, "attacker", "self"),
                 ],
             )
             self.assertEqual(
@@ -1214,9 +1257,9 @@ class ProfileDataTests(unittest.TestCase):
                        GROUP BY effect_type ORDER BY effect_type"""
                 ).fetchall(),
                 [
-                    ("attacks_modifier", 22),
+                    ("attacks_modifier", 110),
                     ("damage_modifier", 5),
-                    ("strength_modifier", 92),
+                    ("strength_modifier", 179),
                 ],
             )
             self.assertEqual(
@@ -1259,7 +1302,7 @@ class ProfileDataTests(unittest.TestCase):
                     ("damage_divisor", 4),
                     ("damage_reduction", 32),
                     ("feel_no_pain", 41),
-                    ("invulnerable_save", 52),
+                    ("invulnerable_save", 140),
                     ("save_target", 3),
                 ],
             )
@@ -1267,14 +1310,14 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 203), ("inherent", 32), ("situational", 1229)],
+                [("automatic", 383), ("inherent", 32), ("situational", 1226)],
             )
             self.assertEqual(
                 connection.execute(
                     "SELECT weapon_scope, count(*) FROM unit_combat_presets "
                     "GROUP BY weapon_scope ORDER BY weapon_scope"
                 ).fetchall(),
-                [("Any", 812), ("Melee", 310), ("Ranged", 342)],
+                [("Any", 901), ("Melee", 398), ("Ranged", 342)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1330,6 +1373,36 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     """SELECT count(*) FROM unit_combat_presets
                        WHERE requires_attacker_charge = 1 AND activation != 'automatic'"""
+                ).fetchone()[0],
+                0,
+            )
+            waaagh_rows = connection.execute(
+                """SELECT datasheet.name, preset.name, preset.weapon_scope
+                   FROM unit_combat_presets AS preset
+                   JOIN datasheets AS datasheet ON datasheet.id = preset.datasheet_id
+                   WHERE preset.requires_waaagh_active = 1
+                   ORDER BY datasheet.name, preset.name"""
+            ).fetchall()
+            self.assertEqual(len(waaagh_rows), 180)
+            self.assertIn(("Boyz", "Waaagh! — Melee weapons", "Melee"), waaagh_rows)
+            self.assertIn(("Boyz", "Waaagh! — Invulnerable save", "Any"), waaagh_rows)
+            self.assertIn(("Gorkanaut", "Big an’ Stompy", "Melee"), waaagh_rows)
+            self.assertIn(("Meganobz", "Krumpin’ Time", "Any"), waaagh_rows)
+            self.assertIn(("Warboss", "Da Biggest and da Best", "Melee"), waaagh_rows)
+            self.assertIn(("Warboss In Mega Armour", "Dead Brutal", "Any"), waaagh_rows)
+            self.assertNotIn(
+                ("Ghazghkull Thraka", "Ghazghkull’s Waaagh! Banner (Aura)", "Melee"),
+                waaagh_rows,
+            )
+            self.assertNotIn(
+                ("Ghazghkull Thraka", "Prophet of Da Great Waaagh!", "Melee"),
+                waaagh_rows,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_combat_presets
+                       WHERE requires_waaagh_active = 1
+                         AND activation != 'automatic'"""
                 ).fetchone()[0],
                 0,
             )
@@ -2128,6 +2201,28 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertTrue(unstable["requiresAttachedUnit"])
         self.assertEqual(unstable["effects"][0]["modelCountSource"], "source_unit")
+        boyz = next(unit for unit in catalogue["units"] if unit["name"] == "Boyz")
+        waaagh = [
+            preset for preset in boyz["combatPresets"] if preset["name"].startswith("Waaagh! —")
+        ]
+        self.assertEqual(len(waaagh), 2)
+        self.assertTrue(all(preset["activation"] == "automatic" for preset in waaagh))
+        self.assertTrue(all(preset["requiresWaaaghActive"] for preset in waaagh))
+        self.assertEqual(
+            [(preset["name"], preset["weaponScope"]) for preset in waaagh],
+            [
+                ("Waaagh! — Melee weapons", "Melee"),
+                ("Waaagh! — Invulnerable save", "Any"),
+            ],
+        )
+        mega_warboss = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Warboss In Mega Armour"
+        )
+        dead_brutal = next(
+            preset for preset in mega_warboss["combatPresets"] if preset["name"] == "Dead Brutal"
+        )
+        self.assertTrue(dead_brutal["requiresWaaaghActive"])
+        self.assertEqual(dead_brutal["effects"][0]["weaponName"], "’uge choppa")
         troupe = next(unit for unit in catalogue["units"] if unit["id"] == "000002536")
         dance = [preset for preset in troupe["combatPresets"] if preset["choiceGroup"]]
         self.assertEqual(len(dance), 3)

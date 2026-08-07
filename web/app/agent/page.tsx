@@ -103,6 +103,8 @@ export default function AgentCalculator() {
           const attackerRemainedStationary = requestedContext.attackerRemainedStationary;
           const attackerAttached = requestedContext.attackerAttached;
           const targetAttached = requestedContext.targetAttached;
+          const attackerWaaaghActive = requestedContext.attackerWaaaghActive;
+          const targetWaaaghActive = requestedContext.targetWaaaghActive;
           const attackerBattleShocked = requestedContext.attackerBattleShocked;
           const targetBattleShocked = requestedContext.targetBattleShocked;
           const targetStrengthState = requestedContext.targetStrengthState;
@@ -117,6 +119,8 @@ export default function AgentCalculator() {
             attackerRemainedStationary,
             attackerAttached,
             targetAttached,
+            attackerWaaaghActive,
+            targetWaaaghActive,
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
@@ -135,6 +139,7 @@ export default function AgentCalculator() {
             targetStrengthState,
             attackerRemainedStationary,
             attackerAttached,
+            attackerWaaaghActive,
           );
           const targetPresets = selectedAndAutomaticCombatPresets(
             selection.target.combatPresets,
@@ -150,6 +155,7 @@ export default function AgentCalculator() {
             targetStrengthState,
             attackerRemainedStationary,
             targetAttached,
+            targetWaaaghActive,
           );
           profile = applyCombatPresets(
             profile,
@@ -166,6 +172,8 @@ export default function AgentCalculator() {
               attackerRemainedStationary,
               attackerAttached,
               targetAttached,
+              attackerWaaaghActive,
+              targetWaaaghActive,
               attackerBattleShocked,
               targetBattleShocked,
               targetStrengthState,
@@ -298,8 +306,9 @@ export default function AgentCalculator() {
               characteristicModifierDamage, model, models, fnp, reduction, damageDivisor,
               criticalHits, criticalWounds, sustainedHits, rapidFire, melta, hitModifier,
               woundModifier, rerollHits, rerollWounds, distance, unitModels, nearbyEnemyModels,
-              charged, stationary, attackerAttached, targetAttached, attackerBattleShocked,
-              targetBattleShocked, targetStrength, attackerPreset, targetPreset, and rules.
+              charged, stationary, attackerAttached, targetAttached, attackerWaaaghActive,
+              targetWaaaghActive, attackerBattleShocked, targetBattleShocked, targetStrength,
+              attackerPreset, targetPreset, and rules.
             </p>
             <p>
               <code>rules</code> accepts comma-separated values such as{" "}

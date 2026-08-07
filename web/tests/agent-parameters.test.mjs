@@ -69,6 +69,8 @@ const defaults = {
   attackerRemainedStationary: false,
   attackerAttached: false,
   targetAttached: false,
+  attackerWaaaghActive: false,
+  targetWaaaghActive: false,
   attackerBattleShocked: false,
   targetBattleShocked: false,
   targetStrengthState: "full",
@@ -194,6 +196,8 @@ test("canonical agent parameters round-trip every supported profile field", () =
     attackerRemainedStationary: true,
     attackerAttached: true,
     targetAttached: true,
+    attackerWaaaghActive: true,
+    targetWaaaghActive: true,
     attackerBattleShocked: true,
     targetBattleShocked: true,
     targetStrengthState: "below_half",
@@ -273,8 +277,58 @@ test("catalogue agent Attached-unit state selects exact automatic leader rules",
   );
   assert.equal(parseAgentProfile("attackerAttached=true", defaults, false).attackerAttached, true);
   assert.equal(parseAgentProfile("targetAttached=true", defaults, false).targetAttached, true);
+  assert.equal(parseAgentProfile("waaaghActive=true", defaults, false).attackerWaaaghActive, true);
+  assert.equal(
+    parseAgentProfile("targetWaaaghActive=true", defaults, false).targetWaaaghActive,
+    true,
+  );
   assert.equal(parseAgentProfile("unitModels=12", defaults, false).attackerUnitModels, 12);
   assert.equal(parseAgentProfile("nearbyEnemyModels=9", defaults, false).nearbyEnemyModels, 9);
+});
+
+test("catalogue agent Waaagh state selects exact universal and direct rules", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const boyz = catalogue.units.find((unit) => unit.name === "Boyz");
+  const melee = boyz.weapons.find((weapon) => weapon.type === "Melee");
+  const selected = (active) =>
+    selectedAndAutomaticCombatPresets(
+      boyz.combatPresets,
+      [],
+      melee.type,
+      melee.name,
+      [],
+      attackKeywordsForWeapon(melee),
+      0,
+      false,
+      false,
+      false,
+      "full",
+      false,
+      false,
+      active,
+    );
+  assert.equal(
+    selected(false).some((preset) => preset.name.startsWith("Waaagh! —")),
+    false,
+  );
+  assert.deepEqual(
+    selected(true)
+      .filter((preset) => preset.name.startsWith("Waaagh! —"))
+      .map((preset) => preset.name),
+    ["Waaagh! — Melee weapons", "Waaagh! — Invulnerable save"],
+  );
+  const requested = parseAgentProfile("waaaghActive=true", defaults, false);
+  const composed = applyCombatPresets(
+    { ...requested, weaponName: melee.name },
+    selected(requested.attackerWaaaghActive),
+    [],
+    melee.type,
+    { attackerWaaaghActive: requested.attackerWaaaghActive },
+  );
+  assert.equal(composed.attacksModifier, 1);
+  assert.equal(composed.strengthModifier, 1);
 });
 
 test("catalogue agent model counts compose exact automatic Attacks scaling", async () => {

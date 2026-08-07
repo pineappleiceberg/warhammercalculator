@@ -164,6 +164,8 @@ CREATE TABLE unit_combat_presets (
         CHECK (requires_attacker_stationary IN (0, 1)),
     requires_attached_unit INTEGER NOT NULL DEFAULT 0
         CHECK (requires_attached_unit IN (0, 1)),
+    requires_waaagh_active INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_waaagh_active IN (0, 1)),
     requires_target_battle_shocked INTEGER NOT NULL DEFAULT 0
         CHECK (requires_target_battle_shocked IN (0, 1)),
     requires_attacker_not_battle_shocked INTEGER NOT NULL DEFAULT 0
@@ -521,6 +523,42 @@ def combat_requires_attached_unit(text: str) -> bool:
     )
 
 
+def combat_is_core_waaagh(text: str) -> bool:
+    normalized = plain_text(text).strip()
+    return bool(
+        re.fullmatch(
+            r"If your Army Faction is ORKS\s*, once per battle, at the start of your "
+            r"Command phase, you can call a Waaagh!\. If you do, until the start of your "
+            r"next Command phase, the Waaagh! is active for your army and: Units from "
+            r"your army with this ability are eligible to declare a charge in a turn in "
+            r"which they Advanced\. Add 1 to the Strength and Attacks characteristics of "
+            r"melee weapons equipped by models from your army with this ability\. Models "
+            r"from your army with this ability have a 5\+ invulnerable save\.",
+            normalized,
+            re.IGNORECASE,
+        )
+    )
+
+
+def combat_requires_waaagh_active(text: str) -> bool:
+    normalized = plain_text(text).strip()
+    if combat_is_core_waaagh(normalized):
+        return True
+    direct_patterns = (
+        r"Each time this model makes a (?:melee|ranged) attack, if the Waaagh! is "
+        r"active for your army, add 1 to the Hit roll\.",
+        r"While the Waaagh! is active for your army, models in this unit have the "
+        r"Feel No Pain 5\+ ability\.",
+        r"While this model is gaining the benefits of the Waaagh! ability, it has a "
+        r"4\+ invulnerable save and an Objective Control characteristic of 5\.",
+        r"While the Waaagh! is active for your army, add 4 to the Attacks "
+        r"characteristic of this model[’']s melee weapons\.",
+        r"While the Waaagh! is active for your army, this model[’']s [’']uge choppa "
+        r"has a Damage characteristic of 3\.",
+    )
+    return any(re.fullmatch(pattern, normalized, re.IGNORECASE) for pattern in direct_patterns)
+
+
 def combat_battle_shock_requirements(text: str) -> tuple[bool, bool]:
     normalized = plain_text(text).strip()
     target_battle_shocked = bool(
@@ -760,6 +798,85 @@ def combat_additional_effects(
     text: str, allow_bearer_defenses: bool = False
 ) -> list[dict[str, int | str]]:
     effects: list[dict[str, int | str]] = []
+    normalized = plain_text(text).strip()
+    if combat_is_core_waaagh(normalized):
+        effects.extend(
+            (
+                {
+                    "type": "attacks_modifier",
+                    "value": 1,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "role": "attacker",
+                    "subject": "self",
+                },
+                {
+                    "type": "strength_modifier",
+                    "value": 1,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "role": "attacker",
+                    "subject": "self",
+                },
+                {
+                    "type": "invulnerable_save",
+                    "value": 5,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "role": "target",
+                    "subject": "self",
+                },
+            )
+        )
+    if re.fullmatch(
+        r"While the Waaagh! is active for your army, add 4 to the Attacks "
+        r"characteristic of this model[’']s melee weapons\.",
+        normalized,
+        re.IGNORECASE,
+    ):
+        effects.append(
+            {
+                "type": "attacks_modifier",
+                "value": 4,
+                "dice_count": 0,
+                "dice_sides": 0,
+                "role": "attacker",
+                "subject": "self",
+            }
+        )
+    if re.fullmatch(
+        r"While the Waaagh! is active for your army, this model[’']s [’']uge choppa "
+        r"has a Damage characteristic of 3\.",
+        normalized,
+        re.IGNORECASE,
+    ):
+        effects.append(
+            {
+                "type": "damage_replacement",
+                "value": 3,
+                "dice_count": 0,
+                "dice_sides": 0,
+                "weapon_name": "’uge choppa",
+                "role": "attacker",
+                "subject": "self",
+            }
+        )
+    if re.fullmatch(
+        r"While this model is gaining the benefits of the Waaagh! ability, it has a "
+        r"4\+ invulnerable save and an Objective Control characteristic of 5\.",
+        normalized,
+        re.IGNORECASE,
+    ):
+        effects.append(
+            {
+                "type": "invulnerable_save",
+                "value": 4,
+                "dice_count": 0,
+                "dice_sides": 0,
+                "role": "target",
+                "subject": "self",
+            }
+        )
     keyword_patterns = (
         ("lethal_hits", r"\[LETHAL HITS\]", None),
         ("devastating_wounds", r"\[DEVASTATING WOUNDS\]", None),
@@ -1452,6 +1569,7 @@ def combat_preset(
     effects["requires_attacker_charge"] = combat_requires_attacker_charge(text)
     effects["requires_attacker_stationary"] = combat_requires_attacker_stationary(text)
     effects["requires_attached_unit"] = combat_requires_attached_unit(text)
+    effects["requires_waaagh_active"] = combat_requires_waaagh_active(text)
     (
         effects["requires_target_battle_shocked"],
         effects["requires_attacker_not_battle_shocked"],
@@ -1468,6 +1586,7 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
             "requires_attacker_charge",
             "requires_attacker_stationary",
             "requires_attached_unit",
+            "requires_waaagh_active",
             "requires_target_battle_shocked",
             "requires_attacker_not_battle_shocked",
             "required_target_strength_state",
@@ -1565,6 +1684,36 @@ def combat_presets(
     name: str, description: str, allow_bearer_defenses: bool = False
 ) -> list[dict[str, object]]:
     text = plain_text(description)
+    if combat_is_core_waaagh(text):
+        effects = combat_preset(text, allow_bearer_defenses)
+        if not effects:
+            return []
+        offensive = {
+            **effects,
+            "additional_effects": effects["additional_effects"][:2],
+            "weapon_scope": "Melee",
+        }
+        defensive = {
+            **effects,
+            "additional_effects": effects["additional_effects"][2:],
+            "weapon_scope": "Any",
+        }
+        return [
+            {
+                "name": f"{name} — Melee weapons",
+                "description": text,
+                "is_exclusive_choice": 0,
+                "activation": "automatic",
+                **offensive,
+            },
+            {
+                "name": f"{name} — Invulnerable save",
+                "description": text,
+                "is_exclusive_choice": 0,
+                "activation": "automatic",
+                **defensive,
+            },
+        ]
     has_choice = bool(
         re.search(
             r"\b(?:select|choose) one of (?:the )?[^.]{0,160}(?:following|below)",
@@ -1762,6 +1911,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     is_exclusive_choice, activation, weapon_scope, maximum_target_distance,
                     requires_attacker_charge, requires_attacker_stationary,
                     requires_attached_unit,
+                    requires_waaagh_active,
                     requires_target_battle_shocked,
                     requires_attacker_not_battle_shocked,
                     required_target_strength_state,
@@ -1770,7 +1920,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                     hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
                     wound_reroll_subject)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     ability_position,
@@ -1784,6 +1934,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     int(preset["requires_attacker_charge"]),
                     int(preset["requires_attacker_stationary"]),
                     int(preset["requires_attached_unit"]),
+                    int(preset["requires_waaagh_active"]),
                     int(preset["requires_target_battle_shocked"]),
                     int(preset["requires_attacker_not_battle_shocked"]),
                     preset["required_target_strength_state"],
@@ -1968,7 +2119,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "35"),
+                    ("schema_version", "36"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

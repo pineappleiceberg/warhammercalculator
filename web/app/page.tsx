@@ -901,6 +901,7 @@ export default function Home() {
     targetStrengthState = profile.targetStrengthState,
     attackerRemainedStationary = profile.attackerRemainedStationary,
     sourceUnitAttached = false,
+    sourceUnitWaaaghActive = false,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -916,6 +917,7 @@ export default function Home() {
       targetStrengthState,
       attackerRemainedStationary,
       sourceUnitAttached,
+      sourceUnitWaaaghActive,
     );
   const withActivePresets = (
     current: Profile,
@@ -1002,6 +1004,7 @@ export default function Home() {
         baseProfile.targetStrengthState,
         baseProfile.attackerRemainedStationary,
         baseProfile.attackerAttached,
+        baseProfile.attackerWaaaghActive,
       ),
       selectedPresets(
         selectedTargetUnit,
@@ -1015,6 +1018,7 @@ export default function Home() {
         baseProfile.targetStrengthState,
         baseProfile.attackerRemainedStationary,
         baseProfile.targetAttached,
+        baseProfile.targetWaaaghActive,
       ),
       weapon?.type ?? "Ranged",
       {
@@ -1030,6 +1034,8 @@ export default function Home() {
         attackerRemainedStationary: baseProfile.attackerRemainedStationary,
         attackerAttached: baseProfile.attackerAttached,
         targetAttached: baseProfile.targetAttached,
+        attackerWaaaghActive: baseProfile.attackerWaaaghActive,
+        targetWaaaghActive: baseProfile.targetWaaaghActive,
       },
     ) as Profile;
   };
@@ -1238,6 +1244,7 @@ export default function Home() {
                             attackerCharged: false,
                             attackerRemainedStationary: false,
                             attackerAttached: false,
+                            attackerWaaaghActive: false,
                             attackerUnitModels: 0,
                             nearbyEnemyModels: 0,
                             attackerBattleShocked: false,
@@ -1273,6 +1280,7 @@ export default function Home() {
                             attackerCharged: false,
                             attackerRemainedStationary: false,
                             attackerAttached: false,
+                            attackerWaaaghActive: false,
                             attackerUnitModels: 0,
                             nearbyEnemyModels: 0,
                             attackerBattleShocked: false,
@@ -1335,6 +1343,7 @@ export default function Home() {
                   attackerCharged={profile.attackerCharged}
                   attackerRemainedStationary={profile.attackerRemainedStationary}
                   sourceUnitAttached={profile.attackerAttached}
+                  sourceUnitWaaaghActive={profile.attackerWaaaghActive}
                   attackerBattleShocked={profile.attackerBattleShocked}
                   targetBattleShocked={profile.targetBattleShocked}
                   targetStrengthState={profile.targetStrengthState}
@@ -1437,6 +1446,7 @@ export default function Home() {
                             ...current,
                             targetBattleShocked: false,
                             targetAttached: false,
+                            targetWaaaghActive: false,
                             targetStrengthState: "full",
                           },
                           selectedWeapon,
@@ -1469,6 +1479,7 @@ export default function Home() {
                             ...current,
                             targetBattleShocked: false,
                             targetAttached: false,
+                            targetWaaaghActive: false,
                             targetStrengthState: "full",
                           },
                           selectedWeapon,
@@ -1532,6 +1543,7 @@ export default function Home() {
                   attackerCharged={profile.attackerCharged}
                   attackerRemainedStationary={profile.attackerRemainedStationary}
                   sourceUnitAttached={profile.targetAttached}
+                  sourceUnitWaaaghActive={profile.targetWaaaghActive}
                   attackerBattleShocked={profile.attackerBattleShocked}
                   targetBattleShocked={profile.targetBattleShocked}
                   targetStrengthState={profile.targetStrengthState}
@@ -1924,6 +1936,28 @@ export default function Home() {
                       })
                     : setProfile((current) =>
                         withActivePresets({ ...current, targetAttached: value }),
+                      )
+                }
+              />
+              <Toggle
+                label="Attacker is gaining Waaagh! benefits"
+                checked={profile.attackerWaaaghActive}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({ ...current, attackerWaaaghActive: value }),
+                  )
+                }
+              />
+              <Toggle
+                label="Target is gaining Waaagh! benefits"
+                checked={profile.targetWaaaghActive}
+                onChange={(value) =>
+                  selectedTargetModel
+                    ? applyTarget(selectedTargetModel, activeTargetPresetIds, {
+                        targetWaaaghActive: value,
+                      })
+                    : setProfile((current) =>
+                        withActivePresets({ ...current, targetWaaaghActive: value }),
                       )
                 }
               />

@@ -105,6 +105,8 @@ export default function UnitVsUnit() {
   const [attackerRemainedStationary, setAttackerRemainedStationary] = useState(false);
   const [attackerAttached, setAttackerAttached] = useState(false);
   const [targetAttached, setTargetAttached] = useState(false);
+  const [attackerWaaaghActive, setAttackerWaaaghActive] = useState(false);
+  const [targetWaaaghActive, setTargetWaaaghActive] = useState(false);
   const [attackerBattleShocked, setAttackerBattleShocked] = useState(false);
   const [targetBattleShocked, setTargetBattleShocked] = useState(false);
   const [targetStrengthState, setTargetStrengthState] = useState<TargetStrengthState>("full");
@@ -178,6 +180,8 @@ export default function UnitVsUnit() {
     attackerRemainedStationary,
     attackerAttached,
     targetAttached,
+    attackerWaaaghActive,
+    targetWaaaghActive,
     attackerBattleShocked,
     targetBattleShocked,
     targetStrengthState,
@@ -196,6 +200,7 @@ export default function UnitVsUnit() {
     setAttackerCharged(false);
     setAttackerRemainedStationary(false);
     setAttackerAttached(false);
+    setAttackerWaaaghActive(false);
     setAttackerUnitModels(0);
     setNearbyEnemyModels(0);
     setAttackerBattleShocked(false);
@@ -231,6 +236,7 @@ export default function UnitVsUnit() {
   const selectTarget = (unitId: string) => {
     setTargetUnitId(unitId);
     setTargetAttached(false);
+    setTargetWaaaghActive(false);
     setTargetBattleShocked(false);
     setTargetStrengthState("full");
     const unit = targetUnits.find((entry) => entry.id === unitId);
@@ -288,6 +294,8 @@ export default function UnitVsUnit() {
             attackerRemainedStationary,
             attackerAttached,
             targetAttached,
+            attackerWaaaghActive,
+            targetWaaaghActive,
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
@@ -309,6 +317,7 @@ export default function UnitVsUnit() {
           targetStrengthState,
           attackerRemainedStationary,
           attackerAttached,
+          attackerWaaaghActive,
         ),
         selectedAndAutomaticCombatPresets(
           targetUnit?.combatPresets ?? [],
@@ -324,6 +333,7 @@ export default function UnitVsUnit() {
           targetStrengthState,
           attackerRemainedStationary,
           targetAttached,
+          targetWaaaghActive,
         ),
         line.weapon.type,
         {
@@ -339,6 +349,8 @@ export default function UnitVsUnit() {
           attackerRemainedStationary,
           attackerAttached,
           targetAttached,
+          attackerWaaaghActive,
+          targetWaaaghActive,
         },
       ),
     );
@@ -363,6 +375,7 @@ export default function UnitVsUnit() {
               targetStrengthState,
               attackerRemainedStationary,
               targetAttached,
+              targetWaaaghActive,
             ),
           )
           .map((preset) => [preset.id, preset]),
@@ -384,6 +397,7 @@ export default function UnitVsUnit() {
         targetStrengthState,
         attackerRemainedStationary,
         targetAttached,
+        targetWaaaghActive,
       })),
     );
   };
@@ -517,6 +531,7 @@ export default function UnitVsUnit() {
                   setAttackerCharged(false);
                   setAttackerRemainedStationary(false);
                   setAttackerAttached(false);
+                  setAttackerWaaaghActive(false);
                   setAttackerUnitModels(0);
                   setNearbyEnemyModels(0);
                   setAttackerBattleShocked(false);
@@ -578,6 +593,7 @@ export default function UnitVsUnit() {
                   attackerCharged={attackerCharged}
                   attackerRemainedStationary={attackerRemainedStationary}
                   sourceUnitAttached={attackerAttached}
+                  sourceUnitWaaaghActive={attackerWaaaghActive}
                   attackerBattleShocked={attackerBattleShocked}
                   targetBattleShocked={targetBattleShocked}
                   targetStrengthState={targetStrengthState}
@@ -823,6 +839,7 @@ export default function UnitVsUnit() {
                   setTargetBattleShocked(false);
                   setTargetStrengthState("full");
                   setTargetAttached(false);
+                  setTargetWaaaghActive(false);
                 }}
               >
                 <option value="">Choose faction</option>
@@ -905,6 +922,27 @@ export default function UnitVsUnit() {
               </span>
             </label>
             <label>
+              <span>Waaagh! benefits</span>
+              <span className="inline-checkbox">
+                <input
+                  aria-label="Attacker is gaining Waaagh! benefits"
+                  type="checkbox"
+                  checked={attackerWaaaghActive}
+                  onChange={(event) => setAttackerWaaaghActive(event.target.checked)}
+                />
+                Attacker
+              </span>
+              <span className="inline-checkbox">
+                <input
+                  aria-label="Target is gaining Waaagh! benefits"
+                  type="checkbox"
+                  checked={targetWaaaghActive}
+                  onChange={(event) => setTargetWaaaghActive(event.target.checked)}
+                />
+                Target
+              </span>
+            </label>
+            <label>
               <span>Target distance</span>
               <input
                 aria-label="Target distance in inches"
@@ -971,6 +1009,7 @@ export default function UnitVsUnit() {
                   attackerCharged={attackerCharged}
                   attackerRemainedStationary={attackerRemainedStationary}
                   sourceUnitAttached={targetAttached}
+                  sourceUnitWaaaghActive={targetWaaaghActive}
                   attackerBattleShocked={attackerBattleShocked}
                   targetBattleShocked={targetBattleShocked}
                   targetStrengthState={targetStrengthState}

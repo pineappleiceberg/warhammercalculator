@@ -57,6 +57,8 @@ const booleanParameters = [
   ["attackerRemainedStationary", ["attackerRemainedStationary", "stationary"]],
   ["attackerAttached", ["attackerAttached"]],
   ["targetAttached", ["targetAttached"]],
+  ["attackerWaaaghActive", ["attackerWaaaghActive", "waaaghActive"]],
+  ["targetWaaaghActive", ["targetWaaaghActive"]],
   ["attackerBattleShocked", ["attackerBattleShocked"]],
   ["targetBattleShocked", ["targetBattleShocked", "battleShocked"]],
   ["withinHalfRange", ["withinHalfRange", "halfRange"]],
