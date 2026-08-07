@@ -24,6 +24,8 @@ CREATE TABLE unit_combat_presets (
     activation TEXT NOT NULL CHECK (activation IN ('inherent', 'automatic', 'situational')),
     weapon_scope TEXT NOT NULL CHECK (weapon_scope IN ('Any', 'Ranged', 'Melee')),
     maximum_target_distance INTEGER CHECK (maximum_target_distance > 0),
+    requires_attacker_charge INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_attacker_charge IN (0, 1)),
     hit_modifier INTEGER NOT NULL CHECK (hit_modifier BETWEEN -1 AND 1),
     hit_modifier_role TEXT CHECK (hit_modifier_role IN ('attacker', 'target', 'either')),
     hit_modifier_subject TEXT CHECK (hit_modifier_subject IN
@@ -94,7 +96,7 @@ def main() -> None:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
         connection.execute(
-            "UPDATE metadata SET value = '29' WHERE key = 'schema_version'"
+            "UPDATE metadata SET value = '30' WHERE key = 'schema_version'"
         )
         connection.execute("PRAGMA optimize")
         connection.commit()

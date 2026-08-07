@@ -62,6 +62,7 @@ const defaults = {
   rapidFire: 0,
   melta: 0,
   targetDistance: 0,
+  attackerCharged: false,
   withinHalfRange: false,
   torrent: false,
   blast: false,
@@ -174,6 +175,7 @@ test("canonical agent parameters round-trip every supported profile field", () =
     criticalWounds: 5,
     rapidFire: 2,
     targetDistance: 9,
+    attackerCharged: true,
     blast: true,
     rerollWounds: true,
   };

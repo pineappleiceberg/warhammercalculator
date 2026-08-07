@@ -166,6 +166,7 @@ def export(database: Path, output: Path) -> None:
         for row in connection.execute(
             """SELECT datasheet_id, ability_position, preset_position, name, description_text,
                       is_exclusive_choice, activation, weapon_scope, maximum_target_distance,
+                      requires_attacker_charge,
                       hit_modifier, hit_modifier_role,
                       hit_modifier_subject, wound_modifier, wound_modifier_role,
                       wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
@@ -185,6 +186,11 @@ def export(database: Path, output: Path) -> None:
                     **(
                         {"maximumTargetDistance": row["maximum_target_distance"]}
                         if row["maximum_target_distance"]
+                        else {}
+                    ),
+                    **(
+                        {"requiresAttackerCharge": True}
+                        if row["requires_attacker_charge"]
                         else {}
                     ),
                     "hitModifier": row["hit_modifier"],

@@ -176,6 +176,7 @@ export default function PlayMode() {
     targetKeywords = targetProfiles.find((entry) => String(entry.id) === targetModelId)?.keywords ??
       [],
     targetDistance = profile.targetDistance,
+    attackerCharged = profile.attackerCharged,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -185,6 +186,7 @@ export default function PlayMode() {
       targetKeywords,
       attackKeywordsForWeapon(weapon),
       targetDistance,
+      attackerCharged,
     );
 
   const refreshProfile = (
@@ -194,6 +196,7 @@ export default function PlayMode() {
     nextAttackerPresetIds = activeAttackerPresetIds,
     nextTargetPresetIds = activeTargetPresetIds,
     nextTargetDistance = profile.targetDistance,
+    nextAttackerCharged = profile.attackerCharged,
   ) => {
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
@@ -217,6 +220,7 @@ export default function PlayMode() {
             weaponCount: listWeapon?.count ?? 1,
             targetModels: targetUnit?.modelCount ?? 1,
             targetDistance: nextTargetDistance,
+            attackerCharged: nextAttackerCharged,
           },
           weapon,
           model.keywords,
@@ -227,6 +231,7 @@ export default function PlayMode() {
           weapon,
           model.keywords,
           nextTargetDistance,
+          nextAttackerCharged,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -234,12 +239,14 @@ export default function PlayMode() {
           weapon,
           model.keywords,
           nextTargetDistance,
+          nextAttackerCharged,
         ),
         weapon.type,
         {
           targetKeywords: model.keywords,
           attackKeywords: attackKeywordsForWeapon(weapon),
           targetDistance: nextTargetDistance,
+          attackerCharged: nextAttackerCharged,
         },
       ),
     );
@@ -289,6 +296,7 @@ export default function PlayMode() {
             weaponCount: selectedWeapon?.count ?? 1,
             targetModels: nextTarget.modelCount,
             targetDistance: profile.targetDistance,
+            attackerCharged: profile.attackerCharged,
           },
           weaponProfile,
           model.keywords,
@@ -299,6 +307,7 @@ export default function PlayMode() {
           weaponProfile,
           model.keywords,
           profile.targetDistance,
+          profile.attackerCharged,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -306,12 +315,14 @@ export default function PlayMode() {
           weaponProfile,
           model.keywords,
           profile.targetDistance,
+          profile.attackerCharged,
         ),
         weaponProfile.type,
         {
           targetKeywords: model.keywords,
           attackKeywords: attackKeywordsForWeapon(weaponProfile),
           targetDistance: profile.targetDistance,
+          attackerCharged: profile.attackerCharged,
         },
       ),
     );
@@ -424,6 +435,7 @@ export default function PlayMode() {
                       setWeaponId("");
                       setProfileId("");
                       setActiveAttackerPresetIds([]);
+                      setProfile((current) => ({ ...current, attackerCharged: false }));
                       setResult(null);
                     }}
                   >
@@ -448,6 +460,7 @@ export default function PlayMode() {
                       setActiveAttackerPresetIds(nextUnit?.combatPresetIds ?? []);
                       setWeaponId("");
                       setProfileId("");
+                      setProfile((current) => ({ ...current, attackerCharged: false }));
                       setResult(null);
                     }}
                   >
@@ -545,6 +558,28 @@ export default function PlayMode() {
                   </select>
                 </label>
                 <label>
+                  <span>Charge</span>
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Attacker charged this turn"
+                      type="checkbox"
+                      checked={profile.attackerCharged}
+                      onChange={(event) =>
+                        refreshProfile(
+                          weaponId,
+                          targetModelId,
+                          profileId,
+                          activeAttackerPresetIds,
+                          activeTargetPresetIds,
+                          profile.targetDistance,
+                          event.target.checked,
+                        )
+                      }
+                    />
+                    Charged
+                  </span>
+                </label>
+                <label>
                   <span>Distance</span>
                   <input
                     aria-label="Target distance in inches"
@@ -579,6 +614,7 @@ export default function PlayMode() {
                   }}
                   title="Active attacking abilities"
                   targetDistance={profile.targetDistance}
+                  attackerCharged={profile.attackerCharged}
                 />
               )}
               {targetCatalogueUnit && (
@@ -592,6 +628,7 @@ export default function PlayMode() {
                   }}
                   title="Active defensive abilities"
                   targetDistance={profile.targetDistance}
+                  attackerCharged={profile.attackerCharged}
                 />
               )}
             </div>

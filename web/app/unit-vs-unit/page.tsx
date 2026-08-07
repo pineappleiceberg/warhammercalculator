@@ -98,6 +98,7 @@ export default function UnitVsUnit() {
   const [targetSegments, setTargetSegments] = useState<TargetSegment[]>([]);
   const [initialWoundsLost, setInitialWoundsLost] = useState(0);
   const [targetDistance, setTargetDistance] = useState(0);
+  const [attackerCharged, setAttackerCharged] = useState(false);
   const [results, setResults] = useState<WeaponLine[]>([]);
   const [volleySummary, setVolleySummary] = useState<OrderedVolleySummary | null>(null);
   const [rollResult, setRollResult] = useState<OrderedVolleyRollResult | null>(null);
@@ -162,6 +163,7 @@ export default function UnitVsUnit() {
   const inputKey = JSON.stringify({
     initialWoundsLost,
     targetDistance,
+    attackerCharged,
     orderedLines: orderedLines.map((line) => [line.weapon.id, line.count]),
     targetSegments,
     activeAttackerPresetIds,
@@ -174,6 +176,7 @@ export default function UnitVsUnit() {
 
   const selectAttacker = (unitId: string) => {
     setAttackerUnitId(unitId);
+    setAttackerCharged(false);
     const unit = attackerUnits.find((entry) => entry.id === unitId);
     const groups = groupWeaponProfiles(unit?.weapons ?? []);
     const models = unit?.suggestedModelCount ?? 1;
@@ -261,6 +264,7 @@ export default function UnitVsUnit() {
           targetSegments[0]?.keywords ?? [],
           attackKeywordsForWeapon(line.weapon),
           targetDistance,
+          attackerCharged,
         ),
         selectedAndAutomaticCombatPresets(
           targetUnit?.combatPresets ?? [],
@@ -270,12 +274,14 @@ export default function UnitVsUnit() {
           targetSegments[0]?.keywords ?? [],
           attackKeywordsForWeapon(line.weapon),
           targetDistance,
+          attackerCharged,
         ),
         line.weapon.type,
         {
           targetKeywords: targetSegments[0]?.keywords ?? [],
           attackKeywords: attackKeywordsForWeapon(line.weapon),
           targetDistance,
+          attackerCharged,
         },
       ),
     );
@@ -294,6 +300,7 @@ export default function UnitVsUnit() {
               targetSegments[0]?.keywords ?? [],
               attackKeywordsForWeapon(line.weapon),
               targetDistance,
+              attackerCharged,
             ),
           )
           .map((preset) => [preset.id, preset]),
@@ -307,6 +314,7 @@ export default function UnitVsUnit() {
         weaponName: line.weapon.name,
         attackKeywords: attackKeywordsForWeapon(line.weapon),
         targetDistance,
+        attackerCharged,
       })),
     );
   };
@@ -492,6 +500,7 @@ export default function UnitVsUnit() {
                   onChange={setActiveAttackerPresetIds}
                   title="Active attacking abilities"
                   targetDistance={targetDistance}
+                  attackerCharged={attackerCharged}
                 />
                 {attackerUnit.unresolvedLoadoutSubjects.length > 0 && (
                   <details className="source-choice-pools model-composition-editor" open>
@@ -753,6 +762,17 @@ export default function UnitVsUnit() {
               </select>
             </label>
             <label>
+              <span>Charge state</span>
+              <span className="inline-checkbox">
+                <input
+                  type="checkbox"
+                  checked={attackerCharged}
+                  onChange={(event) => setAttackerCharged(event.target.checked)}
+                />
+                Attacker charged this turn
+              </span>
+            </label>
+            <label>
               <span>Target distance</span>
               <input
                 aria-label="Target distance in inches"
@@ -775,6 +795,7 @@ export default function UnitVsUnit() {
                   onChange={setActiveTargetPresetIds}
                   title="Active defensive abilities"
                   targetDistance={targetDistance}
+                  attackerCharged={attackerCharged}
                 />
                 <div className="sequence-heading">
                   <div>

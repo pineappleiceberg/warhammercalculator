@@ -17,7 +17,7 @@ priority over feature count.
 ## Prioritized backlog
 
 1. Extend the source-backed rules eligibility layer beyond phase, exact
-   target/Psychic keywords, and direct target distance to other compound
+   target/Psychic keywords, direct target distance, and charge state to other compound
    conditions that currently require manual interpretation.
 2. Represent model-count-, casualty-, and nearby-unit-scaled Attacks modifiers
    as explicit reproducible state instead of requiring manual arithmetic.
@@ -26,6 +26,18 @@ priority over feature count.
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added exact attacker-charge eligibility. SQLite schema 30 marks
+  17 unambiguous charge-triggered presets as automatic and exports their
+  machine-readable requirement; mixed clauses such as charged-or-was-charged,
+  closest-target alternatives, and combined choice modes remain manual. Model
+  vs Model, Unit vs Unit, Play Mode, shared profiles, normalized API input, and
+  static agent URLs preserve an editable charge state. An inactive state can
+  no longer apply the selected rule, while `charged=true` automatically applies
+  the source rule to compatible weapons. Brutal Raider now also imports its
+  plural-worded Armour Penetration improvement alongside Strength. Parser exclusions, generated-data
+  snapshots, URL round trips, and C/Wasm composition regressions cover the
+  boundary.
 
 - 2026-08-07: Added composition-gated bearer defenses. SQLite schema 29 uses
   the structured maximum unit composition to import 21 optional defensive

@@ -33,9 +33,11 @@ The main tables are:
   otherwise affected unit. Unclassified effects are omitted instead of guessed.
   Every row has an `activation` classification. Strictly unconditional,
   whole-model/unit defenses are `inherent` and become editable model-profile
-  defaults. Rules whose complete eligibility is an exact selected-target or
-  attacking-weapon keyword test are `automatic`; they apply only to the
-  matching weapon and keyword. All other rows are `situational`, preserve their
+  defaults. Rules whose complete eligibility is an exact selected-target,
+  attacking-weapon keyword, or unambiguous attacker-charge test are `automatic`;
+  they apply only to matching weapon, target, and battlefield state. Charge-or-
+  charged, alternative-branch, and combined-mode wording remains situational.
+  All other rows are `situational`, preserve their
   full condition, and are never assumed active. Their `weapon_scope` also
   preserves conservative phase eligibility: an effect explicitly bounded to a
   Shooting or Fight phase is restricted to ranged or melee attacks, while

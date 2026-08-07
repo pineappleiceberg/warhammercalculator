@@ -85,6 +85,8 @@ type CatalogueCombatPreset = {
   name: string;
   description: string;
   weaponScope: "Any" | "Ranged" | "Melee";
+  maximumTargetDistance?: number;
+  requiresAttackerCharge?: boolean;
   hitModifier: number;
   hitModifierRole: "attacker" | "target" | "either" | null;
   hitModifierSubject: string | null;
@@ -893,6 +895,7 @@ export default function Home() {
     weapon: CatalogueWeapon | undefined,
     targetKeywords: string[],
     targetDistance = profile.targetDistance,
+    attackerCharged = profile.attackerCharged,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -902,6 +905,7 @@ export default function Home() {
       targetKeywords,
       attackKeywordsForWeapon(weapon),
       targetDistance,
+      attackerCharged,
     );
   const withActivePresets = (
     current: Profile,
@@ -976,6 +980,7 @@ export default function Home() {
         weapon,
         targetKeywords,
         baseProfile.targetDistance,
+        baseProfile.attackerCharged,
       ),
       selectedPresets(
         selectedTargetUnit,
@@ -983,12 +988,14 @@ export default function Home() {
         weapon,
         targetKeywords,
         baseProfile.targetDistance,
+        baseProfile.attackerCharged,
       ),
       weapon?.type ?? "Ranged",
       {
         targetKeywords,
         attackKeywords: attackKeywordsForWeapon(weapon),
         targetDistance: baseProfile.targetDistance,
+        attackerCharged: baseProfile.attackerCharged,
       },
     ) as Profile;
   };
@@ -1186,7 +1193,12 @@ export default function Home() {
                       setAttackerWeapon("");
                       setActiveAttackerPresetIds([]);
                       setProfile((current) =>
-                        withActivePresets(current, selectedWeapon, [], activeTargetPresetIds),
+                        withActivePresets(
+                          { ...current, attackerCharged: false },
+                          selectedWeapon,
+                          [],
+                          activeTargetPresetIds,
+                        ),
                       );
                     }}
                   >
@@ -1208,7 +1220,12 @@ export default function Home() {
                       setAttackerWeapon("");
                       setActiveAttackerPresetIds([]);
                       setProfile((current) =>
-                        withActivePresets(current, selectedWeapon, [], activeTargetPresetIds),
+                        withActivePresets(
+                          { ...current, attackerCharged: false },
+                          selectedWeapon,
+                          [],
+                          activeTargetPresetIds,
+                        ),
                       );
                     }}
                   >
@@ -1260,6 +1277,7 @@ export default function Home() {
                   onChange={chooseAttackerPresets}
                   title="Active attacking abilities"
                   targetDistance={profile.targetDistance}
+                  attackerCharged={profile.attackerCharged}
                 />
               )}
               <DiceField
@@ -1431,6 +1449,7 @@ export default function Home() {
                   onChange={chooseTargetPresets}
                   title="Active defensive abilities"
                   targetDistance={profile.targetDistance}
+                  attackerCharged={profile.attackerCharged}
                 />
               )}
               <div className="field-grid three">
@@ -1764,6 +1783,13 @@ export default function Home() {
                   setProfile((current) => withActivePresets({ ...current, targetDistance: value }))
                 }
                 suffix='"'
+              />
+              <Toggle
+                label="Attacker charged this turn"
+                checked={profile.attackerCharged}
+                onChange={(value) =>
+                  setProfile((current) => withActivePresets({ ...current, attackerCharged: value }))
+                }
               />
               <Toggle
                 label="Within half range"

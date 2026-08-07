@@ -1982,6 +1982,56 @@ test("source-backed target distance changes preset composition at its exact boun
   assert.equal(applyCombatPresets({ ...base, targetDistance: 10 }, [driveBy], [], "Ranged").ap, 0);
 });
 
+test("source-backed charge rules require the explicit attacker charge state", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const beastboss = catalogue.units.find((unit) => unit.name === "Beastboss");
+  const beastlyRage = beastboss.combatPresets.find((preset) => preset.name === "Beastly Rage");
+  const weapon = beastboss.weapons.find((entry) => entry.type === "Melee");
+  const selected = (charged) =>
+    selectedAndAutomaticCombatPresets(
+      beastboss.combatPresets,
+      [],
+      weapon.type,
+      weapon.name,
+      [],
+      attackKeywordsForWeapon(weapon),
+      0,
+      charged,
+    );
+  assert.equal(beastlyRage.requiresAttackerCharge, true);
+  assert.equal(beastlyRage.activation, "automatic");
+  assert.equal(selected(false).length, 0);
+  assert.deepEqual(
+    selected(true).map((preset) => preset.name),
+    ["Beastly Rage"],
+  );
+
+  const base = { weaponName: weapon.name, attackerCharged: false, devastatingWounds: false };
+  assert.equal(applyCombatPresets(base, [beastlyRage], [], "Melee").devastatingWounds, false);
+  assert.equal(
+    applyCombatPresets({ ...base, attackerCharged: true }, [beastlyRage], [], "Melee")
+      .devastatingWounds,
+    true,
+  );
+
+  const catachan = catalogue.units.find((unit) => unit.name === "Catachan Jungle Fighters");
+  const jungleFighters = catachan.combatPresets.find((preset) => preset.name === "Jungle Fighters");
+  assert.equal(jungleFighters.requiresAttackerCharge, undefined);
+
+  const reaveCaptain = catalogue.units.find((unit) => unit.name === "Red Corsairs Reave-Captain");
+  const brutalRaider = reaveCaptain.combatPresets.find((preset) => preset.name === "Brutal Raider");
+  const raiderProfile = applyCombatPresets(
+    { ...base, attackerCharged: true, strengthModifier: 0, ap: 0 },
+    [brutalRaider],
+    [],
+    "Melee",
+  );
+  assert.equal(raiderProfile.strengthModifier, 1);
+  assert.equal(raiderProfile.ap, 1);
+});
+
 test("source-backed situational Attacks replacements reach C/Wasm exactly", async () => {
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),

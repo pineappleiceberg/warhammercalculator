@@ -102,6 +102,7 @@ export type CatalogueCombatPreset = {
   description: string;
   weaponScope: "Any" | "Ranged" | "Melee";
   maximumTargetDistance?: number;
+  requiresAttackerCharge?: boolean;
   hitModifier: number;
   hitModifierRole: CombatPresetRole | null;
   hitModifierSubject: CombatPresetSubject | null;

@@ -1081,6 +1081,23 @@ select:focus {
   background: #fffdf7;
   border: 1px solid var(--line);
 }
+.inline-checkbox {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.compact-form .inline-checkbox input,
+.play-selectors .inline-checkbox input {
+  width: 18px;
+  min-height: 18px;
+  margin: 0;
+  padding: 0;
+}
 .loadout-list,
 .roster-units {
   display: grid;

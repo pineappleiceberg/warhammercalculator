@@ -16,6 +16,7 @@ type Props = {
   title?: string;
   hint?: string;
   targetDistance?: number;
+  attackerCharged?: boolean;
 };
 
 export function CombatPresetSelector({
@@ -26,6 +27,7 @@ export function CombatPresetSelector({
   title,
   hint,
   targetDistance = 0,
+  attackerCharged = false,
 }: Props) {
   const available = presets.filter(
     (preset) => combatPresetRequiresActivation(preset) && combatPresetSupportsRole(preset, role),
@@ -64,6 +66,12 @@ export function CombatPresetSelector({
                 {targetDistance <= 0 || targetDistance > preset.maximumTargetDistance
                   ? " · inactive at current distance"
                   : " · active at current distance"}
+              </small>
+            ) : null}
+            {preset.requiresAttackerCharge ? (
+              <small>
+                Requires attacker to have charged this turn
+                {attackerCharged ? " · active" : " · inactive"}
               </small>
             ) : null}
             <small>Affects {combatPresetSubjectSummary(preset, role)}</small>

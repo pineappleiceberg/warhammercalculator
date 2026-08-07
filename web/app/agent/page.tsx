@@ -95,12 +95,12 @@ export default function AgentCalculator() {
         if (isCatalogueAgentQuery(search)) {
           const catalogue = await loadCatalogue();
           const selection = resolveAgentCatalogueSelection(search, catalogue);
-          const requestedDistance = Number(
-            search.get("distance") ?? search.get("targetDistance") ?? 0,
-          );
+          const requestedContext = parseAgentProfile(search, DEFAULT_PROFILE, false);
+          const requestedDistance = requestedContext.targetDistance;
+          const attackerCharged = requestedContext.attackerCharged;
           let profile = applyTargetProfile(DEFAULT_PROFILE, selection.model);
           profile = applyWeaponProfile(profile, selection.weapon, selection.model.keywords);
-          profile = { ...profile, targetDistance: requestedDistance };
+          profile = { ...profile, targetDistance: requestedDistance, attackerCharged };
           const attackerPresets = selectedAndAutomaticCombatPresets(
             selection.attacker.combatPresets,
             selection.attackerPresets.map((preset) => preset.id),
@@ -109,6 +109,7 @@ export default function AgentCalculator() {
             selection.model.keywords,
             attackKeywordsForWeapon(selection.weapon),
             requestedDistance,
+            attackerCharged,
           );
           const targetPresets = selectedAndAutomaticCombatPresets(
             selection.target.combatPresets,
@@ -118,6 +119,7 @@ export default function AgentCalculator() {
             selection.model.keywords,
             attackKeywordsForWeapon(selection.weapon),
             requestedDistance,
+            attackerCharged,
           );
           profile = applyCombatPresets(
             profile,
@@ -128,6 +130,7 @@ export default function AgentCalculator() {
               targetKeywords: selection.model.keywords,
               attackKeywords: attackKeywordsForWeapon(selection.weapon),
               targetDistance: requestedDistance,
+              attackerCharged,
             },
           );
           candidate = parseAgentProfile(search, profile, false);

@@ -53,6 +53,7 @@ class ProfileDataTests(unittest.TestCase):
                 "reroll_wound_ones": 0,
                 "additional_effects": [],
                 "maximum_target_distance": None,
+                "requires_attacker_charge": False,
                 "hit_modifier_role": "attacker",
                 "hit_modifier_subject": "led_unit",
                 "wound_modifier_role": "attacker",
@@ -456,6 +457,25 @@ class ProfileDataTests(unittest.TestCase):
             )
         )
 
+        charged = combat_preset(
+            "Each time this model makes a melee attack, if it made a Charge move this "
+            "turn, you can re-roll the Hit roll and you can re-roll the Wound roll."
+        )
+        self.assertTrue(charged["requires_attacker_charge"])
+        self.assertFalse(
+            combat_preset(
+                "Each time a model in this unit makes a melee attack, if this unit made "
+                "a Charge move or was charged this turn, add 1 to the Wound roll."
+            )["requires_attacker_charge"]
+        )
+        self.assertFalse(
+            combat_preset(
+                "Each time a model in this unit makes a ranged attack that targets the "
+                "closest eligible target, or makes a melee attack in a turn in which it "
+                "made a Charge move, improve the Strength characteristic of that attack by 2."
+            )["requires_attacker_charge"]
+        )
+
         moment_shackle = combat_presets(
             "Moment Shackle",
             "Once per battle, at the start of the Fight phase, you can select one of the "
@@ -818,7 +838,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "29",
+                "30",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1102,7 +1122,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 2), ("inherent", 32), ("situational", 1428)],
+                [("automatic", 19), ("inherent", 32), ("situational", 1411)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1110,6 +1130,40 @@ class ProfileDataTests(unittest.TestCase):
                     "GROUP BY weapon_scope ORDER BY weapon_scope"
                 ).fetchall(),
                 [("Any", 810), ("Melee", 310), ("Ranged", 342)],
+            )
+            charge_rows = connection.execute(
+                """SELECT datasheet.name, preset.name
+                   FROM unit_combat_presets AS preset
+                   JOIN datasheets AS datasheet ON datasheet.id = preset.datasheet_id
+                   WHERE preset.requires_attacker_charge = 1
+                   ORDER BY datasheet.name, preset.name"""
+            ).fetchall()
+            self.assertEqual(len(charge_rows), 17)
+            self.assertIn(("Beastboss", "Beastly Rage"), charge_rows)
+            self.assertIn(("Captain With Jump Pack", "Angel’s Wrath"), charge_rows)
+            self.assertIn(("‘Iron Hand’ Straken", "Been There, Seen it, Killed it"), charge_rows)
+            self.assertNotIn(("Catachan Jungle Fighters", "Jungle Fighters"), charge_rows)
+            self.assertNotIn(("Indomitor Kill Team", "Indomitor Doctrines"), charge_rows)
+            self.assertNotIn(("Zephyrim Squad", "Embodied Prophecy"), charge_rows)
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_combat_presets
+                       WHERE requires_attacker_charge = 1 AND activation != 'automatic'"""
+                ).fetchone()[0],
+                0,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT effect.effect_type, effect.value
+                       FROM unit_combat_preset_effects AS effect
+                       JOIN unit_combat_presets AS preset
+                         USING (datasheet_id, ability_position, preset_position)
+                       JOIN datasheets AS datasheet ON datasheet.id = preset.datasheet_id
+                       WHERE datasheet.name = 'Red Corsairs Reave-Captain'
+                         AND preset.name = 'Brutal Raider'
+                       ORDER BY effect.effect_type"""
+                ).fetchall(),
+                [("ap_modifier", 1), ("strength_modifier", 1)],
             )
             self.assertEqual(
                 connection.execute(

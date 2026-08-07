@@ -154,6 +154,12 @@ cannot alter ranged attacks. Abilities available in both phases, or whose
 effect explicitly lasts beyond the phase in which it was activated, remain
 available to either attack type.
 
+Unambiguous rules triggered by the attacking unit making a Charge move are
+automatic when the editable `attackerCharged` state is enabled and inert when it
+is disabled. Rules that also allow being charged, combine a charge with a
+closest-target alternative, or change how exclusive modes are selected remain
+explicit choices until every branch can be represented exactly.
+
 Optional rules used when an attack is allocated have an explicit deterministic
 policy: skip the configured number of allocated attacks, then spend one use per
 attack before its Hit roll. A use is spent even if that attack misses, and any
@@ -342,6 +348,8 @@ PSYKER target without affecting Life-draining touch or non-PSYKER targets.
 Psychic-only Feel No Pain rules likewise apply only to weapons carrying the
 Psychic ability. Unit vs Unit rejects a mixed Psychic/non-Psychic volley when
 one shared target profile cannot represent both defenses exactly.
+Exact charge-triggered rules likewise activate automatically only when the
+attacker's editable charge state is enabled.
 Saved lists can mark battle- or turn-long conditions as Play Mode defaults, and
 Play Mode keeps changes in its local recovery state. Offensive modifiers,
 re-rolls, weapon-keyword grants, AP changes, Critical Hit/Wound thresholds, and
@@ -435,7 +443,7 @@ A direct profile supplies `attacks`, `hit`, `strength`, `ap`, `damage`,
 `attacks`, `damage`, `sustainedHits`, and `rapidFire` accept a number or dice
 expression such as `D6+2`. Optional parameters include `weaponCount`, `model`,
 `models`, `invuln`, `fnp`, `reduction`, `criticalHits`, `criticalWounds`,
-`melta`, `distance` (in inches; `0` means unknown), `damageDivisor`,
+`melta`, `distance` (in inches; `0` means unknown), `charged` (a boolean), `damageDivisor`,
 `attacksReplacement`, `attacksMultiplier`, `attacksModifier`,
 `strengthReplacement`, `strengthMultiplier`, `strengthModifier`, `damageReplacement`,
 `damageMultiplier`, `damageModifier`, `firstFailedSaveDamageReplacement`,
@@ -448,7 +456,10 @@ comma-separated `torrent`, `blast`, `heavy`, `lance`, `cover`, `ignores-cover`,
 `half-range` values. AP is a nonnegative magnitude, so AP -4 is passed as
 `ap=4`.
 
-Model vs Model, Unit vs Unit, and Play Mode expose the same target distance.
+Model vs Model, Unit vs Unit, and Play Mode expose the same target distance and
+attacker charge state. A catalogue agent request can pass `charged=true` to
+activate every compatible, unambiguous charge-triggered source rule without an
+`attackerPreset` parameter.
 Distance-gated source abilities apply only when the value is known and within
 their published limit; `0` deliberately means unknown and leaves them inactive.
 
