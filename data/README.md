@@ -66,8 +66,11 @@ The main tables are:
 - direct objective-marker rules carry `requires_source_on_objective` or
   `requires_target_on_objective`. Seventeen baseline/upgrade abilities are split
   so their re-roll of 1 remains automatic while the full re-roll requires the
-  objective state. Control ownership, selected markers, and compound alternatives
-  remain situational rather than being inferred
+  objective state. Ownership rules additionally carry
+  `requires_source_controls_objective` or
+  `requires_target_on_objective_not_controlled_by_source`; exact ownership is
+  required, while selected markers and compound alternatives remain situational
+  rather than being inferred
 - exact bearer Save, invulnerable-save, Feel No Pain, and Damage-reduction
   effects are imported as optional situational presets only when structured
   composition proves that the datasheet contains exactly one model; bearer

@@ -1,4 +1,4 @@
-import type { CombatProfile } from "./combat";
+import type { CombatProfile, ObjectiveOwner } from "./combat";
 import { antiWoundThreshold } from "./anti.mjs";
 import { abilityDiceValue, parseDice } from "./dice.mjs";
 import { applyCombatPresets as applySelectedCombatPresets } from "./combat-presets.mjs";
@@ -110,6 +110,8 @@ export type CatalogueCombatPreset = {
   requiresOathWoundBonusEligible?: boolean;
   requiresSourceOnObjective?: boolean;
   requiresTargetOnObjective?: boolean;
+  requiresSourceControlsObjective?: boolean;
+  requiresTargetOnObjectiveNotControlledBySource?: boolean;
   requiresTargetBattleShocked?: boolean;
   requiresAttackerNotBattleShocked?: boolean;
   requiredTargetStrengthState?: "below_starting" | "below_half" | "not_below_half";
@@ -238,6 +240,8 @@ type CombatPresetContext = {
   attackerOathWoundBonusEligible?: boolean;
   attackerOnObjective?: boolean;
   targetOnObjective?: boolean;
+  attackerObjectiveOwner?: ObjectiveOwner;
+  targetObjectiveOwner?: ObjectiveOwner;
   attackerBattleShocked?: boolean;
   targetBattleShocked?: boolean;
   targetStrengthState?: CombatProfile["targetStrengthState"];

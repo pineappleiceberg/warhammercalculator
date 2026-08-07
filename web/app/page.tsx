@@ -906,6 +906,8 @@ export default function Home() {
     sourceUnitOathWoundBonusEligible = false,
     sourceUnitOnObjective = false,
     targetUnitOnObjective = false,
+    sourceUnitControlsObjective = false,
+    targetUnitOnObjectiveNotControlledBySource = false,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -926,6 +928,8 @@ export default function Home() {
       sourceUnitOathWoundBonusEligible,
       sourceUnitOnObjective,
       targetUnitOnObjective,
+      sourceUnitControlsObjective,
+      targetUnitOnObjectiveNotControlledBySource,
     );
   const withActivePresets = (
     current: Profile,
@@ -1017,6 +1021,9 @@ export default function Home() {
         baseProfile.attackerOathWoundBonusEligible,
         baseProfile.attackerOnObjective,
         baseProfile.targetOnObjective,
+        baseProfile.attackerOnObjective && baseProfile.attackerObjectiveOwner === "attacker",
+        baseProfile.targetOnObjective &&
+          ["target", "uncontrolled"].includes(baseProfile.targetObjectiveOwner),
       ),
       selectedPresets(
         selectedTargetUnit,
@@ -1035,6 +1042,9 @@ export default function Home() {
         false,
         baseProfile.targetOnObjective,
         baseProfile.attackerOnObjective,
+        baseProfile.targetOnObjective && baseProfile.targetObjectiveOwner === "target",
+        baseProfile.attackerOnObjective &&
+          ["attacker", "uncontrolled"].includes(baseProfile.attackerObjectiveOwner),
       ),
       weapon?.type ?? "Ranged",
       {
@@ -1056,6 +1066,8 @@ export default function Home() {
         attackerOathWoundBonusEligible: baseProfile.attackerOathWoundBonusEligible,
         attackerOnObjective: baseProfile.attackerOnObjective,
         targetOnObjective: baseProfile.targetOnObjective,
+        attackerObjectiveOwner: baseProfile.attackerObjectiveOwner,
+        targetObjectiveOwner: baseProfile.targetObjectiveOwner,
       },
     ) as Profile;
   };
@@ -1268,6 +1280,7 @@ export default function Home() {
                             targetOathOfMoment: false,
                             attackerOathWoundBonusEligible: false,
                             attackerOnObjective: false,
+                            attackerObjectiveOwner: "unknown",
                             attackerUnitModels: 0,
                             nearbyEnemyModels: 0,
                             attackerBattleShocked: false,
@@ -1307,6 +1320,7 @@ export default function Home() {
                             targetOathOfMoment: false,
                             attackerOathWoundBonusEligible: false,
                             attackerOnObjective: false,
+                            attackerObjectiveOwner: "unknown",
                             attackerUnitModels: 0,
                             nearbyEnemyModels: 0,
                             attackerBattleShocked: false,
@@ -1475,6 +1489,7 @@ export default function Home() {
                             targetWaaaghActive: false,
                             targetOathOfMoment: false,
                             targetOnObjective: false,
+                            targetObjectiveOwner: "unknown",
                             targetStrengthState: "full",
                           },
                           selectedWeapon,
@@ -1510,6 +1525,7 @@ export default function Home() {
                             targetWaaaghActive: false,
                             targetOathOfMoment: false,
                             targetOnObjective: false,
+                            targetObjectiveOwner: "unknown",
                             targetStrengthState: "full",
                           },
                           selectedWeapon,
@@ -2017,7 +2033,11 @@ export default function Home() {
                 checked={profile.attackerOnObjective}
                 onChange={(value) =>
                   setProfile((current) =>
-                    withActivePresets({ ...current, attackerOnObjective: value }),
+                    withActivePresets({
+                      ...current,
+                      attackerOnObjective: value,
+                      ...(!value ? { attackerObjectiveOwner: "unknown" as const } : {}),
+                    }),
                   )
                 }
               />
@@ -2028,12 +2048,56 @@ export default function Home() {
                   selectedTargetModel
                     ? applyTarget(selectedTargetModel, activeTargetPresetIds, {
                         targetOnObjective: value,
+                        ...(!value ? { targetObjectiveOwner: "unknown" as const } : {}),
                       })
                     : setProfile((current) =>
                         withActivePresets({ ...current, targetOnObjective: value }),
                       )
                 }
               />
+              <label className="number-field">
+                <span>Attacker objective controlled by</span>
+                <select
+                  aria-label="Attacker objective owner"
+                  disabled={!profile.attackerOnObjective}
+                  value={profile.attackerObjectiveOwner}
+                  onChange={(event) =>
+                    setProfile((current) =>
+                      withActivePresets({
+                        ...current,
+                        attackerObjectiveOwner: event.target
+                          .value as Profile["attackerObjectiveOwner"],
+                      }),
+                    )
+                  }
+                >
+                  <option value="unknown">Unknown</option>
+                  <option value="attacker">Attacker</option>
+                  <option value="target">Target</option>
+                  <option value="uncontrolled">Neither player</option>
+                </select>
+              </label>
+              <label className="number-field">
+                <span>Target objective controlled by</span>
+                <select
+                  aria-label="Target objective owner"
+                  disabled={!profile.targetOnObjective}
+                  value={profile.targetObjectiveOwner}
+                  onChange={(event) =>
+                    setProfile((current) =>
+                      withActivePresets({
+                        ...current,
+                        targetObjectiveOwner: event.target.value as Profile["targetObjectiveOwner"],
+                      }),
+                    )
+                  }
+                >
+                  <option value="unknown">Unknown</option>
+                  <option value="attacker">Attacker</option>
+                  <option value="target">Target</option>
+                  <option value="uncontrolled">Neither player</option>
+                </select>
+              </label>
               <Toggle
                 label="Attacker is Battle-shocked"
                 checked={profile.attackerBattleShocked}

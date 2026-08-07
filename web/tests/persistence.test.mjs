@@ -137,6 +137,8 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
       attackerOathWoundBonusEligible: true,
       attackerOnObjective: true,
       targetOnObjective: true,
+      attackerObjectiveOwner: "attacker",
+      targetObjectiveOwner: "uncontrolled",
       attackerBattleShocked: true,
       targetBattleShocked: true,
       targetStrengthState: "below_half",
@@ -166,6 +168,8 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   assert.equal(recovery.profile.attackerOathWoundBonusEligible, true);
   assert.equal(recovery.profile.attackerOnObjective, true);
   assert.equal(recovery.profile.targetOnObjective, true);
+  assert.equal(recovery.profile.attackerObjectiveOwner, "attacker");
+  assert.equal(recovery.profile.targetObjectiveOwner, "uncontrolled");
   assert.equal(recovery.profile.attackerBattleShocked, true);
   assert.equal(recovery.profile.targetBattleShocked, true);
   assert.equal(recovery.profile.targetStrengthState, "below_half");

@@ -2067,6 +2067,54 @@ test("source-backed objective position upgrades the exact C/Wasm re-roll boundar
   assert.ok(lessThanOrEqual(baselineDamage, objectiveDamage));
 });
 
+test("source-backed objective ownership upgrades the exact C/Wasm re-roll boundary", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const russ = catalogue.units.find((unit) => unit.name === "Leman Russ Battle Tank");
+  const weapon = russ.weapons.find((entry) => entry.type === "Ranged");
+  const selected = (targetNotControlledBySource) =>
+    selectedAndAutomaticCombatPresets(
+      russ.combatPresets,
+      [],
+      weapon.type,
+      weapon.name,
+      [],
+      attackKeywordsForWeapon(weapon),
+      0,
+      false,
+      false,
+      false,
+      "full",
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      targetNotControlledBySource,
+    ).filter((preset) => preset.name.startsWith("Armoured Spearhead —"));
+  const unknown = applyCombatPresets(
+    { targetOnObjective: true, targetObjectiveOwner: "unknown" },
+    selected(false),
+    [],
+    weapon.type,
+  );
+  const opponent = applyCombatPresets(
+    { targetOnObjective: true, targetObjectiveOwner: "target" },
+    selected(true),
+    [],
+    weapon.type,
+  );
+  assert.equal(unknown.rerollHitOnes, true);
+  assert.equal(unknown.rerollHits, false);
+  assert.equal(opponent.rerollHits, true);
+  assert.equal(opponent.rerollHitOnes, false);
+  assert.ok(lessThanOrEqual(exactMean({ flags: 8192 }), exactMean({ flags: 8 })));
+});
+
 test("source-backed target distance changes preset composition at its exact boundary", async () => {
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),

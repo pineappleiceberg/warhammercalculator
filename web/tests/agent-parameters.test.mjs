@@ -156,6 +156,10 @@ test("agent query rejects incomplete, unknown, duplicate, and inexact values", (
     () => parseAgentProfile("targetStrength=destroyed", defaults, false),
     /targetStrengthState must be full, below-starting, or below-half/i,
   );
+  assert.throws(
+    () => parseAgentProfile("targetObjectiveOwner=both", defaults, false),
+    /targetObjectiveOwner must be unknown, attacker, target, or uncontrolled/i,
+  );
 });
 
 test("canonical agent parameters round-trip every supported profile field", () => {
@@ -202,6 +206,8 @@ test("canonical agent parameters round-trip every supported profile field", () =
     attackerOathWoundBonusEligible: true,
     attackerOnObjective: true,
     targetOnObjective: true,
+    attackerObjectiveOwner: "attacker",
+    targetObjectiveOwner: "target",
     attackerBattleShocked: true,
     targetBattleShocked: true,
     targetStrengthState: "below_half",
@@ -296,6 +302,14 @@ test("catalogue agent Attached-unit state selects exact automatic leader rules",
     true,
   );
   assert.equal(parseAgentProfile("targetObjective=true", defaults, false).targetOnObjective, true);
+  assert.equal(
+    parseAgentProfile("attackerObjectiveControl=attacker", defaults, false).attackerObjectiveOwner,
+    "attacker",
+  );
+  assert.equal(
+    parseAgentProfile("targetObjectiveControl=uncontrolled", defaults, false).targetObjectiveOwner,
+    "uncontrolled",
+  );
   assert.equal(parseAgentProfile("unitModels=12", defaults, false).attackerUnitModels, 12);
   assert.equal(parseAgentProfile("nearbyEnemyModels=9", defaults, false).nearbyEnemyModels, 9);
 });
@@ -451,6 +465,65 @@ test("catalogue agent objective state separates a base re-roll from its objectiv
   assert.equal(baseline.rerollWounds, false);
   assert.equal(objective.rerollWounds, true);
   assert.equal(objective.rerollWoundOnes, false);
+});
+
+test("catalogue agent objective ownership activates only exact control relationships", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const russ = catalogue.units.find((unit) => unit.name === "Leman Russ Battle Tank");
+  const weapon = russ.weapons.find((entry) => entry.type === "Ranged");
+  const selected = (targetOnObjective, targetNotControlledBySource) =>
+    selectedAndAutomaticCombatPresets(
+      russ.combatPresets,
+      [],
+      weapon.type,
+      weapon.name,
+      [],
+      attackKeywordsForWeapon(weapon),
+      0,
+      false,
+      false,
+      false,
+      "full",
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      targetOnObjective,
+      false,
+      targetNotControlledBySource,
+    ).filter((preset) => preset.name.startsWith("Armoured Spearhead —"));
+  assert.deepEqual(
+    [...new Set(selected(false, false).map((preset) => preset.name))],
+    ["Armoured Spearhead — Base re-roll"],
+  );
+  assert.deepEqual(
+    [...new Set(selected(true, false).map((preset) => preset.name))],
+    ["Armoured Spearhead — Base re-roll"],
+  );
+  assert.deepEqual(
+    [...new Set(selected(true, true).map((preset) => preset.name))],
+    ["Armoured Spearhead — Base re-roll", "Armoured Spearhead — Objective-control re-roll"],
+  );
+  const unknown = applyCombatPresets(
+    { targetOnObjective: true, targetObjectiveOwner: "unknown" },
+    selected(true, false),
+    [],
+    weapon.type,
+  );
+  const opponent = applyCombatPresets(
+    { targetOnObjective: true, targetObjectiveOwner: "target" },
+    selected(true, true),
+    [],
+    weapon.type,
+  );
+  assert.equal(unknown.rerollHitOnes, true);
+  assert.equal(unknown.rerollHits, false);
+  assert.equal(opponent.rerollHits, true);
+  assert.equal(opponent.rerollHitOnes, false);
 });
 
 test("catalogue agent model counts compose exact automatic Attacks scaling", async () => {

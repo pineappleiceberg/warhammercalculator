@@ -99,6 +99,8 @@ export function combatPresetMeetsEligibility(
   sourceUnitOathWoundBonusEligible = false,
   sourceUnitOnObjective = false,
   targetUnitOnObjective = false,
+  sourceUnitControlsObjective = false,
+  targetUnitOnObjectiveNotControlledBySource = false,
 ) {
   const targets = new Set(targetKeywords.map(normalizedKeyword));
   const attacks = new Set(attackKeywords.map(normalizedKeyword));
@@ -122,6 +124,9 @@ export function combatPresetMeetsEligibility(
     (!preset.requiresOathWoundBonusEligible || sourceUnitOathWoundBonusEligible) &&
     (!preset.requiresSourceOnObjective || sourceUnitOnObjective) &&
     (!preset.requiresTargetOnObjective || targetUnitOnObjective) &&
+    (!preset.requiresSourceControlsObjective || sourceUnitControlsObjective) &&
+    (!preset.requiresTargetOnObjectiveNotControlledBySource ||
+      targetUnitOnObjectiveNotControlledBySource) &&
     (!preset.requiresTargetBattleShocked || targetBattleShocked) &&
     (!preset.requiresAttackerNotBattleShocked || !attackerBattleShocked) &&
     (preset.effects ?? []).every(
@@ -153,6 +158,8 @@ export function selectedAndAutomaticCombatPresets(
   sourceUnitOathWoundBonusEligible = false,
   sourceUnitOnObjective = false,
   targetUnitOnObjective = false,
+  sourceUnitControlsObjective = false,
+  targetUnitOnObjectiveNotControlledBySource = false,
 ) {
   const selected = new Set(selectedIds);
   return presets.filter(
@@ -175,6 +182,8 @@ export function selectedAndAutomaticCombatPresets(
         sourceUnitOathWoundBonusEligible,
         sourceUnitOnObjective,
         targetUnitOnObjective,
+        sourceUnitControlsObjective,
+        targetUnitOnObjectiveNotControlledBySource,
       ),
   );
 }
@@ -230,6 +239,8 @@ export function combatPresetEffects(
   nearbyEnemyModels = 0,
   sourceUnitOnObjective = false,
   targetUnitOnObjective = false,
+  sourceUnitControlsObjective = false,
+  targetUnitOnObjectiveNotControlledBySource = false,
 ) {
   const applicable = presets.filter(
     (preset) =>
@@ -251,6 +262,8 @@ export function combatPresetEffects(
         sourceUnitOathWoundBonusEligible,
         sourceUnitOnObjective,
         targetUnitOnObjective,
+        sourceUnitControlsObjective,
+        targetUnitOnObjectiveNotControlledBySource,
       ),
   );
   const hitModifiers = applicable.filter((preset) =>
@@ -459,6 +472,14 @@ function applyDefensiveEffects(profile, effects) {
   };
 }
 
+function controlsObjective(onObjective, owner, side) {
+  return Boolean(onObjective && owner === side);
+}
+
+function onObjectiveNotControlledBy(onObjective, owner, side) {
+  return Boolean(onObjective && owner !== "unknown" && owner !== side);
+}
+
 export function applyTargetCombatPresets(targets, targetPresets, weaponContexts) {
   const contexts = weaponContexts.map((context) =>
     typeof context === "string" ? { weaponType: context, attackKeywords: [context] } : context,
@@ -494,6 +515,16 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
       context.nearbyEnemyModels ?? 0,
       context.targetOnObjective ?? false,
       context.attackerOnObjective ?? false,
+      controlsObjective(
+        context.targetOnObjective,
+        context.targetObjectiveOwner ?? "unknown",
+        "target",
+      ),
+      onObjectiveNotControlledBy(
+        context.attackerOnObjective,
+        context.attackerObjectiveOwner ?? "unknown",
+        "target",
+      ),
     ),
   );
   const candidates = effects.map((effect) =>
@@ -571,6 +602,16 @@ export function applyCombatPresets(
     context.nearbyEnemyModels ?? profile.nearbyEnemyModels ?? 0,
     context.attackerOnObjective ?? profile.attackerOnObjective ?? false,
     context.targetOnObjective ?? profile.targetOnObjective ?? false,
+    controlsObjective(
+      context.attackerOnObjective ?? profile.attackerOnObjective,
+      context.attackerObjectiveOwner ?? profile.attackerObjectiveOwner ?? "unknown",
+      "attacker",
+    ),
+    onObjectiveNotControlledBy(
+      context.targetOnObjective ?? profile.targetOnObjective,
+      context.targetObjectiveOwner ?? profile.targetObjectiveOwner ?? "unknown",
+      "attacker",
+    ),
   );
   const target = combatPresetEffects(
     targetPresets,
@@ -593,6 +634,16 @@ export function applyCombatPresets(
     context.nearbyEnemyModels ?? profile.nearbyEnemyModels ?? 0,
     context.targetOnObjective ?? profile.targetOnObjective ?? false,
     context.attackerOnObjective ?? profile.attackerOnObjective ?? false,
+    controlsObjective(
+      context.targetOnObjective ?? profile.targetOnObjective,
+      context.targetObjectiveOwner ?? profile.targetObjectiveOwner ?? "unknown",
+      "target",
+    ),
+    onObjectiveNotControlledBy(
+      context.attackerOnObjective ?? profile.attackerOnObjective,
+      context.attackerObjectiveOwner ?? profile.attackerObjectiveOwner ?? "unknown",
+      "target",
+    ),
   );
   const attacksReplacements = [attacker.attacksReplacement, target.attacksReplacement].filter(
     (value) => value > 0,

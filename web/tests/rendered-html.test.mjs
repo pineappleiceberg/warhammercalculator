@@ -117,6 +117,8 @@ test("server-renders the calculator interface", async () => {
   assert.match(html, /Other Wound modifier/);
   assert.match(html, /Roll this attack/);
   assert.match(html, /Share matchup/);
+  assert.match(html, /aria-label="Attacker objective owner"/);
+  assert.match(html, /aria-label="Target objective owner"/);
   assert.match(html, /LIVE RESOLUTION/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
@@ -154,6 +156,8 @@ test("server-renders every battle workflow", async () => {
       assert.match(html, /aria-label="Target is the Oath of Moment target"/);
       assert.match(html, /aria-label="Attacker is within range of an objective marker"/);
       assert.match(html, /aria-label="Target is within range of an objective marker"/);
+      assert.match(html, /aria-label="Attacker objective owner"/);
+      assert.match(html, /aria-label="Target objective owner"/);
       assert.match(html, /aria-label="Attacker qualifies for the Codex Oath wound bonus"/);
     }
     if (pathname === "/unit-vs-unit") {
@@ -165,6 +169,8 @@ test("server-renders every battle workflow", async () => {
       assert.match(html, /aria-label="Target is the Oath of Moment target"/);
       assert.match(html, /aria-label="Attacker is within range of an objective marker"/);
       assert.match(html, /aria-label="Target is within range of an objective marker"/);
+      assert.match(html, /aria-label="Attacker objective owner"/);
+      assert.match(html, /aria-label="Target objective owner"/);
       assert.match(html, /aria-label="Attacker qualifies for the Codex Oath wound bonus"/);
     }
     if (pathname === "/agent") {
@@ -1717,6 +1723,20 @@ test("generated API profiles preserve combat invariants and reject malformed fie
     assert.equal(response.status, 400, JSON.stringify({ endpoint, body, result }));
     assert.equal(result.error.status, 400);
     assert.equal(result.apiVersion, "v1");
+  }
+  for (const field of ["attackerObjectiveOwner", "targetObjectiveOwner"]) {
+    const response = await worker.fetch(
+      new Request("http://localhost/api/v1/calculate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ profile: { [field]: "both" } }),
+      }),
+      testEnv,
+      context,
+    );
+    const result = await response.json();
+    assert.equal(response.status, 400);
+    assert.match(result.error.message, /unknown, attacker, target, or uncontrolled/i);
   }
 });
 

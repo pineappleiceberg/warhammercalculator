@@ -81,6 +81,10 @@ const booleanParameters = [
 ];
 
 const enumParameters = [["targetStrengthState", ["targetStrengthState", "targetStrength"]]];
+const objectiveOwnerParameters = [
+  ["attackerObjectiveOwner", ["attackerObjectiveOwner", "attackerObjectiveControl"]],
+  ["targetObjectiveOwner", ["targetObjectiveOwner", "targetObjectiveControl"]],
+];
 
 const knownParameters = new Set([
   ...catalogueParameters,
@@ -95,6 +99,7 @@ const knownParameters = new Set([
   ...integerParameters.flatMap(([, aliases]) => aliases),
   ...booleanParameters.flatMap(([, aliases]) => aliases),
   ...enumParameters.flatMap(([, aliases]) => aliases),
+  ...objectiveOwnerParameters.flatMap(([, aliases]) => aliases),
 ]);
 
 const requiredDirectParameters = [
@@ -253,6 +258,15 @@ export function parseAgentProfile(input, baseProfile, requireDirectParameters = 
     }
     profile[field] = normalized;
   }
+  for (const [field, aliases] of objectiveOwnerParameters) {
+    const value = singleValue(search, aliases);
+    if (value === null) continue;
+    const normalized = value.trim().toLowerCase();
+    if (!["unknown", "attacker", "target", "uncontrolled"].includes(normalized)) {
+      throw new Error(`${aliases[0]} must be unknown, attacker, target, or uncontrolled`);
+    }
+    profile[field] = normalized;
+  }
   setReroll(profile, search, "rerollHits", "rerollHits", "rerollHitOnes");
   setReroll(profile, search, "rerollWounds", "rerollWounds", "rerollWoundOnes");
   return profile;
@@ -390,6 +404,9 @@ export function canonicalAgentParameters(profile) {
     search.set(aliases[0], profile[field] ? "true" : "false");
   }
   search.set("targetStrength", String(profile.targetStrengthState ?? "full").replaceAll("_", "-"));
+  for (const [field, aliases] of objectiveOwnerParameters) {
+    search.set(aliases[0], String(profile[field] ?? "unknown"));
+  }
   search.set("rerollHits", profile.rerollHits ? "all" : profile.rerollHitOnes ? "ones" : "false");
   search.set(
     "rerollWounds",

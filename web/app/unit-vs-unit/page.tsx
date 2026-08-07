@@ -21,6 +21,7 @@ import {
   simulateOrderedVolleyPhase,
   type PhaseSimulationResult,
   type OrderedVolleyRollResult,
+  type ObjectiveOwner,
   type TargetStrengthState,
 } from "../../lib/combat";
 import {
@@ -111,6 +112,8 @@ export default function UnitVsUnit() {
   const [attackerOathWoundBonusEligible, setAttackerOathWoundBonusEligible] = useState(false);
   const [attackerOnObjective, setAttackerOnObjective] = useState(false);
   const [targetOnObjective, setTargetOnObjective] = useState(false);
+  const [attackerObjectiveOwner, setAttackerObjectiveOwner] = useState<ObjectiveOwner>("unknown");
+  const [targetObjectiveOwner, setTargetObjectiveOwner] = useState<ObjectiveOwner>("unknown");
   const [attackerBattleShocked, setAttackerBattleShocked] = useState(false);
   const [targetBattleShocked, setTargetBattleShocked] = useState(false);
   const [targetStrengthState, setTargetStrengthState] = useState<TargetStrengthState>("full");
@@ -190,6 +193,8 @@ export default function UnitVsUnit() {
     attackerOathWoundBonusEligible,
     attackerOnObjective,
     targetOnObjective,
+    attackerObjectiveOwner,
+    targetObjectiveOwner,
     attackerBattleShocked,
     targetBattleShocked,
     targetStrengthState,
@@ -212,6 +217,7 @@ export default function UnitVsUnit() {
     setTargetOathOfMoment(false);
     setAttackerOathWoundBonusEligible(false);
     setAttackerOnObjective(false);
+    setAttackerObjectiveOwner("unknown");
     setAttackerUnitModels(0);
     setNearbyEnemyModels(0);
     setAttackerBattleShocked(false);
@@ -250,6 +256,7 @@ export default function UnitVsUnit() {
     setTargetWaaaghActive(false);
     setTargetOathOfMoment(false);
     setTargetOnObjective(false);
+    setTargetObjectiveOwner("unknown");
     setTargetBattleShocked(false);
     setTargetStrengthState("full");
     const unit = targetUnits.find((entry) => entry.id === unitId);
@@ -313,6 +320,8 @@ export default function UnitVsUnit() {
             attackerOathWoundBonusEligible,
             attackerOnObjective,
             targetOnObjective,
+            attackerObjectiveOwner,
+            targetObjectiveOwner,
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
@@ -339,6 +348,8 @@ export default function UnitVsUnit() {
           attackerOathWoundBonusEligible,
           attackerOnObjective,
           targetOnObjective,
+          attackerOnObjective && attackerObjectiveOwner === "attacker",
+          targetOnObjective && ["target", "uncontrolled"].includes(targetObjectiveOwner),
         ),
         selectedAndAutomaticCombatPresets(
           targetUnit?.combatPresets ?? [],
@@ -359,6 +370,8 @@ export default function UnitVsUnit() {
           false,
           targetOnObjective,
           attackerOnObjective,
+          targetOnObjective && targetObjectiveOwner === "target",
+          attackerOnObjective && ["attacker", "uncontrolled"].includes(attackerObjectiveOwner),
         ),
         line.weapon.type,
         {
@@ -380,6 +393,8 @@ export default function UnitVsUnit() {
           attackerOathWoundBonusEligible,
           attackerOnObjective,
           targetOnObjective,
+          attackerObjectiveOwner,
+          targetObjectiveOwner,
         },
       ),
     );
@@ -409,6 +424,8 @@ export default function UnitVsUnit() {
               false,
               targetOnObjective,
               attackerOnObjective,
+              targetOnObjective && targetObjectiveOwner === "target",
+              attackerOnObjective && ["attacker", "uncontrolled"].includes(attackerObjectiveOwner),
             ),
           )
           .map((preset) => [preset.id, preset]),
@@ -433,6 +450,8 @@ export default function UnitVsUnit() {
         targetWaaaghActive,
         attackerOnObjective,
         targetOnObjective,
+        attackerObjectiveOwner,
+        targetObjectiveOwner,
       })),
     );
   };
@@ -570,6 +589,7 @@ export default function UnitVsUnit() {
                   setTargetOathOfMoment(false);
                   setAttackerOathWoundBonusEligible(false);
                   setAttackerOnObjective(false);
+                  setAttackerObjectiveOwner("unknown");
                   setAttackerUnitModels(0);
                   setNearbyEnemyModels(0);
                   setAttackerBattleShocked(false);
@@ -880,6 +900,7 @@ export default function UnitVsUnit() {
                   setTargetWaaaghActive(false);
                   setTargetOathOfMoment(false);
                   setTargetOnObjective(false);
+                  setTargetObjectiveOwner("unknown");
                 }}
               >
                 <option value="">Choose faction</option>
@@ -1010,7 +1031,10 @@ export default function UnitVsUnit() {
                   aria-label="Attacker is within range of an objective marker"
                   type="checkbox"
                   checked={attackerOnObjective}
-                  onChange={(event) => setAttackerOnObjective(event.target.checked)}
+                  onChange={(event) => {
+                    setAttackerOnObjective(event.target.checked);
+                    if (!event.target.checked) setAttackerObjectiveOwner("unknown");
+                  }}
                 />
                 Attacker
               </span>
@@ -1019,10 +1043,43 @@ export default function UnitVsUnit() {
                   aria-label="Target is within range of an objective marker"
                   type="checkbox"
                   checked={targetOnObjective}
-                  onChange={(event) => setTargetOnObjective(event.target.checked)}
+                  onChange={(event) => {
+                    setTargetOnObjective(event.target.checked);
+                    if (!event.target.checked) setTargetObjectiveOwner("unknown");
+                  }}
                 />
                 Target
               </span>
+            </label>
+            <label>
+              <span>Attacker objective controlled by</span>
+              <select
+                aria-label="Attacker objective owner"
+                disabled={!attackerOnObjective}
+                value={attackerObjectiveOwner}
+                onChange={(event) =>
+                  setAttackerObjectiveOwner(event.target.value as ObjectiveOwner)
+                }
+              >
+                <option value="unknown">Unknown</option>
+                <option value="attacker">Attacker</option>
+                <option value="target">Target</option>
+                <option value="uncontrolled">Neither player</option>
+              </select>
+            </label>
+            <label>
+              <span>Target objective controlled by</span>
+              <select
+                aria-label="Target objective owner"
+                disabled={!targetOnObjective}
+                value={targetObjectiveOwner}
+                onChange={(event) => setTargetObjectiveOwner(event.target.value as ObjectiveOwner)}
+              >
+                <option value="unknown">Unknown</option>
+                <option value="attacker">Attacker</option>
+                <option value="target">Target</option>
+                <option value="uncontrolled">Neither player</option>
+              </select>
             </label>
             <label>
               <span>Target distance</span>

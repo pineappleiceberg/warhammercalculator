@@ -197,11 +197,15 @@ accidentally bundled with the universal Hit re-roll.
 Direct rules whose complete condition is that the source or target is within
 range of any objective marker use the editable `attackerOnObjective` and
 `targetOnObjective` states. Baseline re-rolls remain automatic off an objective,
-while the stronger objective re-roll activates only in range. Conditions that
-name a selected marker, require a particular player to control it, or combine
-the marker with an aura, token, closest-target, or alternative condition remain
-explicit choices. Objective Control characteristic text that does not condition
-the combat effect no longer makes Black Rage or Voice of Experience manual.
+while the stronger objective re-roll activates only in range. The separate
+`attackerObjectiveOwner` and `targetObjectiveOwner` states record whether the
+attacker, target, or neither player controls that marker; `unknown` is the safe
+default. Exact rules for an objective the source controls or does not control
+use this ownership without guessing. Conditions that name a selected marker or
+combine the marker with an aura, token, closest-target, or alternative condition
+remain explicit choices. Objective Control characteristic text that does not
+condition the combat effect no longer makes Black Rage or Voice of Experience
+manual.
 
 Published Attacks modifiers that scale by a count use explicit editable state
 instead of an assumed average. `attackerUnitModels` records the total models in
@@ -548,6 +552,10 @@ manual profile arithmetic.
 Codex +1 Wound effect only when the target is also marked.
 `attackerObjective=true` and `targetObjective=true` activate exact rules that
 require the corresponding unit to be within range of any objective marker.
+Use `attackerObjectiveOwner` and `targetObjectiveOwner` with `attacker`,
+`target`, `uncontrolled`, or `unknown` to resolve objective-control conditions;
+the aliases `attackerObjectiveControl` and `targetObjectiveControl` are also
+accepted. Ownership-dependent rules remain inactive when ownership is unknown.
 Likewise, `targetBattleShocked=true` or `attackerBattleShocked=true` resolves
 compatible exact source rules before later numeric overrides are applied.
 `targetStrength=below-half` and the other two strength values likewise resolve

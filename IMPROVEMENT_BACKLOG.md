@@ -17,9 +17,9 @@ priority over feature count.
 ## Prioritized backlog
 
 1. Extend the source-backed rules eligibility layer beyond the now-covered
-   direct any-objective position to objective ownership and selected-marker
-   relationships, observer/marked-target relationships, aura proximity, and
-   other compound conditions that still require manual interpretation.
+   direct objective position and ownership to selected-marker relationships,
+   observer/marked-target relationships, aura proximity, closest-target state,
+   and other compound conditions that still require manual interpretation.
 2. Represent casualty- and nearby-unit-count-scaled Attacks modifiers as
    explicit reproducible state instead of requiring manual arithmetic; direct
    source-unit and nearby-enemy model counts are now covered.
@@ -28,6 +28,19 @@ priority over feature count.
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added exact objective ownership. SQLite schema 39 distinguishes
+  objectives controlled by the attacker, target, neither player, or an unknown
+  owner and keeps unknown ownership conservatively inactive. Fifteen former
+  manual rows are now source-backed automatic rules: nine Armoured Spearhead,
+  two Bringers of Change, two Stand Vigil, and two Battlefield Control rows.
+  Baseline re-rolls remain automatic and only the stronger control-dependent
+  tier activates for the exact relationship. Editable ownership round-trips
+  through Model vs Model, Unit vs Unit, Play recovery, normalized APIs, and
+  static agent URLs. Parser negatives retain closest-target and selected-marker
+  compounds as manual choices; database/catalogue snapshots, URL/recovery and
+  API validation, rendered workflows, and C/WebAssembly damage monotonicity
+  cover the new boundary.
 
 - 2026-08-07: Added exact direct objective-marker position. SQLite schema 38
   marks 22 source/target objective-dependent effects automatic and splits 17

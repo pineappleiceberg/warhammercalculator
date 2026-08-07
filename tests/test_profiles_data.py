@@ -61,6 +61,8 @@ class ProfileDataTests(unittest.TestCase):
                 "requires_oath_wound_bonus": False,
                 "requires_source_on_objective": False,
                 "requires_target_on_objective": False,
+                "requires_source_controls_objective": False,
+                "requires_target_on_objective_not_controlled_by_source": False,
                 "requires_target_battle_shocked": False,
                 "requires_attacker_not_battle_shocked": False,
                 "required_target_strength_state": None,
@@ -221,6 +223,46 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(preset["activation"], "automatic")
         self.assertEqual(preset["weapon_scope"], "Melee")
         self.assertEqual((preset["reroll_hits"], preset["reroll_hit_ones"]), (1, 0))
+
+    def test_combat_preset_parser_splits_exact_objective_ownership_rules(self):
+        armoured = combat_presets(
+            "Armoured Spearhead",
+            "Each time this model makes an attack that targets an enemy unit, re-roll a Hit "
+            "roll of 1 and, if that unit is within range of an objective marker you do not "
+            "control, you can re-roll the Hit roll instead.",
+        )
+        self.assertEqual(len(armoured), 2)
+        self.assertEqual(
+            [(preset["reroll_hits"], preset["reroll_hit_ones"]) for preset in armoured],
+            [(0, 1), (1, 0)],
+        )
+        self.assertEqual(
+            [
+                preset["requires_target_on_objective_not_controlled_by_source"]
+                for preset in armoured
+            ],
+            [False, True],
+        )
+        battlefield = combat_presets(
+            "Battlefield Control",
+            "Each time this model makes a ranged attack, if it is within range of an "
+            "objective marker you control, re-roll a Hit roll of 1.",
+        )
+        self.assertEqual(len(battlefield), 1)
+        self.assertTrue(battlefield[0]["requires_source_controls_objective"])
+        self.assertEqual(battlefield[0]["activation"], "automatic")
+        closest = (
+            "Each time a model in this unit makes a ranged attack that targets the closest "
+            "eligible enemy unit, re-roll a Hit roll of 1. If the target of that attack is "
+            "within range of an objective marker your opponent controls, you can re-roll "
+            "the Hit roll instead."
+        )
+        self.assertEqual(len(combat_presets("Hard-wired for Destruction", closest)), 1)
+        self.assertFalse(
+            combat_presets("Hard-wired for Destruction", closest)[0][
+                "requires_target_on_objective_not_controlled_by_source"
+            ]
+        )
 
         voice = (
             "While this model is leading a unit, improve the Objective Control "
@@ -1137,7 +1179,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "38",
+                "39",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1422,14 +1464,14 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 983), ("inherent", 32), ("situational", 919)],
+                [("automatic", 1011), ("inherent", 32), ("situational", 904)],
             )
             self.assertEqual(
                 connection.execute(
                     "SELECT weapon_scope, count(*) FROM unit_combat_presets "
                     "GROUP BY weapon_scope ORDER BY weapon_scope"
                 ).fetchall(),
-                [("Any", 1188), ("Melee", 402), ("Ranged", 344)],
+                [("Any", 1199), ("Melee", 402), ("Ranged", 346)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1487,6 +1529,36 @@ class ProfileDataTests(unittest.TestCase):
                        WHERE requires_attacker_charge = 1 AND activation != 'automatic'"""
                 ).fetchone()[0],
                 0,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT sum(requires_source_controls_objective),
+                              sum(requires_target_on_objective_not_controlled_by_source)
+                       FROM unit_combat_presets"""
+                ).fetchone(),
+                (4, 11),
+            )
+            ownership_rows = connection.execute(
+                """SELECT name, requires_source_controls_objective,
+                          requires_target_on_objective_not_controlled_by_source, count(*)
+                   FROM unit_combat_presets
+                   WHERE requires_source_controls_objective = 1
+                      OR requires_target_on_objective_not_controlled_by_source = 1
+                   GROUP BY name, requires_source_controls_objective,
+                            requires_target_on_objective_not_controlled_by_source
+                   ORDER BY name"""
+            ).fetchall()
+            self.assertIn(
+                ("Armoured Spearhead — Objective-control re-roll", 0, 1, 9),
+                ownership_rows,
+            )
+            self.assertIn(("Battlefield Control", 1, 0, 2), ownership_rows)
+            self.assertIn(
+                ("Bringers of Change — Objective-control re-roll", 0, 1, 2),
+                ownership_rows,
+            )
+            self.assertIn(
+                ("Stand Vigil — Objective-control re-roll", 1, 0, 2), ownership_rows
             )
             oath_rows = connection.execute(
                 """SELECT preset.name, preset.requires_oath_wound_bonus,
@@ -2437,6 +2509,28 @@ class ProfileDataTests(unittest.TestCase):
         }
         self.assertTrue(guardian["Aggressor Guardian — Defence"]["requiresSourceOnObjective"])
         self.assertTrue(guardian["Aggressor Guardian — Offence"]["requiresTargetOnObjective"])
+        brigand = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Leman Russ Battle Tank"
+        )
+        spearhead = {
+            preset["name"]: preset
+            for preset in brigand["combatPresets"]
+            if preset["name"].startswith("Armoured Spearhead —")
+        }
+        self.assertEqual(len(spearhead), 2)
+        self.assertTrue(spearhead["Armoured Spearhead — Base re-roll"]["rerollHitOnes"])
+        self.assertTrue(
+            spearhead["Armoured Spearhead — Objective-control re-roll"][
+                "requiresTargetOnObjectiveNotControlledBySource"
+            ]
+        )
+        stand_vigil = next(
+            preset
+            for unit in catalogue["units"]
+            for preset in unit["combatPresets"]
+            if preset["name"] == "Stand Vigil — Objective-control re-roll"
+        )
+        self.assertTrue(stand_vigil["requiresSourceControlsObjective"])
         troupe = next(unit for unit in catalogue["units"] if unit["id"] == "000002536")
         dance = [preset for preset in troupe["combatPresets"] if preset["choiceGroup"]]
         self.assertEqual(len(dance), 3)

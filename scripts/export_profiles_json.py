@@ -171,6 +171,8 @@ def export(database: Path, output: Path) -> None:
                       requires_waaagh_active,
                       requires_oath_target, requires_oath_wound_bonus,
                       requires_source_on_objective, requires_target_on_objective,
+                      requires_source_controls_objective,
+                      requires_target_on_objective_not_controlled_by_source,
                       requires_target_battle_shocked,
                       requires_attacker_not_battle_shocked, required_target_strength_state,
                       hit_modifier, hit_modifier_role,
@@ -232,6 +234,16 @@ def export(database: Path, output: Path) -> None:
                     **(
                         {"requiresTargetOnObjective": True}
                         if row["requires_target_on_objective"]
+                        else {}
+                    ),
+                    **(
+                        {"requiresSourceControlsObjective": True}
+                        if row["requires_source_controls_objective"]
+                        else {}
+                    ),
+                    **(
+                        {"requiresTargetOnObjectiveNotControlledBySource": True}
+                        if row["requires_target_on_objective_not_controlled_by_source"]
                         else {}
                     ),
                     **(

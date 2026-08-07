@@ -75,6 +75,8 @@ export type CombatProfile = {
   attackerOathWoundBonusEligible: boolean;
   attackerOnObjective: boolean;
   targetOnObjective: boolean;
+  attackerObjectiveOwner: ObjectiveOwner;
+  targetObjectiveOwner: ObjectiveOwner;
   attackerBattleShocked: boolean;
   targetBattleShocked: boolean;
   targetStrengthState: TargetStrengthState;
@@ -96,6 +98,7 @@ export type CombatProfile = {
 };
 
 export type TargetStrengthState = "full" | "below_starting" | "below_half";
+export type ObjectiveOwner = "unknown" | "attacker" | "target" | "uncontrolled";
 
 export type RollDetail = {
   label: string;
@@ -262,6 +265,8 @@ export const DEFAULT_PROFILE: CombatProfile = {
   attackerOathWoundBonusEligible: false,
   attackerOnObjective: false,
   targetOnObjective: false,
+  attackerObjectiveOwner: "unknown",
+  targetObjectiveOwner: "unknown",
   attackerBattleShocked: false,
   targetBattleShocked: false,
   targetStrengthState: "full",
@@ -315,6 +320,18 @@ export function normalizeProfile(input: unknown): CombatProfile {
   if (!(["full", "below_starting", "below_half"] as unknown[]).includes(targetStrengthState)) {
     throw new Error("targetStrengthState must be full, below_starting, or below_half");
   }
+  const objectiveOwner = (key: "attackerObjectiveOwner" | "targetObjectiveOwner") => {
+    const value = Object.hasOwn(source, key) ? source[key] : DEFAULT_PROFILE[key];
+    if (
+      !(
+        typeof value === "string" &&
+        ["unknown", "attacker", "target", "uncontrolled"].includes(value)
+      )
+    ) {
+      throw new Error(`${key} must be unknown, attacker, target, or uncontrolled`);
+    }
+    return value as ObjectiveOwner;
+  };
   const nullableNumberValue = (
     key: "damageReplacement" | "firstFailedSaveDamageReplacement",
     minimum: number,
@@ -419,6 +436,8 @@ export function normalizeProfile(input: unknown): CombatProfile {
     attackerOathWoundBonusEligible: booleanValue("attackerOathWoundBonusEligible"),
     attackerOnObjective: booleanValue("attackerOnObjective"),
     targetOnObjective: booleanValue("targetOnObjective"),
+    attackerObjectiveOwner: objectiveOwner("attackerObjectiveOwner"),
+    targetObjectiveOwner: objectiveOwner("targetObjectiveOwner"),
     attackerBattleShocked: booleanValue("attackerBattleShocked"),
     targetBattleShocked: booleanValue("targetBattleShocked"),
     targetStrengthState: targetStrengthState as TargetStrengthState,

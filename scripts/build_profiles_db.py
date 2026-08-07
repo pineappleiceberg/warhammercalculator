@@ -174,6 +174,10 @@ CREATE TABLE unit_combat_presets (
         CHECK (requires_source_on_objective IN (0, 1)),
     requires_target_on_objective INTEGER NOT NULL DEFAULT 0
         CHECK (requires_target_on_objective IN (0, 1)),
+    requires_source_controls_objective INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_source_controls_objective IN (0, 1)),
+    requires_target_on_objective_not_controlled_by_source INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_target_on_objective_not_controlled_by_source IN (0, 1)),
     requires_target_battle_shocked INTEGER NOT NULL DEFAULT 0
         CHECK (requires_target_battle_shocked IN (0, 1)),
     requires_attacker_not_battle_shocked INTEGER NOT NULL DEFAULT 0
@@ -619,6 +623,86 @@ def combat_direct_objective_presets(
         effects = combat_preset(normalized, allow_bearer_defenses)
         if effects:
             effects["requires_attached_unit"] = True
+            return [
+                {
+                    "name": name,
+                    "description": normalized,
+                    "is_exclusive_choice": 0,
+                    "activation": "automatic",
+                    **effects,
+                }
+            ]
+    ownership_patterns = {
+        "Armoured Spearhead": (
+            r"Each time this model makes an attack that targets an enemy unit, "
+            r"re-roll a Hit roll of 1 and, if that unit is within range of an objective "
+            r"marker you do not control, you can re-roll the Hit roll instead\.",
+            "hit",
+            "target_not_controlled",
+        ),
+        "Bringers of Change": (
+            r"Each time a model in this unit makes a ranged attack, re-roll a Wound roll "
+            r"of 1\. If that attack targets a unit within range of an objective marker "
+            r"you do not control, you can re-roll the Wound roll instead\.",
+            "wound",
+            "target_not_controlled",
+        ),
+        "Stand Vigil": (
+            r"Each time a model in this unit makes an attack, re-roll a Wound roll of 1\. "
+            r"While this unit is within range of an objective marker you control, you can "
+            r"re-roll the Wound roll instead\.",
+            "wound",
+            "source_controlled",
+        ),
+    }
+    ownership_pattern = ownership_patterns.get(name)
+    if ownership_pattern and re.fullmatch(
+        ownership_pattern[0], normalized, re.IGNORECASE
+    ):
+        roll = ownership_pattern[1]
+        base_text = re.split(
+            r"(?: and, if|\. If|\. While)", normalized, maxsplit=1
+        )[0]
+        if not base_text.endswith("."):
+            base_text += "."
+        baseline = combat_preset(base_text, allow_bearer_defenses)
+        if baseline:
+            upgrade = {
+                **baseline,
+                f"reroll_{roll}_ones": 0,
+                f"reroll_{roll}s": 1,
+            }
+            if ownership_pattern[2] == "target_not_controlled":
+                upgrade[
+                    "requires_target_on_objective_not_controlled_by_source"
+                ] = True
+            else:
+                upgrade["requires_source_controls_objective"] = True
+            return [
+                {
+                    "name": f"{name} — Base re-roll",
+                    "description": normalized,
+                    "is_exclusive_choice": 0,
+                    "activation": "automatic",
+                    **baseline,
+                },
+                {
+                    "name": f"{name} — Objective-control re-roll",
+                    "description": normalized,
+                    "is_exclusive_choice": 0,
+                    "activation": "automatic",
+                    **upgrade,
+                },
+            ]
+    if name == "Battlefield Control" and re.fullmatch(
+        r"Each time this model makes a ranged attack, if it is within range of an "
+        r"objective marker you control, re-roll a Hit roll of 1\.",
+        normalized,
+        re.IGNORECASE,
+    ):
+        effects = combat_preset(normalized, allow_bearer_defenses)
+        if effects:
+            effects["requires_source_controls_objective"] = True
             return [
                 {
                     "name": name,
@@ -1788,6 +1872,8 @@ def combat_preset(
     effects["requires_oath_wound_bonus"] = False
     effects["requires_source_on_objective"] = False
     effects["requires_target_on_objective"] = False
+    effects["requires_source_controls_objective"] = False
+    effects["requires_target_on_objective_not_controlled_by_source"] = False
     (
         effects["requires_target_battle_shocked"],
         effects["requires_attacker_not_battle_shocked"],
@@ -1809,6 +1895,8 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
             "requires_oath_wound_bonus",
             "requires_source_on_objective",
             "requires_target_on_objective",
+            "requires_source_controls_objective",
+            "requires_target_on_objective_not_controlled_by_source",
             "requires_target_battle_shocked",
             "requires_attacker_not_battle_shocked",
             "required_target_strength_state",
@@ -2174,6 +2262,8 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     requires_waaagh_active,
                     requires_oath_target, requires_oath_wound_bonus,
                     requires_source_on_objective, requires_target_on_objective,
+                    requires_source_controls_objective,
+                    requires_target_on_objective_not_controlled_by_source,
                     requires_target_battle_shocked,
                     requires_attacker_not_battle_shocked,
                     required_target_strength_state,
@@ -2182,7 +2272,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                     hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
                     wound_reroll_subject)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     ability_position,
@@ -2201,6 +2291,8 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     int(preset["requires_oath_wound_bonus"]),
                     int(preset["requires_source_on_objective"]),
                     int(preset["requires_target_on_objective"]),
+                    int(preset["requires_source_controls_objective"]),
+                    int(preset["requires_target_on_objective_not_controlled_by_source"]),
                     int(preset["requires_target_battle_shocked"]),
                     int(preset["requires_attacker_not_battle_shocked"]),
                     preset["required_target_strength_state"],
@@ -2385,7 +2477,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "38"),
+                    ("schema_version", "39"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

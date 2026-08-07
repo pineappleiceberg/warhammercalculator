@@ -187,6 +187,8 @@ export default function PlayMode() {
     sourceUnitOathWoundBonusEligible = false,
     sourceUnitOnObjective = false,
     targetUnitOnObjective = false,
+    sourceUnitControlsObjective = false,
+    targetUnitOnObjectiveNotControlledBySource = false,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -207,6 +209,8 @@ export default function PlayMode() {
       sourceUnitOathWoundBonusEligible,
       sourceUnitOnObjective,
       targetUnitOnObjective,
+      sourceUnitControlsObjective,
+      targetUnitOnObjectiveNotControlledBySource,
     );
 
   const refreshProfile = (
@@ -231,6 +235,8 @@ export default function PlayMode() {
     nextNearbyEnemyModels = profile.nearbyEnemyModels,
     nextAttackerOnObjective = profile.attackerOnObjective,
     nextTargetOnObjective = profile.targetOnObjective,
+    nextAttackerObjectiveOwner = profile.attackerObjectiveOwner,
+    nextTargetObjectiveOwner = profile.targetObjectiveOwner,
   ) => {
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
@@ -266,6 +272,8 @@ export default function PlayMode() {
             attackerOathWoundBonusEligible: nextAttackerOathWoundBonusEligible,
             attackerOnObjective: nextAttackerOnObjective,
             targetOnObjective: nextTargetOnObjective,
+            attackerObjectiveOwner: nextAttackerObjectiveOwner,
+            targetObjectiveOwner: nextTargetObjectiveOwner,
             attackerBattleShocked: nextAttackerBattleShocked,
             targetBattleShocked: nextTargetBattleShocked,
             targetStrengthState: nextTargetStrengthState,
@@ -290,6 +298,8 @@ export default function PlayMode() {
           nextAttackerOathWoundBonusEligible,
           nextAttackerOnObjective,
           nextTargetOnObjective,
+          nextAttackerOnObjective && nextAttackerObjectiveOwner === "attacker",
+          nextTargetOnObjective && ["target", "uncontrolled"].includes(nextTargetObjectiveOwner),
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -308,6 +318,9 @@ export default function PlayMode() {
           false,
           nextTargetOnObjective,
           nextAttackerOnObjective,
+          nextTargetOnObjective && nextTargetObjectiveOwner === "target",
+          nextAttackerOnObjective &&
+            ["attacker", "uncontrolled"].includes(nextAttackerObjectiveOwner),
         ),
         weapon.type,
         {
@@ -326,6 +339,8 @@ export default function PlayMode() {
           attackerOathWoundBonusEligible: nextAttackerOathWoundBonusEligible,
           attackerOnObjective: nextAttackerOnObjective,
           targetOnObjective: nextTargetOnObjective,
+          attackerObjectiveOwner: nextAttackerObjectiveOwner,
+          targetObjectiveOwner: nextTargetObjectiveOwner,
           attackerBattleShocked: nextAttackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
@@ -351,6 +366,38 @@ export default function PlayMode() {
     refreshProfile(id, targetModelId, firstProfileId);
   };
 
+  const refreshObjectiveState = (
+    attackerOnObjective: boolean,
+    targetOnObjective: boolean,
+    attackerObjectiveOwner = profile.attackerObjectiveOwner,
+    targetObjectiveOwner = profile.targetObjectiveOwner,
+  ) =>
+    refreshProfile(
+      weaponId,
+      targetModelId,
+      profileId,
+      activeAttackerPresetIds,
+      activeTargetPresetIds,
+      profile.targetDistance,
+      profile.attackerCharged,
+      profile.attackerBattleShocked,
+      profile.targetBattleShocked,
+      profile.targetStrengthState,
+      profile.attackerRemainedStationary,
+      profile.attackerAttached,
+      profile.targetAttached,
+      profile.attackerWaaaghActive,
+      profile.targetWaaaghActive,
+      profile.targetOathOfMoment,
+      profile.attackerOathWoundBonusEligible,
+      profile.attackerUnitModels,
+      profile.nearbyEnemyModels,
+      attackerOnObjective,
+      targetOnObjective,
+      attackerObjectiveOwner,
+      targetObjectiveOwner,
+    );
+
   const chooseProfile = (id: string) => {
     setProfileId(id);
     refreshProfile(weaponId, targetModelId, id);
@@ -372,6 +419,7 @@ export default function PlayMode() {
     const nextTargetWaaaghActive = false;
     const nextTargetOathOfMoment = false;
     const nextTargetOnObjective = false;
+    const nextTargetObjectiveOwner = "unknown" as const;
     const nextTargetStrengthState = "full" as const;
     setTargetModelId(model ? String(model.id) : "");
     setActiveTargetPresetIds(nextTargetPresetIds);
@@ -382,6 +430,7 @@ export default function PlayMode() {
         targetWaaaghActive: nextTargetWaaaghActive,
         targetOathOfMoment: nextTargetOathOfMoment,
         targetOnObjective: nextTargetOnObjective,
+        targetObjectiveOwner: nextTargetObjectiveOwner,
         targetBattleShocked: nextTargetBattleShocked,
         targetStrengthState: nextTargetStrengthState,
       }));
@@ -409,6 +458,8 @@ export default function PlayMode() {
             attackerOathWoundBonusEligible: profile.attackerOathWoundBonusEligible,
             attackerOnObjective: profile.attackerOnObjective,
             targetOnObjective: nextTargetOnObjective,
+            attackerObjectiveOwner: profile.attackerObjectiveOwner,
+            targetObjectiveOwner: nextTargetObjectiveOwner,
             targetStrengthState: nextTargetStrengthState,
           },
           weaponProfile,
@@ -431,6 +482,8 @@ export default function PlayMode() {
           profile.attackerOathWoundBonusEligible,
           profile.attackerOnObjective,
           nextTargetOnObjective,
+          profile.attackerOnObjective && profile.attackerObjectiveOwner === "attacker",
+          false,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -449,6 +502,9 @@ export default function PlayMode() {
           false,
           nextTargetOnObjective,
           profile.attackerOnObjective,
+          false,
+          profile.attackerOnObjective &&
+            ["attacker", "uncontrolled"].includes(profile.attackerObjectiveOwner),
         ),
         weaponProfile.type,
         {
@@ -467,6 +523,8 @@ export default function PlayMode() {
           attackerOathWoundBonusEligible: profile.attackerOathWoundBonusEligible,
           attackerOnObjective: profile.attackerOnObjective,
           targetOnObjective: nextTargetOnObjective,
+          attackerObjectiveOwner: profile.attackerObjectiveOwner,
+          targetObjectiveOwner: nextTargetObjectiveOwner,
           attackerBattleShocked: profile.attackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
@@ -591,6 +649,7 @@ export default function PlayMode() {
                         targetOathOfMoment: false,
                         attackerOathWoundBonusEligible: false,
                         attackerOnObjective: false,
+                        attackerObjectiveOwner: "unknown",
                         attackerUnitModels: 0,
                         nearbyEnemyModels: 0,
                         attackerBattleShocked: false,
@@ -628,6 +687,7 @@ export default function PlayMode() {
                         targetOathOfMoment: false,
                         attackerOathWoundBonusEligible: false,
                         attackerOnObjective: false,
+                        attackerObjectiveOwner: "unknown",
                         attackerUnitModels: 0,
                         nearbyEnemyModels: 0,
                         attackerBattleShocked: false,
@@ -693,6 +753,7 @@ export default function PlayMode() {
                         targetWaaaghActive: false,
                         targetOathOfMoment: false,
                         targetOnObjective: false,
+                        targetObjectiveOwner: "unknown",
                         targetBattleShocked: false,
                         targetStrengthState: "full",
                       }));
@@ -917,28 +978,10 @@ export default function PlayMode() {
                       type="checkbox"
                       checked={profile.attackerOnObjective}
                       onChange={(event) =>
-                        refreshProfile(
-                          weaponId,
-                          targetModelId,
-                          profileId,
-                          activeAttackerPresetIds,
-                          activeTargetPresetIds,
-                          profile.targetDistance,
-                          profile.attackerCharged,
-                          profile.attackerBattleShocked,
-                          profile.targetBattleShocked,
-                          profile.targetStrengthState,
-                          profile.attackerRemainedStationary,
-                          profile.attackerAttached,
-                          profile.targetAttached,
-                          profile.attackerWaaaghActive,
-                          profile.targetWaaaghActive,
-                          profile.targetOathOfMoment,
-                          profile.attackerOathWoundBonusEligible,
-                          profile.attackerUnitModels,
-                          profile.nearbyEnemyModels,
+                        refreshObjectiveState(
                           event.target.checked,
                           profile.targetOnObjective,
+                          event.target.checked ? profile.attackerObjectiveOwner : "unknown",
                         )
                       }
                     />
@@ -950,33 +993,57 @@ export default function PlayMode() {
                       type="checkbox"
                       checked={profile.targetOnObjective}
                       onChange={(event) =>
-                        refreshProfile(
-                          weaponId,
-                          targetModelId,
-                          profileId,
-                          activeAttackerPresetIds,
-                          activeTargetPresetIds,
-                          profile.targetDistance,
-                          profile.attackerCharged,
-                          profile.attackerBattleShocked,
-                          profile.targetBattleShocked,
-                          profile.targetStrengthState,
-                          profile.attackerRemainedStationary,
-                          profile.attackerAttached,
-                          profile.targetAttached,
-                          profile.attackerWaaaghActive,
-                          profile.targetWaaaghActive,
-                          profile.targetOathOfMoment,
-                          profile.attackerOathWoundBonusEligible,
-                          profile.attackerUnitModels,
-                          profile.nearbyEnemyModels,
+                        refreshObjectiveState(
                           profile.attackerOnObjective,
                           event.target.checked,
+                          profile.attackerObjectiveOwner,
+                          event.target.checked ? profile.targetObjectiveOwner : "unknown",
                         )
                       }
                     />
                     Target
                   </span>
+                </label>
+                <label>
+                  <span>Attacker objective controlled by</span>
+                  <select
+                    aria-label="Attacker objective owner"
+                    disabled={!profile.attackerOnObjective}
+                    value={profile.attackerObjectiveOwner}
+                    onChange={(event) =>
+                      refreshObjectiveState(
+                        profile.attackerOnObjective,
+                        profile.targetOnObjective,
+                        event.target.value as Profile["attackerObjectiveOwner"],
+                      )
+                    }
+                  >
+                    <option value="unknown">Unknown</option>
+                    <option value="attacker">Attacker</option>
+                    <option value="target">Target</option>
+                    <option value="uncontrolled">Neither player</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Target objective controlled by</span>
+                  <select
+                    aria-label="Target objective owner"
+                    disabled={!profile.targetOnObjective}
+                    value={profile.targetObjectiveOwner}
+                    onChange={(event) =>
+                      refreshObjectiveState(
+                        profile.attackerOnObjective,
+                        profile.targetOnObjective,
+                        profile.attackerObjectiveOwner,
+                        event.target.value as Profile["targetObjectiveOwner"],
+                      )
+                    }
+                  >
+                    <option value="unknown">Unknown</option>
+                    <option value="attacker">Attacker</option>
+                    <option value="target">Target</option>
+                    <option value="uncontrolled">Neither player</option>
+                  </select>
                 </label>
                 <label>
                   <span>Movement</span>

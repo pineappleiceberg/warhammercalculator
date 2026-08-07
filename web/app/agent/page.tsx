@@ -109,6 +109,8 @@ export default function AgentCalculator() {
           const attackerOathWoundBonusEligible = requestedContext.attackerOathWoundBonusEligible;
           const attackerOnObjective = requestedContext.attackerOnObjective;
           const targetOnObjective = requestedContext.targetOnObjective;
+          const attackerObjectiveOwner = requestedContext.attackerObjectiveOwner;
+          const targetObjectiveOwner = requestedContext.targetObjectiveOwner;
           const attackerBattleShocked = requestedContext.attackerBattleShocked;
           const targetBattleShocked = requestedContext.targetBattleShocked;
           const targetStrengthState = requestedContext.targetStrengthState;
@@ -129,6 +131,8 @@ export default function AgentCalculator() {
             attackerOathWoundBonusEligible,
             attackerOnObjective,
             targetOnObjective,
+            attackerObjectiveOwner,
+            targetObjectiveOwner,
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
@@ -152,6 +156,8 @@ export default function AgentCalculator() {
             attackerOathWoundBonusEligible,
             attackerOnObjective,
             targetOnObjective,
+            attackerOnObjective && attackerObjectiveOwner === "attacker",
+            targetOnObjective && ["target", "uncontrolled"].includes(targetObjectiveOwner),
           );
           const targetPresets = selectedAndAutomaticCombatPresets(
             selection.target.combatPresets,
@@ -172,6 +178,8 @@ export default function AgentCalculator() {
             false,
             targetOnObjective,
             attackerOnObjective,
+            targetOnObjective && targetObjectiveOwner === "target",
+            attackerOnObjective && ["attacker", "uncontrolled"].includes(attackerObjectiveOwner),
           );
           profile = applyCombatPresets(
             profile,
@@ -194,6 +202,8 @@ export default function AgentCalculator() {
               attackerOathWoundBonusEligible,
               attackerOnObjective,
               targetOnObjective,
+              attackerObjectiveOwner,
+              targetObjectiveOwner,
               attackerBattleShocked,
               targetBattleShocked,
               targetStrengthState,
@@ -328,8 +338,8 @@ export default function AgentCalculator() {
               woundModifier, rerollHits, rerollWounds, distance, unitModels, nearbyEnemyModels,
               charged, stationary, attackerAttached, targetAttached, attackerWaaaghActive,
               targetWaaaghActive, oathTarget, oathWoundBonus, attackerObjective, targetObjective,
-              attackerBattleShocked, targetBattleShocked, targetStrength, attackerPreset,
-              targetPreset, and rules.
+              attackerObjectiveOwner, targetObjectiveOwner, attackerBattleShocked,
+              targetBattleShocked, targetStrength, attackerPreset, targetPreset, and rules.
             </p>
             <p>
               <code>rules</code> accepts comma-separated values such as{" "}
@@ -338,9 +348,9 @@ export default function AgentCalculator() {
             </p>
             <p>
               Catalogue queries apply exact target-, attack-keyword, charge, distance, Battle-shock,
-              Attached-unit, Waaagh!, Oath of Moment, objective-marker position, and model-count
-              conditions automatically. Applied source rules are listed in the result with{" "}
-              <code>automatic: true</code>; any numeric URL override is applied afterward.
+              Attached-unit, Waaagh!, Oath of Moment, objective-marker position and ownership, and
+              model-count conditions automatically. Applied source rules are listed in the result
+              with <code>automatic: true</code>; any numeric URL override is applied afterward.
             </p>
           </div>
         </article>
