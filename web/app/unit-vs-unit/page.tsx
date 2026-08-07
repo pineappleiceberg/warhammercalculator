@@ -5,6 +5,7 @@ import { WorkflowNav } from "../../components/workflow-nav";
 import { CombatPresetSelector } from "../../components/combat-preset-selector";
 import {
   applyTargetCombatPresets,
+  attackKeywordsForWeapon,
   selectedAndAutomaticCombatPresets,
 } from "../../lib/combat-presets.mjs";
 import {
@@ -251,6 +252,7 @@ export default function UnitVsUnit() {
           line.weapon.type,
           line.weapon.name,
           targetSegments[0]?.keywords ?? [],
+          attackKeywordsForWeapon(line.weapon),
         ),
         selectedAndAutomaticCombatPresets(
           targetUnit?.combatPresets ?? [],
@@ -258,8 +260,13 @@ export default function UnitVsUnit() {
           line.weapon.type,
           line.weapon.name,
           targetSegments[0]?.keywords ?? [],
+          attackKeywordsForWeapon(line.weapon),
         ),
         line.weapon.type,
+        {
+          targetKeywords: targetSegments[0]?.keywords ?? [],
+          attackKeywords: attackKeywordsForWeapon(line.weapon),
+        },
       ),
     );
   };
@@ -275,6 +282,7 @@ export default function UnitVsUnit() {
               line.weapon.type,
               line.weapon.name,
               targetSegments[0]?.keywords ?? [],
+              attackKeywordsForWeapon(line.weapon),
             ),
           )
           .map((preset) => [preset.id, preset]),
@@ -283,7 +291,11 @@ export default function UnitVsUnit() {
     return applyTargetCombatPresets(
       targetSegments,
       targetPresets,
-      orderedLines.map((line) => line.weapon.type),
+      orderedLines.map((line) => ({
+        weaponType: line.weapon.type,
+        weaponName: line.weapon.name,
+        attackKeywords: attackKeywordsForWeapon(line.weapon),
+      })),
     );
   };
 

@@ -154,6 +154,7 @@ export type CatalogueCombatPresetEffect = {
   subject: CombatPresetSubject;
   weaponName?: string;
   requiredTargetKeyword?: string;
+  requiredAttackKeyword?: string;
 };
 export type CatalogueUnit = {
   id: string;
@@ -174,12 +175,17 @@ export type CatalogueUnit = {
   maximumModelCount: number | null;
 };
 
-export function applyCombatPreset(profile: CombatProfile, preset: CatalogueCombatPreset) {
+export function applyCombatPreset(
+  profile: CombatProfile,
+  preset: CatalogueCombatPreset,
+  context: { targetKeywords?: string[]; attackKeywords?: string[] } = {},
+) {
   return applySelectedCombatPresets(
     profile,
     [preset],
     [],
     preset.weaponScope === "Melee" ? "Melee" : "Ranged",
+    context,
   ) as CombatProfile;
 }
 
@@ -188,12 +194,14 @@ export function applyCombatPresets(
   attackerPresets: CatalogueCombatPreset[],
   targetPresets: CatalogueCombatPreset[],
   weaponType: "Ranged" | "Melee",
+  context: { targetKeywords?: string[]; attackKeywords?: string[] } = {},
 ) {
   return applySelectedCombatPresets(
     profile,
     attackerPresets,
     targetPresets,
     weaponType,
+    context,
   ) as CombatProfile;
 }
 export type Catalogue = {

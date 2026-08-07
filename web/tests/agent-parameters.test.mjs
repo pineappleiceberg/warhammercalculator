@@ -9,7 +9,10 @@ import {
   parseAgentProfile,
   resolveAgentCatalogueSelection,
 } from "../lib/agent-parameters.mjs";
-import { selectedAndAutomaticCombatPresets } from "../lib/combat-presets.mjs";
+import {
+  attackKeywordsForWeapon,
+  selectedAndAutomaticCombatPresets,
+} from "../lib/combat-presets.mjs";
 
 const defaults = {
   attackDice: 0,
@@ -198,6 +201,36 @@ test("catalogue agent query resolves stable IDs or unambiguous names", async () 
       ordinaryTarget.weapon.type,
       ordinaryTarget.weapon.name,
       ordinaryTarget.model.keywords,
+    ),
+    [],
+  );
+  const psychicDefense = resolveAgentCatalogueSelection(
+    "attacker=Exalted%20Sorcerer&weapon=Astral%20Blast&target=Culexus%20Assassin",
+    catalogue,
+  );
+  assert.deepEqual(
+    selectedAndAutomaticCombatPresets(
+      psychicDefense.target.combatPresets,
+      [],
+      psychicDefense.weapon.type,
+      psychicDefense.weapon.name,
+      psychicDefense.model.keywords,
+      attackKeywordsForWeapon(psychicDefense.weapon),
+    ).map((preset) => preset.name),
+    ["Abomination"],
+  );
+  const ordinaryDefense = resolveAgentCatalogueSelection(
+    "attacker=Doom%20Scythe&weapon=Heavy%20death%20ray&target=Culexus%20Assassin",
+    catalogue,
+  );
+  assert.deepEqual(
+    selectedAndAutomaticCombatPresets(
+      ordinaryDefense.target.combatPresets,
+      [],
+      ordinaryDefense.weapon.type,
+      ordinaryDefense.weapon.name,
+      ordinaryDefense.model.keywords,
+      attackKeywordsForWeapon(ordinaryDefense.weapon),
     ),
     [],
   );

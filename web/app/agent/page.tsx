@@ -17,7 +17,10 @@ import {
   loadCatalogue,
 } from "../../lib/catalogue";
 import { DEFAULT_PROFILE, normalizeProfile, type CombatProfile } from "../../lib/combat";
-import { selectedAndAutomaticCombatPresets } from "../../lib/combat-presets.mjs";
+import {
+  attackKeywordsForWeapon,
+  selectedAndAutomaticCombatPresets,
+} from "../../lib/combat-presets.mjs";
 
 type AgentResult = {
   schemaVersion: number;
@@ -100,6 +103,7 @@ export default function AgentCalculator() {
             selection.weapon.type,
             selection.weapon.name,
             selection.model.keywords,
+            attackKeywordsForWeapon(selection.weapon),
           );
           const targetPresets = selectedAndAutomaticCombatPresets(
             selection.target.combatPresets,
@@ -107,12 +111,17 @@ export default function AgentCalculator() {
             selection.weapon.type,
             selection.weapon.name,
             selection.model.keywords,
+            attackKeywordsForWeapon(selection.weapon),
           );
           profile = applyCombatPresets(
             profile,
             attackerPresets,
             targetPresets,
             selection.weapon.type,
+            {
+              targetKeywords: selection.model.keywords,
+              attackKeywords: attackKeywordsForWeapon(selection.weapon),
+            },
           );
           candidate = parseAgentProfile(search, profile, false);
           source = {
@@ -243,9 +252,9 @@ export default function AgentCalculator() {
               or stable catalogue IDs are accepted; ambiguous names return an error.
             </p>
             <p>
-              Catalogue queries apply exact target-keyword conditions automatically. Applied source
-              rules are listed in the result with <code>automatic: true</code>; any numeric URL
-              override is applied afterward.
+              Catalogue queries apply exact target- and attack-keyword conditions automatically.
+              Applied source rules are listed in the result with <code>automatic: true</code>; any
+              numeric URL override is applied afterward.
             </p>
           </div>
         </article>

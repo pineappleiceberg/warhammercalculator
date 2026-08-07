@@ -196,6 +196,7 @@ CREATE TABLE unit_combat_preset_effects (
     dice_sides INTEGER NOT NULL DEFAULT 0 CHECK (dice_sides >= 0),
     weapon_name TEXT,
     required_target_keyword TEXT,
+    required_attack_keyword TEXT,
     application_role TEXT NOT NULL CHECK (application_role IN ('attacker', 'target', 'either')),
     subject TEXT NOT NULL CHECK (subject IN
         ('self', 'led_unit', 'friendly_unit', 'enemy_unit', 'affected_unit', 'unknown')),
@@ -867,10 +868,16 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
             if not subjects:
                 continue
             clause_tail = text[match.end() : match.end() + 80]
+            required_attack_keyword = None
             if effect_type == "feel_no_pain" and re.match(
                 r"\s+against\b", clause_tail, re.IGNORECASE
             ):
-                continue
+                scoped = re.match(
+                    r"\s+against Psychic Attacks\.", clause_tail, re.IGNORECASE
+                )
+                if not scoped:
+                    continue
+                required_attack_keyword = "psychic"
             value = int(match.group(1))
             source = subjects[-1]
             role, subject = defensive_subject(source.group(1), sentence_start + 1 + source.start())
@@ -881,6 +888,11 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
                 "value": value,
                 "dice_count": 0,
                 "dice_sides": 0,
+                **(
+                    {"required_attack_keyword": required_attack_keyword}
+                    if required_attack_keyword
+                    else {}
+                ),
                 "role": role,
                 "subject": subject,
             }
@@ -970,6 +982,19 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
             r"each time you select an? [A-Z][A-Z0-9 -]+ unit as the target for this weapon, "
             r"until those attacks are resolved, change the Attacks characteristic of this "
             r"weapon to \d+\.",
+            plain_text(description).strip(),
+            re.IGNORECASE,
+        )
+    ):
+        return "automatic"
+    if (
+        len(additional) == 1
+        and additional[0].get("required_attack_keyword") == "psychic"
+        and additional[0]["type"] == "feel_no_pain"
+        and additional[0]["subject"] == "self"
+        and re.fullmatch(
+            r"(?:this model|this unit|models in this unit) (?:has|have) the Feel No Pain "
+            r"[2-6]\+ ability against Psychic Attacks\.",
             plain_text(description).strip(),
             re.IGNORECASE,
         )
@@ -1187,8 +1212,9 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     """INSERT INTO unit_combat_preset_effects
                        (datasheet_id, ability_position, preset_position, effect_position,
                         effect_type, value, dice_count, dice_sides, weapon_name,
-                        required_target_keyword, application_role, subject)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        required_target_keyword, required_attack_keyword,
+                        application_role, subject)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         datasheet_id,
                         ability_position,
@@ -1200,6 +1226,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                         effect["dice_sides"],
                         effect.get("weapon_name"),
                         effect.get("required_target_keyword"),
+                        effect.get("required_attack_keyword"),
                         effect["role"],
                         effect["subject"],
                     ),
@@ -1341,7 +1368,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "19"),
+                    ("schema_version", "20"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

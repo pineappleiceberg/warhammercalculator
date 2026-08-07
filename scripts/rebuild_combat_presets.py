@@ -2,6 +2,7 @@
 
 import argparse
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 try:
@@ -62,6 +63,7 @@ CREATE TABLE unit_combat_preset_effects (
     dice_sides INTEGER NOT NULL DEFAULT 0 CHECK (dice_sides >= 0),
     weapon_name TEXT,
     required_target_keyword TEXT,
+    required_attack_keyword TEXT,
     application_role TEXT NOT NULL CHECK (application_role IN ('attacker', 'target', 'either')),
     subject TEXT NOT NULL CHECK (subject IN
         ('self', 'led_unit', 'friendly_unit', 'enemy_unit', 'affected_unit', 'unknown')),
@@ -79,10 +81,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Rebuild derived unit combat presets in place")
     parser.add_argument("database", nargs="?", type=Path, default=Path("data/warhammer_10e.sqlite"))
     args = parser.parse_args()
-    with sqlite3.connect(args.database) as connection:
+    with closing(sqlite3.connect(args.database)) as connection:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
-        connection.execute("UPDATE metadata SET value = '19' WHERE key = 'schema_version'")
+        connection.execute("UPDATE metadata SET value = '20' WHERE key = 'schema_version'")
+        connection.commit()
     print(f"Rebuilt {count} unit combat presets in {args.database}")
 
 

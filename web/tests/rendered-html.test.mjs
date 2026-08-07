@@ -231,6 +231,19 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
       subject: "self",
     },
   ]);
+  const abomination = culexus.combatPresets.find((preset) => preset.name === "Abomination");
+  assert.equal(abomination.activation, "automatic");
+  assert.deepEqual(abomination.effects, [
+    {
+      type: "feel_no_pain",
+      value: 2,
+      diceCount: 0,
+      diceSides: 0,
+      requiredAttackKeyword: "psychic",
+      role: "target",
+      subject: "self",
+    },
+  ]);
   const captain = catalogue.units.find((unit) => unit.id === "000000073");
   const finestHour = captain.combatPresets.find((preset) => preset.name === "Finest Hour");
   assert.equal(finestHour.weaponScope, "Melee");

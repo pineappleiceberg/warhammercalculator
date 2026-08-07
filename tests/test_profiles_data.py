@@ -2,6 +2,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from scripts.build_profiles_db import (
@@ -202,9 +203,29 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(conditional[0]["activation"], "situational")
 
     def test_combat_preset_parser_omits_unsupported_defensive_effects(self):
+        psychic = combat_presets(
+            "Abomination",
+            "This model has the Feel No Pain 3+ ability against Psychic Attacks.",
+        )
+        self.assertEqual(psychic[0]["activation"], "automatic")
+        self.assertEqual(
+            psychic[0]["additional_effects"],
+            [
+                {
+                    "type": "feel_no_pain",
+                    "value": 3,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "required_attack_keyword": "psychic",
+                    "role": "target",
+                    "subject": "self",
+                }
+            ],
+        )
         self.assertIsNone(
             combat_preset(
-                "This model has the Feel No Pain 3+ ability against Psychic Attacks."
+                "This model has the Feel No Pain 3+ ability against Psychic Attacks and "
+                "mortal wounds."
             )
         )
         self.assertIsNone(combat_preset("The bearer has a 4+ invulnerable save."))
@@ -380,12 +401,14 @@ class ProfileDataTests(unittest.TestCase):
             first = Path(directory) / "first.sqlite"
             second = Path(directory) / "second.sqlite"
             for path, row_id, value in ((first, 1, "same"), (second, 99, "same")):
-                with sqlite3.connect(path) as connection:
+                with closing(sqlite3.connect(path)) as connection:
                     connection.execute("CREATE TABLE sample(id INTEGER PRIMARY KEY, value TEXT)")
                     connection.execute("INSERT INTO sample(id, value) VALUES (?, ?)", (row_id, value))
+                    connection.commit()
             self.assertEqual(table_snapshot(first, "sample"), table_snapshot(second, "sample"))
-            with sqlite3.connect(second) as connection:
+            with closing(sqlite3.connect(second)) as connection:
                 connection.execute("UPDATE sample SET value = 'changed'")
+                connection.commit()
             self.assertNotEqual(table_snapshot(first, "sample"), table_snapshot(second, "sample"))
 
     def test_composition_parser_handles_export_markup_and_unicode_hyphens(self):
@@ -482,7 +505,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "19",
+                "20",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -574,7 +597,7 @@ class ProfileDataTests(unittest.TestCase):
                 ).fetchall(),
                 [
                     ("damage_reduction", 30),
-                    ("feel_no_pain", 24),
+                    ("feel_no_pain", 39),
                     ("invulnerable_save", 34),
                     ("save_target", 1),
                 ],
@@ -583,7 +606,20 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 1), ("inherent", 28), ("situational", 1365)],
+                [("automatic", 2), ("inherent", 28), ("situational", 1379)],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT preset.activation, effect.value, effect.subject, count(*)
+                       FROM unit_combat_preset_effects AS effect
+                       JOIN unit_combat_presets AS preset
+                         USING (datasheet_id, ability_position, preset_position)
+                       WHERE effect.effect_type = 'feel_no_pain'
+                         AND effect.required_attack_keyword = 'psychic'
+                       GROUP BY preset.activation, effect.value, effect.subject
+                       ORDER BY preset.activation, effect.value, effect.subject"""
+                ).fetchall(),
+                [("automatic", 2, "self", 1), ("situational", 4, "led_unit", 14)],
             )
             self.assertEqual(
                 connection.execute(
@@ -895,6 +931,24 @@ class ProfileDataTests(unittest.TestCase):
                     "weaponName": "Animus speculum",
                     "requiredTargetKeyword": "psyker",
                     "role": "attacker",
+                    "subject": "self",
+                }
+            ],
+        )
+        abomination = next(
+            preset for preset in culexus["combatPresets"] if preset["name"] == "Abomination"
+        )
+        self.assertEqual(abomination["activation"], "automatic")
+        self.assertEqual(
+            abomination["effects"],
+            [
+                {
+                    "type": "feel_no_pain",
+                    "value": 2,
+                    "diceCount": 0,
+                    "diceSides": 0,
+                    "requiredAttackKeyword": "psychic",
+                    "role": "target",
                     "subject": "self",
                 }
             ],

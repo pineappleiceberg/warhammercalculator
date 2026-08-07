@@ -20,6 +20,7 @@ import { WorkflowNav } from "../components/workflow-nav";
 import { CombatPresetSelector } from "../components/combat-preset-selector";
 import {
   applyCombatPresets as applySelectedCombatPresets,
+  attackKeywordsForWeapon,
   combatPresetSupportsRole,
   combatPresetSupportsWeapon,
   selectedAndAutomaticCombatPresets,
@@ -102,6 +103,7 @@ type CatalogueCombatPreset = {
     diceSides: number;
     weaponName?: string;
     requiredTargetKeyword?: string;
+    requiredAttackKeyword?: string;
     role: "attacker" | "target" | "either";
     subject: string;
   }>;
@@ -834,6 +836,7 @@ export default function Home() {
       weapon?.type ?? "Ranged",
       weapon?.name ?? "",
       targetKeywords,
+      attackKeywordsForWeapon(weapon),
     );
   const withActivePresets = (
     current: Profile,
@@ -895,6 +898,7 @@ export default function Home() {
       selectedPresets(selectedAttackerUnit, attackerIds, weapon, targetKeywords),
       selectedPresets(selectedTargetUnit, targetIds, weapon, targetKeywords),
       weapon?.type ?? "Ranged",
+      { targetKeywords, attackKeywords: attackKeywordsForWeapon(weapon) },
     ) as Profile;
   };
 

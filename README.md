@@ -313,11 +313,14 @@ calculation that actually exhausts the budget returns HTTP 422 with code
 Model vs Model, Unit vs Unit, and Play Mode expose unit abilities imported with
 their published source text. Strictly unconditional, whole-model/unit defenses
 load as native editable target values; conditional abilities remain explicit
-choices and are never silently enabled. Exact target-keyword conditions are
-machine-readable: automatic rules activate only when the selected target has
-the required datasheet keyword and the effect is scoped to the selected weapon.
+choices and are never silently enabled. Exact target- and attack-keyword
+conditions are machine-readable: automatic rules activate only when the
+selected target and attacking weapon meet their published requirements.
 For example, Psychic Assassin changes Animus speculum to 6 Attacks against a
 PSYKER target without affecting Life-draining touch or non-PSYKER targets.
+Psychic-only Feel No Pain rules likewise apply only to weapons carrying the
+Psychic ability. Unit vs Unit rejects a mixed Psychic/non-Psychic volley when
+one shared target profile cannot represent both defenses exactly.
 Saved lists can mark battle- or turn-long conditions as Play Mode defaults, and
 Play Mode keeps changes in its local recovery state. Offensive modifiers,
 re-rolls, weapon-keyword grants, AP changes, Critical Hit/Wound thresholds, and
@@ -329,11 +332,12 @@ unit. Unit vs Unit applies those defenses to every ordered target segment and
 asks ranged and melee weapons to be resolved separately only when a scoped
 defense produces incompatible target values. Melee/ranged scope is respected
 per weapon. Bearer-only, subset-model, friendly-aura, affected-model,
-attack-type-limited, conflicting, random, multiplicative, limited-use
-single-attack, and other context-dependent replacement characteristic changes
-are omitted until they can be represented exactly. Ambiguous subjects are not imported,
-mutually exclusive modes cannot be combined, and the resulting profile remains
-editable. Fixed weapon replacements can be restricted to an exact named weapon,
+unrepresented attack-type conditions, conflicting, random, multiplicative,
+limited-use single-attack, and other context-dependent replacement
+characteristic changes are omitted until they can be represented exactly.
+Ambiguous subjects are not imported, mutually exclusive modes cannot be
+combined, and the resulting profile remains editable. Fixed weapon
+replacements can be restricted to an exact named weapon,
 are applied before additive modifiers, and remain separate from the printed
 value. Damage 0 replacements remain distinguishable from an inactive
 replacement. The native engine applies the minimum of 1 independently to each

@@ -76,12 +76,22 @@ function normalizedKeyword(value) {
   return (value ?? "").normalize("NFKC").trim().toLocaleLowerCase("en");
 }
 
-export function combatPresetMeetsEligibility(preset, targetKeywords = []) {
-  const keywords = new Set(targetKeywords.map(normalizedKeyword));
+export function attackKeywordsForWeapon(weapon) {
+  if (!weapon) return [];
+  return [weapon.type, ...(weapon.abilities ?? []).map((ability) => ability.name)].map(
+    normalizedKeyword,
+  );
+}
+
+export function combatPresetMeetsEligibility(preset, targetKeywords = [], attackKeywords = []) {
+  const targets = new Set(targetKeywords.map(normalizedKeyword));
+  const attacks = new Set(attackKeywords.map(normalizedKeyword));
   return (preset.effects ?? []).every(
     (effect) =>
-      !effect.requiredTargetKeyword ||
-      keywords.has(normalizedKeyword(effect.requiredTargetKeyword)),
+      (!effect.requiredTargetKeyword ||
+        targets.has(normalizedKeyword(effect.requiredTargetKeyword))) &&
+      (!effect.requiredAttackKeyword ||
+        attacks.has(normalizedKeyword(effect.requiredAttackKeyword))),
   );
 }
 
@@ -91,13 +101,14 @@ export function selectedAndAutomaticCombatPresets(
   weaponType,
   weaponName = "",
   targetKeywords = [],
+  attackKeywords = [],
 ) {
   const selected = new Set(selectedIds);
   return presets.filter(
     (preset) =>
       (selected.has(preset.id) || preset.activation === "automatic") &&
       combatPresetSupportsWeapon(preset, weaponType, weaponName) &&
-      combatPresetMeetsEligibility(preset, targetKeywords),
+      combatPresetMeetsEligibility(preset, targetKeywords, attackKeywords),
   );
 }
 
@@ -131,11 +142,19 @@ function normalizedWeaponName(value) {
   return (value ?? "").normalize("NFKC").replace(/[‘’]/g, "'").trim().toLocaleLowerCase("en");
 }
 
-export function combatPresetEffects(presets, weaponType, role, weaponName = "") {
+export function combatPresetEffects(
+  presets,
+  weaponType,
+  role,
+  weaponName = "",
+  targetKeywords = [],
+  attackKeywords = [],
+) {
   const applicable = presets.filter(
     (preset) =>
       combatPresetSupportsRole(preset, role) &&
-      combatPresetSupportsWeapon(preset, weaponType, weaponName),
+      combatPresetSupportsWeapon(preset, weaponType, weaponName) &&
+      combatPresetMeetsEligibility(preset, targetKeywords, attackKeywords),
   );
   const hitModifiers = applicable.filter((preset) =>
     matchesRole(modifierRole(preset, "hitModifier"), role),
@@ -249,10 +268,28 @@ function applyDefensiveEffects(profile, effects) {
   };
 }
 
-export function applyTargetCombatPresets(targets, targetPresets, weaponTypes) {
-  const types = [...new Set(weaponTypes)];
-  const effects = types.map((weaponType) =>
-    combatPresetEffects(targetPresets, weaponType, "target"),
+export function applyTargetCombatPresets(targets, targetPresets, weaponContexts) {
+  const contexts = weaponContexts.map((context) =>
+    typeof context === "string" ? { weaponType: context, attackKeywords: [context] } : context,
+  );
+  const uniqueContexts = [
+    ...new Map(
+      contexts.map((context) => [
+        JSON.stringify([context.weaponType, context.weaponName, context.attackKeywords]),
+        context,
+      ]),
+    ).values(),
+  ];
+  const targetKeywords = targets[0]?.keywords ?? [];
+  const effects = uniqueContexts.map((context) =>
+    combatPresetEffects(
+      targetPresets,
+      context.weaponType,
+      "target",
+      context.weaponName ?? "",
+      targetKeywords,
+      context.attackKeywords ?? [],
+    ),
   );
   const candidates = effects.map((effect) =>
     targets.map((target) => applyDefensiveEffects(target, effect)),
@@ -268,7 +305,7 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponTypes) {
     ),
   );
   if (new Set(signatures).size > 1) {
-    throw new Error("Resolve ranged and melee weapons separately for this defensive ability");
+    throw new Error("Resolve weapons with different defensive eligibility separately");
   }
   return candidates[0] ?? targets;
 }
@@ -296,9 +333,29 @@ export function updateCombatPresetSelection(presets, selectedIds, presetId, chec
   return [...selectedIds.filter((id) => !incompatible.has(id) && id !== presetId), presetId];
 }
 
-export function applyCombatPresets(profile, attackerPresets, targetPresets, weaponType) {
-  const attacker = combatPresetEffects(attackerPresets, weaponType, "attacker", profile.weaponName);
-  const target = combatPresetEffects(targetPresets, weaponType, "target", profile.weaponName);
+export function applyCombatPresets(
+  profile,
+  attackerPresets,
+  targetPresets,
+  weaponType,
+  context = {},
+) {
+  const attacker = combatPresetEffects(
+    attackerPresets,
+    weaponType,
+    "attacker",
+    profile.weaponName,
+    context.targetKeywords,
+    context.attackKeywords,
+  );
+  const target = combatPresetEffects(
+    targetPresets,
+    weaponType,
+    "target",
+    profile.weaponName,
+    context.targetKeywords,
+    context.attackKeywords,
+  );
   const attacksReplacements = [attacker.attacksReplacement, target.attacksReplacement].filter(
     (value) => value > 0,
   );

@@ -19,14 +19,26 @@ priority over feature count.
 1. Represent random and multiplicative Attacks, Strength, and Damage changes,
    context-dependent Attacks replacements, and limited-use single-attack Damage
    replacements exactly in native C and WebAssembly before importing them.
-2. Extend the source-backed rules eligibility layer beyond exact target
-   keywords to phase, range, attack-type, and other compound conditions that
+2. Extend the source-backed rules eligibility layer beyond exact target and
+   Psychic attack keywords to phase, range, and other compound conditions that
    currently require manual interpretation.
 3. Link bearer- and subset-model defensive abilities to structured wargear and
    unit composition so equipped defensive defaults can be applied without
    affecting models that do not have them.
 
 ## Completed cycles
+
+- 2026-08-06: Added source-backed attacking-weapon keyword eligibility and
+  imported 15 exact Psychic-only Feel No Pain effects. Culexus Assassin's
+  Abomination now applies its 2+ Feel No Pain automatically only against
+  Psychic weapons; fourteen leader-dependent 4+ rules remain explicit choices
+  and are inert against non-Psychic attacks. Model vs Model, Play Mode, agent
+  URLs, and API catalogue data share the same eligibility metadata. Unit vs
+  Unit refuses mixed Psychic/non-Psychic volleys when their target defenses
+  differ instead of applying one defense to every ranged weapon. Parser,
+  catalogue, composition, mixed-volley, API, and native/Wasm FNP regressions
+  cover the behavior. Data verification helpers now close SQLite connections
+  deterministically so temporary database checks are reliable on Windows.
 
 - 2026-08-06: Added source-backed automatic target-keyword eligibility across
   SQLite, the browser catalogue, Model vs Model, Unit vs Unit, Play Mode, and
@@ -85,8 +97,9 @@ priority over feature count.
 - 2026-08-06: Added 90 conservatively classified defensive effects from the
   pinned source catalogue: 34 invulnerable saves, 24 unrestricted Feel No Pain
   thresholds, 31 per-attack damage reductions, and one replacement Save target.
-  Bearer-only, subset-model, friendly-aura, affected-model, attack-type-limited,
-  and conflicting values remain omitted instead of being applied to the wrong
+  Bearer-only, subset-model, friendly-aura, affected-model, attack-type-limited
+  effects not yet representable in that cycle, and conflicting values remained
+  omitted instead of being applied to the wrong
   unit. Selected defenses preserve stronger editable values, reach exact and
   simulated single-profile calculations, and are composed onto every ordered
   target segment. Mixed ranged/melee volleys are rejected only when a scoped

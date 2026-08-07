@@ -21,6 +21,7 @@ import { parseAgentProfile } from "../lib/agent-parameters.mjs";
 import {
   applyCombatPresets,
   applyTargetCombatPresets,
+  attackKeywordsForWeapon,
   combatPresetEffects,
   combatPresetMeetsEligibility,
   combatPresetRequiresActivation,
@@ -697,6 +698,98 @@ test("automatic target-keyword presets apply only to eligible weapons and target
   );
 });
 
+test("Psychic-only defenses apply by attack keyword and reject incompatible volleys", () => {
+  const abomination = {
+    id: "culexus:abomination",
+    activation: "automatic",
+    weaponScope: "Any",
+    hitModifier: 0,
+    woundModifier: 0,
+    rerollHits: false,
+    rerollHitOnes: false,
+    rerollWounds: false,
+    rerollWoundOnes: false,
+    effects: [
+      {
+        type: "feel_no_pain",
+        value: 2,
+        diceCount: 0,
+        diceSides: 0,
+        requiredAttackKeyword: "psychic",
+        role: "target",
+        subject: "self",
+      },
+    ],
+  };
+  const psychicKeywords = attackKeywordsForWeapon({
+    type: "Ranged",
+    abilities: [{ name: "psychic" }, { name: "precision" }],
+  });
+  assert.deepEqual(psychicKeywords, ["ranged", "psychic", "precision"]);
+  assert.equal(combatPresetMeetsEligibility(abomination, [], psychicKeywords), true);
+  assert.equal(combatPresetMeetsEligibility(abomination, [], ["ranged"]), false);
+  assert.deepEqual(
+    selectedAndAutomaticCombatPresets(
+      [abomination],
+      [],
+      "Ranged",
+      "Psychic weapon",
+      [],
+      psychicKeywords,
+    ),
+    [abomination],
+  );
+  const target = {
+    save: 7,
+    invulnerable: 0,
+    feelNoPain: 0,
+    reduction: 0,
+    keywords: ["psyker"],
+  };
+  assert.equal(
+    applyTargetCombatPresets(
+      [target],
+      [abomination],
+      [{ weaponType: "Ranged", attackKeywords: psychicKeywords }],
+    )[0].feelNoPain,
+    2,
+  );
+  const selectedDefense = selectedAndAutomaticCombatPresets(
+    [abomination],
+    [],
+    "Ranged",
+    "Psychic weapon",
+    [],
+    psychicKeywords,
+  );
+  assert.equal(
+    applyCombatPresets(target, [], selectedDefense, "Ranged", {
+      attackKeywords: psychicKeywords,
+    }).feelNoPain,
+    2,
+  );
+  assert.equal(
+    applyTargetCombatPresets(
+      [target],
+      [abomination],
+      [{ weaponType: "Ranged", attackKeywords: ["ranged"] }],
+    )[0].feelNoPain,
+    0,
+  );
+  assert.throws(
+    () =>
+      applyTargetCombatPresets(
+        [target],
+        [abomination],
+        [
+          { weaponType: "Ranged", attackKeywords: psychicKeywords },
+          { weaponType: "Ranged", attackKeywords: ["ranged"] },
+        ],
+      ),
+    /different defensive eligibility/i,
+  );
+});
+
 test("defensive presets compose editable profiles and every ordered target segment", () => {
   const preset = {
     weaponScope: "Any",
@@ -756,7 +849,7 @@ test("defensive presets compose editable profiles and every ordered target segme
   const rangedOnly = { ...preset, weaponScope: "Ranged" };
   assert.throws(
     () => applyTargetCombatPresets([base], [rangedOnly], ["Ranged", "Melee"]),
-    /resolve ranged and melee weapons separately/i,
+    /different defensive eligibility/i,
   );
   const redundantRangedSave = {
     ...rangedOnly,

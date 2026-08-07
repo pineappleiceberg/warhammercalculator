@@ -19,7 +19,10 @@ import {
   type Catalogue,
 } from "../../lib/catalogue";
 import { groupWeaponProfiles } from "../../lib/loadout.mjs";
-import { selectedAndAutomaticCombatPresets } from "../../lib/combat-presets.mjs";
+import {
+  attackKeywordsForWeapon,
+  selectedAndAutomaticCombatPresets,
+} from "../../lib/combat-presets.mjs";
 import {
   createPlayRecovery,
   parsePlayRecovery,
@@ -179,6 +182,7 @@ export default function PlayMode() {
       weapon?.type ?? "Ranged",
       weapon?.name ?? "",
       targetKeywords,
+      attackKeywordsForWeapon(weapon),
     );
 
   const refreshProfile = (
@@ -216,6 +220,7 @@ export default function PlayMode() {
         selectedCombatPresets(nextAttackerPresetIds, attackerCatalogueUnit, weapon, model.keywords),
         selectedCombatPresets(nextTargetPresetIds, targetCatalogueUnit, weapon, model.keywords),
         weapon.type,
+        { targetKeywords: model.keywords, attackKeywords: attackKeywordsForWeapon(weapon) },
       ),
     );
     setResult(null);
@@ -280,6 +285,10 @@ export default function PlayMode() {
           model.keywords,
         ),
         weaponProfile.type,
+        {
+          targetKeywords: model.keywords,
+          attackKeywords: attackKeywordsForWeapon(weaponProfile),
+        },
       ),
     );
     setResult(null);

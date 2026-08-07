@@ -8,6 +8,7 @@ import hashlib
 import json
 import sqlite3
 import tempfile
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -58,7 +59,7 @@ def load_json(path: Path) -> dict:
 
 
 def database_source_manifest(database: Path) -> dict:
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection:
         metadata = dict(connection.execute("SELECT key, value FROM metadata"))
         files = {
             filename: {"sha256": sha256, "rowCount": row_count}
@@ -76,7 +77,7 @@ def database_source_manifest(database: Path) -> dict:
 
 
 def table_snapshot(database: Path, table: str) -> dict:
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection:
         columns = [
             row[1]
             for row in connection.execute(f'PRAGMA table_info("{table}")')
