@@ -327,7 +327,89 @@ class ProfileDataTests(unittest.TestCase):
         replacement = combat_preset(
             "Melee weapons equipped by models in this unit have an Attacks characteristic of 4."
         )
-        self.assertIsNone(replacement)
+        self.assertEqual(
+            replacement["additional_effects"],
+            [
+                {
+                    "type": "attacks_replacement",
+                    "value": 4,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "role": "attacker",
+                    "subject": "self",
+                    "weapon_name": None,
+                }
+            ],
+        )
+
+        closest_target = combat_preset(
+            "Each time a model in this unit targets the closest eligible target with its "
+            "snazzgun, until the end of the phase, that weapon has an Attacks "
+            "characteristic of 4."
+        )
+        self.assertEqual(
+            closest_target["additional_effects"][0],
+            {
+                "type": "attacks_replacement",
+                "value": 4,
+                "dice_count": 0,
+                "dice_sides": 0,
+                "role": "attacker",
+                "subject": "self",
+                "weapon_name": "snazzgun",
+            },
+        )
+        stateful_compound = combat_preset(
+            "Once per battle, when this model is selected to shoot, it can use this ability. "
+            "If it does, until the end of the phase, its Payback weapon has an Attacks "
+            "characteristic of 6 and the [SUSTAINED HITS 3] ability instead of the "
+            "[SUSTAINED HITS 1] ability."
+        )
+        self.assertEqual(
+            stateful_compound["additional_effects"],
+            [
+                {
+                    "type": "attacks_replacement",
+                    "value": 6,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "role": "attacker",
+                    "subject": "self",
+                    "weapon_name": "Payback",
+                },
+                {
+                    "type": "sustained_hits",
+                    "value": 3,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "weapon_name": "Payback",
+                    "role": "attacker",
+                    "subject": "self",
+                },
+            ],
+        )
+        self.assertIsNone(
+            combat_preset(
+                "Melee weapons equipped by non-CHARACTER models in this unit have an "
+                "Attacks characteristic of 4."
+            )
+        )
+
+        moment_shackle = combat_presets(
+            "Moment Shackle",
+            "Once per battle, at the start of the Fight phase, you can select one of the "
+            "following to take effect until the end of the phase: This model’s Watcher’s "
+            "Axe melee weapon has an Attacks characteristic of 12. This model has a 2+ "
+            "invulnerable save.",
+        )
+        self.assertEqual(
+            [preset["name"] for preset in moment_shackle],
+            [
+                "Moment Shackle — Attacks 12",
+                "Moment Shackle — Invulnerable 2+",
+            ],
+        )
+        self.assertTrue(all(preset["is_exclusive_choice"] for preset in moment_shackle))
 
         strength_replacement = combat_preset(
             "Until the end of the phase, change the Strength characteristic of melee weapons "
@@ -675,7 +757,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "25",
+                "26",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -702,17 +784,29 @@ class ProfileDataTests(unittest.TestCase):
             )
             self.assertEqual(
                 connection.execute(
-                    """SELECT preset.name, preset.weapon_scope, effect.value,
+                    """SELECT datasheet.name, preset.name, preset.weapon_scope, effect.value,
                               effect.weapon_name, effect.required_target_keyword,
                               effect.application_role, effect.subject
                        FROM unit_combat_preset_effects AS effect
                        JOIN unit_combat_presets AS preset
                          USING (datasheet_id, ability_position, preset_position)
+                       JOIN datasheets AS datasheet ON datasheet.id = preset.datasheet_id
                        WHERE effect.effect_type = 'attacks_replacement'
-                       ORDER BY preset.name"""
+                       ORDER BY datasheet.name, preset.name"""
                 ).fetchall(),
                 [
                     (
+                        "Arco-flagellants",
+                        "Extremis Trigger Word",
+                        "Any",
+                        6,
+                        "arco-flails",
+                        None,
+                        "attacker",
+                        "self",
+                    ),
+                    (
+                        "Captain Tycho",
                         "Embittered",
                         "Any",
                         12,
@@ -722,6 +816,7 @@ class ProfileDataTests(unittest.TestCase):
                         "self",
                     ),
                     (
+                        "Culexus Assassin",
                         "Psychic Assassin",
                         "Any",
                         6,
@@ -731,10 +826,101 @@ class ProfileDataTests(unittest.TestCase):
                         "self",
                     ),
                     (
+                        "Fire Prism",
+                        "Linked Fire",
+                        "Any",
+                        1,
+                        "Prism cannon – focused lances",
+                        None,
+                        "attacker",
+                        "self",
+                    ),
+                    (
+                        "Flash Gitz",
+                        "Gun-crazy Show-offs",
+                        "Any",
+                        4,
+                        "snazzgun",
+                        None,
+                        "attacker",
+                        "self",
+                    ),
+                    (
+                        "Iron Priest On Thunderwolf",
+                        "Vengeance of the Omnissiah",
+                        "Any",
+                        6,
+                        "Iron Priest hammer",
+                        None,
+                        "attacker",
+                        "self",
+                    ),
+                    (
+                        "Lelith Hesperax",
                         "Thrilling Spectacle",
                         "Melee",
                         12,
                         None,
+                        None,
+                        "attacker",
+                        "self",
+                    ),
+                    (
+                        "Sergeant Harker",
+                        "Payback Time",
+                        "Any",
+                        6,
+                        "Payback",
+                        None,
+                        "attacker",
+                        "self",
+                    ),
+                    (
+                        "Tech-Priest Enginseer",
+                        "Vengeance for the Omnissiah",
+                        "Any",
+                        6,
+                        "Enginseer axe",
+                        None,
+                        "attacker",
+                        "self",
+                    ),
+                    (
+                        "Tech-priest Enginseer",
+                        "Vengeance for the Omnissiah",
+                        "Any",
+                        6,
+                        "Omnissian axe",
+                        None,
+                        "attacker",
+                        "self",
+                    ),
+                    (
+                        "Techmarine",
+                        "Vengeance of the Omnissiah",
+                        "Any",
+                        7,
+                        "Omnissian power axe",
+                        None,
+                        "attacker",
+                        "self",
+                    ),
+                    (
+                        "Techmarine on Bike",
+                        "Vengeance of the Omnissiah",
+                        "Any",
+                        7,
+                        "Omnissian power axe",
+                        None,
+                        "attacker",
+                        "self",
+                    ),
+                    (
+                        "Trajann Valoris",
+                        "Moment Shackle — Attacks 12",
+                        "Melee",
+                        12,
+                        "Watcher’s Axe",
                         None,
                         "attacker",
                         "self",
@@ -847,7 +1033,7 @@ class ProfileDataTests(unittest.TestCase):
                     ("damage_divisor", 4),
                     ("damage_reduction", 30),
                     ("feel_no_pain", 39),
-                    ("invulnerable_save", 34),
+                    ("invulnerable_save", 35),
                     ("save_target", 1),
                 ],
             )
@@ -855,7 +1041,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 2), ("inherent", 32), ("situational", 1396)],
+                [("automatic", 2), ("inherent", 32), ("situational", 1407)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1175,6 +1361,61 @@ class ProfileDataTests(unittest.TestCase):
                 }
             ],
         )
+        flash_gitz = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Flash Gitz"
+        )
+        show_offs = next(
+            preset
+            for preset in flash_gitz["combatPresets"]
+            if preset["name"] == "Gun-crazy Show-offs"
+        )
+        self.assertEqual(show_offs["activation"], "situational")
+        self.assertEqual(show_offs["effects"][0]["weaponName"], "snazzgun")
+        self.assertEqual(show_offs["effects"][0]["value"], 4)
+
+        harker = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Sergeant Harker"
+        )
+        payback = next(
+            preset
+            for preset in harker["combatPresets"]
+            if preset["name"] == "Payback Time"
+        )
+        self.assertEqual(
+            [
+                (effect["type"], effect["value"], effect["weaponName"])
+                for effect in payback["effects"]
+            ],
+            [
+                ("attacks_replacement", 6, "Payback"),
+                ("sustained_hits", 3, "Payback"),
+            ],
+        )
+
+        fire_prism = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Fire Prism"
+        )
+        linked_fire = next(
+            preset
+            for preset in fire_prism["combatPresets"]
+            if preset["name"] == "Linked Fire"
+        )
+        self.assertEqual(
+            linked_fire["effects"][0]["weaponName"],
+            "Prism cannon – focused lances",
+        )
+
+        trajann = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Trajann Valoris"
+        )
+        moment_shackle = [
+            preset
+            for preset in trajann["combatPresets"]
+            if preset["name"].startswith("Moment Shackle —")
+        ]
+        self.assertEqual(len(moment_shackle), 2)
+        self.assertEqual(len({preset["choiceGroup"] for preset in moment_shackle}), 1)
+        self.assertIsNotNone(moment_shackle[0]["choiceGroup"])
         lelith = next(unit for unit in catalogue["units"] if unit["id"] == "000000640")
         thrilling = next(
             preset

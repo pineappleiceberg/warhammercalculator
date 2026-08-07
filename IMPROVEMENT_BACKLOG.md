@@ -16,16 +16,29 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Represent phase-, target-, and state-dependent Attacks replacements exactly
-   in native C and WebAssembly before importing them.
-2. Extend the source-backed rules eligibility layer beyond exact target and
+1. Extend the source-backed rules eligibility layer beyond exact target and
    Psychic attack keywords to phase, range, and other compound conditions that
    currently require manual interpretation.
-3. Link bearer- and subset-model defensive abilities to structured wargear and
+2. Link bearer- and subset-model defensive abilities to structured wargear and
    unit composition so equipped defensive defaults can be applied without
    affecting models that do not have them.
+3. Represent model-count-, casualty-, and nearby-unit-scaled Attacks modifiers
+   as explicit reproducible state instead of requiring manual arithmetic.
 
 ## Completed cycles
+
+- 2026-08-07: Added source-backed phase-, target-, and battlefield-state-dependent
+  fixed Attacks replacements as explicit situational presets, building on the
+  existing replace-before-add native C and WebAssembly representation. SQLite
+  schema 26 imports ten additional exact weapon-scoped replacements for
+  Arco-flagellants, Fire Prism, Flash Gitz, Iron Priest on Thunderwolf, Sergeant
+  Harker, four Enginseer/Techmarine variants, and Trajann Valoris. Payback Time
+  also replaces Sustained Hits 1 with Sustained Hits 3, and Moment Shackle now
+  exports its Attacks 12 and 2+ invulnerable-save modes as one exclusive choice.
+  Conditions remain opt-in with their complete source text; non-CHARACTER and
+  other subset-model wording remains excluded. Parser, full generated-data,
+  catalogue, preset-scoping, native/Wasm, formal, fuzz, and benchmark
+  regressions cover the change.
 
 - 2026-08-07: Added exact optional allocation-time Damage replacement with an
   explicit deterministic use policy across native C, WebAssembly, complexity

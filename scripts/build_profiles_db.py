@@ -882,6 +882,97 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
                 "subject": "self",
             }
         )
+
+    fixed_attacks_pattern = re.compile(
+        r"\b((?:melee|ranged) weapons equipped by "
+        r"(?:this model|models? in (?:this|that|the) unit)|"
+        r"[A-Za-z0-9À-ÖØ-öø-ÿ’' -]{1,80}? equipped by models? in this unit|"
+        r"(?:(?:this model|the bearer)[’']s|its) [^,.;]{1,100}?|"
+        r"(?:this|that) weapon) (?:has|have) an Attacks characteristic of (\d+)\b",
+        re.IGNORECASE,
+    )
+    fixed_attacks_effects = []
+    for match in fixed_attacks_pattern.finditer(text):
+        affected = match.group(1).strip()
+        lowered_affected = affected.casefold()
+        effect = {
+            "type": "attacks_replacement",
+            "value": int(match.group(2)),
+            "dice_count": 0,
+            "dice_sides": 0,
+            "role": "attacker",
+            "subject": "self",
+        }
+        if re.fullmatch(
+            r"(?:melee|ranged) weapons equipped by "
+            r"(?:this model|models? in (?:this|that|the) unit)",
+            affected,
+            re.IGNORECASE,
+        ):
+            effect["weapon_name"] = None
+        elif lowered_affected == "this weapon":
+            effect["weapon_ability_name"] = True
+        elif lowered_affected == "that weapon":
+            prefix = text[max(0, match.start() - 240) : match.start()]
+            antecedent = re.search(
+                r"\bwith (?:its|their|the) ([^,.;]{1,100}?)(?:,\s*until[^,.;]*)?,?\s*$",
+                prefix,
+                re.IGNORECASE,
+            )
+            if not antecedent:
+                continue
+            effect["weapon_name"] = antecedent.group(1).strip()
+        else:
+            equipped = re.fullmatch(
+                r"(.+?) equipped by models? in this unit", affected, re.IGNORECASE
+            )
+            if equipped:
+                weapon_name = equipped.group(1).strip()
+            else:
+                named = re.fullmatch(
+                    r"(?:(?:this model|the bearer)[’']s|its) (.+)",
+                    affected,
+                    re.IGNORECASE,
+                )
+                if not named:
+                    continue
+                weapon_name = named.group(1).strip()
+                weapon_name = re.sub(
+                    r"\s+(?:(?:melee|ranged) )?weapon$",
+                    "",
+                    weapon_name,
+                    flags=re.IGNORECASE,
+                )
+            effect["weapon_name"] = weapon_name
+        effects.append(effect)
+        fixed_attacks_effects.append(effect)
+
+    sustained_hits_replacement = re.search(
+        r"\[SUSTAINED HITS\s+([^\]]+)\] ability instead of the "
+        r"\[SUSTAINED HITS\s+[^\]]+\] ability",
+        text,
+        re.IGNORECASE,
+    )
+    if sustained_hits_replacement and len(fixed_attacks_effects) == 1:
+        parsed = dice_effect_value(sustained_hits_replacement.group(1))
+        if parsed:
+            dice_count, dice_sides, value = parsed
+            replacement = fixed_attacks_effects[0]
+            effects.append(
+                {
+                    "type": "sustained_hits",
+                    "value": value,
+                    "dice_count": dice_count,
+                    "dice_sides": dice_sides,
+                    **(
+                        {"weapon_name": replacement["weapon_name"]}
+                        if "weapon_name" in replacement
+                        else {"weapon_ability_name": replacement["weapon_ability_name"]}
+                    ),
+                    "role": "attacker",
+                    "subject": "self",
+                }
+            )
     damage_replacement_pattern = re.compile(
         r"\beach time an attack is allocated to this model, change the Damage "
         r"characteristic of that attack to (\d+)\b",
@@ -1281,6 +1372,37 @@ def combat_presets(name: str, description: str) -> list[dict[str, object]]:
                         (label.title(), f"{introduction}{token}. {remainder}".strip())
                     )
 
+        if not candidates:
+            option_sentences = [
+                sentence.strip()
+                for sentence in re.split(r"(?<=\.)\s+", tail)
+                if sentence.strip()
+            ]
+            if 2 <= len(option_sentences) <= 3:
+                sentence_candidates = []
+                for index, sentence in enumerate(option_sentences, start=1):
+                    candidate_text = f"{text[: choice.end()]}{sentence}"
+                    candidate_effects = combat_preset(candidate_text)
+                    if not candidate_effects:
+                        sentence_candidates = []
+                        break
+                    attacks = re.search(
+                        r"Attacks characteristic of (\d+)", sentence, re.IGNORECASE
+                    )
+                    invulnerable = re.search(
+                        r"(\d+)\+ invulnerable save", sentence, re.IGNORECASE
+                    )
+                    label = (
+                        f"Attacks {attacks.group(1)}"
+                        if attacks
+                        else f"Invulnerable {invulnerable.group(1)}+"
+                        if invulnerable
+                        else f"Option {index}"
+                    )
+                    sentence_candidates.append((label, candidate_text))
+                if len(sentence_candidates) == len(option_sentences):
+                    candidates = sentence_candidates
+
     if not candidates:
         outcomes = list(
             re.finditer(r"\bon (?:a |an )?(\d+(?:-\d+)?\+?),\s*", text, re.IGNORECASE)
@@ -1567,7 +1689,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "25"),
+                    ("schema_version", "26"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

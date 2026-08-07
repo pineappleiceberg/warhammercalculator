@@ -140,6 +140,14 @@ modifiers. A rule that explicitly changes Damage to 0 uses the commentary's
 exception to the normal minimum of 1; later modifiers still apply, so Melta 2
 changes that final Damage from 0 to 2.
 
+Published fixed-Attacks abilities whose eligibility depends on a phase, chosen
+target, or prior battlefield event are exposed as opt-in situational presets.
+Their complete source condition remains visible, their effect is restricted to
+the named weapon, and the active value is still editable. Compound replacements
+such as Payback Time carry their Sustained Hits change with the Attacks value,
+while mutually exclusive modes such as Moment Shackle cannot be selected
+together.
+
 Optional rules used when an attack is allocated have an explicit deterministic
 policy: skip the configured number of allocated attacks, then spend one use per
 attack before its Hit roll. A use is spent even if that attack misses, and any
@@ -354,8 +362,7 @@ asks ranged and melee weapons to be resolved separately only when a scoped
 defense produces incompatible target values. Melee/ranged scope is respected
 per weapon. Bearer-only, subset-model, friendly-aura, affected-model,
 unrepresented attack-type conditions, conflicting, random, subset-model multiplicative,
-optional allocation-time limited-use damage replacement, context-dependent
-Attacks replacement, and other context-dependent replacement
+and other context-dependent replacement
 characteristic changes are omitted until they can be represented exactly.
 Ambiguous subjects are not imported, mutually exclusive modes cannot be
 combined, and the resulting profile remains editable. Fixed weapon

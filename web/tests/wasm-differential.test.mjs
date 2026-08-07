@@ -1360,6 +1360,8 @@ function interactionMeans(testCase) {
 }
 
 function exactMean({
+  attacks = 4,
+  attacksReplacement = 0,
   ap = 0,
   save = 3,
   invulnerable = 0,
@@ -1367,6 +1369,7 @@ function exactMean({
   reduction = 0,
   damageDivisor = 1,
   flags = 0,
+  sustainedHits = 0,
   hitModifier = 0,
   woundModifier = 0,
 } = {}) {
@@ -1375,8 +1378,8 @@ function exactMean({
     const ok = calculateSummary(
       0,
       0,
-      4,
-      0,
+      attacks,
+      attacksReplacement,
       1,
       3,
       10,
@@ -1396,7 +1399,7 @@ function exactMean({
       1,
       0,
       0,
-      0,
+      sustainedHits,
       0,
       0,
       0,
@@ -1965,6 +1968,76 @@ test("defensive rules cannot increase exact expected damage", () => {
   assert.ok(lessThanOrEqual(invulnerable, baseline));
   assert.ok(lessThanOrEqual(feelNoPain, baseline));
   assert.ok(lessThanOrEqual(cover, baseline));
+});
+
+test("source-backed situational Attacks replacements reach C/Wasm exactly", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const harker = catalogue.units.find((unit) => unit.name === "Sergeant Harker");
+  const payback = harker.combatPresets.find((preset) => preset.name === "Payback Time");
+  const base = {
+    weaponName: "Payback",
+    attacksReplacement: 0,
+    attacksMultiplier: 1,
+    attacksModifier: 0,
+    strengthReplacement: 0,
+    strengthMultiplier: 1,
+    strengthModifier: 0,
+    damageReplacement: null,
+    damageMultiplier: 1,
+    damageModifier: 0,
+    ap: 0,
+    criticalHits: 6,
+    criticalWounds: 0,
+    lethalHits: false,
+    devastatingWounds: false,
+    twinLinked: false,
+    ignoresCover: false,
+    lanceActive: false,
+    heavyActive: false,
+    sustainedHits: 1,
+    sustainedHitsDice: 0,
+    sustainedHitsSides: 0,
+    rapidFire: 0,
+    rapidFireDice: 0,
+    rapidFireSides: 0,
+    hitModifier: 0,
+    woundModifier: 0,
+    rerollHits: false,
+    rerollHitOnes: false,
+    rerollWounds: false,
+    rerollWoundOnes: false,
+    save: 7,
+    invulnerable: 0,
+    feelNoPain: 0,
+    reduction: 0,
+  };
+  const active = applyCombatPresets(base, [payback], [], "Ranged");
+  assert.equal(active.attacksReplacement, 6);
+  assert.equal(active.sustainedHits, 3);
+  const inactiveMean = exactMean({ attacks: 3, sustainedHits: 1, save: 7 });
+  const activeMean = exactMean({
+    attacks: 3,
+    attacksReplacement: active.attacksReplacement,
+    sustainedHits: active.sustainedHits,
+    save: 7,
+  });
+  assert.deepEqual(inactiveMean, { numerator: 5n, denominator: 2n });
+  assert.deepEqual(activeMean, { numerator: 7n, denominator: 1n });
+
+  const flashGitz = catalogue.units.find((unit) => unit.name === "Flash Gitz");
+  const showOffs = flashGitz.combatPresets.find((preset) => preset.name === "Gun-crazy Show-offs");
+  assert.equal(
+    applyCombatPresets({ ...base, weaponName: "Snazzgun" }, [showOffs], [], "Ranged")
+      .attacksReplacement,
+    4,
+  );
+  assert.equal(
+    applyCombatPresets({ ...base, weaponName: "Choppa" }, [showOffs], [], "Melee")
+      .attacksReplacement,
+    0,
+  );
 });
 
 test("source-backed defensive profile values reduce C/Wasm exact damage", async () => {

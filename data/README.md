@@ -37,6 +37,10 @@ The main tables are:
   attacking-weapon keyword test are `automatic`; they apply only to the
   matching weapon and keyword. All other rows are `situational`, preserve their
   full condition, and are never assumed active
+- fixed Attacks replacements gated by a phase, selected target, or battlefield
+  event are stored as named-weapon situational effects; compound Sustained Hits
+  changes and mutually exclusive replacement/defense modes remain grouped with
+  the source ability
 - `unit_composition` and `unit_composition_models` for source ordering, display
   text, safely parsed unit-size ranges, and the named model components within
   each composition row

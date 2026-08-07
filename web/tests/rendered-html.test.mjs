@@ -214,6 +214,22 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
       subject: "self",
     },
   ]);
+  const harker = catalogue.units.find((unit) => unit.name === "Sergeant Harker");
+  const payback = harker.combatPresets.find((preset) => preset.name === "Payback Time");
+  assert.equal(payback.activation, "situational");
+  assert.deepEqual(
+    payback.effects.map((effect) => [effect.type, effect.value, effect.weaponName]),
+    [
+      ["attacks_replacement", 6, "Payback"],
+      ["sustained_hits", 3, "Payback"],
+    ],
+  );
+  const trajann = catalogue.units.find((unit) => unit.name === "Trajann Valoris");
+  const momentShackle = trajann.combatPresets.filter((preset) =>
+    preset.name.startsWith("Moment Shackle —"),
+  );
+  assert.equal(momentShackle.length, 2);
+  assert.equal(new Set(momentShackle.map((preset) => preset.choiceGroup)).size, 1);
   const culexus = catalogue.units.find((unit) => unit.name === "Culexus Assassin");
   const psychicAssassin = culexus.combatPresets.find(
     (preset) => preset.name === "Psychic Assassin",
