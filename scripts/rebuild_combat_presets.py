@@ -20,7 +20,7 @@ CREATE TABLE unit_combat_presets (
     name TEXT NOT NULL,
     description_text TEXT NOT NULL,
     is_exclusive_choice INTEGER NOT NULL CHECK (is_exclusive_choice IN (0, 1)),
-    activation TEXT NOT NULL CHECK (activation IN ('inherent', 'situational')),
+    activation TEXT NOT NULL CHECK (activation IN ('inherent', 'automatic', 'situational')),
     weapon_scope TEXT NOT NULL CHECK (weapon_scope IN ('Any', 'Ranged', 'Melee')),
     hit_modifier INTEGER NOT NULL CHECK (hit_modifier BETWEEN -1 AND 1),
     hit_modifier_role TEXT CHECK (hit_modifier_role IN ('attacker', 'target', 'either')),
@@ -61,6 +61,7 @@ CREATE TABLE unit_combat_preset_effects (
     dice_count INTEGER NOT NULL DEFAULT 0 CHECK (dice_count >= 0),
     dice_sides INTEGER NOT NULL DEFAULT 0 CHECK (dice_sides >= 0),
     weapon_name TEXT,
+    required_target_keyword TEXT,
     application_role TEXT NOT NULL CHECK (application_role IN ('attacker', 'target', 'either')),
     subject TEXT NOT NULL CHECK (subject IN
         ('self', 'led_unit', 'friendly_unit', 'enemy_unit', 'affected_unit', 'unknown')),
@@ -81,7 +82,7 @@ def main() -> None:
     with sqlite3.connect(args.database) as connection:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
-        connection.execute("UPDATE metadata SET value = '18' WHERE key = 'schema_version'")
+        connection.execute("UPDATE metadata SET value = '19' WHERE key = 'schema_version'")
     print(f"Rebuilt {count} unit combat presets in {args.database}")
 
 

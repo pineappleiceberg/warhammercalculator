@@ -214,6 +214,23 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
       subject: "self",
     },
   ]);
+  const culexus = catalogue.units.find((unit) => unit.name === "Culexus Assassin");
+  const psychicAssassin = culexus.combatPresets.find(
+    (preset) => preset.name === "Psychic Assassin",
+  );
+  assert.equal(psychicAssassin.activation, "automatic");
+  assert.deepEqual(psychicAssassin.effects, [
+    {
+      type: "attacks_replacement",
+      value: 6,
+      diceCount: 0,
+      diceSides: 0,
+      weaponName: "Animus speculum",
+      requiredTargetKeyword: "psyker",
+      role: "attacker",
+      subject: "self",
+    },
+  ]);
   const captain = catalogue.units.find((unit) => unit.id === "000000073");
   const finestHour = captain.combatPresets.find((preset) => preset.name === "Finest Hour");
   assert.equal(finestHour.weaponScope, "Melee");

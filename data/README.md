@@ -20,7 +20,7 @@ The main tables are:
   extracted Hit/Wound modifiers, re-roll modes, weapon-keyword grants, AP
   changes, Critical Hit/Wound thresholds, direct signed Attacks, Strength, and
   Damage modifiers, and fixed Attacks, Strength, and Damage replacements with
-  optional exact weapon names, plus defensive Save targets, invulnerable
+  optional exact weapon names and required target keywords, plus defensive Save targets, invulnerable
   saves, unrestricted Feel No Pain thresholds, and per-attack damage reduction;
   mutually exclusive named modes and rolled outcomes are stored as separate
   ordered choices. Each extracted Hit, Wound, and re-roll effect
@@ -29,7 +29,9 @@ The main tables are:
   otherwise affected unit. Unclassified effects are omitted instead of guessed.
   Every row has an `activation` classification. Strictly unconditional,
   whole-model/unit defenses are `inherent` and become editable model-profile
-  defaults; all other rows are `situational`, preserve their full condition,
+  defaults. Rules whose complete eligibility is an exact selected-target
+  keyword test are `automatic`; they apply only to the matching weapon and
+  keyword. All other rows are `situational`, preserve their full condition,
   and are never assumed active
 - `unit_composition` and `unit_composition_models` for source ordering, display
   text, safely parsed unit-size ranges, and the named model components within

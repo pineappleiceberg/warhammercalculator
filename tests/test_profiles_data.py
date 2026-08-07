@@ -305,6 +305,28 @@ class ProfileDataTests(unittest.TestCase):
             "Damage characteristic of that attack to 0."
         )
         self.assertIsNone(limited_damage_replacement)
+        psychic_assassin = combat_presets(
+            "Psychic Assassin",
+            "Each time you select a PSYKER unit as the target for this weapon, until those "
+            "attacks are resolved, change the Attacks characteristic of this weapon to 6.",
+        )
+        self.assertEqual(len(psychic_assassin), 1)
+        self.assertEqual(psychic_assassin[0]["activation"], "automatic")
+        self.assertEqual(
+            psychic_assassin[0]["additional_effects"],
+            [
+                {
+                    "type": "attacks_replacement",
+                    "value": 6,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "weapon_ability_name": True,
+                    "required_target_keyword": "psyker",
+                    "role": "attacker",
+                    "subject": "self",
+                }
+            ],
+        )
         conflicting = combat_preset(
             "Each time this model makes a melee attack that targets a MONSTER unit, add 1 to "
             "the Damage characteristic of that attack. If it targets a TITANIC unit, add 2 to "
@@ -460,7 +482,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "18",
+                "19",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -484,7 +506,8 @@ class ProfileDataTests(unittest.TestCase):
             self.assertEqual(
                 connection.execute(
                     """SELECT preset.name, preset.weapon_scope, effect.value,
-                              effect.weapon_name, effect.application_role, effect.subject
+                              effect.weapon_name, effect.required_target_keyword,
+                              effect.application_role, effect.subject
                        FROM unit_combat_preset_effects AS effect
                        JOIN unit_combat_presets AS preset
                          USING (datasheet_id, ability_position, preset_position)
@@ -492,8 +515,17 @@ class ProfileDataTests(unittest.TestCase):
                        ORDER BY preset.name"""
                 ).fetchall(),
                 [
-                    ("Embittered", "Any", 12, "Dead Man’s Hand", "attacker", "self"),
-                    ("Thrilling Spectacle", "Melee", 12, None, "attacker", "self"),
+                    ("Embittered", "Any", 12, "Dead Man’s Hand", None, "attacker", "self"),
+                    (
+                        "Psychic Assassin",
+                        "Any",
+                        6,
+                        "Animus speculum",
+                        "psyker",
+                        "attacker",
+                        "self",
+                    ),
+                    ("Thrilling Spectacle", "Melee", 12, None, None, "attacker", "self"),
                 ],
             )
             self.assertEqual(
@@ -551,7 +583,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("inherent", 28), ("situational", 1365)],
+                [("automatic", 1), ("inherent", 28), ("situational", 1365)],
             )
             self.assertEqual(
                 connection.execute(
@@ -847,6 +879,26 @@ class ProfileDataTests(unittest.TestCase):
             ],
         )
         self.assertEqual(auramite["activation"], "situational")
+        culexus = next(unit for unit in catalogue["units"] if unit["name"] == "Culexus Assassin")
+        psychic_assassin = next(
+            preset for preset in culexus["combatPresets"] if preset["name"] == "Psychic Assassin"
+        )
+        self.assertEqual(psychic_assassin["activation"], "automatic")
+        self.assertEqual(
+            psychic_assassin["effects"],
+            [
+                {
+                    "type": "attacks_replacement",
+                    "value": 6,
+                    "diceCount": 0,
+                    "diceSides": 0,
+                    "weaponName": "Animus speculum",
+                    "requiredTargetKeyword": "psyker",
+                    "role": "attacker",
+                    "subject": "self",
+                }
+            ],
+        )
         redemptor = next(
             unit for unit in catalogue["units"] if unit["name"] == "Redemptor Dreadnought"
         )

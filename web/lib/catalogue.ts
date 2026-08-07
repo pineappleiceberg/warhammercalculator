@@ -96,7 +96,7 @@ export type CatalogueUnresolvedLoadoutSubject = {
 export type CatalogueCombatPreset = {
   id: string;
   choiceGroup: string | null;
-  activation: "inherent" | "situational";
+  activation: "inherent" | "automatic" | "situational";
   name: string;
   description: string;
   weaponScope: "Any" | "Ranged" | "Melee";
@@ -153,6 +153,7 @@ export type CatalogueCombatPresetEffect = {
   role: CombatPresetRole;
   subject: CombatPresetSubject;
   weaponName?: string;
+  requiredTargetKeyword?: string;
 };
 export type CatalogueUnit = {
   id: string;

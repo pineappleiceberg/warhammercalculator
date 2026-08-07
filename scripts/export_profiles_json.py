@@ -201,7 +201,8 @@ def export(database: Path, output: Path) -> None:
 
         for row in connection.execute(
             """SELECT datasheet_id, ability_position, preset_position, effect_type,
-                      value, dice_count, dice_sides, weapon_name, application_role, subject
+                      value, dice_count, dice_sides, weapon_name, required_target_keyword,
+                      application_role, subject
                FROM unit_combat_preset_effects
                ORDER BY datasheet_id, ability_position, preset_position, effect_position"""
         ):
@@ -214,6 +215,11 @@ def export(database: Path, output: Path) -> None:
                     "diceCount": row["dice_count"],
                     "diceSides": row["dice_sides"],
                     **({"weaponName": row["weapon_name"]} if row["weapon_name"] else {}),
+                    **(
+                        {"requiredTargetKeyword": row["required_target_keyword"]}
+                        if row["required_target_keyword"]
+                        else {}
+                    ),
                     "role": row["application_role"],
                     "subject": row["subject"],
                 }

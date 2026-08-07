@@ -9,6 +9,7 @@ import {
   parseAgentProfile,
   resolveAgentCatalogueSelection,
 } from "../lib/agent-parameters.mjs";
+import { selectedAndAutomaticCombatPresets } from "../lib/combat-presets.mjs";
 
 const defaults = {
   attackDice: 0,
@@ -171,6 +172,35 @@ test("catalogue agent query resolves stable IDs or unambiguous names", async () 
     catalogue,
   );
   assert.equal(nativeDefense.model.reduction, 1);
+  const psychicTarget = resolveAgentCatalogueSelection(
+    "attacker=Culexus%20Assassin&weapon=Animus%20speculum&target=Exalted%20Sorcerer",
+    catalogue,
+  );
+  const automatic = selectedAndAutomaticCombatPresets(
+    psychicTarget.attacker.combatPresets,
+    [],
+    psychicTarget.weapon.type,
+    psychicTarget.weapon.name,
+    psychicTarget.model.keywords,
+  );
+  assert.deepEqual(
+    automatic.map((preset) => preset.name),
+    ["Psychic Assassin"],
+  );
+  const ordinaryTarget = resolveAgentCatalogueSelection(
+    "attacker=Culexus%20Assassin&weapon=Animus%20speculum&target=Brutalis%20Dreadnought",
+    catalogue,
+  );
+  assert.deepEqual(
+    selectedAndAutomaticCombatPresets(
+      ordinaryTarget.attacker.combatPresets,
+      [],
+      ordinaryTarget.weapon.type,
+      ordinaryTarget.weapon.name,
+      ordinaryTarget.model.keywords,
+    ),
+    [],
+  );
   assert.throws(
     () => resolveAgentCatalogueSelection("attacker=Doom%20Scythe&target=000000136", catalogue),
     /missing catalogue parameters: weapon/i,

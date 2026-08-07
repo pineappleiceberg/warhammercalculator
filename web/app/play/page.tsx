@@ -19,6 +19,7 @@ import {
   type Catalogue,
 } from "../../lib/catalogue";
 import { groupWeaponProfiles } from "../../lib/loadout.mjs";
+import { selectedAndAutomaticCombatPresets } from "../../lib/combat-presets.mjs";
 import {
   createPlayRecovery,
   parsePlayRecovery,
@@ -165,8 +166,20 @@ export default function PlayMode() {
     selectedWeaponGroup?.profiles[0];
   const targetProfiles = targetCatalogueUnit?.models ?? [];
 
-  const selectedCombatPresets = (ids: string[], unit: typeof attackerCatalogueUnit) =>
-    unit?.combatPresets.filter((preset) => ids.includes(preset.id)) ?? [];
+  const selectedCombatPresets = (
+    ids: string[],
+    unit: typeof attackerCatalogueUnit,
+    weapon = weaponProfile,
+    targetKeywords = targetProfiles.find((entry) => String(entry.id) === targetModelId)?.keywords ??
+      [],
+  ) =>
+    selectedAndAutomaticCombatPresets(
+      unit?.combatPresets ?? [],
+      ids,
+      weapon?.type ?? "Ranged",
+      weapon?.name ?? "",
+      targetKeywords,
+    );
 
   const refreshProfile = (
     nextWeaponId = weaponId,
@@ -200,8 +213,8 @@ export default function PlayMode() {
           weapon,
           model.keywords,
         ),
-        selectedCombatPresets(nextAttackerPresetIds, attackerCatalogueUnit),
-        selectedCombatPresets(nextTargetPresetIds, targetCatalogueUnit),
+        selectedCombatPresets(nextAttackerPresetIds, attackerCatalogueUnit, weapon, model.keywords),
+        selectedCombatPresets(nextTargetPresetIds, targetCatalogueUnit, weapon, model.keywords),
         weapon.type,
       ),
     );
@@ -254,8 +267,18 @@ export default function PlayMode() {
           weaponProfile,
           model.keywords,
         ),
-        selectedCombatPresets(activeAttackerPresetIds, attackerCatalogueUnit),
-        selectedCombatPresets(nextTargetPresetIds, nextTargetCatalogueUnit),
+        selectedCombatPresets(
+          activeAttackerPresetIds,
+          attackerCatalogueUnit,
+          weaponProfile,
+          model.keywords,
+        ),
+        selectedCombatPresets(
+          nextTargetPresetIds,
+          nextTargetCatalogueUnit,
+          weaponProfile,
+          model.keywords,
+        ),
         weaponProfile.type,
       ),
     );

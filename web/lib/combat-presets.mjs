@@ -69,7 +69,36 @@ export function combatPresetSupportsRole(preset, role) {
 }
 
 export function combatPresetRequiresActivation(preset) {
-  return preset.activation !== "inherent";
+  return preset.activation !== "inherent" && preset.activation !== "automatic";
+}
+
+function normalizedKeyword(value) {
+  return (value ?? "").normalize("NFKC").trim().toLocaleLowerCase("en");
+}
+
+export function combatPresetMeetsEligibility(preset, targetKeywords = []) {
+  const keywords = new Set(targetKeywords.map(normalizedKeyword));
+  return (preset.effects ?? []).every(
+    (effect) =>
+      !effect.requiredTargetKeyword ||
+      keywords.has(normalizedKeyword(effect.requiredTargetKeyword)),
+  );
+}
+
+export function selectedAndAutomaticCombatPresets(
+  presets,
+  selectedIds,
+  weaponType,
+  weaponName = "",
+  targetKeywords = [],
+) {
+  const selected = new Set(selectedIds);
+  return presets.filter(
+    (preset) =>
+      (selected.has(preset.id) || preset.activation === "automatic") &&
+      combatPresetSupportsWeapon(preset, weaponType, weaponName) &&
+      combatPresetMeetsEligibility(preset, targetKeywords),
+  );
 }
 
 export function combatPresetSupportsWeapon(preset, weaponType, weaponName = "") {

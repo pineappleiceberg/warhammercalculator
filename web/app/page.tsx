@@ -22,6 +22,7 @@ import {
   applyCombatPresets as applySelectedCombatPresets,
   combatPresetSupportsRole,
   combatPresetSupportsWeapon,
+  selectedAndAutomaticCombatPresets,
 } from "../lib/combat-presets.mjs";
 
 type Result = {
@@ -76,6 +77,7 @@ type CatalogueModel = {
 type CatalogueCombatPreset = {
   id: string;
   choiceGroup: string | null;
+  activation: "inherent" | "automatic" | "situational";
   name: string;
   description: string;
   weaponScope: "Any" | "Ranged" | "Melee";
@@ -99,6 +101,7 @@ type CatalogueCombatPreset = {
     diceCount: number;
     diceSides: number;
     weaponName?: string;
+    requiredTargetKeyword?: string;
     role: "attacker" | "target" | "either";
     subject: string;
   }>;
@@ -819,8 +822,19 @@ export default function Home() {
   const selectedTargetModel = selectedTargetUnit?.models.find(
     (model) => String(model.id) === targetModel,
   );
-  const selectedPresets = (unit: CatalogueUnit | undefined, ids: string[]) =>
-    unit?.combatPresets.filter((preset) => ids.includes(preset.id)) ?? [];
+  const selectedPresets = (
+    unit: CatalogueUnit | undefined,
+    ids: string[],
+    weapon: CatalogueWeapon | undefined,
+    targetKeywords: string[],
+  ) =>
+    selectedAndAutomaticCombatPresets(
+      unit?.combatPresets ?? [],
+      ids,
+      weapon?.type ?? "Ranged",
+      weapon?.name ?? "",
+      targetKeywords,
+    );
   const withActivePresets = (
     current: Profile,
     weapon: CatalogueWeapon | undefined = selectedWeapon,
@@ -878,8 +892,8 @@ export default function Home() {
       : current;
     return applySelectedCombatPresets(
       baseProfile,
-      selectedPresets(selectedAttackerUnit, attackerIds),
-      selectedPresets(selectedTargetUnit, targetIds),
+      selectedPresets(selectedAttackerUnit, attackerIds, weapon, targetKeywords),
+      selectedPresets(selectedTargetUnit, targetIds, weapon, targetKeywords),
       weapon?.type ?? "Ranged",
     ) as Profile;
   };

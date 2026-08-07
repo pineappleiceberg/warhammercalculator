@@ -154,7 +154,7 @@ CREATE TABLE unit_combat_presets (
     name TEXT NOT NULL,
     description_text TEXT NOT NULL,
     is_exclusive_choice INTEGER NOT NULL CHECK (is_exclusive_choice IN (0, 1)),
-    activation TEXT NOT NULL CHECK (activation IN ('inherent', 'situational')),
+    activation TEXT NOT NULL CHECK (activation IN ('inherent', 'automatic', 'situational')),
     weapon_scope TEXT NOT NULL CHECK (weapon_scope IN ('Any', 'Ranged', 'Melee')),
     hit_modifier INTEGER NOT NULL CHECK (hit_modifier BETWEEN -1 AND 1),
     hit_modifier_role TEXT CHECK (hit_modifier_role IN ('attacker', 'target', 'either')),
@@ -195,6 +195,7 @@ CREATE TABLE unit_combat_preset_effects (
     dice_count INTEGER NOT NULL DEFAULT 0 CHECK (dice_count >= 0),
     dice_sides INTEGER NOT NULL DEFAULT 0 CHECK (dice_sides >= 0),
     weapon_name TEXT,
+    required_target_keyword TEXT,
     application_role TEXT NOT NULL CHECK (application_role IN ('attacker', 'target', 'either')),
     subject TEXT NOT NULL CHECK (subject IN
         ('self', 'led_unit', 'friendly_unit', 'enemy_unit', 'affected_unit', 'unknown')),
@@ -790,6 +791,26 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
             }
         )
 
+    keyword_attacks_replacement_pattern = re.compile(
+        r"\beach time you select an? ([A-Z][A-Z0-9 -]+) unit as the target for this weapon, "
+        r"until those attacks are resolved, change the Attacks characteristic of this weapon "
+        r"to (\d+)\b",
+        re.IGNORECASE,
+    )
+    for match in keyword_attacks_replacement_pattern.finditer(text):
+        effects.append(
+            {
+                "type": "attacks_replacement",
+                "value": int(match.group(2)),
+                "dice_count": 0,
+                "dice_sides": 0,
+                "weapon_ability_name": True,
+                "required_target_keyword": match.group(1).strip().casefold(),
+                "role": "attacker",
+                "subject": "self",
+            }
+        )
+
     def defensive_subject(subject_text: str, effect_start: int) -> tuple[str, str]:
         subject = subject_text.casefold()
         context = text[max(0, effect_start - 300) : effect_start].casefold()
@@ -942,6 +963,18 @@ def combat_preset(description: str) -> dict[str, object] | None:
 
 def combat_preset_activation(description: str, preset: dict[str, object]) -> str:
     additional = preset["additional_effects"]
+    if (
+        len(additional) == 1
+        and additional[0].get("required_target_keyword")
+        and re.fullmatch(
+            r"each time you select an? [A-Z][A-Z0-9 -]+ unit as the target for this weapon, "
+            r"until those attacks are resolved, change the Attacks characteristic of this "
+            r"weapon to \d+\.",
+            plain_text(description).strip(),
+            re.IGNORECASE,
+        )
+    ):
+        return "automatic"
     if not additional or any(
         preset.get(field)
         for field in (
@@ -1091,6 +1124,30 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
     ).fetchall()
     for datasheet_id, ability_position, name, description in abilities:
         for preset_position, preset in enumerate(combat_presets(name, description), start=1):
+            resolved_effects = []
+            for effect in preset["additional_effects"]:
+                ability_name = effect.get("weapon_ability_name")
+                if not ability_name:
+                    resolved_effects.append(effect)
+                    continue
+                if ability_name is True:
+                    ability_name = name
+                weapon_names = connection.execute(
+                    """SELECT DISTINCT weapon_profiles.name
+                       FROM weapon_profiles
+                       JOIN weapon_abilities
+                         ON weapon_abilities.weapon_profile_id = weapon_profiles.id
+                       WHERE weapon_profiles.datasheet_id = ?
+                         AND lower(weapon_abilities.name) = lower(?)
+                       ORDER BY weapon_profiles.name""",
+                    (datasheet_id, ability_name),
+                ).fetchall()
+                resolved_effects.extend(
+                    {**effect, "weapon_name": weapon_name}
+                    for (weapon_name,) in weapon_names
+                )
+            if preset["additional_effects"] and not resolved_effects:
+                continue
             connection.execute(
                 """INSERT INTO unit_combat_presets
                    (datasheet_id, ability_position, preset_position, name, description_text,
@@ -1125,13 +1182,13 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     preset.get("wound_reroll_subject"),
                 ),
             )
-            for effect_position, effect in enumerate(preset["additional_effects"], start=1):
+            for effect_position, effect in enumerate(resolved_effects, start=1):
                 connection.execute(
                     """INSERT INTO unit_combat_preset_effects
                        (datasheet_id, ability_position, preset_position, effect_position,
                         effect_type, value, dice_count, dice_sides, weapon_name,
-                        application_role, subject)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        required_target_keyword, application_role, subject)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         datasheet_id,
                         ability_position,
@@ -1142,6 +1199,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                         effect["dice_count"],
                         effect["dice_sides"],
                         effect.get("weapon_name"),
+                        effect.get("required_target_keyword"),
                         effect["role"],
                         effect["subject"],
                     ),
@@ -1283,7 +1341,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "18"),
+                    ("schema_version", "19"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
@@ -1390,7 +1448,6 @@ def create_database(
                         row["parameter"].strip() or None,
                     ),
                 )
-            rebuild_combat_presets(connection)
             connection.executemany(
                 """INSERT INTO model_profiles
                    (datasheet_id, source_line, name, movement, movement_inches,
@@ -1539,6 +1596,7 @@ def create_database(
                         (weapon_id, position, name, value, raw),
                     )
 
+            rebuild_combat_presets(connection)
             populate_constraints(connection)
 
         integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]

@@ -17,6 +17,7 @@ import {
   loadCatalogue,
 } from "../../lib/catalogue";
 import { DEFAULT_PROFILE, normalizeProfile, type CombatProfile } from "../../lib/combat";
+import { selectedAndAutomaticCombatPresets } from "../../lib/combat-presets.mjs";
 
 type AgentResult = {
   schemaVersion: number;
@@ -93,10 +94,24 @@ export default function AgentCalculator() {
           const selection = resolveAgentCatalogueSelection(search, catalogue);
           let profile = applyTargetProfile(DEFAULT_PROFILE, selection.model);
           profile = applyWeaponProfile(profile, selection.weapon, selection.model.keywords);
+          const attackerPresets = selectedAndAutomaticCombatPresets(
+            selection.attacker.combatPresets,
+            selection.attackerPresets.map((preset) => preset.id),
+            selection.weapon.type,
+            selection.weapon.name,
+            selection.model.keywords,
+          );
+          const targetPresets = selectedAndAutomaticCombatPresets(
+            selection.target.combatPresets,
+            selection.targetPresets.map((preset) => preset.id),
+            selection.weapon.type,
+            selection.weapon.name,
+            selection.model.keywords,
+          );
           profile = applyCombatPresets(
             profile,
-            selection.attackerPresets,
-            selection.targetPresets,
+            attackerPresets,
+            targetPresets,
             selection.weapon.type,
           );
           candidate = parseAgentProfile(search, profile, false);
@@ -107,13 +122,15 @@ export default function AgentCalculator() {
             weapon: { id: selection.weapon.id, name: selection.weapon.name },
             target: { id: selection.target.id, name: selection.target.name },
             model: { id: selection.model.id, name: selection.model.name },
-            attackerPresets: selection.attackerPresets.map((preset) => ({
+            attackerPresets: attackerPresets.map((preset) => ({
               id: preset.id,
               name: preset.name,
+              automatic: preset.activation === "automatic",
             })),
-            targetPresets: selection.targetPresets.map((preset) => ({
+            targetPresets: targetPresets.map((preset) => ({
               id: preset.id,
               name: preset.name,
+              automatic: preset.activation === "automatic",
             })),
           };
         } else {
@@ -224,6 +241,11 @@ export default function AgentCalculator() {
               <code>rules</code> accepts comma-separated values such as{" "}
               <code>lethal-hits,devastating-wounds,twin-linked,blast,cover,half-range</code>. Names
               or stable catalogue IDs are accepted; ambiguous names return an error.
+            </p>
+            <p>
+              Catalogue queries apply exact target-keyword conditions automatically. Applied source
+              rules are listed in the result with <code>automatic: true</code>; any numeric URL
+              override is applied afterward.
             </p>
           </div>
         </article>

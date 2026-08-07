@@ -19,13 +19,24 @@ priority over feature count.
 1. Represent random and multiplicative Attacks, Strength, and Damage changes,
    context-dependent Attacks replacements, and limited-use single-attack Damage
    replacements exactly in native C and WebAssembly before importing them.
-2. Add a source-backed rules eligibility layer for target keywords and phase or
-   range conditions that currently require manual interpretation.
+2. Extend the source-backed rules eligibility layer beyond exact target
+   keywords to phase, range, attack-type, and other compound conditions that
+   currently require manual interpretation.
 3. Link bearer- and subset-model defensive abilities to structured wargear and
    unit composition so equipped defensive defaults can be applied without
    affecting models that do not have them.
 
 ## Completed cycles
+
+- 2026-08-06: Added source-backed automatic target-keyword eligibility across
+  SQLite, the browser catalogue, Model vs Model, Unit vs Unit, Play Mode, and
+  static agent URLs. Culexus Assassin's Psychic Assassin now changes only
+  Animus speculum to 6 Attacks against a selected PSYKER target; the weapon is
+  linked through its published weapon-ability tag, the rule is not offered as
+  a manual checkbox, non-PSYKER targets do not activate it, and the resulting
+  numeric profile remains editable. Catalogue, parser, workflow composition,
+  agent resolution, native/Wasm replacement, and generated-data regressions
+  cover both eligible and ineligible cases.
 
 - 2026-08-06: Added fixed Strength and Damage characteristic replacements in
   the official replace-before-add order across native C, WebAssembly, exact
@@ -45,8 +56,8 @@ priority over feature count.
   agent URLs. Combat effects can now carry an exact weapon name, so Captain
   Tycho's Embittered replacement applies only to Dead Man's Hand, while Lelith
   Hesperax's Thrilling Spectacle applies to all of her melee weapons. The
-  target-keyword-dependent Psychic Assassin replacement remains omitted until
-  its eligibility condition can be represented. Hand-derived native/Wasm
+  target-keyword-dependent Psychic Assassin replacement remained omitted in
+  that cycle and was added later with exact eligibility metadata. Hand-derived native/Wasm
   fractions, deterministic simulations, URL round trips, catalogue snapshots,
   and generated fuzz profiles cover the change.
 

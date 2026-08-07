@@ -22,10 +22,12 @@ import {
   applyCombatPresets,
   applyTargetCombatPresets,
   combatPresetEffects,
+  combatPresetMeetsEligibility,
   combatPresetRequiresActivation,
   combatPresetSubjectSummary,
   combatPresetSupportsRole,
   combatPresetSupportsWeapon,
+  selectedAndAutomaticCombatPresets,
   updateCombatPresetSelection,
 } from "../lib/combat-presets.mjs";
 import { rulesInteractionCases } from "./rules-interaction-corpus.mjs";
@@ -646,6 +648,53 @@ test("fixed characteristic replacements apply before modifiers and respect scope
   );
   assert.equal(replaced.strengthReplacement, 9);
   assert.equal(replaced.damageReplacement, 0);
+});
+
+test("automatic target-keyword presets apply only to eligible weapons and targets", () => {
+  const psychicAssassin = {
+    id: "culexus:psychic-assassin",
+    activation: "automatic",
+    weaponScope: "Any",
+    hitModifier: 0,
+    woundModifier: 0,
+    rerollHits: false,
+    rerollHitOnes: false,
+    rerollWounds: false,
+    rerollWoundOnes: false,
+    effects: [
+      {
+        type: "attacks_replacement",
+        value: 6,
+        diceCount: 0,
+        diceSides: 0,
+        weaponName: "Animus speculum",
+        requiredTargetKeyword: "psyker",
+        role: "attacker",
+        subject: "self",
+      },
+    ],
+  };
+  assert.equal(combatPresetRequiresActivation(psychicAssassin), false);
+  assert.equal(combatPresetMeetsEligibility(psychicAssassin, ["Infantry", "PSYKER"]), true);
+  assert.equal(combatPresetMeetsEligibility(psychicAssassin, ["Infantry"]), false);
+  assert.deepEqual(
+    selectedAndAutomaticCombatPresets([psychicAssassin], [], "Ranged", "Animus Speculum", [
+      "psyker",
+    ]),
+    [psychicAssassin],
+  );
+  assert.deepEqual(
+    selectedAndAutomaticCombatPresets([psychicAssassin], [], "Melee", "Life-draining touch", [
+      "psyker",
+    ]),
+    [],
+  );
+  assert.deepEqual(
+    selectedAndAutomaticCombatPresets([psychicAssassin], [], "Ranged", "Animus speculum", [
+      "vehicle",
+    ]),
+    [],
+  );
 });
 
 test("defensive presets compose editable profiles and every ordered target segment", () => {

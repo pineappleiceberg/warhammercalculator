@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { WorkflowNav } from "../../components/workflow-nav";
 import { CombatPresetSelector } from "../../components/combat-preset-selector";
-import { applyTargetCombatPresets } from "../../lib/combat-presets.mjs";
+import {
+  applyTargetCombatPresets,
+  selectedAndAutomaticCombatPresets,
+} from "../../lib/combat-presets.mjs";
 import {
   calculateOrderedVolley,
   estimateOrderedVolleyComplexity,
@@ -235,11 +238,6 @@ export default function UnitVsUnit() {
 
   const currentProfiles = () => {
     const targetModels = targetSegments.reduce((sum, segment) => sum + segment.modelCount, 0);
-    const attackerPresets =
-      attackerUnit?.combatPresets.filter((preset) => activeAttackerPresetIds.includes(preset.id)) ??
-      [];
-    const targetPresets =
-      targetUnit?.combatPresets.filter((preset) => activeTargetPresetIds.includes(preset.id)) ?? [];
     return orderedLines.map((line) =>
       applyCombatPresets(
         applyWeaponProfile(
@@ -247,16 +245,41 @@ export default function UnitVsUnit() {
           line.weapon,
           targetSegments[0]?.keywords ?? [],
         ),
-        attackerPresets,
-        targetPresets,
+        selectedAndAutomaticCombatPresets(
+          attackerUnit?.combatPresets ?? [],
+          activeAttackerPresetIds,
+          line.weapon.type,
+          line.weapon.name,
+          targetSegments[0]?.keywords ?? [],
+        ),
+        selectedAndAutomaticCombatPresets(
+          targetUnit?.combatPresets ?? [],
+          activeTargetPresetIds,
+          line.weapon.type,
+          line.weapon.name,
+          targetSegments[0]?.keywords ?? [],
+        ),
         line.weapon.type,
       ),
     );
   };
 
   const currentTargets = () => {
-    const targetPresets =
-      targetUnit?.combatPresets.filter((preset) => activeTargetPresetIds.includes(preset.id)) ?? [];
+    const targetPresets = [
+      ...new Map(
+        orderedLines
+          .flatMap((line) =>
+            selectedAndAutomaticCombatPresets(
+              targetUnit?.combatPresets ?? [],
+              activeTargetPresetIds,
+              line.weapon.type,
+              line.weapon.name,
+              targetSegments[0]?.keywords ?? [],
+            ),
+          )
+          .map((preset) => [preset.id, preset]),
+      ).values(),
+    ];
     return applyTargetCombatPresets(
       targetSegments,
       targetPresets,
