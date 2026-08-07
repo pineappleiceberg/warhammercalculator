@@ -557,10 +557,13 @@ export default function PlayMode() {
                   [
                     ["weaponCount", "Weapons"],
                     ["attacks", "Attacks"],
+                    ["attacksMultiplier", "×Attacks"],
                     ["hitOn", "Hit"],
                     ["strength", "S"],
+                    ["strengthMultiplier", "×S"],
                     ["ap", "AP"],
                     ["damage", "Damage"],
+                    ["damageMultiplier", "×Damage"],
                     ["toughness", "T"],
                     ["save", "Save"],
                     ["invulnerable", "Invuln"],

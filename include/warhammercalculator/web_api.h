@@ -76,6 +76,9 @@ struct whc_web_weapon_input {
     uint32_t strength_replacement;
     uint32_t damage_replacement;
     uint32_t damage_replacement_active;
+    uint32_t attacks_multiplier;
+    uint32_t strength_multiplier;
+    uint32_t damage_multiplier;
 };
 
 struct whc_web_target_input {
@@ -150,6 +153,7 @@ bool whc_calculate_summary(
     int16_t wound_modifier, int16_t attacks_modifier, int16_t strength_modifier,
     int16_t damage_characteristic_modifier, uint16_t strength_replacement,
     uint16_t damage_replacement, bool damage_replacement_active, uint16_t damage_divisor,
+    uint16_t attacks_multiplier, uint16_t strength_multiplier, uint16_t damage_multiplier,
     struct whc_web_summary *summary);
 
 /*@ requires 1 <= weapon_count && weapon_count <= MAX_VOLLEY_WEAPONS;

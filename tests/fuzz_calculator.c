@@ -77,6 +77,9 @@ static void generate_weapon(struct fuzz_input *input, struct whc_web_weapon_inpu
     weapon->damage_modifier = next_byte(input) % 5u;
     weapon->damage_replacement_active = next_byte(input) % 4u == 0u;
     weapon->damage_replacement = next_byte(input) % 7u;
+    weapon->attacks_multiplier = 1u + (next_byte(input) % 4u == 0u ? 1u : 0u);
+    weapon->strength_multiplier = 1u + next_byte(input) % 2u;
+    weapon->damage_multiplier = 1u + next_byte(input) % 2u;
     weapon->critical_hits_on = 5u + next_byte(input) % 2u;
     weapon->rule_flags = next_u16(input);
     weapon->critical_wounds_on = next_byte(input) % 3u == 0u ? 0u : 5u + next_byte(input) % 2u;
@@ -163,7 +166,9 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         (int16_t)weapons[0].strength_characteristic_modifier,
         (int16_t)weapons[0].damage_characteristic_modifier,
         (uint16_t)weapons[0].strength_replacement, (uint16_t)weapons[0].damage_replacement,
-        weapons[0].damage_replacement_active != 0u, (uint16_t)targets[0].damage_divisor, &summary);
+        weapons[0].damage_replacement_active != 0u, (uint16_t)targets[0].damage_divisor,
+        (uint16_t)weapons[0].attacks_multiplier, (uint16_t)weapons[0].strength_multiplier,
+        (uint16_t)weapons[0].damage_multiplier, &summary);
     if (valid) {
         assert_summary(&summary);
     }

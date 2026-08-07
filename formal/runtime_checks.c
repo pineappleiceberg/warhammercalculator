@@ -67,10 +67,13 @@ int main(void) {
     assert(modified_roll_threshold(4u, -10) == 5u);
 
     weapon.attacks = (struct dice_value){0u, 0u, 4u};
+    weapon.attacks_multiplier = 2u;
+    weapon.attacks_addition = (struct dice_value){1u, 3u, 0u};
     weapon.hits_on = 3u;
     weapon.strength = 10u;
     weapon.ap = 3u;
     weapon.damage = (struct dice_value){1u, 6u, 1u};
+    weapon.damage_multiplier = 2u;
     weapon.critical_hits_on = 6u;
     weapon.hit_modifier = 2;
     weapon.wound_modifier = -2;
@@ -88,6 +91,7 @@ int main(void) {
     assert(plan.hit_reroll_mask == (UINT8_C(1) << 1u));
     assert(plan.wound_reroll_mask == (UINT8_C(1) << 1u));
     assert(plan.damage_divisor == 2u);
+    assert(plan.damage_multiplier == 2u);
     assert(calculate_attack_damage_distribution(&weapon, &target, &workspace, &distribution));
     assert(probability_distribution_is_normalized(&distribution));
     assert(distribution.minimum <= distribution.maximum);

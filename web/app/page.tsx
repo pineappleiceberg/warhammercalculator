@@ -252,6 +252,9 @@ async function calculate(profile: Profile): Promise<Result> {
       profile.damageReplacement ?? 0,
       profile.damageReplacement === null ? 0 : 1,
       profile.damageDivisor,
+      profile.attacksMultiplier,
+      profile.strengthMultiplier,
+      profile.damageMultiplier,
       output,
     );
 
@@ -459,10 +462,12 @@ function simulateAttack(profile: Profile): RollResult {
     const damageFloor = profile.damageReplacement === 0 ? 0 : 1;
     const reducedDamage = Math.max(
       damageFloor,
-      Math.ceil(baseDamage / profile.damageDivisor) +
-        profile.damageModifier +
-        (profile.withinHalfRange ? profile.melta : 0) -
-        profile.reduction,
+      Math.ceil(
+        (baseDamage * profile.damageMultiplier) / profile.damageDivisor +
+          profile.damageModifier +
+          (profile.withinHalfRange ? profile.melta : 0) -
+          profile.reduction,
+      ),
     );
     let prevented = 0;
     if (profile.feelNoPain > 0) {
@@ -878,10 +883,13 @@ export default function Home() {
             : {}),
           ...(/^\d+$/.test(weapon.strength) ? { strength: Number(weapon.strength) } : {}),
           attacksReplacement: 0,
+          attacksMultiplier: 1,
           attacksModifier: 0,
           strengthReplacement: 0,
+          strengthMultiplier: 1,
           strengthModifier: 0,
           damageReplacement: null,
+          damageMultiplier: 1,
           damageModifier: 0,
           ap: Math.abs(weapon.ap ?? 0),
           criticalHits: 6,
@@ -939,10 +947,13 @@ export default function Home() {
           ...(weapon.skill ? { hitOn: weapon.skill } : {}),
           ...(/^\d+$/.test(weapon.strength) ? { strength: Number(weapon.strength) } : {}),
           attacksReplacement: 0,
+          attacksMultiplier: 1,
           attacksModifier: 0,
           strengthReplacement: 0,
+          strengthMultiplier: 1,
           strengthModifier: 0,
           damageReplacement: null,
+          damageMultiplier: 1,
           damageModifier: 0,
           ...(weapon.ap !== null ? { ap: Math.abs(weapon.ap) } : {}),
           criticalWounds: antiWoundThreshold(weapon.abilities, selectedTargetModel?.keywords ?? []),
@@ -1469,6 +1480,13 @@ export default function Home() {
                 onChange={(value) => set("attacksReplacement", value)}
               />
               <NumberField
+                label="Attacks characteristic multiplier"
+                value={profile.attacksMultiplier}
+                min={1}
+                max={1024}
+                onChange={(value) => set("attacksMultiplier", value)}
+              />
+              <NumberField
                 label="Attacks characteristic modifier"
                 value={profile.attacksModifier}
                 min={-1024}
@@ -1480,6 +1498,13 @@ export default function Home() {
                 value={profile.strengthReplacement}
                 max={1024}
                 onChange={(value) => set("strengthReplacement", value)}
+              />
+              <NumberField
+                label="Strength characteristic multiplier"
+                value={profile.strengthMultiplier}
+                min={1}
+                max={1024}
+                onChange={(value) => set("strengthMultiplier", value)}
               />
               <NumberField
                 label="Strength characteristic modifier"
@@ -1501,6 +1526,13 @@ export default function Home() {
                   onChange={(value) => set("damageReplacement", value)}
                 />
               )}
+              <NumberField
+                label="Damage characteristic multiplier"
+                value={profile.damageMultiplier}
+                min={1}
+                max={1024}
+                onChange={(value) => set("damageMultiplier", value)}
+              />
               <NumberField
                 label="Damage characteristic modifier"
                 value={profile.damageModifier}

@@ -14,7 +14,11 @@ from scripts.build_profiles_db import (
     source_manifest_differences,
 )
 from scripts.export_profiles_json import export, profile_group_names, unit_model_range
-from scripts.profile_freshness import database_source_manifest, offline_report, table_snapshot
+from scripts.profile_freshness import (
+    database_source_manifest,
+    offline_report,
+    table_snapshot,
+)
 from scripts.wargear_constraints import (
     allowance,
     choice_weapon_vector,
@@ -77,7 +81,10 @@ class ProfileDataTests(unittest.TestCase):
             "Each time an attack targets this unit, add 1 to the Wound roll."
         )
         self.assertEqual(
-            (defensive_bonus["wound_modifier_role"], defensive_bonus["wound_modifier_subject"]),
+            (
+                defensive_bonus["wound_modifier_role"],
+                defensive_bonus["wound_modifier_subject"],
+            ),
             ("target", "enemy_unit"),
         )
         mixed = combat_preset(
@@ -95,11 +102,14 @@ class ProfileDataTests(unittest.TestCase):
             "Villain’s Doom: Each time a model in this unit makes an attack, add 1 to the Wound roll. "
             "Trickster’s Grace: Each time an attack targets this unit, subtract 1 from the Hit roll.",
         )
-        self.assertEqual([preset["name"] for preset in dance], [
-            "Dance of Death — Hero’s Prowess",
-            "Dance of Death — Villain’s Doom",
-            "Dance of Death — Trickster’s Grace",
-        ])
+        self.assertEqual(
+            [preset["name"] for preset in dance],
+            [
+                "Dance of Death — Hero’s Prowess",
+                "Dance of Death — Villain’s Doom",
+                "Dance of Death — Trickster’s Grace",
+            ],
+        )
         self.assertEqual([preset["is_exclusive_choice"] for preset in dance], [1, 1, 1])
         self.assertEqual(dance[0]["reroll_hit_ones"], 1)
         self.assertEqual(dance[1]["wound_modifier"], 1)
@@ -111,14 +121,19 @@ class ProfileDataTests(unittest.TestCase):
             "makes an attack, subtract 1 from the Hit roll; on a 6, each time it makes an "
             "attack, subtract 1 from the Hit roll and subtract 1 from the Wound roll.",
         )
-        self.assertEqual([preset["name"] for preset in outcomes], [
-            "Mind Control — roll 2–5",
-            "Mind Control — roll 6",
-        ])
+        self.assertEqual(
+            [preset["name"] for preset in outcomes],
+            [
+                "Mind Control — roll 2–5",
+                "Mind Control — roll 6",
+            ],
+        )
         self.assertEqual(outcomes[0]["wound_modifier"], 0)
         self.assertEqual(outcomes[1]["wound_modifier"], -1)
 
-    def test_combat_preset_parser_extracts_weapon_rules_ap_and_critical_thresholds(self):
+    def test_combat_preset_parser_extracts_weapon_rules_ap_and_critical_thresholds(
+        self,
+    ):
         preset = combat_preset(
             "Weapons equipped by models in this unit have the [SUSTAINED HITS D3] ability. "
             "Each time a model in this unit makes an attack, improve the Armour Penetration "
@@ -126,7 +141,10 @@ class ProfileDataTests(unittest.TestCase):
         )
         effects = {effect["type"]: effect for effect in preset["additional_effects"]}
         self.assertEqual(
-            (effects["sustained_hits"]["dice_count"], effects["sustained_hits"]["dice_sides"]),
+            (
+                effects["sustained_hits"]["dice_count"],
+                effects["sustained_hits"]["dice_sides"],
+            ),
             (1, 3),
         )
         self.assertEqual(effects["ap_modifier"]["value"], 1)
@@ -142,7 +160,9 @@ class ProfileDataTests(unittest.TestCase):
             ["lethal_hits"],
         )
 
-    def test_combat_preset_parser_extracts_generic_positive_characteristic_modifiers(self):
+    def test_combat_preset_parser_extracts_generic_positive_characteristic_modifiers(
+        self,
+    ):
         preset = combat_preset(
             "While this model is leading a unit, add 1 to the Attacks and Strength "
             "characteristics of melee weapons equipped by models in that unit. Each time a "
@@ -182,17 +202,17 @@ class ProfileDataTests(unittest.TestCase):
             },
         )
         save = combat_preset(
-            "While this model is leading a unit, models in that unit have a Save "
-            "characteristic of 2+."
+            "While this model is leading a unit, models in that unit have a Save characteristic of 2+."
         )
         self.assertEqual(save["additional_effects"][0]["type"], "save_target")
         self.assertEqual(save["additional_effects"][0]["value"], 2)
 
-    def test_combat_preset_parser_classifies_only_unconditional_defenses_as_inherent(self):
+    def test_combat_preset_parser_classifies_only_unconditional_defenses_as_inherent(
+        self,
+    ):
         inherent = combat_presets(
             "Duty Eternal",
-            "Each time an attack is allocated to this model, subtract 1 from the Damage "
-            "characteristic of that attack.",
+            "Each time an attack is allocated to this model, subtract 1 from the Damage characteristic of that attack.",
         )
         self.assertEqual(inherent[0]["activation"], "inherent")
         conditional = combat_presets(
@@ -203,8 +223,7 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(conditional[0]["activation"], "situational")
         halved = combat_presets(
             "Molten Form",
-            "Each time an attack is allocated to this model, halve the Damage "
-            "characteristic of that attack.",
+            "Each time an attack is allocated to this model, halve the Damage characteristic of that attack.",
         )
         self.assertEqual(halved[0]["activation"], "inherent")
         self.assertEqual(
@@ -243,15 +262,13 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertIsNone(
             combat_preset(
-                "This model has the Feel No Pain 3+ ability against Psychic Attacks and "
-                "mortal wounds."
+                "This model has the Feel No Pain 3+ ability against Psychic Attacks and mortal wounds."
             )
         )
         self.assertIsNone(combat_preset("The bearer has a 4+ invulnerable save."))
         self.assertIsNone(
             combat_preset(
-                'While a friendly VEHICLE unit is within 6" of this model, that unit has '
-                "the Feel No Pain 6+ ability."
+                'While a friendly VEHICLE unit is within 6" of this model, that unit has the Feel No Pain 6+ ability.'
             )
         )
         self.assertIsNone(
@@ -279,7 +296,9 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertIsNone(conflicting)
 
-    def test_combat_preset_parser_supports_signed_generic_characteristic_modifiers(self):
+    def test_combat_preset_parser_supports_signed_generic_characteristic_modifiers(
+        self,
+    ):
         named_weapon = combat_preset(
             "Add 2 to the Attacks characteristic of this model’s Frostfang weapon."
         )
@@ -305,6 +324,7 @@ class ProfileDataTests(unittest.TestCase):
             "Melee weapons equipped by models in this unit have an Attacks characteristic of 4."
         )
         self.assertIsNone(replacement)
+
         strength_replacement = combat_preset(
             "Until the end of the phase, change the Strength characteristic of melee weapons "
             "equipped by this model to 9."
@@ -379,6 +399,31 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertIsNone(named_attack)
 
+    def test_combat_preset_parser_supports_generic_characteristic_multipliers(self):
+        doubled = combat_preset(
+            "Until the end of the phase, double the Attacks characteristic of melee weapons "
+            "equipped by models in this unit."
+        )
+        self.assertEqual(
+            doubled["additional_effects"],
+            [
+                {
+                    "type": "attacks_multiplier",
+                    "value": 2,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "role": "attacker",
+                    "subject": "self",
+                }
+            ],
+        )
+        self.assertIsNone(
+            combat_preset(
+                "Double the Attacks characteristic of melee weapons equipped by Daemonhost "
+                "models in that unit."
+            )
+        )
+
     def test_combat_preset_parser_splits_keyword_choices(self):
         choices = combat_presets(
             "Weapon Doctrine",
@@ -422,7 +467,9 @@ class ProfileDataTests(unittest.TestCase):
             for path, row_id, value in ((first, 1, "same"), (second, 99, "same")):
                 with closing(sqlite3.connect(path)) as connection:
                     connection.execute("CREATE TABLE sample(id INTEGER PRIMARY KEY, value TEXT)")
-                    connection.execute("INSERT INTO sample(id, value) VALUES (?, ?)", (row_id, value))
+                    connection.execute(
+                        "INSERT INTO sample(id, value) VALUES (?, ?)", (row_id, value)
+                    )
                     connection.commit()
             self.assertEqual(table_snapshot(first, "sample"), table_snapshot(second, "sample"))
             with closing(sqlite3.connect(second)) as connection:
@@ -434,9 +481,7 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(composition_range("10-20 Necron Warriors"), (10, 20))
         self.assertEqual(composition_range("3‑10 Kill Team Infiltrators"), (3, 10))
         self.assertEqual(
-            composition_components(
-                "1 Master of Ordnance, 1 Officer of the Fleet and 1 Astropath."
-            ),
+            composition_components("1 Master of Ordnance, 1 Officer of the Fleet and 1 Astropath."),
             [
                 ("Master of Ordnance", 1, 1),
                 ("Officer of the Fleet", 1, 1),
@@ -444,9 +489,7 @@ class ProfileDataTests(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            composition_range(
-                "1 Master of Ordnance, 1 Officer of the Fleet and 1 Astropath."
-            ),
+            composition_range("1 Master of Ordnance, 1 Officer of the Fleet and 1 Astropath."),
             (3, 3),
         )
         self.assertEqual(
@@ -475,9 +518,7 @@ class ProfileDataTests(unittest.TestCase):
             ["1 flamer", "1 meltagun"],
         )
         self.assertEqual(
-            profile_group_names(
-                ["Plasma pistol – standard", "Plasma pistol – supercharge"]
-            ),
+            profile_group_names(["Plasma pistol – standard", "Plasma pistol – supercharge"]),
             ("Plasma pistol", ["standard", "supercharge"]),
         )
         known = {
@@ -524,7 +565,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "21",
+                "22",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -557,7 +598,15 @@ class ProfileDataTests(unittest.TestCase):
                        ORDER BY preset.name"""
                 ).fetchall(),
                 [
-                    ("Embittered", "Any", 12, "Dead Man’s Hand", None, "attacker", "self"),
+                    (
+                        "Embittered",
+                        "Any",
+                        12,
+                        "Dead Man’s Hand",
+                        None,
+                        "attacker",
+                        "self",
+                    ),
                     (
                         "Psychic Assassin",
                         "Any",
@@ -567,7 +616,15 @@ class ProfileDataTests(unittest.TestCase):
                         "attacker",
                         "self",
                     ),
-                    ("Thrilling Spectacle", "Melee", 12, None, None, "attacker", "self"),
+                    (
+                        "Thrilling Spectacle",
+                        "Melee",
+                        12,
+                        None,
+                        None,
+                        "attacker",
+                        "self",
+                    ),
                 ],
             )
             self.assertEqual(
@@ -680,11 +737,14 @@ class ProfileDataTests(unittest.TestCase):
                    ORDER BY preset_position"""
             ).fetchall()
             self.assertEqual(len(dance), 3)
-            self.assertEqual([row[1] for row in dance], [
-                "Dance of Death — Hero’s Prowess",
-                "Dance of Death — Villain’s Doom",
-                "Dance of Death — Trickster’s Grace",
-            ])
+            self.assertEqual(
+                [row[1] for row in dance],
+                [
+                    "Dance of Death — Hero’s Prowess",
+                    "Dance of Death — Villain’s Doom",
+                    "Dance of Death — Trickster’s Grace",
+                ],
+            )
             self.assertEqual([row[5] for row in dance], [1, 1, 1])
             self.assertEqual(
                 connection.execute(
@@ -770,9 +830,7 @@ class ProfileDataTests(unittest.TestCase):
                 1_500,
             )
             self.assertGreater(
-                connection.execute(
-                    "SELECT count(*) FROM wargear_constraint_weapons"
-                ).fetchone()[0],
+                connection.execute("SELECT count(*) FROM wargear_constraint_weapons").fetchone()[0],
                 2_500,
             )
         finally:
@@ -788,9 +846,7 @@ class ProfileDataTests(unittest.TestCase):
             any("gauss reaper" in option.lower() for option in warriors["wargearOptions"])
         )
         reaper = next(
-            limit
-            for limit in warriors["weaponLimits"]
-            if limit["groupName"] == "Gauss reaper"
+            limit for limit in warriors["weaponLimits"] if limit["groupName"] == "Gauss reaper"
         )
         self.assertEqual(reaper["terms"][0]["perIncrement"], 1)
         self.assertEqual(reaper["terms"][0]["modelsPerIncrement"], 1)
@@ -822,18 +878,22 @@ class ProfileDataTests(unittest.TestCase):
         self.assertIn("leading a unit", might["description"])
         castigator = next(unit for unit in catalogue["units"] if unit["name"] == "Castigator")
         rites = next(
-            preset for preset in castigator["combatPresets"] if preset["name"] == "Rites of Castigation"
+            preset
+            for preset in castigator["combatPresets"]
+            if preset["name"] == "Rites of Castigation"
         )
         self.assertEqual(
             rites["effects"],
-            [{
-                "type": "ap_modifier",
-                "value": 1,
-                "diceCount": 0,
-                "diceSides": 0,
-                "role": "attacker",
-                "subject": "friendly_unit",
-            }],
+            [
+                {
+                    "type": "ap_modifier",
+                    "value": 1,
+                    "diceCount": 0,
+                    "diceSides": 0,
+                    "role": "attacker",
+                    "subject": "friendly_unit",
+                }
+            ],
         )
         captain = next(unit for unit in catalogue["units"] if unit["id"] == "000000073")
         finest_hour = next(
@@ -902,9 +962,7 @@ class ProfileDataTests(unittest.TestCase):
         )
         lelith = next(unit for unit in catalogue["units"] if unit["id"] == "000000640")
         thrilling = next(
-            preset
-            for preset in lelith["combatPresets"]
-            if preset["name"] == "Thrilling Spectacle"
+            preset for preset in lelith["combatPresets"] if preset["name"] == "Thrilling Spectacle"
         )
         replacement = next(
             effect for effect in thrilling["effects"] if effect["type"] == "attacks_replacement"
@@ -1142,9 +1200,7 @@ class ProfileDataTests(unittest.TestCase):
         sisters = next(
             unit for unit in catalogue["units"] if unit["name"] == "Battle Sisters Squad"
         )
-        plasma = [
-            weapon for weapon in sisters["weapons"] if weapon["groupName"] == "Plasma pistol"
-        ]
+        plasma = [weapon for weapon in sisters["weapons"] if weapon["groupName"] == "Plasma pistol"]
         self.assertEqual({weapon["profileName"] for weapon in plasma}, {"standard", "supercharge"})
         self.assertEqual(len({weapon["groupId"] for weapon in plasma}), 1)
         drazhar = next(unit for unit in catalogue["units"] if unit["name"] == "Drazhar")
@@ -1166,7 +1222,9 @@ class ProfileDataTests(unittest.TestCase):
 
         boyz = next(unit for unit in catalogue["units"] if unit["name"] == "Boyz")
         self.assertEqual((boyz["suggestedModelCount"], boyz["maximumModelCount"]), (10, 20))
-        choppa = next(weapon for weapon in boyz["defaultWeapons"] if weapon["groupName"] == "Choppa")
+        choppa = next(
+            weapon for weapon in boyz["defaultWeapons"] if weapon["groupName"] == "Choppa"
+        )
         self.assertEqual(
             (choppa["terms"][0]["fixed"], choppa["terms"][0]["perModel"]),
             (-1, 1),
@@ -1183,7 +1241,9 @@ class ProfileDataTests(unittest.TestCase):
             ),
             (9, 10),
         )
-        attaches = next(unit for unit in catalogue["units"] if unit["name"] == "Regimental Attachés")
+        attaches = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Regimental Attachés"
+        )
         self.assertEqual(attaches["suggestedModelCount"], 3)
         laspistol = next(
             weapon for weapon in attaches["defaultWeapons"] if weapon["groupName"] == "Laspistol"

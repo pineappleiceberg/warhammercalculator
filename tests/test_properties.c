@@ -139,10 +139,12 @@ static void generate_profiles(struct weapon_profile *weapon, struct target_profi
     }
     weapon->attacks_replacement =
         (flags & 65536u) != 0u ? (uint16_t)(1u + random_below(state, 8u)) : 0u;
+    weapon->attacks_multiplier = (uint16_t)(1u + random_below(state, 3u));
     weapon->hits_on = (uint8_t)(2u + random_below(state, 5u));
     weapon->strength = (uint16_t)(1u + random_below(state, 16u));
     weapon->strength_replacement =
         (flags & 131072u) != 0u ? (uint16_t)(1u + random_below(state, 16u)) : 0u;
+    weapon->strength_multiplier = (uint16_t)(1u + random_below(state, 3u));
     weapon->ap = (uint16_t)random_below(state, 5u);
     if ((flags & 2u) != 0u) {
         weapon->damage = (struct dice_value){1u, (uint16_t)(2u + random_below(state, 3u)),
@@ -152,6 +154,7 @@ static void generate_profiles(struct weapon_profile *weapon, struct target_profi
     }
     weapon->damage_replacement_active = (flags & 262144u) != 0u;
     weapon->damage_replacement = (uint16_t)random_below(state, 7u);
+    weapon->damage_multiplier = (uint16_t)(1u + random_below(state, 3u));
     weapon->critical_hits_on = (uint8_t)(5u + random_below(state, 2u));
     weapon->hit_modifier = (int8_t)random_below(state, 5u) - 2;
     weapon->wound_modifier = (int8_t)random_below(state, 5u) - 2;

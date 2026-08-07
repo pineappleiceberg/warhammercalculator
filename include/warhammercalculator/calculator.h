@@ -118,6 +118,7 @@ struct attack_plan {
 
     int32_t damage_modifier;
     uint16_t damage_divisor;
+    uint16_t damage_multiplier;
     uint16_t damage_floor;
     struct dice_value sustained_hits;
     uint32_t flags;
@@ -130,16 +131,20 @@ struct weapon_profile {
     char name[NAME_LENGTH];
     struct dice_value attacks;
     uint16_t attacks_replacement;
+    uint16_t attacks_multiplier;
+    struct dice_value attacks_addition;
     int16_t attacks_modifier;
     uint16_t weapon_count;
     uint8_t hits_on;
     uint16_t strength;
     uint16_t strength_replacement;
+    uint16_t strength_multiplier;
     int16_t strength_modifier;
     uint16_t ap;
     struct dice_value damage;
     uint16_t damage_replacement;
     bool damage_replacement_active;
+    uint16_t damage_multiplier;
     int16_t damage_modifier;
     uint8_t critical_hits_on;
     int8_t hit_modifier;
@@ -265,6 +270,7 @@ struct calculator_workspace {
 
   predicate whc_valid_weapon_profile{L}(struct weapon_profile *weapon) =
       \valid_read(weapon) && whc_valid_dice_value(weapon->attacks) &&
+      whc_valid_dice_value(weapon->attacks_addition) &&
       whc_valid_dice_value(weapon->damage) &&
       2 <= weapon->hits_on && weapon->hits_on <= 6 && weapon->strength > 0 &&
       (weapon->hit_reroll_mask & 0x81) == 0 &&
@@ -353,7 +359,7 @@ struct calculator_workspace {
 
   predicate whc_valid_attack_damage_values{L}(struct attack_plan *plan) =
       \valid_read(plan) && whc_valid_dice_value(plan->sustained_hits) &&
-      plan->damage_divisor > 0 && plan->damage_floor <= 1 &&
+      plan->damage_divisor > 0 && plan->damage_multiplier > 0 && plan->damage_floor <= 1 &&
       (plan->flags & ~0x3f) == 0 &&
       plan->damage_transform_count <= MAX_DAMAGE_TRANSFORMS;
 

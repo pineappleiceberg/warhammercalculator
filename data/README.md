@@ -19,8 +19,8 @@ The main tables are:
 - `unit_combat_presets` and `unit_combat_preset_effects` for conservatively
   extracted Hit/Wound modifiers, re-roll modes, weapon-keyword grants, AP
   changes, Critical Hit/Wound thresholds, direct signed Attacks, Strength, and
-  Damage modifiers, and fixed Attacks, Strength, and Damage replacements with
-  optional exact weapon names and required target or attack keywords, plus
+  Damage modifiers, and fixed Attacks, Strength, and Damage replacements and
+  multipliers with optional exact weapon names and required target or attack keywords, plus
   defensive Save targets, invulnerable saves, unrestricted Feel No Pain
   thresholds, per-attack damage reduction, and unconditional incoming-Damage
   divisors; mutually exclusive named modes

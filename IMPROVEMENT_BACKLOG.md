@@ -16,10 +16,10 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Represent random and multiplicative Attacks and Strength changes, shared-roll
-   characteristic effects, offensive Damage multiplication, context-dependent
-   Attacks replacements, and limited-use single-attack Damage replacements
-   exactly in native C and WebAssembly before importing them.
+1. Represent random Attacks, Strength, and Damage changes, including correlated
+   shared-roll characteristic effects, plus context-dependent Attacks
+   replacements and limited-use single-attack Damage replacements exactly in
+   native C and WebAssembly before importing them.
 2. Extend the source-backed rules eligibility layer beyond exact target and
    Psychic attack keywords to phase, range, and other compound conditions that
    currently require manual interpretation.
@@ -28,6 +28,19 @@ priority over feature count.
    affecting models that do not have them.
 
 ## Completed cycles
+
+- 2026-08-06: Added fixed Attacks, Strength, and Damage characteristic
+  multiplication across native C, WebAssembly, exact and seeded APIs, CSPRNG
+  rolls, editable Model vs Model and Play profiles, combat presets, and static
+  agent URLs. The engines now share the official replacement, division,
+  multiplication, addition/subtraction, round-up, and minimum sequence. Rapid
+  Fire and Blast remain additions after Attacks multiplication, including when
+  they use different dice sizes, and the per-weapon minimum is applied only
+  after all additions and penalties. SQLite schema 22 can conservatively import
+  generic whole-model/unit doubling effects while rejecting Daemonhost-style
+  subset-model wording until composition-aware scoping exists. Hand-derived
+  native, ordered-volley, Wasm, API, preset, parser, and URL regressions cover
+  both arithmetic order and cross-surface field transport.
 
 - 2026-08-06: Repaired the hosted API's calculator-engine dependency by
   importing the C/WebAssembly binary as a precompiled Worker module instead of

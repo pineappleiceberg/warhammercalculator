@@ -638,6 +638,65 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     denominator: "3",
   });
 
+  const multipliedProfile = {
+    ...signedProfile,
+    attackDice: 0,
+    attackSides: 0,
+    attacks: 3,
+    attacksMultiplier: 2,
+    attacksModifier: 1,
+    weaponCount: 1,
+    strength: 4,
+    strengthMultiplier: 2,
+    strengthModifier: 1,
+    toughness: 8,
+    damage: 5,
+    damageMultiplier: 2,
+    damageModifier: 1,
+    damageDivisor: 2,
+  };
+  const multipliedCalculation = await worker.fetch(
+    new Request("http://localhost/api/v1/calculate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ profile: multipliedProfile }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(multipliedCalculation.status, 200);
+  assert.deepEqual((await multipliedCalculation.json()).data.exact, {
+    numerator: "28",
+    denominator: "1",
+  });
+  const multipliedSimulation = await worker.fetch(
+    new Request("http://localhost/api/v1/volley/simulate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        profiles: [multipliedProfile],
+        targets: [
+          {
+            toughness: 8,
+            save: 7,
+            invulnerable: 0,
+            feelNoPain: 0,
+            wounds: 100,
+            reduction: 0,
+            damageDivisor: 2,
+            modelCount: 1,
+          },
+        ],
+        seed: 1701,
+        trials: 5000,
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(multipliedSimulation.status, 200);
+  assert.ok(Math.abs((await multipliedSimulation.json()).data.mean - 28) < 0.25);
+
   const simulateDamageDivisor = async (damageDivisor) => {
     const response = await worker.fetch(
       new Request("http://localhost/api/v1/volley/simulate", {

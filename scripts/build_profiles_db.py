@@ -36,7 +36,8 @@ FILES = (
     "Datasheets_abilities.csv",
 )
 
-SCHEMA = """
+SCHEMA = (
+    """
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE metadata (
@@ -188,8 +189,9 @@ CREATE TABLE unit_combat_preset_effects (
         ('lethal_hits', 'devastating_wounds', 'twin_linked', 'ignores_cover',
          'sustained_hits', 'rapid_fire', 'lance', 'heavy', 'ap_modifier',
          'critical_hits', 'critical_wounds', 'attacks_replacement', 'strength_replacement',
-         'damage_replacement', 'attacks_modifier',
-         'strength_modifier', 'damage_modifier', 'save_target',
+         'damage_replacement', 'attacks_multiplier', 'strength_multiplier',
+         'damage_multiplier', 'attacks_modifier', 'strength_modifier',
+         'damage_modifier', 'save_target',
          'invulnerable_save', 'feel_no_pain', 'damage_reduction', 'damage_divisor')),
     value INTEGER NOT NULL,
     dice_count INTEGER NOT NULL DEFAULT 0 CHECK (dice_count >= 0),
@@ -310,7 +312,9 @@ SELECT
 FROM model_profiles AS m
 JOIN datasheets AS d ON d.id = m.datasheet_id
 JOIN factions AS f ON f.id = d.faction_id;
-""" + CONSTRAINT_SCHEMA
+"""
+    + CONSTRAINT_SCHEMA
+)
 
 
 def fetch(url: str) -> bytes:
@@ -358,9 +362,7 @@ def parse_ability(raw: str) -> tuple[str, str | None]:
     anti = re.fullmatch(r"(anti-[a-z0-9 -]+?)\s+(\d+\+)", token, re.IGNORECASE)
     if anti:
         return anti.group(1).lower(), anti.group(2)
-    valued = re.fullmatch(
-        r"(rapid fire|melta|sustained hits)\s+(.+)", token, re.IGNORECASE
-    )
+    valued = re.fullmatch(r"(rapid fire|melta|sustained hits)\s+(.+)", token, re.IGNORECASE)
     if valued:
         return valued.group(1).lower(), valued.group(2).strip()
     return token.lower(), None
@@ -387,9 +389,7 @@ def combat_effect_application(text: str, effect_start: int) -> tuple[str, str]:
     )
     if re.search(defensive, context):
         return "target", "enemy_unit"
-    if "leading a unit" in window and re.search(
-        r"attacks? (?:that )?targets? that unit", context
-    ):
+    if "leading a unit" in window and re.search(r"attacks? (?:that )?targets? that unit", context):
         return "target", "enemy_unit"
     if re.search(
         r"enemy unit[^.;]{0,180}targets? this (?:model|unit)|"
@@ -526,7 +526,11 @@ def dice_effect_value(value: str) -> tuple[int, int, int] | None:
     match = re.fullmatch(r"\s*(?:(\d*)D(\d+)|0)(?:\s*\+\s*(\d+))?\s*", value, re.IGNORECASE)
     if match:
         if match.group(2):
-            return int(match.group(1) or "1"), int(match.group(2)), int(match.group(3) or "0")
+            return (
+                int(match.group(1) or "1"),
+                int(match.group(2)),
+                int(match.group(3) or "0"),
+            )
         return 0, 0, int(match.group(3) or "0")
     if re.fullmatch(r"\s*\d+\s*", value):
         return 0, 0, int(value)
@@ -659,9 +663,7 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
         "strength": "strength_modifier",
         "damage": "damage_modifier",
     }
-    characteristic_effects: dict[
-        tuple[str, str, str], dict[str, int | str] | None
-    ] = {}
+    characteristic_effects: dict[tuple[str, str, str], dict[str, int | str] | None] = {}
     characteristic_values: dict[str, set[int]] = {}
     for pattern_index, pattern in enumerate(characteristic_patterns):
         for match in pattern.finditer(text):
@@ -700,9 +702,7 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
             amount = int(amount_text)
             if direction.casefold() in {"subtract", "worsen"}:
                 amount = -amount
-            parsed_characteristics = re.findall(
-                r"Attacks|Strength|Damage", names, re.IGNORECASE
-            )
+            parsed_characteristics = re.findall(r"Attacks|Strength|Damage", names, re.IGNORECASE)
             for characteristic in parsed_characteristics:
                 effect_type = characteristic_types[characteristic.casefold()]
                 characteristic_values.setdefault(effect_type, set()).add(amount)
@@ -743,6 +743,47 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
         for effect in characteristic_effects.values()
         if effect is not None and len(characteristic_values[effect["type"]]) == 1
     )
+
+    multiplier_pattern = re.compile(
+        r"\bdouble the (Attacks|Strength|Damage) characteristic of ([^.;]+)",
+        re.IGNORECASE,
+    )
+    multiplier_types = {
+        "attacks": "attacks_multiplier",
+        "strength": "strength_multiplier",
+        "damage": "damage_multiplier",
+    }
+    for match in multiplier_pattern.finditer(text):
+        lowered_subject = match.group(2).casefold().strip()
+        generic_subject = bool(
+            re.match(
+                r"(?:(?:melee|ranged) )?weapons equipped by "
+                r"(?:this model|models? in (?:this|that|the|the bearer’s|the bearer's) unit)",
+                lowered_subject,
+            )
+            or re.match(
+                r"(?:this|that|the|the bearer’s|the bearer's) unit(?:’s|'s) "
+                r"(?:melee|ranged) weapons\b",
+                lowered_subject,
+            )
+        )
+        if not generic_subject:
+            continue
+        role, subject = combat_effect_application(text, match.start())
+        if subject == "unknown":
+            role, subject = combat_effect_application(text, match.end())
+        if subject == "unknown":
+            continue
+        effects.append(
+            {
+                "type": multiplier_types[match.group(1).casefold()],
+                "value": 2,
+                "dice_count": 0,
+                "dice_sides": 0,
+                "role": role,
+                "subject": subject,
+            }
+        )
 
     replacement_pattern = re.compile(
         r"\bchange the (Attacks|Strength) characteristic of ([^.;]+?) to (\d+)\b",
@@ -872,9 +913,7 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
             if effect_type == "feel_no_pain" and re.match(
                 r"\s+against\b", clause_tail, re.IGNORECASE
             ):
-                scoped = re.match(
-                    r"\s+against Psychic Attacks\.", clause_tail, re.IGNORECASE
-                )
+                scoped = re.match(r"\s+against Psychic Attacks\.", clause_tail, re.IGNORECASE)
                 if not scoped:
                     continue
                 required_attack_keyword = "psychic"
@@ -958,19 +997,13 @@ def combat_preset(description: str) -> dict[str, object] | None:
         "reroll_wound_ones": 0,
     }
     for roll, field in (("hit", "hit_modifier"), ("wound", "wound_modifier")):
-        modifier = re.search(
-            rf"\b(add|subtract) 1 (?:to|from) the {roll} roll\b", lowered
-        )
+        modifier = re.search(rf"\b(add|subtract) 1 (?:to|from) the {roll} roll\b", lowered)
         if modifier:
             effects[field] = 1 if modifier.group(1) == "add" else -1
             role, subject = combat_effect_application(text, modifier.start())
             effects[f"{field}_role"] = role
             effects[f"{field}_subject"] = subject
-        rerolls = list(
-            re.finditer(
-                rf"\bre-roll (?:a|the) {roll} roll(?: of 1)?\b", lowered
-            )
-        )
+        rerolls = list(re.finditer(rf"\bre-roll (?:a|the) {roll} roll(?: of 1)?\b", lowered))
         if rerolls:
             first = rerolls[0].group(0)
             effects[f"reroll_{roll}_ones"] = int(first.endswith("of 1"))
@@ -984,7 +1017,11 @@ def combat_preset(description: str) -> dict[str, object] | None:
     has_melee = "melee attack" in lowered or "melee weapon" in lowered
     has_ranged = "ranged attack" in lowered or "ranged weapon" in lowered
     effects["weapon_scope"] = (
-        "Melee" if has_melee and not has_ranged else "Ranged" if has_ranged and not has_melee else "Any"
+        "Melee"
+        if has_melee and not has_ranged
+        else "Ranged"
+        if has_ranged and not has_melee
+        else "Any"
     )
     return effects
 
@@ -1081,7 +1118,11 @@ def combat_presets(name: str, description: str) -> list[dict[str, object]]:
             re.IGNORECASE,
         )
     )
-    choice = re.search(r"\b(?:select|choose) one of the following\b[^:]{0,160}:\s*", text, re.IGNORECASE)
+    choice = re.search(
+        r"\b(?:select|choose) one of the following\b[^:]{0,160}:\s*",
+        text,
+        re.IGNORECASE,
+    )
     candidates: list[tuple[str, str]] = []
     if choice:
         tail = text[choice.end() :]
@@ -1114,19 +1155,22 @@ def combat_presets(name: str, description: str) -> list[dict[str, object]]:
                 introduction = text[: choice.end()]
                 for token in supported:
                     label = token.strip("[]")
-                    candidates.append((label.title(), f"{introduction}{token}. {remainder}".strip()))
+                    candidates.append(
+                        (label.title(), f"{introduction}{token}. {remainder}".strip())
+                    )
 
     if not candidates:
-        outcomes = list(
-            re.finditer(r"\bon (?:a |an )?(\d+(?:-\d+)?\+?),\s*", text, re.IGNORECASE)
-        )
+        outcomes = list(re.finditer(r"\bon (?:a |an )?(\d+(?:-\d+)?\+?),\s*", text, re.IGNORECASE))
         if len(outcomes) >= 2:
             introduction = text[: outcomes[0].start()]
             for index, outcome in enumerate(outcomes):
                 body_end = outcomes[index + 1].start() if index + 1 < len(outcomes) else len(text)
                 outcome_text = text[outcome.start() : body_end].strip(" ;")
                 candidates.append(
-                    (f"roll {outcome.group(1).replace('-', '–')}", f"{introduction}{outcome_text}")
+                    (
+                        f"roll {outcome.group(1).replace('-', '–')}",
+                        f"{introduction}{outcome_text}",
+                    )
                 )
 
     parsed = []
@@ -1192,8 +1236,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     (datasheet_id, ability_name),
                 ).fetchall()
                 resolved_effects.extend(
-                    {**effect, "weapon_name": weapon_name}
-                    for (weapon_name,) in weapon_names
+                    {**effect, "weapon_name": weapon_name} for (weapon_name,) in weapon_names
                 )
             if preset["additional_effects"] and not resolved_effects:
                 continue
@@ -1339,14 +1382,10 @@ def create_database(
     rows = {name: read_rows(data) for name, data in exports.items()}
     datasheet_ids = {row["id"] for row in rows["Datasheets.csv"]}
     model_rows = [
-        row
-        for row in rows["Datasheets_models.csv"]
-        if row["datasheet_id"] in datasheet_ids
+        row for row in rows["Datasheets_models.csv"] if row["datasheet_id"] in datasheet_ids
     ]
     linked_weapon_rows = [
-        row
-        for row in rows["Datasheets_wargear.csv"]
-        if row["datasheet_id"] in datasheet_ids
+        row for row in rows["Datasheets_wargear.csv"] if row["datasheet_id"] in datasheet_ids
     ]
     weapon_rows = [
         row
@@ -1359,21 +1398,15 @@ def create_database(
         if row["datasheet_id"] in datasheet_ids
     ]
     option_rows = [
-        row
-        for row in rows["Datasheets_options.csv"]
-        if row["datasheet_id"] in datasheet_ids
+        row for row in rows["Datasheets_options.csv"] if row["datasheet_id"] in datasheet_ids
     ]
     ability_rows = [
-        row
-        for row in rows["Datasheets_abilities.csv"]
-        if row["datasheet_id"] in datasheet_ids
+        row for row in rows["Datasheets_abilities.csv"] if row["datasheet_id"] in datasheet_ids
     ]
     orphan_model_count = len(rows["Datasheets_models.csv"]) - len(model_rows)
     orphan_weapon_count = len(rows["Datasheets_wargear.csv"]) - len(linked_weapon_rows)
     placeholder_weapon_count = len(linked_weapon_rows) - len(weapon_rows)
-    orphan_composition_count = (
-        len(rows["Datasheets_unit_composition.csv"]) - len(composition_rows)
-    )
+    orphan_composition_count = len(rows["Datasheets_unit_composition.csv"]) - len(composition_rows)
     orphan_option_count = len(rows["Datasheets_options.csv"]) - len(option_rows)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(output.suffix + ".tmp")
@@ -1392,7 +1425,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "21"),
+                    ("schema_version", "22"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
@@ -1458,9 +1491,7 @@ def create_database(
             definitions: dict[str, list[dict[str, str]]] = {}
             for row in rows["Abilities.csv"]:
                 definitions.setdefault(row["id"], []).append(row)
-            datasheet_factions = {
-                row["id"]: row["faction_id"] for row in rows["Datasheets.csv"]
-            }
+            datasheet_factions = {row["id"]: row["faction_id"] for row in rows["Datasheets.csv"]}
             ability_positions: dict[str, int] = {}
             for row in ability_rows:
                 datasheet_id = row["datasheet_id"]
@@ -1566,9 +1597,11 @@ def create_database(
                         maximum,
                     ),
                 )
-                for component_position, (name, component_min, component_max) in enumerate(
-                    composition_components(row["description"]), start=1
-                ):
+                for component_position, (
+                    name,
+                    component_min,
+                    component_max,
+                ) in enumerate(composition_components(row["description"]), start=1):
                     connection.execute(
                         """INSERT INTO unit_composition_models
                            (datasheet_id, composition_position, component_position,
@@ -1634,9 +1667,7 @@ def create_database(
                 )
                 weapon_id = cursor.lastrowid
                 abilities = [
-                    token.strip()
-                    for token in row["description"].split(",")
-                    if token.strip()
+                    token.strip() for token in row["description"].split(",") if token.strip()
                 ]
                 for position, raw in enumerate(abilities, start=1):
                     name, value = parse_ability(raw)
@@ -1717,8 +1748,7 @@ def main() -> None:
     if not args.update_source_lock:
         if not source_lock.exists():
             raise RuntimeError(
-                f"source lock is missing: {source_lock}; review the source and rerun with "
-                "--update-source-lock"
+                f"source lock is missing: {source_lock}; review the source and rerun with --update-source-lock"
             )
         expected = json.loads(source_lock.read_text(encoding="utf-8"))
         differences = source_manifest_differences(expected, manifest)

@@ -368,6 +368,9 @@ async function exactCalculation(profile: CombatProfile) {
       profile.damageReplacement ?? 0,
       profile.damageReplacement === null ? 0 : 1,
       profile.damageDivisor,
+      profile.attacksMultiplier,
+      profile.strengthMultiplier,
+      profile.damageMultiplier,
       output,
     );
     if (!ok) throw new Error("Profile exceeds the calculator's exact-distribution limits");
@@ -425,7 +428,7 @@ async function exactVolley(
   }
 
   const calculator = await loadCalculator();
-  const weaponFields = 29;
+  const weaponFields = 32;
   const targetFields = 8;
   const weaponsPointer = calculator.malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator.malloc(targets.length * targetFields * 4);
@@ -475,6 +478,9 @@ async function exactVolley(
         profile.strengthReplacement,
         profile.damageReplacement ?? 0,
         profile.damageReplacement === null ? 0 : 1,
+        profile.attacksMultiplier,
+        profile.strengthMultiplier,
+        profile.damageMultiplier,
       ]),
     );
     targets.forEach((target, index) =>
@@ -536,7 +542,7 @@ async function volleyComplexity(
     throw new Error("targets must contain 1 to 16 ordered profile segments");
   }
   const calculator = await loadCalculator();
-  const weaponFields = 29;
+  const weaponFields = 32;
   const targetFields = 8;
   const weaponsPointer = calculator.malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator.malloc(targets.length * targetFields * 4);
@@ -576,6 +582,9 @@ async function volleyComplexity(
         profile.strengthReplacement,
         profile.damageReplacement ?? 0,
         profile.damageReplacement === null ? 0 : 1,
+        profile.attacksMultiplier,
+        profile.strengthMultiplier,
+        profile.damageMultiplier,
       ]),
     );
     targets.forEach((target, index) =>

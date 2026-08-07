@@ -330,12 +330,12 @@ replacement Save targets, invulnerable saves, unrestricted
 Feel No Pain thresholds, and per-attack damage reduction come from the target
 unit. Unconditional rules that halve incoming Damage are imported as editable
 Damage divisors. The exact engine follows the official characteristic sequence:
-replacement, division, addition/subtraction, rounding up, then the applicable
-minimum. Unit vs Unit applies those defenses to every ordered target segment and
+replacement, division, multiplication, addition/subtraction, rounding up, then
+the applicable minimum. Unit vs Unit applies those defenses to every ordered target segment and
 asks ranged and melee weapons to be resolved separately only when a scoped
 defense produces incompatible target values. Melee/ranged scope is respected
 per weapon. Bearer-only, subset-model, friendly-aura, affected-model,
-unrepresented attack-type conditions, conflicting, random, other multiplicative,
+unrepresented attack-type conditions, conflicting, random, subset-model multiplicative,
 limited-use single-attack, and other context-dependent replacement
 characteristic changes are omitted until they can be represented exactly.
 Ambiguous subjects are not imported, mutually exclusive modes cannot be
@@ -400,8 +400,9 @@ A direct profile supplies `attacks`, `hit`, `strength`, `ap`, `damage`,
 `attacks`, `damage`, `sustainedHits`, and `rapidFire` accept a number or dice
 expression such as `D6+2`. Optional parameters include `weaponCount`, `model`,
 `models`, `invuln`, `fnp`, `reduction`, `criticalHits`, `criticalWounds`,
-`melta`, `damageDivisor`, `attacksReplacement`, `attacksModifier`,
-`strengthReplacement`, `strengthModifier`, `damageReplacement`, `damageModifier`, Hit/Wound
+`melta`, `damageDivisor`, `attacksReplacement`, `attacksMultiplier`, `attacksModifier`,
+`strengthReplacement`, `strengthMultiplier`, `strengthModifier`, `damageReplacement`,
+`damageMultiplier`, `damageModifier`, Hit/Wound
 modifiers and re-roll modes, repeated `attackerPreset` or
 `targetPreset` values, and individual rule flags. The `rules` parameter accepts
 comma-separated `torrent`, `blast`, `heavy`, `lance`, `cover`, `ignores-cover`,

@@ -203,10 +203,17 @@ export function combatPresetEffects(
     }
     return values.length ? values[0] : null;
   };
+  const multiplier = (type) =>
+    additional
+      .filter((effect) => effect.type === type)
+      .reduce((product, effect) => product * effect.value, 1);
   return {
     attacksReplacement: replacement("attacks_replacement", "Attacks") ?? 0,
+    attacksMultiplier: multiplier("attacks_multiplier"),
     strengthReplacement: replacement("strength_replacement", "Strength") ?? 0,
+    strengthMultiplier: multiplier("strength_multiplier"),
     damageReplacement: replacement("damage_replacement", "Damage"),
+    damageMultiplier: multiplier("damage_multiplier"),
     hitModifier: hitModifiers.reduce((sum, preset) => sum + preset.hitModifier, 0),
     woundModifier: woundModifiers.reduce((sum, preset) => sum + preset.woundModifier, 0),
     rerollHits: hitRerolls.some((preset) => preset.rerollHits),
@@ -421,6 +428,12 @@ export function applyCombatPresets(
       attacksReplacement: attacksReplacements[0] ?? profile.attacksReplacement ?? 0,
       strengthReplacement: strengthReplacements[0] ?? profile.strengthReplacement ?? 0,
       damageReplacement: damageReplacements[0] ?? profile.damageReplacement ?? null,
+      attacksMultiplier:
+        (profile.attacksMultiplier ?? 1) * attacker.attacksMultiplier * target.attacksMultiplier,
+      strengthMultiplier:
+        (profile.strengthMultiplier ?? 1) * attacker.strengthMultiplier * target.strengthMultiplier,
+      damageMultiplier:
+        (profile.damageMultiplier ?? 1) * attacker.damageMultiplier * target.damageMultiplier,
       attacksModifier:
         (profile.attacksModifier ?? 0) + attacker.attacksModifier + target.attacksModifier,
       strengthModifier:

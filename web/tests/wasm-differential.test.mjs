@@ -61,6 +61,11 @@ const calculator = await createCalculator({
   wasmBinary,
 });
 
+function calculateSummary(...values) {
+  const output = values.pop();
+  return calculator._whc_calculate_summary(...values, 1, 1, 1, output);
+}
+
 test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._dice_value_is_valid, "function");
   assert.equal(typeof calculator._probability_distribution_is_normalized, "function");
@@ -72,7 +77,7 @@ test("signed characteristic modifiers use per-weapon floors in C/Wasm", () => {
   const output = calculator._malloc(72);
   try {
     assert.equal(
-      calculator._whc_calculate_summary(
+      calculateSummary(
         1,
         6,
         0,
@@ -116,7 +121,7 @@ test("signed characteristic modifiers use per-weapon floors in C/Wasm", () => {
     );
     assert.deepEqual([readUint64(output, 5, 6), readUint64(output, 7, 8)], [40n, 9n]);
     assert.equal(
-      calculator._whc_calculate_summary(
+      calculateSummary(
         1,
         6,
         0,
@@ -162,7 +167,7 @@ test("signed characteristic modifiers use per-weapon floors in C/Wasm", () => {
     assert.equal(calculator.getValue(output + 16, "i32") >>> 0, 6);
     assert.deepEqual([readUint64(output, 5, 6), readUint64(output, 7, 8)], [5n, 1n]);
     assert.equal(
-      calculator._whc_calculate_summary(
+      calculateSummary(
         1,
         6,
         0,
@@ -207,7 +212,7 @@ test("signed characteristic modifiers use per-weapon floors in C/Wasm", () => {
     assert.equal(calculator.getValue(output + 16, "i32") >>> 0, 6);
     assert.deepEqual([readUint64(output, 5, 6), readUint64(output, 7, 8)], [25n, 6n]);
     assert.equal(
-      calculator._whc_calculate_summary(
+      calculateSummary(
         0,
         0,
         1,
@@ -562,7 +567,7 @@ test("unit ability presets compose direct weapon characteristic modifiers", () =
   assert.equal(combatPresetEffects([preset], "Ranged", "attacker").attacksModifier, 0);
 });
 
-test("fixed characteristic replacements apply before modifiers and respect scope", () => {
+test("fixed characteristic replacements and multipliers compose and respect scope", () => {
   const preset = {
     weaponScope: "Any",
     hitModifier: 0,
@@ -581,13 +586,25 @@ test("fixed characteristic replacements apply before modifiers and respect scope
         role: "attacker",
         subject: "self",
       },
+      ...["attacks_multiplier", "strength_multiplier", "damage_multiplier"].map((type) => ({
+        type,
+        value: 2,
+        diceCount: 0,
+        diceSides: 0,
+        weaponName: "Dead Man’s Hand",
+        role: "attacker",
+        subject: "self",
+      })),
     ],
   };
   const base = {
     weaponName: "Dead Man’s Hand",
     attacksReplacement: 0,
+    attacksMultiplier: 1,
     attacksModifier: -1,
+    strengthMultiplier: 1,
     strengthModifier: 0,
+    damageMultiplier: 1,
     damageModifier: 0,
     ap: 0,
     criticalHits: 6,
@@ -615,7 +632,12 @@ test("fixed characteristic replacements apply before modifiers and respect scope
     feelNoPain: 0,
     reduction: 0,
   };
-  assert.equal(applyCombatPresets(base, [preset], [], "Melee").attacksReplacement, 12);
+  const applied = applyCombatPresets(base, [preset], [], "Melee");
+  assert.equal(applied.attacksReplacement, 12);
+  assert.deepEqual(
+    [applied.attacksMultiplier, applied.strengthMultiplier, applied.damageMultiplier],
+    [2, 2, 2],
+  );
   assert.equal(combatPresetSupportsWeapon(preset, "Melee", "Dead Man's Hand"), true);
   assert.equal(combatPresetSupportsWeapon(preset, "Ranged", "Blood Song"), false);
   assert.equal(
@@ -1125,7 +1147,7 @@ test("parameterized agent profile reaches the C/Wasm exact engine unchanged", ()
   );
   const output = calculator._malloc(72);
   try {
-    const ok = calculator._whc_calculate_summary(
+    const ok = calculateSummary(
       profile.attackDice,
       profile.attackSides,
       profile.attacks,
@@ -1181,7 +1203,7 @@ test("parameterized agent profile reaches the C/Wasm exact engine unchanged", ()
 function interactionMeans(testCase) {
   const output = calculator._malloc(72);
   try {
-    const ok = calculator._whc_calculate_summary(
+    const ok = calculateSummary(
       0,
       0,
       testCase.attacks,
@@ -1250,7 +1272,7 @@ function exactMean({
 } = {}) {
   const output = calculator._malloc(72);
   try {
-    const ok = calculator._whc_calculate_summary(
+    const ok = calculateSummary(
       0,
       0,
       4,
@@ -1305,11 +1327,12 @@ function lessThanOrEqual(left, right) {
 }
 
 function currentWeaponInput(weapon) {
-  if (weapon.length === 29) return weapon;
-  if (weapon.length === 26) return [...weapon, 0, 0, 0];
+  if (weapon.length === 32) return weapon;
+  if (weapon.length === 29) return [...weapon, 1, 1, 1];
+  if (weapon.length === 26) return [...weapon, 0, 0, 0, 1, 1, 1];
   const withReplacement = [...weapon.slice(0, 3), 0, ...weapon.slice(3)];
   const current = withReplacement.length === 26 ? withReplacement : [...withReplacement, 0, 0, 0];
-  return [...current, 0, 0, 0];
+  return [...current, 0, 0, 0, 1, 1, 1];
 }
 
 function currentTargetInput(target) {
@@ -1317,7 +1340,7 @@ function currentTargetInput(target) {
 }
 
 function orderedVolley(weapons, targets, initialWoundsLost = 0) {
-  const weaponFields = 29;
+  const weaponFields = 32;
   const targetFields = 8;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
@@ -1364,7 +1387,7 @@ function orderedVolley(weapons, targets, initialWoundsLost = 0) {
 }
 
 function orderedVolleyComplexity(weapons, targets, initialWoundsLost = 0) {
-  const weaponFields = 29;
+  const weaponFields = 32;
   const targetFields = 8;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
@@ -1427,7 +1450,7 @@ test("C/Wasm reports conservative deferred-state complexity before exact volleys
 function variableRuleMean({ flags = 0, sustained = [0, 0, 0], rapid = [0, 0, 0] }) {
   const output = calculator._malloc(72);
   try {
-    const ok = calculator._whc_calculate_summary(
+    const ok = calculateSummary(
       0,
       0,
       1,

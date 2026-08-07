@@ -589,12 +589,13 @@ static bool apply_damage_plan(const struct attack_plan *plan, uint32_t raw_damag
     uint32_t damage = 0;
     uint8_t transform_index = 0;
 
-    if (plan == NULL || result == NULL || plan->damage_divisor == 0u) {
+    if (plan == NULL || result == NULL || plan->damage_divisor == 0u ||
+        plan->damage_multiplier == 0u) {
         return false;
     }
 
-    modifier_numerator =
-        (int64_t)raw_damage + (int64_t)plan->damage_modifier * plan->damage_divisor;
+    modifier_numerator = (int64_t)raw_damage * plan->damage_multiplier +
+                         (int64_t)plan->damage_modifier * plan->damage_divisor;
     modified_damage = modifier_numerator > 0
                           ? (modifier_numerator + plan->damage_divisor - 1u) / plan->damage_divisor
                           : modifier_numerator / plan->damage_divisor;
@@ -1603,12 +1604,17 @@ bool distribution_from_dice_value(struct dice_value dice, struct distribution *r
     return true;
 }
 
-bool distribution_from_modified_dice_value(struct dice_value dice, int32_t modifier,
-                                           uint32_t minimum, struct distribution *result) {
+/*@ requires \valid(result);
+    assigns *result;
+*/
+static bool distribution_from_modified_scaled_dice_value(struct dice_value dice,
+                                                         uint16_t multiplier, int32_t modifier,
+                                                         uint32_t minimum,
+                                                         struct distribution *result) {
     struct distribution base;
     uint32_t outcome = 0u;
 
-    if (result == NULL || minimum > MAX_DISTRIBUTION_RESULT ||
+    if (result == NULL || multiplier == 0u || minimum > MAX_DISTRIBUTION_RESULT ||
         !distribution_from_dice_value(dice, &base)) {
         return false;
     }
@@ -1620,7 +1626,7 @@ bool distribution_from_modified_dice_value(struct dice_value dice, int32_t modif
         loop variant base.maximum + 1 - outcome;
     */
     while (outcome <= base.maximum) {
-        int64_t modified = (int64_t)outcome + modifier;
+        int64_t modified = (int64_t)outcome * multiplier + modifier;
         uint32_t mapped = minimum;
 
         if (modified > (int64_t)minimum) {
@@ -1640,12 +1646,97 @@ bool distribution_from_modified_dice_value(struct dice_value dice, int32_t modif
     return distribution_reduce_weights(result);
 }
 
+/*@ requires \valid(result);
+    assigns *result;
+*/
+static bool distribution_from_modified_scaled_dice_values_with_addition(
+    struct dice_value dice, struct dice_value addition, uint16_t multiplier, int32_t modifier,
+    uint32_t minimum, struct distribution *result) {
+    struct distribution base;
+    struct distribution extra;
+    uint32_t outcome = 0u;
+
+    if (result == NULL || multiplier == 0u || minimum > MAX_DISTRIBUTION_RESULT ||
+        !distribution_from_dice_value(dice, &base) ||
+        !distribution_from_dice_value(addition, &extra)) {
+        return false;
+    }
+
+    distribution_clear(result);
+    outcome = base.minimum;
+    /*@ loop invariant base.minimum <= outcome && outcome <= base.maximum + 1;
+        loop assigns outcome, *result;
+        loop variant base.maximum + 1 - outcome;
+    */
+    while (outcome <= base.maximum) {
+        uint32_t extra_outcome = extra.minimum;
+
+        /*@ loop invariant extra.minimum <= extra_outcome &&
+                           extra_outcome <= extra.maximum + 1;
+            loop assigns extra_outcome, *result;
+            loop variant extra.maximum + 1 - extra_outcome;
+        */
+        while (extra_outcome <= extra.maximum) {
+            int64_t modified = (int64_t)outcome * multiplier + modifier + extra_outcome;
+            uint32_t mapped = minimum;
+            uint64_t combined_ways = 0u;
+
+            if (modified > (int64_t)minimum) {
+                if (modified > MAX_DISTRIBUTION_RESULT) {
+                    distribution_clear(result);
+                    return false;
+                }
+                mapped = (uint32_t)modified;
+            }
+            if (base.ways[outcome] != 0u && extra.ways[extra_outcome] != 0u &&
+                (!uint64_multiply_checked(base.ways[outcome], extra.ways[extra_outcome],
+                                          &combined_ways) ||
+                 !distribution_add_outcome(result, mapped, combined_ways))) {
+                distribution_clear(result);
+                return false;
+            }
+            extra_outcome++;
+        }
+        outcome++;
+    }
+    return distribution_reduce_weights(result);
+}
+
+/*@ requires \valid(result);
+    assigns *result;
+*/
+static bool distribution_from_modified_scaled_dice_values(struct dice_value dice,
+                                                          struct dice_value addition,
+                                                          uint16_t multiplier, int32_t modifier,
+                                                          uint32_t minimum,
+                                                          struct distribution *result) {
+    if (addition.dice_count == 0u && addition.modifier == 0u) {
+        return distribution_from_modified_scaled_dice_value(dice, multiplier, modifier, minimum,
+                                                            result);
+    }
+    return distribution_from_modified_scaled_dice_values_with_addition(dice, addition, multiplier,
+                                                                       modifier, minimum, result);
+}
+
+bool distribution_from_modified_dice_value(struct dice_value dice, int32_t modifier,
+                                           uint32_t minimum, struct distribution *result) {
+    return distribution_from_modified_scaled_dice_values(dice, (struct dice_value){0u, 0u, 0u}, 1u,
+                                                         modifier, minimum, result);
+}
+
 /*@ requires \valid_read(weapon);
     assigns \nothing;
     ensures 1 <= \result;
 */
 static uint16_t weapon_profile_count(const struct weapon_profile *weapon) {
     return weapon->weapon_count == 0u ? 1u : weapon->weapon_count;
+}
+
+/*@ assigns \nothing;
+    ensures \result >= 1;
+*/
+static uint16_t characteristic_multiplier(uint16_t multiplier) {
+    return multiplier == 0u ? 1u : multiplier;
 }
 
 /*@ requires \valid_read(weapon) && \valid(result);
@@ -1666,8 +1757,10 @@ static bool distribution_from_weapon_attacks(const struct weapon_profile *weapon
     attacks = weapon->attacks_replacement == 0u
                   ? weapon->attacks
                   : (struct dice_value){0u, 0u, weapon->attacks_replacement};
-    if (!distribution_from_modified_dice_value(attacks, weapon->attacks_modifier, 1u,
-                                               &per_weapon) ||
+    if (!distribution_from_modified_scaled_dice_values(
+            attacks, weapon->attacks_addition,
+            characteristic_multiplier(weapon->attacks_multiplier), weapon->attacks_modifier, 1u,
+            &per_weapon) ||
         !distribution_from_constant(0u, &current)) {
         return false;
     }
@@ -1710,7 +1803,8 @@ static bool distribution_from_weapon_damage(const struct weapon_profile *weapon,
 static uint16_t weapon_modified_strength(const struct weapon_profile *weapon) {
     uint16_t strength =
         weapon->strength_replacement == 0u ? weapon->strength : weapon->strength_replacement;
-    int32_t modified = (int32_t)strength + weapon->strength_modifier;
+    int64_t modified = (int64_t)strength * characteristic_multiplier(weapon->strength_multiplier) +
+                       weapon->strength_modifier;
 
     if (modified < 1) {
         return 1u;
@@ -2188,7 +2282,8 @@ bool attack_plan_is_valid(const struct attack_plan *plan) {
         (plan->wound_reroll_mask & (uint8_t)~VALID_D6_FACE_MASK) != 0u ||
         (plan->save_reroll_mask & (uint8_t)~VALID_D6_FACE_MASK) != 0u ||
         !dice_value_is_valid(plan->sustained_hits) || plan->damage_divisor == 0u ||
-        plan->damage_floor > 1u || (plan->flags & ~allowed_flags) != 0u ||
+        plan->damage_multiplier == 0u || plan->damage_floor > 1u ||
+        (plan->flags & ~allowed_flags) != 0u ||
         plan->damage_transform_count > MAX_DAMAGE_TRANSFORMS) {
         return false;
     }
@@ -2217,7 +2312,8 @@ bool attack_plan_is_valid(const struct attack_plan *plan) {
     /*@ assert (plan->wound_reroll_mask & 0x81) == 0; */
     /*@ assert (plan->save_reroll_mask & 0x81) == 0; */
     /*@ assert whc_valid_dice_value(plan->sustained_hits); */
-    /*@ assert plan->damage_divisor > 0 && plan->damage_floor <= 1; */
+    /*@ assert plan->damage_divisor > 0 && plan->damage_multiplier > 0 &&
+               plan->damage_floor <= 1; */
     /*@ assert (plan->flags & ~0x3f) == 0; */
     /*@ assert plan->damage_transform_count <= MAX_DAMAGE_TRANSFORMS; */
     /*@ assert \forall integer index; 0 <= index < plan->damage_transform_count ==>
@@ -2231,8 +2327,9 @@ bool attack_plan_build(const struct weapon_profile *weapon, const struct target_
     uint8_t rule_index = 0;
 
     if (weapon == NULL || target == NULL || plan == NULL || !dice_value_is_valid(weapon->attacks) ||
-        !dice_value_is_valid(weapon->damage) || weapon->hits_on < 2u || weapon->hits_on > 6u ||
-        weapon->strength == 0 || target->toughness == 0 || target->save < 2u || target->save > 7u ||
+        !dice_value_is_valid(weapon->attacks_addition) || !dice_value_is_valid(weapon->damage) ||
+        weapon->hits_on < 2u || weapon->hits_on > 6u || weapon->strength == 0 ||
+        target->toughness == 0 || target->save < 2u || target->save > 7u ||
         (target->invulnerable_save != 0 &&
          (target->invulnerable_save < 2u || target->invulnerable_save > 6u)) ||
         (target->feel_no_pain != 0 && (target->feel_no_pain < 2u || target->feel_no_pain > 6u)) ||
@@ -2251,6 +2348,7 @@ bool attack_plan_build(const struct weapon_profile *weapon, const struct target_
     plan->feel_no_pain_on = target->feel_no_pain;
     plan->damage_modifier = (int32_t)weapon->damage_modifier - target->reduction;
     plan->damage_divisor = target->damage_divisor == 0u ? 1u : target->damage_divisor;
+    plan->damage_multiplier = characteristic_multiplier(weapon->damage_multiplier);
     plan->damage_floor =
         (uint16_t)(weapon->damage_replacement_active && weapon->damage_replacement == 0u ? 0u : 1u);
     plan->hit_modifier = weapon->hit_modifier;

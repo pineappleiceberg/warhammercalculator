@@ -241,11 +241,11 @@ export default function AgentCalculator() {
             </a>
             <h3>Optional parameters</h3>
             <p className="agent-parameter-list">
-              weaponCount, attacksReplacement, attacksModifier, strengthReplacement,
-              strengthModifier, damageReplacement, damageModifier, model, models, fnp, reduction,
-              damageDivisor, criticalHits, criticalWounds, sustainedHits, rapidFire, melta,
-              hitModifier, woundModifier, rerollHits, rerollWounds, attackerPreset, targetPreset,
-              and rules.
+              weaponCount, attacksReplacement, attacksMultiplier, attacksModifier,
+              strengthReplacement, strengthMultiplier, strengthModifier, damageReplacement,
+              damageMultiplier, damageModifier, model, models, fnp, reduction, damageDivisor,
+              criticalHits, criticalWounds, sustainedHits, rapidFire, melta, hitModifier,
+              woundModifier, rerollHits, rerollWounds, attackerPreset, targetPreset, and rules.
             </p>
             <p>
               <code>rules</code> accepts comma-separated values such as{" "}

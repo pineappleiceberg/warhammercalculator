@@ -17,17 +17,20 @@ export type CombatProfile = {
   attackSides: number;
   attacks: number;
   attacksReplacement: number;
+  attacksMultiplier: number;
   attacksModifier: number;
   weaponCount: number;
   hitOn: number;
   strength: number;
   strengthReplacement: number;
+  strengthMultiplier: number;
   strengthModifier: number;
   ap: number;
   damageDice: number;
   damageSides: number;
   damage: number;
   damageReplacement: number | null;
+  damageMultiplier: number;
   damageModifier: number;
   criticalHits: number;
   toughness: number;
@@ -168,17 +171,20 @@ export const DEFAULT_PROFILE: CombatProfile = {
   attackSides: 0,
   attacks: 4,
   attacksReplacement: 0,
+  attacksMultiplier: 1,
   attacksModifier: 0,
   weaponCount: 1,
   hitOn: 3,
   strength: 8,
   strengthReplacement: 0,
+  strengthMultiplier: 1,
   strengthModifier: 0,
   ap: 2,
   damageDice: 1,
   damageSides: 6,
   damage: 1,
   damageReplacement: null,
+  damageMultiplier: 1,
   damageModifier: 0,
   criticalHits: 6,
   toughness: 8,
@@ -267,17 +273,20 @@ export function normalizeProfile(input: unknown): CombatProfile {
     attackSides: numberValue("attackSides", 0, 100),
     attacks: numberValue("attacks", 0, 1024),
     attacksReplacement: numberValue("attacksReplacement", 0, 1024),
+    attacksMultiplier: numberValue("attacksMultiplier", 1, 1024),
     attacksModifier: numberValue("attacksModifier", -1024, 1024),
     weaponCount: numberValue("weaponCount", 1, 100),
     hitOn: numberValue("hitOn", 2, 6),
     strength: numberValue("strength", 1, 1024),
     strengthReplacement: numberValue("strengthReplacement", 0, 1024),
+    strengthMultiplier: numberValue("strengthMultiplier", 1, 1024),
     strengthModifier: numberValue("strengthModifier", -1024, 1024),
     ap: numberValue("ap", 0, 100),
     damageDice: numberValue("damageDice", 0, 20),
     damageSides: numberValue("damageSides", 0, 100),
     damage: numberValue("damage", 0, 1024),
     damageReplacement: nullableNumberValue("damageReplacement", 0, 1024),
+    damageMultiplier: numberValue("damageMultiplier", 1, 1024),
     damageModifier: numberValue("damageModifier", -1024, 1024),
     criticalHits: numberValue("criticalHits", 2, 6),
     toughness: numberValue("toughness", 1, 1024),
@@ -399,8 +408,8 @@ function rollDiceValue(count: number, sides: number, modifier: number, randomUin
   return total;
 }
 
-function modifiedCharacteristic(value: number, modifier: number) {
-  return Math.max(1, value + modifier);
+function modifiedCharacteristic(value: number, modifier: number, multiplier = 1) {
+  return Math.max(1, value * multiplier + modifier);
 }
 
 function modifiedDamageCharacteristic(
@@ -412,16 +421,21 @@ function modifiedDamageCharacteristic(
   const minimum = profile.damageReplacement === 0 ? 0 : 1;
   const additions =
     profile.damageModifier + (profile.withinHalfRange ? profile.melta : 0) - reduction;
-  return Math.max(minimum, Math.ceil(base / damageDivisor + additions));
+  return Math.max(
+    minimum,
+    Math.ceil((base * profile.damageMultiplier) / damageDivisor + additions),
+  );
 }
 
 function rollAttackCount(profile: CombatProfile, targetModels: number, randomUint32: RandomUint32) {
   let total = 0;
   for (let weapon = 0; weapon < profile.weaponCount; weapon += 1) {
     const base =
-      (profile.attacksReplacement > 0
+      profile.attacksReplacement > 0
         ? profile.attacksReplacement
-        : rollDiceValue(profile.attackDice, profile.attackSides, profile.attacks, randomUint32)) +
+        : rollDiceValue(profile.attackDice, profile.attackSides, profile.attacks, randomUint32);
+    const additions =
+      profile.attacksModifier +
       (profile.withinHalfRange
         ? rollDiceValue(
             profile.rapidFireDice,
@@ -431,7 +445,7 @@ function rollAttackCount(profile: CombatProfile, targetModels: number, randomUin
           )
         : 0) +
       (profile.blast ? Math.floor(targetModels / 5) : 0);
-    total += modifiedCharacteristic(base, profile.attacksModifier);
+    total += modifiedCharacteristic(base, additions, profile.attacksMultiplier);
   }
   return total;
 }
@@ -474,6 +488,7 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
       modifiedCharacteristic(
         profile.strengthReplacement > 0 ? profile.strengthReplacement : profile.strength,
         profile.strengthModifier,
+        profile.strengthMultiplier,
       ),
       profile.toughness,
     ),
@@ -742,6 +757,7 @@ export function simulateOrderedVolley(
           modifiedCharacteristic(
             profile.strengthReplacement > 0 ? profile.strengthReplacement : profile.strength,
             profile.strengthModifier,
+            profile.strengthMultiplier,
           ),
           target.toughness,
         ),
@@ -979,17 +995,22 @@ export function simulateOrderedVolleyPhase(
     const rapidFireDraws = profile.withinHalfRange
       ? profile.rapidFireDice * profile.weaponCount
       : 0;
+    const maximumBaseAttacks =
+      profile.attacksReplacement > 0
+        ? profile.attacksReplacement
+        : profile.attacks + profile.attackDice * profile.attackSides;
+    const maximumAdditionalAttacks =
+      profile.attacksModifier +
+      (profile.blast ? Math.floor(targetModels / 5) : 0) +
+      (profile.withinHalfRange
+        ? profile.rapidFire + profile.rapidFireDice * profile.rapidFireSides
+        : 0);
     const maximumAttacks =
       profile.weaponCount *
       modifiedCharacteristic(
-        (profile.attacksReplacement > 0
-          ? profile.attacksReplacement
-          : profile.attacks + profile.attackDice * profile.attackSides) +
-          (profile.blast ? Math.floor(targetModels / 5) : 0) +
-          (profile.withinHalfRange
-            ? profile.rapidFire + profile.rapidFireDice * profile.rapidFireSides
-            : 0),
-        profile.attacksModifier,
+        maximumBaseAttacks,
+        maximumAdditionalAttacks,
+        profile.attacksMultiplier,
       );
     const maximumSustainedHits =
       profile.sustainedHits + profile.sustainedHitsDice * profile.sustainedHitsSides;

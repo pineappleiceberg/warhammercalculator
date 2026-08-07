@@ -15,10 +15,12 @@ const catalogueParameters = new Set([
 const integerParameters = [
   ["weaponCount", ["weaponCount"]],
   ["attacksReplacement", ["attacksReplacement"]],
+  ["attacksMultiplier", ["attacksMultiplier"]],
   ["attacksModifier", ["attacksModifier"]],
   ["hitOn", ["hitOn", "hit"]],
   ["strength", ["strength"]],
   ["strengthReplacement", ["strengthReplacement"]],
+  ["strengthMultiplier", ["strengthMultiplier"]],
   ["strengthModifier", ["strengthModifier"]],
   ["ap", ["ap"]],
   ["criticalHits", ["criticalHits"]],
@@ -34,6 +36,7 @@ const integerParameters = [
   ["hitModifier", ["hitModifier"]],
   ["woundModifier", ["woundModifier"]],
   ["damageReplacement", ["damageReplacement"]],
+  ["damageMultiplier", ["damageMultiplier"]],
   ["damageModifier", ["damageModifier"]],
   ["melta", ["melta"]],
 ];
@@ -273,16 +276,19 @@ export function canonicalAgentParameters(profile) {
   search.set("attacks", diceText(profile.attackDice, profile.attackSides, profile.attacks));
   search.set("weaponCount", String(profile.weaponCount));
   search.set("attacksReplacement", String(profile.attacksReplacement ?? 0));
+  search.set("attacksMultiplier", String(profile.attacksMultiplier ?? 1));
   search.set("attacksModifier", String(profile.attacksModifier ?? 0));
   search.set("hit", String(profile.hitOn));
   search.set("strength", String(profile.strength));
   search.set("strengthReplacement", String(profile.strengthReplacement ?? 0));
+  search.set("strengthMultiplier", String(profile.strengthMultiplier ?? 1));
   search.set("strengthModifier", String(profile.strengthModifier ?? 0));
   search.set("ap", String(profile.ap));
   search.set("damage", diceText(profile.damageDice, profile.damageSides, profile.damage));
   if (profile.damageReplacement !== null && profile.damageReplacement !== undefined) {
     search.set("damageReplacement", String(profile.damageReplacement));
   }
+  search.set("damageMultiplier", String(profile.damageMultiplier ?? 1));
   search.set("damageModifier", String(profile.damageModifier ?? 0));
   search.set("toughness", String(profile.toughness));
   search.set("save", String(profile.save));
