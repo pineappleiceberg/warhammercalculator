@@ -177,6 +177,8 @@ export default function PlayMode() {
       [],
     targetDistance = profile.targetDistance,
     attackerCharged = profile.attackerCharged,
+    attackerBattleShocked = profile.attackerBattleShocked,
+    targetBattleShocked = profile.targetBattleShocked,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -187,6 +189,8 @@ export default function PlayMode() {
       attackKeywordsForWeapon(weapon),
       targetDistance,
       attackerCharged,
+      attackerBattleShocked,
+      targetBattleShocked,
     );
 
   const refreshProfile = (
@@ -197,6 +201,8 @@ export default function PlayMode() {
     nextTargetPresetIds = activeTargetPresetIds,
     nextTargetDistance = profile.targetDistance,
     nextAttackerCharged = profile.attackerCharged,
+    nextAttackerBattleShocked = profile.attackerBattleShocked,
+    nextTargetBattleShocked = profile.targetBattleShocked,
   ) => {
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
@@ -221,6 +227,8 @@ export default function PlayMode() {
             targetModels: targetUnit?.modelCount ?? 1,
             targetDistance: nextTargetDistance,
             attackerCharged: nextAttackerCharged,
+            attackerBattleShocked: nextAttackerBattleShocked,
+            targetBattleShocked: nextTargetBattleShocked,
           },
           weapon,
           model.keywords,
@@ -232,6 +240,8 @@ export default function PlayMode() {
           model.keywords,
           nextTargetDistance,
           nextAttackerCharged,
+          nextAttackerBattleShocked,
+          nextTargetBattleShocked,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -240,6 +250,8 @@ export default function PlayMode() {
           model.keywords,
           nextTargetDistance,
           nextAttackerCharged,
+          nextAttackerBattleShocked,
+          nextTargetBattleShocked,
         ),
         weapon.type,
         {
@@ -247,6 +259,8 @@ export default function PlayMode() {
           attackKeywords: attackKeywordsForWeapon(weapon),
           targetDistance: nextTargetDistance,
           attackerCharged: nextAttackerCharged,
+          attackerBattleShocked: nextAttackerBattleShocked,
+          targetBattleShocked: nextTargetBattleShocked,
         },
       ),
     );
@@ -285,6 +299,7 @@ export default function PlayMode() {
     const model = nextTargetCatalogueUnit?.models[0];
     const nextTargetPresetIds = nextTarget?.combatPresetIds ?? [];
     setTargetUnitId(id);
+    const nextTargetBattleShocked = false;
     setTargetModelId(model ? String(model.id) : "");
     setActiveTargetPresetIds(nextTargetPresetIds);
     if (!weaponProfile || !model || !nextTarget) return;
@@ -297,6 +312,8 @@ export default function PlayMode() {
             targetModels: nextTarget.modelCount,
             targetDistance: profile.targetDistance,
             attackerCharged: profile.attackerCharged,
+            attackerBattleShocked: profile.attackerBattleShocked,
+            targetBattleShocked: nextTargetBattleShocked,
           },
           weaponProfile,
           model.keywords,
@@ -308,6 +325,8 @@ export default function PlayMode() {
           model.keywords,
           profile.targetDistance,
           profile.attackerCharged,
+          profile.attackerBattleShocked,
+          nextTargetBattleShocked,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -316,6 +335,8 @@ export default function PlayMode() {
           model.keywords,
           profile.targetDistance,
           profile.attackerCharged,
+          profile.attackerBattleShocked,
+          nextTargetBattleShocked,
         ),
         weaponProfile.type,
         {
@@ -323,6 +344,8 @@ export default function PlayMode() {
           attackKeywords: attackKeywordsForWeapon(weaponProfile),
           targetDistance: profile.targetDistance,
           attackerCharged: profile.attackerCharged,
+          attackerBattleShocked: profile.attackerBattleShocked,
+          targetBattleShocked: nextTargetBattleShocked,
         },
       ),
     );
@@ -435,7 +458,11 @@ export default function PlayMode() {
                       setWeaponId("");
                       setProfileId("");
                       setActiveAttackerPresetIds([]);
-                      setProfile((current) => ({ ...current, attackerCharged: false }));
+                      setProfile((current) => ({
+                        ...current,
+                        attackerCharged: false,
+                        attackerBattleShocked: false,
+                      }));
                       setResult(null);
                     }}
                   >
@@ -460,7 +487,11 @@ export default function PlayMode() {
                       setActiveAttackerPresetIds(nextUnit?.combatPresetIds ?? []);
                       setWeaponId("");
                       setProfileId("");
-                      setProfile((current) => ({ ...current, attackerCharged: false }));
+                      setProfile((current) => ({
+                        ...current,
+                        attackerCharged: false,
+                        attackerBattleShocked: false,
+                      }));
                       setResult(null);
                     }}
                   >
@@ -516,6 +547,7 @@ export default function PlayMode() {
                       setTargetUnitId("");
                       setTargetModelId("");
                       setActiveTargetPresetIds([]);
+                      setProfile((current) => ({ ...current, targetBattleShocked: false }));
                       setResult(null);
                     }}
                   >
@@ -600,6 +632,51 @@ export default function PlayMode() {
                   />
                   <small>Inches; 0 means unknown</small>
                 </label>
+                <label>
+                  <span>Battle-shock</span>
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Attacker is Battle-shocked"
+                      type="checkbox"
+                      checked={profile.attackerBattleShocked}
+                      onChange={(event) =>
+                        refreshProfile(
+                          weaponId,
+                          targetModelId,
+                          profileId,
+                          activeAttackerPresetIds,
+                          activeTargetPresetIds,
+                          profile.targetDistance,
+                          profile.attackerCharged,
+                          event.target.checked,
+                          profile.targetBattleShocked,
+                        )
+                      }
+                    />
+                    Attacker
+                  </span>
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Target is Battle-shocked"
+                      type="checkbox"
+                      checked={profile.targetBattleShocked}
+                      onChange={(event) =>
+                        refreshProfile(
+                          weaponId,
+                          targetModelId,
+                          profileId,
+                          activeAttackerPresetIds,
+                          activeTargetPresetIds,
+                          profile.targetDistance,
+                          profile.attackerCharged,
+                          profile.attackerBattleShocked,
+                          event.target.checked,
+                        )
+                      }
+                    />
+                    Target
+                  </span>
+                </label>
               </fieldset>
             </div>
             <div className="play-ability-selectors">
@@ -615,6 +692,8 @@ export default function PlayMode() {
                   title="Active attacking abilities"
                   targetDistance={profile.targetDistance}
                   attackerCharged={profile.attackerCharged}
+                  attackerBattleShocked={profile.attackerBattleShocked}
+                  targetBattleShocked={profile.targetBattleShocked}
                 />
               )}
               {targetCatalogueUnit && (
@@ -629,6 +708,8 @@ export default function PlayMode() {
                   title="Active defensive abilities"
                   targetDistance={profile.targetDistance}
                   attackerCharged={profile.attackerCharged}
+                  attackerBattleShocked={profile.attackerBattleShocked}
+                  targetBattleShocked={profile.targetBattleShocked}
                 />
               )}
             </div>

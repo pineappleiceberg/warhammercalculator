@@ -2032,6 +2032,40 @@ test("source-backed charge rules require the explicit attacker charge state", as
   assert.equal(raiderProfile.ap, 1);
 });
 
+test("source-backed Battle-shock rules require their exact attacker or target state", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const furies = catalogue.units.find((unit) => unit.name === "Furies");
+  const prey = furies.combatPresets.find((preset) => preset.name === "Prey on the Weak");
+  const furiesBase = {
+    weaponName: furies.weapons[0].name,
+    woundModifier: 0,
+    targetBattleShocked: false,
+  };
+  assert.equal(applyCombatPresets(furiesBase, [prey], [], "Melee").woundModifier, 0);
+  assert.equal(
+    applyCombatPresets({ ...furiesBase, targetBattleShocked: true }, [prey], [], "Melee")
+      .woundModifier,
+    1,
+  );
+
+  const priest = catalogue.units.find((unit) => unit.name === "Ministorum Priest");
+  const holyPiety = priest.combatPresets.find((preset) => preset.name === "Holy Piety");
+  const priestBase = {
+    weaponName: priest.weapons.find((weapon) => weapon.type === "Melee").name,
+    rerollHits: false,
+    rerollHitOnes: false,
+    attackerBattleShocked: false,
+  };
+  assert.equal(applyCombatPresets(priestBase, [holyPiety], [], "Melee").rerollHits, true);
+  assert.equal(
+    applyCombatPresets({ ...priestBase, attackerBattleShocked: true }, [holyPiety], [], "Melee")
+      .rerollHits,
+    false,
+  );
+});
+
 test("source-backed situational Attacks replacements reach C/Wasm exactly", async () => {
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),

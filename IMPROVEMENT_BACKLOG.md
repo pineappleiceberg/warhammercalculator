@@ -17,8 +17,9 @@ priority over feature count.
 ## Prioritized backlog
 
 1. Extend the source-backed rules eligibility layer beyond phase, exact
-   target/Psychic keywords, direct target distance, and charge state to other compound
-   conditions that currently require manual interpretation.
+   target/Psychic keywords, direct target distance, charge state, and direct
+   Battle-shock state to other compound conditions that currently require
+   manual interpretation.
 2. Represent model-count-, casualty-, and nearby-unit-scaled Attacks modifiers
    as explicit reproducible state instead of requiring manual arithmetic.
 3. Extend bearer and subset-model defenses beyond composition-proven
@@ -26,6 +27,17 @@ priority over feature count.
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added exact direct Battle-shock eligibility. SQLite schema 31
+  marks Furies' Prey on the Weak, Hierophant's Apex-beast, and Incubi's
+  Tormentors as automatic only against a Battle-shocked target, while
+  Ministorum Priest's Holy Piety is automatic only while its attacking unit is
+  not Battle-shocked. Model vs Model, Unit vs Unit, Play Mode recovery, shared
+  profiles, normalized API input, and static agent URLs preserve separately
+  editable attacker and target state. Aura, leader, objective, observer, and
+  mixed-clause Battle-shock abilities remain manual. Parser exclusions, exact
+  generated-data snapshots, URL round trips, recovery, and C/Wasm composition
+  regressions cover both active and inactive boundaries.
 
 - 2026-08-07: Added exact attacker-charge eligibility. SQLite schema 30 marks
   17 unambiguous charge-triggered presets as automatic and exports their

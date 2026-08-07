@@ -98,9 +98,17 @@ export default function AgentCalculator() {
           const requestedContext = parseAgentProfile(search, DEFAULT_PROFILE, false);
           const requestedDistance = requestedContext.targetDistance;
           const attackerCharged = requestedContext.attackerCharged;
+          const attackerBattleShocked = requestedContext.attackerBattleShocked;
+          const targetBattleShocked = requestedContext.targetBattleShocked;
           let profile = applyTargetProfile(DEFAULT_PROFILE, selection.model);
           profile = applyWeaponProfile(profile, selection.weapon, selection.model.keywords);
-          profile = { ...profile, targetDistance: requestedDistance, attackerCharged };
+          profile = {
+            ...profile,
+            targetDistance: requestedDistance,
+            attackerCharged,
+            attackerBattleShocked,
+            targetBattleShocked,
+          };
           const attackerPresets = selectedAndAutomaticCombatPresets(
             selection.attacker.combatPresets,
             selection.attackerPresets.map((preset) => preset.id),
@@ -110,6 +118,8 @@ export default function AgentCalculator() {
             attackKeywordsForWeapon(selection.weapon),
             requestedDistance,
             attackerCharged,
+            attackerBattleShocked,
+            targetBattleShocked,
           );
           const targetPresets = selectedAndAutomaticCombatPresets(
             selection.target.combatPresets,
@@ -120,6 +130,8 @@ export default function AgentCalculator() {
             attackKeywordsForWeapon(selection.weapon),
             requestedDistance,
             attackerCharged,
+            attackerBattleShocked,
+            targetBattleShocked,
           );
           profile = applyCombatPresets(
             profile,
@@ -131,6 +143,8 @@ export default function AgentCalculator() {
               attackKeywords: attackKeywordsForWeapon(selection.weapon),
               targetDistance: requestedDistance,
               attackerCharged,
+              attackerBattleShocked,
+              targetBattleShocked,
             },
           );
           candidate = parseAgentProfile(search, profile, false);
@@ -259,7 +273,8 @@ export default function AgentCalculator() {
               characteristicModifierAttacks, characteristicModifierStrength,
               characteristicModifierDamage, model, models, fnp, reduction, damageDivisor,
               criticalHits, criticalWounds, sustainedHits, rapidFire, melta, hitModifier,
-              woundModifier, rerollHits, rerollWounds, attackerPreset, targetPreset, and rules.
+              woundModifier, rerollHits, rerollWounds, distance, charged, attackerBattleShocked,
+              targetBattleShocked, attackerPreset, targetPreset, and rules.
             </p>
             <p>
               <code>rules</code> accepts comma-separated values such as{" "}
@@ -267,9 +282,9 @@ export default function AgentCalculator() {
               or stable catalogue IDs are accepted; ambiguous names return an error.
             </p>
             <p>
-              Catalogue queries apply exact target- and attack-keyword conditions automatically.
-              Applied source rules are listed in the result with <code>automatic: true</code>; any
-              numeric URL override is applied afterward.
+              Catalogue queries apply exact target-, attack-keyword, charge, distance, and
+              Battle-shock conditions automatically. Applied source rules are listed in the result
+              with <code>automatic: true</code>; any numeric URL override is applied afterward.
             </p>
           </div>
         </article>

@@ -99,6 +99,8 @@ export default function UnitVsUnit() {
   const [initialWoundsLost, setInitialWoundsLost] = useState(0);
   const [targetDistance, setTargetDistance] = useState(0);
   const [attackerCharged, setAttackerCharged] = useState(false);
+  const [attackerBattleShocked, setAttackerBattleShocked] = useState(false);
+  const [targetBattleShocked, setTargetBattleShocked] = useState(false);
   const [results, setResults] = useState<WeaponLine[]>([]);
   const [volleySummary, setVolleySummary] = useState<OrderedVolleySummary | null>(null);
   const [rollResult, setRollResult] = useState<OrderedVolleyRollResult | null>(null);
@@ -164,6 +166,8 @@ export default function UnitVsUnit() {
     initialWoundsLost,
     targetDistance,
     attackerCharged,
+    attackerBattleShocked,
+    targetBattleShocked,
     orderedLines: orderedLines.map((line) => [line.weapon.id, line.count]),
     targetSegments,
     activeAttackerPresetIds,
@@ -177,6 +181,7 @@ export default function UnitVsUnit() {
   const selectAttacker = (unitId: string) => {
     setAttackerUnitId(unitId);
     setAttackerCharged(false);
+    setAttackerBattleShocked(false);
     const unit = attackerUnits.find((entry) => entry.id === unitId);
     const groups = groupWeaponProfiles(unit?.weapons ?? []);
     const models = unit?.suggestedModelCount ?? 1;
@@ -208,6 +213,7 @@ export default function UnitVsUnit() {
 
   const selectTarget = (unitId: string) => {
     setTargetUnitId(unitId);
+    setTargetBattleShocked(false);
     const unit = targetUnits.find((entry) => entry.id === unitId);
     const model = unit?.models[0];
     setTargetSegments(model ? [targetSegment(model, unit?.suggestedModelCount ?? 1)] : []);
@@ -252,7 +258,15 @@ export default function UnitVsUnit() {
     return orderedLines.map((line) =>
       applyCombatPresets(
         applyWeaponProfile(
-          { ...DEFAULT_PROFILE, targetModels, weaponCount: line.count, targetDistance },
+          {
+            ...DEFAULT_PROFILE,
+            targetModels,
+            weaponCount: line.count,
+            targetDistance,
+            attackerCharged,
+            attackerBattleShocked,
+            targetBattleShocked,
+          },
           line.weapon,
           targetSegments[0]?.keywords ?? [],
         ),
@@ -265,6 +279,8 @@ export default function UnitVsUnit() {
           attackKeywordsForWeapon(line.weapon),
           targetDistance,
           attackerCharged,
+          attackerBattleShocked,
+          targetBattleShocked,
         ),
         selectedAndAutomaticCombatPresets(
           targetUnit?.combatPresets ?? [],
@@ -275,6 +291,8 @@ export default function UnitVsUnit() {
           attackKeywordsForWeapon(line.weapon),
           targetDistance,
           attackerCharged,
+          attackerBattleShocked,
+          targetBattleShocked,
         ),
         line.weapon.type,
         {
@@ -282,6 +300,8 @@ export default function UnitVsUnit() {
           attackKeywords: attackKeywordsForWeapon(line.weapon),
           targetDistance,
           attackerCharged,
+          attackerBattleShocked,
+          targetBattleShocked,
         },
       ),
     );
@@ -301,6 +321,8 @@ export default function UnitVsUnit() {
               attackKeywordsForWeapon(line.weapon),
               targetDistance,
               attackerCharged,
+              attackerBattleShocked,
+              targetBattleShocked,
             ),
           )
           .map((preset) => [preset.id, preset]),
@@ -315,6 +337,8 @@ export default function UnitVsUnit() {
         attackKeywords: attackKeywordsForWeapon(line.weapon),
         targetDistance,
         attackerCharged,
+        attackerBattleShocked,
+        targetBattleShocked,
       })),
     );
   };
@@ -445,6 +469,8 @@ export default function UnitVsUnit() {
                 onChange={(event) => {
                   setAttackerFaction(event.target.value);
                   setAttackerUnitId("");
+                  setAttackerCharged(false);
+                  setAttackerBattleShocked(false);
                 }}
               >
                 <option value="">Choose faction</option>
@@ -501,6 +527,8 @@ export default function UnitVsUnit() {
                   title="Active attacking abilities"
                   targetDistance={targetDistance}
                   attackerCharged={attackerCharged}
+                  attackerBattleShocked={attackerBattleShocked}
+                  targetBattleShocked={targetBattleShocked}
                 />
                 {attackerUnit.unresolvedLoadoutSubjects.length > 0 && (
                   <details className="source-choice-pools model-composition-editor" open>
@@ -740,6 +768,7 @@ export default function UnitVsUnit() {
                 onChange={(event) => {
                   setTargetFaction(event.target.value);
                   setTargetUnitId("");
+                  setTargetBattleShocked(false);
                 }}
               >
                 <option value="">Choose faction</option>
@@ -773,6 +802,25 @@ export default function UnitVsUnit() {
               </span>
             </label>
             <label>
+              <span>Battle-shock state</span>
+              <span className="inline-checkbox">
+                <input
+                  type="checkbox"
+                  checked={attackerBattleShocked}
+                  onChange={(event) => setAttackerBattleShocked(event.target.checked)}
+                />
+                Attacker is Battle-shocked
+              </span>
+              <span className="inline-checkbox">
+                <input
+                  type="checkbox"
+                  checked={targetBattleShocked}
+                  onChange={(event) => setTargetBattleShocked(event.target.checked)}
+                />
+                Target is Battle-shocked
+              </span>
+            </label>
+            <label>
               <span>Target distance</span>
               <input
                 aria-label="Target distance in inches"
@@ -796,6 +844,8 @@ export default function UnitVsUnit() {
                   title="Active defensive abilities"
                   targetDistance={targetDistance}
                   attackerCharged={attackerCharged}
+                  attackerBattleShocked={attackerBattleShocked}
+                  targetBattleShocked={targetBattleShocked}
                 />
                 <div className="sequence-heading">
                   <div>

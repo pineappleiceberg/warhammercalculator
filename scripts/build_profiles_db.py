@@ -160,6 +160,10 @@ CREATE TABLE unit_combat_presets (
     maximum_target_distance INTEGER CHECK (maximum_target_distance > 0),
     requires_attacker_charge INTEGER NOT NULL DEFAULT 0
         CHECK (requires_attacker_charge IN (0, 1)),
+    requires_target_battle_shocked INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_target_battle_shocked IN (0, 1)),
+    requires_attacker_not_battle_shocked INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_attacker_not_battle_shocked IN (0, 1)),
     hit_modifier INTEGER NOT NULL CHECK (hit_modifier BETWEEN -1 AND 1),
     hit_modifier_role TEXT CHECK (hit_modifier_role IN ('attacker', 'target', 'either')),
     hit_modifier_subject TEXT CHECK (hit_modifier_subject IN
@@ -463,6 +467,30 @@ def combat_requires_attacker_charge(text: str) -> bool:
         lowered,
     )
     return bool(triggered_until_end or attack_condition)
+
+
+def combat_battle_shock_requirements(text: str) -> tuple[bool, bool]:
+    normalized = plain_text(text).strip()
+    target_battle_shocked = bool(
+        re.fullmatch(
+            r"(?:At the start of the Fight phase, each enemy unit within Engagement Range "
+            r"of one or more units with this ability must take a Battle-shock test\. )?"
+            r"Each time (?:this model|a model in this unit) makes an? (?:melee )?attack "
+            r"that targets (?:(?:an enemy |a )?unit that is Battle-shocked|a Battle-shocked unit), "
+            r"(?:add 1 to the (?:Hit|Wound) roll|you can re-roll the (?:Hit|Wound) roll)\.",
+            normalized,
+            re.IGNORECASE,
+        )
+    )
+    attacker_not_battle_shocked = bool(
+        re.fullmatch(
+            r"Each time this model makes an? (?:melee )?attack, unless this model(?:’s|'s) "
+            r"unit is Battle-shocked, you can re-roll the (?:Hit|Wound) roll\.",
+            normalized,
+            re.IGNORECASE,
+        )
+    )
+    return target_battle_shocked, attacker_not_battle_shocked
 
 
 def combat_effect_application(text: str, effect_start: int) -> tuple[str, str]:
@@ -1320,12 +1348,23 @@ def combat_preset(
     effects["weapon_scope"] = combat_weapon_scope(text)
     effects["maximum_target_distance"] = combat_maximum_target_distance(text, effects)
     effects["requires_attacker_charge"] = combat_requires_attacker_charge(text)
+    (
+        effects["requires_target_battle_shocked"],
+        effects["requires_attacker_not_battle_shocked"],
+    ) = combat_battle_shock_requirements(text)
     return effects
 
 
 def combat_preset_activation(description: str, preset: dict[str, object]) -> str:
     additional = preset["additional_effects"]
-    if preset.get("requires_attacker_charge"):
+    if any(
+        preset.get(field)
+        for field in (
+            "requires_attacker_charge",
+            "requires_target_battle_shocked",
+            "requires_attacker_not_battle_shocked",
+        )
+    ):
         return "automatic"
     if (
         len(additional) == 1
@@ -1611,13 +1650,14 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                 """INSERT INTO unit_combat_presets
                    (datasheet_id, ability_position, preset_position, name, description_text,
                     is_exclusive_choice, activation, weapon_scope, maximum_target_distance,
-                    requires_attacker_charge,
+                    requires_attacker_charge, requires_target_battle_shocked,
+                    requires_attacker_not_battle_shocked,
                     hit_modifier, hit_modifier_role,
                     hit_modifier_subject, wound_modifier, wound_modifier_role,
                     wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                     hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
                     wound_reroll_subject)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     ability_position,
@@ -1629,6 +1669,8 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     preset["weapon_scope"],
                     preset["maximum_target_distance"],
                     int(preset["requires_attacker_charge"]),
+                    int(preset["requires_target_battle_shocked"]),
+                    int(preset["requires_attacker_not_battle_shocked"]),
                     preset["hit_modifier"],
                     preset.get("hit_modifier_role"),
                     preset.get("hit_modifier_subject"),
@@ -1807,7 +1849,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "30"),
+                    ("schema_version", "31"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

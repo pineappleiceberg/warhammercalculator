@@ -54,6 +54,8 @@ class ProfileDataTests(unittest.TestCase):
                 "additional_effects": [],
                 "maximum_target_distance": None,
                 "requires_attacker_charge": False,
+                "requires_target_battle_shocked": False,
+                "requires_attacker_not_battle_shocked": False,
                 "hit_modifier_role": "attacker",
                 "hit_modifier_subject": "led_unit",
                 "wound_modifier_role": "attacker",
@@ -476,6 +478,36 @@ class ProfileDataTests(unittest.TestCase):
             )["requires_attacker_charge"]
         )
 
+        target_battle_shocked = combat_preset(
+            "Each time a model in this unit makes a melee attack that targets a "
+            "Battle-shocked unit, add 1 to the Hit roll."
+        )
+        self.assertTrue(target_battle_shocked["requires_target_battle_shocked"])
+        self.assertFalse(
+            target_battle_shocked["requires_attacker_not_battle_shocked"]
+        )
+        attacker_not_battle_shocked = combat_preset(
+            "Each time this model makes a melee attack, unless this model’s unit is "
+            "Battle-shocked, you can re-roll the Hit roll."
+        )
+        self.assertTrue(
+            attacker_not_battle_shocked["requires_attacker_not_battle_shocked"]
+        )
+        self.assertFalse(
+            combat_preset(
+                "While an enemy unit is within 12\" of this model, if that unit is "
+                "Battle-shocked: each time a friendly model makes an attack that targets "
+                "that unit, add 1 to the Wound roll."
+            )["requires_target_battle_shocked"]
+        )
+        self.assertFalse(
+            combat_preset(
+                "While this model is leading a unit, each time a model in that unit makes "
+                "an attack, add 1 to the Hit roll. If the target is Battle-shocked, add 1 "
+                "to the Wound roll as well."
+            )["requires_target_battle_shocked"]
+        )
+
         moment_shackle = combat_presets(
             "Moment Shackle",
             "Once per battle, at the start of the Fight phase, you can select one of the "
@@ -838,7 +870,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "30",
+                "31",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1122,7 +1154,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 19), ("inherent", 32), ("situational", 1411)],
+                [("automatic", 23), ("inherent", 32), ("situational", 1407)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1149,6 +1181,45 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     """SELECT count(*) FROM unit_combat_presets
                        WHERE requires_attacker_charge = 1 AND activation != 'automatic'"""
+                ).fetchone()[0],
+                0,
+            )
+            battle_shock_rows = connection.execute(
+                """SELECT datasheet.name, preset.name,
+                          preset.requires_target_battle_shocked,
+                          preset.requires_attacker_not_battle_shocked
+                   FROM unit_combat_presets AS preset
+                   JOIN datasheets AS datasheet ON datasheet.id = preset.datasheet_id
+                   WHERE preset.requires_target_battle_shocked = 1
+                      OR preset.requires_attacker_not_battle_shocked = 1
+                   ORDER BY datasheet.name, preset.name"""
+            ).fetchall()
+            self.assertEqual(
+                battle_shock_rows,
+                [
+                    ("Furies", "Prey on the Weak", 1, 0),
+                    ("Hierophant", "Apex-beast", 1, 0),
+                    ("Incubi", "Tormentors", 1, 0),
+                    ("Ministorum Priest", "Holy Piety", 0, 1),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_combat_presets
+                       WHERE (requires_target_battle_shocked = 1
+                              OR requires_attacker_not_battle_shocked = 1)
+                         AND activation != 'automatic'"""
+                ).fetchone()[0],
+                0,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_combat_presets AS preset
+                       JOIN datasheets AS datasheet ON datasheet.id = preset.datasheet_id
+                       WHERE datasheet.name IN ('Neurolictor', 'Neurotyrant',
+                                                'Hand of the Archon')
+                         AND (preset.requires_target_battle_shocked = 1
+                              OR preset.requires_attacker_not_battle_shocked = 1)"""
                 ).fetchone()[0],
                 0,
             )

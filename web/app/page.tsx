@@ -896,6 +896,8 @@ export default function Home() {
     targetKeywords: string[],
     targetDistance = profile.targetDistance,
     attackerCharged = profile.attackerCharged,
+    attackerBattleShocked = profile.attackerBattleShocked,
+    targetBattleShocked = profile.targetBattleShocked,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -906,6 +908,8 @@ export default function Home() {
       attackKeywordsForWeapon(weapon),
       targetDistance,
       attackerCharged,
+      attackerBattleShocked,
+      targetBattleShocked,
     );
   const withActivePresets = (
     current: Profile,
@@ -958,6 +962,12 @@ export default function Home() {
           ap: Math.abs(weapon.ap ?? 0),
           criticalHits: 6,
           criticalWounds: antiWoundThreshold(weapon.abilities, targetKeywords),
+          hitModifier: 0,
+          woundModifier: 0,
+          rerollHits: false,
+          rerollHitOnes: false,
+          rerollWounds: false,
+          rerollWoundOnes: false,
           sustainedHits: sustainedHits.modifier,
           sustainedHitsDice: sustainedHits.count,
           sustainedHitsSides: sustainedHits.sides,
@@ -981,6 +991,8 @@ export default function Home() {
         targetKeywords,
         baseProfile.targetDistance,
         baseProfile.attackerCharged,
+        baseProfile.attackerBattleShocked,
+        baseProfile.targetBattleShocked,
       ),
       selectedPresets(
         selectedTargetUnit,
@@ -989,6 +1001,8 @@ export default function Home() {
         targetKeywords,
         baseProfile.targetDistance,
         baseProfile.attackerCharged,
+        baseProfile.attackerBattleShocked,
+        baseProfile.targetBattleShocked,
       ),
       weapon?.type ?? "Ranged",
       {
@@ -996,6 +1010,8 @@ export default function Home() {
         attackKeywords: attackKeywordsForWeapon(weapon),
         targetDistance: baseProfile.targetDistance,
         attackerCharged: baseProfile.attackerCharged,
+        attackerBattleShocked: baseProfile.attackerBattleShocked,
+        targetBattleShocked: baseProfile.targetBattleShocked,
       },
     ) as Profile;
   };
@@ -1194,7 +1210,7 @@ export default function Home() {
                       setActiveAttackerPresetIds([]);
                       setProfile((current) =>
                         withActivePresets(
-                          { ...current, attackerCharged: false },
+                          { ...current, attackerCharged: false, attackerBattleShocked: false },
                           selectedWeapon,
                           [],
                           activeTargetPresetIds,
@@ -1221,7 +1237,7 @@ export default function Home() {
                       setActiveAttackerPresetIds([]);
                       setProfile((current) =>
                         withActivePresets(
-                          { ...current, attackerCharged: false },
+                          { ...current, attackerCharged: false, attackerBattleShocked: false },
                           selectedWeapon,
                           [],
                           activeTargetPresetIds,
@@ -1278,6 +1294,8 @@ export default function Home() {
                   title="Active attacking abilities"
                   targetDistance={profile.targetDistance}
                   attackerCharged={profile.attackerCharged}
+                  attackerBattleShocked={profile.attackerBattleShocked}
+                  targetBattleShocked={profile.targetBattleShocked}
                 />
               )}
               <DiceField
@@ -1372,7 +1390,12 @@ export default function Home() {
                       setTargetModel("");
                       setActiveTargetPresetIds([]);
                       setProfile((current) =>
-                        withActivePresets(current, selectedWeapon, activeAttackerPresetIds, []),
+                        withActivePresets(
+                          { ...current, targetBattleShocked: false },
+                          selectedWeapon,
+                          activeAttackerPresetIds,
+                          [],
+                        ),
                       );
                     }}
                   >
@@ -1394,7 +1417,12 @@ export default function Home() {
                       setTargetModel("");
                       setActiveTargetPresetIds([]);
                       setProfile((current) =>
-                        withActivePresets(current, selectedWeapon, activeAttackerPresetIds, []),
+                        withActivePresets(
+                          { ...current, targetBattleShocked: false },
+                          selectedWeapon,
+                          activeAttackerPresetIds,
+                          [],
+                        ),
                       );
                       const unit = targetUnits.find((item) => item.id === event.target.value);
                       if (unit?.models.length === 1) {
@@ -1450,6 +1478,8 @@ export default function Home() {
                   title="Active defensive abilities"
                   targetDistance={profile.targetDistance}
                   attackerCharged={profile.attackerCharged}
+                  attackerBattleShocked={profile.attackerBattleShocked}
+                  targetBattleShocked={profile.targetBattleShocked}
                 />
               )}
               <div className="field-grid three">
@@ -1789,6 +1819,24 @@ export default function Home() {
                 checked={profile.attackerCharged}
                 onChange={(value) =>
                   setProfile((current) => withActivePresets({ ...current, attackerCharged: value }))
+                }
+              />
+              <Toggle
+                label="Attacker is Battle-shocked"
+                checked={profile.attackerBattleShocked}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({ ...current, attackerBattleShocked: value }),
+                  )
+                }
+              />
+              <Toggle
+                label="Target is Battle-shocked"
+                checked={profile.targetBattleShocked}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({ ...current, targetBattleShocked: value }),
+                  )
                 }
               />
               <Toggle

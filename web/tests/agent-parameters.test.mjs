@@ -63,6 +63,8 @@ const defaults = {
   melta: 0,
   targetDistance: 0,
   attackerCharged: false,
+  attackerBattleShocked: false,
+  targetBattleShocked: false,
   withinHalfRange: false,
   torrent: false,
   blast: false,
@@ -176,6 +178,8 @@ test("canonical agent parameters round-trip every supported profile field", () =
     rapidFire: 2,
     targetDistance: 9,
     attackerCharged: true,
+    attackerBattleShocked: true,
+    targetBattleShocked: true,
     blast: true,
     rerollWounds: true,
   };
@@ -292,4 +296,55 @@ test("source-backed target-distance presets require a known in-range target", as
   assert.equal(selected(0).length, 0);
   assert.equal(selected(9).length, 1);
   assert.equal(selected(10).length, 0);
+});
+
+test("catalogue agent Battle-shock state selects only exact automatic rules", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const furies = catalogue.units.find((unit) => unit.name === "Furies");
+  const prey = furies.combatPresets.find((preset) => preset.name === "Prey on the Weak");
+  const weapon = furies.weapons[0];
+  const selectedFuries = (targetBattleShocked) =>
+    selectedAndAutomaticCombatPresets(
+      furies.combatPresets,
+      [],
+      weapon.type,
+      weapon.name,
+      [],
+      attackKeywordsForWeapon(weapon),
+      0,
+      false,
+      false,
+      targetBattleShocked,
+    );
+  assert.equal(prey.requiresTargetBattleShocked, true);
+  assert.deepEqual(selectedFuries(false), []);
+  assert.deepEqual(
+    selectedFuries(true).map((preset) => preset.name),
+    ["Prey on the Weak"],
+  );
+
+  const priest = catalogue.units.find((unit) => unit.name === "Ministorum Priest");
+  const holyPiety = priest.combatPresets.find((preset) => preset.name === "Holy Piety");
+  const priestWeapon = priest.weapons.find((entry) => entry.type === "Melee");
+  const selectedPriest = (attackerBattleShocked) =>
+    selectedAndAutomaticCombatPresets(
+      priest.combatPresets,
+      [],
+      priestWeapon.type,
+      priestWeapon.name,
+      [],
+      attackKeywordsForWeapon(priestWeapon),
+      0,
+      false,
+      attackerBattleShocked,
+      false,
+    );
+  assert.equal(holyPiety.requiresAttackerNotBattleShocked, true);
+  assert.deepEqual(
+    selectedPriest(false).map((preset) => preset.name),
+    ["Holy Piety"],
+  );
+  assert.deepEqual(selectedPriest(true), []);
 });
