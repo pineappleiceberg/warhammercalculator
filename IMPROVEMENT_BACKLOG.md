@@ -16,18 +16,35 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Extend the source-backed rules eligibility layer beyond the now-covered
-   direct and selected-objective relationships to observer/marked-target
-   relationships, aura proximity, closest-target state, and other compound
-   conditions that still require manual interpretation.
-2. Represent casualty- and nearby-unit-count-scaled Attacks modifiers as
+1. Add explicit cross-unit support relationships so Observer-source buffs such
+   as Forward Observers, Blacklight Marker Drones, and High-intensity
+   Markerlights—and then other aura-source abilities—can be selected from the
+   supporting unit without being misapplied to that unit's own attacks.
+2. Add reproducible closest-target and line-of-sight relationship state for the
+   remaining compound attack conditions that still require manual
+   interpretation.
+3. Represent casualty- and nearby-unit-count-scaled Attacks modifiers as
    explicit reproducible state instead of requiring manual arithmetic; direct
    source-unit and nearby-enemy model counts are now covered.
-3. Extend bearer and subset-model defenses beyond composition-proven
+4. Extend bearer and subset-model defenses beyond composition-proven
    single-model datasheets with per-target-segment equipment selection, so a
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added exact T’au Guided, Spotted, and Markerlight relationships.
+  SQLite schema 41 separates Ballistic Skill characteristic improvement from
+  Hit-roll modifiers and turns 42 For the Greater Good source rows into two
+  independently gated automatic effects. Coordinated Strike requires the
+  attacker to be Guided against its Spotted target; Precise Targeting and
+  Target Uploaded require the current target to be Spotted; Markerlight Ignores
+  Cover additionally requires that the Spotted target was marked by a
+  Markerlight Observer. Observer-source buffs remain conservative manual rules
+  until cross-unit support is represented. Editable state round-trips through
+  Model vs Model, Unit vs Unit, Play recovery, normalized APIs, share links, and
+  static agent URLs. Exact parser negatives, generated database snapshots,
+  URL/recovery/API validation, workflow rendering, and C/WebAssembly hit and
+  cover boundary tests cover the change.
 
 - 2026-08-07: Added exact directional selected-objective relationships. SQLite
   schema 40 marks Archon’s Will, Priority Objective Identified, and Seeker of

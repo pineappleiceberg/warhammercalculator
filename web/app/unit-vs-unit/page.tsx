@@ -119,6 +119,10 @@ export default function UnitVsUnit() {
   const [targetOnAttackerSelectedObjective, setTargetOnAttackerSelectedObjective] = useState(false);
   const [attackerOnTargetSelectedObjective, setAttackerOnTargetSelectedObjective] = useState(false);
   const [targetOnTargetSelectedObjective, setTargetOnTargetSelectedObjective] = useState(false);
+  const [attackerGuidedAgainstTarget, setAttackerGuidedAgainstTarget] = useState(false);
+  const [targetSpotted, setTargetSpotted] = useState(false);
+  const [targetSpottedByMarkerlightObserver, setTargetSpottedByMarkerlightObserver] =
+    useState(false);
   const [attackerBattleShocked, setAttackerBattleShocked] = useState(false);
   const [targetBattleShocked, setTargetBattleShocked] = useState(false);
   const [targetStrengthState, setTargetStrengthState] = useState<TargetStrengthState>("full");
@@ -204,6 +208,9 @@ export default function UnitVsUnit() {
     targetOnAttackerSelectedObjective,
     attackerOnTargetSelectedObjective,
     targetOnTargetSelectedObjective,
+    attackerGuidedAgainstTarget,
+    targetSpotted,
+    targetSpottedByMarkerlightObserver,
     attackerBattleShocked,
     targetBattleShocked,
     targetStrengthState,
@@ -231,6 +238,9 @@ export default function UnitVsUnit() {
     setTargetOnAttackerSelectedObjective(false);
     setAttackerOnTargetSelectedObjective(false);
     setTargetOnTargetSelectedObjective(false);
+    setAttackerGuidedAgainstTarget(false);
+    setTargetSpotted(false);
+    setTargetSpottedByMarkerlightObserver(false);
     setAttackerUnitModels(0);
     setNearbyEnemyModels(0);
     setAttackerBattleShocked(false);
@@ -274,6 +284,9 @@ export default function UnitVsUnit() {
     setTargetOnAttackerSelectedObjective(false);
     setAttackerOnTargetSelectedObjective(false);
     setTargetOnTargetSelectedObjective(false);
+    setAttackerGuidedAgainstTarget(false);
+    setTargetSpotted(false);
+    setTargetSpottedByMarkerlightObserver(false);
     setTargetBattleShocked(false);
     setTargetStrengthState("full");
     const unit = targetUnits.find((entry) => entry.id === unitId);
@@ -343,6 +356,9 @@ export default function UnitVsUnit() {
             targetOnAttackerSelectedObjective,
             attackerOnTargetSelectedObjective,
             targetOnTargetSelectedObjective,
+            attackerGuidedAgainstTarget,
+            targetSpotted,
+            targetSpottedByMarkerlightObserver,
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
@@ -374,6 +390,9 @@ export default function UnitVsUnit() {
           attackerOnAttackerSelectedObjective,
           targetOnAttackerSelectedObjective,
           attackerBattleShocked,
+          attackerGuidedAgainstTarget,
+          targetSpotted,
+          targetSpottedByMarkerlightObserver,
         ),
         selectedAndAutomaticCombatPresets(
           targetUnit?.combatPresets ?? [],
@@ -399,6 +418,9 @@ export default function UnitVsUnit() {
           targetOnTargetSelectedObjective,
           attackerOnTargetSelectedObjective,
           targetBattleShocked,
+          false,
+          targetSpotted,
+          targetSpottedByMarkerlightObserver,
         ),
         line.weapon.type,
         {
@@ -426,6 +448,9 @@ export default function UnitVsUnit() {
           targetOnAttackerSelectedObjective,
           attackerOnTargetSelectedObjective,
           targetOnTargetSelectedObjective,
+          attackerGuidedAgainstTarget,
+          targetSpotted,
+          targetSpottedByMarkerlightObserver,
         },
       ),
     );
@@ -460,6 +485,9 @@ export default function UnitVsUnit() {
               targetOnTargetSelectedObjective,
               attackerOnTargetSelectedObjective,
               targetBattleShocked,
+              false,
+              targetSpotted,
+              targetSpottedByMarkerlightObserver,
             ),
           )
           .map((preset) => [preset.id, preset]),
@@ -490,6 +518,9 @@ export default function UnitVsUnit() {
         targetOnAttackerSelectedObjective,
         attackerOnTargetSelectedObjective,
         targetOnTargetSelectedObjective,
+        attackerGuidedAgainstTarget,
+        targetSpotted,
+        targetSpottedByMarkerlightObserver,
       })),
     );
   };
@@ -1159,6 +1190,49 @@ export default function UnitVsUnit() {
                   onChange={(event) => setTargetOnTargetSelectedObjective(event.target.checked)}
                 />
                 Target
+              </span>
+            </label>
+            <label>
+              <span>T’au targeting state</span>
+              <span className="inline-checkbox">
+                <input
+                  aria-label="Attacker is Guided against this Spotted target"
+                  type="checkbox"
+                  checked={attackerGuidedAgainstTarget}
+                  onChange={(event) => {
+                    setAttackerGuidedAgainstTarget(event.target.checked);
+                    if (event.target.checked) setTargetSpotted(true);
+                    else setTargetSpottedByMarkerlightObserver(false);
+                  }}
+                />
+                Guided
+              </span>
+              <span className="inline-checkbox">
+                <input
+                  aria-label="Target is a Spotted unit"
+                  type="checkbox"
+                  checked={targetSpotted}
+                  onChange={(event) => {
+                    setTargetSpotted(event.target.checked);
+                    if (!event.target.checked) {
+                      setAttackerGuidedAgainstTarget(false);
+                      setTargetSpottedByMarkerlightObserver(false);
+                    }
+                  }}
+                />
+                Spotted
+              </span>
+              <span className="inline-checkbox">
+                <input
+                  aria-label="Spotted by an Observer with Markerlight"
+                  type="checkbox"
+                  checked={targetSpottedByMarkerlightObserver}
+                  onChange={(event) => {
+                    setTargetSpottedByMarkerlightObserver(event.target.checked);
+                    if (event.target.checked) setTargetSpotted(true);
+                  }}
+                />
+                Markerlight
               </span>
             </label>
             <label>

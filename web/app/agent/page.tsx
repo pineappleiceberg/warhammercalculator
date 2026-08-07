@@ -118,6 +118,10 @@ export default function AgentCalculator() {
           const attackerOnTargetSelectedObjective =
             requestedContext.attackerOnTargetSelectedObjective;
           const targetOnTargetSelectedObjective = requestedContext.targetOnTargetSelectedObjective;
+          const attackerGuidedAgainstTarget = requestedContext.attackerGuidedAgainstTarget;
+          const targetSpotted = requestedContext.targetSpotted;
+          const targetSpottedByMarkerlightObserver =
+            requestedContext.targetSpottedByMarkerlightObserver;
           const attackerBattleShocked = requestedContext.attackerBattleShocked;
           const targetBattleShocked = requestedContext.targetBattleShocked;
           const targetStrengthState = requestedContext.targetStrengthState;
@@ -144,6 +148,9 @@ export default function AgentCalculator() {
             targetOnAttackerSelectedObjective,
             attackerOnTargetSelectedObjective,
             targetOnTargetSelectedObjective,
+            attackerGuidedAgainstTarget,
+            targetSpotted,
+            targetSpottedByMarkerlightObserver,
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
@@ -172,6 +179,9 @@ export default function AgentCalculator() {
             attackerOnAttackerSelectedObjective,
             targetOnAttackerSelectedObjective,
             attackerBattleShocked,
+            attackerGuidedAgainstTarget,
+            targetSpotted,
+            targetSpottedByMarkerlightObserver,
           );
           const targetPresets = selectedAndAutomaticCombatPresets(
             selection.target.combatPresets,
@@ -197,6 +207,9 @@ export default function AgentCalculator() {
             targetOnTargetSelectedObjective,
             attackerOnTargetSelectedObjective,
             targetBattleShocked,
+            false,
+            targetSpotted,
+            targetSpottedByMarkerlightObserver,
           );
           profile = applyCombatPresets(
             profile,
@@ -225,6 +238,9 @@ export default function AgentCalculator() {
               targetOnAttackerSelectedObjective,
               attackerOnTargetSelectedObjective,
               targetOnTargetSelectedObjective,
+              attackerGuidedAgainstTarget,
+              targetSpotted,
+              targetSpottedByMarkerlightObserver,
               attackerBattleShocked,
               targetBattleShocked,
               targetStrengthState,
@@ -362,8 +378,8 @@ export default function AgentCalculator() {
               attackerObjectiveOwner, targetObjectiveOwner, attackerBattleShocked,
               targetBattleShocked, attackerOnAttackerSelectedObjective,
               targetOnAttackerSelectedObjective, attackerOnTargetSelectedObjective,
-              targetOnTargetSelectedObjective, targetStrength, attackerPreset, targetPreset, and
-              rules.
+              targetOnTargetSelectedObjective, guided, spotted, markerlightSpotted, targetStrength,
+              attackerPreset, targetPreset, and rules.
             </p>
             <p>
               <code>rules</code> accepts comma-separated values such as{" "}
@@ -372,9 +388,10 @@ export default function AgentCalculator() {
             </p>
             <p>
               Catalogue queries apply exact target-, attack-keyword, charge, distance, Battle-shock,
-              Attached-unit, Waaagh!, Oath of Moment, objective-marker position and ownership, and
-              model-count conditions automatically. Applied source rules are listed in the result
-              with <code>automatic: true</code>; any numeric URL override is applied afterward.
+              Attached-unit, Waaagh!, Oath of Moment, objective-marker position and ownership,
+              Guided/Spotted/Markerlight relationships, and model-count conditions automatically.
+              Applied source rules are listed in the result with <code>automatic: true</code>; any
+              numeric URL override is applied afterward.
             </p>
           </div>
         </article>

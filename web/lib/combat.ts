@@ -81,6 +81,9 @@ export type CombatProfile = {
   targetOnAttackerSelectedObjective: boolean;
   attackerOnTargetSelectedObjective: boolean;
   targetOnTargetSelectedObjective: boolean;
+  attackerGuidedAgainstTarget: boolean;
+  targetSpotted: boolean;
+  targetSpottedByMarkerlightObserver: boolean;
   attackerBattleShocked: boolean;
   targetBattleShocked: boolean;
   targetStrengthState: TargetStrengthState;
@@ -275,6 +278,9 @@ export const DEFAULT_PROFILE: CombatProfile = {
   targetOnAttackerSelectedObjective: false,
   attackerOnTargetSelectedObjective: false,
   targetOnTargetSelectedObjective: false,
+  attackerGuidedAgainstTarget: false,
+  targetSpotted: false,
+  targetSpottedByMarkerlightObserver: false,
   attackerBattleShocked: false,
   targetBattleShocked: false,
   targetStrengthState: "full",
@@ -450,6 +456,9 @@ export function normalizeProfile(input: unknown): CombatProfile {
     targetOnAttackerSelectedObjective: booleanValue("targetOnAttackerSelectedObjective"),
     attackerOnTargetSelectedObjective: booleanValue("attackerOnTargetSelectedObjective"),
     targetOnTargetSelectedObjective: booleanValue("targetOnTargetSelectedObjective"),
+    attackerGuidedAgainstTarget: booleanValue("attackerGuidedAgainstTarget"),
+    targetSpotted: booleanValue("targetSpotted"),
+    targetSpottedByMarkerlightObserver: booleanValue("targetSpottedByMarkerlightObserver"),
     attackerBattleShocked: booleanValue("attackerBattleShocked"),
     targetBattleShocked: booleanValue("targetBattleShocked"),
     targetStrengthState: targetStrengthState as TargetStrengthState,

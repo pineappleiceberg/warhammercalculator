@@ -192,6 +192,9 @@ export default function PlayMode() {
     sourceUnitOnSelectedObjective = false,
     targetUnitOnSourceSelectedObjective = false,
     sourceUnitBattleShocked = false,
+    sourceUnitGuidedAgainstTarget = false,
+    targetUnitSpotted = false,
+    targetUnitSpottedByMarkerlightObserver = false,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -217,6 +220,9 @@ export default function PlayMode() {
       sourceUnitOnSelectedObjective,
       targetUnitOnSourceSelectedObjective,
       sourceUnitBattleShocked,
+      sourceUnitGuidedAgainstTarget,
+      targetUnitSpotted,
+      targetUnitSpottedByMarkerlightObserver,
     );
 
   const refreshProfile = (
@@ -247,6 +253,9 @@ export default function PlayMode() {
     nextTargetOnAttackerSelectedObjective = profile.targetOnAttackerSelectedObjective,
     nextAttackerOnTargetSelectedObjective = profile.attackerOnTargetSelectedObjective,
     nextTargetOnTargetSelectedObjective = profile.targetOnTargetSelectedObjective,
+    nextAttackerGuidedAgainstTarget = profile.attackerGuidedAgainstTarget,
+    nextTargetSpotted = profile.targetSpotted,
+    nextTargetSpottedByMarkerlightObserver = profile.targetSpottedByMarkerlightObserver,
   ) => {
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
@@ -288,6 +297,9 @@ export default function PlayMode() {
             targetOnAttackerSelectedObjective: nextTargetOnAttackerSelectedObjective,
             attackerOnTargetSelectedObjective: nextAttackerOnTargetSelectedObjective,
             targetOnTargetSelectedObjective: nextTargetOnTargetSelectedObjective,
+            attackerGuidedAgainstTarget: nextAttackerGuidedAgainstTarget,
+            targetSpotted: nextTargetSpotted,
+            targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
             attackerBattleShocked: nextAttackerBattleShocked,
             targetBattleShocked: nextTargetBattleShocked,
             targetStrengthState: nextTargetStrengthState,
@@ -317,6 +329,9 @@ export default function PlayMode() {
           nextAttackerOnAttackerSelectedObjective,
           nextTargetOnAttackerSelectedObjective,
           nextAttackerBattleShocked,
+          nextAttackerGuidedAgainstTarget,
+          nextTargetSpotted,
+          nextTargetSpottedByMarkerlightObserver,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -341,6 +356,9 @@ export default function PlayMode() {
           nextTargetOnTargetSelectedObjective,
           nextAttackerOnTargetSelectedObjective,
           nextTargetBattleShocked,
+          false,
+          nextTargetSpotted,
+          nextTargetSpottedByMarkerlightObserver,
         ),
         weapon.type,
         {
@@ -365,6 +383,9 @@ export default function PlayMode() {
           targetOnAttackerSelectedObjective: nextTargetOnAttackerSelectedObjective,
           attackerOnTargetSelectedObjective: nextAttackerOnTargetSelectedObjective,
           targetOnTargetSelectedObjective: nextTargetOnTargetSelectedObjective,
+          attackerGuidedAgainstTarget: nextAttackerGuidedAgainstTarget,
+          targetSpotted: nextTargetSpotted,
+          targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
           attackerBattleShocked: nextAttackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
@@ -463,6 +484,44 @@ export default function PlayMode() {
       targetOnTargetSelectedObjective,
     );
 
+  const refreshGuidanceState = (
+    attackerGuidedAgainstTarget: boolean,
+    targetSpotted: boolean,
+    targetSpottedByMarkerlightObserver: boolean,
+  ) =>
+    refreshProfile(
+      weaponId,
+      targetModelId,
+      profileId,
+      activeAttackerPresetIds,
+      activeTargetPresetIds,
+      profile.targetDistance,
+      profile.attackerCharged,
+      profile.attackerBattleShocked,
+      profile.targetBattleShocked,
+      profile.targetStrengthState,
+      profile.attackerRemainedStationary,
+      profile.attackerAttached,
+      profile.targetAttached,
+      profile.attackerWaaaghActive,
+      profile.targetWaaaghActive,
+      profile.targetOathOfMoment,
+      profile.attackerOathWoundBonusEligible,
+      profile.attackerUnitModels,
+      profile.nearbyEnemyModels,
+      profile.attackerOnObjective,
+      profile.targetOnObjective,
+      profile.attackerObjectiveOwner,
+      profile.targetObjectiveOwner,
+      profile.attackerOnAttackerSelectedObjective,
+      profile.targetOnAttackerSelectedObjective,
+      profile.attackerOnTargetSelectedObjective,
+      profile.targetOnTargetSelectedObjective,
+      attackerGuidedAgainstTarget,
+      targetSpotted,
+      targetSpottedByMarkerlightObserver,
+    );
+
   const chooseTargetProfile = (id: string) => {
     setTargetModelId(id);
     refreshProfile(weaponId, id, profileId);
@@ -483,6 +542,9 @@ export default function PlayMode() {
     const nextTargetOnAttackerSelectedObjective = false;
     const nextAttackerOnTargetSelectedObjective = false;
     const nextTargetOnTargetSelectedObjective = false;
+    const nextAttackerGuidedAgainstTarget = false;
+    const nextTargetSpotted = false;
+    const nextTargetSpottedByMarkerlightObserver = false;
     const nextTargetStrengthState = "full" as const;
     setTargetModelId(model ? String(model.id) : "");
     setActiveTargetPresetIds(nextTargetPresetIds);
@@ -497,6 +559,9 @@ export default function PlayMode() {
         targetOnAttackerSelectedObjective: nextTargetOnAttackerSelectedObjective,
         attackerOnTargetSelectedObjective: nextAttackerOnTargetSelectedObjective,
         targetOnTargetSelectedObjective: nextTargetOnTargetSelectedObjective,
+        attackerGuidedAgainstTarget: nextAttackerGuidedAgainstTarget,
+        targetSpotted: nextTargetSpotted,
+        targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
         targetBattleShocked: nextTargetBattleShocked,
         targetStrengthState: nextTargetStrengthState,
       }));
@@ -530,6 +595,9 @@ export default function PlayMode() {
             targetOnAttackerSelectedObjective: nextTargetOnAttackerSelectedObjective,
             attackerOnTargetSelectedObjective: nextAttackerOnTargetSelectedObjective,
             targetOnTargetSelectedObjective: nextTargetOnTargetSelectedObjective,
+            attackerGuidedAgainstTarget: nextAttackerGuidedAgainstTarget,
+            targetSpotted: nextTargetSpotted,
+            targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
             targetStrengthState: nextTargetStrengthState,
           },
           weaponProfile,
@@ -557,6 +625,9 @@ export default function PlayMode() {
           profile.attackerOnAttackerSelectedObjective,
           nextTargetOnAttackerSelectedObjective,
           profile.attackerBattleShocked,
+          nextAttackerGuidedAgainstTarget,
+          nextTargetSpotted,
+          nextTargetSpottedByMarkerlightObserver,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -581,6 +652,9 @@ export default function PlayMode() {
           nextTargetOnTargetSelectedObjective,
           nextAttackerOnTargetSelectedObjective,
           nextTargetBattleShocked,
+          false,
+          nextTargetSpotted,
+          nextTargetSpottedByMarkerlightObserver,
         ),
         weaponProfile.type,
         {
@@ -605,6 +679,9 @@ export default function PlayMode() {
           targetOnAttackerSelectedObjective: nextTargetOnAttackerSelectedObjective,
           attackerOnTargetSelectedObjective: nextAttackerOnTargetSelectedObjective,
           targetOnTargetSelectedObjective: nextTargetOnTargetSelectedObjective,
+          attackerGuidedAgainstTarget: nextAttackerGuidedAgainstTarget,
+          targetSpotted: nextTargetSpotted,
+          targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
           attackerBattleShocked: profile.attackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
@@ -734,6 +811,9 @@ export default function PlayMode() {
                         targetOnAttackerSelectedObjective: false,
                         attackerOnTargetSelectedObjective: false,
                         targetOnTargetSelectedObjective: false,
+                        attackerGuidedAgainstTarget: false,
+                        targetSpotted: false,
+                        targetSpottedByMarkerlightObserver: false,
                         attackerUnitModels: 0,
                         nearbyEnemyModels: 0,
                         attackerBattleShocked: false,
@@ -776,6 +856,9 @@ export default function PlayMode() {
                         targetOnAttackerSelectedObjective: false,
                         attackerOnTargetSelectedObjective: false,
                         targetOnTargetSelectedObjective: false,
+                        attackerGuidedAgainstTarget: false,
+                        targetSpotted: false,
+                        targetSpottedByMarkerlightObserver: false,
                         attackerUnitModels: 0,
                         nearbyEnemyModels: 0,
                         attackerBattleShocked: false,
@@ -846,6 +929,9 @@ export default function PlayMode() {
                         targetOnAttackerSelectedObjective: false,
                         attackerOnTargetSelectedObjective: false,
                         targetOnTargetSelectedObjective: false,
+                        attackerGuidedAgainstTarget: false,
+                        targetSpotted: false,
+                        targetSpottedByMarkerlightObserver: false,
                         targetBattleShocked: false,
                         targetStrengthState: "full",
                       }));
@@ -1205,6 +1291,54 @@ export default function PlayMode() {
                       }
                     />
                     Target
+                  </span>
+                </label>
+                <label>
+                  <span>T’au targeting state</span>
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Attacker is Guided against this Spotted target"
+                      type="checkbox"
+                      checked={profile.attackerGuidedAgainstTarget}
+                      onChange={(event) =>
+                        refreshGuidanceState(
+                          event.target.checked,
+                          event.target.checked || profile.targetSpotted,
+                          event.target.checked ? profile.targetSpottedByMarkerlightObserver : false,
+                        )
+                      }
+                    />
+                    Guided
+                  </span>
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Target is a Spotted unit"
+                      type="checkbox"
+                      checked={profile.targetSpotted}
+                      onChange={(event) =>
+                        refreshGuidanceState(
+                          event.target.checked && profile.attackerGuidedAgainstTarget,
+                          event.target.checked,
+                          event.target.checked && profile.targetSpottedByMarkerlightObserver,
+                        )
+                      }
+                    />
+                    Spotted
+                  </span>
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Spotted by an Observer with Markerlight"
+                      type="checkbox"
+                      checked={profile.targetSpottedByMarkerlightObserver}
+                      onChange={(event) =>
+                        refreshGuidanceState(
+                          profile.attackerGuidedAgainstTarget,
+                          event.target.checked || profile.targetSpotted,
+                          event.target.checked,
+                        )
+                      }
+                    />
+                    Markerlight
                   </span>
                 </label>
                 <label>

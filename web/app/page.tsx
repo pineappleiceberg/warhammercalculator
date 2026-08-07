@@ -911,6 +911,9 @@ export default function Home() {
     sourceUnitOnSelectedObjective = false,
     targetUnitOnSourceSelectedObjective = false,
     sourceUnitBattleShocked = false,
+    sourceUnitGuidedAgainstTarget = false,
+    targetUnitSpotted = false,
+    targetUnitSpottedByMarkerlightObserver = false,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -936,6 +939,9 @@ export default function Home() {
       sourceUnitOnSelectedObjective,
       targetUnitOnSourceSelectedObjective,
       sourceUnitBattleShocked,
+      sourceUnitGuidedAgainstTarget,
+      targetUnitSpotted,
+      targetUnitSpottedByMarkerlightObserver,
     );
   const withActivePresets = (
     current: Profile,
@@ -1033,6 +1039,9 @@ export default function Home() {
         baseProfile.attackerOnAttackerSelectedObjective,
         baseProfile.targetOnAttackerSelectedObjective,
         baseProfile.attackerBattleShocked,
+        baseProfile.attackerGuidedAgainstTarget,
+        baseProfile.targetSpotted,
+        baseProfile.targetSpottedByMarkerlightObserver,
       ),
       selectedPresets(
         selectedTargetUnit,
@@ -1057,6 +1066,9 @@ export default function Home() {
         baseProfile.targetOnTargetSelectedObjective,
         baseProfile.attackerOnTargetSelectedObjective,
         baseProfile.targetBattleShocked,
+        false,
+        baseProfile.targetSpotted,
+        baseProfile.targetSpottedByMarkerlightObserver,
       ),
       weapon?.type ?? "Ranged",
       {
@@ -1084,6 +1096,9 @@ export default function Home() {
         targetOnAttackerSelectedObjective: baseProfile.targetOnAttackerSelectedObjective,
         attackerOnTargetSelectedObjective: baseProfile.attackerOnTargetSelectedObjective,
         targetOnTargetSelectedObjective: baseProfile.targetOnTargetSelectedObjective,
+        attackerGuidedAgainstTarget: baseProfile.attackerGuidedAgainstTarget,
+        targetSpotted: baseProfile.targetSpotted,
+        targetSpottedByMarkerlightObserver: baseProfile.targetSpottedByMarkerlightObserver,
       },
     ) as Profile;
   };
@@ -1301,6 +1316,9 @@ export default function Home() {
                             targetOnAttackerSelectedObjective: false,
                             attackerOnTargetSelectedObjective: false,
                             targetOnTargetSelectedObjective: false,
+                            attackerGuidedAgainstTarget: false,
+                            targetSpotted: false,
+                            targetSpottedByMarkerlightObserver: false,
                             attackerUnitModels: 0,
                             nearbyEnemyModels: 0,
                             attackerBattleShocked: false,
@@ -1345,6 +1363,9 @@ export default function Home() {
                             targetOnAttackerSelectedObjective: false,
                             attackerOnTargetSelectedObjective: false,
                             targetOnTargetSelectedObjective: false,
+                            attackerGuidedAgainstTarget: false,
+                            targetSpotted: false,
+                            targetSpottedByMarkerlightObserver: false,
                             attackerUnitModels: 0,
                             nearbyEnemyModels: 0,
                             attackerBattleShocked: false,
@@ -1518,6 +1539,9 @@ export default function Home() {
                             targetOnAttackerSelectedObjective: false,
                             attackerOnTargetSelectedObjective: false,
                             targetOnTargetSelectedObjective: false,
+                            attackerGuidedAgainstTarget: false,
+                            targetSpotted: false,
+                            targetSpottedByMarkerlightObserver: false,
                             targetStrengthState: "full",
                           },
                           selectedWeapon,
@@ -1558,6 +1582,9 @@ export default function Home() {
                             targetOnAttackerSelectedObjective: false,
                             attackerOnTargetSelectedObjective: false,
                             targetOnTargetSelectedObjective: false,
+                            attackerGuidedAgainstTarget: false,
+                            targetSpotted: false,
+                            targetSpottedByMarkerlightObserver: false,
                             targetStrengthState: "full",
                           },
                           selectedWeapon,
@@ -2184,6 +2211,51 @@ export default function Home() {
                           targetOnTargetSelectedObjective: value,
                         }),
                       )
+                }
+              />
+              <Toggle
+                label="Attacker is Guided against this Spotted target"
+                checked={profile.attackerGuidedAgainstTarget}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({
+                      ...current,
+                      attackerGuidedAgainstTarget: value,
+                      targetSpotted: value || current.targetSpotted,
+                      ...(!value ? { targetSpottedByMarkerlightObserver: false } : {}),
+                    }),
+                  )
+                }
+              />
+              <Toggle
+                label="Target is a Spotted unit"
+                checked={profile.targetSpotted}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({
+                      ...current,
+                      targetSpotted: value,
+                      ...(!value
+                        ? {
+                            attackerGuidedAgainstTarget: false,
+                            targetSpottedByMarkerlightObserver: false,
+                          }
+                        : {}),
+                    }),
+                  )
+                }
+              />
+              <Toggle
+                label="Spotted by an Observer with Markerlight"
+                checked={profile.targetSpottedByMarkerlightObserver}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({
+                      ...current,
+                      targetSpottedByMarkerlightObserver: value,
+                      targetSpotted: value || current.targetSpotted,
+                    }),
+                  )
                 }
               />
               <Toggle

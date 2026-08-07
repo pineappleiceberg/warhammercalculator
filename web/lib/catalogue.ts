@@ -117,6 +117,9 @@ export type CatalogueCombatPreset = {
   requiresTargetBattleShocked?: boolean;
   requiresAttackerNotBattleShocked?: boolean;
   requiresSourceNotBattleShocked?: boolean;
+  requiresSourceGuidedAgainstTarget?: boolean;
+  requiresTargetSpotted?: boolean;
+  requiresTargetSpottedByMarkerlightObserver?: boolean;
   requiredTargetStrengthState?: "below_starting" | "below_half" | "not_below_half";
   hitModifier: number;
   hitModifierRole: CombatPresetRole | null;
@@ -153,6 +156,7 @@ export type CatalogueCombatPresetEffect = {
     | "lance"
     | "heavy"
     | "ap_modifier"
+    | "skill_modifier"
     | "critical_hits"
     | "critical_wounds"
     | "attacks_replacement"
@@ -249,6 +253,9 @@ type CombatPresetContext = {
   targetOnAttackerSelectedObjective?: boolean;
   attackerOnTargetSelectedObjective?: boolean;
   targetOnTargetSelectedObjective?: boolean;
+  attackerGuidedAgainstTarget?: boolean;
+  targetSpotted?: boolean;
+  targetSpottedByMarkerlightObserver?: boolean;
   attackerBattleShocked?: boolean;
   targetBattleShocked?: boolean;
   targetStrengthState?: CombatProfile["targetStrengthState"];

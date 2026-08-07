@@ -104,6 +104,9 @@ export function combatPresetMeetsEligibility(
   sourceUnitOnSelectedObjective = false,
   targetUnitOnSourceSelectedObjective = false,
   sourceUnitBattleShocked = false,
+  sourceUnitGuidedAgainstTarget = false,
+  targetUnitSpotted = false,
+  targetUnitSpottedByMarkerlightObserver = false,
 ) {
   const targets = new Set(targetKeywords.map(normalizedKeyword));
   const attacks = new Set(attackKeywords.map(normalizedKeyword));
@@ -133,6 +136,10 @@ export function combatPresetMeetsEligibility(
     (!preset.requiresSourceOnSelectedObjective || sourceUnitOnSelectedObjective) &&
     (!preset.requiresTargetOnSourceSelectedObjective || targetUnitOnSourceSelectedObjective) &&
     (!preset.requiresSourceNotBattleShocked || !sourceUnitBattleShocked) &&
+    (!preset.requiresSourceGuidedAgainstTarget || sourceUnitGuidedAgainstTarget) &&
+    (!preset.requiresTargetSpotted || targetUnitSpotted) &&
+    (!preset.requiresTargetSpottedByMarkerlightObserver ||
+      targetUnitSpottedByMarkerlightObserver) &&
     (!preset.requiresTargetBattleShocked || targetBattleShocked) &&
     (!preset.requiresAttackerNotBattleShocked || !attackerBattleShocked) &&
     (preset.effects ?? []).every(
@@ -169,6 +176,9 @@ export function selectedAndAutomaticCombatPresets(
   sourceUnitOnSelectedObjective = false,
   targetUnitOnSourceSelectedObjective = false,
   sourceUnitBattleShocked = false,
+  sourceUnitGuidedAgainstTarget = false,
+  targetUnitSpotted = false,
+  targetUnitSpottedByMarkerlightObserver = false,
 ) {
   const selected = new Set(selectedIds);
   return presets.filter(
@@ -196,6 +206,9 @@ export function selectedAndAutomaticCombatPresets(
         sourceUnitOnSelectedObjective,
         targetUnitOnSourceSelectedObjective,
         sourceUnitBattleShocked,
+        sourceUnitGuidedAgainstTarget,
+        targetUnitSpotted,
+        targetUnitSpottedByMarkerlightObserver,
       ),
   );
 }
@@ -256,6 +269,9 @@ export function combatPresetEffects(
   sourceUnitOnSelectedObjective = false,
   targetUnitOnSourceSelectedObjective = false,
   sourceUnitBattleShocked = false,
+  sourceUnitGuidedAgainstTarget = false,
+  targetUnitSpotted = false,
+  targetUnitSpottedByMarkerlightObserver = false,
 ) {
   const applicable = presets.filter(
     (preset) =>
@@ -282,6 +298,9 @@ export function combatPresetEffects(
         sourceUnitOnSelectedObjective,
         targetUnitOnSourceSelectedObjective,
         sourceUnitBattleShocked,
+        sourceUnitGuidedAgainstTarget,
+        targetUnitSpotted,
+        targetUnitSpottedByMarkerlightObserver,
       ),
   );
   const hitModifiers = applicable.filter((preset) =>
@@ -408,6 +427,9 @@ export function combatPresetEffects(
       woundRerolls.some((preset) => preset.rerollWoundOnes),
     apModifier: additional
       .filter((effect) => effect.type === "ap_modifier")
+      .reduce((sum, effect) => sum + effect.value, 0),
+    skillModifier: additional
+      .filter((effect) => effect.type === "skill_modifier")
       .reduce((sum, effect) => sum + effect.value, 0),
     attacksModifier: additional
       .filter((effect) => effect.type === "attacks_modifier" && effect.diceCount === 0)
@@ -546,6 +568,9 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
       context.targetOnTargetSelectedObjective ?? false,
       context.attackerOnTargetSelectedObjective ?? false,
       context.targetBattleShocked ?? false,
+      false,
+      false,
+      false,
     ),
   );
   const candidates = effects.map((effect) =>
@@ -638,6 +663,11 @@ export function applyCombatPresets(
       false,
     context.targetOnAttackerSelectedObjective ?? profile.targetOnAttackerSelectedObjective ?? false,
     context.attackerBattleShocked ?? profile.attackerBattleShocked ?? false,
+    context.attackerGuidedAgainstTarget ?? profile.attackerGuidedAgainstTarget ?? false,
+    context.targetSpotted ?? profile.targetSpotted ?? false,
+    context.targetSpottedByMarkerlightObserver ??
+      profile.targetSpottedByMarkerlightObserver ??
+      false,
   );
   const target = combatPresetEffects(
     targetPresets,
@@ -673,6 +703,11 @@ export function applyCombatPresets(
     context.targetOnTargetSelectedObjective ?? profile.targetOnTargetSelectedObjective ?? false,
     context.attackerOnTargetSelectedObjective ?? profile.attackerOnTargetSelectedObjective ?? false,
     context.targetBattleShocked ?? profile.targetBattleShocked ?? false,
+    false,
+    context.targetSpotted ?? profile.targetSpotted ?? false,
+    context.targetSpottedByMarkerlightObserver ??
+      profile.targetSpottedByMarkerlightObserver ??
+      false,
   );
   const attacksReplacements = [attacker.attacksReplacement, target.attacksReplacement].filter(
     (value) => value > 0,
@@ -804,6 +839,7 @@ export function applyCombatPresets(
       characteristicModifierDamage: characteristicRoll.damage,
       characteristicModifierGroup: characteristicRoll.group,
       ap: Math.max(0, (profile.ap ?? 0) + attacker.apModifier + target.apModifier),
+      hitOn: Math.max(2, (profile.hitOn ?? 2) - attacker.skillModifier - target.skillModifier),
       criticalHits: criticalHits.length ? Math.min(...criticalHits) : 0,
       criticalWounds: criticalWounds.length ? Math.min(...criticalWounds) : 0,
       lethalHits: profile.lethalHits || attacker.lethalHits || target.lethalHits,
@@ -833,8 +869,14 @@ export function applyCombatPresets(
       rapidFire: combined.rapidFire.value,
       rapidFireDice: combined.rapidFire.diceCount,
       rapidFireSides: combined.rapidFire.diceSides,
-      hitModifier: Math.max(-1, Math.min(1, attacker.hitModifier + target.hitModifier)),
-      woundModifier: Math.max(-1, Math.min(1, attacker.woundModifier + target.woundModifier)),
+      hitModifier: Math.max(
+        -1,
+        Math.min(1, (profile.hitModifier ?? 0) + attacker.hitModifier + target.hitModifier),
+      ),
+      woundModifier: Math.max(
+        -1,
+        Math.min(1, (profile.woundModifier ?? 0) + attacker.woundModifier + target.woundModifier),
+      ),
       rerollHits: attacker.rerollHits || target.rerollHits,
       rerollHitOnes:
         !attacker.rerollHits &&

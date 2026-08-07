@@ -178,6 +178,9 @@ def export(database: Path, output: Path) -> None:
                       requires_target_battle_shocked,
                       requires_attacker_not_battle_shocked, required_target_strength_state,
                       requires_source_not_battle_shocked,
+                      requires_source_guided_against_target,
+                      requires_target_spotted,
+                      requires_target_spotted_by_markerlight_observer,
                       hit_modifier, hit_modifier_role,
                       hit_modifier_subject, wound_modifier, wound_modifier_role,
                       wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
@@ -272,6 +275,21 @@ def export(database: Path, output: Path) -> None:
                     **(
                         {"requiresSourceNotBattleShocked": True}
                         if row["requires_source_not_battle_shocked"]
+                        else {}
+                    ),
+                    **(
+                        {"requiresSourceGuidedAgainstTarget": True}
+                        if row["requires_source_guided_against_target"]
+                        else {}
+                    ),
+                    **(
+                        {"requiresTargetSpotted": True}
+                        if row["requires_target_spotted"]
+                        else {}
+                    ),
+                    **(
+                        {"requiresTargetSpottedByMarkerlightObserver": True}
+                        if row["requires_target_spotted_by_markerlight_observer"]
                         else {}
                     ),
                     **(

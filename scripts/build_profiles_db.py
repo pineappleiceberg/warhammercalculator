@@ -188,6 +188,12 @@ CREATE TABLE unit_combat_presets (
         CHECK (requires_attacker_not_battle_shocked IN (0, 1)),
     requires_source_not_battle_shocked INTEGER NOT NULL DEFAULT 0
         CHECK (requires_source_not_battle_shocked IN (0, 1)),
+    requires_source_guided_against_target INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_source_guided_against_target IN (0, 1)),
+    requires_target_spotted INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_target_spotted IN (0, 1)),
+    requires_target_spotted_by_markerlight_observer INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_target_spotted_by_markerlight_observer IN (0, 1)),
     required_target_strength_state TEXT
         CHECK (required_target_strength_state IN
             ('below_starting', 'below_half', 'not_below_half')),
@@ -221,7 +227,7 @@ CREATE TABLE unit_combat_preset_effects (
     effect_position INTEGER NOT NULL CHECK (effect_position >= 1),
     effect_type TEXT NOT NULL CHECK (effect_type IN
         ('lethal_hits', 'devastating_wounds', 'twin_linked', 'ignores_cover',
-         'sustained_hits', 'rapid_fire', 'lance', 'heavy', 'ap_modifier',
+         'sustained_hits', 'rapid_fire', 'lance', 'heavy', 'ap_modifier', 'skill_modifier',
          'critical_hits', 'critical_wounds', 'attacks_replacement', 'strength_replacement',
          'damage_replacement', 'first_failed_save_damage_replacement',
          'allocated_attack_damage_replacement',
@@ -1149,6 +1155,22 @@ def combat_additional_effects(
 ) -> list[dict[str, int | str]]:
     effects: list[dict[str, int | str]] = []
     normalized = plain_text(text).strip()
+    for match in re.finditer(
+        r"improve the Ballistic Skill characteristic of (?:that|this) attack by 1",
+        normalized,
+        re.IGNORECASE,
+    ):
+        role, subject = combat_effect_application(normalized, match.start())
+        effects.append(
+            {
+                "type": "skill_modifier",
+                "value": 1,
+                "dice_count": 0,
+                "dice_sides": 0,
+                "role": role,
+                "subject": subject,
+            }
+        )
     if combat_is_core_waaagh(normalized):
         effects.extend(
             (
@@ -1929,6 +1951,9 @@ def combat_preset(
     effects["requires_source_on_selected_objective"] = False
     effects["requires_target_on_source_selected_objective"] = False
     effects["requires_source_not_battle_shocked"] = False
+    effects["requires_source_guided_against_target"] = False
+    effects["requires_target_spotted"] = False
+    effects["requires_target_spotted_by_markerlight_observer"] = False
     (
         effects["requires_target_battle_shocked"],
         effects["requires_attacker_not_battle_shocked"],
@@ -1957,6 +1982,9 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
             "requires_target_battle_shocked",
             "requires_attacker_not_battle_shocked",
             "requires_source_not_battle_shocked",
+            "requires_source_guided_against_target",
+            "requires_target_spotted",
+            "requires_target_spotted_by_markerlight_observer",
             "required_target_strength_state",
         )
     ):
@@ -2048,10 +2076,96 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
     return "situational"
 
 
+def combat_guidance_presets(
+    name: str, description: str, allow_bearer_defenses: bool = False
+) -> list[dict[str, object]]:
+    text = plain_text(description).strip()
+    effects = combat_preset(text, allow_bearer_defenses)
+    if not effects:
+        return []
+
+    if name == "For the Greater Good" and all(
+        phrase.casefold() in text.casefold()
+        for phrase in (
+            "Units from your army with the For the Greater Good ability (excluding Observer units) are Guided units while targeting one or more Spotted units.",
+            "each time a model from your army in a Guided unit makes an attack that targets a Spotted unit, improve the Ballistic Skill characteristic of that attack by 1",
+            "if the Spotted unit was marked by an Observer unit that has the Markerlight keyword, that attack has the [IGNORES COVER] ability.",
+        )
+    ):
+        skill_effects = [
+            effect
+            for effect in effects["additional_effects"]
+            if effect["type"] == "skill_modifier"
+        ]
+        cover_effects = [
+            effect
+            for effect in effects["additional_effects"]
+            if effect["type"] == "ignores_cover"
+        ]
+        if len(skill_effects) != 1 or len(cover_effects) != 1:
+            return []
+        return [
+            {
+                "name": f"{name} — Guided Ballistic Skill",
+                "description": text,
+                "is_exclusive_choice": 0,
+                "activation": "automatic",
+                **effects,
+                "additional_effects": skill_effects,
+                "requires_source_guided_against_target": True,
+            },
+            {
+                "name": f"{name} — Markerlight Ignores Cover",
+                "description": text,
+                "is_exclusive_choice": 0,
+                "activation": "automatic",
+                **effects,
+                "additional_effects": cover_effects,
+                "requires_source_guided_against_target": True,
+                "requires_target_spotted_by_markerlight_observer": True,
+            },
+        ]
+
+    exact_requirements = {
+        "Coordinated Strike": (
+            r"While this model is a Guided unit, each time it makes an attack that targets "
+            r"its Spotted unit, re-roll a Hit roll of 1\.",
+            {"requires_source_guided_against_target": True},
+        ),
+        "Precise Targeting": (
+            r"Each time a model in this unit makes an attack that targets a Spotted unit, "
+            r"you can re-roll the Hit roll\.",
+            {"requires_target_spotted": True},
+        ),
+        "Target Uploaded": (
+            r"Each time a model in this unit makes an attack that targets their Spotted unit, "
+            r"improve the Ballistic Skill characteristic of that attack by 1 and that attack "
+            r"has the \[IGNORES COVER\] ability\.",
+            {"requires_target_spotted": True},
+        ),
+    }
+    exact = exact_requirements.get(name)
+    if exact and re.fullmatch(exact[0], text, re.IGNORECASE):
+        return [
+            {
+                "name": name,
+                "description": text,
+                "is_exclusive_choice": 0,
+                "activation": "automatic",
+                **effects,
+                **exact[1],
+            }
+        ]
+    return []
+
+
 def combat_presets(
     name: str, description: str, allow_bearer_defenses: bool = False
 ) -> list[dict[str, object]]:
     text = plain_text(description)
+    guidance_presets = combat_guidance_presets(name, text, allow_bearer_defenses)
+    if guidance_presets:
+        return guidance_presets
     if combat_is_oath_of_moment(text):
         effects = combat_preset(text, allow_bearer_defenses)
         if not effects:
@@ -2327,13 +2441,16 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     requires_target_battle_shocked,
                     requires_attacker_not_battle_shocked,
                     requires_source_not_battle_shocked,
+                    requires_source_guided_against_target,
+                    requires_target_spotted,
+                    requires_target_spotted_by_markerlight_observer,
                     required_target_strength_state,
                     hit_modifier, hit_modifier_role,
                     hit_modifier_subject, wound_modifier, wound_modifier_role,
                     wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                     hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
                     wound_reroll_subject)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     ability_position,
@@ -2359,6 +2476,9 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     int(preset["requires_target_battle_shocked"]),
                     int(preset["requires_attacker_not_battle_shocked"]),
                     int(preset["requires_source_not_battle_shocked"]),
+                    int(preset["requires_source_guided_against_target"]),
+                    int(preset["requires_target_spotted"]),
+                    int(preset["requires_target_spotted_by_markerlight_observer"]),
                     preset["required_target_strength_state"],
                     preset["hit_modifier"],
                     preset.get("hit_modifier_role"),
@@ -2541,7 +2661,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "40"),
+                    ("schema_version", "41"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

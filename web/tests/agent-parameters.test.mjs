@@ -212,6 +212,9 @@ test("canonical agent parameters round-trip every supported profile field", () =
     targetOnAttackerSelectedObjective: true,
     attackerOnTargetSelectedObjective: true,
     targetOnTargetSelectedObjective: true,
+    attackerGuidedAgainstTarget: true,
+    targetSpotted: true,
+    targetSpottedByMarkerlightObserver: true,
     attackerBattleShocked: true,
     targetBattleShocked: true,
     targetStrengthState: "below_half",
@@ -657,6 +660,100 @@ test("catalogue agent model counts compose exact automatic Attacks scaling", asy
     { nearbyEnemyModels: requested.nearbyEnemyModels },
   );
   assert.equal(profile.attacksModifier, 2);
+});
+
+test("catalogue agent applies Guided, Spotted, and Markerlight rules at exact boundaries", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const select = (unit, weapon, guided, spotted, markerlight) =>
+    selectedAndAutomaticCombatPresets(
+      unit.combatPresets,
+      [],
+      weapon.type,
+      weapon.name,
+      [],
+      attackKeywordsForWeapon(weapon),
+      0,
+      false,
+      false,
+      false,
+      "full",
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      guided,
+      spotted,
+      markerlight,
+    );
+
+  const breachers = catalogue.units.find((unit) => unit.name === "Breacher Team");
+  const blaster = breachers.weapons.find((weapon) => weapon.name === "Pulse blaster");
+  assert.deepEqual(select(breachers, blaster, false, true, true), []);
+  assert.deepEqual(
+    select(breachers, blaster, true, true, false).map((preset) => preset.name),
+    ["For the Greater Good — Guided Ballistic Skill"],
+  );
+  const guided = select(breachers, blaster, true, true, true);
+  assert.deepEqual(
+    guided.map((preset) => preset.name),
+    [
+      "For the Greater Good — Guided Ballistic Skill",
+      "For the Greater Good — Markerlight Ignores Cover",
+    ],
+  );
+  const guidedProfile = applyCombatPresets(
+    {
+      ...defaults,
+      weaponName: blaster.name,
+      hitOn: 4,
+      hitModifier: -1,
+      attackerGuidedAgainstTarget: true,
+      targetSpotted: true,
+      targetSpottedByMarkerlightObserver: true,
+    },
+    guided,
+    [],
+    "Ranged",
+  );
+  assert.equal(guidedProfile.hitOn, 3);
+  assert.equal(guidedProfile.hitModifier, -1);
+  assert.equal(guidedProfile.ignoresCover, true);
+
+  const pathfinders = catalogue.units.find((unit) => unit.name === "Pathfinder Team");
+  const carbine = pathfinders.weapons.find((weapon) => weapon.name === "Pulse carbine");
+  assert.deepEqual(select(pathfinders, carbine, false, false, false), []);
+  const uploaded = select(pathfinders, carbine, false, true, false);
+  assert.deepEqual(
+    uploaded.map((preset) => preset.name),
+    ["Target Uploaded"],
+  );
+  const uploadedProfile = applyCombatPresets(
+    { ...defaults, weaponName: carbine.name, hitOn: 4, targetSpotted: true },
+    uploaded,
+    [],
+    "Ranged",
+  );
+  assert.equal(uploadedProfile.hitOn, 3);
+  assert.equal(uploadedProfile.ignoresCover, true);
+
+  const parsed = parseAgentProfile(
+    "guided=true&spotted=true&markerlightSpotted=true",
+    defaults,
+    false,
+  );
+  assert.equal(parsed.attackerGuidedAgainstTarget, true);
+  assert.equal(parsed.targetSpotted, true);
+  assert.equal(parsed.targetSpottedByMarkerlightObserver, true);
 });
 
 test("catalogue agent query resolves stable IDs or unambiguous names", async () => {

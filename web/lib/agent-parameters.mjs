@@ -73,6 +73,12 @@ const booleanParameters = [
     "targetOnTargetSelectedObjective",
     ["targetOnTargetSelectedObjective", "targetOnOwnSelectedObjective"],
   ],
+  ["attackerGuidedAgainstTarget", ["attackerGuidedAgainstTarget", "guided"]],
+  ["targetSpotted", ["targetSpotted", "spotted"]],
+  [
+    "targetSpottedByMarkerlightObserver",
+    ["targetSpottedByMarkerlightObserver", "markerlightSpotted"],
+  ],
   ["attackerBattleShocked", ["attackerBattleShocked"]],
   ["targetBattleShocked", ["targetBattleShocked", "battleShocked"]],
   ["withinHalfRange", ["withinHalfRange", "halfRange"]],

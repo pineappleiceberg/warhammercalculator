@@ -1372,6 +1372,7 @@ function exactMean({
   sustainedHits = 0,
   hitModifier = 0,
   woundModifier = 0,
+  hitOn = 3,
 } = {}) {
   const output = calculator._malloc(72);
   try {
@@ -1381,7 +1382,7 @@ function exactMean({
       attacks,
       attacksReplacement,
       1,
-      3,
+      hitOn,
       10,
       ap,
       0,
@@ -2156,6 +2157,90 @@ test("source-backed selected objective activates the exact C/Wasm re-roll bounda
   assert.equal(inactive.rerollWoundOnes, false);
   assert.equal(active.rerollWoundOnes, true);
   assert.ok(lessThanOrEqual(exactMean(), exactMean({ flags: 32768 })));
+});
+
+test("source-backed Guided and Markerlight state composes exact C/Wasm hit and cover inputs", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const breachers = catalogue.units.find((unit) => unit.name === "Breacher Team");
+  const weapon = breachers.weapons.find((entry) => entry.name === "Pulse blaster");
+  const selected = (guided, spotted, markerlight) =>
+    selectedAndAutomaticCombatPresets(
+      breachers.combatPresets,
+      [],
+      weapon.type,
+      weapon.name,
+      [],
+      attackKeywordsForWeapon(weapon),
+      0,
+      false,
+      false,
+      false,
+      "full",
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      guided,
+      spotted,
+      markerlight,
+    );
+  const base = {
+    weaponName: weapon.name,
+    hitOn: 4,
+    ap: 1,
+    targetCover: true,
+    ignoresCover: false,
+  };
+  const inactive = applyCombatPresets(
+    { ...base, targetSpotted: true, targetSpottedByMarkerlightObserver: true },
+    selected(false, true, true),
+    [],
+    "Ranged",
+  );
+  const guided = applyCombatPresets(
+    { ...base, attackerGuidedAgainstTarget: true, targetSpotted: true },
+    selected(true, true, false),
+    [],
+    "Ranged",
+  );
+  const markerlight = applyCombatPresets(
+    {
+      ...base,
+      attackerGuidedAgainstTarget: true,
+      targetSpotted: true,
+      targetSpottedByMarkerlightObserver: true,
+    },
+    selected(true, true, true),
+    [],
+    "Ranged",
+  );
+  assert.equal(inactive.hitOn, 4);
+  assert.equal(inactive.ignoresCover, false);
+  assert.equal(guided.hitOn, 3);
+  assert.equal(guided.ignoresCover, false);
+  assert.equal(markerlight.hitOn, 3);
+  assert.equal(markerlight.ignoresCover, true);
+  assert.ok(lessThanOrEqual(exactMean({ hitOn: 4 }), exactMean({ hitOn: 3 })));
+  assert.deepEqual(
+    exactMean({ hitOn: 3, ap: 1, save: 3, flags: 1024 | 2048 }),
+    exactMean({ hitOn: 3, ap: 1, save: 3 }),
+  );
+  assert.ok(
+    lessThanOrEqual(
+      exactMean({ hitOn: 3, ap: 1, save: 3, flags: 1024 }),
+      exactMean({ hitOn: 3, ap: 1, save: 3, flags: 1024 | 2048 }),
+    ),
+  );
 });
 
 test("source-backed target distance changes preset composition at its exact boundary", async () => {

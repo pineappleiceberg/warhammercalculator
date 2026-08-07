@@ -68,6 +68,9 @@ class ProfileDataTests(unittest.TestCase):
                 "requires_target_battle_shocked": False,
                 "requires_attacker_not_battle_shocked": False,
                 "requires_source_not_battle_shocked": False,
+                "requires_source_guided_against_target": False,
+                "requires_target_spotted": False,
+                "requires_target_spotted_by_markerlight_observer": False,
                 "required_target_strength_state": None,
                 "hit_modifier_role": "attacker",
                 "hit_modifier_subject": "led_unit",
@@ -86,6 +89,65 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(preset["hit_reroll_subject"], "self")
         self.assertIsNone(
             combat_preset("Add 1 to this model's Leadership characteristic.")
+        )
+
+    def test_combat_preset_parser_gates_guided_spotted_and_markerlight_rules(self):
+        greater_good = (
+            "Units from your army with the For the Greater Good ability (excluding Observer "
+            "units) are Guided units while targeting one or more Spotted units. Until the end "
+            "of the phase, each time a model from your army in a Guided unit makes an attack "
+            "that targets a Spotted unit, improve the Ballistic Skill characteristic of that "
+            "attack by 1 and, if the Spotted unit was marked by an Observer unit that has the "
+            "Markerlight keyword, that attack has the [IGNORES COVER] ability."
+        )
+        presets = combat_presets("For the Greater Good", greater_good)
+        self.assertEqual(
+            [preset["name"] for preset in presets],
+            [
+                "For the Greater Good — Guided Ballistic Skill",
+                "For the Greater Good — Markerlight Ignores Cover",
+            ],
+        )
+        self.assertTrue(all(preset["activation"] == "automatic" for preset in presets))
+        self.assertTrue(all(preset["requires_source_guided_against_target"] for preset in presets))
+        self.assertFalse(presets[0]["requires_target_spotted_by_markerlight_observer"])
+        self.assertTrue(presets[1]["requires_target_spotted_by_markerlight_observer"])
+        self.assertEqual(
+            [[effect["type"] for effect in preset["additional_effects"]] for preset in presets],
+            [["skill_modifier"], ["ignores_cover"]],
+        )
+
+        coordinated = combat_presets(
+            "Coordinated Strike",
+            "While this model is a Guided unit, each time it makes an attack that targets its "
+            "Spotted unit, re-roll a Hit roll of 1.",
+        )[0]
+        self.assertTrue(coordinated["requires_source_guided_against_target"])
+        self.assertEqual(coordinated["activation"], "automatic")
+        precise = combat_presets(
+            "Precise Targeting",
+            "Each time a model in this unit makes an attack that targets a Spotted unit, you "
+            "can re-roll the Hit roll.",
+        )[0]
+        self.assertTrue(precise["requires_target_spotted"])
+        uploaded = combat_presets(
+            "Target Uploaded",
+            "Each time a model in this unit makes an attack that targets their Spotted unit, "
+            "improve the Ballistic Skill characteristic of that attack by 1 and that attack "
+            "has the [IGNORES COVER] ability.",
+        )[0]
+        self.assertEqual(
+            [effect["type"] for effect in uploaded["additional_effects"]],
+            ["skill_modifier", "ignores_cover"],
+        )
+        self.assertTrue(uploaded["requires_target_spotted"])
+
+        changed = greater_good.replace("Markerlight keyword", "Marker Beacon keyword")
+        self.assertFalse(
+            any(
+                preset["activation"] == "automatic"
+                for preset in combat_presets("For the Greater Good", changed)
+            )
         )
 
     def test_combat_preset_parser_splits_and_gates_exact_waaagh_rules(self):
@@ -1217,7 +1279,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "40",
+                "41",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1502,14 +1564,14 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 1014), ("inherent", 32), ("situational", 901)],
+                [("automatic", 1101), ("inherent", 32), ("situational", 856)],
             )
             self.assertEqual(
                 connection.execute(
                     "SELECT weapon_scope, count(*) FROM unit_combat_presets "
                     "GROUP BY weapon_scope ORDER BY weapon_scope"
                 ).fetchall(),
-                [("Any", 1199), ("Melee", 402), ("Ranged", 346)],
+                [("Any", 1199), ("Melee", 402), ("Ranged", 388)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1621,6 +1683,50 @@ class ProfileDataTests(unittest.TestCase):
                     ("Archon’s Will", 1, 0, 1, "automatic"),
                     ("Priority Objective Identified", 0, 1, 0, "automatic"),
                     ("Seeker of the Unfound", 1, 0, 0, "automatic"),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT sum(requires_source_guided_against_target),
+                              sum(requires_target_spotted),
+                              sum(requires_target_spotted_by_markerlight_observer)
+                       FROM unit_combat_presets"""
+                ).fetchone(),
+                (85, 2, 42),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT name, count(*)
+                       FROM unit_combat_presets
+                       WHERE name LIKE 'For the Greater Good — %'
+                       GROUP BY name ORDER BY name"""
+                ).fetchall(),
+                [
+                    ("For the Greater Good — Guided Ballistic Skill", 42),
+                    ("For the Greater Good — Markerlight Ignores Cover", 42),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT effect_type, count(*)
+                       FROM unit_combat_preset_effects
+                       WHERE effect_type = 'skill_modifier'
+                       GROUP BY effect_type"""
+                ).fetchall(),
+                [("skill_modifier", 43)],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT name, activation
+                       FROM unit_combat_presets
+                       WHERE name IN ('Blacklight Marker Drones', 'Forward Observers',
+                                      'High-intensity Markerlights')
+                       ORDER BY name"""
+                ).fetchall(),
+                [
+                    ("Blacklight Marker Drones", "situational"),
+                    ("Forward Observers", "situational"),
+                    ("High-intensity Markerlights", "situational"),
                 ],
             )
             oath_rows = connection.execute(

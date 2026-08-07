@@ -54,6 +54,12 @@ CREATE TABLE unit_combat_presets (
         CHECK (requires_attacker_not_battle_shocked IN (0, 1)),
     requires_source_not_battle_shocked INTEGER NOT NULL DEFAULT 0
         CHECK (requires_source_not_battle_shocked IN (0, 1)),
+    requires_source_guided_against_target INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_source_guided_against_target IN (0, 1)),
+    requires_target_spotted INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_target_spotted IN (0, 1)),
+    requires_target_spotted_by_markerlight_observer INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_target_spotted_by_markerlight_observer IN (0, 1)),
     required_target_strength_state TEXT
         CHECK (required_target_strength_state IN
             ('below_starting', 'below_half', 'not_below_half')),
@@ -87,7 +93,7 @@ CREATE TABLE unit_combat_preset_effects (
     effect_position INTEGER NOT NULL CHECK (effect_position >= 1),
     effect_type TEXT NOT NULL CHECK (effect_type IN
         ('lethal_hits', 'devastating_wounds', 'twin_linked', 'ignores_cover',
-         'sustained_hits', 'rapid_fire', 'lance', 'heavy', 'ap_modifier',
+         'sustained_hits', 'rapid_fire', 'lance', 'heavy', 'ap_modifier', 'skill_modifier',
          'critical_hits', 'critical_wounds', 'attacks_replacement', 'strength_replacement',
          'damage_replacement', 'first_failed_save_damage_replacement',
          'allocated_attack_damage_replacement',
@@ -130,7 +136,7 @@ def main() -> None:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
         connection.execute(
-            "UPDATE metadata SET value = '40' WHERE key = 'schema_version'"
+            "UPDATE metadata SET value = '41' WHERE key = 'schema_version'"
         )
         connection.execute("PRAGMA optimize")
         connection.commit()
