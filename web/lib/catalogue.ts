@@ -104,6 +104,7 @@ export type CatalogueCombatPreset = {
   maximumTargetDistance?: number;
   requiresAttackerCharge?: boolean;
   requiresAttackerStationary?: boolean;
+  requiresAttachedUnit?: boolean;
   requiresTargetBattleShocked?: boolean;
   requiresAttackerNotBattleShocked?: boolean;
   requiredTargetStrengthState?: "below_starting" | "below_half" | "not_below_half";
@@ -222,6 +223,8 @@ type CombatPresetContext = {
   targetDistance?: number;
   attackerCharged?: boolean;
   attackerRemainedStationary?: boolean;
+  attackerAttached?: boolean;
+  targetAttached?: boolean;
   attackerBattleShocked?: boolean;
   targetBattleShocked?: boolean;
   targetStrengthState?: CombatProfile["targetStrengthState"];

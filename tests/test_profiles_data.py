@@ -55,6 +55,7 @@ class ProfileDataTests(unittest.TestCase):
                 "maximum_target_distance": None,
                 "requires_attacker_charge": False,
                 "requires_attacker_stationary": False,
+                "requires_attached_unit": True,
                 "requires_target_battle_shocked": False,
                 "requires_attacker_not_battle_shocked": False,
                 "required_target_strength_state": None,
@@ -273,7 +274,8 @@ class ProfileDataTests(unittest.TestCase):
             "While this model is leading a unit, each time an attack is allocated to a model "
             "in that unit, subtract 1 from the Damage characteristic of that attack.",
         )
-        self.assertEqual(conditional[0]["activation"], "situational")
+        self.assertEqual(conditional[0]["activation"], "automatic")
+        self.assertTrue(conditional[0]["requires_attached_unit"])
         halved = combat_presets(
             "Molten Form",
             "Each time an attack is allocated to this model, halve the Damage characteristic of that attack.",
@@ -528,6 +530,18 @@ class ProfileDataTests(unittest.TestCase):
                 "Battle-shocked: each time a friendly model makes an attack that targets "
                 "that unit, add 1 to the Wound roll."
             )["requires_target_battle_shocked"]
+        )
+
+        attached = combat_preset(
+            "While this model is leading a unit, each time a model in that unit makes "
+            "a melee attack, add 1 to the Wound roll."
+        )
+        self.assertTrue(attached["requires_attached_unit"])
+        self.assertFalse(
+            combat_preset(
+                "While this model is leading a unit, each time a model in that unit makes "
+                "an attack, if the target is Battle-shocked, add 1 to the Wound roll."
+            )["requires_attached_unit"]
         )
         below_half = combat_preset(
             "Each time this model makes an attack that targets an enemy unit that is "
@@ -931,7 +945,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "33",
+                "34",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1215,7 +1229,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 46), ("inherent", 32), ("situational", 1384)],
+                [("automatic", 201), ("inherent", 32), ("situational", 1229)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1242,6 +1256,28 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     """SELECT count(*) FROM unit_combat_presets
                        WHERE requires_attacker_charge = 1 AND activation != 'automatic'"""
+                ).fetchone()[0],
+                0,
+            )
+            attached_rows = connection.execute(
+                """SELECT datasheet.name, preset.name
+                   FROM unit_combat_presets AS preset
+                   JOIN datasheets AS datasheet ON datasheet.id = preset.datasheet_id
+                   WHERE preset.requires_attached_unit = 1
+                   ORDER BY datasheet.name, preset.name"""
+            ).fetchall()
+            self.assertEqual(len(attached_rows), 155)
+            self.assertIn(("Chaplain", "Litany of Hate"), attached_rows)
+            self.assertIn(("Chronomancer", "Timesplinter Mantle"), attached_rows)
+            self.assertIn(("Imagifier", "Stanchion of Holy Martyrs"), attached_rows)
+            self.assertNotIn(("Aleya", "Tenacious Spirit"), attached_rows)
+            self.assertNotIn(("Commander Farsight", "Way of the Short Blade"), attached_rows)
+            self.assertNotIn(("Ghazghkull Thraka", "Prophet of Da Great Waaagh!"), attached_rows)
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_combat_presets
+                       WHERE requires_attached_unit = 1
+                         AND activation != 'automatic'"""
                 ).fetchone()[0],
                 0,
             )
@@ -1393,8 +1429,9 @@ class ProfileDataTests(unittest.TestCase):
                 ).fetchall(),
                 [
                     ("automatic", 2, "self", 1),
+                    ("automatic", 4, "led_unit", 12),
                     ("situational", 3, "self", 1),
-                    ("situational", 4, "led_unit", 14),
+                    ("situational", 4, "led_unit", 2),
                 ],
             )
             self.assertEqual(
@@ -1987,7 +2024,8 @@ class ProfileDataTests(unittest.TestCase):
             [(effect["type"], effect["value"]) for effect in martyrs["effects"]],
             [("invulnerable_save", 4), ("save_target", 2)],
         )
-        self.assertEqual(martyrs["activation"], "situational")
+        self.assertEqual(martyrs["activation"], "automatic")
+        self.assertTrue(martyrs["requiresAttachedUnit"])
         troupe = next(unit for unit in catalogue["units"] if unit["id"] == "000002536")
         dance = [preset for preset in troupe["combatPresets"] if preset["choiceGroup"]]
         self.assertEqual(len(dance), 3)

@@ -18,6 +18,7 @@ type Props = {
   targetDistance?: number;
   attackerCharged?: boolean;
   attackerRemainedStationary?: boolean;
+  sourceUnitAttached?: boolean;
   attackerBattleShocked?: boolean;
   targetBattleShocked?: boolean;
   targetStrengthState?: "full" | "below_starting" | "below_half";
@@ -33,6 +34,7 @@ export function CombatPresetSelector({
   targetDistance = 0,
   attackerCharged = false,
   attackerRemainedStationary = false,
+  sourceUnitAttached = false,
   attackerBattleShocked = false,
   targetBattleShocked = false,
   targetStrengthState = "full",
@@ -86,6 +88,12 @@ export function CombatPresetSelector({
               <small>
                 Requires attacker to have remained stationary
                 {attackerRemainedStationary ? " · active" : " · inactive"}
+              </small>
+            ) : null}
+            {preset.requiresAttachedUnit ? (
+              <small>
+                Requires an Attached unit
+                {sourceUnitAttached ? " · active" : " · inactive"}
               </small>
             ) : null}
             {preset.requiresTargetBattleShocked ? (

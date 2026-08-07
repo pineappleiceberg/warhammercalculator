@@ -170,6 +170,12 @@ Order, a particular model in the unit, or another independent condition remain
 explicit choices. A granted Heavy ability does not provide its bonus unless the
 attacker also remained stationary.
 
+Simple rules whose complete condition is that their source model is leading a
+unit use the editable `attackerAttached` or `targetAttached` state. These rules
+become automatic only for the matching attacking or defending side. Leader
+rules with casualty thresholds, Waaagh!, distance, named-model, objective,
+choice, or other independent conditions remain explicit choices.
+
 Direct attack clauses that require a Battle-shocked target, or require the
 attacker not to be Battle-shocked, use the editable `targetBattleShocked` and
 `attackerBattleShocked` states. The source-backed rule activates only in the
@@ -468,6 +474,7 @@ A direct profile supplies `attacks`, `hit`, `strength`, `ap`, `damage`,
 expression such as `D6+2`. Optional parameters include `weaponCount`, `model`,
 `models`, `invuln`, `fnp`, `reduction`, `criticalHits`, `criticalWounds`,
 `melta`, `distance` (in inches; `0` means unknown), `charged`, `stationary`,
+`attackerAttached`, `targetAttached`,
 `attackerBattleShocked`, `targetBattleShocked` (booleans),
 `targetStrength` (`full`, `below-starting`, or `below-half`), `damageDivisor`,
 `attacksReplacement`, `attacksMultiplier`, `attacksModifier`,
@@ -484,11 +491,14 @@ comma-separated `torrent`, `blast`, `heavy`, `lance`, `cover`, `ignores-cover`,
 
 Model vs Model, Unit vs Unit, and Play Mode expose the same target distance,
 attacker charge and stationary states, attacker/target Battle-shock state, and
-target unit-strength state. A catalogue agent request can pass `charged=true` to
-activate every compatible, unambiguous charge-triggered source rule without an
-`attackerPreset` parameter and activate Lance for compatible catalogue weapons.
+target unit-strength and Attached-unit states. A catalogue agent request can
+pass `charged=true` to activate every compatible, unambiguous charge-triggered
+source rule without an `attackerPreset` parameter and activate Lance for
+compatible catalogue weapons.
 `stationary=true` likewise activates exact stationary rules and the Heavy bonus
 for compatible catalogue weapons.
+`attackerAttached=true` and `targetAttached=true` likewise activate compatible,
+unambiguous leader rules on the corresponding side of the matchup.
 Likewise, `targetBattleShocked=true` or `attackerBattleShocked=true` resolves
 compatible exact source rules before later numeric overrides are applied.
 `targetStrength=below-half` and the other two strength values likewise resolve

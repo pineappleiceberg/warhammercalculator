@@ -64,6 +64,8 @@ const defaults = {
   targetDistance: 0,
   attackerCharged: false,
   attackerRemainedStationary: false,
+  attackerAttached: false,
+  targetAttached: false,
   attackerBattleShocked: false,
   targetBattleShocked: false,
   targetStrengthState: "full",
@@ -185,6 +187,8 @@ test("canonical agent parameters round-trip every supported profile field", () =
     targetDistance: 9,
     attackerCharged: true,
     attackerRemainedStationary: true,
+    attackerAttached: true,
+    targetAttached: true,
     attackerBattleShocked: true,
     targetBattleShocked: true,
     targetStrengthState: "below_half",
@@ -228,6 +232,42 @@ test("catalogue agent stationary state selects exact automatic rules", async () 
     parseAgentProfile("stationary=true", defaults, false).attackerRemainedStationary,
     true,
   );
+});
+
+test("catalogue agent Attached-unit state selects exact automatic leader rules", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const chaplain = catalogue.units.find((unit) => unit.name === "Chaplain");
+  const litany = chaplain.combatPresets.find((preset) => preset.name === "Litany of Hate");
+  const weapon = chaplain.weapons.find((entry) => entry.type === "Melee");
+  const selected = (attached) =>
+    selectedAndAutomaticCombatPresets(
+      chaplain.combatPresets,
+      [],
+      weapon.type,
+      weapon.name,
+      [],
+      attackKeywordsForWeapon(weapon),
+      0,
+      false,
+      false,
+      false,
+      "full",
+      false,
+      attached,
+    );
+  assert.equal(litany.requiresAttachedUnit, true);
+  assert.equal(
+    selected(false).some((preset) => preset.name === "Litany of Hate"),
+    false,
+  );
+  assert.equal(
+    selected(true).some((preset) => preset.name === "Litany of Hate"),
+    true,
+  );
+  assert.equal(parseAgentProfile("attackerAttached=true", defaults, false).attackerAttached, true);
+  assert.equal(parseAgentProfile("targetAttached=true", defaults, false).targetAttached, true);
 });
 
 test("catalogue agent query resolves stable IDs or unambiguous names", async () => {

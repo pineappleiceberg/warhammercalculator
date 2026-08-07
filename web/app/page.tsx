@@ -900,6 +900,7 @@ export default function Home() {
     targetBattleShocked = profile.targetBattleShocked,
     targetStrengthState = profile.targetStrengthState,
     attackerRemainedStationary = profile.attackerRemainedStationary,
+    sourceUnitAttached = false,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -914,6 +915,7 @@ export default function Home() {
       targetBattleShocked,
       targetStrengthState,
       attackerRemainedStationary,
+      sourceUnitAttached,
     );
   const withActivePresets = (
     current: Profile,
@@ -999,6 +1001,7 @@ export default function Home() {
         baseProfile.targetBattleShocked,
         baseProfile.targetStrengthState,
         baseProfile.attackerRemainedStationary,
+        baseProfile.attackerAttached,
       ),
       selectedPresets(
         selectedTargetUnit,
@@ -1011,6 +1014,7 @@ export default function Home() {
         baseProfile.targetBattleShocked,
         baseProfile.targetStrengthState,
         baseProfile.attackerRemainedStationary,
+        baseProfile.targetAttached,
       ),
       weapon?.type ?? "Ranged",
       {
@@ -1022,6 +1026,8 @@ export default function Home() {
         targetBattleShocked: baseProfile.targetBattleShocked,
         targetStrengthState: baseProfile.targetStrengthState,
         attackerRemainedStationary: baseProfile.attackerRemainedStationary,
+        attackerAttached: baseProfile.attackerAttached,
+        targetAttached: baseProfile.targetAttached,
       },
     ) as Profile;
   };
@@ -1096,7 +1102,11 @@ export default function Home() {
     );
   };
 
-  const applyTarget = (model: CatalogueModel, targetIds = activeTargetPresetIds) => {
+  const applyTarget = (
+    model: CatalogueModel,
+    targetIds = activeTargetPresetIds,
+    profileOverrides: Partial<Profile> = {},
+  ) => {
     setProfile((current) =>
       withActivePresets(
         {
@@ -1115,6 +1125,7 @@ export default function Home() {
           criticalWounds: selectedWeapon
             ? antiWoundThreshold(selectedWeapon.abilities, model.keywords)
             : 0,
+          ...profileOverrides,
         },
         selectedWeapon,
         activeAttackerPresetIds,
@@ -1224,6 +1235,7 @@ export default function Home() {
                             ...current,
                             attackerCharged: false,
                             attackerRemainedStationary: false,
+                            attackerAttached: false,
                             attackerBattleShocked: false,
                           },
                           selectedWeapon,
@@ -1256,6 +1268,7 @@ export default function Home() {
                             ...current,
                             attackerCharged: false,
                             attackerRemainedStationary: false,
+                            attackerAttached: false,
                             attackerBattleShocked: false,
                           },
                           selectedWeapon,
@@ -1315,6 +1328,7 @@ export default function Home() {
                   targetDistance={profile.targetDistance}
                   attackerCharged={profile.attackerCharged}
                   attackerRemainedStationary={profile.attackerRemainedStationary}
+                  sourceUnitAttached={profile.attackerAttached}
                   attackerBattleShocked={profile.attackerBattleShocked}
                   targetBattleShocked={profile.targetBattleShocked}
                   targetStrengthState={profile.targetStrengthState}
@@ -1416,6 +1430,7 @@ export default function Home() {
                           {
                             ...current,
                             targetBattleShocked: false,
+                            targetAttached: false,
                             targetStrengthState: "full",
                           },
                           selectedWeapon,
@@ -1447,6 +1462,7 @@ export default function Home() {
                           {
                             ...current,
                             targetBattleShocked: false,
+                            targetAttached: false,
                             targetStrengthState: "full",
                           },
                           selectedWeapon,
@@ -1509,6 +1525,7 @@ export default function Home() {
                   targetDistance={profile.targetDistance}
                   attackerCharged={profile.attackerCharged}
                   attackerRemainedStationary={profile.attackerRemainedStationary}
+                  sourceUnitAttached={profile.targetAttached}
                   attackerBattleShocked={profile.attackerBattleShocked}
                   targetBattleShocked={profile.targetBattleShocked}
                   targetStrengthState={profile.targetStrengthState}
@@ -1860,6 +1877,28 @@ export default function Home() {
                   setProfile((current) =>
                     withActivePresets({ ...current, attackerRemainedStationary: value }),
                   )
+                }
+              />
+              <Toggle
+                label="Attacker is an Attached unit"
+                checked={profile.attackerAttached}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({ ...current, attackerAttached: value }),
+                  )
+                }
+              />
+              <Toggle
+                label="Target is an Attached unit"
+                checked={profile.targetAttached}
+                onChange={(value) =>
+                  selectedTargetModel
+                    ? applyTarget(selectedTargetModel, activeTargetPresetIds, {
+                        targetAttached: value,
+                      })
+                    : setProfile((current) =>
+                        withActivePresets({ ...current, targetAttached: value }),
+                      )
                 }
               />
               <Toggle

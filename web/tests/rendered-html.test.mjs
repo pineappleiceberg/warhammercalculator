@@ -1652,6 +1652,8 @@ test("generated API profiles preserve combat invariants and reject malformed fie
   ];
   const booleanKeys = [
     "attackerRemainedStationary",
+    "attackerAttached",
+    "targetAttached",
     "torrent",
     "blast",
     "heavyActive",

@@ -99,6 +99,8 @@ export default function AgentCalculator() {
           const requestedDistance = requestedContext.targetDistance;
           const attackerCharged = requestedContext.attackerCharged;
           const attackerRemainedStationary = requestedContext.attackerRemainedStationary;
+          const attackerAttached = requestedContext.attackerAttached;
+          const targetAttached = requestedContext.targetAttached;
           const attackerBattleShocked = requestedContext.attackerBattleShocked;
           const targetBattleShocked = requestedContext.targetBattleShocked;
           const targetStrengthState = requestedContext.targetStrengthState;
@@ -109,6 +111,8 @@ export default function AgentCalculator() {
             targetDistance: requestedDistance,
             attackerCharged,
             attackerRemainedStationary,
+            attackerAttached,
+            targetAttached,
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
@@ -126,6 +130,7 @@ export default function AgentCalculator() {
             targetBattleShocked,
             targetStrengthState,
             attackerRemainedStationary,
+            attackerAttached,
           );
           const targetPresets = selectedAndAutomaticCombatPresets(
             selection.target.combatPresets,
@@ -140,6 +145,7 @@ export default function AgentCalculator() {
             targetBattleShocked,
             targetStrengthState,
             attackerRemainedStationary,
+            targetAttached,
           );
           profile = applyCombatPresets(
             profile,
@@ -152,6 +158,8 @@ export default function AgentCalculator() {
               targetDistance: requestedDistance,
               attackerCharged,
               attackerRemainedStationary,
+              attackerAttached,
+              targetAttached,
               attackerBattleShocked,
               targetBattleShocked,
               targetStrengthState,

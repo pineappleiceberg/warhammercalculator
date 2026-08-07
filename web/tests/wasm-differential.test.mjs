@@ -2110,12 +2110,51 @@ test("charge state activates Lance weapons and granted Lance rules", async () =>
   const grantedLance = grantingUnit.combatPresets.find((preset) =>
     preset.effects.some((effect) => effect.type === "lance"),
   );
-  assert.equal(applyCombatPresets(base, [grantedLance], [], "Melee").lanceActive, false);
   assert.equal(
-    applyCombatPresets({ ...base, attackerCharged: true }, [grantedLance], [], "Melee").lanceActive,
+    applyCombatPresets({ ...base, attackerAttached: true }, [grantedLance], [], "Melee")
+      .lanceActive,
+    false,
+  );
+  assert.equal(
+    applyCombatPresets(
+      { ...base, attackerCharged: true, attackerAttached: true },
+      [grantedLance],
+      [],
+      "Melee",
+    ).lanceActive,
     true,
   );
   assert.ok(lessThanOrEqual(exactMean(), exactMean({ flags: 64 })));
+});
+
+test("Attached-unit state activates exact attacking and defensive leader rules", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const chaplain = catalogue.units.find((unit) => unit.name === "Chaplain");
+  const litany = chaplain.combatPresets.find((preset) => preset.name === "Litany of Hate");
+  const attackBase = {
+    weaponName: chaplain.weapons.find((weapon) => weapon.type === "Melee").name,
+    attackerAttached: false,
+    woundModifier: 0,
+  };
+  assert.equal(applyCombatPresets(attackBase, [litany], [], "Melee").woundModifier, 0);
+  assert.equal(
+    applyCombatPresets({ ...attackBase, attackerAttached: true }, [litany], [], "Melee")
+      .woundModifier,
+    1,
+  );
+
+  const chronomancer = catalogue.units.find((unit) => unit.name === "Chronomancer");
+  const mantle = chronomancer.combatPresets.find((preset) => preset.name === "Timesplinter Mantle");
+  const targetBase = { weaponName: "Test weapon", targetAttached: false, hitModifier: 0 };
+  assert.equal(applyCombatPresets(targetBase, [], [mantle], "Ranged").hitModifier, 0);
+  assert.equal(
+    applyCombatPresets({ ...targetBase, targetAttached: true }, [], [mantle], "Ranged").hitModifier,
+    -1,
+  );
+  assert.ok(lessThanOrEqual(exactMean({ hitModifier: -1 }), exactMean()));
+  assert.ok(lessThanOrEqual(exactMean(), exactMean({ woundModifier: 1 })));
 });
 
 test("source-backed Battle-shock rules require their exact attacker or target state", async () => {

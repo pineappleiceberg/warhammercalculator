@@ -18,8 +18,9 @@ priority over feature count.
 
 1. Extend the source-backed rules eligibility layer beyond phase, exact
    target/Psychic keywords, direct target distance, charge state, direct
-   Battle-shock state, direct target unit-strength state, and attacker stationary
-   state to other compound conditions that currently require manual interpretation.
+   Battle-shock state, direct target unit-strength state, attacker stationary
+   state, and simple Attached-unit state to compound conditions that currently
+   require manual interpretation.
 2. Represent model-count-, casualty-, and nearby-unit-scaled Attacks modifiers
    as explicit reproducible state instead of requiring manual arithmetic.
 3. Extend bearer and subset-model defenses beyond composition-proven
@@ -27,6 +28,16 @@ priority over feature count.
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added exact Attached-unit eligibility. SQLite schema 34 marks
+  155 simple leader rules automatic while retaining 35 compound leader rules as
+  manual choices when they also depend on casualties, distance, Waaagh!, a
+  named surviving model, an objective, a mode choice, or another independent
+  condition. Model vs Model, Unit vs Unit, Play Mode recovery, shared profiles,
+  normalized API input, and static agent URLs preserve separately editable
+  attacker and target Attached-unit state. Data snapshots, URL round trips,
+  recovery, and attacking/defensive C/Wasm regressions cover inactive and
+  active boundaries.
 
 - 2026-08-07: Corrected Lance activation in every catalogue-backed workflow.
   A weapon's native Lance keyword and Lance granted by a selected source rule

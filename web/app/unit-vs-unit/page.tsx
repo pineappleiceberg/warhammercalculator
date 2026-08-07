@@ -101,6 +101,8 @@ export default function UnitVsUnit() {
   const [targetDistance, setTargetDistance] = useState(0);
   const [attackerCharged, setAttackerCharged] = useState(false);
   const [attackerRemainedStationary, setAttackerRemainedStationary] = useState(false);
+  const [attackerAttached, setAttackerAttached] = useState(false);
+  const [targetAttached, setTargetAttached] = useState(false);
   const [attackerBattleShocked, setAttackerBattleShocked] = useState(false);
   const [targetBattleShocked, setTargetBattleShocked] = useState(false);
   const [targetStrengthState, setTargetStrengthState] = useState<TargetStrengthState>("full");
@@ -170,6 +172,8 @@ export default function UnitVsUnit() {
     targetDistance,
     attackerCharged,
     attackerRemainedStationary,
+    attackerAttached,
+    targetAttached,
     attackerBattleShocked,
     targetBattleShocked,
     targetStrengthState,
@@ -187,6 +191,7 @@ export default function UnitVsUnit() {
     setAttackerUnitId(unitId);
     setAttackerCharged(false);
     setAttackerRemainedStationary(false);
+    setAttackerAttached(false);
     setAttackerBattleShocked(false);
     const unit = attackerUnits.find((entry) => entry.id === unitId);
     const groups = groupWeaponProfiles(unit?.weapons ?? []);
@@ -219,6 +224,7 @@ export default function UnitVsUnit() {
 
   const selectTarget = (unitId: string) => {
     setTargetUnitId(unitId);
+    setTargetAttached(false);
     setTargetBattleShocked(false);
     setTargetStrengthState("full");
     const unit = targetUnits.find((entry) => entry.id === unitId);
@@ -272,6 +278,8 @@ export default function UnitVsUnit() {
             targetDistance,
             attackerCharged,
             attackerRemainedStationary,
+            attackerAttached,
+            targetAttached,
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
@@ -292,6 +300,7 @@ export default function UnitVsUnit() {
           targetBattleShocked,
           targetStrengthState,
           attackerRemainedStationary,
+          attackerAttached,
         ),
         selectedAndAutomaticCombatPresets(
           targetUnit?.combatPresets ?? [],
@@ -306,6 +315,7 @@ export default function UnitVsUnit() {
           targetBattleShocked,
           targetStrengthState,
           attackerRemainedStationary,
+          targetAttached,
         ),
         line.weapon.type,
         {
@@ -317,6 +327,8 @@ export default function UnitVsUnit() {
           targetBattleShocked,
           targetStrengthState,
           attackerRemainedStationary,
+          attackerAttached,
+          targetAttached,
         },
       ),
     );
@@ -340,6 +352,7 @@ export default function UnitVsUnit() {
               targetBattleShocked,
               targetStrengthState,
               attackerRemainedStationary,
+              targetAttached,
             ),
           )
           .map((preset) => [preset.id, preset]),
@@ -358,6 +371,7 @@ export default function UnitVsUnit() {
         targetBattleShocked,
         targetStrengthState,
         attackerRemainedStationary,
+        targetAttached,
       })),
     );
   };
@@ -548,6 +562,7 @@ export default function UnitVsUnit() {
                   targetDistance={targetDistance}
                   attackerCharged={attackerCharged}
                   attackerRemainedStationary={attackerRemainedStationary}
+                  sourceUnitAttached={attackerAttached}
                   attackerBattleShocked={attackerBattleShocked}
                   targetBattleShocked={targetBattleShocked}
                   targetStrengthState={targetStrengthState}
@@ -792,6 +807,7 @@ export default function UnitVsUnit() {
                   setTargetUnitId("");
                   setTargetBattleShocked(false);
                   setTargetStrengthState("full");
+                  setTargetAttached(false);
                 }}
               >
                 <option value="">Choose faction</option>
@@ -855,6 +871,25 @@ export default function UnitVsUnit() {
               </span>
             </label>
             <label>
+              <span>Attached-unit state</span>
+              <span className="inline-checkbox">
+                <input
+                  type="checkbox"
+                  checked={attackerAttached}
+                  onChange={(event) => setAttackerAttached(event.target.checked)}
+                />
+                Attacker is Attached
+              </span>
+              <span className="inline-checkbox">
+                <input
+                  type="checkbox"
+                  checked={targetAttached}
+                  onChange={(event) => setTargetAttached(event.target.checked)}
+                />
+                Target is Attached
+              </span>
+            </label>
+            <label>
               <span>Target distance</span>
               <input
                 aria-label="Target distance in inches"
@@ -892,6 +927,7 @@ export default function UnitVsUnit() {
                   targetDistance={targetDistance}
                   attackerCharged={attackerCharged}
                   attackerRemainedStationary={attackerRemainedStationary}
+                  sourceUnitAttached={targetAttached}
                   attackerBattleShocked={attackerBattleShocked}
                   targetBattleShocked={targetBattleShocked}
                   targetStrengthState={targetStrengthState}
