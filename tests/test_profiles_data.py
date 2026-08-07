@@ -314,6 +314,23 @@ class ProfileDataTests(unittest.TestCase):
             )
         )
         self.assertIsNone(combat_preset("The bearer has a 4+ invulnerable save."))
+        bearer = combat_preset(
+            "The bearer has a 4+ invulnerable save.",
+            allow_bearer_defenses=True,
+        )
+        self.assertEqual(
+            bearer["additional_effects"],
+            [
+                {
+                    "type": "invulnerable_save",
+                    "value": 4,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "role": "target",
+                    "subject": "self",
+                }
+            ],
+        )
         self.assertIsNone(
             combat_preset(
                 'While a friendly VEHICLE unit is within 6" of this model, that unit has the Feel No Pain 6+ ability.'
@@ -801,7 +818,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "28",
+                "29",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1075,24 +1092,24 @@ class ProfileDataTests(unittest.TestCase):
                 ).fetchall(),
                 [
                     ("damage_divisor", 4),
-                    ("damage_reduction", 30),
-                    ("feel_no_pain", 39),
-                    ("invulnerable_save", 35),
-                    ("save_target", 1),
+                    ("damage_reduction", 32),
+                    ("feel_no_pain", 41),
+                    ("invulnerable_save", 52),
+                    ("save_target", 3),
                 ],
             )
             self.assertEqual(
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 2), ("inherent", 32), ("situational", 1407)],
+                [("automatic", 2), ("inherent", 32), ("situational", 1428)],
             )
             self.assertEqual(
                 connection.execute(
                     "SELECT weapon_scope, count(*) FROM unit_combat_presets "
                     "GROUP BY weapon_scope ORDER BY weapon_scope"
                 ).fetchall(),
-                [("Any", 789), ("Melee", 310), ("Ranged", 342)],
+                [("Any", 810), ("Melee", 310), ("Ranged", 342)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1117,7 +1134,11 @@ class ProfileDataTests(unittest.TestCase):
                        GROUP BY preset.activation, effect.value, effect.subject
                        ORDER BY preset.activation, effect.value, effect.subject"""
                 ).fetchall(),
-                [("automatic", 2, "self", 1), ("situational", 4, "led_unit", 14)],
+                [
+                    ("automatic", 2, "self", 1),
+                    ("situational", 3, "self", 1),
+                    ("situational", 4, "led_unit", 14),
+                ],
             )
             self.assertEqual(
                 connection.execute(
@@ -1288,6 +1309,44 @@ class ProfileDataTests(unittest.TestCase):
                     ("Warbikers", "Drive-by Dakka", 9),
                     ("Wartrakks", "Drive-by Dakka", 9),
                 ],
+            )
+        finally:
+            connection.close()
+
+    def test_bearer_defenses_are_limited_to_single_model_datasheets(self):
+        connection = sqlite3.connect(DATABASE)
+        try:
+            rows = connection.execute(
+                """SELECT datasheets.name, unit_combat_presets.name,
+                          count(DISTINCT unit_combat_presets.datasheet_id || ':' ||
+                              unit_combat_presets.ability_position || ':' ||
+                              unit_combat_presets.preset_position),
+                          count(unit_combat_preset_effects.effect_position)
+                   FROM unit_combat_presets
+                   JOIN datasheets ON datasheets.id = unit_combat_presets.datasheet_id
+                   LEFT JOIN unit_combat_preset_effects USING
+                       (datasheet_id, ability_position, preset_position)
+                   WHERE lower(unit_combat_presets.description_text) LIKE 'the bearer has%'
+                     AND unit_combat_presets.datasheet_id IN
+                         (SELECT datasheet_id FROM unit_composition
+                          GROUP BY datasheet_id
+                          HAVING SUM(max_models IS NULL) = 0 AND SUM(max_models) = 1)
+                   GROUP BY datasheets.name, unit_combat_presets.name
+                   ORDER BY datasheets.name, unit_combat_presets.name"""
+            ).fetchall()
+            self.assertEqual(len(rows), 20)
+            self.assertEqual(sum(row[2] for row in rows), 21)
+            self.assertEqual(sum(row[3] for row in rows), 23)
+            self.assertIn(("Impulsor", "Shield Dome", 2, 2), rows)
+            self.assertIn(("Wraithknight", "Scattershield", 1, 2), rows)
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_combat_presets
+                       JOIN datasheets ON datasheets.id = unit_combat_presets.datasheet_id
+                       WHERE datasheets.name = 'Lychguard'
+                         AND unit_combat_presets.name = 'Dispersion Shield'"""
+                ).fetchone()[0],
+                0,
             )
         finally:
             connection.close()

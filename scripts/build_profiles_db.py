@@ -633,7 +633,9 @@ def keyword_is_granted(text: str, match: re.Match[str]) -> bool:
     )
 
 
-def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
+def combat_additional_effects(
+    text: str, allow_bearer_defenses: bool = False
+) -> list[dict[str, int | str]]:
     effects: list[dict[str, int | str]] = []
     keyword_patterns = (
         ("lethal_hits", r"\[LETHAL HITS\]", None),
@@ -1133,7 +1135,9 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
     defensive_subject_pattern = (
         r"((?<![A-Za-z] )(?:all )?models? in "
         r"(?:this|that|the bearer’s|the bearer's) unit|"
-        r"(?<!in )(?<!to )(?<!of )(?:this|that) (?:model|unit))"
+        r"(?<!in )(?<!to )(?<!of )(?:this|that) (?:model|unit)"
+        + (r"|the bearer" if allow_bearer_defenses else "")
+        + r")"
     )
     defensive_patterns = (
         (
@@ -1212,7 +1216,7 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
         attack_clause = match.group(0).casefold()
         if (
             not re.search(r"\b(?:allocated to|made against)\b", attack_clause)
-            or "bearer" in attack_clause
+            or ("bearer" in attack_clause and not allow_bearer_defenses)
             or "excluding" in attack_clause
             or "affected by this ability" in context
         ):
@@ -1227,7 +1231,10 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
             "subject": "enemy_unit",
         }
     if len(damage_reductions) == 1:
-        effects.append(next(iter(damage_reductions.values())))
+        effect = next(iter(damage_reductions.values()))
+        if "bearer" in text.casefold():
+            effect = {**effect, "subject": "self"}
+        effects.append(effect)
     damage_divisor_pattern = re.compile(
         r"each time an attack is allocated to (?:this model|a model in this unit), "
         r"halve the Damage characteristic of that attack\.",
@@ -1247,7 +1254,9 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
     return [effect for effect in effects if effect["subject"] != "unknown"]
 
 
-def combat_preset(description: str) -> dict[str, object] | None:
+def combat_preset(
+    description: str, allow_bearer_defenses: bool = False
+) -> dict[str, object] | None:
     text = plain_text(description)
     lowered = text.casefold()
     effects: dict[str, object] = {
@@ -1277,7 +1286,9 @@ def combat_preset(description: str) -> dict[str, object] | None:
             role, subject = combat_effect_application(text, rerolls[0].start())
             effects[f"{roll}_reroll_role"] = role
             effects[f"{roll}_reroll_subject"] = subject
-    effects["additional_effects"] = combat_additional_effects(text)
+    effects["additional_effects"] = combat_additional_effects(
+        text, allow_bearer_defenses
+    )
     if not any(value for key, value in effects.items() if key != "weapon_scope"):
         return None
     effects["weapon_scope"] = combat_weapon_scope(text)
@@ -1372,7 +1383,9 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
     return "situational"
 
 
-def combat_presets(name: str, description: str) -> list[dict[str, object]]:
+def combat_presets(
+    name: str, description: str, allow_bearer_defenses: bool = False
+) -> list[dict[str, object]]:
     text = plain_text(description)
     has_choice = bool(
         re.search(
@@ -1436,7 +1449,9 @@ def combat_presets(name: str, description: str) -> list[dict[str, object]]:
                 sentence_candidates = []
                 for index, sentence in enumerate(option_sentences, start=1):
                     candidate_text = f"{text[: choice.end()]}{sentence}"
-                    candidate_effects = combat_preset(candidate_text)
+                    candidate_effects = combat_preset(
+                        candidate_text, allow_bearer_defenses
+                    )
                     if not candidate_effects:
                         sentence_candidates = []
                         break
@@ -1479,7 +1494,7 @@ def combat_presets(name: str, description: str) -> list[dict[str, object]]:
 
     parsed = []
     for variant_name, variant_description in candidates:
-        effects = combat_preset(variant_description)
+        effects = combat_preset(variant_description, allow_bearer_defenses)
         if effects:
             parsed.append(
                 {
@@ -1497,7 +1512,7 @@ def combat_presets(name: str, description: str) -> list[dict[str, object]]:
     if has_choice:
         return []
 
-    effects = combat_preset(text)
+    effects = combat_preset(text, allow_bearer_defenses)
     if not effects:
         return []
     return [
@@ -1515,13 +1530,29 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
     connection.execute("DELETE FROM unit_combat_preset_effects")
     connection.execute("DELETE FROM unit_combat_presets")
     inserted = 0
+    single_model_datasheets = {
+        datasheet_id
+        for (datasheet_id,) in connection.execute(
+            """SELECT datasheet_id
+               FROM unit_composition
+               GROUP BY datasheet_id
+               HAVING COUNT(*) > 0
+                  AND SUM(max_models IS NULL) = 0
+                  AND SUM(max_models) = 1"""
+        )
+    }
     abilities = connection.execute(
         """SELECT datasheet_id, position, name, description_text
            FROM datasheet_abilities ORDER BY datasheet_id, position"""
     ).fetchall()
     for datasheet_id, ability_position, name, description in abilities:
         for preset_position, preset in enumerate(
-            combat_presets(name, description), start=1
+            combat_presets(
+                name,
+                description,
+                allow_bearer_defenses=datasheet_id in single_model_datasheets,
+            ),
+            start=1,
         ):
             resolved_effects = []
             for effect in preset["additional_effects"]:
@@ -1745,7 +1776,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "28"),
+                    ("schema_version", "29"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

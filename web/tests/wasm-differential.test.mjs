@@ -2109,3 +2109,34 @@ test("source-backed defensive profile values reduce C/Wasm exact damage", async 
   assert.ok(lessThanOrEqual(divided, undivided));
   assert.notDeepEqual(divided, undivided);
 });
+
+test("single-model bearer wargear composes exact optional defenses", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const commander = catalogue.units.find(
+    (unit) => unit.name === "Commander In Coldstar Battlesuit",
+  );
+  const shield = commander.combatPresets.find((preset) => preset.name === "Shield Generator");
+  const base = { weaponName: "", ap: 4, save: 3, invulnerable: 0, reduction: 0 };
+  const defended = applyCombatPresets(base, [], [shield], "Ranged");
+  assert.equal(defended.invulnerable, 4);
+  const shieldedMean = exactMean({ ap: 4, save: 3, invulnerable: defended.invulnerable });
+  const unshieldedMean = exactMean({ ap: 4, save: 3, invulnerable: 0 });
+  assert.ok(lessThanOrEqual(shieldedMean, unshieldedMean));
+  assert.notDeepEqual(shieldedMean, unshieldedMean);
+
+  const wraithknight = catalogue.units.find((unit) => unit.name === "Wraithknight");
+  const scattershield = wraithknight.combatPresets.find(
+    (preset) => preset.name === "Scattershield",
+  );
+  const compound = applyCombatPresets(base, [], [scattershield], "Ranged");
+  assert.equal(compound.invulnerable, 4);
+  assert.equal(compound.reduction, 1);
+
+  const lychguard = catalogue.units.find((unit) => unit.name === "Lychguard");
+  assert.equal(
+    lychguard.combatPresets.some((preset) => preset.name === "Dispersion Shield"),
+    false,
+  );
+});

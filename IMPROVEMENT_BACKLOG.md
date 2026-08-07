@@ -19,13 +19,23 @@ priority over feature count.
 1. Extend the source-backed rules eligibility layer beyond phase, exact
    target/Psychic keywords, and direct target distance to other compound
    conditions that currently require manual interpretation.
-2. Link bearer- and subset-model defensive abilities to structured wargear and
-   unit composition so equipped defensive defaults can be applied without
-   affecting models that do not have them.
-3. Represent model-count-, casualty-, and nearby-unit-scaled Attacks modifiers
+2. Represent model-count-, casualty-, and nearby-unit-scaled Attacks modifiers
    as explicit reproducible state instead of requiring manual arithmetic.
+3. Extend bearer and subset-model defenses beyond composition-proven
+   single-model datasheets with per-target-segment equipment selection, so a
+   shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added composition-gated bearer defenses. SQLite schema 29 uses
+  the structured maximum unit composition to import 21 optional defensive
+  presets with 23 exact effects only for datasheets proven to contain one
+  model. This includes Shield Generator, Shield Dome, Storm Shield,
+  Scattershield, Nanoscarab Amulet, Shining Aegis, and related wargear; the two
+  Wraithknight Scattershield records compose both their 4+ invulnerable save
+  and Damage reduction. Multi-model bearer abilities such as Lychguard
+  Dispersion Shields remain excluded. Parser opt-in, exact generated-data,
+  target composition, and native/Wasm damage regressions cover the boundary.
 
 - 2026-08-07: Added conservative direct target-distance eligibility. SQLite
   schema 28 imports a maximum target distance only when one modeled effect has

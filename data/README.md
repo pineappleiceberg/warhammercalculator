@@ -40,6 +40,10 @@ The main tables are:
   preserves conservative phase eligibility: an effect explicitly bounded to a
   Shooting or Fight phase is restricted to ranged or melee attacks, while
   dual-phase and end-of-turn effects remain unrestricted
+- exact bearer Save, invulnerable-save, Feel No Pain, and Damage-reduction
+  effects are imported as optional situational presets only when structured
+  composition proves that the datasheet contains exactly one model; bearer
+  defenses on multi-model datasheets remain omitted
 - fixed Attacks replacements gated by a phase, selected target, or battlefield
   event are stored as named-weapon situational effects; compound Sustained Hits
   changes and mutually exclusive replacement/defense modes remain grouped with

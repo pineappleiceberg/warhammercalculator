@@ -366,7 +366,10 @@ replacement, division, multiplication, addition/subtraction, rounding up, then
 the applicable minimum. Unit vs Unit applies those defenses to every ordered target segment and
 asks ranged and melee weapons to be resolved separately only when a scoped
 defense produces incompatible target values. Melee/ranged scope is respected
-per weapon. Bearer-only, subset-model, friendly-aura, affected-model,
+per weapon. Optional bearer defenses are available only when structured unit
+composition proves the datasheet contains one model, and remain explicit
+checkboxes so unequipped wargear is never assumed. Multi-model bearer and
+subset-model rules, friendly-aura, affected-model,
 unrepresented attack-type conditions, conflicting, random, subset-model multiplicative,
 and other context-dependent replacement
 characteristic changes are omitted until they can be represented exactly.
