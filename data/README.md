@@ -35,10 +35,12 @@ The main tables are:
   whole-model/unit defenses are `inherent` and become editable model-profile
   defaults. Rules whose complete eligibility is an exact selected-target,
   attacking-weapon keyword, unambiguous attacker-charge test, or direct
-  attacker/target Battle-shock test are `automatic`;
+  attacker/target Battle-shock or target unit-strength test are `automatic`;
   they apply only to matching weapon, target, and battlefield state. Charge-or-
   charged, aura-, leader-, objective-, observer-, alternative-branch, and
-  combined-mode wording remains situational.
+  combined-mode wording remains situational. Target strength is stored as an
+  exact `below_half` or `not_below_half` requirement; the calculator preserves
+  full strength, below Starting Strength, and Below Half-strength separately.
   All other rows are `situational`, preserve their
   full condition, and are never assumed active. Their `weapon_scope` also
   preserves conservative phase eligibility: an effect explicitly bounded to a

@@ -2066,6 +2066,72 @@ test("source-backed Battle-shock rules require their exact attacker or target st
   );
 });
 
+test("source-backed target strength rules preserve the three exact unit states", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const ballistus = catalogue.units.find((unit) => unit.name === "Ballistus Dreadnought");
+  const strike = ballistus.combatPresets.find((preset) => preset.name === "Ballistus Strike");
+  const ballistusBase = {
+    weaponName: ballistus.weapons.find((weapon) => weapon.type === "Ranged").name,
+    rerollHits: false,
+    rerollHitOnes: false,
+    targetStrengthState: "full",
+  };
+  assert.equal(applyCombatPresets(ballistusBase, [strike], [], "Ranged").rerollHits, true);
+  assert.equal(
+    applyCombatPresets(
+      { ...ballistusBase, targetStrengthState: "below_starting" },
+      [strike],
+      [],
+      "Ranged",
+    ).rerollHits,
+    true,
+  );
+  assert.equal(
+    applyCombatPresets(
+      { ...ballistusBase, targetStrengthState: "below_half" },
+      [strike],
+      [],
+      "Ranged",
+    ).rerollHits,
+    false,
+  );
+  assert.ok(lessThanOrEqual(exactMean(), exactMean({ flags: 8 })));
+
+  const cyberwolf = catalogue.units.find((unit) => unit.name === "Cyberwolf");
+  const closeIn = cyberwolf.combatPresets.find((preset) => preset.name === "Close In for the Kill");
+  const cyberwolfBase = {
+    weaponName: cyberwolf.weapons.find((weapon) => weapon.type === "Melee").name,
+    hitModifier: 0,
+    woundModifier: 0,
+    targetStrengthState: "full",
+  };
+  assert.deepEqual(
+    ["full", "below_starting"].map((state) => {
+      const profile = applyCombatPresets(
+        { ...cyberwolfBase, targetStrengthState: state },
+        [closeIn],
+        [],
+        "Melee",
+      );
+      return [profile.hitModifier, profile.woundModifier];
+    }),
+    [
+      [0, 0],
+      [0, 0],
+    ],
+  );
+  const belowHalf = applyCombatPresets(
+    { ...cyberwolfBase, targetStrengthState: "below_half" },
+    [closeIn],
+    [],
+    "Melee",
+  );
+  assert.deepEqual([belowHalf.hitModifier, belowHalf.woundModifier], [1, 1]);
+  assert.ok(lessThanOrEqual(exactMean(), exactMean({ hitModifier: 1, woundModifier: 1 })));
+});
+
 test("source-backed situational Attacks replacements reach C/Wasm exactly", async () => {
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),

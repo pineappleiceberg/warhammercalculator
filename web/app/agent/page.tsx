@@ -100,6 +100,7 @@ export default function AgentCalculator() {
           const attackerCharged = requestedContext.attackerCharged;
           const attackerBattleShocked = requestedContext.attackerBattleShocked;
           const targetBattleShocked = requestedContext.targetBattleShocked;
+          const targetStrengthState = requestedContext.targetStrengthState;
           let profile = applyTargetProfile(DEFAULT_PROFILE, selection.model);
           profile = applyWeaponProfile(profile, selection.weapon, selection.model.keywords);
           profile = {
@@ -108,6 +109,7 @@ export default function AgentCalculator() {
             attackerCharged,
             attackerBattleShocked,
             targetBattleShocked,
+            targetStrengthState,
           };
           const attackerPresets = selectedAndAutomaticCombatPresets(
             selection.attacker.combatPresets,
@@ -120,6 +122,7 @@ export default function AgentCalculator() {
             attackerCharged,
             attackerBattleShocked,
             targetBattleShocked,
+            targetStrengthState,
           );
           const targetPresets = selectedAndAutomaticCombatPresets(
             selection.target.combatPresets,
@@ -132,6 +135,7 @@ export default function AgentCalculator() {
             attackerCharged,
             attackerBattleShocked,
             targetBattleShocked,
+            targetStrengthState,
           );
           profile = applyCombatPresets(
             profile,
@@ -145,6 +149,7 @@ export default function AgentCalculator() {
               attackerCharged,
               attackerBattleShocked,
               targetBattleShocked,
+              targetStrengthState,
             },
           );
           candidate = parseAgentProfile(search, profile, false);

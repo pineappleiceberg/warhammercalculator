@@ -65,6 +65,7 @@ const defaults = {
   attackerCharged: false,
   attackerBattleShocked: false,
   targetBattleShocked: false,
+  targetStrengthState: "full",
   withinHalfRange: false,
   torrent: false,
   blast: false,
@@ -143,6 +144,10 @@ test("agent query rejects incomplete, unknown, duplicate, and inexact values", (
     /negative dice modifier/i,
   );
   assert.throws(() => parseAgentProfile("format=xml", defaults, false), /format must be json/i);
+  assert.throws(
+    () => parseAgentProfile("targetStrength=destroyed", defaults, false),
+    /targetStrengthState must be full, below-starting, or below-half/i,
+  );
 });
 
 test("canonical agent parameters round-trip every supported profile field", () => {
@@ -180,6 +185,7 @@ test("canonical agent parameters round-trip every supported profile field", () =
     attackerCharged: true,
     attackerBattleShocked: true,
     targetBattleShocked: true,
+    targetStrengthState: "below_half",
     blast: true,
     rerollWounds: true,
   };
@@ -347,4 +353,62 @@ test("catalogue agent Battle-shock state selects only exact automatic rules", as
     ["Holy Piety"],
   );
   assert.deepEqual(selectedPriest(true), []);
+});
+
+test("catalogue agent target strength state handles Below Half-strength boundaries", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const ballistus = catalogue.units.find((unit) => unit.name === "Ballistus Dreadnought");
+  const strike = ballistus.combatPresets.find((preset) => preset.name === "Ballistus Strike");
+  const ranged = ballistus.weapons.find((weapon) => weapon.type === "Ranged");
+  const ballistusSelection = (state) =>
+    selectedAndAutomaticCombatPresets(
+      ballistus.combatPresets,
+      [],
+      ranged.type,
+      ranged.name,
+      [],
+      attackKeywordsForWeapon(ranged),
+      0,
+      false,
+      false,
+      false,
+      state,
+    );
+  assert.equal(strike.requiredTargetStrengthState, "not_below_half");
+  assert.deepEqual(
+    ballistusSelection("full").map((preset) => preset.name),
+    ["Ballistus Strike"],
+  );
+  assert.deepEqual(
+    ballistusSelection("below_starting").map((preset) => preset.name),
+    ["Ballistus Strike"],
+  );
+  assert.deepEqual(ballistusSelection("below_half"), []);
+
+  const cyberwolf = catalogue.units.find((unit) => unit.name === "Cyberwolf");
+  const closeIn = cyberwolf.combatPresets.find((preset) => preset.name === "Close In for the Kill");
+  const melee = cyberwolf.weapons.find((weapon) => weapon.type === "Melee");
+  const cyberwolfSelection = (state) =>
+    selectedAndAutomaticCombatPresets(
+      cyberwolf.combatPresets,
+      [],
+      melee.type,
+      melee.name,
+      [],
+      attackKeywordsForWeapon(melee),
+      0,
+      false,
+      false,
+      false,
+      state,
+    );
+  assert.equal(closeIn.requiredTargetStrengthState, "below_half");
+  assert.deepEqual(cyberwolfSelection("full"), []);
+  assert.deepEqual(cyberwolfSelection("below_starting"), []);
+  assert.deepEqual(
+    cyberwolfSelection("below_half").map((preset) => preset.name),
+    ["Close In for the Kill"],
+  );
 });

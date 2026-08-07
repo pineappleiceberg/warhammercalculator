@@ -69,6 +69,8 @@ const booleanParameters = [
   ["rerollWoundOnes", ["rerollWoundOnes"]],
 ];
 
+const enumParameters = [["targetStrengthState", ["targetStrengthState", "targetStrength"]]];
+
 const knownParameters = new Set([
   ...catalogueParameters,
   "attacks",
@@ -81,6 +83,7 @@ const knownParameters = new Set([
   "rules",
   ...integerParameters.flatMap(([, aliases]) => aliases),
   ...booleanParameters.flatMap(([, aliases]) => aliases),
+  ...enumParameters.flatMap(([, aliases]) => aliases),
 ]);
 
 const requiredDirectParameters = [
@@ -230,6 +233,15 @@ export function parseAgentProfile(input, baseProfile, requireDirectParameters = 
     const value = singleValue(search, aliases);
     if (value !== null) profile[field] = booleanValue(value, aliases[0]);
   }
+  for (const [field, aliases] of enumParameters) {
+    const value = singleValue(search, aliases);
+    if (value === null) continue;
+    const normalized = value.trim().toLowerCase().replaceAll("-", "_");
+    if (!["full", "below_starting", "below_half"].includes(normalized)) {
+      throw new Error(`${aliases[0]} must be full, below-starting, or below-half`);
+    }
+    profile[field] = normalized;
+  }
   setReroll(profile, search, "rerollHits", "rerollHits", "rerollHitOnes");
   setReroll(profile, search, "rerollWounds", "rerollWounds", "rerollWoundOnes");
   return profile;
@@ -364,6 +376,7 @@ export function canonicalAgentParameters(profile) {
   for (const [field, aliases] of booleanParameters) {
     search.set(aliases[0], profile[field] ? "true" : "false");
   }
+  search.set("targetStrength", String(profile.targetStrengthState ?? "full").replaceAll("_", "-"));
   search.set("rerollHits", profile.rerollHits ? "all" : profile.rerollHitOnes ? "ones" : "false");
   search.set(
     "rerollWounds",

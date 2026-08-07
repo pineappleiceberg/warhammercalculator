@@ -179,6 +179,7 @@ export default function PlayMode() {
     attackerCharged = profile.attackerCharged,
     attackerBattleShocked = profile.attackerBattleShocked,
     targetBattleShocked = profile.targetBattleShocked,
+    targetStrengthState = profile.targetStrengthState,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -191,6 +192,7 @@ export default function PlayMode() {
       attackerCharged,
       attackerBattleShocked,
       targetBattleShocked,
+      targetStrengthState,
     );
 
   const refreshProfile = (
@@ -203,6 +205,7 @@ export default function PlayMode() {
     nextAttackerCharged = profile.attackerCharged,
     nextAttackerBattleShocked = profile.attackerBattleShocked,
     nextTargetBattleShocked = profile.targetBattleShocked,
+    nextTargetStrengthState = profile.targetStrengthState,
   ) => {
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
@@ -229,6 +232,7 @@ export default function PlayMode() {
             attackerCharged: nextAttackerCharged,
             attackerBattleShocked: nextAttackerBattleShocked,
             targetBattleShocked: nextTargetBattleShocked,
+            targetStrengthState: nextTargetStrengthState,
           },
           weapon,
           model.keywords,
@@ -242,6 +246,7 @@ export default function PlayMode() {
           nextAttackerCharged,
           nextAttackerBattleShocked,
           nextTargetBattleShocked,
+          nextTargetStrengthState,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -252,6 +257,7 @@ export default function PlayMode() {
           nextAttackerCharged,
           nextAttackerBattleShocked,
           nextTargetBattleShocked,
+          nextTargetStrengthState,
         ),
         weapon.type,
         {
@@ -261,6 +267,7 @@ export default function PlayMode() {
           attackerCharged: nextAttackerCharged,
           attackerBattleShocked: nextAttackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
+          targetStrengthState: nextTargetStrengthState,
         },
       ),
     );
@@ -300,6 +307,7 @@ export default function PlayMode() {
     const nextTargetPresetIds = nextTarget?.combatPresetIds ?? [];
     setTargetUnitId(id);
     const nextTargetBattleShocked = false;
+    const nextTargetStrengthState = "full" as const;
     setTargetModelId(model ? String(model.id) : "");
     setActiveTargetPresetIds(nextTargetPresetIds);
     if (!weaponProfile || !model || !nextTarget) return;
@@ -314,6 +322,7 @@ export default function PlayMode() {
             attackerCharged: profile.attackerCharged,
             attackerBattleShocked: profile.attackerBattleShocked,
             targetBattleShocked: nextTargetBattleShocked,
+            targetStrengthState: nextTargetStrengthState,
           },
           weaponProfile,
           model.keywords,
@@ -327,6 +336,7 @@ export default function PlayMode() {
           profile.attackerCharged,
           profile.attackerBattleShocked,
           nextTargetBattleShocked,
+          nextTargetStrengthState,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -337,6 +347,7 @@ export default function PlayMode() {
           profile.attackerCharged,
           profile.attackerBattleShocked,
           nextTargetBattleShocked,
+          nextTargetStrengthState,
         ),
         weaponProfile.type,
         {
@@ -346,6 +357,7 @@ export default function PlayMode() {
           attackerCharged: profile.attackerCharged,
           attackerBattleShocked: profile.attackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
+          targetStrengthState: nextTargetStrengthState,
         },
       ),
     );
@@ -547,7 +559,11 @@ export default function PlayMode() {
                       setTargetUnitId("");
                       setTargetModelId("");
                       setActiveTargetPresetIds([]);
-                      setProfile((current) => ({ ...current, targetBattleShocked: false }));
+                      setProfile((current) => ({
+                        ...current,
+                        targetBattleShocked: false,
+                        targetStrengthState: "full",
+                      }));
                       setResult(null);
                     }}
                   >
@@ -677,6 +693,30 @@ export default function PlayMode() {
                     Target
                   </span>
                 </label>
+                <label>
+                  <span>Target unit strength</span>
+                  <select
+                    value={profile.targetStrengthState}
+                    onChange={(event) =>
+                      refreshProfile(
+                        weaponId,
+                        targetModelId,
+                        profileId,
+                        activeAttackerPresetIds,
+                        activeTargetPresetIds,
+                        profile.targetDistance,
+                        profile.attackerCharged,
+                        profile.attackerBattleShocked,
+                        profile.targetBattleShocked,
+                        event.target.value as CombatProfile["targetStrengthState"],
+                      )
+                    }
+                  >
+                    <option value="full">Full strength</option>
+                    <option value="below_starting">Below Starting Strength</option>
+                    <option value="below_half">Below Half-strength</option>
+                  </select>
+                </label>
               </fieldset>
             </div>
             <div className="play-ability-selectors">
@@ -694,6 +734,7 @@ export default function PlayMode() {
                   attackerCharged={profile.attackerCharged}
                   attackerBattleShocked={profile.attackerBattleShocked}
                   targetBattleShocked={profile.targetBattleShocked}
+                  targetStrengthState={profile.targetStrengthState}
                 />
               )}
               {targetCatalogueUnit && (
@@ -710,6 +751,7 @@ export default function PlayMode() {
                   attackerCharged={profile.attackerCharged}
                   attackerBattleShocked={profile.attackerBattleShocked}
                   targetBattleShocked={profile.targetBattleShocked}
+                  targetStrengthState={profile.targetStrengthState}
                 />
               )}
             </div>

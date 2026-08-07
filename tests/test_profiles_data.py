@@ -56,6 +56,7 @@ class ProfileDataTests(unittest.TestCase):
                 "requires_attacker_charge": False,
                 "requires_target_battle_shocked": False,
                 "requires_attacker_not_battle_shocked": False,
+                "required_target_strength_state": None,
                 "hit_modifier_role": "attacker",
                 "hit_modifier_subject": "led_unit",
                 "wound_modifier_role": "attacker",
@@ -500,6 +501,38 @@ class ProfileDataTests(unittest.TestCase):
                 "that unit, add 1 to the Wound roll."
             )["requires_target_battle_shocked"]
         )
+        below_half = combat_preset(
+            "Each time this model makes an attack that targets an enemy unit that is "
+            "Below Half-strength, add 1 to the Hit roll and add 1 to the Wound roll."
+        )
+        self.assertEqual(below_half["required_target_strength_state"], "below_half")
+        not_below_half = combat_preset(
+            "Each time this model makes a ranged attack that targets a unit that is not "
+            "Below Half-strength, you can re-roll the Hit roll."
+        )
+        self.assertEqual(
+            not_below_half["required_target_strength_state"], "not_below_half"
+        )
+        self.assertIsNone(
+            combat_preset(
+                "While this model is leading a unit, each time a model in that unit makes "
+                "an attack that targets a unit that is Below Half-strength, add 1 to the "
+                "Hit roll."
+            )["required_target_strength_state"]
+        )
+        self.assertIsNone(
+            combat_preset(
+                "Each time this model makes an attack with its executioner plasma cannon "
+                "that targets a unit that is Below Half-strength, add 1 to the Hit roll."
+            )["required_target_strength_state"]
+        )
+        self.assertIsNone(
+            combat_preset(
+                "Each time this model makes an attack that targets a unit that is below its "
+                "Starting Strength, you can re-roll the Hit roll. If that target is Below "
+                "Half-strength, you can re-roll the Wound roll as well."
+            )["required_target_strength_state"]
+        )
         self.assertFalse(
             combat_preset(
                 "While this model is leading a unit, each time a model in that unit makes "
@@ -870,7 +903,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "31",
+                "32",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1154,7 +1187,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 23), ("inherent", 32), ("situational", 1407)],
+                [("automatic", 38), ("inherent", 32), ("situational", 1392)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1181,6 +1214,51 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     """SELECT count(*) FROM unit_combat_presets
                        WHERE requires_attacker_charge = 1 AND activation != 'automatic'"""
+                ).fetchone()[0],
+                0,
+            )
+            strength_rows = connection.execute(
+                """SELECT datasheet.name, preset.name,
+                          preset.required_target_strength_state
+                   FROM unit_combat_presets AS preset
+                   JOIN datasheets AS datasheet ON datasheet.id = preset.datasheet_id
+                   WHERE preset.required_target_strength_state IS NOT NULL
+                   ORDER BY preset.required_target_strength_state,
+                            datasheet.name, preset.name"""
+            ).fetchall()
+            self.assertEqual(len(strength_rows), 15)
+            self.assertIn(
+                ("Cyberwolf", "Close In for the Kill", "below_half"), strength_rows
+            )
+            self.assertIn(
+                ("Vigilant Squad", "Merciless Judgement", "below_half"),
+                strength_rows,
+            )
+            self.assertIn(
+                ("Ballistus Dreadnought", "Ballistus Strike", "not_below_half"),
+                strength_rows,
+            )
+            self.assertEqual(
+                sum(row[2] == "below_half" for row in strength_rows), 6
+            )
+            self.assertEqual(
+                sum(row[2] == "not_below_half" for row in strength_rows), 9
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_combat_presets
+                       WHERE required_target_strength_state IS NOT NULL
+                         AND activation != 'automatic'"""
+                ).fetchone()[0],
+                0,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_combat_presets AS preset
+                       JOIN datasheets AS datasheet ON datasheet.id = preset.datasheet_id
+                       WHERE datasheet.name IN ('Drazhar', 'Inquisitor Greyfax',
+                                                'Leman Russ Executioner', 'Maleceptor')
+                         AND preset.required_target_strength_state IS NOT NULL"""
                 ).fetchone()[0],
                 0,
             )

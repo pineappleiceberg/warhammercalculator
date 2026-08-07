@@ -17,9 +17,9 @@ priority over feature count.
 ## Prioritized backlog
 
 1. Extend the source-backed rules eligibility layer beyond phase, exact
-   target/Psychic keywords, direct target distance, charge state, and direct
-   Battle-shock state to other compound conditions that currently require
-   manual interpretation.
+   target/Psychic keywords, direct target distance, charge state, direct
+   Battle-shock state, and direct target unit-strength state to other compound
+   conditions that currently require manual interpretation.
 2. Represent model-count-, casualty-, and nearby-unit-scaled Attacks modifiers
    as explicit reproducible state instead of requiring manual arithmetic.
 3. Extend bearer and subset-model defenses beyond composition-proven
@@ -27,6 +27,17 @@ priority over feature count.
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added exact direct target unit-strength eligibility. SQLite
+  schema 32 marks 15 unambiguous rules automatic: six activate only against a
+  Below Half-strength target, while nine activate while the target is not Below
+  Half-strength. Model vs Model, Unit vs Unit, Play Mode recovery, shared
+  profiles, normalized API input, and static agent URLs preserve an editable
+  three-state target value: full strength, below Starting Strength, or Below
+  Half-strength. Leader, aura, named-weapon-only, phase-preamble, and
+  multi-threshold clauses remain manual. Parser exclusions, exact generated-data
+  snapshots, URL round trips, recovery, and C/Wasm composition regressions cover
+  all three state boundaries.
 
 - 2026-08-07: Added exact direct Battle-shock eligibility. SQLite schema 31
   marks Furies' Prey on the Weak, Hierophant's Apex-beast, and Incubi's

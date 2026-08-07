@@ -91,14 +91,22 @@ export function combatPresetMeetsEligibility(
   attackerCharged = false,
   attackerBattleShocked = false,
   targetBattleShocked = false,
+  targetStrengthState = "full",
 ) {
   const targets = new Set(targetKeywords.map(normalizedKeyword));
   const attacks = new Set(attackKeywords.map(normalizedKeyword));
   const distanceEligible =
     !preset.maximumTargetDistance ||
     (targetDistance > 0 && targetDistance <= preset.maximumTargetDistance);
+  const strengthEligible =
+    !preset.requiredTargetStrengthState ||
+    (preset.requiredTargetStrengthState === "below_starting" && targetStrengthState !== "full") ||
+    (preset.requiredTargetStrengthState === "below_half" && targetStrengthState === "below_half") ||
+    (preset.requiredTargetStrengthState === "not_below_half" &&
+      targetStrengthState !== "below_half");
   return (
     distanceEligible &&
+    strengthEligible &&
     (!preset.requiresAttackerCharge || attackerCharged) &&
     (!preset.requiresTargetBattleShocked || targetBattleShocked) &&
     (!preset.requiresAttackerNotBattleShocked || !attackerBattleShocked) &&
@@ -123,6 +131,7 @@ export function selectedAndAutomaticCombatPresets(
   attackerCharged = false,
   attackerBattleShocked = false,
   targetBattleShocked = false,
+  targetStrengthState = "full",
 ) {
   const selected = new Set(selectedIds);
   return presets.filter(
@@ -137,6 +146,7 @@ export function selectedAndAutomaticCombatPresets(
         attackerCharged,
         attackerBattleShocked,
         targetBattleShocked,
+        targetStrengthState,
       ),
   );
 }
@@ -182,6 +192,7 @@ export function combatPresetEffects(
   attackerCharged = false,
   attackerBattleShocked = false,
   targetBattleShocked = false,
+  targetStrengthState = "full",
 ) {
   const applicable = presets.filter(
     (preset) =>
@@ -195,6 +206,7 @@ export function combatPresetEffects(
         attackerCharged,
         attackerBattleShocked,
         targetBattleShocked,
+        targetStrengthState,
       ),
   );
   const hitModifiers = applicable.filter((preset) =>
@@ -423,6 +435,7 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
       context.attackerCharged ?? false,
       context.attackerBattleShocked ?? false,
       context.targetBattleShocked ?? false,
+      context.targetStrengthState ?? "full",
     ),
   );
   const candidates = effects.map((effect) =>
@@ -490,6 +503,7 @@ export function applyCombatPresets(
     context.attackerCharged ?? profile.attackerCharged ?? false,
     context.attackerBattleShocked ?? profile.attackerBattleShocked ?? false,
     context.targetBattleShocked ?? profile.targetBattleShocked ?? false,
+    context.targetStrengthState ?? profile.targetStrengthState ?? "full",
   );
   const target = combatPresetEffects(
     targetPresets,
@@ -502,6 +516,7 @@ export function applyCombatPresets(
     context.attackerCharged ?? profile.attackerCharged ?? false,
     context.attackerBattleShocked ?? profile.attackerBattleShocked ?? false,
     context.targetBattleShocked ?? profile.targetBattleShocked ?? false,
+    context.targetStrengthState ?? profile.targetStrengthState ?? "full",
   );
   const attacksReplacements = [attacker.attacksReplacement, target.attacksReplacement].filter(
     (value) => value > 0,

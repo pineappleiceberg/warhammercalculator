@@ -21,6 +21,7 @@ import {
   simulateOrderedVolleyPhase,
   type PhaseSimulationResult,
   type OrderedVolleyRollResult,
+  type TargetStrengthState,
 } from "../../lib/combat";
 import {
   applyChoiceSelectionChange,
@@ -101,6 +102,7 @@ export default function UnitVsUnit() {
   const [attackerCharged, setAttackerCharged] = useState(false);
   const [attackerBattleShocked, setAttackerBattleShocked] = useState(false);
   const [targetBattleShocked, setTargetBattleShocked] = useState(false);
+  const [targetStrengthState, setTargetStrengthState] = useState<TargetStrengthState>("full");
   const [results, setResults] = useState<WeaponLine[]>([]);
   const [volleySummary, setVolleySummary] = useState<OrderedVolleySummary | null>(null);
   const [rollResult, setRollResult] = useState<OrderedVolleyRollResult | null>(null);
@@ -168,6 +170,7 @@ export default function UnitVsUnit() {
     attackerCharged,
     attackerBattleShocked,
     targetBattleShocked,
+    targetStrengthState,
     orderedLines: orderedLines.map((line) => [line.weapon.id, line.count]),
     targetSegments,
     activeAttackerPresetIds,
@@ -214,6 +217,7 @@ export default function UnitVsUnit() {
   const selectTarget = (unitId: string) => {
     setTargetUnitId(unitId);
     setTargetBattleShocked(false);
+    setTargetStrengthState("full");
     const unit = targetUnits.find((entry) => entry.id === unitId);
     const model = unit?.models[0];
     setTargetSegments(model ? [targetSegment(model, unit?.suggestedModelCount ?? 1)] : []);
@@ -266,6 +270,7 @@ export default function UnitVsUnit() {
             attackerCharged,
             attackerBattleShocked,
             targetBattleShocked,
+            targetStrengthState,
           },
           line.weapon,
           targetSegments[0]?.keywords ?? [],
@@ -281,6 +286,7 @@ export default function UnitVsUnit() {
           attackerCharged,
           attackerBattleShocked,
           targetBattleShocked,
+          targetStrengthState,
         ),
         selectedAndAutomaticCombatPresets(
           targetUnit?.combatPresets ?? [],
@@ -293,6 +299,7 @@ export default function UnitVsUnit() {
           attackerCharged,
           attackerBattleShocked,
           targetBattleShocked,
+          targetStrengthState,
         ),
         line.weapon.type,
         {
@@ -302,6 +309,7 @@ export default function UnitVsUnit() {
           attackerCharged,
           attackerBattleShocked,
           targetBattleShocked,
+          targetStrengthState,
         },
       ),
     );
@@ -323,6 +331,7 @@ export default function UnitVsUnit() {
               attackerCharged,
               attackerBattleShocked,
               targetBattleShocked,
+              targetStrengthState,
             ),
           )
           .map((preset) => [preset.id, preset]),
@@ -339,6 +348,7 @@ export default function UnitVsUnit() {
         attackerCharged,
         attackerBattleShocked,
         targetBattleShocked,
+        targetStrengthState,
       })),
     );
   };
@@ -529,6 +539,7 @@ export default function UnitVsUnit() {
                   attackerCharged={attackerCharged}
                   attackerBattleShocked={attackerBattleShocked}
                   targetBattleShocked={targetBattleShocked}
+                  targetStrengthState={targetStrengthState}
                 />
                 {attackerUnit.unresolvedLoadoutSubjects.length > 0 && (
                   <details className="source-choice-pools model-composition-editor" open>
@@ -769,6 +780,7 @@ export default function UnitVsUnit() {
                   setTargetFaction(event.target.value);
                   setTargetUnitId("");
                   setTargetBattleShocked(false);
+                  setTargetStrengthState("full");
                 }}
               >
                 <option value="">Choose faction</option>
@@ -834,6 +846,19 @@ export default function UnitVsUnit() {
               />
               <small>Inches; 0 means unknown</small>
             </label>
+            <label>
+              <span>Target unit strength</span>
+              <select
+                value={targetStrengthState}
+                onChange={(event) =>
+                  setTargetStrengthState(event.target.value as TargetStrengthState)
+                }
+              >
+                <option value="full">Full strength</option>
+                <option value="below_starting">Below Starting Strength</option>
+                <option value="below_half">Below Half-strength</option>
+              </select>
+            </label>
             {targetUnit && (
               <div className="target-sequence">
                 <CombatPresetSelector
@@ -846,6 +871,7 @@ export default function UnitVsUnit() {
                   attackerCharged={attackerCharged}
                   attackerBattleShocked={attackerBattleShocked}
                   targetBattleShocked={targetBattleShocked}
+                  targetStrengthState={targetStrengthState}
                 />
                 <div className="sequence-heading">
                   <div>

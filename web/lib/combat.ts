@@ -66,6 +66,7 @@ export type CombatProfile = {
   attackerCharged: boolean;
   attackerBattleShocked: boolean;
   targetBattleShocked: boolean;
+  targetStrengthState: TargetStrengthState;
   withinHalfRange: boolean;
   torrent: boolean;
   blast: boolean;
@@ -82,6 +83,8 @@ export type CombatProfile = {
   rerollWounds: boolean;
   rerollWoundOnes: boolean;
 };
+
+export type TargetStrengthState = "full" | "below_starting" | "below_half";
 
 export type RollDetail = {
   label: string;
@@ -239,6 +242,7 @@ export const DEFAULT_PROFILE: CombatProfile = {
   attackerCharged: false,
   attackerBattleShocked: false,
   targetBattleShocked: false,
+  targetStrengthState: "full",
   withinHalfRange: false,
   torrent: false,
   blast: false,
@@ -283,6 +287,12 @@ export function normalizeProfile(input: unknown): CombatProfile {
     if (typeof value !== "boolean") throw new Error(`${key} must be a boolean`);
     return value;
   };
+  const targetStrengthState = Object.hasOwn(source, "targetStrengthState")
+    ? source.targetStrengthState
+    : DEFAULT_PROFILE.targetStrengthState;
+  if (!(["full", "below_starting", "below_half"] as unknown[]).includes(targetStrengthState)) {
+    throw new Error("targetStrengthState must be full, below_starting, or below_half");
+  }
   const nullableNumberValue = (
     key: "damageReplacement" | "firstFailedSaveDamageReplacement",
     minimum: number,
@@ -378,6 +388,7 @@ export function normalizeProfile(input: unknown): CombatProfile {
     attackerCharged: booleanValue("attackerCharged"),
     attackerBattleShocked: booleanValue("attackerBattleShocked"),
     targetBattleShocked: booleanValue("targetBattleShocked"),
+    targetStrengthState: targetStrengthState as TargetStrengthState,
     withinHalfRange: booleanValue("withinHalfRange"),
     torrent: booleanValue("torrent"),
     blast: booleanValue("blast"),

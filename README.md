@@ -167,6 +167,13 @@ matching state. Aura range, leadership, objective, observer, and mixed-clause
 Battle-shock rules remain explicit choices rather than being partially
 automated.
 
+Direct attack clauses that require the target to be Below Half-strength, or not
+Below Half-strength, use an editable three-state target value: full strength,
+below Starting Strength, or Below Half-strength. This distinction keeps a
+not-Below-Half-strength rule active in both of its valid states. Leader, aura,
+named-weapon-only, phase-preamble, and multi-threshold strength clauses remain
+explicit choices until their complete eligibility can be represented.
+
 Optional rules used when an attack is allocated have an explicit deterministic
 policy: skip the configured number of allocated attacks, then spend one use per
 attack before its Hit roll. A use is spent even if that attack misses, and any
@@ -451,7 +458,8 @@ A direct profile supplies `attacks`, `hit`, `strength`, `ap`, `damage`,
 expression such as `D6+2`. Optional parameters include `weaponCount`, `model`,
 `models`, `invuln`, `fnp`, `reduction`, `criticalHits`, `criticalWounds`,
 `melta`, `distance` (in inches; `0` means unknown), `charged`,
-`attackerBattleShocked`, `targetBattleShocked` (booleans), `damageDivisor`,
+`attackerBattleShocked`, `targetBattleShocked` (booleans),
+`targetStrength` (`full`, `below-starting`, or `below-half`), `damageDivisor`,
 `attacksReplacement`, `attacksMultiplier`, `attacksModifier`,
 `strengthReplacement`, `strengthMultiplier`, `strengthModifier`, `damageReplacement`,
 `damageMultiplier`, `damageModifier`, `firstFailedSaveDamageReplacement`,
@@ -465,11 +473,14 @@ comma-separated `torrent`, `blast`, `heavy`, `lance`, `cover`, `ignores-cover`,
 `ap=4`.
 
 Model vs Model, Unit vs Unit, and Play Mode expose the same target distance,
-attacker charge state, and attacker/target Battle-shock state. A catalogue agent request can pass `charged=true` to
+attacker charge state, attacker/target Battle-shock state, and target unit-strength
+state. A catalogue agent request can pass `charged=true` to
 activate every compatible, unambiguous charge-triggered source rule without an
 `attackerPreset` parameter.
 Likewise, `targetBattleShocked=true` or `attackerBattleShocked=true` resolves
 compatible exact source rules before later numeric overrides are applied.
+`targetStrength=below-half` and the other two strength values likewise resolve
+compatible exact target-strength rules before numeric overrides.
 Distance-gated source abilities apply only when the value is known and within
 their published limit; `0` deliberately means unknown and leaves them inactive.
 

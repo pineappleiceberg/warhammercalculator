@@ -164,6 +164,9 @@ CREATE TABLE unit_combat_presets (
         CHECK (requires_target_battle_shocked IN (0, 1)),
     requires_attacker_not_battle_shocked INTEGER NOT NULL DEFAULT 0
         CHECK (requires_attacker_not_battle_shocked IN (0, 1)),
+    required_target_strength_state TEXT
+        CHECK (required_target_strength_state IN
+            ('below_starting', 'below_half', 'not_below_half')),
     hit_modifier INTEGER NOT NULL CHECK (hit_modifier BETWEEN -1 AND 1),
     hit_modifier_role TEXT CHECK (hit_modifier_role IN ('attacker', 'target', 'either')),
     hit_modifier_subject TEXT CHECK (hit_modifier_subject IN
@@ -491,6 +494,23 @@ def combat_battle_shock_requirements(text: str) -> tuple[bool, bool]:
         )
     )
     return target_battle_shocked, attacker_not_battle_shocked
+
+
+def combat_target_strength_requirement(text: str) -> str | None:
+    normalized = plain_text(text).strip()
+    match = re.fullmatch(
+        r"Each time (?:this model|a model in this unit) makes an? "
+        r"(?:(?:ranged|melee) )?attack that targets (?:an enemy |a )?unit "
+        r"(?:that is )?(not )?Below Half-strength, "
+        r"(?:add 1 to the (?:Hit|Wound) roll(?: and add 1 to the (?:Hit|Wound) roll)?|"
+        r"you can re-roll the (?:Hit|Wound) roll(?: and you can re-roll the "
+        r"(?:Hit|Wound) roll)?)\.",
+        normalized,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    return "not_below_half" if match.group(1) else "below_half"
 
 
 def combat_effect_application(text: str, effect_start: int) -> tuple[str, str]:
@@ -1352,6 +1372,7 @@ def combat_preset(
         effects["requires_target_battle_shocked"],
         effects["requires_attacker_not_battle_shocked"],
     ) = combat_battle_shock_requirements(text)
+    effects["required_target_strength_state"] = combat_target_strength_requirement(text)
     return effects
 
 
@@ -1363,6 +1384,7 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
             "requires_attacker_charge",
             "requires_target_battle_shocked",
             "requires_attacker_not_battle_shocked",
+            "required_target_strength_state",
         )
     ):
         return "automatic"
@@ -1652,12 +1674,13 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     is_exclusive_choice, activation, weapon_scope, maximum_target_distance,
                     requires_attacker_charge, requires_target_battle_shocked,
                     requires_attacker_not_battle_shocked,
+                    required_target_strength_state,
                     hit_modifier, hit_modifier_role,
                     hit_modifier_subject, wound_modifier, wound_modifier_role,
                     wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                     hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
                     wound_reroll_subject)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     ability_position,
@@ -1671,6 +1694,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     int(preset["requires_attacker_charge"]),
                     int(preset["requires_target_battle_shocked"]),
                     int(preset["requires_attacker_not_battle_shocked"]),
+                    preset["required_target_strength_state"],
                     preset["hit_modifier"],
                     preset.get("hit_modifier_role"),
                     preset.get("hit_modifier_subject"),
@@ -1849,7 +1873,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "31"),
+                    ("schema_version", "32"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

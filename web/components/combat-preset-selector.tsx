@@ -19,6 +19,7 @@ type Props = {
   attackerCharged?: boolean;
   attackerBattleShocked?: boolean;
   targetBattleShocked?: boolean;
+  targetStrengthState?: "full" | "below_starting" | "below_half";
 };
 
 export function CombatPresetSelector({
@@ -32,6 +33,7 @@ export function CombatPresetSelector({
   attackerCharged = false,
   attackerBattleShocked = false,
   targetBattleShocked = false,
+  targetStrengthState = "full",
 }: Props) {
   const available = presets.filter(
     (preset) => combatPresetRequiresActivation(preset) && combatPresetSupportsRole(preset, role),
@@ -88,6 +90,24 @@ export function CombatPresetSelector({
               <small>
                 Requires the attacker not to be Battle-shocked
                 {attackerBattleShocked ? " · inactive" : " · active"}
+              </small>
+            ) : null}
+            {preset.requiredTargetStrengthState ? (
+              <small>
+                Requires target{" "}
+                {preset.requiredTargetStrengthState === "below_half"
+                  ? "Below Half-strength"
+                  : preset.requiredTargetStrengthState === "below_starting"
+                    ? "below Starting Strength"
+                    : "not Below Half-strength"}
+                {(preset.requiredTargetStrengthState === "below_half" &&
+                  targetStrengthState === "below_half") ||
+                (preset.requiredTargetStrengthState === "below_starting" &&
+                  targetStrengthState !== "full") ||
+                (preset.requiredTargetStrengthState === "not_below_half" &&
+                  targetStrengthState !== "below_half")
+                  ? " · active"
+                  : " · inactive"}
               </small>
             ) : null}
             <small>Affects {combatPresetSubjectSummary(preset, role)}</small>

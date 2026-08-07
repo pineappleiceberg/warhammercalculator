@@ -128,6 +128,7 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
       targetDistance: 9,
       attackerBattleShocked: true,
       targetBattleShocked: true,
+      targetStrengthState: "below_half",
     },
     history: [
       {
@@ -145,6 +146,7 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   assert.equal(recovery.profile.targetDistance, 9);
   assert.equal(recovery.profile.attackerBattleShocked, true);
   assert.equal(recovery.profile.targetBattleShocked, true);
+  assert.equal(recovery.profile.targetStrengthState, "below_half");
   assert.deepEqual(parsePlayRecovery(JSON.parse(JSON.stringify(recovery))), recovery);
   assert.throws(
     () => parsePlayRecovery({ ...recovery, history: [{ ...recovery.history[0], damage: -1 }] }),

@@ -898,6 +898,7 @@ export default function Home() {
     attackerCharged = profile.attackerCharged,
     attackerBattleShocked = profile.attackerBattleShocked,
     targetBattleShocked = profile.targetBattleShocked,
+    targetStrengthState = profile.targetStrengthState,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -910,6 +911,7 @@ export default function Home() {
       attackerCharged,
       attackerBattleShocked,
       targetBattleShocked,
+      targetStrengthState,
     );
   const withActivePresets = (
     current: Profile,
@@ -993,6 +995,7 @@ export default function Home() {
         baseProfile.attackerCharged,
         baseProfile.attackerBattleShocked,
         baseProfile.targetBattleShocked,
+        baseProfile.targetStrengthState,
       ),
       selectedPresets(
         selectedTargetUnit,
@@ -1003,6 +1006,7 @@ export default function Home() {
         baseProfile.attackerCharged,
         baseProfile.attackerBattleShocked,
         baseProfile.targetBattleShocked,
+        baseProfile.targetStrengthState,
       ),
       weapon?.type ?? "Ranged",
       {
@@ -1012,6 +1016,7 @@ export default function Home() {
         attackerCharged: baseProfile.attackerCharged,
         attackerBattleShocked: baseProfile.attackerBattleShocked,
         targetBattleShocked: baseProfile.targetBattleShocked,
+        targetStrengthState: baseProfile.targetStrengthState,
       },
     ) as Profile;
   };
@@ -1296,6 +1301,7 @@ export default function Home() {
                   attackerCharged={profile.attackerCharged}
                   attackerBattleShocked={profile.attackerBattleShocked}
                   targetBattleShocked={profile.targetBattleShocked}
+                  targetStrengthState={profile.targetStrengthState}
                 />
               )}
               <DiceField
@@ -1391,7 +1397,11 @@ export default function Home() {
                       setActiveTargetPresetIds([]);
                       setProfile((current) =>
                         withActivePresets(
-                          { ...current, targetBattleShocked: false },
+                          {
+                            ...current,
+                            targetBattleShocked: false,
+                            targetStrengthState: "full",
+                          },
                           selectedWeapon,
                           activeAttackerPresetIds,
                           [],
@@ -1418,7 +1428,11 @@ export default function Home() {
                       setActiveTargetPresetIds([]);
                       setProfile((current) =>
                         withActivePresets(
-                          { ...current, targetBattleShocked: false },
+                          {
+                            ...current,
+                            targetBattleShocked: false,
+                            targetStrengthState: "full",
+                          },
                           selectedWeapon,
                           activeAttackerPresetIds,
                           [],
@@ -1480,6 +1494,7 @@ export default function Home() {
                   attackerCharged={profile.attackerCharged}
                   attackerBattleShocked={profile.attackerBattleShocked}
                   targetBattleShocked={profile.targetBattleShocked}
+                  targetStrengthState={profile.targetStrengthState}
                 />
               )}
               <div className="field-grid three">
@@ -1839,6 +1854,24 @@ export default function Home() {
                   )
                 }
               />
+              <label className="number-field">
+                <span>Target unit strength</span>
+                <select
+                  value={profile.targetStrengthState}
+                  onChange={(event) =>
+                    setProfile((current) =>
+                      withActivePresets({
+                        ...current,
+                        targetStrengthState: event.target.value as Profile["targetStrengthState"],
+                      }),
+                    )
+                  }
+                >
+                  <option value="full">Full strength</option>
+                  <option value="below_starting">Below Starting Strength</option>
+                  <option value="below_half">Below Half-strength</option>
+                </select>
+              </label>
               <Toggle
                 label="Within half range"
                 checked={profile.withinHalfRange}

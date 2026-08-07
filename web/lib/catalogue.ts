@@ -105,6 +105,7 @@ export type CatalogueCombatPreset = {
   requiresAttackerCharge?: boolean;
   requiresTargetBattleShocked?: boolean;
   requiresAttackerNotBattleShocked?: boolean;
+  requiredTargetStrengthState?: "below_starting" | "below_half" | "not_below_half";
   hitModifier: number;
   hitModifierRole: CombatPresetRole | null;
   hitModifierSubject: CombatPresetSubject | null;
