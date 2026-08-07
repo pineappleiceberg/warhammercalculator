@@ -899,6 +899,7 @@ export default function Home() {
     attackerBattleShocked = profile.attackerBattleShocked,
     targetBattleShocked = profile.targetBattleShocked,
     targetStrengthState = profile.targetStrengthState,
+    attackerRemainedStationary = profile.attackerRemainedStationary,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -912,6 +913,7 @@ export default function Home() {
       attackerBattleShocked,
       targetBattleShocked,
       targetStrengthState,
+      attackerRemainedStationary,
     );
   const withActivePresets = (
     current: Profile,
@@ -996,6 +998,7 @@ export default function Home() {
         baseProfile.attackerBattleShocked,
         baseProfile.targetBattleShocked,
         baseProfile.targetStrengthState,
+        baseProfile.attackerRemainedStationary,
       ),
       selectedPresets(
         selectedTargetUnit,
@@ -1007,6 +1010,7 @@ export default function Home() {
         baseProfile.attackerBattleShocked,
         baseProfile.targetBattleShocked,
         baseProfile.targetStrengthState,
+        baseProfile.attackerRemainedStationary,
       ),
       weapon?.type ?? "Ranged",
       {
@@ -1017,6 +1021,7 @@ export default function Home() {
         attackerBattleShocked: baseProfile.attackerBattleShocked,
         targetBattleShocked: baseProfile.targetBattleShocked,
         targetStrengthState: baseProfile.targetStrengthState,
+        attackerRemainedStationary: baseProfile.attackerRemainedStationary,
       },
     ) as Profile;
   };
@@ -1215,7 +1220,12 @@ export default function Home() {
                       setActiveAttackerPresetIds([]);
                       setProfile((current) =>
                         withActivePresets(
-                          { ...current, attackerCharged: false, attackerBattleShocked: false },
+                          {
+                            ...current,
+                            attackerCharged: false,
+                            attackerRemainedStationary: false,
+                            attackerBattleShocked: false,
+                          },
                           selectedWeapon,
                           [],
                           activeTargetPresetIds,
@@ -1242,7 +1252,12 @@ export default function Home() {
                       setActiveAttackerPresetIds([]);
                       setProfile((current) =>
                         withActivePresets(
-                          { ...current, attackerCharged: false, attackerBattleShocked: false },
+                          {
+                            ...current,
+                            attackerCharged: false,
+                            attackerRemainedStationary: false,
+                            attackerBattleShocked: false,
+                          },
                           selectedWeapon,
                           [],
                           activeTargetPresetIds,
@@ -1299,6 +1314,7 @@ export default function Home() {
                   title="Active attacking abilities"
                   targetDistance={profile.targetDistance}
                   attackerCharged={profile.attackerCharged}
+                  attackerRemainedStationary={profile.attackerRemainedStationary}
                   attackerBattleShocked={profile.attackerBattleShocked}
                   targetBattleShocked={profile.targetBattleShocked}
                   targetStrengthState={profile.targetStrengthState}
@@ -1492,6 +1508,7 @@ export default function Home() {
                   title="Active defensive abilities"
                   targetDistance={profile.targetDistance}
                   attackerCharged={profile.attackerCharged}
+                  attackerRemainedStationary={profile.attackerRemainedStationary}
                   attackerBattleShocked={profile.attackerBattleShocked}
                   targetBattleShocked={profile.targetBattleShocked}
                   targetStrengthState={profile.targetStrengthState}
@@ -1837,6 +1854,15 @@ export default function Home() {
                 }
               />
               <Toggle
+                label="Attacker remained stationary"
+                checked={profile.attackerRemainedStationary}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({ ...current, attackerRemainedStationary: value }),
+                  )
+                }
+              />
+              <Toggle
                 label="Attacker is Battle-shocked"
                 checked={profile.attackerBattleShocked}
                 onChange={(value) =>
@@ -1878,7 +1904,7 @@ export default function Home() {
                 onChange={(value) => set("withinHalfRange", value)}
               />
               <Toggle
-                label="Heavy · stationary"
+                label="Heavy bonus override"
                 checked={profile.heavyActive}
                 onChange={(value) => set("heavyActive", value)}
               />

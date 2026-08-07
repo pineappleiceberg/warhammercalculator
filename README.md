@@ -160,6 +160,13 @@ is disabled. Rules that also allow being charged, combine a charge with a
 closest-target alternative, or change how exclusive modes are selected remain
 explicit choices until every branch can be represented exactly.
 
+Unambiguous rules triggered by the attacker Remaining Stationary use the
+editable `attackerRemainedStationary` state. The same state activates the +1 Hit
+benefit of a catalogue weapon with the Heavy ability. Rules that also require an
+Order, a particular model in the unit, or another independent condition remain
+explicit choices. A granted Heavy ability does not provide its bonus unless the
+attacker also remained stationary.
+
 Direct attack clauses that require a Battle-shocked target, or require the
 attacker not to be Battle-shocked, use the editable `targetBattleShocked` and
 `attackerBattleShocked` states. The source-backed rule activates only in the
@@ -457,7 +464,7 @@ A direct profile supplies `attacks`, `hit`, `strength`, `ap`, `damage`,
 `attacks`, `damage`, `sustainedHits`, and `rapidFire` accept a number or dice
 expression such as `D6+2`. Optional parameters include `weaponCount`, `model`,
 `models`, `invuln`, `fnp`, `reduction`, `criticalHits`, `criticalWounds`,
-`melta`, `distance` (in inches; `0` means unknown), `charged`,
+`melta`, `distance` (in inches; `0` means unknown), `charged`, `stationary`,
 `attackerBattleShocked`, `targetBattleShocked` (booleans),
 `targetStrength` (`full`, `below-starting`, or `below-half`), `damageDivisor`,
 `attacksReplacement`, `attacksMultiplier`, `attacksModifier`,
@@ -473,10 +480,12 @@ comma-separated `torrent`, `blast`, `heavy`, `lance`, `cover`, `ignores-cover`,
 `ap=4`.
 
 Model vs Model, Unit vs Unit, and Play Mode expose the same target distance,
-attacker charge state, attacker/target Battle-shock state, and target unit-strength
-state. A catalogue agent request can pass `charged=true` to
+attacker charge and stationary states, attacker/target Battle-shock state, and
+target unit-strength state. A catalogue agent request can pass `charged=true` to
 activate every compatible, unambiguous charge-triggered source rule without an
 `attackerPreset` parameter.
+`stationary=true` likewise activates exact stationary rules and the Heavy bonus
+for compatible catalogue weapons.
 Likewise, `targetBattleShocked=true` or `attackerBattleShocked=true` resolves
 compatible exact source rules before later numeric overrides are applied.
 `targetStrength=below-half` and the other two strength values likewise resolve

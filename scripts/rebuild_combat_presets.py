@@ -26,6 +26,8 @@ CREATE TABLE unit_combat_presets (
     maximum_target_distance INTEGER CHECK (maximum_target_distance > 0),
     requires_attacker_charge INTEGER NOT NULL DEFAULT 0
         CHECK (requires_attacker_charge IN (0, 1)),
+    requires_attacker_stationary INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_attacker_stationary IN (0, 1)),
     requires_target_battle_shocked INTEGER NOT NULL DEFAULT 0
         CHECK (requires_target_battle_shocked IN (0, 1)),
     requires_attacker_not_battle_shocked INTEGER NOT NULL DEFAULT 0
@@ -103,7 +105,7 @@ def main() -> None:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
         connection.execute(
-            "UPDATE metadata SET value = '32' WHERE key = 'schema_version'"
+            "UPDATE metadata SET value = '33' WHERE key = 'schema_version'"
         )
         connection.execute("PRAGMA optimize")
         connection.commit()

@@ -52,6 +52,7 @@ const booleanParameters = [
   ["characteristicModifierStrength", ["characteristicModifierStrength"]],
   ["characteristicModifierDamage", ["characteristicModifierDamage"]],
   ["attackerCharged", ["attackerCharged", "charged"]],
+  ["attackerRemainedStationary", ["attackerRemainedStationary", "stationary"]],
   ["attackerBattleShocked", ["attackerBattleShocked"]],
   ["targetBattleShocked", ["targetBattleShocked", "battleShocked"]],
   ["withinHalfRange", ["withinHalfRange", "halfRange"]],

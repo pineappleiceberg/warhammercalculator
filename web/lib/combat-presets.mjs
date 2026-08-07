@@ -92,6 +92,7 @@ export function combatPresetMeetsEligibility(
   attackerBattleShocked = false,
   targetBattleShocked = false,
   targetStrengthState = "full",
+  attackerRemainedStationary = false,
 ) {
   const targets = new Set(targetKeywords.map(normalizedKeyword));
   const attacks = new Set(attackKeywords.map(normalizedKeyword));
@@ -108,6 +109,7 @@ export function combatPresetMeetsEligibility(
     distanceEligible &&
     strengthEligible &&
     (!preset.requiresAttackerCharge || attackerCharged) &&
+    (!preset.requiresAttackerStationary || attackerRemainedStationary) &&
     (!preset.requiresTargetBattleShocked || targetBattleShocked) &&
     (!preset.requiresAttackerNotBattleShocked || !attackerBattleShocked) &&
     (preset.effects ?? []).every(
@@ -132,6 +134,7 @@ export function selectedAndAutomaticCombatPresets(
   attackerBattleShocked = false,
   targetBattleShocked = false,
   targetStrengthState = "full",
+  attackerRemainedStationary = false,
 ) {
   const selected = new Set(selectedIds);
   return presets.filter(
@@ -147,6 +150,7 @@ export function selectedAndAutomaticCombatPresets(
         attackerBattleShocked,
         targetBattleShocked,
         targetStrengthState,
+        attackerRemainedStationary,
       ),
   );
 }
@@ -193,6 +197,7 @@ export function combatPresetEffects(
   attackerBattleShocked = false,
   targetBattleShocked = false,
   targetStrengthState = "full",
+  attackerRemainedStationary = false,
 ) {
   const applicable = presets.filter(
     (preset) =>
@@ -207,6 +212,7 @@ export function combatPresetEffects(
         attackerBattleShocked,
         targetBattleShocked,
         targetStrengthState,
+        attackerRemainedStationary,
       ),
   );
   const hitModifiers = applicable.filter((preset) =>
@@ -436,6 +442,7 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
       context.attackerBattleShocked ?? false,
       context.targetBattleShocked ?? false,
       context.targetStrengthState ?? "full",
+      context.attackerRemainedStationary ?? false,
     ),
   );
   const candidates = effects.map((effect) =>
@@ -504,6 +511,7 @@ export function applyCombatPresets(
     context.attackerBattleShocked ?? profile.attackerBattleShocked ?? false,
     context.targetBattleShocked ?? profile.targetBattleShocked ?? false,
     context.targetStrengthState ?? profile.targetStrengthState ?? "full",
+    context.attackerRemainedStationary ?? profile.attackerRemainedStationary ?? false,
   );
   const target = combatPresetEffects(
     targetPresets,
@@ -517,6 +525,7 @@ export function applyCombatPresets(
     context.attackerBattleShocked ?? profile.attackerBattleShocked ?? false,
     context.targetBattleShocked ?? profile.targetBattleShocked ?? false,
     context.targetStrengthState ?? profile.targetStrengthState ?? "full",
+    context.attackerRemainedStationary ?? profile.attackerRemainedStationary ?? false,
   );
   const attacksReplacements = [attacker.attacksReplacement, target.attacksReplacement].filter(
     (value) => value > 0,
@@ -656,7 +665,14 @@ export function applyCombatPresets(
       twinLinked: profile.twinLinked || attacker.twinLinked || target.twinLinked,
       ignoresCover: profile.ignoresCover || attacker.ignoresCover || target.ignoresCover,
       lanceActive: profile.lanceActive || attacker.lanceActive || target.lanceActive,
-      heavyActive: profile.heavyActive || attacker.heavyActive || target.heavyActive,
+      heavyActive:
+        profile.heavyActive ||
+        ((context.attackerRemainedStationary ?? profile.attackerRemainedStationary ?? false) &&
+          (attacker.heavyActive ||
+            target.heavyActive ||
+            (context.attackKeywords ?? []).some(
+              (keyword) => normalizedKeyword(keyword) === "heavy",
+            ))),
       sustainedHits: combined.sustainedHits.value,
       sustainedHitsDice: combined.sustainedHits.diceCount,
       sustainedHitsSides: combined.sustainedHits.diceSides,

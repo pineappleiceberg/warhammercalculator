@@ -63,6 +63,7 @@ const defaults = {
   melta: 0,
   targetDistance: 0,
   attackerCharged: false,
+  attackerRemainedStationary: false,
   attackerBattleShocked: false,
   targetBattleShocked: false,
   targetStrengthState: "full",
@@ -183,6 +184,7 @@ test("canonical agent parameters round-trip every supported profile field", () =
     rapidFire: 2,
     targetDistance: 9,
     attackerCharged: true,
+    attackerRemainedStationary: true,
     attackerBattleShocked: true,
     targetBattleShocked: true,
     targetStrengthState: "below_half",
@@ -192,6 +194,40 @@ test("canonical agent parameters round-trip every supported profile field", () =
   const search = canonicalAgentParameters(expected);
   const actual = parseAgentProfile(search, defaults);
   assert.deepEqual(actual, expected);
+});
+
+test("catalogue agent stationary state selects exact automatic rules", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const porphyrion = catalogue.units.find((unit) => unit.name === "Acastus Knight Porphyrion");
+  const bastion = porphyrion.combatPresets.find((preset) => preset.name === "Bastion of Firepower");
+  const weapon = porphyrion.weapons.find((entry) => entry.name === "Acastus autocannon");
+  const selected = (stationary) =>
+    selectedAndAutomaticCombatPresets(
+      porphyrion.combatPresets,
+      [],
+      weapon.type,
+      weapon.name,
+      [],
+      attackKeywordsForWeapon(weapon),
+      0,
+      false,
+      false,
+      false,
+      "full",
+      stationary,
+    );
+  assert.equal(bastion.requiresAttackerStationary, true);
+  assert.deepEqual(selected(false), []);
+  assert.deepEqual(
+    selected(true).map((preset) => preset.name),
+    ["Bastion of Firepower"],
+  );
+  assert.equal(
+    parseAgentProfile("stationary=true", defaults, false).attackerRemainedStationary,
+    true,
+  );
 });
 
 test("catalogue agent query resolves stable IDs or unambiguous names", async () => {

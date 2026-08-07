@@ -17,6 +17,7 @@ type Props = {
   hint?: string;
   targetDistance?: number;
   attackerCharged?: boolean;
+  attackerRemainedStationary?: boolean;
   attackerBattleShocked?: boolean;
   targetBattleShocked?: boolean;
   targetStrengthState?: "full" | "below_starting" | "below_half";
@@ -31,6 +32,7 @@ export function CombatPresetSelector({
   hint,
   targetDistance = 0,
   attackerCharged = false,
+  attackerRemainedStationary = false,
   attackerBattleShocked = false,
   targetBattleShocked = false,
   targetStrengthState = "full",
@@ -78,6 +80,12 @@ export function CombatPresetSelector({
               <small>
                 Requires attacker to have charged this turn
                 {attackerCharged ? " · active" : " · inactive"}
+              </small>
+            ) : null}
+            {preset.requiresAttackerStationary ? (
+              <small>
+                Requires attacker to have remained stationary
+                {attackerRemainedStationary ? " · active" : " · inactive"}
               </small>
             ) : null}
             {preset.requiresTargetBattleShocked ? (

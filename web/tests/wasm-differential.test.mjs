@@ -2032,6 +2032,53 @@ test("source-backed charge rules require the explicit attacker charge state", as
   assert.equal(raiderProfile.ap, 1);
 });
 
+test("stationary state activates exact source rules and Heavy weapons", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const porphyrion = catalogue.units.find((unit) => unit.name === "Acastus Knight Porphyrion");
+  const bastion = porphyrion.combatPresets.find((preset) => preset.name === "Bastion of Firepower");
+  const autocannon = porphyrion.weapons.find((weapon) => weapon.name === "Acastus autocannon");
+  const base = {
+    weaponName: autocannon.name,
+    attackerRemainedStationary: false,
+    lethalHits: false,
+    heavyActive: false,
+  };
+  assert.equal(bastion.requiresAttackerStationary, true);
+  assert.equal(applyCombatPresets(base, [bastion], [], "Ranged").lethalHits, false);
+  assert.equal(
+    applyCombatPresets({ ...base, attackerRemainedStationary: true }, [bastion], [], "Ranged")
+      .lethalHits,
+    true,
+  );
+
+  const heavyContext = { attackKeywords: ["ranged", "heavy"] };
+  assert.equal(applyCombatPresets(base, [], [], "Ranged", heavyContext).heavyActive, false);
+  assert.equal(
+    applyCombatPresets(
+      { ...base, attackerRemainedStationary: true },
+      [],
+      [],
+      "Ranged",
+      heavyContext,
+    ).heavyActive,
+    true,
+  );
+
+  const tycho = catalogue.units.find((unit) => unit.name === "Captain Tycho");
+  const grantedHeavy = tycho.combatPresets.find((preset) =>
+    preset.effects.some((effect) => effect.type === "heavy"),
+  );
+  assert.equal(applyCombatPresets(base, [grantedHeavy], [], "Ranged").heavyActive, false);
+  assert.equal(
+    applyCombatPresets({ ...base, attackerRemainedStationary: true }, [grantedHeavy], [], "Ranged")
+      .heavyActive,
+    true,
+  );
+  assert.ok(lessThanOrEqual(exactMean(), exactMean({ flags: 32 })));
+});
+
 test("source-backed Battle-shock rules require their exact attacker or target state", async () => {
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),

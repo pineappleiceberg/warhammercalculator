@@ -160,6 +160,8 @@ CREATE TABLE unit_combat_presets (
     maximum_target_distance INTEGER CHECK (maximum_target_distance > 0),
     requires_attacker_charge INTEGER NOT NULL DEFAULT 0
         CHECK (requires_attacker_charge IN (0, 1)),
+    requires_attacker_stationary INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_attacker_stationary IN (0, 1)),
     requires_target_battle_shocked INTEGER NOT NULL DEFAULT 0
         CHECK (requires_target_battle_shocked IN (0, 1)),
     requires_attacker_not_battle_shocked INTEGER NOT NULL DEFAULT 0
@@ -470,6 +472,22 @@ def combat_requires_attacker_charge(text: str) -> bool:
         lowered,
     )
     return bool(triggered_until_end or attack_condition)
+
+
+def combat_requires_attacker_stationary(text: str) -> bool:
+    normalized = plain_text(text).strip()
+    return bool(
+        re.fullmatch(
+            r"(?:Each time (?:this model|this unit) Remains Stationary, until "
+            r"(?:the end of the turn|the start of your next Movement phase)|"
+            r"In your Movement phase, if this model Remains Stationary, until the end "
+            r"of the turn), ranged weapons equipped by (?:this model|models in this unit) "
+            r"have the \[(?:LETHAL HITS|DEVASTATING WOUNDS|IGNORES COVER|"
+            r"SUSTAINED HITS 1)\] ability\.",
+            normalized,
+            re.IGNORECASE,
+        )
+    )
 
 
 def combat_battle_shock_requirements(text: str) -> tuple[bool, bool]:
@@ -1368,6 +1386,7 @@ def combat_preset(
     effects["weapon_scope"] = combat_weapon_scope(text)
     effects["maximum_target_distance"] = combat_maximum_target_distance(text, effects)
     effects["requires_attacker_charge"] = combat_requires_attacker_charge(text)
+    effects["requires_attacker_stationary"] = combat_requires_attacker_stationary(text)
     (
         effects["requires_target_battle_shocked"],
         effects["requires_attacker_not_battle_shocked"],
@@ -1382,6 +1401,7 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
         preset.get(field)
         for field in (
             "requires_attacker_charge",
+            "requires_attacker_stationary",
             "requires_target_battle_shocked",
             "requires_attacker_not_battle_shocked",
             "required_target_strength_state",
@@ -1672,7 +1692,8 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                 """INSERT INTO unit_combat_presets
                    (datasheet_id, ability_position, preset_position, name, description_text,
                     is_exclusive_choice, activation, weapon_scope, maximum_target_distance,
-                    requires_attacker_charge, requires_target_battle_shocked,
+                    requires_attacker_charge, requires_attacker_stationary,
+                    requires_target_battle_shocked,
                     requires_attacker_not_battle_shocked,
                     required_target_strength_state,
                     hit_modifier, hit_modifier_role,
@@ -1680,7 +1701,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                     hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
                     wound_reroll_subject)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     ability_position,
@@ -1692,6 +1713,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     preset["weapon_scope"],
                     preset["maximum_target_distance"],
                     int(preset["requires_attacker_charge"]),
+                    int(preset["requires_attacker_stationary"]),
                     int(preset["requires_target_battle_shocked"]),
                     int(preset["requires_attacker_not_battle_shocked"]),
                     preset["required_target_strength_state"],
@@ -1873,7 +1895,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "32"),
+                    ("schema_version", "33"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

@@ -18,8 +18,8 @@ priority over feature count.
 
 1. Extend the source-backed rules eligibility layer beyond phase, exact
    target/Psychic keywords, direct target distance, charge state, direct
-   Battle-shock state, and direct target unit-strength state to other compound
-   conditions that currently require manual interpretation.
+   Battle-shock state, direct target unit-strength state, and attacker stationary
+   state to other compound conditions that currently require manual interpretation.
 2. Represent model-count-, casualty-, and nearby-unit-scaled Attacks modifiers
    as explicit reproducible state instead of requiring manual arithmetic.
 3. Extend bearer and subset-model defenses beyond composition-proven
@@ -27,6 +27,18 @@ priority over feature count.
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added exact attacker stationary eligibility and corrected Heavy
+  activation in catalogue workflows. SQLite schema 33 marks eight unambiguous
+  Remains Stationary rules automatic across Bastion of Firepower, Mark the
+  Target, Punishing Salvoes, Signum, and Targeter Optics. Order-dependent and
+  leader-dependent clauses remain manual. Model vs Model, Unit vs Unit, Play
+  Mode recovery, normalized API input, and static agent URLs preserve an
+  editable stationary state. Catalogue Heavy weapons now receive +1 Hit from
+  that state, while granting the Heavy ability no longer incorrectly activates
+  its bonus without remaining stationary. Parser exclusions, generated-data
+  snapshots, URL round trips, recovery, and C/Wasm composition regressions
+  cover active and inactive boundaries.
 
 - 2026-08-07: Added exact direct target unit-strength eligibility. SQLite
   schema 32 marks 15 unambiguous rules automatic: six activate only against a

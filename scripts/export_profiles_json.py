@@ -166,7 +166,8 @@ def export(database: Path, output: Path) -> None:
         for row in connection.execute(
             """SELECT datasheet_id, ability_position, preset_position, name, description_text,
                       is_exclusive_choice, activation, weapon_scope, maximum_target_distance,
-                      requires_attacker_charge, requires_target_battle_shocked,
+                      requires_attacker_charge, requires_attacker_stationary,
+                      requires_target_battle_shocked,
                       requires_attacker_not_battle_shocked, required_target_strength_state,
                       hit_modifier, hit_modifier_role,
                       hit_modifier_subject, wound_modifier, wound_modifier_role,
@@ -192,6 +193,11 @@ def export(database: Path, output: Path) -> None:
                     **(
                         {"requiresAttackerCharge": True}
                         if row["requires_attacker_charge"]
+                        else {}
+                    ),
+                    **(
+                        {"requiresAttackerStationary": True}
+                        if row["requires_attacker_stationary"]
                         else {}
                     ),
                     **(

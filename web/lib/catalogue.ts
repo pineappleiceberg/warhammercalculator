@@ -103,6 +103,7 @@ export type CatalogueCombatPreset = {
   weaponScope: "Any" | "Ranged" | "Melee";
   maximumTargetDistance?: number;
   requiresAttackerCharge?: boolean;
+  requiresAttackerStationary?: boolean;
   requiresTargetBattleShocked?: boolean;
   requiresAttackerNotBattleShocked?: boolean;
   requiredTargetStrengthState?: "below_starting" | "below_half" | "not_below_half";
@@ -188,7 +189,7 @@ export type CatalogueUnit = {
 export function applyCombatPreset(
   profile: CombatProfile,
   preset: CatalogueCombatPreset,
-  context: { targetKeywords?: string[]; attackKeywords?: string[] } = {},
+  context: CombatPresetContext = {},
 ) {
   return applySelectedCombatPresets(
     profile,
@@ -204,7 +205,7 @@ export function applyCombatPresets(
   attackerPresets: CatalogueCombatPreset[],
   targetPresets: CatalogueCombatPreset[],
   weaponType: "Ranged" | "Melee",
-  context: { targetKeywords?: string[]; attackKeywords?: string[] } = {},
+  context: CombatPresetContext = {},
 ) {
   return applySelectedCombatPresets(
     profile,
@@ -214,6 +215,17 @@ export function applyCombatPresets(
     context,
   ) as CombatProfile;
 }
+
+type CombatPresetContext = {
+  targetKeywords?: string[];
+  attackKeywords?: string[];
+  targetDistance?: number;
+  attackerCharged?: boolean;
+  attackerRemainedStationary?: boolean;
+  attackerBattleShocked?: boolean;
+  targetBattleShocked?: boolean;
+  targetStrengthState?: CombatProfile["targetStrengthState"];
+};
 export type Catalogue = {
   sourceUpdatedAt: string;
   structuredWargear: {

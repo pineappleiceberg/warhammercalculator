@@ -54,6 +54,7 @@ class ProfileDataTests(unittest.TestCase):
                 "additional_effects": [],
                 "maximum_target_distance": None,
                 "requires_attacker_charge": False,
+                "requires_attacker_stationary": False,
                 "requires_target_battle_shocked": False,
                 "requires_attacker_not_battle_shocked": False,
                 "required_target_strength_state": None,
@@ -470,6 +471,33 @@ class ProfileDataTests(unittest.TestCase):
                 "Each time a model in this unit makes a melee attack, if this unit made "
                 "a Charge move or was charged this turn, add 1 to the Wound roll."
             )["requires_attacker_charge"]
+        )
+
+        stationary = combat_preset(
+            "Each time this unit Remains Stationary, until the start of your next "
+            "Movement phase, ranged weapons equipped by models in this unit have the "
+            "[DEVASTATING WOUNDS] ability."
+        )
+        self.assertTrue(stationary["requires_attacker_stationary"])
+        stationary_in_movement = combat_preset(
+            "In your Movement phase, if this model Remains Stationary, until the end "
+            "of the turn, ranged weapons equipped by this model have the "
+            "[SUSTAINED HITS 1] ability."
+        )
+        self.assertTrue(stationary_in_movement["requires_attacker_stationary"])
+        self.assertFalse(
+            combat_preset(
+                "While this unit is being affected by an Order, provided it Remained "
+                "Stationary this turn, all Heavy weapons equipped by models in this "
+                "unit have the [SUSTAINED HITS 1] ability."
+            )["requires_attacker_stationary"]
+        )
+        self.assertFalse(
+            combat_preset(
+                "Each time this unit Remains Stationary, if it includes a Long Fang "
+                "Pack Leader, each time a model in this unit makes a ranged attack, "
+                "re-roll a Hit roll of 1."
+            )["requires_attacker_stationary"]
         )
         self.assertFalse(
             combat_preset(
@@ -903,7 +931,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "32",
+                "33",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1187,7 +1215,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 38), ("inherent", 32), ("situational", 1392)],
+                [("automatic", 46), ("inherent", 32), ("situational", 1384)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1214,6 +1242,32 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     """SELECT count(*) FROM unit_combat_presets
                        WHERE requires_attacker_charge = 1 AND activation != 'automatic'"""
+                ).fetchone()[0],
+                0,
+            )
+            stationary_rows = connection.execute(
+                """SELECT datasheet.name, preset.name
+                   FROM unit_combat_presets AS preset
+                   JOIN datasheets AS datasheet ON datasheet.id = preset.datasheet_id
+                   WHERE preset.requires_attacker_stationary = 1
+                   ORDER BY datasheet.name, preset.name"""
+            ).fetchall()
+            self.assertEqual(len(stationary_rows), 8)
+            self.assertIn(
+                ("Acastus Knight Porphyrion", "Bastion of Firepower"),
+                stationary_rows,
+            )
+            self.assertIn(("Devastator Squad", "Signum"), stationary_rows)
+            self.assertIn(("Knight Crusader", "Punishing Salvoes"), stationary_rows)
+            self.assertNotIn(("Long Fangs", "Fire Discipline"), stationary_rows)
+            self.assertNotIn(
+                ("Field Ordnance Battery", "Rearm, Reload, Fire"), stationary_rows
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_combat_presets
+                       WHERE requires_attacker_stationary = 1
+                         AND activation != 'automatic'"""
                 ).fetchone()[0],
                 0,
             )
