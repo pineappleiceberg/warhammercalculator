@@ -10,6 +10,7 @@ import {
   resolveAgentCatalogueSelection,
 } from "../lib/agent-parameters.mjs";
 import {
+  applyCombatPresets,
   attackKeywordsForWeapon,
   selectedAndAutomaticCombatPresets,
 } from "../lib/combat-presets.mjs";
@@ -62,6 +63,8 @@ const defaults = {
   rapidFire: 0,
   melta: 0,
   targetDistance: 0,
+  attackerUnitModels: 0,
+  nearbyEnemyModels: 0,
   attackerCharged: false,
   attackerRemainedStationary: false,
   attackerAttached: false,
@@ -185,6 +188,8 @@ test("canonical agent parameters round-trip every supported profile field", () =
     criticalWounds: 5,
     rapidFire: 2,
     targetDistance: 9,
+    attackerUnitModels: 11,
+    nearbyEnemyModels: 7,
     attackerCharged: true,
     attackerRemainedStationary: true,
     attackerAttached: true,
@@ -268,6 +273,33 @@ test("catalogue agent Attached-unit state selects exact automatic leader rules",
   );
   assert.equal(parseAgentProfile("attackerAttached=true", defaults, false).attackerAttached, true);
   assert.equal(parseAgentProfile("targetAttached=true", defaults, false).targetAttached, true);
+  assert.equal(parseAgentProfile("unitModels=12", defaults, false).attackerUnitModels, 12);
+  assert.equal(parseAgentProfile("nearbyEnemyModels=9", defaults, false).nearbyEnemyModels, 9);
+});
+
+test("catalogue agent model counts compose exact automatic Attacks scaling", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const gabriel = catalogue.units.find((unit) => unit.name === "Gabriel Seth");
+  const weapon = gabriel.weapons.find((entry) => entry.name === "Blood Reaver");
+  const requested = parseAgentProfile("nearbyEnemyModels=12", defaults, false);
+  const presets = selectedAndAutomaticCombatPresets(
+    gabriel.combatPresets,
+    [],
+    weapon.type,
+    weapon.name,
+    [],
+    attackKeywordsForWeapon(weapon),
+  );
+  const profile = applyCombatPresets(
+    { ...requested, weaponName: weapon.name },
+    presets,
+    [],
+    weapon.type,
+    { nearbyEnemyModels: requested.nearbyEnemyModels },
+  );
+  assert.equal(profile.attacksModifier, 2);
 });
 
 test("catalogue agent query resolves stable IDs or unambiguous names", async () => {

@@ -48,6 +48,9 @@ The main tables are:
   preserves conservative phase eligibility: an effect explicitly bounded to a
   Shooting or Fight phase is restricted to ranged or melee attacks, while
   dual-phase and end-of-turn effects remain unrestricted
+- exact model-count-scaled Attacks modifiers store the count source and models
+  per increment on the affected named weapon. The browser and API provide the
+  current count; zero is conservative unknown state and never invents a bonus
 - exact bearer Save, invulnerable-save, Feel No Pain, and Damage-reduction
   effects are imported as optional situational presets only when structured
   composition proves that the datasheet contains exactly one model; bearer

@@ -126,6 +126,8 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
       hitOn: 3,
       damage: 2,
       targetDistance: 9,
+      attackerUnitModels: 11,
+      nearbyEnemyModels: 7,
       attackerRemainedStationary: true,
       attackerAttached: true,
       targetAttached: true,
@@ -147,6 +149,8 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   const recovery = createPlayRecovery(state, 1_700_000_000_000);
   assert.deepEqual(recovery.activeAttackerPresetIds, ["datasheet-1:ability:2"]);
   assert.equal(recovery.profile.targetDistance, 9);
+  assert.equal(recovery.profile.attackerUnitModels, 11);
+  assert.equal(recovery.profile.nearbyEnemyModels, 7);
   assert.equal(recovery.profile.attackerRemainedStationary, true);
   assert.equal(recovery.profile.attackerAttached, true);
   assert.equal(recovery.profile.targetAttached, true);

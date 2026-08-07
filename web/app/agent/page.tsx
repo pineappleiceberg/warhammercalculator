@@ -97,6 +97,8 @@ export default function AgentCalculator() {
           const selection = resolveAgentCatalogueSelection(search, catalogue);
           const requestedContext = parseAgentProfile(search, DEFAULT_PROFILE, false);
           const requestedDistance = requestedContext.targetDistance;
+          const attackerUnitModels = requestedContext.attackerUnitModels;
+          const nearbyEnemyModels = requestedContext.nearbyEnemyModels;
           const attackerCharged = requestedContext.attackerCharged;
           const attackerRemainedStationary = requestedContext.attackerRemainedStationary;
           const attackerAttached = requestedContext.attackerAttached;
@@ -109,6 +111,8 @@ export default function AgentCalculator() {
           profile = {
             ...profile,
             targetDistance: requestedDistance,
+            attackerUnitModels,
+            nearbyEnemyModels,
             attackerCharged,
             attackerRemainedStationary,
             attackerAttached,
@@ -156,6 +160,8 @@ export default function AgentCalculator() {
               targetKeywords: selection.model.keywords,
               attackKeywords: attackKeywordsForWeapon(selection.weapon),
               targetDistance: requestedDistance,
+              attackerUnitModels,
+              nearbyEnemyModels,
               attackerCharged,
               attackerRemainedStationary,
               attackerAttached,
@@ -291,8 +297,9 @@ export default function AgentCalculator() {
               characteristicModifierAttacks, characteristicModifierStrength,
               characteristicModifierDamage, model, models, fnp, reduction, damageDivisor,
               criticalHits, criticalWounds, sustainedHits, rapidFire, melta, hitModifier,
-              woundModifier, rerollHits, rerollWounds, distance, charged, attackerBattleShocked,
-              targetBattleShocked, attackerPreset, targetPreset, and rules.
+              woundModifier, rerollHits, rerollWounds, distance, unitModels, nearbyEnemyModels,
+              charged, stationary, attackerAttached, targetAttached, attackerBattleShocked,
+              targetBattleShocked, targetStrength, attackerPreset, targetPreset, and rules.
             </p>
             <p>
               <code>rules</code> accepts comma-separated values such as{" "}
@@ -300,9 +307,10 @@ export default function AgentCalculator() {
               or stable catalogue IDs are accepted; ambiguous names return an error.
             </p>
             <p>
-              Catalogue queries apply exact target-, attack-keyword, charge, distance, and
-              Battle-shock conditions automatically. Applied source rules are listed in the result
-              with <code>automatic: true</code>; any numeric URL override is applied afterward.
+              Catalogue queries apply exact target-, attack-keyword, charge, distance, Battle-shock,
+              Attached-unit, and model-count conditions automatically. Applied source rules are
+              listed in the result with <code>automatic: true</code>; any numeric URL override is
+              applied afterward.
             </p>
           </div>
         </article>

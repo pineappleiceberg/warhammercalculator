@@ -2157,6 +2157,79 @@ test("Attached-unit state activates exact attacking and defensive leader rules",
   assert.ok(lessThanOrEqual(exactMean(), exactMean({ woundModifier: 1 })));
 });
 
+test("model-count-scaled Attacks use explicit source-unit and nearby-enemy counts", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const gabriel = catalogue.units.find((unit) => unit.name === "Gabriel Seth");
+  const whirlwind = gabriel.combatPresets.find((preset) => preset.name === "Whirlwind of Gore");
+  const nearbyBase = { weaponName: "Blood Reaver", attacksModifier: 0, nearbyEnemyModels: 0 };
+  assert.equal(applyCombatPresets(nearbyBase, [whirlwind], [], "Melee").attacksModifier, 0);
+  assert.equal(
+    applyCombatPresets({ ...nearbyBase, nearbyEnemyModels: 4 }, [whirlwind], [], "Melee")
+      .attacksModifier,
+    0,
+  );
+  assert.equal(
+    applyCombatPresets({ ...nearbyBase, nearbyEnemyModels: 5 }, [whirlwind], [], "Melee")
+      .attacksModifier,
+    1,
+  );
+  assert.equal(
+    applyCombatPresets({ ...nearbyBase, nearbyEnemyModels: 12 }, [whirlwind], [], "Melee")
+      .attacksModifier,
+    2,
+  );
+  assert.equal(
+    applyCombatPresets(
+      { ...nearbyBase, weaponName: "Bolt pistol", nearbyEnemyModels: 12 },
+      [whirlwind],
+      [],
+      "Melee",
+    ).attacksModifier,
+    0,
+  );
+
+  const wurrboy = catalogue.units.find((unit) => unit.name === "Wurrboy");
+  const unstable = wurrboy.combatPresets.find((preset) => preset.name === "Unstable Oracle");
+  const unitBase = {
+    weaponName: "Eyez of Mork",
+    attacksModifier: 0,
+    attackerAttached: false,
+    attackerUnitModels: 10,
+  };
+  assert.equal(applyCombatPresets(unitBase, [unstable], [], "Ranged").attacksModifier, 0);
+  assert.equal(
+    applyCombatPresets(
+      { ...unitBase, attackerAttached: true, attackerUnitModels: 4 },
+      [unstable],
+      [],
+      "Ranged",
+    ).attacksModifier,
+    0,
+  );
+  assert.equal(
+    applyCombatPresets(
+      { ...unitBase, attackerAttached: true, attackerUnitModels: 5 },
+      [unstable],
+      [],
+      "Ranged",
+    ).attacksModifier,
+    2,
+  );
+  assert.equal(
+    applyCombatPresets(
+      { ...unitBase, attackerAttached: true, attackerUnitModels: 12 },
+      [unstable],
+      [],
+      "Ranged",
+    ).attacksModifier,
+    4,
+  );
+  assert.ok(lessThanOrEqual(exactMean({ attacks: 4 }), exactMean({ attacks: 5 })));
+  assert.ok(lessThanOrEqual(exactMean({ attacks: 4 }), exactMean({ attacks: 8 })));
+});
+
 test("source-backed Battle-shock rules require their exact attacker or target state", async () => {
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),

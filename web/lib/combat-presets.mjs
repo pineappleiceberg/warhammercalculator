@@ -203,6 +203,8 @@ export function combatPresetEffects(
   targetStrengthState = "full",
   attackerRemainedStationary = false,
   sourceUnitAttached = false,
+  attackerUnitModels = 0,
+  nearbyEnemyModels = 0,
 ) {
   const applicable = presets.filter(
     (preset) =>
@@ -348,7 +350,12 @@ export function combatPresetEffects(
       .reduce((sum, effect) => sum + effect.value, 0),
     attacksModifier: additional
       .filter((effect) => effect.type === "attacks_modifier" && effect.diceCount === 0)
-      .reduce((sum, effect) => sum + effect.value, 0),
+      .reduce((sum, effect) => {
+        if (!effect.modelsPerIncrement) return sum + effect.value;
+        const modelCount =
+          effect.modelCountSource === "source_unit" ? attackerUnitModels : nearbyEnemyModels;
+        return sum + effect.value * Math.floor(modelCount / effect.modelsPerIncrement);
+      }, 0),
     strengthModifier: additional
       .filter((effect) => effect.type === "strength_modifier" && effect.diceCount === 0)
       .reduce((sum, effect) => sum + effect.value, 0),
@@ -450,6 +457,8 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
       context.targetStrengthState ?? "full",
       context.attackerRemainedStationary ?? false,
       context.targetAttached ?? false,
+      context.attackerUnitModels ?? 0,
+      context.nearbyEnemyModels ?? 0,
     ),
   );
   const candidates = effects.map((effect) =>
@@ -520,6 +529,8 @@ export function applyCombatPresets(
     context.targetStrengthState ?? profile.targetStrengthState ?? "full",
     context.attackerRemainedStationary ?? profile.attackerRemainedStationary ?? false,
     context.attackerAttached ?? profile.attackerAttached ?? false,
+    context.attackerUnitModels ?? profile.attackerUnitModels ?? 0,
+    context.nearbyEnemyModels ?? profile.nearbyEnemyModels ?? 0,
   );
   const target = combatPresetEffects(
     targetPresets,
@@ -535,6 +546,8 @@ export function applyCombatPresets(
     context.targetStrengthState ?? profile.targetStrengthState ?? "full",
     context.attackerRemainedStationary ?? profile.attackerRemainedStationary ?? false,
     context.targetAttached ?? profile.targetAttached ?? false,
+    context.attackerUnitModels ?? profile.attackerUnitModels ?? 0,
+    context.nearbyEnemyModels ?? profile.nearbyEnemyModels ?? 0,
   );
   const attacksReplacements = [attacker.attacksReplacement, target.attacksReplacement].filter(
     (value) => value > 0,

@@ -213,12 +213,15 @@ CREATE TABLE unit_combat_preset_effects (
     uses INTEGER NOT NULL DEFAULT 0 CHECK (uses >= 0),
     dice_count INTEGER NOT NULL DEFAULT 0 CHECK (dice_count >= 0),
     dice_sides INTEGER NOT NULL DEFAULT 0 CHECK (dice_sides >= 0),
+    models_per_increment INTEGER CHECK (models_per_increment > 0),
+    model_count_source TEXT CHECK (model_count_source IN ('source_unit', 'nearby_enemy')),
     weapon_name TEXT,
     required_target_keyword TEXT,
     required_attack_keyword TEXT,
     application_role TEXT NOT NULL CHECK (application_role IN ('attacker', 'target', 'either')),
     subject TEXT NOT NULL CHECK (subject IN
         ('self', 'led_unit', 'friendly_unit', 'enemy_unit', 'affected_unit', 'unknown')),
+    CHECK ((models_per_increment IS NULL) = (model_count_source IS NULL)),
     PRIMARY KEY (datasheet_id, ability_position, preset_position, effect_position),
     FOREIGN KEY (datasheet_id, ability_position, preset_position)
         REFERENCES unit_combat_presets(datasheet_id, ability_position, preset_position)
@@ -494,6 +497,15 @@ def combat_requires_attacker_stationary(text: str) -> bool:
 
 def combat_requires_attached_unit(text: str) -> bool:
     normalized = plain_text(text).strip()
+    if re.fullmatch(
+        r"While this model is leading a unit, add 2 to the Attacks characteristic "
+        r"of this model[’']s Eyez of Mork weapon for every 5 models in that unit "
+        r"\(rounding down\), but while that unit contains 10 or more models, that "
+        r"weapon has the \[HAZARDOUS\] ability\.",
+        normalized,
+        re.IGNORECASE,
+    ):
+        return True
     match = re.fullmatch(
         r"While (?:this model|the bearer) is leading a unit, (.+)",
         normalized,
@@ -984,6 +996,39 @@ def combat_additional_effects(
         if effect is not None and len(characteristic_values[effect["type"]]) == 1
     )
 
+    nearby_enemy_scaling = re.fullmatch(
+        r"Each time this model fights, until that fight is resolved, add (\d+) to the "
+        r"Attacks characteristic of this model[’']s (.+?) for every (\d+) enemy models "
+        r"within \d+[\"”] of this model\.",
+        plain_text(text).strip(),
+        re.IGNORECASE,
+    )
+    source_unit_scaling = re.fullmatch(
+        r"While this model is leading a unit, add (\d+) to the Attacks characteristic "
+        r"of this model[’']s (.+?) weapon for every (\d+) models in that unit "
+        r"\(rounding down\), but while that unit contains \d+ or more models, that "
+        r"weapon has the \[HAZARDOUS\] ability\.",
+        plain_text(text).strip(),
+        re.IGNORECASE,
+    )
+    scaling = nearby_enemy_scaling or source_unit_scaling
+    if scaling:
+        effects.append(
+            {
+                "type": "attacks_modifier",
+                "value": int(scaling.group(1)),
+                "dice_count": 0,
+                "dice_sides": 0,
+                "models_per_increment": int(scaling.group(3)),
+                "model_count_source": (
+                    "nearby_enemy" if nearby_enemy_scaling else "source_unit"
+                ),
+                "weapon_name": scaling.group(2).strip(),
+                "role": "attacker",
+                "subject": "self",
+            }
+        )
+
     multiplier_pattern = re.compile(
         r"\bdouble the (Attacks|Strength|Damage) characteristic of ([^.;]+)",
         re.IGNORECASE,
@@ -1429,6 +1474,8 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
         )
     ):
         return "automatic"
+    if any(effect.get("model_count_source") for effect in additional):
+        return "automatic"
     if (
         len(additional) == 1
         and additional[0].get("required_target_keyword")
@@ -1760,10 +1807,11 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                 connection.execute(
                     """INSERT INTO unit_combat_preset_effects
                        (datasheet_id, ability_position, preset_position, effect_position,
-                        effect_type, value, uses, dice_count, dice_sides, weapon_name,
+                        effect_type, value, uses, dice_count, dice_sides,
+                        models_per_increment, model_count_source, weapon_name,
                         required_target_keyword, required_attack_keyword,
                         application_role, subject)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         datasheet_id,
                         ability_position,
@@ -1774,6 +1822,8 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                         effect.get("uses", 0),
                         effect["dice_count"],
                         effect["dice_sides"],
+                        effect.get("models_per_increment"),
+                        effect.get("model_count_source"),
                         effect.get("weapon_name"),
                         effect.get("required_target_keyword"),
                         effect.get("required_attack_keyword"),
@@ -1918,7 +1968,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "34"),
+                    ("schema_version", "35"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

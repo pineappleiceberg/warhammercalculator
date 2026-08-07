@@ -1021,6 +1021,8 @@ export default function Home() {
         targetKeywords,
         attackKeywords: attackKeywordsForWeapon(weapon),
         targetDistance: baseProfile.targetDistance,
+        attackerUnitModels: baseProfile.attackerUnitModels,
+        nearbyEnemyModels: baseProfile.nearbyEnemyModels,
         attackerCharged: baseProfile.attackerCharged,
         attackerBattleShocked: baseProfile.attackerBattleShocked,
         targetBattleShocked: baseProfile.targetBattleShocked,
@@ -1236,6 +1238,8 @@ export default function Home() {
                             attackerCharged: false,
                             attackerRemainedStationary: false,
                             attackerAttached: false,
+                            attackerUnitModels: 0,
+                            nearbyEnemyModels: 0,
                             attackerBattleShocked: false,
                           },
                           selectedWeapon,
@@ -1269,6 +1273,8 @@ export default function Home() {
                             attackerCharged: false,
                             attackerRemainedStationary: false,
                             attackerAttached: false,
+                            attackerUnitModels: 0,
+                            nearbyEnemyModels: 0,
                             attackerBattleShocked: false,
                           },
                           selectedWeapon,
@@ -1862,6 +1868,26 @@ export default function Home() {
                   setProfile((current) => withActivePresets({ ...current, targetDistance: value }))
                 }
                 suffix='"'
+              />
+              <NumberField
+                label="Models in attacker unit (0 = unknown)"
+                value={profile.attackerUnitModels}
+                max={1000}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({ ...current, attackerUnitModels: value }),
+                  )
+                }
+              />
+              <NumberField
+                label="Nearby enemy models"
+                value={profile.nearbyEnemyModels}
+                max={1000}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({ ...current, nearbyEnemyModels: value }),
+                  )
+                }
               />
               <Toggle
                 label="Attacker charged this turn"

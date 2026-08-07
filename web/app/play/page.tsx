@@ -213,6 +213,8 @@ export default function PlayMode() {
     nextAttackerRemainedStationary = profile.attackerRemainedStationary,
     nextAttackerAttached = profile.attackerAttached,
     nextTargetAttached = profile.targetAttached,
+    nextAttackerUnitModels = profile.attackerUnitModels,
+    nextNearbyEnemyModels = profile.nearbyEnemyModels,
   ) => {
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
@@ -236,6 +238,8 @@ export default function PlayMode() {
             weaponCount: listWeapon?.count ?? 1,
             targetModels: targetUnit?.modelCount ?? 1,
             targetDistance: nextTargetDistance,
+            attackerUnitModels: nextAttackerUnitModels,
+            nearbyEnemyModels: nextNearbyEnemyModels,
             attackerCharged: nextAttackerCharged,
             attackerRemainedStationary: nextAttackerRemainedStationary,
             attackerAttached: nextAttackerAttached,
@@ -278,6 +282,8 @@ export default function PlayMode() {
           targetKeywords: model.keywords,
           attackKeywords: attackKeywordsForWeapon(weapon),
           targetDistance: nextTargetDistance,
+          attackerUnitModels: nextAttackerUnitModels,
+          nearbyEnemyModels: nextNearbyEnemyModels,
           attackerCharged: nextAttackerCharged,
           attackerRemainedStationary: nextAttackerRemainedStationary,
           attackerAttached: nextAttackerAttached,
@@ -346,6 +352,8 @@ export default function PlayMode() {
             weaponCount: selectedWeapon?.count ?? 1,
             targetModels: nextTarget.modelCount,
             targetDistance: profile.targetDistance,
+            attackerUnitModels: profile.attackerUnitModels,
+            nearbyEnemyModels: profile.nearbyEnemyModels,
             attackerCharged: profile.attackerCharged,
             attackerRemainedStationary: profile.attackerRemainedStationary,
             attackerBattleShocked: profile.attackerBattleShocked,
@@ -387,6 +395,8 @@ export default function PlayMode() {
           targetKeywords: model.keywords,
           attackKeywords: attackKeywordsForWeapon(weaponProfile),
           targetDistance: profile.targetDistance,
+          attackerUnitModels: profile.attackerUnitModels,
+          nearbyEnemyModels: profile.nearbyEnemyModels,
           attackerCharged: profile.attackerCharged,
           attackerRemainedStationary: profile.attackerRemainedStationary,
           attackerAttached: profile.attackerAttached,
@@ -511,6 +521,8 @@ export default function PlayMode() {
                         attackerCharged: false,
                         attackerRemainedStationary: false,
                         attackerAttached: false,
+                        attackerUnitModels: 0,
+                        nearbyEnemyModels: 0,
                         attackerBattleShocked: false,
                       }));
                       setResult(null);
@@ -542,6 +554,8 @@ export default function PlayMode() {
                         attackerCharged: false,
                         attackerRemainedStationary: false,
                         attackerAttached: false,
+                        attackerUnitModels: 0,
+                        nearbyEnemyModels: 0,
                         attackerBattleShocked: false,
                       }));
                       setResult(null);
@@ -688,6 +702,66 @@ export default function PlayMode() {
                     }
                   />
                   <small>Inches; 0 means unknown</small>
+                </label>
+                <label>
+                  <span>Attacker unit models</span>
+                  <input
+                    aria-label="Models in the attacker unit"
+                    type="number"
+                    min={0}
+                    max={1000}
+                    value={profile.attackerUnitModels}
+                    onChange={(event) =>
+                      refreshProfile(
+                        weaponId,
+                        targetModelId,
+                        profileId,
+                        activeAttackerPresetIds,
+                        activeTargetPresetIds,
+                        profile.targetDistance,
+                        profile.attackerCharged,
+                        profile.attackerBattleShocked,
+                        profile.targetBattleShocked,
+                        profile.targetStrengthState,
+                        profile.attackerRemainedStationary,
+                        profile.attackerAttached,
+                        profile.targetAttached,
+                        Math.min(1000, Math.max(0, +event.target.value || 0)),
+                        profile.nearbyEnemyModels,
+                      )
+                    }
+                  />
+                  <small>0 means unknown</small>
+                </label>
+                <label>
+                  <span>Nearby enemy models</span>
+                  <input
+                    aria-label="Enemy models within the ability range"
+                    type="number"
+                    min={0}
+                    max={1000}
+                    value={profile.nearbyEnemyModels}
+                    onChange={(event) =>
+                      refreshProfile(
+                        weaponId,
+                        targetModelId,
+                        profileId,
+                        activeAttackerPresetIds,
+                        activeTargetPresetIds,
+                        profile.targetDistance,
+                        profile.attackerCharged,
+                        profile.attackerBattleShocked,
+                        profile.targetBattleShocked,
+                        profile.targetStrengthState,
+                        profile.attackerRemainedStationary,
+                        profile.attackerAttached,
+                        profile.targetAttached,
+                        profile.attackerUnitModels,
+                        Math.min(1000, Math.max(0, +event.target.value || 0)),
+                      )
+                    }
+                  />
+                  <small>Count models within the rule’s stated range</small>
                 </label>
                 <label>
                   <span>Movement</span>

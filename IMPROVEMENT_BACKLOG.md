@@ -21,13 +21,24 @@ priority over feature count.
    Battle-shock state, direct target unit-strength state, attacker stationary
    state, and simple Attached-unit state to compound conditions that currently
    require manual interpretation.
-2. Represent model-count-, casualty-, and nearby-unit-scaled Attacks modifiers
-   as explicit reproducible state instead of requiring manual arithmetic.
+2. Represent casualty- and nearby-unit-count-scaled Attacks modifiers as
+   explicit reproducible state instead of requiring manual arithmetic; direct
+   source-unit and nearby-enemy model counts are now covered.
 3. Extend bearer and subset-model defenses beyond composition-proven
    single-model datasheets with per-target-segment equipment selection, so a
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added exact model-count-scaled Attacks. SQLite schema 35 imports
+  Gabriel Seth's Whirlwind of Gore and Wurrboy's Unstable Oracle with the
+  affected named weapon, five-model increment, and either nearby-enemy or
+  source-unit count. Model vs Model, Unit vs Unit, Play Mode recovery,
+  normalized API profiles, and static agent URLs preserve both editable counts;
+  zero is a conservative unknown state. Wurrboy also requires the explicit
+  Attached-unit state. Parser negatives, generated-data snapshots, URL and
+  recovery round trips, weapon-scope checks, every rounding boundary, and
+  native C/WebAssembly damage monotonicity cover the behavior.
 
 - 2026-08-07: Added exact Attached-unit eligibility. SQLite schema 34 marks
   155 simple leader rules automatic while retaining 35 compound leader rules as

@@ -161,6 +161,8 @@ export type CatalogueCombatPresetEffect = {
   value: number;
   diceCount: number;
   diceSides: number;
+  modelsPerIncrement?: number;
+  modelCountSource?: "source_unit" | "nearby_enemy";
   uses?: number;
   role: CombatPresetRole;
   subject: CombatPresetSubject;
@@ -228,6 +230,8 @@ type CombatPresetContext = {
   attackerBattleShocked?: boolean;
   targetBattleShocked?: boolean;
   targetStrengthState?: CombatProfile["targetStrengthState"];
+  attackerUnitModels?: number;
+  nearbyEnemyModels?: number;
 };
 export type Catalogue = {
   sourceUpdatedAt: string;

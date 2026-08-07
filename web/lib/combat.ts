@@ -63,6 +63,8 @@ export type CombatProfile = {
   rapidFire: number;
   melta: number;
   targetDistance: number;
+  attackerUnitModels: number;
+  nearbyEnemyModels: number;
   attackerCharged: boolean;
   attackerRemainedStationary: boolean;
   attackerAttached: boolean;
@@ -242,6 +244,8 @@ export const DEFAULT_PROFILE: CombatProfile = {
   rapidFire: 0,
   melta: 0,
   targetDistance: 0,
+  attackerUnitModels: 0,
+  nearbyEnemyModels: 0,
   attackerCharged: false,
   attackerRemainedStationary: false,
   attackerAttached: false,
@@ -391,6 +395,8 @@ export function normalizeProfile(input: unknown): CombatProfile {
     rapidFire: numberValue("rapidFire", 0, 100),
     melta: numberValue("melta", 0, 100),
     targetDistance: numberValue("targetDistance", 0, 1000),
+    attackerUnitModels: numberValue("attackerUnitModels", 0, 1000),
+    nearbyEnemyModels: numberValue("nearbyEnemyModels", 0, 1000),
     attackerCharged: booleanValue("attackerCharged"),
     attackerRemainedStationary: booleanValue("attackerRemainedStationary"),
     attackerAttached: booleanValue("attackerAttached"),

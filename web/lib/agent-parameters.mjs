@@ -45,6 +45,8 @@ const integerParameters = [
   ["damageModifier", ["damageModifier"]],
   ["melta", ["melta"]],
   ["targetDistance", ["targetDistance", "distance"]],
+  ["attackerUnitModels", ["attackerUnitModels", "unitModels"]],
+  ["nearbyEnemyModels", ["nearbyEnemyModels"]],
 ];
 
 const booleanParameters = [
@@ -376,6 +378,8 @@ export function canonicalAgentParameters(profile) {
   );
   search.set("melta", String(profile.melta));
   search.set("distance", String(profile.targetDistance ?? 0));
+  search.set("attackerUnitModels", String(profile.attackerUnitModels ?? 0));
+  search.set("nearbyEnemyModels", String(profile.nearbyEnemyModels ?? 0));
   for (const [field, aliases] of booleanParameters) {
     search.set(aliases[0], profile[field] ? "true" : "false");
   }

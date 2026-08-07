@@ -176,6 +176,14 @@ become automatic only for the matching attacking or defending side. Leader
 rules with casualty thresholds, Waaagh!, distance, named-model, objective,
 choice, or other independent conditions remain explicit choices.
 
+Published Attacks modifiers that scale by a count use explicit editable state
+instead of an assumed average. `attackerUnitModels` records the total models in
+the attacking unit, while `nearbyEnemyModels` records enemy models inside the
+specific ability's stated range. A value of `0` means unknown and contributes
+no count-based bonus. The current source snapshot applies this exactly to
+Wurrboy's Eyez of Mork and Gabriel Seth's Blood Reaver, including their
+five-model rounding boundaries and weapon scope.
+
 Direct attack clauses that require a Battle-shocked target, or require the
 attacker not to be Battle-shocked, use the editable `targetBattleShocked` and
 `attackerBattleShocked` states. The source-backed rule activates only in the
@@ -474,6 +482,7 @@ A direct profile supplies `attacks`, `hit`, `strength`, `ap`, `damage`,
 expression such as `D6+2`. Optional parameters include `weaponCount`, `model`,
 `models`, `invuln`, `fnp`, `reduction`, `criticalHits`, `criticalWounds`,
 `melta`, `distance` (in inches; `0` means unknown), `charged`, `stationary`,
+`unitModels`, `nearbyEnemyModels`,
 `attackerAttached`, `targetAttached`,
 `attackerBattleShocked`, `targetBattleShocked` (booleans),
 `targetStrength` (`full`, `below-starting`, or `below-half`), `damageDivisor`,
@@ -495,6 +504,8 @@ target unit-strength and Attached-unit states. A catalogue agent request can
 pass `charged=true` to activate every compatible, unambiguous charge-triggered
 source rule without an `attackerPreset` parameter and activate Lance for
 compatible catalogue weapons.
+`unitModels` and `nearbyEnemyModels` activate exact model-count-scaled Attacks
+bonuses at their published rounding boundaries; `0` means unknown.
 `stationary=true` likewise activates exact stationary rules and the Heavy bonus
 for compatible catalogue weapons.
 `attackerAttached=true` and `targetAttached=true` likewise activate compatible,

@@ -99,6 +99,8 @@ export default function UnitVsUnit() {
   const [targetSegments, setTargetSegments] = useState<TargetSegment[]>([]);
   const [initialWoundsLost, setInitialWoundsLost] = useState(0);
   const [targetDistance, setTargetDistance] = useState(0);
+  const [attackerUnitModels, setAttackerUnitModels] = useState(0);
+  const [nearbyEnemyModels, setNearbyEnemyModels] = useState(0);
   const [attackerCharged, setAttackerCharged] = useState(false);
   const [attackerRemainedStationary, setAttackerRemainedStationary] = useState(false);
   const [attackerAttached, setAttackerAttached] = useState(false);
@@ -170,6 +172,8 @@ export default function UnitVsUnit() {
   const inputKey = JSON.stringify({
     initialWoundsLost,
     targetDistance,
+    attackerUnitModels,
+    nearbyEnemyModels,
     attackerCharged,
     attackerRemainedStationary,
     attackerAttached,
@@ -192,6 +196,8 @@ export default function UnitVsUnit() {
     setAttackerCharged(false);
     setAttackerRemainedStationary(false);
     setAttackerAttached(false);
+    setAttackerUnitModels(0);
+    setNearbyEnemyModels(0);
     setAttackerBattleShocked(false);
     const unit = attackerUnits.find((entry) => entry.id === unitId);
     const groups = groupWeaponProfiles(unit?.weapons ?? []);
@@ -276,6 +282,8 @@ export default function UnitVsUnit() {
             targetModels,
             weaponCount: line.count,
             targetDistance,
+            attackerUnitModels,
+            nearbyEnemyModels,
             attackerCharged,
             attackerRemainedStationary,
             attackerAttached,
@@ -322,6 +330,8 @@ export default function UnitVsUnit() {
           targetKeywords: targetSegments[0]?.keywords ?? [],
           attackKeywords: attackKeywordsForWeapon(line.weapon),
           targetDistance,
+          attackerUnitModels,
+          nearbyEnemyModels,
           attackerCharged,
           attackerBattleShocked,
           targetBattleShocked,
@@ -366,6 +376,8 @@ export default function UnitVsUnit() {
         weaponName: line.weapon.name,
         attackKeywords: attackKeywordsForWeapon(line.weapon),
         targetDistance,
+        attackerUnitModels,
+        nearbyEnemyModels,
         attackerCharged,
         attackerBattleShocked,
         targetBattleShocked,
@@ -504,6 +516,9 @@ export default function UnitVsUnit() {
                   setAttackerUnitId("");
                   setAttackerCharged(false);
                   setAttackerRemainedStationary(false);
+                  setAttackerAttached(false);
+                  setAttackerUnitModels(0);
+                  setNearbyEnemyModels(0);
                   setAttackerBattleShocked(false);
                 }}
               >
@@ -902,6 +917,34 @@ export default function UnitVsUnit() {
                 }
               />
               <small>Inches; 0 means unknown</small>
+            </label>
+            <label>
+              <span>Models in attacker unit</span>
+              <input
+                aria-label="Models in the attacker unit"
+                type="number"
+                min={0}
+                max={1000}
+                value={attackerUnitModels}
+                onChange={(event) =>
+                  setAttackerUnitModels(Math.min(1000, Math.max(0, +event.target.value || 0)))
+                }
+              />
+              <small>0 means unknown</small>
+            </label>
+            <label>
+              <span>Nearby enemy models</span>
+              <input
+                aria-label="Enemy models within the ability range"
+                type="number"
+                min={0}
+                max={1000}
+                value={nearbyEnemyModels}
+                onChange={(event) =>
+                  setNearbyEnemyModels(Math.min(1000, Math.max(0, +event.target.value || 0)))
+                }
+              />
+              <small>Count models within the rule’s stated range</small>
             </label>
             <label>
               <span>Target unit strength</span>

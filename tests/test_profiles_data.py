@@ -543,6 +543,44 @@ class ProfileDataTests(unittest.TestCase):
                 "an attack, if the target is Battle-shocked, add 1 to the Wound roll."
             )["requires_attached_unit"]
         )
+        nearby_scaling = combat_preset(
+            "Each time this model fights, until that fight is resolved, add 1 to the "
+            "Attacks characteristic of this model’s Blood Reaver for every 5 enemy "
+            'models within 6" of this model.'
+        )
+        self.assertEqual(
+            nearby_scaling["additional_effects"],
+            [
+                {
+                    "type": "attacks_modifier",
+                    "value": 1,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "models_per_increment": 5,
+                    "model_count_source": "nearby_enemy",
+                    "weapon_name": "Blood Reaver",
+                    "role": "attacker",
+                    "subject": "self",
+                }
+            ],
+        )
+        source_scaling = combat_preset(
+            "While this model is leading a unit, add 2 to the Attacks characteristic "
+            "of this model’s Eyez of Mork weapon for every 5 models in that unit "
+            "(rounding down), but while that unit contains 10 or more models, that "
+            "weapon has the [HAZARDOUS] ability."
+        )
+        self.assertTrue(source_scaling["requires_attached_unit"])
+        self.assertEqual(
+            source_scaling["additional_effects"][0]["model_count_source"],
+            "source_unit",
+        )
+        self.assertIsNone(
+            combat_preset(
+                "Each time this model fights, add 1 to its Attacks characteristic for "
+                "every enemy model nearby."
+            )
+        )
         below_half = combat_preset(
             "Each time this model makes an attack that targets an enemy unit that is "
             "Below Half-strength, add 1 to the Hit roll and add 1 to the Wound roll."
@@ -945,7 +983,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "34",
+                "35",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1176,7 +1214,7 @@ class ProfileDataTests(unittest.TestCase):
                        GROUP BY effect_type ORDER BY effect_type"""
                 ).fetchall(),
                 [
-                    ("attacks_modifier", 20),
+                    ("attacks_modifier", 22),
                     ("damage_modifier", 5),
                     ("strength_modifier", 92),
                 ],
@@ -1229,14 +1267,50 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 201), ("inherent", 32), ("situational", 1229)],
+                [("automatic", 203), ("inherent", 32), ("situational", 1229)],
             )
             self.assertEqual(
                 connection.execute(
                     "SELECT weapon_scope, count(*) FROM unit_combat_presets "
                     "GROUP BY weapon_scope ORDER BY weapon_scope"
                 ).fetchall(),
-                [("Any", 810), ("Melee", 310), ("Ranged", 342)],
+                [("Any", 812), ("Melee", 310), ("Ranged", 342)],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT datasheet.name, preset.name, preset.activation,
+                              preset.requires_attached_unit, effect.value,
+                              effect.models_per_increment, effect.model_count_source,
+                              effect.weapon_name
+                       FROM unit_combat_preset_effects AS effect
+                       JOIN unit_combat_presets AS preset
+                         USING (datasheet_id, ability_position, preset_position)
+                       JOIN datasheets AS datasheet ON datasheet.id = preset.datasheet_id
+                       WHERE effect.model_count_source IS NOT NULL
+                       ORDER BY datasheet.name"""
+                ).fetchall(),
+                [
+                    (
+                        "Gabriel Seth",
+                        "Whirlwind of Gore",
+                        "automatic",
+                        0,
+                        1,
+                        5,
+                        "nearby_enemy",
+                        "Blood Reaver",
+                    ),
+                    (
+                        "Wurrboy",
+                        "Unstable Oracle",
+                        "automatic",
+                        1,
+                        2,
+                        5,
+                        "source_unit",
+                        "Eyez of Mork",
+                    ),
+                ],
             )
             charge_rows = connection.execute(
                 """SELECT datasheet.name, preset.name
@@ -1266,10 +1340,11 @@ class ProfileDataTests(unittest.TestCase):
                    WHERE preset.requires_attached_unit = 1
                    ORDER BY datasheet.name, preset.name"""
             ).fetchall()
-            self.assertEqual(len(attached_rows), 155)
+            self.assertEqual(len(attached_rows), 156)
             self.assertIn(("Chaplain", "Litany of Hate"), attached_rows)
             self.assertIn(("Chronomancer", "Timesplinter Mantle"), attached_rows)
             self.assertIn(("Imagifier", "Stanchion of Holy Martyrs"), attached_rows)
+            self.assertIn(("Wurrboy", "Unstable Oracle"), attached_rows)
             self.assertNotIn(("Aleya", "Tenacious Spirit"), attached_rows)
             self.assertNotIn(("Commander Farsight", "Way of the Short Blade"), attached_rows)
             self.assertNotIn(("Ghazghkull Thraka", "Prophet of Da Great Waaagh!"), attached_rows)
@@ -2026,6 +2101,33 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(martyrs["activation"], "automatic")
         self.assertTrue(martyrs["requiresAttachedUnit"])
+        gabriel = next(unit for unit in catalogue["units"] if unit["name"] == "Gabriel Seth")
+        whirlwind = next(
+            preset for preset in gabriel["combatPresets"] if preset["name"] == "Whirlwind of Gore"
+        )
+        self.assertEqual(whirlwind["activation"], "automatic")
+        self.assertEqual(
+            whirlwind["effects"],
+            [
+                {
+                    "type": "attacks_modifier",
+                    "value": 1,
+                    "diceCount": 0,
+                    "diceSides": 0,
+                    "modelsPerIncrement": 5,
+                    "modelCountSource": "nearby_enemy",
+                    "weaponName": "Blood Reaver",
+                    "role": "attacker",
+                    "subject": "self",
+                }
+            ],
+        )
+        wurrboy = next(unit for unit in catalogue["units"] if unit["name"] == "Wurrboy")
+        unstable = next(
+            preset for preset in wurrboy["combatPresets"] if preset["name"] == "Unstable Oracle"
+        )
+        self.assertTrue(unstable["requiresAttachedUnit"])
+        self.assertEqual(unstable["effects"][0]["modelCountSource"], "source_unit")
         troupe = next(unit for unit in catalogue["units"] if unit["id"] == "000002536")
         dance = [preset for preset in troupe["combatPresets"] if preset["choiceGroup"]]
         self.assertEqual(len(dance), 3)
