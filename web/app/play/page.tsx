@@ -622,6 +622,72 @@ export default function PlayMode() {
                     />
                   </label>
                 )}
+                <label>
+                  <span>Allocated-attack replacement</span>
+                  <input
+                    type="checkbox"
+                    checked={profile.allocatedAttackDamageReplacementUses > 0}
+                    onChange={(event) =>
+                      setProfile((current) => ({
+                        ...current,
+                        allocatedAttackDamageReplacementUses: event.target.checked ? 1 : 0,
+                      }))
+                    }
+                  />
+                </label>
+                {profile.allocatedAttackDamageReplacementUses > 0 && (
+                  <>
+                    <label>
+                      <span>Allocated attack Damage</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        max={1024}
+                        value={profile.allocatedAttackDamageReplacement}
+                        onChange={(event) =>
+                          setProfile((current) => ({
+                            ...current,
+                            allocatedAttackDamageReplacement: Math.max(0, +event.target.value),
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>Uses this sequence</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={1024}
+                        value={profile.allocatedAttackDamageReplacementUses}
+                        onChange={(event) =>
+                          setProfile((current) => ({
+                            ...current,
+                            allocatedAttackDamageReplacementUses: Math.max(1, +event.target.value),
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>Allocated attacks to skip</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        max={1024}
+                        value={profile.allocatedAttackDamageReplacementSkip}
+                        onChange={(event) =>
+                          setProfile((current) => ({
+                            ...current,
+                            allocatedAttackDamageReplacementSkip: Math.max(0, +event.target.value),
+                          }))
+                        }
+                      />
+                    </label>
+                    <p>Skips those attacks, then spends one use per allocated attack.</p>
+                  </>
+                )}
                 {(
                   [
                     ["characteristicModifierAttacks", "Shared roll → Attacks"],

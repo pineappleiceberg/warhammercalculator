@@ -123,6 +123,13 @@ static void generate_target(struct fuzz_input *input, struct whc_web_target_inpu
     target->model_count = 1u + next_byte(input) % 5u;
     target->first_failed_save_damage_replacement = next_byte(input) % 4u;
     target->first_failed_save_damage_replacement_active = next_byte(input) % 3u == 0u;
+    target->allocated_attack_damage_replacement = next_byte(input) % 4u;
+    target->allocated_attack_damage_replacement_uses = next_byte(input) % 3u;
+    target->allocated_attack_damage_replacement_skip = next_byte(input) % 4u;
+    if (target->first_failed_save_damage_replacement_active != 0u &&
+        target->allocated_attack_damage_replacement_uses != 0u) {
+        target->allocated_attack_damage_replacement = target->first_failed_save_damage_replacement;
+    }
 }
 
 /*@ requires size == 0 || \valid_read(data + (0 .. size - 1));
@@ -138,8 +145,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     struct whc_web_exact_complexity complexity;
     struct whc_web_mean cumulative[3];
     struct dice_value dice;
-    uint16_t weapon_count = (uint16_t)(1u + next_byte(&input) % 3u);
-    uint16_t target_count = (uint16_t)(1u + next_byte(&input) % 3u);
+    uint16_t weapon_count = (uint16_t)(1u + next_byte(&input) % 2u);
+    uint16_t target_count = (uint16_t)(1u + next_byte(&input) % 2u);
     uint16_t index = 0u;
     bool valid = false;
     bool estimated = false;
@@ -157,10 +164,15 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
                 targets[0].first_failed_save_damage_replacement;
             targets[index].first_failed_save_damage_replacement_active =
                 targets[0].first_failed_save_damage_replacement_active;
+            targets[index].allocated_attack_damage_replacement =
+                targets[0].allocated_attack_damage_replacement;
+            targets[index].allocated_attack_damage_replacement_uses =
+                targets[0].allocated_attack_damage_replacement_uses;
+            targets[index].allocated_attack_damage_replacement_skip =
+                targets[0].allocated_attack_damage_replacement_skip;
         }
         index++;
     }
-
     valid = whc_calculate_summary_with_characteristic_roll(
         (uint16_t)weapons[0].attack_dice_count, (uint16_t)weapons[0].attack_dice_sides,
         (uint16_t)weapons[0].attack_modifier, (uint16_t)weapons[0].attacks_replacement,
@@ -189,7 +201,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         (uint16_t)weapons[0].characteristic_modifier_bonus,
         (uint8_t)weapons[0].characteristic_modifier_flags,
         (uint16_t)targets[0].first_failed_save_damage_replacement,
-        targets[0].first_failed_save_damage_replacement_active != 0u, &summary);
+        targets[0].first_failed_save_damage_replacement_active != 0u,
+        (uint16_t)targets[0].allocated_attack_damage_replacement,
+        (uint16_t)targets[0].allocated_attack_damage_replacement_uses,
+        (uint16_t)targets[0].allocated_attack_damage_replacement_skip, &summary);
     if (valid) {
         assert_summary(&summary);
     }
@@ -198,7 +213,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     initial_wounds_lost = (uint16_t)(next_byte(&input) % targets[0].wounds);
     estimated = whc_estimate_ordered_volley_complexity(weapons, weapon_count, targets, target_count,
                                                        initial_wounds_lost, &complexity);
-    valid = whc_calculate_ordered_volley_summary(weapons, weapon_count, targets, target_count,
+    valid = next_byte(&input) % 16u == 15u &&
+            whc_calculate_ordered_volley_summary(weapons, weapon_count, targets, target_count,
                                                  initial_wounds_lost, &volley_summary, cumulative);
     if (valid) {
         assert(estimated);

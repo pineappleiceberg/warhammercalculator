@@ -40,6 +40,9 @@ bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
     uint16_t characteristic_dimension_count = 0u;
     uint16_t weapon_index = 0u;
     bool uses_first_failed_save_state = false;
+    uint16_t allocated_replacement_value = 0u;
+    uint16_t allocated_replacement_uses = 0u;
+    uint16_t allocated_replacement_skip = 0u;
     bool uses_deferred_states = false;
 
     if (weapons == NULL || targets == NULL || layout == NULL || result == NULL ||
@@ -48,7 +51,14 @@ bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
         return false;
     }
     uses_first_failed_save_state = targets[0].first_failed_save_damage_replacement_active;
-    uses_deferred_states = uses_first_failed_save_state;
+    allocated_replacement_value = targets[0].allocated_attack_damage_replacement;
+    allocated_replacement_uses = targets[0].allocated_attack_damage_replacement_uses;
+    allocated_replacement_skip = targets[0].allocated_attack_damage_replacement_skip;
+    if (uses_first_failed_save_state && allocated_replacement_uses != 0u &&
+        targets[0].first_failed_save_damage_replacement != allocated_replacement_value) {
+        return false;
+    }
+    uses_deferred_states = uses_first_failed_save_state || allocated_replacement_uses != 0u;
 
     while (weapon_index < weapon_count) {
         const struct weapon_profile *source_weapon = &weapons[weapon_index];
@@ -118,6 +128,9 @@ bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
                 (uses_first_failed_save_state &&
                  target->first_failed_save_damage_replacement !=
                      targets[0].first_failed_save_damage_replacement) ||
+                target->allocated_attack_damage_replacement != allocated_replacement_value ||
+                target->allocated_attack_damage_replacement_uses != allocated_replacement_uses ||
+                target->allocated_attack_damage_replacement_skip != allocated_replacement_skip ||
                 !attack_plan_build(weapon, target, &plan)) {
                 return false;
             }
@@ -189,6 +202,14 @@ bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
         if (uses_first_failed_save_state) {
             result->estimated_state_upper_bound =
                 uint32_saturating_product(result->estimated_state_upper_bound, 2u);
+        }
+        if (allocated_replacement_uses != 0u) {
+            result->estimated_state_upper_bound = uint32_saturating_product(
+                result->estimated_state_upper_bound,
+                uint32_saturating_product(
+                    uint32_saturating_add(1u, allocated_replacement_uses),
+                    uint32_saturating_product(uint32_saturating_add(1u, allocated_replacement_skip),
+                                              3u)));
         }
     } else {
         result->estimated_state_upper_bound = uint32_saturating_add(1u, capacity);

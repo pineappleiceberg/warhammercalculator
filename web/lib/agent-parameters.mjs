@@ -37,6 +37,9 @@ const integerParameters = [
   ["woundModifier", ["woundModifier"]],
   ["damageReplacement", ["damageReplacement"]],
   ["firstFailedSaveDamageReplacement", ["firstFailedSaveDamageReplacement"]],
+  ["allocatedAttackDamageReplacement", ["allocatedAttackDamageReplacement"]],
+  ["allocatedAttackDamageReplacementUses", ["allocatedAttackDamageReplacementUses"]],
+  ["allocatedAttackDamageReplacementSkip", ["allocatedAttackDamageReplacementSkip"]],
   ["damageMultiplier", ["damageMultiplier"]],
   ["damageModifier", ["damageModifier"]],
   ["melta", ["melta"]],
@@ -309,6 +312,18 @@ export function canonicalAgentParameters(profile) {
       String(profile.firstFailedSaveDamageReplacement),
     );
   }
+  search.set(
+    "allocatedAttackDamageReplacement",
+    String(profile.allocatedAttackDamageReplacement ?? 0),
+  );
+  search.set(
+    "allocatedAttackDamageReplacementUses",
+    String(profile.allocatedAttackDamageReplacementUses ?? 0),
+  );
+  search.set(
+    "allocatedAttackDamageReplacementSkip",
+    String(profile.allocatedAttackDamageReplacementSkip ?? 0),
+  );
   search.set("damageMultiplier", String(profile.damageMultiplier ?? 1));
   search.set("damageModifier", String(profile.damageModifier ?? 0));
   search.set(

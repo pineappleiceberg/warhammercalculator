@@ -142,6 +142,7 @@ export type CatalogueCombatPresetEffect = {
     | "strength_replacement"
     | "damage_replacement"
     | "first_failed_save_damage_replacement"
+    | "allocated_attack_damage_replacement"
     | "attacks_modifier"
     | "strength_modifier"
     | "damage_modifier"
@@ -153,6 +154,7 @@ export type CatalogueCombatPresetEffect = {
   value: number;
   diceCount: number;
   diceSides: number;
+  uses?: number;
   role: CombatPresetRole;
   subject: CombatPresetSubject;
   weaponName?: string;
@@ -258,6 +260,9 @@ export function applyWeaponProfile(
     strengthModifier: 0,
     damageReplacement: null,
     firstFailedSaveDamageReplacement: null,
+    allocatedAttackDamageReplacement: 0,
+    allocatedAttackDamageReplacementUses: 0,
+    allocatedAttackDamageReplacementSkip: 0,
     damageMultiplier: 1,
     damageModifier: 0,
     characteristicModifierDice: 0,

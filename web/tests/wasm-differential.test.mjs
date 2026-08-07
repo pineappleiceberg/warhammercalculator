@@ -897,19 +897,30 @@ test("defensive presets compose editable profiles and every ordered target segme
     rerollWounds: false,
     rerollWoundOnes: false,
     effects: [
-      ["save_target", 2],
-      ["invulnerable_save", 4],
-      ["feel_no_pain", 5],
-      ["damage_reduction", 1],
-      ["first_failed_save_damage_replacement", 0],
-    ].map(([type, value]) => ({
-      type,
-      value,
-      diceCount: 0,
-      diceSides: 0,
-      role: "target",
-      subject: "self",
-    })),
+      ...[
+        ["save_target", 2],
+        ["invulnerable_save", 4],
+        ["feel_no_pain", 5],
+        ["damage_reduction", 1],
+        ["first_failed_save_damage_replacement", 0],
+      ].map(([type, value]) => ({
+        type,
+        value,
+        diceCount: 0,
+        diceSides: 0,
+        role: "target",
+        subject: "self",
+      })),
+      {
+        type: "allocated_attack_damage_replacement",
+        value: 0,
+        uses: 2,
+        diceCount: 0,
+        diceSides: 0,
+        role: "target",
+        subject: "self",
+      },
+    ],
   };
   const base = {
     save: 3,
@@ -917,6 +928,9 @@ test("defensive presets compose editable profiles and every ordered target segme
     feelNoPain: 0,
     reduction: 0,
     firstFailedSaveDamageReplacement: null,
+    allocatedAttackDamageReplacement: 0,
+    allocatedAttackDamageReplacementUses: 0,
+    allocatedAttackDamageReplacementSkip: 3,
     hitModifier: 0,
     woundModifier: 0,
   };
@@ -928,8 +942,11 @@ test("defensive presets compose editable profiles and every ordered target segme
       applied.feelNoPain,
       applied.reduction,
       applied.firstFailedSaveDamageReplacement,
+      applied.allocatedAttackDamageReplacement,
+      applied.allocatedAttackDamageReplacementUses,
+      applied.allocatedAttackDamageReplacementSkip,
     ],
-    [2, 4, 5, 1, 0],
+    [2, 4, 5, 1, 0, 0, 2, 3],
   );
   const targets = applyTargetCombatPresets(
     [
@@ -946,10 +963,13 @@ test("defensive presets compose editable profiles and every ordered target segme
       target.feelNoPain,
       target.reduction,
       target.firstFailedSaveDamageReplacement,
+      target.allocatedAttackDamageReplacement,
+      target.allocatedAttackDamageReplacementUses,
+      target.allocatedAttackDamageReplacementSkip,
     ]),
     [
-      [2, 4, 5, 1, 0],
-      [2, 3, 5, 2, 0],
+      [2, 4, 5, 1, 0, 0, 2, 3],
+      [2, 3, 5, 2, 0, 0, 2, 3],
     ],
   );
   const rangedOnly = { ...preset, weaponScope: "Ranged" };
@@ -1418,14 +1438,15 @@ function currentWeaponInput(weapon) {
 }
 
 function currentTargetInput(target) {
-  if (target.length === 10) return target;
+  if (target.length === 13) return target;
+  if (target.length === 10) return [...target, 0, 0, 0];
   const current = target.length === 8 ? target : [...target, 1];
-  return [...current, 0, 0];
+  return [...current, 0, 0, 0, 0, 0];
 }
 
 function orderedVolley(weapons, targets, initialWoundsLost = 0) {
   const weaponFields = 37;
-  const targetFields = 10;
+  const targetFields = 13;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
   const summaryPointer = calculator._malloc(10 * 4);
@@ -1472,7 +1493,7 @@ function orderedVolley(weapons, targets, initialWoundsLost = 0) {
 
 function orderedVolleyComplexity(weapons, targets, initialWoundsLost = 0) {
   const weaponFields = 37;
-  const targetFields = 10;
+  const targetFields = 13;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
   const outputPointer = calculator._malloc(24);
@@ -1568,6 +1589,54 @@ test("C/Wasm consumes first-failed-save Damage replacement exactly once", () => 
     Math.abs(Number(devastating.mean.numerator) / Number(devastating.mean.denominator) - 7 / 3) <
       1e-8,
   );
+});
+
+test("C/Wasm applies deterministic allocated-attack Damage replacement", () => {
+  const weapon = Array(37).fill(0);
+  weapon[2] = 2;
+  weapon[4] = 1;
+  weapon[5] = 6;
+  weapon[6] = 2;
+  weapon[10] = 3;
+  weapon[11] = 6;
+  weapon[29] = 1;
+  weapon[30] = 1;
+  weapon[31] = 1;
+  const target = [1, 7, 0, 0, 20, 0, 1, 1, 0, 0, 0, 1, 0];
+  const result = orderedVolley([weapon], [target]);
+  assert.equal(result.maximum, 3);
+  assert.ok(
+    Math.abs(Number(result.mean.numerator) / Number(result.mean.denominator) - 5 / 12) < 1e-8,
+  );
+  assert.equal(orderedVolleyComplexity([weapon], [target])[4], 1);
+
+  const first = [...weapon];
+  first[2] = 1;
+  first[5] = 2;
+  first[10] = 1;
+  first[12] = 16;
+  const second = [...first];
+  second[10] = 5;
+  const skipFirst = [1, 7, 0, 0, 20, 0, 1, 1, 0, 0, 0, 1, 0];
+  const skipSecond = [1, 7, 0, 0, 20, 0, 1, 1, 0, 0, 0, 1, 1];
+  const firstProtected = orderedVolley([first, second], [skipFirst]).mean;
+  const secondProtected = orderedVolley([first, second], [skipSecond]).mean;
+  assert.ok(
+    Math.abs(Number(firstProtected.numerator) / Number(firstProtected.denominator) - 25 / 6) < 1e-8,
+  );
+  assert.ok(
+    Math.abs(Number(secondProtected.numerator) / Number(secondProtected.denominator) - 5 / 6) <
+      1e-8,
+  );
+
+  const sustained = [...weapon];
+  sustained[2] = 1;
+  sustained[11] = 6;
+  sustained[16] = 1;
+  assert.equal(orderedVolley([sustained], [target]).maximum, 0);
+  const devastating = [...first];
+  devastating[12] = 16 | 2;
+  assert.equal(orderedVolley([devastating], [target]).maximum, 0);
 });
 
 function variableRuleMean({ flags = 0, sustained = [0, 0, 0], rapid = [0, 0, 0] }) {

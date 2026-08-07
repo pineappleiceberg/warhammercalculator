@@ -212,6 +212,15 @@ export function combatPresetEffects(
     additional
       .filter((effect) => effect.type === type)
       .reduce((product, effect) => product * effect.value, 1);
+  const allocatedReplacements = additional.filter(
+    (effect) => effect.type === "allocated_attack_damage_replacement",
+  );
+  if (
+    new Set(allocatedReplacements.map((effect) => `${effect.value}:${effect.uses ?? 0}`)).size > 1
+  ) {
+    throw new Error("Choose only one allocated-attack Damage replacement");
+  }
+  const allocatedReplacement = allocatedReplacements[0] ?? null;
   const randomCharacteristicEffects = additional.filter(
     (effect) =>
       ["attacks_modifier", "strength_modifier", "damage_modifier"].includes(effect.type) &&
@@ -256,6 +265,8 @@ export function combatPresetEffects(
       "first_failed_save_damage_replacement",
       "first failed save Damage",
     ),
+    allocatedAttackDamageReplacement: allocatedReplacement?.value ?? 0,
+    allocatedAttackDamageReplacementUses: allocatedReplacement?.uses ?? 0,
     damageMultiplier: multiplier("damage_multiplier"),
     hitModifier: hitModifiers.reduce((sum, preset) => sum + preset.hitModifier, 0),
     woundModifier: woundModifiers.reduce((sum, preset) => sum + preset.woundModifier, 0),
@@ -334,6 +345,15 @@ function applyDefensiveEffects(profile, effects) {
     damageDivisor: (profile.damageDivisor ?? 1) * effects.damageDivisor,
     firstFailedSaveDamageReplacement:
       effects.firstFailedSaveDamageReplacement ?? profile.firstFailedSaveDamageReplacement ?? null,
+    allocatedAttackDamageReplacement:
+      effects.allocatedAttackDamageReplacementUses > 0
+        ? effects.allocatedAttackDamageReplacement
+        : (profile.allocatedAttackDamageReplacement ?? 0),
+    allocatedAttackDamageReplacementUses:
+      effects.allocatedAttackDamageReplacementUses > 0
+        ? effects.allocatedAttackDamageReplacementUses
+        : (profile.allocatedAttackDamageReplacementUses ?? 0),
+    allocatedAttackDamageReplacementSkip: profile.allocatedAttackDamageReplacementSkip ?? 0,
   };
 }
 
@@ -372,6 +392,9 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
         target.reduction,
         target.damageDivisor,
         target.firstFailedSaveDamageReplacement,
+        target.allocatedAttackDamageReplacement,
+        target.allocatedAttackDamageReplacementUses,
+        target.allocatedAttackDamageReplacementSkip,
       ]),
     ),
   );
@@ -590,6 +613,14 @@ export function applyCombatPresets(
       invulnerableSave: strongestSave(attacker.invulnerableSave, target.invulnerableSave),
       feelNoPain: strongestSave(attacker.feelNoPain, target.feelNoPain),
       damageReduction: Math.max(attacker.damageReduction, target.damageReduction),
+      allocatedAttackDamageReplacement:
+        target.allocatedAttackDamageReplacementUses > 0
+          ? target.allocatedAttackDamageReplacement
+          : attacker.allocatedAttackDamageReplacement,
+      allocatedAttackDamageReplacementUses: Math.max(
+        attacker.allocatedAttackDamageReplacementUses,
+        target.allocatedAttackDamageReplacementUses,
+      ),
     },
   );
 }

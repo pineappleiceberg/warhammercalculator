@@ -381,6 +381,34 @@ class ProfileDataTests(unittest.TestCase):
                 }
             ],
         )
+        allocated_replacement = combat_preset(
+            "Once per battle, when an attack is allocated to this model, you can change the "
+            "Damage characteristic of that attack to 0."
+        )
+        self.assertEqual(
+            allocated_replacement["additional_effects"],
+            [
+                {
+                    "type": "allocated_attack_damage_replacement",
+                    "value": 0,
+                    "uses": 1,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "role": "target",
+                    "subject": "self",
+                }
+            ],
+        )
+        twice_allocated_replacement = combat_preset(
+            "Twice per battle, after an attack has been allocated to this model, you can change "
+            "the Damage characteristic of that attack to 0."
+        )
+        self.assertEqual(twice_allocated_replacement["additional_effects"][0]["uses"], 2)
+        failed_save_timing = combat_preset(
+            "Once per phase, when an attack is allocated to this model and the saving throw is "
+            "failed, you can change the Damage characteristic of that attack to 0."
+        )
+        self.assertIsNone(failed_save_timing)
         psychic_assassin = combat_presets(
             "Psychic Assassin",
             "Each time you select a PSYKER unit as the target for this weapon, until those "
@@ -647,7 +675,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "24",
+                "25",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -711,6 +739,27 @@ class ProfileDataTests(unittest.TestCase):
                         "attacker",
                         "self",
                     ),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT preset.name, effect.value, effect.uses,
+                              effect.application_role, effect.subject, count(*)
+                       FROM unit_combat_preset_effects AS effect
+                       JOIN unit_combat_presets AS preset
+                         USING (datasheet_id, ability_position, preset_position)
+                       WHERE effect.effect_type = 'allocated_attack_damage_replacement'
+                       GROUP BY preset.name, effect.value, effect.uses,
+                                effect.application_role, effect.subject
+                       ORDER BY preset.name"""
+                ).fetchall(),
+                [
+                    ("Ablative Plating", 0, 1, "target", "self", 2),
+                    ("Chaos Familiar", 0, 1, "target", "self", 2),
+                    ("Inviolable Transport", 0, 1, "target", "self", 5),
+                    ("Resilient Organism", 0, 1, "target", "self", 1),
+                    ("Stealth Drones", 0, 2, "target", "self", 1),
+                    ("Surgeon Acolyte", 0, 1, "target", "self", 1),
                 ],
             )
             self.assertEqual(
@@ -806,7 +855,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 2), ("inherent", 32), ("situational", 1384)],
+                [("automatic", 2), ("inherent", 32), ("situational", 1396)],
             )
             self.assertEqual(
                 connection.execute(

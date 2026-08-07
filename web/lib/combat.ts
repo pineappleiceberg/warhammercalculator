@@ -31,6 +31,9 @@ export type CombatProfile = {
   damage: number;
   damageReplacement: number | null;
   firstFailedSaveDamageReplacement: number | null;
+  allocatedAttackDamageReplacement: number;
+  allocatedAttackDamageReplacementUses: number;
+  allocatedAttackDamageReplacementSkip: number;
   damageMultiplier: number;
   damageModifier: number;
   characteristicModifierDice: number;
@@ -119,6 +122,9 @@ export type VolleyTarget = {
   reduction: number;
   damageDivisor: number;
   firstFailedSaveDamageReplacement: number | null;
+  allocatedAttackDamageReplacement: number;
+  allocatedAttackDamageReplacementUses: number;
+  allocatedAttackDamageReplacementSkip: number;
   modelCount: number;
 };
 
@@ -194,6 +200,9 @@ export const DEFAULT_PROFILE: CombatProfile = {
   damage: 1,
   damageReplacement: null,
   firstFailedSaveDamageReplacement: null,
+  allocatedAttackDamageReplacement: 0,
+  allocatedAttackDamageReplacementUses: 0,
+  allocatedAttackDamageReplacementSkip: 0,
   damageMultiplier: 1,
   damageModifier: 0,
   characteristicModifierDice: 0,
@@ -318,6 +327,17 @@ export function normalizeProfile(input: unknown): CombatProfile {
       0,
       1024,
     ),
+    allocatedAttackDamageReplacement: numberValue("allocatedAttackDamageReplacement", 0, 1024),
+    allocatedAttackDamageReplacementUses: numberValue(
+      "allocatedAttackDamageReplacementUses",
+      0,
+      1024,
+    ),
+    allocatedAttackDamageReplacementSkip: numberValue(
+      "allocatedAttackDamageReplacementSkip",
+      0,
+      1024,
+    ),
     damageMultiplier: numberValue("damageMultiplier", 1, 1024),
     damageModifier: numberValue("damageModifier", -1024, 1024),
     characteristicModifierDice: numberValue("characteristicModifierDice", 0, 20),
@@ -364,6 +384,13 @@ export function normalizeProfile(input: unknown): CombatProfile {
   };
   if (profile.criticalWounds === 1) {
     throw new Error("criticalWounds must be 0 or an integer from 2 to 6");
+  }
+  if (
+    profile.firstFailedSaveDamageReplacement !== null &&
+    profile.allocatedAttackDamageReplacementUses > 0 &&
+    profile.firstFailedSaveDamageReplacement !== profile.allocatedAttackDamageReplacement
+  ) {
+    throw new Error("Damage replacement rules with different values must be resolved separately");
   }
   if (profile.attackDice > 0 && profile.attackSides < 2) {
     throw new Error("attackSides must be at least 2 when attackDice is non-zero");
@@ -588,6 +615,13 @@ function rollCheck(
 }
 
 export function simulateAttack(profile: CombatProfile, options: RollOptions = {}): RollResult {
+  if (
+    profile.firstFailedSaveDamageReplacement !== null &&
+    profile.allocatedAttackDamageReplacementUses > 0 &&
+    profile.firstFailedSaveDamageReplacement !== profile.allocatedAttackDamageReplacement
+  ) {
+    throw new Error("Damage replacement rules with different values must be resolved separately");
+  }
   const randomUint32 = options.randomUint32 ?? secureRandomUint32;
   const includeDetails = options.details ?? true;
   profile = resolveCharacteristicModifier(profile, randomUint32);
@@ -645,8 +679,15 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
     if (includeDetails) result.details.push(detail);
   };
   let firstFailedSaveReplacementRemaining = profile.firstFailedSaveDamageReplacement !== null;
+  let allocatedReplacementUsesRemaining = profile.allocatedAttackDamageReplacementUses;
+  let allocatedReplacementSkipRemaining = profile.allocatedAttackDamageReplacementSkip;
 
-  const resolveHit = (label: string, hitLabel: string, lethalWound: boolean) => {
+  const resolveHit = (
+    label: string,
+    hitLabel: string,
+    lethalWound: boolean,
+    allocatedDamageReplacement: number | null,
+  ) => {
     result.hits += 1;
     let woundLabel = "Lethal ✓";
     let criticalWound = false;
@@ -710,15 +751,18 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
         ? profile.firstFailedSaveDamageReplacement
         : null;
     if (failedSaveDamageReplacement !== null) firstFailedSaveReplacementRemaining = false;
+    const effectiveDamageReplacement =
+      allocatedDamageReplacement ?? failedSaveDamageReplacement ?? profile.damageReplacement;
     const rawDamage = modifiedDamageCharacteristic(
       profile,
-      failedSaveDamageReplacement ??
+      allocatedDamageReplacement ??
+        failedSaveDamageReplacement ??
         (profile.damageReplacement === null
           ? rollDiceValue(profile.damageDice, profile.damageSides, profile.damage, randomUint32)
           : profile.damageReplacement),
       profile.damageDivisor,
       profile.reduction,
-      failedSaveDamageReplacement ?? profile.damageReplacement,
+      effectiveDamageReplacement,
     );
     let prevented = 0;
     if (profile.feelNoPain > 0) {
@@ -764,8 +808,14 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
   for (let attack = 1; attack <= attacks; attack += 1) {
     if (result.modelsDestroyed >= profile.targetModels) break;
     result.attacksResolved += 1;
+    let allocatedDamageReplacement: number | null = null;
+    if (allocatedReplacementSkipRemaining > 0) allocatedReplacementSkipRemaining -= 1;
+    else if (allocatedReplacementUsesRemaining > 0) {
+      allocatedReplacementUsesRemaining -= 1;
+      allocatedDamageReplacement = profile.allocatedAttackDamageReplacement;
+    }
     if (profile.torrent) {
-      resolveHit(`#${attack}`, "Auto ✓", false);
+      resolveHit(`#${attack}`, "Auto ✓", false, allocatedDamageReplacement);
       continue;
     }
     const autoFailsThrough = profile.indirect ? 3 : 0;
@@ -801,7 +851,12 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
       continue;
     }
     if (criticalHit) result.criticalHits += 1;
-    resolveHit(`#${attack}`, hitLabel, criticalHit && profile.lethalHits);
+    resolveHit(
+      `#${attack}`,
+      hitLabel,
+      criticalHit && profile.lethalHits,
+      allocatedDamageReplacement,
+    );
     if (criticalHit) {
       const sustainedHits = rollDiceValue(
         profile.sustainedHitsDice,
@@ -811,7 +866,7 @@ export function simulateAttack(profile: CombatProfile, options: RollOptions = {}
       );
       for (let extra = 1; extra <= sustainedHits; extra += 1) {
         if (result.modelsDestroyed >= profile.targetModels) break;
-        resolveHit(`#${attack}.S${extra}`, "Sustained ✓", false);
+        resolveHit(`#${attack}.S${extra}`, "Sustained ✓", false, allocatedDamageReplacement);
       }
     }
   }
@@ -846,6 +901,25 @@ export function simulateOrderedVolley(
     throw new Error("Target segments must share the same first-failed-save Damage replacement");
   }
   let firstFailedSaveReplacementRemaining = replacementValues[0] !== null;
+  const allocatedReplacementConfigs = targets.map((target) =>
+    JSON.stringify([
+      target.allocatedAttackDamageReplacement,
+      target.allocatedAttackDamageReplacementUses,
+      target.allocatedAttackDamageReplacementSkip,
+    ]),
+  );
+  if (new Set(allocatedReplacementConfigs).size > 1) {
+    throw new Error("Target segments must share the allocated-attack Damage replacement policy");
+  }
+  let allocatedReplacementUsesRemaining = targets[0].allocatedAttackDamageReplacementUses;
+  let allocatedReplacementSkipRemaining = targets[0].allocatedAttackDamageReplacementSkip;
+  if (
+    firstFailedSaveReplacementRemaining &&
+    allocatedReplacementUsesRemaining > 0 &&
+    targets[0].firstFailedSaveDamageReplacement !== targets[0].allocatedAttackDamageReplacement
+  ) {
+    throw new Error("Damage replacement rules with different values must be resolved separately");
+  }
   const deferredDevastatingWounds: Array<() => void> = [];
 
   for (const sourceProfile of profiles) {
@@ -888,7 +962,12 @@ export function simulateOrderedVolley(
     const addDetail = (detail: RollDetail) => {
       if (includeDetails) line.details.push(detail);
     };
-    const resolveHit = (label: string, hitLabel: string, lethalWound: boolean) => {
+    const resolveHit = (
+      label: string,
+      hitLabel: string,
+      lethalWound: boolean,
+      allocatedDamageReplacement: number | null,
+    ) => {
       const position = targetSequencePosition(appliedState, targets);
       if (!position) return;
       const target = targets[position.segmentIndex];
@@ -972,6 +1051,8 @@ export function simulateOrderedVolley(
           ? target.firstFailedSaveDamageReplacement
           : null;
       if (failedSaveDamageReplacement !== null) firstFailedSaveReplacementRemaining = false;
+      const effectiveDamageReplacement =
+        allocatedDamageReplacement ?? failedSaveDamageReplacement ?? profile.damageReplacement;
       const detail: RollDetail = {
         label,
         hit: hitLabel,
@@ -997,13 +1078,14 @@ export function simulateOrderedVolley(
         const allocationTarget = targets[allocationPosition.segmentIndex];
         const rawDamage = modifiedDamageCharacteristic(
           profile,
-          failedSaveDamageReplacement ??
+          allocatedDamageReplacement ??
+            failedSaveDamageReplacement ??
             (profile.damageReplacement === null
               ? rollDiceValue(profile.damageDice, profile.damageSides, profile.damage, randomUint32)
               : profile.damageReplacement),
           allocationTarget.damageDivisor,
           allocationTarget.reduction,
-          failedSaveDamageReplacement ?? profile.damageReplacement,
+          effectiveDamageReplacement,
         );
         let prevented = 0;
         if (allocationTarget.feelNoPain > 0) {
@@ -1043,8 +1125,14 @@ export function simulateOrderedVolley(
 
     for (let attack = 1; attack <= attacks && appliedState < capacity; attack += 1) {
       line.attacksResolved += 1;
+      let allocatedDamageReplacement: number | null = null;
+      if (allocatedReplacementSkipRemaining > 0) allocatedReplacementSkipRemaining -= 1;
+      else if (allocatedReplacementUsesRemaining > 0) {
+        allocatedReplacementUsesRemaining -= 1;
+        allocatedDamageReplacement = targets[0].allocatedAttackDamageReplacement;
+      }
       if (profile.torrent) {
-        resolveHit(`#${attack}`, "Auto ✓", false);
+        resolveHit(`#${attack}`, "Auto ✓", false, allocatedDamageReplacement);
         continue;
       }
       const autoFailsThrough = profile.indirect ? 3 : 0;
@@ -1080,7 +1168,12 @@ export function simulateOrderedVolley(
         continue;
       }
       if (criticalHit) line.criticalHits += 1;
-      resolveHit(`#${attack}`, hitLabel, criticalHit && profile.lethalHits);
+      resolveHit(
+        `#${attack}`,
+        hitLabel,
+        criticalHit && profile.lethalHits,
+        allocatedDamageReplacement,
+      );
       if (criticalHit) {
         const sustainedHits = rollDiceValue(
           profile.sustainedHitsDice,
@@ -1089,7 +1182,7 @@ export function simulateOrderedVolley(
           randomUint32,
         );
         for (let extra = 1; extra <= sustainedHits && appliedState < capacity; extra += 1) {
-          resolveHit(`#${attack}.S${extra}`, "Sustained ✓", false);
+          resolveHit(`#${attack}.S${extra}`, "Sustained ✓", false, allocatedDamageReplacement);
         }
       }
     }

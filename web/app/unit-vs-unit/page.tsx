@@ -73,6 +73,9 @@ function targetSegment(model: CatalogueModel, modelCount: number): TargetSegment
     reduction: model.reduction ?? 0,
     damageDivisor: model.damageDivisor ?? 1,
     firstFailedSaveDamageReplacement: null,
+    allocatedAttackDamageReplacement: 0,
+    allocatedAttackDamageReplacementUses: 0,
+    allocatedAttackDamageReplacementSkip: 0,
     modelCount,
   };
 }
@@ -902,6 +905,88 @@ export default function UnitVsUnit() {
                                 }
                               />
                             </label>
+                          )}
+                          <label>
+                            <span>Allocated-attack replacement</span>
+                            <input
+                              type="checkbox"
+                              checked={segment.allocatedAttackDamageReplacementUses > 0}
+                              onChange={(event) =>
+                                setTargetSegments((current) =>
+                                  current.map((entry) => ({
+                                    ...entry,
+                                    allocatedAttackDamageReplacementUses: event.target.checked
+                                      ? 1
+                                      : 0,
+                                  })),
+                                )
+                              }
+                            />
+                          </label>
+                          {segment.allocatedAttackDamageReplacementUses > 0 && (
+                            <>
+                              <label>
+                                <span>Allocated attack Damage</span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={1024}
+                                  value={segment.allocatedAttackDamageReplacement}
+                                  onChange={(event) =>
+                                    setTargetSegments((current) =>
+                                      current.map((entry) => ({
+                                        ...entry,
+                                        allocatedAttackDamageReplacement: Math.max(
+                                          0,
+                                          +event.target.value,
+                                        ),
+                                      })),
+                                    )
+                                  }
+                                />
+                              </label>
+                              <label>
+                                <span>Uses this sequence</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={1024}
+                                  value={segment.allocatedAttackDamageReplacementUses}
+                                  onChange={(event) =>
+                                    setTargetSegments((current) =>
+                                      current.map((entry) => ({
+                                        ...entry,
+                                        allocatedAttackDamageReplacementUses: Math.max(
+                                          1,
+                                          +event.target.value,
+                                        ),
+                                      })),
+                                    )
+                                  }
+                                />
+                              </label>
+                              <label>
+                                <span>Allocated attacks to skip</span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={1024}
+                                  value={segment.allocatedAttackDamageReplacementSkip}
+                                  onChange={(event) =>
+                                    setTargetSegments((current) =>
+                                      current.map((entry) => ({
+                                        ...entry,
+                                        allocatedAttackDamageReplacementSkip: Math.max(
+                                          0,
+                                          +event.target.value,
+                                        ),
+                                      })),
+                                    )
+                                  }
+                                />
+                              </label>
+                              <p>Skips those attacks, then spends one use per allocated attack.</p>
+                            </>
                           )}
                         </>
                       )}

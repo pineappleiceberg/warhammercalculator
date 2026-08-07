@@ -16,19 +16,30 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Represent optional allocation-time, once- or twice-per-battle/turn Damage
-   replacement with an explicit use policy and attack-selection strategy before
-   importing those rules.
-2. Represent phase-, target-, and state-dependent Attacks replacements exactly
+1. Represent phase-, target-, and state-dependent Attacks replacements exactly
    in native C and WebAssembly before importing them.
-3. Extend the source-backed rules eligibility layer beyond exact target and
+2. Extend the source-backed rules eligibility layer beyond exact target and
    Psychic attack keywords to phase, range, and other compound conditions that
    currently require manual interpretation.
-4. Link bearer- and subset-model defensive abilities to structured wargear and
+3. Link bearer- and subset-model defensive abilities to structured wargear and
    unit composition so equipped defensive defaults can be applied without
    affecting models that do not have them.
 
 ## Completed cycles
+
+- 2026-08-07: Added exact optional allocation-time Damage replacement with an
+  explicit deterministic use policy across native C, WebAssembly, complexity
+  estimates, exact and simulated APIs, editable Model vs Model, Unit vs Unit,
+  and Play profiles, combat presets, and static agent URLs. Users choose the
+  remaining uses and how many allocated attacks to skip; the engine then spends
+  one use at allocation time even if the selected attack misses, and carries
+  the replacement through Sustained Hits, Devastating Wounds, weapons, and
+  ordered target allocation. SQLite schema 25 conservatively imports 12
+  source-backed rows for Ablative Plating, Chaos Familiar, Inviolable Transport,
+  Resilient Organism, Stealth Drones, and Surgeon Acolyte while excluding
+  failed-save and phase-long timing. Native, Wasm, parser, generated-data,
+  preset, URL, API, seeded-simulation, formal, fuzz, and benchmark regressions
+  cover the behavior.
 
 - 2026-08-07: Added exact mandatory first-failed-save Damage replacement across
   native C, WebAssembly, ordered volleys, complexity estimates, exact and

@@ -56,11 +56,13 @@ CREATE TABLE unit_combat_preset_effects (
          'sustained_hits', 'rapid_fire', 'lance', 'heavy', 'ap_modifier',
          'critical_hits', 'critical_wounds', 'attacks_replacement', 'strength_replacement',
          'damage_replacement', 'first_failed_save_damage_replacement',
+         'allocated_attack_damage_replacement',
          'attacks_multiplier', 'strength_multiplier',
          'damage_multiplier', 'attacks_modifier', 'strength_modifier',
          'damage_modifier', 'save_target',
          'invulnerable_save', 'feel_no_pain', 'damage_reduction', 'damage_divisor')),
     value INTEGER NOT NULL,
+    uses INTEGER NOT NULL DEFAULT 0 CHECK (uses >= 0),
     dice_count INTEGER NOT NULL DEFAULT 0 CHECK (dice_count >= 0),
     dice_sides INTEGER NOT NULL DEFAULT 0 CHECK (dice_sides >= 0),
     weapon_name TEXT,
@@ -91,7 +93,7 @@ def main() -> None:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
         connection.execute(
-            "UPDATE metadata SET value = '24' WHERE key = 'schema_version'"
+            "UPDATE metadata SET value = '25' WHERE key = 'schema_version'"
         )
         connection.execute("PRAGMA optimize")
         connection.commit()

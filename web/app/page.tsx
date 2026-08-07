@@ -102,6 +102,7 @@ type CatalogueCombatPreset = {
   effects: Array<{
     type: string;
     value: number;
+    uses?: number;
     diceCount: number;
     diceSides: number;
     weaponName?: string;
@@ -263,6 +264,9 @@ async function calculate(profile: Profile): Promise<Result> {
         (profile.characteristicModifierDamage ? 4 : 0),
       profile.firstFailedSaveDamageReplacement ?? 0,
       profile.firstFailedSaveDamageReplacement === null ? 0 : 1,
+      profile.allocatedAttackDamageReplacement,
+      profile.allocatedAttackDamageReplacementUses,
+      profile.allocatedAttackDamageReplacementSkip,
       output,
     );
 
@@ -346,6 +350,13 @@ function rollCheck(
 }
 
 function simulateAttack(profile: Profile): RollResult {
+  if (
+    profile.firstFailedSaveDamageReplacement !== null &&
+    profile.allocatedAttackDamageReplacementUses > 0 &&
+    profile.firstFailedSaveDamageReplacement !== profile.allocatedAttackDamageReplacement
+  ) {
+    throw new Error("Damage replacement rules with different values must be resolved separately");
+  }
   if (profile.torrent && profile.indirect) {
     throw new Error("Torrent weapons cannot fire indirectly when the target is not visible");
   }
@@ -404,8 +415,15 @@ function simulateAttack(profile: Profile): RollResult {
     details: [],
   };
   let firstFailedSaveReplacementRemaining = profile.firstFailedSaveDamageReplacement !== null;
+  let allocatedReplacementUsesRemaining = profile.allocatedAttackDamageReplacementUses;
+  let allocatedReplacementSkipRemaining = profile.allocatedAttackDamageReplacementSkip;
 
-  const resolveHit = (label: string, hitLabel: string, lethalWound: boolean) => {
+  const resolveHit = (
+    label: string,
+    hitLabel: string,
+    lethalWound: boolean,
+    allocatedDamageReplacement: number | null,
+  ) => {
     result.hits += 1;
     let woundLabel = "Lethal ✓";
     let criticalWound = false;
@@ -471,11 +489,15 @@ function simulateAttack(profile: Profile): RollResult {
     if (failedSaveDamageReplacement !== null) firstFailedSaveReplacementRemaining = false;
 
     const baseDamage =
+      allocatedDamageReplacement ??
       failedSaveDamageReplacement ??
       (profile.damageReplacement === null
         ? rollDiceValue(profile.damageDice, profile.damageSides, profile.damage)
         : profile.damageReplacement);
-    const damageFloor = (failedSaveDamageReplacement ?? profile.damageReplacement) === 0 ? 0 : 1;
+    const damageFloor =
+      (allocatedDamageReplacement ?? failedSaveDamageReplacement ?? profile.damageReplacement) === 0
+        ? 0
+        : 1;
     const reducedDamage = Math.max(
       damageFloor,
       Math.ceil(
@@ -529,8 +551,14 @@ function simulateAttack(profile: Profile): RollResult {
   for (let attack = 1; attack <= attacks; attack += 1) {
     if (result.modelsDestroyed >= profile.targetModels) break;
     result.attacksResolved += 1;
+    let allocatedDamageReplacement: number | null = null;
+    if (allocatedReplacementSkipRemaining > 0) allocatedReplacementSkipRemaining -= 1;
+    else if (allocatedReplacementUsesRemaining > 0) {
+      allocatedReplacementUsesRemaining -= 1;
+      allocatedDamageReplacement = profile.allocatedAttackDamageReplacement;
+    }
     if (profile.torrent) {
-      resolveHit(`#${attack}`, "Auto ✓", false);
+      resolveHit(`#${attack}`, "Auto ✓", false, allocatedDamageReplacement);
       continue;
     }
     const autoFailsThrough = profile.indirect ? 3 : 0;
@@ -565,7 +593,12 @@ function simulateAttack(profile: Profile): RollResult {
       continue;
     }
     if (criticalHit) result.criticalHits += 1;
-    resolveHit(`#${attack}`, hitLabel, criticalHit && profile.lethalHits);
+    resolveHit(
+      `#${attack}`,
+      hitLabel,
+      criticalHit && profile.lethalHits,
+      allocatedDamageReplacement,
+    );
     if (criticalHit) {
       const sustainedHits = rollDiceValue(
         profile.sustainedHitsDice,
@@ -574,7 +607,7 @@ function simulateAttack(profile: Profile): RollResult {
       );
       for (let extra = 1; extra <= sustainedHits; extra += 1) {
         if (result.modelsDestroyed >= profile.targetModels) break;
-        resolveHit(`#${attack}.S${extra}`, "Sustained ✓", false);
+        resolveHit(`#${attack}.S${extra}`, "Sustained ✓", false, allocatedDamageReplacement);
       }
     }
   }
@@ -1024,6 +1057,9 @@ export default function Home() {
           reduction: model.reduction ?? 0,
           damageDivisor: model.damageDivisor ?? 1,
           firstFailedSaveDamageReplacement: null,
+          allocatedAttackDamageReplacement: 0,
+          allocatedAttackDamageReplacementUses: 0,
+          allocatedAttackDamageReplacementSkip: 0,
           ...(model.wounds ? { wounds: model.wounds } : {}),
           criticalWounds: selectedWeapon
             ? antiWoundThreshold(selectedWeapon.abilities, model.keywords)
@@ -1442,6 +1478,40 @@ export default function Home() {
                     max={1024}
                     onChange={(value) => set("firstFailedSaveDamageReplacement", value)}
                   />
+                )}
+                <Toggle
+                  label="Replace Damage for allocated attacks"
+                  checked={profile.allocatedAttackDamageReplacementUses > 0}
+                  onChange={(checked) =>
+                    set("allocatedAttackDamageReplacementUses", checked ? 1 : 0)
+                  }
+                />
+                {profile.allocatedAttackDamageReplacementUses > 0 && (
+                  <>
+                    <NumberField
+                      label="Allocated attack Damage"
+                      value={profile.allocatedAttackDamageReplacement}
+                      max={1024}
+                      onChange={(value) => set("allocatedAttackDamageReplacement", value)}
+                    />
+                    <NumberField
+                      label="Uses this sequence"
+                      value={profile.allocatedAttackDamageReplacementUses}
+                      min={1}
+                      max={1024}
+                      onChange={(value) => set("allocatedAttackDamageReplacementUses", value)}
+                    />
+                    <NumberField
+                      label="Allocated attacks to skip"
+                      value={profile.allocatedAttackDamageReplacementSkip}
+                      max={1024}
+                      onChange={(value) => set("allocatedAttackDamageReplacementSkip", value)}
+                    />
+                    <p className="field-note">
+                      Skips that many allocated attacks, then spends one use per attack before hit
+                      rolls.
+                    </p>
+                  </>
                 )}
               </div>
             </div>

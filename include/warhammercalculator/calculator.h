@@ -175,6 +175,9 @@ struct target_profile {
     uint16_t damage_divisor;
     uint16_t first_failed_save_damage_replacement;
     bool first_failed_save_damage_replacement_active;
+    uint16_t allocated_attack_damage_replacement;
+    uint16_t allocated_attack_damage_replacement_uses;
+    uint16_t allocated_attack_damage_replacement_skip;
     struct rule_set rules;
 };
 
@@ -197,6 +200,7 @@ struct calculator_workspace {
     struct probability_distribution probability_f;
     struct probability_distribution target_attacks[MAX_TARGET_SEGMENTS];
     struct probability_distribution target_first_failed_save_attacks[MAX_TARGET_SEGMENTS];
+    struct probability_distribution target_allocated_replacement_attacks[MAX_TARGET_SEGMENTS];
 
     uint64_t convolution_accumulator[MAX_DISTRIBUTION_RESULT + 1u];
     uint64_t mixture_accumulator[MAX_DISTRIBUTION_RESULT + 1u];

@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include <inttypes.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -1013,7 +1014,8 @@ static void test_shared_random_characteristic_modifier(void) {
     assert(whc_calculate_summary_with_characteristic_roll(
         0u, 0u, 1u, 0u, 1u, 2u, 3u, 0u, 0u, 0u, 1u, 6u, 5u, 7u, 0u, 0u, 20u, 0u, WHC_RULE_TORRENT,
         0u, 1u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0, 0, 0, 0, 0, 0u, 0u, false, 1u, 1u, 1u, 1u, 1u, 3u,
-        0u, CHARACTERISTIC_ROLL_ATTACKS | CHARACTERISTIC_ROLL_STRENGTH, 0u, false, &web_summary));
+        0u, CHARACTERISTIC_ROLL_ATTACKS | CHARACTERISTIC_ROLL_STRENGTH, 0u, false, 0u, 0u, 0u,
+        &web_summary));
     web_numerator =
         web_summary.mean_numerator_low | ((uint64_t)web_summary.mean_numerator_high << 32u);
     web_denominator =
@@ -1139,6 +1141,112 @@ static void test_first_failed_save_damage_replacement(void) {
     assert(web_summary.peak_sparse_states > 0u);
 }
 
+/*@ terminates \true; */
+static void test_allocated_attack_damage_replacement(void) {
+    struct weapon_profile weapons[2];
+    struct target_profile targets[2];
+    struct calculator_workspace workspace;
+    struct probability_distribution distribution;
+    struct distribution_summary summary;
+    struct target_unit_layout layout;
+    struct fraction cumulative_means[2];
+    struct fraction mean;
+    struct exact_complexity complexity;
+    struct whc_web_weapon_input web_weapon;
+    struct whc_web_target_input web_target;
+    struct whc_web_applied_summary web_summary;
+    struct whc_web_mean web_mean;
+
+    memset(weapons, 0, sizeof(weapons));
+    memset(targets, 0, sizeof(targets));
+    memset(&workspace, 0, sizeof(workspace));
+    memset(&layout, 0, sizeof(layout));
+    weapons[0].attacks = (struct dice_value){0u, 0u, 2u};
+    weapons[0].weapon_count = 1u;
+    weapons[0].hits_on = 6u;
+    weapons[0].strength = 2u;
+    weapons[0].damage = (struct dice_value){0u, 0u, 3u};
+    targets[0].toughness = 1u;
+    targets[0].save = 7u;
+    targets[0].wounds = 20u;
+    targets[0].damage_divisor = 1u;
+    targets[0].allocated_attack_damage_replacement = 0u;
+    targets[0].allocated_attack_damage_replacement_uses = 1u;
+    assert(
+        calculate_attack_damage_distribution(&weapons[0], &targets[0], &workspace, &distribution));
+    assert(probability_distribution_mean(&distribution, &mean));
+    assert(fabsl((long double)mean.numerator / mean.denominator - 5.0L / 12.0L) < 1e-8L);
+
+    weapons[0].attacks = (struct dice_value){0u, 0u, 1u};
+    weapons[0].critical_hits_on = 6u;
+    assert(rule_add_sustained_hits(&weapons[0].rules, 1u));
+    assert(calculate_attack_damage_summary(&weapons[0], &targets[0], &workspace, &summary));
+    assert(summary.minimum == 0u && summary.maximum == 0u);
+
+    memset(&weapons[0].rules, 0, sizeof(weapons[0].rules));
+    weapons[0].critical_hits_on = 0u;
+    assert(rule_add_torrent(&weapons[0].rules));
+    assert(rule_add_devastating_wounds(&weapons[0].rules));
+    assert(calculate_attack_damage_summary(&weapons[0], &targets[0], &workspace, &summary));
+    assert(summary.minimum == 0u && summary.maximum == 0u);
+
+    memset(weapons, 0, sizeof(weapons));
+    weapons[0].attacks = (struct dice_value){0u, 0u, 1u};
+    weapons[0].weapon_count = 1u;
+    weapons[0].hits_on = 2u;
+    weapons[0].strength = 2u;
+    weapons[0].damage = (struct dice_value){0u, 0u, 1u};
+    assert(rule_add_torrent(&weapons[0].rules));
+    weapons[1] = weapons[0];
+    weapons[1].damage = (struct dice_value){0u, 0u, 5u};
+    targets[1] = targets[0];
+    layout.segment_count = 1u;
+    layout.wounds_per_model[0] = 20u;
+    layout.model_counts[0] = 1u;
+    targets[0].allocated_attack_damage_replacement_skip = 0u;
+    targets[1].allocated_attack_damage_replacement_skip = 0u;
+    assert(calculate_ordered_volley_applied_damage_distribution(
+        weapons, targets, 2u, &layout, &workspace, &distribution, cumulative_means));
+    assert(probability_distribution_mean(&distribution, &mean));
+    assert(fabsl((long double)mean.numerator / mean.denominator - 25.0L / 6.0L) < 1e-8L);
+    targets[0].allocated_attack_damage_replacement_skip = 1u;
+    targets[1].allocated_attack_damage_replacement_skip = 1u;
+    assert(calculate_ordered_volley_applied_damage_distribution(
+        weapons, targets, 2u, &layout, &workspace, &distribution, cumulative_means));
+    assert(probability_distribution_mean(&distribution, &mean));
+    assert(fabsl((long double)mean.numerator / mean.denominator - 5.0L / 6.0L) < 1e-8L);
+    assert(estimate_ordered_volley_complexity(weapons, targets, 2u, &layout, &complexity));
+    assert(complexity.uses_deferred_states);
+
+    targets[0].first_failed_save_damage_replacement_active = true;
+    targets[1].first_failed_save_damage_replacement_active = true;
+    targets[0].first_failed_save_damage_replacement = 1u;
+    targets[1].first_failed_save_damage_replacement = 1u;
+    assert(!calculate_ordered_volley_applied_damage_distribution(
+        weapons, targets, 2u, &layout, &workspace, &distribution, cumulative_means));
+
+    memset(&web_weapon, 0, sizeof(web_weapon));
+    memset(&web_target, 0, sizeof(web_target));
+    web_weapon.attack_modifier = 1u;
+    web_weapon.weapon_count = 1u;
+    web_weapon.hits_on = 2u;
+    web_weapon.strength = 2u;
+    web_weapon.damage_modifier = 3u;
+    web_weapon.rule_flags = WHC_RULE_TORRENT;
+    web_weapon.attacks_multiplier = 1u;
+    web_weapon.strength_multiplier = 1u;
+    web_weapon.damage_multiplier = 1u;
+    web_target.toughness = 1u;
+    web_target.save = 7u;
+    web_target.wounds = 20u;
+    web_target.model_count = 1u;
+    web_target.damage_divisor = 1u;
+    web_target.allocated_attack_damage_replacement_uses = 1u;
+    assert(whc_calculate_ordered_volley_summary(&web_weapon, 1u, &web_target, 1u, 0u, &web_summary,
+                                                &web_mean));
+    assert(web_summary.maximum == 0u);
+}
+
 /*@ terminates \true;
     ensures \result == 0;
 */
@@ -1164,6 +1272,7 @@ int main(void) {
     test_characteristic_multiplier_order();
     test_shared_random_characteristic_modifier();
     test_first_failed_save_damage_replacement();
+    test_allocated_attack_damage_replacement();
     puts("all tests passed");
     return 0;
 }

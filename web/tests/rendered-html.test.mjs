@@ -621,6 +621,57 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     JSON.stringify(firstFailedSaveSimulated),
   );
 
+  const allocatedReplacementProfile = {
+    ...firstFailedSaveProfile,
+    firstFailedSaveDamageReplacement: null,
+    torrent: true,
+    allocatedAttackDamageReplacement: 0,
+    allocatedAttackDamageReplacementUses: 2,
+    allocatedAttackDamageReplacementSkip: 0,
+  };
+  const allocatedReplacementCalculation = await worker.fetch(
+    new Request("http://localhost/api/v1/calculate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ profile: allocatedReplacementProfile }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(allocatedReplacementCalculation.status, 200);
+  assert.equal((await allocatedReplacementCalculation.json()).data.maximum, 0);
+  const allocatedReplacementSimulation = await worker.fetch(
+    new Request("http://localhost/api/v1/volley/simulate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        profiles: [allocatedReplacementProfile],
+        targets: [
+          {
+            toughness: 1,
+            save: 7,
+            invulnerable: 0,
+            feelNoPain: 0,
+            wounds: 20,
+            reduction: 0,
+            damageDivisor: 1,
+            firstFailedSaveDamageReplacement: null,
+            allocatedAttackDamageReplacement: 0,
+            allocatedAttackDamageReplacementUses: 2,
+            allocatedAttackDamageReplacementSkip: 0,
+            modelCount: 1,
+          },
+        ],
+        seed: 405,
+        trials: 100,
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(allocatedReplacementSimulation.status, 200);
+  assert.equal((await allocatedReplacementSimulation.json()).data.maximum, 0);
+
   const zeroDamageReplacement = {
     ...signedProfile,
     attackDice: 0,

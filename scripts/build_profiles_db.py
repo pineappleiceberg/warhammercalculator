@@ -190,11 +190,13 @@ CREATE TABLE unit_combat_preset_effects (
          'sustained_hits', 'rapid_fire', 'lance', 'heavy', 'ap_modifier',
          'critical_hits', 'critical_wounds', 'attacks_replacement', 'strength_replacement',
          'damage_replacement', 'first_failed_save_damage_replacement',
+         'allocated_attack_damage_replacement',
          'attacks_multiplier', 'strength_multiplier',
          'damage_multiplier', 'attacks_modifier', 'strength_modifier',
          'damage_modifier', 'save_target',
          'invulnerable_save', 'feel_no_pain', 'damage_reduction', 'damage_divisor')),
     value INTEGER NOT NULL,
+    uses INTEGER NOT NULL DEFAULT 0 CHECK (uses >= 0),
     dice_count INTEGER NOT NULL DEFAULT 0 CHECK (dice_count >= 0),
     dice_sides INTEGER NOT NULL DEFAULT 0 CHECK (dice_sides >= 0),
     weapon_name TEXT,
@@ -916,6 +918,27 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
             }
         )
 
+    allocated_attack_damage_replacement_pattern = re.compile(
+        r"\b(once|twice) per (?:battle|turn|battle round), "
+        r"(?:when an attack is|after an attack has been) allocated to "
+        r"(this model|the bearer|a model in this unit)"
+        r"(?:, if [^,]+,)?(?:,)? you (?:can )?change the Damage characteristic"
+        r"(?: of that attack)? to (\d+)\b",
+        re.IGNORECASE,
+    )
+    for match in allocated_attack_damage_replacement_pattern.finditer(text):
+        effects.append(
+            {
+                "type": "allocated_attack_damage_replacement",
+                "value": int(match.group(3)),
+                "uses": 2 if match.group(1).casefold() == "twice" else 1,
+                "dice_count": 0,
+                "dice_sides": 0,
+                "role": "target",
+                "subject": "self",
+            }
+        )
+
     keyword_attacks_replacement_pattern = re.compile(
         r"\beach time you select an? ([A-Z][A-Z0-9 -]+) unit as the target for this weapon, "
         r"until those attacks are resolved, change the Attacks characteristic of this weapon "
@@ -1166,6 +1189,7 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
             "damage_divisor",
             "damage_replacement",
             "first_failed_save_damage_replacement",
+            "allocated_attack_damage_replacement",
         }
         or effect["role"] != "target"
         or effect["subject"] not in {"self", "enemy_unit"}
@@ -1385,10 +1409,10 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                 connection.execute(
                     """INSERT INTO unit_combat_preset_effects
                        (datasheet_id, ability_position, preset_position, effect_position,
-                        effect_type, value, dice_count, dice_sides, weapon_name,
+                        effect_type, value, uses, dice_count, dice_sides, weapon_name,
                         required_target_keyword, required_attack_keyword,
                         application_role, subject)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         datasheet_id,
                         ability_position,
@@ -1396,6 +1420,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                         effect_position,
                         effect["type"],
                         effect["value"],
+                        effect.get("uses", 0),
                         effect["dice_count"],
                         effect["dice_sides"],
                         effect.get("weapon_name"),
@@ -1542,7 +1567,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "24"),
+                    ("schema_version", "25"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
