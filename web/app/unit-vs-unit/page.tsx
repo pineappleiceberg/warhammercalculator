@@ -107,6 +107,8 @@ export default function UnitVsUnit() {
   const [targetAttached, setTargetAttached] = useState(false);
   const [attackerWaaaghActive, setAttackerWaaaghActive] = useState(false);
   const [targetWaaaghActive, setTargetWaaaghActive] = useState(false);
+  const [targetOathOfMoment, setTargetOathOfMoment] = useState(false);
+  const [attackerOathWoundBonusEligible, setAttackerOathWoundBonusEligible] = useState(false);
   const [attackerBattleShocked, setAttackerBattleShocked] = useState(false);
   const [targetBattleShocked, setTargetBattleShocked] = useState(false);
   const [targetStrengthState, setTargetStrengthState] = useState<TargetStrengthState>("full");
@@ -182,6 +184,8 @@ export default function UnitVsUnit() {
     targetAttached,
     attackerWaaaghActive,
     targetWaaaghActive,
+    targetOathOfMoment,
+    attackerOathWoundBonusEligible,
     attackerBattleShocked,
     targetBattleShocked,
     targetStrengthState,
@@ -201,6 +205,8 @@ export default function UnitVsUnit() {
     setAttackerRemainedStationary(false);
     setAttackerAttached(false);
     setAttackerWaaaghActive(false);
+    setTargetOathOfMoment(false);
+    setAttackerOathWoundBonusEligible(false);
     setAttackerUnitModels(0);
     setNearbyEnemyModels(0);
     setAttackerBattleShocked(false);
@@ -237,6 +243,7 @@ export default function UnitVsUnit() {
     setTargetUnitId(unitId);
     setTargetAttached(false);
     setTargetWaaaghActive(false);
+    setTargetOathOfMoment(false);
     setTargetBattleShocked(false);
     setTargetStrengthState("full");
     const unit = targetUnits.find((entry) => entry.id === unitId);
@@ -296,6 +303,8 @@ export default function UnitVsUnit() {
             targetAttached,
             attackerWaaaghActive,
             targetWaaaghActive,
+            targetOathOfMoment,
+            attackerOathWoundBonusEligible,
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
@@ -318,6 +327,8 @@ export default function UnitVsUnit() {
           attackerRemainedStationary,
           attackerAttached,
           attackerWaaaghActive,
+          targetOathOfMoment,
+          attackerOathWoundBonusEligible,
         ),
         selectedAndAutomaticCombatPresets(
           targetUnit?.combatPresets ?? [],
@@ -334,6 +345,8 @@ export default function UnitVsUnit() {
           attackerRemainedStationary,
           targetAttached,
           targetWaaaghActive,
+          false,
+          false,
         ),
         line.weapon.type,
         {
@@ -351,6 +364,8 @@ export default function UnitVsUnit() {
           targetAttached,
           attackerWaaaghActive,
           targetWaaaghActive,
+          targetOathOfMoment,
+          attackerOathWoundBonusEligible,
         },
       ),
     );
@@ -376,6 +391,8 @@ export default function UnitVsUnit() {
               attackerRemainedStationary,
               targetAttached,
               targetWaaaghActive,
+              false,
+              false,
             ),
           )
           .map((preset) => [preset.id, preset]),
@@ -532,6 +549,8 @@ export default function UnitVsUnit() {
                   setAttackerRemainedStationary(false);
                   setAttackerAttached(false);
                   setAttackerWaaaghActive(false);
+                  setTargetOathOfMoment(false);
+                  setAttackerOathWoundBonusEligible(false);
                   setAttackerUnitModels(0);
                   setNearbyEnemyModels(0);
                   setAttackerBattleShocked(false);
@@ -840,6 +859,7 @@ export default function UnitVsUnit() {
                   setTargetStrengthState("full");
                   setTargetAttached(false);
                   setTargetWaaaghActive(false);
+                  setTargetOathOfMoment(false);
                 }}
               >
                 <option value="">Choose faction</option>
@@ -940,6 +960,27 @@ export default function UnitVsUnit() {
                   onChange={(event) => setTargetWaaaghActive(event.target.checked)}
                 />
                 Target
+              </span>
+            </label>
+            <label>
+              <span>Oath of Moment</span>
+              <span className="inline-checkbox">
+                <input
+                  aria-label="Target is the Oath of Moment target"
+                  type="checkbox"
+                  checked={targetOathOfMoment}
+                  onChange={(event) => setTargetOathOfMoment(event.target.checked)}
+                />
+                Target selected
+              </span>
+              <span className="inline-checkbox">
+                <input
+                  aria-label="Attacker qualifies for the Codex Oath wound bonus"
+                  type="checkbox"
+                  checked={attackerOathWoundBonusEligible}
+                  onChange={(event) => setAttackerOathWoundBonusEligible(event.target.checked)}
+                />
+                Codex +1 Wound eligible
               </span>
             </label>
             <label>

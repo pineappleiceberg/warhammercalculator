@@ -57,6 +57,8 @@ class ProfileDataTests(unittest.TestCase):
                 "requires_attacker_stationary": False,
                 "requires_attached_unit": True,
                 "requires_waaagh_active": False,
+                "requires_oath_target": False,
+                "requires_oath_wound_bonus": False,
                 "requires_target_battle_shocked": False,
                 "requires_attacker_not_battle_shocked": False,
                 "required_target_strength_state": None,
@@ -119,6 +121,41 @@ class ProfileDataTests(unittest.TestCase):
                 "the [LETHAL HITS] ability."
             )["requires_waaagh_active"]
         )
+
+    def test_combat_preset_parser_splits_exact_oath_of_moment_effects(self):
+        description = (
+            "If your Army Faction is ADEPTUS ASTARTES , at the start of your Command "
+            "phase, select one unit from your opponent’s army. Until the start of your "
+            "next Command phase, that enemy unit is your Oath of Moment target. Each time "
+            "a model with this ability makes an attack that targets your Oath of Moment "
+            "target: You can re-roll the Hit roll. If you are using a Codex: Space Marines "
+            "Detachment and your army does not include one or more units with the Black "
+            "Templars, Blood Angels, Dark Angels, Deathwatch or Space Wolves keywords, add "
+            "1 to the Wound roll as well."
+        )
+        presets = combat_presets("Oath of Moment", description)
+        self.assertEqual(
+            [preset["name"] for preset in presets],
+            [
+                "Oath of Moment — Hit re-roll",
+                "Oath of Moment — Codex Wound bonus",
+            ],
+        )
+        self.assertTrue(all(preset["activation"] == "automatic" for preset in presets))
+        self.assertTrue(all(preset["requires_oath_target"] for preset in presets))
+        self.assertFalse(presets[0]["requires_oath_wound_bonus"])
+        self.assertTrue(presets[1]["requires_oath_wound_bonus"])
+        self.assertEqual(
+            (presets[0]["reroll_hits"], presets[0]["wound_modifier"]),
+            (1, 0),
+        )
+        self.assertEqual(
+            (presets[1]["reroll_hits"], presets[1]["wound_modifier"]),
+            (0, 1),
+        )
+        changed = description.replace("add 1 to the Wound roll as well", "re-roll the Wound roll")
+        self.assertEqual(len(combat_presets("Oath of Moment", changed)), 1)
+        self.assertFalse(combat_presets("Oath of Moment", changed)[0]["requires_oath_target"])
 
     def test_combat_preset_parser_classifies_each_effect_without_using_its_sign(self):
         self_penalty = combat_preset(
@@ -1025,7 +1062,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "36",
+                "37",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1310,14 +1347,14 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 383), ("inherent", 32), ("situational", 1226)],
+                [("automatic", 933), ("inherent", 32), ("situational", 951)],
             )
             self.assertEqual(
                 connection.execute(
                     "SELECT weapon_scope, count(*) FROM unit_combat_presets "
                     "GROUP BY weapon_scope ORDER BY weapon_scope"
                 ).fetchall(),
-                [("Any", 901), ("Melee", 398), ("Ranged", 342)],
+                [("Any", 1176), ("Melee", 398), ("Ranged", 342)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1373,6 +1410,29 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     """SELECT count(*) FROM unit_combat_presets
                        WHERE requires_attacker_charge = 1 AND activation != 'automatic'"""
+                ).fetchone()[0],
+                0,
+            )
+            oath_rows = connection.execute(
+                """SELECT preset.name, preset.requires_oath_wound_bonus,
+                          preset.wound_modifier, preset.reroll_hits, count(*)
+                   FROM unit_combat_presets AS preset
+                   WHERE preset.requires_oath_target = 1
+                   GROUP BY preset.name, preset.requires_oath_wound_bonus,
+                            preset.wound_modifier, preset.reroll_hits
+                   ORDER BY preset.name"""
+            ).fetchall()
+            self.assertEqual(
+                oath_rows,
+                [
+                    ("Oath of Moment — Codex Wound bonus", 1, 1, 0, 275),
+                    ("Oath of Moment — Hit re-roll", 0, 0, 1, 275),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_combat_presets
+                       WHERE requires_oath_target = 1 AND activation != 'automatic'"""
                 ).fetchone()[0],
                 0,
             )
@@ -2223,6 +2283,24 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertTrue(dead_brutal["requiresWaaaghActive"])
         self.assertEqual(dead_brutal["effects"][0]["weaponName"], "’uge choppa")
+        intercessors = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Intercessor Squad"
+        )
+        oath = [
+            preset
+            for preset in intercessors["combatPresets"]
+            if preset["name"].startswith("Oath of Moment —")
+        ]
+        self.assertEqual(len(oath), 2)
+        self.assertTrue(all(preset["requiresOathTarget"] for preset in oath))
+        self.assertEqual(
+            [preset.get("requiresOathWoundBonusEligible", False) for preset in oath],
+            [False, True],
+        )
+        self.assertEqual(
+            [(preset["rerollHits"], preset["woundModifier"]) for preset in oath],
+            [(True, 0), (False, 1)],
+        )
         troupe = next(unit for unit in catalogue["units"] if unit["id"] == "000002536")
         dance = [preset for preset in troupe["combatPresets"] if preset["choiceGroup"]]
         self.assertEqual(len(dance), 3)

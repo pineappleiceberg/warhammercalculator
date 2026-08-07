@@ -186,6 +186,14 @@ with Waaagh! Banner, and Warboss in Mega Armour are also automatic. Ghazghkull's
 range-dependent aura and compound leader rule remain explicit because Waaagh!
 state alone does not satisfy their other conditions.
 
+Oath of Moment uses two separately editable matchup states. Set
+`targetOathOfMoment` when the defender is the selected Oath target; this enables
+the Hit re-roll on compatible Adeptus Astartes datasheets. Set
+`attackerOathWoundBonusEligible` only when the attacker is using a Codex: Space
+Marines Detachment and the army contains none of the excluded chapter keywords.
+The conditional +1 Wound bonus requires both states, so it can no longer be
+accidentally bundled with the universal Hit re-roll.
+
 Published Attacks modifiers that scale by a count use explicit editable state
 instead of an assumed average. `attackerUnitModels` records the total models in
 the attacking unit, while `nearbyEnemyModels` records enemy models inside the
@@ -495,6 +503,8 @@ expression such as `D6+2`. Optional parameters include `weaponCount`, `model`,
 `unitModels`, `nearbyEnemyModels`,
 `attackerAttached`, `targetAttached`,
 `waaaghActive` (alias for `attackerWaaaghActive`), `targetWaaaghActive`,
+`oathTarget` (alias for `targetOathOfMoment`),
+`oathWoundBonus` (alias for `attackerOathWoundBonusEligible`),
 `attackerBattleShocked`, `targetBattleShocked` (booleans),
 `targetStrength` (`full`, `below-starting`, or `below-half`), `damageDivisor`,
 `attacksReplacement`, `attacksMultiplier`, `attacksModifier`,
@@ -511,7 +521,7 @@ comma-separated `torrent`, `blast`, `heavy`, `lance`, `cover`, `ignores-cover`,
 
 Model vs Model, Unit vs Unit, and Play Mode expose the same target distance,
 attacker charge and stationary states, attacker/target Battle-shock state, and
-target unit-strength and Attached-unit states. A catalogue agent request can
+target unit-strength, Attached-unit, Waaagh!, and Oath of Moment states. A catalogue agent request can
 pass `charged=true` to activate every compatible, unambiguous charge-triggered
 source rule without an `attackerPreset` parameter and activate Lance for
 compatible catalogue weapons.
@@ -524,6 +534,8 @@ unambiguous leader rules on the corresponding side of the matchup.
 `waaaghActive=true` and `targetWaaaghActive=true` activate the universal and
 direct Waaagh-dependent rules for the corresponding Orks unit without requiring
 manual profile arithmetic.
+`oathTarget=true` activates the Oath Hit re-roll; `oathWoundBonus=true` adds the
+Codex +1 Wound effect only when the target is also marked.
 Likewise, `targetBattleShocked=true` or `attackerBattleShocked=true` resolves
 compatible exact source rules before later numeric overrides are applied.
 `targetStrength=below-half` and the other two strength values likewise resolve

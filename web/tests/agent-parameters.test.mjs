@@ -198,6 +198,8 @@ test("canonical agent parameters round-trip every supported profile field", () =
     targetAttached: true,
     attackerWaaaghActive: true,
     targetWaaaghActive: true,
+    targetOathOfMoment: true,
+    attackerOathWoundBonusEligible: true,
     attackerBattleShocked: true,
     targetBattleShocked: true,
     targetStrengthState: "below_half",
@@ -282,6 +284,11 @@ test("catalogue agent Attached-unit state selects exact automatic leader rules",
     parseAgentProfile("targetWaaaghActive=true", defaults, false).targetWaaaghActive,
     true,
   );
+  assert.equal(parseAgentProfile("oathTarget=true", defaults, false).targetOathOfMoment, true);
+  assert.equal(
+    parseAgentProfile("oathWoundBonus=true", defaults, false).attackerOathWoundBonusEligible,
+    true,
+  );
   assert.equal(parseAgentProfile("unitModels=12", defaults, false).attackerUnitModels, 12);
   assert.equal(parseAgentProfile("nearbyEnemyModels=9", defaults, false).nearbyEnemyModels, 9);
 });
@@ -329,6 +336,65 @@ test("catalogue agent Waaagh state selects exact universal and direct rules", as
   );
   assert.equal(composed.attacksModifier, 1);
   assert.equal(composed.strengthModifier, 1);
+});
+
+test("catalogue agent Oath state separates the Hit re-roll from the Codex Wound bonus", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const intercessors = catalogue.units.find((unit) => unit.name === "Intercessor Squad");
+  const weapon = intercessors.weapons.find((entry) => entry.type === "Ranged");
+  const selected = (targetOathOfMoment, woundBonusEligible) =>
+    selectedAndAutomaticCombatPresets(
+      intercessors.combatPresets,
+      [],
+      weapon.type,
+      weapon.name,
+      [],
+      attackKeywordsForWeapon(weapon),
+      0,
+      false,
+      false,
+      false,
+      "full",
+      false,
+      false,
+      false,
+      targetOathOfMoment,
+      woundBonusEligible,
+    );
+  assert.deepEqual(selected(false, false), []);
+  assert.deepEqual(
+    selected(true, false).map((preset) => preset.name),
+    ["Oath of Moment — Hit re-roll"],
+  );
+  assert.deepEqual(
+    selected(true, true).map((preset) => preset.name),
+    ["Oath of Moment — Hit re-roll", "Oath of Moment — Codex Wound bonus"],
+  );
+  const hitOnly = applyCombatPresets(
+    { ...defaults, weaponName: weapon.name, targetOathOfMoment: true },
+    selected(true, false),
+    [],
+    weapon.type,
+    { targetOathOfMoment: true },
+  );
+  assert.equal(hitOnly.rerollHits, true);
+  assert.equal(hitOnly.woundModifier, 0);
+  const full = applyCombatPresets(
+    {
+      ...defaults,
+      weaponName: weapon.name,
+      targetOathOfMoment: true,
+      attackerOathWoundBonusEligible: true,
+    },
+    selected(true, true),
+    [],
+    weapon.type,
+    { targetOathOfMoment: true, attackerOathWoundBonusEligible: true },
+  );
+  assert.equal(full.rerollHits, true);
+  assert.equal(full.woundModifier, 1);
 });
 
 test("catalogue agent model counts compose exact automatic Attacks scaling", async () => {

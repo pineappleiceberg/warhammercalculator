@@ -166,6 +166,10 @@ CREATE TABLE unit_combat_presets (
         CHECK (requires_attached_unit IN (0, 1)),
     requires_waaagh_active INTEGER NOT NULL DEFAULT 0
         CHECK (requires_waaagh_active IN (0, 1)),
+    requires_oath_target INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_oath_target IN (0, 1)),
+    requires_oath_wound_bonus INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_oath_wound_bonus IN (0, 1)),
     requires_target_battle_shocked INTEGER NOT NULL DEFAULT 0
         CHECK (requires_target_battle_shocked IN (0, 1)),
     requires_attacker_not_battle_shocked INTEGER NOT NULL DEFAULT 0
@@ -557,6 +561,24 @@ def combat_requires_waaagh_active(text: str) -> bool:
         r"has a Damage characteristic of 3\.",
     )
     return any(re.fullmatch(pattern, normalized, re.IGNORECASE) for pattern in direct_patterns)
+
+
+def combat_is_oath_of_moment(text: str) -> bool:
+    normalized = plain_text(text).strip()
+    return bool(
+        re.fullmatch(
+            r"If your Army Faction is ADEPTUS ASTARTES\s*, at the start of your "
+            r"Command phase, select one unit from your opponent[’']s army\. Until the "
+            r"start of your next Command phase, that enemy unit is your Oath of Moment "
+            r"target\. Each time a model with this ability makes an attack that targets "
+            r"your Oath of Moment target: You can re-roll the Hit roll\. If you are using "
+            r"a Codex: Space Marines Detachment and your army does not include one or "
+            r"more units with the Black Templars, Blood Angels, Dark Angels, Deathwatch "
+            r"or Space Wolves keywords, add 1 to the Wound roll as well\.",
+            normalized,
+            re.IGNORECASE,
+        )
+    )
 
 
 def combat_battle_shock_requirements(text: str) -> tuple[bool, bool]:
@@ -1570,6 +1592,8 @@ def combat_preset(
     effects["requires_attacker_stationary"] = combat_requires_attacker_stationary(text)
     effects["requires_attached_unit"] = combat_requires_attached_unit(text)
     effects["requires_waaagh_active"] = combat_requires_waaagh_active(text)
+    effects["requires_oath_target"] = combat_is_oath_of_moment(text)
+    effects["requires_oath_wound_bonus"] = False
     (
         effects["requires_target_battle_shocked"],
         effects["requires_attacker_not_battle_shocked"],
@@ -1587,6 +1611,8 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
             "requires_attacker_stationary",
             "requires_attached_unit",
             "requires_waaagh_active",
+            "requires_oath_target",
+            "requires_oath_wound_bonus",
             "requires_target_battle_shocked",
             "requires_attacker_not_battle_shocked",
             "required_target_strength_state",
@@ -1684,6 +1710,39 @@ def combat_presets(
     name: str, description: str, allow_bearer_defenses: bool = False
 ) -> list[dict[str, object]]:
     text = plain_text(description)
+    if combat_is_oath_of_moment(text):
+        effects = combat_preset(text, allow_bearer_defenses)
+        if not effects:
+            return []
+        hit_reroll = {
+            **effects,
+            "wound_modifier": 0,
+            "wound_modifier_role": None,
+            "wound_modifier_subject": None,
+        }
+        wound_bonus = {
+            **effects,
+            "reroll_hits": 0,
+            "hit_reroll_role": None,
+            "hit_reroll_subject": None,
+            "requires_oath_wound_bonus": True,
+        }
+        return [
+            {
+                "name": f"{name} — Hit re-roll",
+                "description": text,
+                "is_exclusive_choice": 0,
+                "activation": "automatic",
+                **hit_reroll,
+            },
+            {
+                "name": f"{name} — Codex Wound bonus",
+                "description": text,
+                "is_exclusive_choice": 0,
+                "activation": "automatic",
+                **wound_bonus,
+            },
+        ]
     if combat_is_core_waaagh(text):
         effects = combat_preset(text, allow_bearer_defenses)
         if not effects:
@@ -1912,6 +1971,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     requires_attacker_charge, requires_attacker_stationary,
                     requires_attached_unit,
                     requires_waaagh_active,
+                    requires_oath_target, requires_oath_wound_bonus,
                     requires_target_battle_shocked,
                     requires_attacker_not_battle_shocked,
                     required_target_strength_state,
@@ -1920,7 +1980,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                     hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
                     wound_reroll_subject)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     ability_position,
@@ -1935,6 +1995,8 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     int(preset["requires_attacker_stationary"]),
                     int(preset["requires_attached_unit"]),
                     int(preset["requires_waaagh_active"]),
+                    int(preset["requires_oath_target"]),
+                    int(preset["requires_oath_wound_bonus"]),
                     int(preset["requires_target_battle_shocked"]),
                     int(preset["requires_attacker_not_battle_shocked"]),
                     preset["required_target_strength_state"],
@@ -2119,7 +2181,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "36"),
+                    ("schema_version", "37"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

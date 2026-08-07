@@ -95,6 +95,8 @@ export function combatPresetMeetsEligibility(
   attackerRemainedStationary = false,
   sourceUnitAttached = false,
   sourceUnitWaaaghActive = false,
+  targetOathOfMoment = false,
+  sourceUnitOathWoundBonusEligible = false,
 ) {
   const targets = new Set(targetKeywords.map(normalizedKeyword));
   const attacks = new Set(attackKeywords.map(normalizedKeyword));
@@ -114,6 +116,8 @@ export function combatPresetMeetsEligibility(
     (!preset.requiresAttackerStationary || attackerRemainedStationary) &&
     (!preset.requiresAttachedUnit || sourceUnitAttached) &&
     (!preset.requiresWaaaghActive || sourceUnitWaaaghActive) &&
+    (!preset.requiresOathTarget || targetOathOfMoment) &&
+    (!preset.requiresOathWoundBonusEligible || sourceUnitOathWoundBonusEligible) &&
     (!preset.requiresTargetBattleShocked || targetBattleShocked) &&
     (!preset.requiresAttackerNotBattleShocked || !attackerBattleShocked) &&
     (preset.effects ?? []).every(
@@ -141,6 +145,8 @@ export function selectedAndAutomaticCombatPresets(
   attackerRemainedStationary = false,
   sourceUnitAttached = false,
   sourceUnitWaaaghActive = false,
+  targetOathOfMoment = false,
+  sourceUnitOathWoundBonusEligible = false,
 ) {
   const selected = new Set(selectedIds);
   return presets.filter(
@@ -159,6 +165,8 @@ export function selectedAndAutomaticCombatPresets(
         attackerRemainedStationary,
         sourceUnitAttached,
         sourceUnitWaaaghActive,
+        targetOathOfMoment,
+        sourceUnitOathWoundBonusEligible,
       ),
   );
 }
@@ -208,6 +216,8 @@ export function combatPresetEffects(
   attackerRemainedStationary = false,
   sourceUnitAttached = false,
   sourceUnitWaaaghActive = false,
+  targetOathOfMoment = false,
+  sourceUnitOathWoundBonusEligible = false,
   attackerUnitModels = 0,
   nearbyEnemyModels = 0,
 ) {
@@ -227,6 +237,8 @@ export function combatPresetEffects(
         attackerRemainedStationary,
         sourceUnitAttached,
         sourceUnitWaaaghActive,
+        targetOathOfMoment,
+        sourceUnitOathWoundBonusEligible,
       ),
   );
   const hitModifiers = applicable.filter((preset) =>
@@ -464,6 +476,8 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
       context.attackerRemainedStationary ?? false,
       context.targetAttached ?? false,
       context.targetWaaaghActive ?? false,
+      false,
+      false,
       context.attackerUnitModels ?? 0,
       context.nearbyEnemyModels ?? 0,
     ),
@@ -537,6 +551,8 @@ export function applyCombatPresets(
     context.attackerRemainedStationary ?? profile.attackerRemainedStationary ?? false,
     context.attackerAttached ?? profile.attackerAttached ?? false,
     context.attackerWaaaghActive ?? profile.attackerWaaaghActive ?? false,
+    context.targetOathOfMoment ?? profile.targetOathOfMoment ?? false,
+    context.attackerOathWoundBonusEligible ?? profile.attackerOathWoundBonusEligible ?? false,
     context.attackerUnitModels ?? profile.attackerUnitModels ?? 0,
     context.nearbyEnemyModels ?? profile.nearbyEnemyModels ?? 0,
   );
@@ -555,6 +571,8 @@ export function applyCombatPresets(
     context.attackerRemainedStationary ?? profile.attackerRemainedStationary ?? false,
     context.targetAttached ?? profile.targetAttached ?? false,
     context.targetWaaaghActive ?? profile.targetWaaaghActive ?? false,
+    false,
+    false,
     context.attackerUnitModels ?? profile.attackerUnitModels ?? 0,
     context.nearbyEnemyModels ?? profile.nearbyEnemyModels ?? 0,
   );

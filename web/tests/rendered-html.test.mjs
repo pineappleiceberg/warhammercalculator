@@ -151,6 +151,8 @@ test("server-renders every battle workflow", async () => {
       assert.match(html, /aria-label="Enemy models within the ability range"/);
       assert.match(html, /aria-label="Attacker is gaining Waaagh! benefits"/);
       assert.match(html, /aria-label="Target is gaining Waaagh! benefits"/);
+      assert.match(html, /aria-label="Target is the Oath of Moment target"/);
+      assert.match(html, /aria-label="Attacker qualifies for the Codex Oath wound bonus"/);
     }
     if (pathname === "/unit-vs-unit") {
       assert.match(html, /aria-label="Target distance in inches"/);
@@ -158,6 +160,8 @@ test("server-renders every battle workflow", async () => {
       assert.match(html, /aria-label="Enemy models within the ability range"/);
       assert.match(html, /aria-label="Attacker is gaining Waaagh! benefits"/);
       assert.match(html, /aria-label="Target is gaining Waaagh! benefits"/);
+      assert.match(html, /aria-label="Target is the Oath of Moment target"/);
+      assert.match(html, /aria-label="Attacker qualifies for the Codex Oath wound bonus"/);
     }
     if (pathname === "/agent") {
       assert.match(html, /Call with a URL/);
@@ -1666,6 +1670,8 @@ test("generated API profiles preserve combat invariants and reject malformed fie
     "targetAttached",
     "attackerWaaaghActive",
     "targetWaaaghActive",
+    "targetOathOfMoment",
+    "attackerOathWoundBonusEligible",
     "torrent",
     "blast",
     "heavyActive",

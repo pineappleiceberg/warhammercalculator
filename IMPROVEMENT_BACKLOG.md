@@ -16,11 +16,10 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Extend the source-backed rules eligibility layer beyond phase, exact
-   target/Psychic keywords, direct target distance, charge state, direct
-   Battle-shock state, direct target unit-strength state, attacker stationary
-   state, simple Attached-unit state, and direct Waaagh-benefit state to
-   compound conditions that currently require manual interpretation.
+1. Extend the source-backed rules eligibility layer beyond the now-covered
+   direct states to objective control, observer/marked-target relationships,
+   aura proximity, and other compound conditions that still require manual
+   interpretation.
 2. Represent casualty- and nearby-unit-count-scaled Attacks modifiers as
    explicit reproducible state instead of requiring manual arithmetic; direct
    source-unit and nearby-enemy model counts are now covered.
@@ -29,6 +28,16 @@ priority over feature count.
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Corrected and automated Oath of Moment across 275 Adeptus Astartes
+  datasheets. SQLite schema 37 splits the rule into a Hit re-roll gated by an
+  editable selected-target state and a separate +1 Wound effect that also
+  requires explicit Codex-detachment/non-divergent-chapter eligibility. This
+  removes the former manual preset that incorrectly bundled both benefits.
+  Model vs Model, Unit vs Unit, Play recovery, normalized API profiles, and
+  static agent URLs preserve both states. Exact parser negatives, generated
+  database and catalogue snapshots, URL and recovery round trips, three-state
+  preset composition, and C/WebAssembly damage monotonicity cover the change.
 
 - 2026-08-07: Added exact Waaagh-benefit state. SQLite schema 36 splits the
   universal Orks Waaagh! rule into melee-only +1 Strength/Attacks and an

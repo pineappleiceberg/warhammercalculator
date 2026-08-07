@@ -183,6 +183,8 @@ export default function PlayMode() {
     attackerRemainedStationary = profile.attackerRemainedStationary,
     sourceUnitAttached = false,
     sourceUnitWaaaghActive = false,
+    targetOathOfMoment = false,
+    sourceUnitOathWoundBonusEligible = false,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -199,6 +201,8 @@ export default function PlayMode() {
       attackerRemainedStationary,
       sourceUnitAttached,
       sourceUnitWaaaghActive,
+      targetOathOfMoment,
+      sourceUnitOathWoundBonusEligible,
     );
 
   const refreshProfile = (
@@ -217,6 +221,8 @@ export default function PlayMode() {
     nextTargetAttached = profile.targetAttached,
     nextAttackerWaaaghActive = profile.attackerWaaaghActive,
     nextTargetWaaaghActive = profile.targetWaaaghActive,
+    nextTargetOathOfMoment = profile.targetOathOfMoment,
+    nextAttackerOathWoundBonusEligible = profile.attackerOathWoundBonusEligible,
     nextAttackerUnitModels = profile.attackerUnitModels,
     nextNearbyEnemyModels = profile.nearbyEnemyModels,
   ) => {
@@ -250,6 +256,8 @@ export default function PlayMode() {
             targetAttached: nextTargetAttached,
             attackerWaaaghActive: nextAttackerWaaaghActive,
             targetWaaaghActive: nextTargetWaaaghActive,
+            targetOathOfMoment: nextTargetOathOfMoment,
+            attackerOathWoundBonusEligible: nextAttackerOathWoundBonusEligible,
             attackerBattleShocked: nextAttackerBattleShocked,
             targetBattleShocked: nextTargetBattleShocked,
             targetStrengthState: nextTargetStrengthState,
@@ -270,6 +278,8 @@ export default function PlayMode() {
           nextAttackerRemainedStationary,
           nextAttackerAttached,
           nextAttackerWaaaghActive,
+          nextTargetOathOfMoment,
+          nextAttackerOathWoundBonusEligible,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -284,6 +294,8 @@ export default function PlayMode() {
           nextAttackerRemainedStationary,
           nextTargetAttached,
           nextTargetWaaaghActive,
+          false,
+          false,
         ),
         weapon.type,
         {
@@ -298,6 +310,8 @@ export default function PlayMode() {
           targetAttached: nextTargetAttached,
           attackerWaaaghActive: nextAttackerWaaaghActive,
           targetWaaaghActive: nextTargetWaaaghActive,
+          targetOathOfMoment: nextTargetOathOfMoment,
+          attackerOathWoundBonusEligible: nextAttackerOathWoundBonusEligible,
           attackerBattleShocked: nextAttackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
@@ -342,6 +356,7 @@ export default function PlayMode() {
     const nextTargetBattleShocked = false;
     const nextTargetAttached = false;
     const nextTargetWaaaghActive = false;
+    const nextTargetOathOfMoment = false;
     const nextTargetStrengthState = "full" as const;
     setTargetModelId(model ? String(model.id) : "");
     setActiveTargetPresetIds(nextTargetPresetIds);
@@ -350,6 +365,7 @@ export default function PlayMode() {
         ...current,
         targetAttached: nextTargetAttached,
         targetWaaaghActive: nextTargetWaaaghActive,
+        targetOathOfMoment: nextTargetOathOfMoment,
         targetBattleShocked: nextTargetBattleShocked,
         targetStrengthState: nextTargetStrengthState,
       }));
@@ -373,6 +389,8 @@ export default function PlayMode() {
             targetAttached: nextTargetAttached,
             attackerWaaaghActive: profile.attackerWaaaghActive,
             targetWaaaghActive: nextTargetWaaaghActive,
+            targetOathOfMoment: nextTargetOathOfMoment,
+            attackerOathWoundBonusEligible: profile.attackerOathWoundBonusEligible,
             targetStrengthState: nextTargetStrengthState,
           },
           weaponProfile,
@@ -391,6 +409,8 @@ export default function PlayMode() {
           profile.attackerRemainedStationary,
           profile.attackerAttached,
           profile.attackerWaaaghActive,
+          nextTargetOathOfMoment,
+          profile.attackerOathWoundBonusEligible,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -405,6 +425,8 @@ export default function PlayMode() {
           profile.attackerRemainedStationary,
           nextTargetAttached,
           nextTargetWaaaghActive,
+          false,
+          false,
         ),
         weaponProfile.type,
         {
@@ -419,6 +441,8 @@ export default function PlayMode() {
           targetAttached: nextTargetAttached,
           attackerWaaaghActive: profile.attackerWaaaghActive,
           targetWaaaghActive: nextTargetWaaaghActive,
+          targetOathOfMoment: nextTargetOathOfMoment,
+          attackerOathWoundBonusEligible: profile.attackerOathWoundBonusEligible,
           attackerBattleShocked: profile.attackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
@@ -540,6 +564,8 @@ export default function PlayMode() {
                         attackerRemainedStationary: false,
                         attackerAttached: false,
                         attackerWaaaghActive: false,
+                        targetOathOfMoment: false,
+                        attackerOathWoundBonusEligible: false,
                         attackerUnitModels: 0,
                         nearbyEnemyModels: 0,
                         attackerBattleShocked: false,
@@ -574,6 +600,8 @@ export default function PlayMode() {
                         attackerRemainedStationary: false,
                         attackerAttached: false,
                         attackerWaaaghActive: false,
+                        targetOathOfMoment: false,
+                        attackerOathWoundBonusEligible: false,
                         attackerUnitModels: 0,
                         nearbyEnemyModels: 0,
                         attackerBattleShocked: false,
@@ -637,6 +665,7 @@ export default function PlayMode() {
                         ...current,
                         targetAttached: false,
                         targetWaaaghActive: false,
+                        targetOathOfMoment: false,
                         targetBattleShocked: false,
                         targetStrengthState: "full",
                       }));
@@ -749,6 +778,8 @@ export default function PlayMode() {
                         profile.targetAttached,
                         profile.attackerWaaaghActive,
                         profile.targetWaaaghActive,
+                        profile.targetOathOfMoment,
+                        profile.attackerOathWoundBonusEligible,
                         Math.min(1000, Math.max(0, +event.target.value || 0)),
                         profile.nearbyEnemyModels,
                       )
@@ -781,12 +812,75 @@ export default function PlayMode() {
                         profile.targetAttached,
                         profile.attackerWaaaghActive,
                         profile.targetWaaaghActive,
+                        profile.targetOathOfMoment,
+                        profile.attackerOathWoundBonusEligible,
                         profile.attackerUnitModels,
                         Math.min(1000, Math.max(0, +event.target.value || 0)),
                       )
                     }
                   />
                   <small>Count models within the rule’s stated range</small>
+                </label>
+                <label>
+                  <span>Oath of Moment</span>
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Target is the Oath of Moment target"
+                      type="checkbox"
+                      checked={profile.targetOathOfMoment}
+                      onChange={(event) =>
+                        refreshProfile(
+                          weaponId,
+                          targetModelId,
+                          profileId,
+                          activeAttackerPresetIds,
+                          activeTargetPresetIds,
+                          profile.targetDistance,
+                          profile.attackerCharged,
+                          profile.attackerBattleShocked,
+                          profile.targetBattleShocked,
+                          profile.targetStrengthState,
+                          profile.attackerRemainedStationary,
+                          profile.attackerAttached,
+                          profile.targetAttached,
+                          profile.attackerWaaaghActive,
+                          profile.targetWaaaghActive,
+                          event.target.checked,
+                          profile.attackerOathWoundBonusEligible,
+                        )
+                      }
+                    />
+                    Target selected
+                  </span>
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Attacker qualifies for the Codex Oath wound bonus"
+                      type="checkbox"
+                      checked={profile.attackerOathWoundBonusEligible}
+                      onChange={(event) =>
+                        refreshProfile(
+                          weaponId,
+                          targetModelId,
+                          profileId,
+                          activeAttackerPresetIds,
+                          activeTargetPresetIds,
+                          profile.targetDistance,
+                          profile.attackerCharged,
+                          profile.attackerBattleShocked,
+                          profile.targetBattleShocked,
+                          profile.targetStrengthState,
+                          profile.attackerRemainedStationary,
+                          profile.attackerAttached,
+                          profile.targetAttached,
+                          profile.attackerWaaaghActive,
+                          profile.targetWaaaghActive,
+                          profile.targetOathOfMoment,
+                          event.target.checked,
+                        )
+                      }
+                    />
+                    Codex +1 Wound eligible
+                  </span>
                 </label>
                 <label>
                   <span>Movement</span>

@@ -902,6 +902,8 @@ export default function Home() {
     attackerRemainedStationary = profile.attackerRemainedStationary,
     sourceUnitAttached = false,
     sourceUnitWaaaghActive = false,
+    targetOathOfMoment = false,
+    sourceUnitOathWoundBonusEligible = false,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -918,6 +920,8 @@ export default function Home() {
       attackerRemainedStationary,
       sourceUnitAttached,
       sourceUnitWaaaghActive,
+      targetOathOfMoment,
+      sourceUnitOathWoundBonusEligible,
     );
   const withActivePresets = (
     current: Profile,
@@ -1005,6 +1009,8 @@ export default function Home() {
         baseProfile.attackerRemainedStationary,
         baseProfile.attackerAttached,
         baseProfile.attackerWaaaghActive,
+        baseProfile.targetOathOfMoment,
+        baseProfile.attackerOathWoundBonusEligible,
       ),
       selectedPresets(
         selectedTargetUnit,
@@ -1019,6 +1025,8 @@ export default function Home() {
         baseProfile.attackerRemainedStationary,
         baseProfile.targetAttached,
         baseProfile.targetWaaaghActive,
+        false,
+        false,
       ),
       weapon?.type ?? "Ranged",
       {
@@ -1036,6 +1044,8 @@ export default function Home() {
         targetAttached: baseProfile.targetAttached,
         attackerWaaaghActive: baseProfile.attackerWaaaghActive,
         targetWaaaghActive: baseProfile.targetWaaaghActive,
+        targetOathOfMoment: baseProfile.targetOathOfMoment,
+        attackerOathWoundBonusEligible: baseProfile.attackerOathWoundBonusEligible,
       },
     ) as Profile;
   };
@@ -1245,6 +1255,8 @@ export default function Home() {
                             attackerRemainedStationary: false,
                             attackerAttached: false,
                             attackerWaaaghActive: false,
+                            targetOathOfMoment: false,
+                            attackerOathWoundBonusEligible: false,
                             attackerUnitModels: 0,
                             nearbyEnemyModels: 0,
                             attackerBattleShocked: false,
@@ -1281,6 +1293,8 @@ export default function Home() {
                             attackerRemainedStationary: false,
                             attackerAttached: false,
                             attackerWaaaghActive: false,
+                            targetOathOfMoment: false,
+                            attackerOathWoundBonusEligible: false,
                             attackerUnitModels: 0,
                             nearbyEnemyModels: 0,
                             attackerBattleShocked: false,
@@ -1447,6 +1461,7 @@ export default function Home() {
                             targetBattleShocked: false,
                             targetAttached: false,
                             targetWaaaghActive: false,
+                            targetOathOfMoment: false,
                             targetStrengthState: "full",
                           },
                           selectedWeapon,
@@ -1480,6 +1495,7 @@ export default function Home() {
                             targetBattleShocked: false,
                             targetAttached: false,
                             targetWaaaghActive: false,
+                            targetOathOfMoment: false,
                             targetStrengthState: "full",
                           },
                           selectedWeapon,
@@ -1959,6 +1975,27 @@ export default function Home() {
                     : setProfile((current) =>
                         withActivePresets({ ...current, targetWaaaghActive: value }),
                       )
+                }
+              />
+              <Toggle
+                label="Target is the Oath of Moment target"
+                checked={profile.targetOathOfMoment}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({ ...current, targetOathOfMoment: value }),
+                  )
+                }
+              />
+              <Toggle
+                label="Attacker qualifies for the Codex Oath +1 Wound bonus"
+                checked={profile.attackerOathWoundBonusEligible}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({
+                      ...current,
+                      attackerOathWoundBonusEligible: value,
+                    }),
+                  )
                 }
               />
               <Toggle

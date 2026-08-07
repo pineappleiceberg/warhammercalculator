@@ -1970,6 +1970,59 @@ test("defensive rules cannot increase exact expected damage", () => {
   assert.ok(lessThanOrEqual(cover, baseline));
 });
 
+test("source-backed Oath states improve exact C/Wasm damage only at their own boundaries", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const intercessors = catalogue.units.find((unit) => unit.name === "Intercessor Squad");
+  const weapon = intercessors.weapons.find((entry) => entry.type === "Ranged");
+  const selected = (targetOathOfMoment, woundBonusEligible) =>
+    selectedAndAutomaticCombatPresets(
+      intercessors.combatPresets,
+      [],
+      weapon.type,
+      weapon.name,
+      [],
+      attackKeywordsForWeapon(weapon),
+      0,
+      false,
+      false,
+      false,
+      "full",
+      false,
+      false,
+      false,
+      targetOathOfMoment,
+      woundBonusEligible,
+    );
+  const inactive = applyCombatPresets({}, selected(false, false), [], weapon.type);
+  const hitOnly = applyCombatPresets(
+    { targetOathOfMoment: true },
+    selected(true, false),
+    [],
+    weapon.type,
+  );
+  const full = applyCombatPresets(
+    { targetOathOfMoment: true, attackerOathWoundBonusEligible: true },
+    selected(true, true),
+    [],
+    weapon.type,
+  );
+  assert.equal(inactive.rerollHits, false);
+  assert.equal(hitOnly.rerollHits, true);
+  assert.equal(hitOnly.woundModifier, 0);
+  assert.equal(full.rerollHits, true);
+  assert.equal(full.woundModifier, 1);
+  const baselineDamage = exactMean();
+  const hitOnlyDamage = exactMean({ flags: hitOnly.rerollHits ? 8 : 0 });
+  const fullDamage = exactMean({
+    flags: full.rerollHits ? 8 : 0,
+    woundModifier: full.woundModifier,
+  });
+  assert.ok(lessThanOrEqual(baselineDamage, hitOnlyDamage));
+  assert.ok(lessThanOrEqual(hitOnlyDamage, fullDamage));
+});
+
 test("source-backed target distance changes preset composition at its exact boundary", async () => {
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),

@@ -36,7 +36,8 @@ The main tables are:
   defaults. Rules whose complete eligibility is an exact selected-target,
   attacking-weapon keyword, unambiguous attacker-charge or stationary test, or
   direct attacker/target Battle-shock, target unit-strength, simple
-  Attached-unit, or exact direct Waaagh-benefit test are `automatic`;
+  Attached-unit, exact direct Waaagh-benefit, or exact Oath of Moment test are
+  `automatic`;
   they apply only to matching weapon, target, and battlefield state. Charge-or-
   charged, Order-dependent, aura-, compound leader-, objective-, observer-,
   alternative-branch, and combined-mode wording remains situational. Target
@@ -56,6 +57,11 @@ The main tables are:
   onto ranged weapons and its 5+ invulnerable save cannot be limited to melee
   attacks. Direct dependent abilities carry `requires_waaagh_active`; compound
   aura and leader clauses remain situational
+- Oath of Moment is stored as two automatic effects across its 275 source
+  datasheets. `requires_oath_target` gates the Hit re-roll, while the +1 Wound
+  row additionally carries `requires_oath_wound_bonus`. This preserves the
+  published Codex-detachment and excluded-chapter condition instead of treating
+  both benefits as one manual toggle
 - exact bearer Save, invulnerable-save, Feel No Pain, and Damage-reduction
   effects are imported as optional situational presets only when structured
   composition proves that the datasheet contains exactly one model; bearer
