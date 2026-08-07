@@ -25,6 +25,7 @@ import {
   combatPresetRequiresActivation,
   combatPresetSubjectSummary,
   combatPresetSupportsRole,
+  combatPresetSupportsWeapon,
   updateCombatPresetSelection,
 } from "../lib/combat-presets.mjs";
 import { rulesInteractionCases } from "./rules-interaction-corpus.mjs";
@@ -72,6 +73,7 @@ test("signed characteristic modifiers use per-weapon floors in C/Wasm", () => {
         1,
         6,
         0,
+        0,
         2,
         2,
         10,
@@ -106,6 +108,89 @@ test("signed characteristic modifiers use per-weapon floors in C/Wasm", () => {
       1,
     );
     assert.deepEqual([readUint64(output, 5, 6), readUint64(output, 7, 8)], [40n, 9n]);
+    assert.equal(
+      calculator._whc_calculate_summary(
+        1,
+        6,
+        0,
+        4,
+        2,
+        2,
+        10,
+        0,
+        0,
+        0,
+        1,
+        6,
+        1,
+        7,
+        0,
+        0,
+        10,
+        0,
+        16,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        -1,
+        0,
+        0,
+        output,
+      ),
+      1,
+    );
+    assert.equal(calculator.getValue(output, "i32") >>> 0, 0);
+    assert.equal(calculator.getValue(output + 16, "i32") >>> 0, 6);
+    assert.deepEqual([readUint64(output, 5, 6), readUint64(output, 7, 8)], [5n, 1n]);
+    assert.equal(
+      calculator._whc_calculate_summary(
+        1,
+        6,
+        0,
+        4,
+        1,
+        2,
+        10,
+        0,
+        0,
+        0,
+        1,
+        6,
+        1,
+        7,
+        0,
+        0,
+        10,
+        0,
+        272,
+        0,
+        1,
+        0,
+        0,
+        0,
+        1,
+        3,
+        0,
+        0,
+        0,
+        0,
+        -1,
+        0,
+        0,
+        output,
+      ),
+      1,
+    );
+    assert.equal(calculator.getValue(output + 16, "i32") >>> 0, 6);
+    assert.deepEqual([readUint64(output, 5, 6), readUint64(output, 7, 8)], [25n, 6n]);
   } finally {
     calculator._free(output);
   }
@@ -416,6 +501,69 @@ test("unit ability presets compose direct weapon characteristic modifiers", () =
   assert.deepEqual([applied.damageDice, applied.damageSides, applied.damage], [1, 3, 1]);
   assert.equal(applied.damageModifier, 1);
   assert.equal(combatPresetEffects([preset], "Ranged", "attacker").attacksModifier, 0);
+});
+
+test("fixed Attacks replacements apply before modifiers and respect named weapon scope", () => {
+  const preset = {
+    weaponScope: "Any",
+    hitModifier: 0,
+    woundModifier: 0,
+    rerollHits: false,
+    rerollHitOnes: false,
+    rerollWounds: false,
+    rerollWoundOnes: false,
+    effects: [
+      {
+        type: "attacks_replacement",
+        value: 12,
+        diceCount: 0,
+        diceSides: 0,
+        weaponName: "Dead Man’s Hand",
+        role: "attacker",
+        subject: "self",
+      },
+    ],
+  };
+  const base = {
+    weaponName: "Dead Man’s Hand",
+    attacksReplacement: 0,
+    attacksModifier: -1,
+    strengthModifier: 0,
+    damageModifier: 0,
+    ap: 0,
+    criticalHits: 6,
+    criticalWounds: 0,
+    lethalHits: false,
+    devastatingWounds: false,
+    twinLinked: false,
+    ignoresCover: false,
+    lanceActive: false,
+    heavyActive: false,
+    sustainedHits: 0,
+    sustainedHitsDice: 0,
+    sustainedHitsSides: 0,
+    rapidFire: 0,
+    rapidFireDice: 0,
+    rapidFireSides: 0,
+    hitModifier: 0,
+    woundModifier: 0,
+    rerollHits: false,
+    rerollHitOnes: false,
+    rerollWounds: false,
+    rerollWoundOnes: false,
+    save: 7,
+    invulnerable: 0,
+    feelNoPain: 0,
+    reduction: 0,
+  };
+  assert.equal(applyCombatPresets(base, [preset], [], "Melee").attacksReplacement, 12);
+  assert.equal(combatPresetSupportsWeapon(preset, "Melee", "Dead Man's Hand"), true);
+  assert.equal(combatPresetSupportsWeapon(preset, "Ranged", "Blood Song"), false);
+  assert.equal(
+    applyCombatPresets({ ...base, weaponName: "Blood Song" }, [preset], [], "Ranged")
+      .attacksReplacement,
+    0,
+  );
 });
 
 test("defensive presets compose editable profiles and every ordered target segment", () => {
@@ -747,6 +895,7 @@ test("parameterized agent profile reaches the C/Wasm exact engine unchanged", ()
       profile.attackDice,
       profile.attackSides,
       profile.attacks,
+      profile.attacksReplacement,
       profile.weaponCount,
       profile.hitOn,
       profile.strength,
@@ -798,6 +947,7 @@ function interactionMeans(testCase) {
       0,
       0,
       testCase.attacks,
+      0,
       1,
       testCase.hitOn,
       testCase.strength,
@@ -861,6 +1011,7 @@ function exactMean({
       0,
       0,
       4,
+      0,
       1,
       3,
       10,
@@ -906,8 +1057,14 @@ function lessThanOrEqual(left, right) {
   return left.numerator * right.denominator <= right.numerator * left.denominator;
 }
 
+function currentWeaponInput(weapon) {
+  if (weapon.length === 26) return weapon;
+  const withReplacement = [...weapon.slice(0, 3), 0, ...weapon.slice(3)];
+  return withReplacement.length === 26 ? withReplacement : [...withReplacement, 0, 0, 0];
+}
+
 function orderedVolley(weapons, targets, initialWoundsLost = 0) {
-  const weaponFields = 25;
+  const weaponFields = 26;
   const targetFields = 7;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
@@ -917,10 +1074,7 @@ function orderedVolley(weapons, targets, initialWoundsLost = 0) {
     values.forEach((value, index) => calculator.setValue(pointer + index * 4, value, "i32"));
   try {
     weapons.forEach((weapon, index) =>
-      write(
-        weaponsPointer + index * weaponFields * 4,
-        weapon.length === weaponFields ? weapon : [...weapon, 0, 0, 0],
-      ),
+      write(weaponsPointer + index * weaponFields * 4, currentWeaponInput(weapon)),
     );
     targets.forEach((target, index) => write(targetsPointer + index * targetFields * 4, target));
     assert.equal(
@@ -955,7 +1109,7 @@ function orderedVolley(weapons, targets, initialWoundsLost = 0) {
 }
 
 function orderedVolleyComplexity(weapons, targets, initialWoundsLost = 0) {
-  const weaponFields = 25;
+  const weaponFields = 26;
   const targetFields = 7;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
@@ -964,10 +1118,7 @@ function orderedVolleyComplexity(weapons, targets, initialWoundsLost = 0) {
     values.forEach((value, index) => calculator.setValue(pointer + index * 4, value, "i32"));
   try {
     weapons.forEach((weapon, index) =>
-      write(
-        weaponsPointer + index * weaponFields * 4,
-        weapon.length === weaponFields ? weapon : [...weapon, 0, 0, 0],
-      ),
+      write(weaponsPointer + index * weaponFields * 4, currentWeaponInput(weapon)),
     );
     targets.forEach((target, index) => write(targetsPointer + index * targetFields * 4, target));
     assert.equal(
@@ -1023,6 +1174,7 @@ function variableRuleMean({ flags = 0, sustained = [0, 0, 0], rapid = [0, 0, 0] 
       0,
       0,
       1,
+      0,
       1,
       6,
       2,

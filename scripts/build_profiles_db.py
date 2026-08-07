@@ -187,12 +187,13 @@ CREATE TABLE unit_combat_preset_effects (
     effect_type TEXT NOT NULL CHECK (effect_type IN
         ('lethal_hits', 'devastating_wounds', 'twin_linked', 'ignores_cover',
          'sustained_hits', 'rapid_fire', 'lance', 'heavy', 'ap_modifier',
-         'critical_hits', 'critical_wounds', 'attacks_modifier',
+         'critical_hits', 'critical_wounds', 'attacks_replacement', 'attacks_modifier',
          'strength_modifier', 'damage_modifier', 'save_target',
          'invulnerable_save', 'feel_no_pain', 'damage_reduction')),
     value INTEGER NOT NULL,
     dice_count INTEGER NOT NULL DEFAULT 0 CHECK (dice_count >= 0),
     dice_sides INTEGER NOT NULL DEFAULT 0 CHECK (dice_sides >= 0),
+    weapon_name TEXT,
     application_role TEXT NOT NULL CHECK (application_role IN ('attacker', 'target', 'either')),
     subject TEXT NOT NULL CHECK (subject IN
         ('self', 'led_unit', 'friendly_unit', 'enemy_unit', 'affected_unit', 'unknown')),
@@ -740,6 +741,37 @@ def combat_additional_effects(text: str) -> list[dict[str, int | str]]:
         if effect is not None and len(characteristic_values[effect["type"]]) == 1
     )
 
+    replacement_pattern = re.compile(
+        r"\bchange the Attacks characteristic of ([^.;]+?) to (\d+)\b",
+        re.IGNORECASE,
+    )
+    for match in replacement_pattern.finditer(text):
+        affected = match.group(1).strip()
+        weapon_name = None
+        if affected.casefold() == "this weapon":
+            continue
+        if not re.fullmatch(
+            r"(?:melee|ranged) weapons equipped by "
+            r"(?:this model|models? in (?:this|that|the) unit)",
+            affected,
+            re.IGNORECASE,
+        ):
+            named = re.fullmatch(r"this model[’']s (.+)", affected, re.IGNORECASE)
+            if not named:
+                continue
+            weapon_name = named.group(1).strip()
+        effects.append(
+            {
+                "type": "attacks_replacement",
+                "value": int(match.group(2)),
+                "dice_count": 0,
+                "dice_sides": 0,
+                "weapon_name": weapon_name,
+                "role": "attacker",
+                "subject": "self",
+            }
+        )
+
     def defensive_subject(subject_text: str, effect_start: int) -> tuple[str, str]:
         subject = subject_text.casefold()
         context = text[max(0, effect_start - 300) : effect_start].casefold()
@@ -1073,8 +1105,9 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                 connection.execute(
                     """INSERT INTO unit_combat_preset_effects
                        (datasheet_id, ability_position, preset_position, effect_position,
-                        effect_type, value, dice_count, dice_sides, application_role, subject)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        effect_type, value, dice_count, dice_sides, weapon_name,
+                        application_role, subject)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         datasheet_id,
                         ability_position,
@@ -1084,6 +1117,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                         effect["value"],
                         effect["dice_count"],
                         effect["dice_sides"],
+                        effect.get("weapon_name"),
                         effect["role"],
                         effect["subject"],
                     ),
@@ -1225,7 +1259,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "16"),
+                    ("schema_version", "17"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

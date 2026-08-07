@@ -1653,12 +1653,17 @@ static bool distribution_from_weapon_attacks(const struct weapon_profile *weapon
     struct distribution per_weapon;
     struct distribution current;
     struct distribution next;
+    struct dice_value attacks;
     uint16_t count = 0u;
     uint16_t repeat_count = 0u;
 
-    if (weapon == NULL || result == NULL ||
-        !distribution_from_modified_dice_value(weapon->attacks, weapon->attacks_modifier, 1u,
-                                               &per_weapon) ||
+    if (weapon == NULL || result == NULL) {
+        return false;
+    }
+    attacks = weapon->attacks_replacement == 0u
+                  ? weapon->attacks
+                  : (struct dice_value){0u, 0u, weapon->attacks_replacement};
+    if (!distribution_from_modified_dice_value(attacks, weapon->attacks_modifier, 1u, &per_weapon) ||
         !distribution_from_constant(0u, &current)) {
         return false;
     }

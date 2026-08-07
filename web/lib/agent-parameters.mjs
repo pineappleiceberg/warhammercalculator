@@ -14,6 +14,7 @@ const catalogueParameters = new Set([
 
 const integerParameters = [
   ["weaponCount", ["weaponCount"]],
+  ["attacksReplacement", ["attacksReplacement"]],
   ["attacksModifier", ["attacksModifier"]],
   ["hitOn", ["hitOn", "hit"]],
   ["strength", ["strength"]],
@@ -268,6 +269,7 @@ export function canonicalAgentParameters(profile) {
   search.set("format", "json");
   search.set("attacks", diceText(profile.attackDice, profile.attackSides, profile.attacks));
   search.set("weaponCount", String(profile.weaponCount));
+  search.set("attacksReplacement", String(profile.attacksReplacement ?? 0));
   search.set("attacksModifier", String(profile.attacksModifier ?? 0));
   search.set("hit", String(profile.hitOn));
   search.set("strength", String(profile.strength));

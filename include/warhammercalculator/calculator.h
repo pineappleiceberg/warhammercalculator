@@ -128,6 +128,7 @@ struct attack_plan {
 struct weapon_profile {
     char name[NAME_LENGTH];
     struct dice_value attacks;
+    uint16_t attacks_replacement;
     int16_t attacks_modifier;
     uint16_t weapon_count;
     uint8_t hits_on;

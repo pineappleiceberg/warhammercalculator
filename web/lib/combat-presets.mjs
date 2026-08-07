@@ -72,16 +72,41 @@ export function combatPresetRequiresActivation(preset) {
   return preset.activation !== "inherent";
 }
 
+export function combatPresetSupportsWeapon(preset, weaponType, weaponName = "") {
+  if (preset.weaponScope !== "Any" && preset.weaponScope !== weaponType) return false;
+  const hasUnscopedEffect =
+    preset.hitModifier !== 0 ||
+    preset.woundModifier !== 0 ||
+    preset.rerollHits ||
+    preset.rerollHitOnes ||
+    preset.rerollWounds ||
+    preset.rerollWoundOnes;
+  const effects = preset.effects ?? [];
+  return (
+    hasUnscopedEffect ||
+    effects.length === 0 ||
+    effects.some(
+      (effect) =>
+        !effect.weaponName ||
+        normalizedWeaponName(effect.weaponName) === normalizedWeaponName(weaponName),
+    )
+  );
+}
+
 function strongerDiceEffect(current, candidate) {
   const expected = (effect) => effect.value + (effect.diceCount * (effect.diceSides + 1)) / 2;
   return expected(candidate) > expected(current) ? candidate : current;
 }
 
-export function combatPresetEffects(presets, weaponType, role) {
+function normalizedWeaponName(value) {
+  return (value ?? "").normalize("NFKC").replace(/[‘’]/g, "'").trim().toLocaleLowerCase("en");
+}
+
+export function combatPresetEffects(presets, weaponType, role, weaponName = "") {
   const applicable = presets.filter(
     (preset) =>
       combatPresetSupportsRole(preset, role) &&
-      (preset.weaponScope === "Any" || preset.weaponScope === weaponType),
+      combatPresetSupportsWeapon(preset, weaponType, weaponName),
   );
   const hitModifiers = applicable.filter((preset) =>
     matchesRole(modifierRole(preset, "hitModifier"), role),
@@ -97,7 +122,12 @@ export function combatPresetEffects(presets, weaponType, role) {
   );
   const additional = applicable
     .flatMap((preset) => preset.effects ?? [])
-    .filter((effect) => matchesRole(effect.role, role));
+    .filter(
+      (effect) =>
+        matchesRole(effect.role, role) &&
+        (!effect.weaponName ||
+          normalizedWeaponName(effect.weaponName) === normalizedWeaponName(weaponName)),
+    );
   const diceEffect = (type) =>
     additional
       .filter((effect) => effect.type === type)
@@ -116,7 +146,14 @@ export function combatPresetEffects(presets, weaponType, role) {
       .map((effect) => effect.value);
     return values.length ? Math.min(...values) : 0;
   };
+  const replacements = additional
+    .filter((effect) => effect.type === "attacks_replacement")
+    .map((effect) => effect.value);
+  if (new Set(replacements).size > 1) {
+    throw new Error("Choose only one Attacks characteristic replacement");
+  }
   return {
+    attacksReplacement: replacements[0] ?? 0,
     hitModifier: hitModifiers.reduce((sum, preset) => sum + preset.hitModifier, 0),
     woundModifier: woundModifiers.reduce((sum, preset) => sum + preset.woundModifier, 0),
     rerollHits: hitRerolls.some((preset) => preset.rerollHits),
@@ -226,8 +263,14 @@ export function updateCombatPresetSelection(presets, selectedIds, presetId, chec
 }
 
 export function applyCombatPresets(profile, attackerPresets, targetPresets, weaponType) {
-  const attacker = combatPresetEffects(attackerPresets, weaponType, "attacker");
-  const target = combatPresetEffects(targetPresets, weaponType, "target");
+  const attacker = combatPresetEffects(attackerPresets, weaponType, "attacker", profile.weaponName);
+  const target = combatPresetEffects(targetPresets, weaponType, "target", profile.weaponName);
+  const attacksReplacements = [attacker.attacksReplacement, target.attacksReplacement].filter(
+    (value) => value > 0,
+  );
+  if (new Set(attacksReplacements).size > 1) {
+    throw new Error("Choose only one Attacks characteristic replacement");
+  }
   const combined = {
     sustainedHits: strongerDiceEffect(
       {
@@ -267,6 +310,7 @@ export function applyCombatPresets(profile, attackerPresets, targetPresets, weap
   return applyDefensiveEffects(
     {
       ...profile,
+      attacksReplacement: attacksReplacements[0] ?? profile.attacksReplacement ?? 0,
       attacksModifier:
         (profile.attacksModifier ?? 0) + attacker.attacksModifier + target.attacksModifier,
       strengthModifier:

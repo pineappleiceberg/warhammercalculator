@@ -201,6 +201,19 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
       subject: "friendly_unit",
     },
   ]);
+  const captainTycho = catalogue.units.find((unit) => unit.id === "000000152");
+  const embittered = captainTycho.combatPresets.find((preset) => preset.name === "Embittered");
+  assert.deepEqual(embittered.effects, [
+    {
+      type: "attacks_replacement",
+      value: 12,
+      diceCount: 0,
+      diceSides: 0,
+      weaponName: "Dead Man’s Hand",
+      role: "attacker",
+      subject: "self",
+    },
+  ]);
   const captain = catalogue.units.find((unit) => unit.id === "000000073");
   const finestHour = captain.combatPresets.find((preset) => preset.name === "Finest Hour");
   assert.equal(finestHour.weaponScope, "Melee");
@@ -500,6 +513,26 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.equal(signedCalculation.status, 200);
   assert.deepEqual(signedCalculationBody.data.exact, { numerator: "5", denominator: "3" });
 
+  const replacementProfile = {
+    ...signedProfile,
+    attacksReplacement: 4,
+    attacksModifier: -1,
+  };
+  const replacementCalculation = await worker.fetch(
+    new Request("http://localhost/api/v1/calculate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ profile: replacementProfile }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(replacementCalculation.status, 200);
+  assert.deepEqual((await replacementCalculation.json()).data.exact, {
+    numerator: "5",
+    denominator: "1",
+  });
+
   const volleyProfile = (ap, damage) => ({
     attackDice: 0,
     attackSides: 0,
@@ -547,6 +580,31 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     assert.equal(response.status, 200, text);
     return JSON.parse(text).data;
   };
+  const rapidReplacementVolley = await requestVolley(
+    [
+      {
+        ...replacementProfile,
+        weaponCount: 1,
+        withinHalfRange: true,
+        rapidFireDice: 1,
+        rapidFireSides: 3,
+        rapidFire: 0,
+      },
+    ],
+    [
+      {
+        toughness: 1,
+        save: 7,
+        invulnerable: 0,
+        feelNoPain: 0,
+        wounds: 10,
+        reduction: 0,
+        modelCount: 1,
+      },
+    ],
+  );
+  assert.equal(rapidReplacementVolley.maximum, 6);
+  assert.ok(Math.abs(rapidReplacementVolley.mean - 25 / 6) < 1e-8);
   const forwardVolley = await requestVolley([volleyProfile(0, 1), volleyProfile(6, 2)]);
   const reverseVolley = await requestVolley([volleyProfile(6, 2), volleyProfile(0, 1)]);
   assert.ok(forwardVolley.mean > reverseVolley.mean);
@@ -867,6 +925,45 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   );
   assert.equal(signedSimulation.status, 200);
   assert.equal((await signedSimulation.json()).data.means.attacksResolved, 2);
+
+  const replacementRoll = await worker.fetch(
+    new Request("http://localhost/api/v1/roll?details=false", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ profile: replacementProfile }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(replacementRoll.status, 200);
+  assert.equal((await replacementRoll.json()).data.attacks, 6);
+
+  const replacementSimulation = await worker.fetch(
+    new Request("http://localhost/api/v1/volley/simulate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        profiles: [replacementProfile],
+        targets: [
+          {
+            toughness: 1,
+            save: 7,
+            invulnerable: 0,
+            feelNoPain: 0,
+            wounds: 10,
+            reduction: 0,
+            modelCount: 1,
+          },
+        ],
+        seed: 1,
+        trials: 100,
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(replacementSimulation.status, 200);
+  assert.equal((await replacementSimulation.json()).data.means.attacksResolved, 6);
 });
 
 test("API exact and seeded simulation paths match the shared rules interaction corpus", async () => {

@@ -70,10 +70,14 @@ bool estimate_ordered_volley_complexity(const struct weapon_profile *weapons,
             segment_index++;
         }
 
-        attack_maximum = weapon->attacks.modifier;
-        attack_maximum = uint32_saturating_add(
-            attack_maximum,
-            uint32_saturating_product(weapon->attacks.dice_count, weapon->attacks.dice_sides));
+        if (weapon->attacks_replacement != 0u) {
+            attack_maximum = weapon->attacks_replacement;
+        } else {
+            attack_maximum = weapon->attacks.modifier;
+            attack_maximum = uint32_saturating_add(
+                attack_maximum,
+                uint32_saturating_product(weapon->attacks.dice_count, weapon->attacks.dice_sides));
+        }
         if (weapon->attacks_modifier < 0) {
             uint32_t penalty = (uint32_t)(-(int32_t)weapon->attacks_modifier);
             attack_maximum = attack_maximum > penalty ? attack_maximum - penalty : 1u;

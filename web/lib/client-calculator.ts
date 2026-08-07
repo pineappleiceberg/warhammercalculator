@@ -89,6 +89,7 @@ function weaponValues(profile: CombatProfile) {
     profile.attackDice,
     profile.attackSides,
     profile.attacks,
+    profile.attacksReplacement,
     profile.weaponCount,
     profile.hitOn,
     profile.strength,
@@ -156,6 +157,7 @@ export async function calculateProfile(profile: CombatProfile): Promise<DamageSu
       profile.attackDice,
       profile.attackSides,
       profile.attacks,
+      profile.attacksReplacement,
       profile.weaponCount,
       profile.hitOn,
       profile.strength,
@@ -239,7 +241,7 @@ export async function calculateOrderedVolley(
   }
 
   const calculator = await loadCalculator();
-  const weaponFields = 25;
+  const weaponFields = 26;
   const targetFields = 7;
   const weaponsPointer = calculator._malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
@@ -303,7 +305,7 @@ export async function estimateOrderedVolleyComplexity(
     throw new Error("Choose a valid weapon and target sequence first");
   }
   const calculator = await loadCalculator();
-  const weaponFields = 25;
+  const weaponFields = 26;
   const targetFields = 7;
   const weaponsPointer = calculator._malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);

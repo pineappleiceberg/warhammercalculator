@@ -12,9 +12,11 @@ import {
 } from "./allocation.mjs";
 
 export type CombatProfile = {
+  weaponName: string;
   attackDice: number;
   attackSides: number;
   attacks: number;
+  attacksReplacement: number;
   attacksModifier: number;
   weaponCount: number;
   hitOn: number;
@@ -157,9 +159,11 @@ export type PhaseSimulationResult = {
 };
 
 export const DEFAULT_PROFILE: CombatProfile = {
+  weaponName: "",
   attackDice: 0,
   attackSides: 0,
   attacks: 4,
+  attacksReplacement: 0,
   attacksModifier: 0,
   weaponCount: 1,
   hitOn: 3,
@@ -232,11 +236,17 @@ export function normalizeProfile(input: unknown): CombatProfile {
     if (typeof value !== "boolean") throw new Error(`${key} must be a boolean`);
     return value;
   };
+  const weaponName = Object.hasOwn(source, "weaponName") ? source.weaponName : "";
+  if (typeof weaponName !== "string" || weaponName.length > 160) {
+    throw new Error("weaponName must be a string no longer than 160 characters");
+  }
 
   const profile: CombatProfile = {
+    weaponName,
     attackDice: numberValue("attackDice", 0, 20),
     attackSides: numberValue("attackSides", 0, 100),
     attacks: numberValue("attacks", 0, 1024),
+    attacksReplacement: numberValue("attacksReplacement", 0, 1024),
     attacksModifier: numberValue("attacksModifier", -1024, 1024),
     weaponCount: numberValue("weaponCount", 1, 100),
     hitOn: numberValue("hitOn", 2, 6),
@@ -374,7 +384,9 @@ function rollAttackCount(profile: CombatProfile, targetModels: number, randomUin
   let total = 0;
   for (let weapon = 0; weapon < profile.weaponCount; weapon += 1) {
     const base =
-      rollDiceValue(profile.attackDice, profile.attackSides, profile.attacks, randomUint32) +
+      (profile.attacksReplacement > 0
+        ? profile.attacksReplacement
+        : rollDiceValue(profile.attackDice, profile.attackSides, profile.attacks, randomUint32)) +
       (profile.withinHalfRange
         ? rollDiceValue(
             profile.rapidFireDice,
@@ -929,15 +941,17 @@ export function simulateOrderedVolleyPhase(
   const targetModels = targets.reduce((total, target) => total + target.modelCount, 0);
   const hasFeelNoPain = targets.some((target) => target.feelNoPain > 0);
   const randomDrawsPerVolley = profiles.reduce((total, profile) => {
-    const randomAttackDraws = profile.attackDice * profile.weaponCount;
+    const randomAttackDraws =
+      profile.attacksReplacement > 0 ? 0 : profile.attackDice * profile.weaponCount;
     const rapidFireDraws = profile.withinHalfRange
       ? profile.rapidFireDice * profile.weaponCount
       : 0;
     const maximumAttacks =
       profile.weaponCount *
       modifiedCharacteristic(
-        profile.attacks +
-          profile.attackDice * profile.attackSides +
+        (profile.attacksReplacement > 0
+          ? profile.attacksReplacement
+          : profile.attacks + profile.attackDice * profile.attackSides) +
           (profile.blast ? Math.floor(targetModels / 5) : 0) +
           (profile.withinHalfRange
             ? profile.rapidFire + profile.rapidFireDice * profile.rapidFireSides

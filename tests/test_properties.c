@@ -133,6 +133,8 @@ static void generate_profiles(struct weapon_profile *weapon, struct target_profi
     } else {
         weapon->attacks = (struct dice_value){0u, 0u, (uint16_t)(1u + random_below(state, 5u))};
     }
+    weapon->attacks_replacement =
+        (flags & 65536u) != 0u ? (uint16_t)(1u + random_below(state, 8u)) : 0u;
     weapon->hits_on = (uint8_t)(2u + random_below(state, 5u));
     weapon->strength = (uint16_t)(1u + random_below(state, 16u));
     weapon->ap = (uint16_t)random_below(state, 5u);

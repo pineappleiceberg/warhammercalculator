@@ -420,7 +420,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "16",
+                "17",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -440,6 +440,21 @@ class ProfileDataTests(unittest.TestCase):
             self.assertGreater(
                 connection.execute("SELECT count(*) FROM unit_combat_preset_effects").fetchone()[0],
                 500,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT preset.name, preset.weapon_scope, effect.value,
+                              effect.weapon_name, effect.application_role, effect.subject
+                       FROM unit_combat_preset_effects AS effect
+                       JOIN unit_combat_presets AS preset
+                         USING (datasheet_id, ability_position, preset_position)
+                       WHERE effect.effect_type = 'attacks_replacement'
+                       ORDER BY preset.name"""
+                ).fetchall(),
+                [
+                    ("Embittered", "Any", 12, "Dead Man’s Hand", "attacker", "self"),
+                    ("Thrilling Spectacle", "Melee", 12, None, "attacker", "self"),
+                ],
             )
             self.assertEqual(
                 connection.execute(
@@ -482,7 +497,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("inherent", 28), ("situational", 1363)],
+                [("inherent", 28), ("situational", 1364)],
             )
             self.assertEqual(
                 connection.execute(
@@ -725,6 +740,35 @@ class ProfileDataTests(unittest.TestCase):
                 }
             ],
         )
+        captain_tycho = next(unit for unit in catalogue["units"] if unit["id"] == "000000152")
+        embittered = next(
+            preset for preset in captain_tycho["combatPresets"] if preset["name"] == "Embittered"
+        )
+        self.assertEqual(
+            embittered["effects"],
+            [
+                {
+                    "type": "attacks_replacement",
+                    "value": 12,
+                    "diceCount": 0,
+                    "diceSides": 0,
+                    "weaponName": "Dead Man’s Hand",
+                    "role": "attacker",
+                    "subject": "self",
+                }
+            ],
+        )
+        lelith = next(unit for unit in catalogue["units"] if unit["id"] == "000000640")
+        thrilling = next(
+            preset
+            for preset in lelith["combatPresets"]
+            if preset["name"] == "Thrilling Spectacle"
+        )
+        replacement = next(
+            effect for effect in thrilling["effects"] if effect["type"] == "attacks_replacement"
+        )
+        self.assertEqual(replacement["value"], 12)
+        self.assertIsNone(replacement.get("weaponName"))
         redemptor = next(
             unit for unit in catalogue["units"] if unit["name"] == "Redemptor Dreadnought"
         )

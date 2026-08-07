@@ -53,12 +53,13 @@ CREATE TABLE unit_combat_preset_effects (
     effect_type TEXT NOT NULL CHECK (effect_type IN
         ('lethal_hits', 'devastating_wounds', 'twin_linked', 'ignores_cover',
          'sustained_hits', 'rapid_fire', 'lance', 'heavy', 'ap_modifier',
-         'critical_hits', 'critical_wounds', 'attacks_modifier',
+         'critical_hits', 'critical_wounds', 'attacks_replacement', 'attacks_modifier',
          'strength_modifier', 'damage_modifier', 'save_target',
          'invulnerable_save', 'feel_no_pain', 'damage_reduction')),
     value INTEGER NOT NULL,
     dice_count INTEGER NOT NULL DEFAULT 0 CHECK (dice_count >= 0),
     dice_sides INTEGER NOT NULL DEFAULT 0 CHECK (dice_sides >= 0),
+    weapon_name TEXT,
     application_role TEXT NOT NULL CHECK (application_role IN ('attacker', 'target', 'either')),
     subject TEXT NOT NULL CHECK (subject IN
         ('self', 'led_unit', 'friendly_unit', 'enemy_unit', 'affected_unit', 'unknown')),
@@ -79,7 +80,7 @@ def main() -> None:
     with sqlite3.connect(args.database) as connection:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
-        connection.execute("UPDATE metadata SET value = '16' WHERE key = 'schema_version'")
+        connection.execute("UPDATE metadata SET value = '17' WHERE key = 'schema_version'")
     print(f"Rebuilt {count} unit combat presets in {args.database}")
 
 

@@ -66,6 +66,7 @@ static void generate_weapon(struct fuzz_input *input, struct whc_web_weapon_inpu
     weapon->attack_dice_count = next_byte(input) % 2u;
     weapon->attack_dice_sides = weapon->attack_dice_count == 0u ? 0u : 2u + next_byte(input) % 5u;
     weapon->attack_modifier = next_byte(input) % 5u;
+    weapon->attacks_replacement = next_byte(input) % 4u == 0u ? 1u + next_byte(input) % 8u : 0u;
     weapon->weapon_count = 1u + next_byte(input) % 4u;
     weapon->hits_on = 2u + next_byte(input) % 5u;
     weapon->strength = 1u + next_byte(input) % 16u;
@@ -140,7 +141,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
     valid = whc_calculate_summary(
         (uint16_t)weapons[0].attack_dice_count, (uint16_t)weapons[0].attack_dice_sides,
-        (uint16_t)weapons[0].attack_modifier, (uint16_t)weapons[0].weapon_count,
+        (uint16_t)weapons[0].attack_modifier, (uint16_t)weapons[0].attacks_replacement,
+        (uint16_t)weapons[0].weapon_count,
         (uint8_t)weapons[0].hits_on, (uint16_t)weapons[0].strength, (uint16_t)weapons[0].ap,
         (uint16_t)weapons[0].damage_dice_count, (uint16_t)weapons[0].damage_dice_sides,
         (uint16_t)weapons[0].damage_modifier, (uint8_t)weapons[0].critical_hits_on,

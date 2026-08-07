@@ -127,7 +127,8 @@ static void test_rule_interaction_corpus(void) {
         long double applied_difference = 0.0L;
 
         assert(whc_calculate_summary(
-            0u, 0u, test_case->attacks, 1u, test_case->hits_on, test_case->strength, test_case->ap,
+            0u, 0u, test_case->attacks, 0u, 1u, test_case->hits_on, test_case->strength,
+            test_case->ap,
             0u, 0u, test_case->damage, test_case->critical_hits_on, test_case->toughness,
             test_case->save, test_case->invulnerable_save, test_case->feel_no_pain,
             test_case->wounds, 0u, test_case->flags, test_case->critical_wounds_on,
@@ -280,7 +281,7 @@ static void test_random_attacks_damage_and_fnp(void) {
 static void test_web_api(void) {
     struct whc_web_summary summary;
 
-    assert(whc_calculate_summary(0, 0, 1, 1, 3, 4, 0, 0, 0, 2, 6, 4, 3, 0, 0, 10, 0, 0, 0, 1, 0, 0,
+    assert(whc_calculate_summary(0, 0, 1, 0, 1, 3, 4, 0, 0, 0, 2, 6, 4, 3, 0, 0, 10, 0, 0, 0, 1, 0, 0,
                                  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, &summary));
     assert(summary.mean_numerator_low == 2);
     assert(summary.mean_numerator_high == 0);
@@ -356,12 +357,12 @@ static void test_web_api_context_rules(void) {
     uint32_t combined =
         WHC_RULE_TORRENT | WHC_RULE_RAPID_FIRE_ACTIVE | WHC_RULE_BLAST | WHC_RULE_MELTA_ACTIVE;
 
-    assert(whc_calculate_summary(0, 0, 1, 2, 6, 2, 0, 0, 0, 1, 6, 1, 7, 0, 0, 10, 0, combined, 0,
+    assert(whc_calculate_summary(0, 0, 1, 0, 2, 6, 2, 0, 0, 0, 1, 6, 1, 7, 0, 0, 10, 0, combined, 0,
                                  10, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 0, &summary));
     assert(summary.mean_numerator_low == 20);
     assert(summary.mean_denominator_low == 1);
 
-    assert(whc_calculate_summary(0, 0, 1, 1, 6, 2, 1, 0, 0, 1, 6, 1, 3, 0, 0, 10, 0,
+    assert(whc_calculate_summary(0, 0, 1, 0, 1, 6, 2, 1, 0, 0, 1, 6, 1, 3, 0, 0, 10, 0,
                                  WHC_RULE_TORRENT | WHC_RULE_TARGET_COVER, 0, 1, 0, 0, 0, 0, 0, 0,
                                  0, 0, 0, 0, 0, 0, &summary));
     assert(summary.mean_numerator_low == 5);
@@ -373,14 +374,14 @@ static void test_indirect_fire_restrictions(void) {
     struct whc_web_summary summary;
     uint32_t indirect = WHC_RULE_INDIRECT_NOT_VISIBLE | WHC_RULE_IGNORES_COVER;
 
-    assert(whc_calculate_summary(0, 0, 1, 1, 2, 10, 0, 0, 0, 1, 3, 1, 7, 0, 0, 2, 0, indirect, 0, 1,
+    assert(whc_calculate_summary(0, 0, 1, 0, 1, 2, 10, 0, 0, 0, 1, 3, 1, 7, 0, 0, 2, 0, indirect, 0, 1,
                                  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, &summary));
     assert(summary.mean_numerator_low == 5);
     assert(summary.mean_numerator_high == 0);
     assert(summary.mean_denominator_low == 12);
     assert(summary.mean_denominator_high == 0);
 
-    assert(!whc_calculate_summary(0, 0, 1, 1, 2, 10, 0, 0, 0, 1, 6, 1, 7, 0, 0, 2, 0,
+    assert(!whc_calculate_summary(0, 0, 1, 0, 1, 2, 10, 0, 0, 0, 1, 6, 1, 7, 0, 0, 2, 0,
                                   indirect | WHC_RULE_TORRENT, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                   0, 0, &summary));
 }
@@ -747,11 +748,32 @@ static void test_signed_characteristic_modifiers(void) {
     assert(mean.numerator == 40u);
     assert(mean.denominator == 9u);
 
-    assert(whc_calculate_summary(1u, 6u, 0u, 2u, 2u, 10u, 0u, 0u, 0u, 1u, 6u, 1u, 7u, 0u, 0u, 10u,
+    assert(whc_calculate_summary(1u, 6u, 0u, 0u, 2u, 2u, 10u, 0u, 0u, 0u, 1u, 6u, 1u, 7u, 0u, 0u, 10u,
                                  0u, WHC_RULE_TORRENT, 0u, 1u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0, 0, -1,
                                  0, 0, &summary));
     assert(summary.mean_numerator_low == 40u);
     assert(summary.mean_denominator_low == 9u);
+
+    weapon.attacks_replacement = 4u;
+    assert(calculate_attack_expected_damage(&weapon, &target, &workspace, &mean));
+    assert(mean.numerator == 5u);
+    assert(mean.denominator == 1u);
+
+    assert(whc_calculate_summary(1u, 6u, 0u, 4u, 2u, 2u, 10u, 0u, 0u, 0u, 1u, 6u, 1u, 7u, 0u,
+                                 0u, 10u, 0u, WHC_RULE_TORRENT, 0u, 1u, 0u, 0u, 0u, 0u, 0u, 0u,
+                                 0u, 0, 0, -1, 0, 0, &summary));
+    assert(summary.minimum == 0u);
+    assert(summary.maximum == 6u);
+    assert(summary.mean_numerator_low == 5u);
+    assert(summary.mean_denominator_low == 1u);
+
+    assert(whc_calculate_summary(
+        1u, 6u, 0u, 4u, 1u, 2u, 10u, 0u, 0u, 0u, 1u, 6u, 1u, 7u, 0u, 0u, 10u,
+        0u, WHC_RULE_TORRENT | WHC_RULE_RAPID_FIRE_ACTIVE, 0u, 1u, 0u, 0u, 0u, 1u, 3u, 0u,
+        0u, 0, 0, -1, 0, 0, &summary));
+    assert(summary.maximum == 6u);
+    assert(summary.mean_numerator_low == 25u);
+    assert(summary.mean_denominator_low == 6u);
 }
 
 /*@ terminates \true;

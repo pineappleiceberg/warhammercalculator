@@ -3,8 +3,9 @@
 #include <string.h>
 
 bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_sides,
-                           uint16_t attack_modifier, uint16_t weapon_count, uint8_t hits_on,
-                           uint16_t strength, uint16_t ap, uint16_t damage_dice_count,
+                           uint16_t attack_modifier, uint16_t attacks_replacement,
+                           uint16_t weapon_count, uint8_t hits_on, uint16_t strength, uint16_t ap,
+                           uint16_t damage_dice_count,
                            uint16_t damage_dice_sides, uint16_t damage_modifier,
                            uint8_t critical_hits_on, uint16_t toughness, uint8_t save,
                            uint8_t invulnerable_save, uint8_t feel_no_pain, uint16_t wounds,
@@ -28,6 +29,7 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
     bool target_has_cover = false;
     uint16_t effective_attack_dice_count = attack_dice_count;
     uint16_t effective_attack_dice_sides = attack_dice_sides;
+    uint16_t effective_attack_modifier = attack_modifier;
     struct dice_value sustained_hits_value = {sustained_hits_dice_count, sustained_hits_dice_sides,
                                               sustained_hits};
     struct dice_value rapid_fire_value = {rapid_fire_dice_count, rapid_fire_dice_sides, rapid_fire};
@@ -39,13 +41,19 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
         return false;
     }
 
+    if (attacks_replacement != 0u) {
+        effective_attack_dice_count = 0u;
+        effective_attack_dice_sides = 0u;
+        effective_attack_modifier = attacks_replacement;
+    }
+
     if ((rule_flags & WHC_RULE_RAPID_FIRE_ACTIVE) != 0u) {
         uint32_t combined_dice_count = 0u;
-        if (rapid_fire_dice_count != 0u && attack_dice_count != 0u &&
-            rapid_fire_dice_sides != attack_dice_sides) {
+        if (rapid_fire_dice_count != 0u && effective_attack_dice_count != 0u &&
+            rapid_fire_dice_sides != effective_attack_dice_sides) {
             return false;
         }
-        combined_dice_count = (uint32_t)attack_dice_count + rapid_fire_dice_count;
+        combined_dice_count = (uint32_t)effective_attack_dice_count + rapid_fire_dice_count;
         if (combined_dice_count > UINT16_MAX) {
             return false;
         }
@@ -98,7 +106,7 @@ bool whc_calculate_summary(uint16_t attack_dice_count, uint16_t attack_dice_side
     memset(&target, 0, sizeof(target));
 
     weapon.attacks = (struct dice_value){effective_attack_dice_count, effective_attack_dice_sides,
-                                         attack_modifier};
+                                         effective_attack_modifier};
     weapon.attacks_modifier = (int16_t)attacks_characteristic_modifier;
     weapon.weapon_count = weapon_count;
     weapon.hits_on = hits_on;
@@ -186,6 +194,7 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
     int32_t wound_modifier = 0;
     uint16_t effective_attack_dice_count = 0u;
     uint16_t effective_attack_dice_sides = 0u;
+    uint16_t effective_attack_modifier = 0u;
     bool target_has_cover = false;
     struct dice_value sustained_hits_value;
     struct dice_value rapid_fire_value;
@@ -193,7 +202,8 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
     if (input == NULL || target_input == NULL || weapon == NULL || target == NULL ||
         input->weapon_count == 0u || input->weapon_count > UINT16_MAX ||
         input->attack_dice_count > UINT16_MAX || input->attack_dice_sides > UINT16_MAX ||
-        input->attack_modifier > UINT16_MAX || input->hits_on > UINT8_MAX ||
+        input->attack_modifier > UINT16_MAX || input->attacks_replacement > UINT16_MAX ||
+        input->hits_on > UINT8_MAX ||
         input->strength > UINT16_MAX || input->ap > UINT16_MAX ||
         input->damage_dice_count > UINT16_MAX || input->damage_dice_sides > UINT16_MAX ||
         input->damage_modifier > UINT16_MAX || input->critical_hits_on > UINT8_MAX ||
@@ -223,6 +233,7 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
     wound_modifier = input->wound_modifier;
     effective_attack_dice_count = (uint16_t)input->attack_dice_count;
     effective_attack_dice_sides = (uint16_t)input->attack_dice_sides;
+    effective_attack_modifier = (uint16_t)input->attack_modifier;
     sustained_hits_value = (struct dice_value){
         (uint16_t)input->sustained_hits_dice_count,
         (uint16_t)input->sustained_hits_dice_sides,
@@ -237,12 +248,18 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
         return false;
     }
 
+    if (input->attacks_replacement != 0u) {
+        effective_attack_dice_count = 0u;
+        effective_attack_dice_sides = 0u;
+        effective_attack_modifier = (uint16_t)input->attacks_replacement;
+    }
+
     if ((input->rule_flags & WHC_RULE_RAPID_FIRE_ACTIVE) != 0u) {
-        if (input->rapid_fire_dice_count != 0u && input->attack_dice_count != 0u &&
-            input->rapid_fire_dice_sides != input->attack_dice_sides) {
+        if (input->rapid_fire_dice_count != 0u && effective_attack_dice_count != 0u &&
+            input->rapid_fire_dice_sides != effective_attack_dice_sides) {
             return false;
         }
-        combined_dice_count = input->attack_dice_count + input->rapid_fire_dice_count;
+        combined_dice_count = (uint32_t)effective_attack_dice_count + input->rapid_fire_dice_count;
         if (combined_dice_count > UINT16_MAX) {
             return false;
         }
@@ -290,7 +307,7 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
     weapon->attacks = (struct dice_value){
         effective_attack_dice_count,
         effective_attack_dice_sides,
-        (uint16_t)input->attack_modifier,
+        effective_attack_modifier,
     };
     weapon->attacks_modifier = (int16_t)attacks_characteristic_modifier;
     weapon->weapon_count = (uint16_t)input->weapon_count;

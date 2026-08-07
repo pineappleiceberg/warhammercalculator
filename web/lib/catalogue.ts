@@ -137,6 +137,7 @@ export type CatalogueCombatPresetEffect = {
     | "ap_modifier"
     | "critical_hits"
     | "critical_wounds"
+    | "attacks_replacement"
     | "attacks_modifier"
     | "strength_modifier"
     | "damage_modifier"
@@ -149,6 +150,7 @@ export type CatalogueCombatPresetEffect = {
   diceSides: number;
   role: CombatPresetRole;
   subject: CombatPresetSubject;
+  weaponName?: string;
 };
 export type CatalogueUnit = {
   id: string;
@@ -225,6 +227,7 @@ export function applyWeaponProfile(
   const rapidFire = abilityDiceValue(ability("rapid fire"));
   return {
     ...profile,
+    weaponName: weapon.name,
     ...(attacks
       ? { attackDice: attacks.count, attackSides: attacks.sides, attacks: attacks.modifier }
       : {}),
@@ -233,6 +236,7 @@ export function applyWeaponProfile(
       : {}),
     ...(weapon.skill ? { hitOn: weapon.skill } : {}),
     ...(/^\d+$/.test(weapon.strength) ? { strength: Number(weapon.strength) } : {}),
+    attacksReplacement: 0,
     attacksModifier: 0,
     strengthModifier: 0,
     damageModifier: 0,

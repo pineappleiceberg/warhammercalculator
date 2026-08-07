@@ -341,6 +341,7 @@ async function exactCalculation(profile: CombatProfile, request: Request, env: E
       profile.attackDice,
       profile.attackSides,
       profile.attacks,
+      profile.attacksReplacement,
       profile.weaponCount,
       profile.hitOn,
       profile.strength,
@@ -429,7 +430,7 @@ async function exactVolley(
   }
 
   const calculator = await loadCalculator(request, env);
-  const weaponFields = 25;
+  const weaponFields = 26;
   const targetFields = 7;
   const weaponsPointer = calculator.malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator.malloc(targets.length * targetFields * 4);
@@ -453,6 +454,7 @@ async function exactVolley(
         profile.attackDice,
         profile.attackSides,
         profile.attacks,
+        profile.attacksReplacement,
         profile.weaponCount,
         profile.hitOn,
         profile.strength,
@@ -537,7 +539,7 @@ async function volleyComplexity(
     throw new Error("targets must contain 1 to 16 ordered profile segments");
   }
   const calculator = await loadCalculator(request, env);
-  const weaponFields = 25;
+  const weaponFields = 26;
   const targetFields = 7;
   const weaponsPointer = calculator.malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator.malloc(targets.length * targetFields * 4);
@@ -551,6 +553,7 @@ async function volleyComplexity(
         profile.attackDice,
         profile.attackSides,
         profile.attacks,
+        profile.attacksReplacement,
         profile.weaponCount,
         profile.hitOn,
         profile.strength,

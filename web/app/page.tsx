@@ -21,6 +21,7 @@ import { CombatPresetSelector } from "../components/combat-preset-selector";
 import {
   applyCombatPresets as applySelectedCombatPresets,
   combatPresetSupportsRole,
+  combatPresetSupportsWeapon,
 } from "../lib/combat-presets.mjs";
 
 type Result = {
@@ -97,6 +98,7 @@ type CatalogueCombatPreset = {
     value: number;
     diceCount: number;
     diceSides: number;
+    weaponName?: string;
     role: "attacker" | "target" | "either";
     subject: string;
   }>;
@@ -208,6 +210,7 @@ async function calculate(profile: Profile): Promise<Result> {
       profile.attackDice,
       profile.attackSides,
       profile.attacks,
+      profile.attacksReplacement,
       profile.weaponCount,
       profile.hitOn,
       profile.strength,
@@ -831,6 +834,7 @@ export default function Home() {
     const baseProfile = weapon
       ? {
           ...current,
+          weaponName: weapon.name,
           ...(attacks
             ? {
                 attackDice: attacks.count,
@@ -846,6 +850,7 @@ export default function Home() {
               }
             : {}),
           ...(/^\d+$/.test(weapon.strength) ? { strength: Number(weapon.strength) } : {}),
+          attacksReplacement: 0,
           attacksModifier: 0,
           strengthModifier: 0,
           damageModifier: 0,
@@ -886,6 +891,7 @@ export default function Home() {
       withActivePresets(
         {
           ...current,
+          weaponName: weapon.name,
           ...(attacks
             ? {
                 attackDice: attacks.count,
@@ -902,6 +908,7 @@ export default function Home() {
             : {}),
           ...(weapon.skill ? { hitOn: weapon.skill } : {}),
           ...(/^\d+$/.test(weapon.strength) ? { strength: Number(weapon.strength) } : {}),
+          attacksReplacement: 0,
           attacksModifier: 0,
           strengthModifier: 0,
           damageModifier: 0,
@@ -1115,7 +1122,7 @@ export default function Home() {
                   presets={selectedAttackerUnit.combatPresets.filter(
                     (preset) =>
                       combatPresetSupportsRole(preset, "attacker") &&
-                      (preset.weaponScope === "Any" || preset.weaponScope === selectedWeapon.type),
+                      combatPresetSupportsWeapon(preset, selectedWeapon.type, selectedWeapon.name),
                   )}
                   role="attacker"
                   selectedIds={activeAttackerPresetIds}
@@ -1414,6 +1421,12 @@ export default function Home() {
                 min={-10}
                 max={10}
                 onChange={(value) => set("woundModifier", value)}
+              />
+              <NumberField
+                label="Replace Attacks characteristic (0 = off)"
+                value={profile.attacksReplacement}
+                max={1024}
+                onChange={(value) => set("attacksReplacement", value)}
               />
               <NumberField
                 label="Attacks characteristic modifier"

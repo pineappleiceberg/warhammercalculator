@@ -16,9 +16,9 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Represent random, multiplicative, and replacement-value Attacks, Strength,
-   and Damage changes exactly in native C and WebAssembly before importing them,
-   including named-weapon scope where required.
+1. Represent random and multiplicative Attacks, Strength, and Damage changes,
+   fixed Strength/Damage replacements, and context-dependent Attacks
+   replacements exactly in native C and WebAssembly before importing them.
 2. Add a source-backed rules eligibility layer for target keywords and phase or
    range conditions that currently require manual interpretation.
 3. Link bearer- and subset-model defensive abilities to structured wargear and
@@ -26,6 +26,17 @@ priority over feature count.
    affecting models that do not have them.
 
 ## Completed cycles
+
+- 2026-08-06: Added fixed Attacks characteristic replacement in the official
+  replace-before-add order across native C, WebAssembly, exact APIs, complexity
+  estimates, CSPRNG rolls, seeded simulations, editable profiles, and static
+  agent URLs. Combat effects can now carry an exact weapon name, so Captain
+  Tycho's Embittered replacement applies only to Dead Man's Hand, while Lelith
+  Hesperax's Thrilling Spectacle applies to all of her melee weapons. The
+  target-keyword-dependent Psychic Assassin replacement remains omitted until
+  its eligibility condition can be represented. Hand-derived native/Wasm
+  fractions, deterministic simulations, URL round trips, catalogue snapshots,
+  and generated fuzz profiles cover the change.
 
 - 2026-08-06: Added exact signed fixed modifiers for Attacks, Strength, and
   Damage across native C, WebAssembly, exact APIs, CSPRNG rolls, seeded
