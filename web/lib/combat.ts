@@ -62,6 +62,7 @@ export type CombatProfile = {
   rapidFireSides: number;
   rapidFire: number;
   melta: number;
+  targetDistance: number;
   withinHalfRange: boolean;
   torrent: boolean;
   blast: boolean;
@@ -231,6 +232,7 @@ export const DEFAULT_PROFILE: CombatProfile = {
   rapidFireSides: 0,
   rapidFire: 0,
   melta: 0,
+  targetDistance: 0,
   withinHalfRange: false,
   torrent: false,
   blast: false,
@@ -366,6 +368,7 @@ export function normalizeProfile(input: unknown): CombatProfile {
     rapidFireSides: numberValue("rapidFireSides", 0, 100),
     rapidFire: numberValue("rapidFire", 0, 100),
     melta: numberValue("melta", 0, 100),
+    targetDistance: numberValue("targetDistance", 0, 1000),
     withinHalfRange: booleanValue("withinHalfRange"),
     torrent: booleanValue("torrent"),
     blast: booleanValue("blast"),

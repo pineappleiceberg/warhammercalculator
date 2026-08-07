@@ -83,15 +83,26 @@ export function attackKeywordsForWeapon(weapon) {
   );
 }
 
-export function combatPresetMeetsEligibility(preset, targetKeywords = [], attackKeywords = []) {
+export function combatPresetMeetsEligibility(
+  preset,
+  targetKeywords = [],
+  attackKeywords = [],
+  targetDistance = 0,
+) {
   const targets = new Set(targetKeywords.map(normalizedKeyword));
   const attacks = new Set(attackKeywords.map(normalizedKeyword));
-  return (preset.effects ?? []).every(
-    (effect) =>
-      (!effect.requiredTargetKeyword ||
-        targets.has(normalizedKeyword(effect.requiredTargetKeyword))) &&
-      (!effect.requiredAttackKeyword ||
-        attacks.has(normalizedKeyword(effect.requiredAttackKeyword))),
+  const distanceEligible =
+    !preset.maximumTargetDistance ||
+    (targetDistance > 0 && targetDistance <= preset.maximumTargetDistance);
+  return (
+    distanceEligible &&
+    (preset.effects ?? []).every(
+      (effect) =>
+        (!effect.requiredTargetKeyword ||
+          targets.has(normalizedKeyword(effect.requiredTargetKeyword))) &&
+        (!effect.requiredAttackKeyword ||
+          attacks.has(normalizedKeyword(effect.requiredAttackKeyword))),
+    )
   );
 }
 
@@ -102,13 +113,14 @@ export function selectedAndAutomaticCombatPresets(
   weaponName = "",
   targetKeywords = [],
   attackKeywords = [],
+  targetDistance = 0,
 ) {
   const selected = new Set(selectedIds);
   return presets.filter(
     (preset) =>
       (selected.has(preset.id) || preset.activation === "automatic") &&
       combatPresetSupportsWeapon(preset, weaponType, weaponName) &&
-      combatPresetMeetsEligibility(preset, targetKeywords, attackKeywords),
+      combatPresetMeetsEligibility(preset, targetKeywords, attackKeywords, targetDistance),
   );
 }
 
@@ -149,12 +161,13 @@ export function combatPresetEffects(
   weaponName = "",
   targetKeywords = [],
   attackKeywords = [],
+  targetDistance = 0,
 ) {
   const applicable = presets.filter(
     (preset) =>
       combatPresetSupportsRole(preset, role) &&
       combatPresetSupportsWeapon(preset, weaponType, weaponName) &&
-      combatPresetMeetsEligibility(preset, targetKeywords, attackKeywords),
+      combatPresetMeetsEligibility(preset, targetKeywords, attackKeywords, targetDistance),
   );
   const hitModifiers = applicable.filter((preset) =>
     matchesRole(modifierRole(preset, "hitModifier"), role),
@@ -378,6 +391,7 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
       context.weaponName ?? "",
       targetKeywords,
       context.attackKeywords ?? [],
+      context.targetDistance ?? 0,
     ),
   );
   const candidates = effects.map((effect) =>
@@ -441,6 +455,7 @@ export function applyCombatPresets(
     profile.weaponName,
     context.targetKeywords,
     context.attackKeywords,
+    context.targetDistance ?? profile.targetDistance ?? 0,
   );
   const target = combatPresetEffects(
     targetPresets,
@@ -449,6 +464,7 @@ export function applyCombatPresets(
     profile.weaponName,
     context.targetKeywords,
     context.attackKeywords,
+    context.targetDistance ?? profile.targetDistance ?? 0,
   );
   const attacksReplacements = [attacker.attacksReplacement, target.attacksReplacement].filter(
     (value) => value > 0,

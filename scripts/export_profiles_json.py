@@ -165,7 +165,8 @@ def export(database: Path, output: Path) -> None:
 
         for row in connection.execute(
             """SELECT datasheet_id, ability_position, preset_position, name, description_text,
-                      is_exclusive_choice, activation, weapon_scope, hit_modifier, hit_modifier_role,
+                      is_exclusive_choice, activation, weapon_scope, maximum_target_distance,
+                      hit_modifier, hit_modifier_role,
                       hit_modifier_subject, wound_modifier, wound_modifier_role,
                       wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                       hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
@@ -181,6 +182,11 @@ def export(database: Path, output: Path) -> None:
                     "name": row["name"],
                     "description": row["description_text"],
                     "weaponScope": row["weapon_scope"],
+                    **(
+                        {"maximumTargetDistance": row["maximum_target_distance"]}
+                        if row["maximum_target_distance"]
+                        else {}
+                    ),
                     "hitModifier": row["hit_modifier"],
                     "hitModifierRole": row["hit_modifier_role"],
                     "hitModifierSubject": row["hit_modifier_subject"],

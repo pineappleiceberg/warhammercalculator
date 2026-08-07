@@ -95,8 +95,12 @@ export default function AgentCalculator() {
         if (isCatalogueAgentQuery(search)) {
           const catalogue = await loadCatalogue();
           const selection = resolveAgentCatalogueSelection(search, catalogue);
+          const requestedDistance = Number(
+            search.get("distance") ?? search.get("targetDistance") ?? 0,
+          );
           let profile = applyTargetProfile(DEFAULT_PROFILE, selection.model);
           profile = applyWeaponProfile(profile, selection.weapon, selection.model.keywords);
+          profile = { ...profile, targetDistance: requestedDistance };
           const attackerPresets = selectedAndAutomaticCombatPresets(
             selection.attacker.combatPresets,
             selection.attackerPresets.map((preset) => preset.id),
@@ -104,6 +108,7 @@ export default function AgentCalculator() {
             selection.weapon.name,
             selection.model.keywords,
             attackKeywordsForWeapon(selection.weapon),
+            requestedDistance,
           );
           const targetPresets = selectedAndAutomaticCombatPresets(
             selection.target.combatPresets,
@@ -112,6 +117,7 @@ export default function AgentCalculator() {
             selection.weapon.name,
             selection.model.keywords,
             attackKeywordsForWeapon(selection.weapon),
+            requestedDistance,
           );
           profile = applyCombatPresets(
             profile,
@@ -121,6 +127,7 @@ export default function AgentCalculator() {
             {
               targetKeywords: selection.model.keywords,
               attackKeywords: attackKeywordsForWeapon(selection.weapon),
+              targetDistance: requestedDistance,
             },
           );
           candidate = parseAgentProfile(search, profile, false);

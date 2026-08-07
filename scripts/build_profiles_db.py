@@ -157,6 +157,7 @@ CREATE TABLE unit_combat_presets (
     is_exclusive_choice INTEGER NOT NULL CHECK (is_exclusive_choice IN (0, 1)),
     activation TEXT NOT NULL CHECK (activation IN ('inherent', 'automatic', 'situational')),
     weapon_scope TEXT NOT NULL CHECK (weapon_scope IN ('Any', 'Ranged', 'Melee')),
+    maximum_target_distance INTEGER CHECK (maximum_target_distance > 0),
     hit_modifier INTEGER NOT NULL CHECK (hit_modifier BETWEEN -1 AND 1),
     hit_modifier_role TEXT CHECK (hit_modifier_role IN ('attacker', 'target', 'either')),
     hit_modifier_subject TEXT CHECK (hit_modifier_subject IN
@@ -405,6 +406,37 @@ def combat_weapon_scope(text: str) -> str:
         if ranged_only != melee_only:
             return "Ranged" if ranged_only else "Melee"
     return "Any"
+
+
+def combat_maximum_target_distance(
+    text: str, effects: dict[str, object]
+) -> int | None:
+    modeled_effects = len(effects["additional_effects"])
+    modeled_effects += sum(
+        bool(effects[field])
+        for field in (
+            "hit_modifier",
+            "wound_modifier",
+            "reroll_hits",
+            "reroll_hit_ones",
+            "reroll_wounds",
+            "reroll_wound_ones",
+        )
+    )
+    if modeled_effects != 1:
+        return None
+    matches = list(
+        re.finditer(
+            r'\battacks?\b[^.;]{0,180}?\btargets?\s+'
+            r'(?:an?\s+|the\s+)?(?:enemy\s+)?(?:model|unit)\s+'
+            r'within\s+(\d+)\s*["”](?!\s+of\b)',
+            text,
+            re.IGNORECASE,
+        )
+    )
+    if len(matches) != 1 or " with " in matches[0].group(0).casefold():
+        return None
+    return int(matches[0].group(1))
 
 
 def combat_effect_application(text: str, effect_start: int) -> tuple[str, str]:
@@ -1249,6 +1281,7 @@ def combat_preset(description: str) -> dict[str, object] | None:
     if not any(value for key, value in effects.items() if key != "weapon_scope"):
         return None
     effects["weapon_scope"] = combat_weapon_scope(text)
+    effects["maximum_target_distance"] = combat_maximum_target_distance(text, effects)
     return effects
 
 
@@ -1517,12 +1550,13 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
             connection.execute(
                 """INSERT INTO unit_combat_presets
                    (datasheet_id, ability_position, preset_position, name, description_text,
-                    is_exclusive_choice, activation, weapon_scope, hit_modifier, hit_modifier_role,
+                    is_exclusive_choice, activation, weapon_scope, maximum_target_distance,
+                    hit_modifier, hit_modifier_role,
                     hit_modifier_subject, wound_modifier, wound_modifier_role,
                     wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                     hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
                     wound_reroll_subject)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     ability_position,
@@ -1532,6 +1566,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     preset["is_exclusive_choice"],
                     preset["activation"],
                     preset["weapon_scope"],
+                    preset["maximum_target_distance"],
                     preset["hit_modifier"],
                     preset.get("hit_modifier_role"),
                     preset.get("hit_modifier_subject"),
@@ -1710,7 +1745,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "27"),
+                    ("schema_version", "28"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

@@ -16,9 +16,9 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Extend the source-backed rules eligibility layer beyond phase and exact
-   target/Psychic keywords to target distance and other compound conditions
-   that currently require manual interpretation.
+1. Extend the source-backed rules eligibility layer beyond phase, exact
+   target/Psychic keywords, and direct target distance to other compound
+   conditions that currently require manual interpretation.
 2. Link bearer- and subset-model defensive abilities to structured wargear and
    unit composition so equipped defensive defaults can be applied without
    affecting models that do not have them.
@@ -26,6 +26,14 @@ priority over feature count.
    as explicit reproducible state instead of requiring manual arithmetic.
 
 ## Completed cycles
+
+- 2026-08-07: Added conservative direct target-distance eligibility. SQLite
+  schema 28 imports a maximum target distance only when one modeled effect has
+  an unambiguous attacker-to-target condition, currently covering both
+  Drive-by Dakka datasheets and Way of the Short Blade. Distance 0 means
+  unknown and never activates a distance-gated preset. The static agent URL,
+  normalized profile, catalogue export, and preset composer preserve the
+  editable distance, with parser, data-snapshot, and boundary regressions.
 
 - 2026-08-07: Added conservative phase eligibility for source-backed combat
   presets. Effects with explicit Shooting- or Fight-phase timing that expire at

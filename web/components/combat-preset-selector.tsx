@@ -15,9 +15,18 @@ type Props = {
   onChange: (ids: string[]) => void;
   title?: string;
   hint?: string;
+  targetDistance?: number;
 };
 
-export function CombatPresetSelector({ presets, role, selectedIds, onChange, title, hint }: Props) {
+export function CombatPresetSelector({
+  presets,
+  role,
+  selectedIds,
+  onChange,
+  title,
+  hint,
+  targetDistance = 0,
+}: Props) {
   const available = presets.filter(
     (preset) => combatPresetRequiresActivation(preset) && combatPresetSupportsRole(preset, role),
   );
@@ -49,6 +58,14 @@ export function CombatPresetSelector({ presets, role, selectedIds, onChange, tit
               {preset.weaponScope}
               {preset.choiceGroup ? " · choose one mode" : ""} · {preset.description}
             </small>
+            {preset.maximumTargetDistance ? (
+              <small>
+                Requires target within {preset.maximumTargetDistance}&quot;
+                {targetDistance <= 0 || targetDistance > preset.maximumTargetDistance
+                  ? " · inactive at current distance"
+                  : " · active at current distance"}
+              </small>
+            ) : null}
             <small>Affects {combatPresetSubjectSummary(preset, role)}</small>
           </span>
         </label>

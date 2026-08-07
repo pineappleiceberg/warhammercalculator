@@ -52,6 +52,7 @@ class ProfileDataTests(unittest.TestCase):
                 "reroll_wounds": 0,
                 "reroll_wound_ones": 0,
                 "additional_effects": [],
+                "maximum_target_distance": None,
                 "hit_modifier_role": "attacker",
                 "hit_modifier_subject": "led_unit",
                 "wound_modifier_role": "attacker",
@@ -800,7 +801,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "27",
+                "28",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),

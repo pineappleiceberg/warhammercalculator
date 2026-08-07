@@ -10,6 +10,7 @@ const catalogueParameters = new Set([
   "attackerPreset",
   "targetPreset",
   "format",
+  "distance",
 ]);
 
 const integerParameters = [
@@ -43,6 +44,7 @@ const integerParameters = [
   ["damageMultiplier", ["damageMultiplier"]],
   ["damageModifier", ["damageModifier"]],
   ["melta", ["melta"]],
+  ["targetDistance", ["targetDistance", "distance"]],
 ];
 
 const booleanParameters = [
@@ -355,6 +357,7 @@ export function canonicalAgentParameters(profile) {
     diceText(profile.rapidFireDice, profile.rapidFireSides, profile.rapidFire),
   );
   search.set("melta", String(profile.melta));
+  search.set("distance", String(profile.targetDistance ?? 0));
   for (const [field, aliases] of booleanParameters) {
     search.set(aliases[0], profile[field] ? "true" : "false");
   }

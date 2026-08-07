@@ -892,6 +892,7 @@ export default function Home() {
     ids: string[],
     weapon: CatalogueWeapon | undefined,
     targetKeywords: string[],
+    targetDistance = profile.targetDistance,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -900,6 +901,7 @@ export default function Home() {
       weapon?.name ?? "",
       targetKeywords,
       attackKeywordsForWeapon(weapon),
+      targetDistance,
     );
   const withActivePresets = (
     current: Profile,
@@ -968,10 +970,26 @@ export default function Home() {
       : current;
     return applySelectedCombatPresets(
       baseProfile,
-      selectedPresets(selectedAttackerUnit, attackerIds, weapon, targetKeywords),
-      selectedPresets(selectedTargetUnit, targetIds, weapon, targetKeywords),
+      selectedPresets(
+        selectedAttackerUnit,
+        attackerIds,
+        weapon,
+        targetKeywords,
+        baseProfile.targetDistance,
+      ),
+      selectedPresets(
+        selectedTargetUnit,
+        targetIds,
+        weapon,
+        targetKeywords,
+        baseProfile.targetDistance,
+      ),
       weapon?.type ?? "Ranged",
-      { targetKeywords, attackKeywords: attackKeywordsForWeapon(weapon) },
+      {
+        targetKeywords,
+        attackKeywords: attackKeywordsForWeapon(weapon),
+        targetDistance: baseProfile.targetDistance,
+      },
     ) as Profile;
   };
 
@@ -1241,6 +1259,7 @@ export default function Home() {
                   selectedIds={activeAttackerPresetIds}
                   onChange={chooseAttackerPresets}
                   title="Active attacking abilities"
+                  targetDistance={profile.targetDistance}
                 />
               )}
               <DiceField
@@ -1411,6 +1430,7 @@ export default function Home() {
                   selectedIds={activeTargetPresetIds}
                   onChange={chooseTargetPresets}
                   title="Active defensive abilities"
+                  targetDistance={profile.targetDistance}
                 />
               )}
               <div className="field-grid three">
@@ -1736,6 +1756,15 @@ export default function Home() {
               />
             </div>
             <div className="context-grid">
+              <NumberField
+                label="Target distance (0 = unknown)"
+                value={profile.targetDistance}
+                max={1000}
+                onChange={(value) =>
+                  setProfile((current) => withActivePresets({ ...current, targetDistance: value }))
+                }
+                suffix='"'
+              />
               <Toggle
                 label="Within half range"
                 checked={profile.withinHalfRange}

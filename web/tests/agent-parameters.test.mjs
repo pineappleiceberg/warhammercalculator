@@ -61,6 +61,7 @@ const defaults = {
   rapidFireSides: 0,
   rapidFire: 0,
   melta: 0,
+  targetDistance: 0,
   withinHalfRange: false,
   torrent: false,
   blast: false,
@@ -172,6 +173,7 @@ test("canonical agent parameters round-trip every supported profile field", () =
     woundModifier: 1,
     criticalWounds: 5,
     rapidFire: 2,
+    targetDistance: 9,
     blast: true,
     rerollWounds: true,
   };
@@ -265,4 +267,27 @@ test("catalogue agent query resolves stable IDs or unambiguous names", async () 
     () => resolveAgentCatalogueSelection("attacker=Doom%20Scythe&target=000000136", catalogue),
     /missing catalogue parameters: weapon/i,
   );
+});
+
+test("source-backed target-distance presets require a known in-range target", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const warbikers = catalogue.units.find((unit) => unit.name === "Warbikers");
+  const preset = warbikers.combatPresets.find((entry) => entry.name === "Drive-by Dakka");
+  const weapon = warbikers.weapons.find((entry) => entry.type === "Ranged");
+  const selected = (distance) =>
+    selectedAndAutomaticCombatPresets(
+      warbikers.combatPresets,
+      [preset.id],
+      weapon.type,
+      weapon.name,
+      [],
+      attackKeywordsForWeapon(weapon),
+      distance,
+    );
+  assert.equal(preset.maximumTargetDistance, 9);
+  assert.equal(selected(0).length, 0);
+  assert.equal(selected(9).length, 1);
+  assert.equal(selected(10).length, 0);
 });
