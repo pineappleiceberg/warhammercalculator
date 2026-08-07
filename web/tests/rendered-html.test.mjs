@@ -217,6 +217,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const harker = catalogue.units.find((unit) => unit.name === "Sergeant Harker");
   const payback = harker.combatPresets.find((preset) => preset.name === "Payback Time");
   assert.equal(payback.activation, "situational");
+  assert.equal(payback.weaponScope, "Ranged");
   assert.deepEqual(
     payback.effects.map((effect) => [effect.type, effect.value, effect.weaponName]),
     [
@@ -230,6 +231,10 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   );
   assert.equal(momentShackle.length, 2);
   assert.equal(new Set(momentShackle.map((preset) => preset.choiceGroup)).size, 1);
+  assert.equal(
+    momentShackle.find((preset) => preset.name.endsWith("Invulnerable 2+")).weaponScope,
+    "Melee",
+  );
   const culexus = catalogue.units.find((unit) => unit.name === "Culexus Assassin");
   const psychicAssassin = culexus.combatPresets.find(
     (preset) => preset.name === "Psychic Assassin",

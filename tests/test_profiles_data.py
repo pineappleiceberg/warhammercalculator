@@ -96,6 +96,49 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(mixed["wound_modifier_role"], "attacker")
         self.assertEqual(mixed["hit_modifier_role"], "target")
 
+    def test_combat_preset_parser_scopes_phase_bounded_effects_conservatively(self):
+        shooting_defense = combat_preset(
+            "Once per battle, in your opponent's Shooting phase, before making a saving "
+            "throw for this unit, use this ability. Until the end of the phase, models "
+            "in this unit have a 5+ invulnerable save."
+        )
+        self.assertEqual(shooting_defense["weapon_scope"], "Ranged")
+
+        fight_defense = combat_preset(
+            "At the start of the Fight phase, select one stance to take effect until the "
+            "end of the phase. Each time an attack targets this unit, subtract 1 from "
+            "the Hit roll."
+        )
+        self.assertEqual(fight_defense["weapon_scope"], "Melee")
+
+        selected_to_shoot = combat_preset(
+            "Once per battle, when this model is selected to shoot, use this ability. "
+            "Until the end of the phase, its Payback weapon has an Attacks "
+            "characteristic of 6."
+        )
+        self.assertEqual(selected_to_shoot["weapon_scope"], "Ranged")
+
+        both_phases = combat_preset(
+            "In your Shooting phase or the Fight phase, when this unit is selected to "
+            "shoot or fight, use this ability. Until the end of the phase, weapons "
+            "equipped by models in this unit have the [LETHAL HITS] ability."
+        )
+        self.assertEqual(both_phases["weapon_scope"], "Any")
+
+        either_activation = combat_preset(
+            "When this unit is selected to shoot or fight, use this ability. Until the "
+            "end of the phase, weapons equipped by models in this unit have the "
+            "[LETHAL HITS] ability."
+        )
+        self.assertEqual(either_activation["weapon_scope"], "Any")
+
+        lasts_beyond_phase = combat_preset(
+            "In your Shooting phase, select one enemy unit. Until the end of the turn, "
+            "each time a friendly model makes an attack that targets that enemy unit, "
+            "improve the Armour Penetration characteristic of that attack by 1."
+        )
+        self.assertEqual(lasts_beyond_phase["weapon_scope"], "Any")
+
     def test_combat_preset_parser_splits_exclusive_modes_and_roll_outcomes(self):
         dance = combat_presets(
             "Dance of Death",
@@ -757,7 +800,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "26",
+                "27",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -798,7 +841,7 @@ class ProfileDataTests(unittest.TestCase):
                     (
                         "Arco-flagellants",
                         "Extremis Trigger Word",
-                        "Any",
+                        "Melee",
                         6,
                         "arco-flails",
                         None,
@@ -868,7 +911,7 @@ class ProfileDataTests(unittest.TestCase):
                     (
                         "Sergeant Harker",
                         "Payback Time",
-                        "Any",
+                        "Ranged",
                         6,
                         "Payback",
                         None,
@@ -1042,6 +1085,25 @@ class ProfileDataTests(unittest.TestCase):
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
                 [("automatic", 2), ("inherent", 32), ("situational", 1407)],
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT weapon_scope, count(*) FROM unit_combat_presets "
+                    "GROUP BY weapon_scope ORDER BY weapon_scope"
+                ).fetchall(),
+                [("Any", 789), ("Melee", 310), ("Ranged", 342)],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_combat_presets
+                       WHERE weapon_scope = 'Any'
+                         AND lower(description_text) LIKE '%until the end of the phase%'
+                         AND ((lower(description_text) LIKE '%shooting phase%'
+                               AND lower(description_text) NOT LIKE '%fight phase%')
+                              OR (lower(description_text) LIKE '%fight phase%'
+                                  AND lower(description_text) NOT LIKE '%shooting phase%'))"""
+                ).fetchone()[0],
+                0,
             )
             self.assertEqual(
                 connection.execute(
@@ -1326,6 +1388,7 @@ class ProfileDataTests(unittest.TestCase):
             for preset in winged_hive_tyrant["combatPresets"]
             if preset["name"] == "Paroxysm (Psychic) — roll 2+"
         )
+        self.assertEqual(paroxysm["weaponScope"], "Melee")
         self.assertEqual(
             paroxysm["effects"],
             [
@@ -1381,6 +1444,7 @@ class ProfileDataTests(unittest.TestCase):
             for preset in harker["combatPresets"]
             if preset["name"] == "Payback Time"
         )
+        self.assertEqual(payback["weaponScope"], "Ranged")
         self.assertEqual(
             [
                 (effect["type"], effect["value"], effect["weaponName"])
@@ -1391,6 +1455,26 @@ class ProfileDataTests(unittest.TestCase):
                 ("sustained_hits", 3, "Payback"),
             ],
         )
+
+        kommandos = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Kommandos"
+        )
+        distraction_grot = next(
+            preset
+            for preset in kommandos["combatPresets"]
+            if preset["name"] == "Distraction Grot"
+        )
+        self.assertEqual(distraction_grot["weaponScope"], "Ranged")
+
+        ridgerunners = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Achilles Ridgerunners"
+        )
+        crossfire = next(
+            preset
+            for preset in ridgerunners["combatPresets"]
+            if preset["name"] == "Crossfire"
+        )
+        self.assertEqual(crossfire["weaponScope"], "Any")
 
         fire_prism = next(
             unit for unit in catalogue["units"] if unit["name"] == "Fire Prism"

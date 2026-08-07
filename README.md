@@ -148,6 +148,12 @@ such as Payback Time carry their Sustained Hits change with the Attacks value,
 while mutually exclusive modes such as Moment Shackle cannot be selected
 together.
 
+Phase-bounded presets are also restricted to the compatible attack type.
+Shooting-phase effects cannot alter melee attacks, and Fight-phase effects
+cannot alter ranged attacks. Abilities available in both phases, or whose
+effect explicitly lasts beyond the phase in which it was activated, remain
+available to either attack type.
+
 Optional rules used when an attack is allocated have an explicit deterministic
 policy: skip the configured number of allocated attacks, then spend one use per
 attack before its Hit roll. A use is spent even if that attack misses, and any

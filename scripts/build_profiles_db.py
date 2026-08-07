@@ -378,6 +378,35 @@ def plain_text(value: str) -> str:
     return re.sub(r"\s+", " ", html.unescape(without_tags)).strip()
 
 
+def combat_weapon_scope(text: str) -> str:
+    lowered = text.casefold()
+    has_melee = "melee attack" in lowered or "melee weapon" in lowered
+    has_ranged = "ranged attack" in lowered or "ranged weapon" in lowered
+    if has_melee != has_ranged:
+        return "Melee" if has_melee else "Ranged"
+    if has_melee:
+        return "Any"
+
+    phase_limited = bool(
+        re.search(r"until (?:the )?end of (?:(?:the|that|this) )?phase\b", lowered)
+    )
+    shoots = bool(re.search(r"\b(?:selected to|eligible to) shoot\b", lowered))
+    fights = bool(re.search(r"\bselected to fight\b", lowered))
+    shoots_or_fights = bool(
+        re.search(r"\bselected to (?:shoot or fight|fight or shoot)\b", lowered)
+    )
+    shooting_phase = "shooting phase" in lowered
+    fight_phase = "fight phase" in lowered
+    if phase_limited:
+        if (shooting_phase and fight_phase) or shoots_or_fights:
+            return "Any"
+        ranged_only = shoots or (shooting_phase and not fight_phase)
+        melee_only = fights or (fight_phase and not shooting_phase)
+        if ranged_only != melee_only:
+            return "Ranged" if ranged_only else "Melee"
+    return "Any"
+
+
 def combat_effect_application(text: str, effect_start: int) -> tuple[str, str]:
     lowered = text.casefold()
     prefix = lowered[:effect_start]
@@ -1219,15 +1248,7 @@ def combat_preset(description: str) -> dict[str, object] | None:
     effects["additional_effects"] = combat_additional_effects(text)
     if not any(value for key, value in effects.items() if key != "weapon_scope"):
         return None
-    has_melee = "melee attack" in lowered or "melee weapon" in lowered
-    has_ranged = "ranged attack" in lowered or "ranged weapon" in lowered
-    effects["weapon_scope"] = (
-        "Melee"
-        if has_melee and not has_ranged
-        else "Ranged"
-        if has_ranged and not has_melee
-        else "Any"
-    )
+    effects["weapon_scope"] = combat_weapon_scope(text)
     return effects
 
 
@@ -1689,7 +1710,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "26"),
+                    ("schema_version", "27"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

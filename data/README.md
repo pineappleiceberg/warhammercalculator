@@ -36,7 +36,10 @@ The main tables are:
   defaults. Rules whose complete eligibility is an exact selected-target or
   attacking-weapon keyword test are `automatic`; they apply only to the
   matching weapon and keyword. All other rows are `situational`, preserve their
-  full condition, and are never assumed active
+  full condition, and are never assumed active. Their `weapon_scope` also
+  preserves conservative phase eligibility: an effect explicitly bounded to a
+  Shooting or Fight phase is restricted to ranged or melee attacks, while
+  dual-phase and end-of-turn effects remain unrestricted
 - fixed Attacks replacements gated by a phase, selected target, or battlefield
   event are stored as named-weapon situational effects; compound Sustained Hits
   changes and mutually exclusive replacement/defense modes remain grouped with

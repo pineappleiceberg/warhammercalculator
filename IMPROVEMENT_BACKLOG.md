@@ -16,9 +16,9 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Extend the source-backed rules eligibility layer beyond exact target and
-   Psychic attack keywords to phase, range, and other compound conditions that
-   currently require manual interpretation.
+1. Extend the source-backed rules eligibility layer beyond phase and exact
+   target/Psychic keywords to target distance and other compound conditions
+   that currently require manual interpretation.
 2. Link bearer- and subset-model defensive abilities to structured wargear and
    unit composition so equipped defensive defaults can be applied without
    affecting models that do not have them.
@@ -26,6 +26,16 @@ priority over feature count.
    as explicit reproducible state instead of requiring manual arithmetic.
 
 ## Completed cycles
+
+- 2026-08-07: Added conservative phase eligibility for source-backed combat
+  presets. Effects with explicit Shooting- or Fight-phase timing that expire at
+  the end of that phase now resolve only against ranged or melee attacks,
+  respectively; rules available in both phases and rules lasting until the end
+  of the turn remain unrestricted. SQLite schema 27 reclassifies 113 existing
+  presets across 45 named abilities, including Distraction Grot, Payback Time,
+  Dance of Death, Fire Support, and Moment Shackle's defensive mode. Parser,
+  generated-data, catalogue, and Wasm composition regressions cover eligible,
+  ineligible, dual-phase, and cross-phase-duration cases.
 
 - 2026-08-07: Added source-backed phase-, target-, and battlefield-state-dependent
   fixed Attacks replacements as explicit situational presets, building on the

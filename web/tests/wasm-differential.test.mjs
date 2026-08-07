@@ -2016,6 +2016,9 @@ test("source-backed situational Attacks replacements reach C/Wasm exactly", asyn
   const active = applyCombatPresets(base, [payback], [], "Ranged");
   assert.equal(active.attacksReplacement, 6);
   assert.equal(active.sustainedHits, 3);
+  const wrongPhase = applyCombatPresets(base, [payback], [], "Melee");
+  assert.equal(wrongPhase.attacksReplacement, 0);
+  assert.equal(wrongPhase.sustainedHits, 1);
   const inactiveMean = exactMean({ attacks: 3, sustainedHits: 1, save: 7 });
   const activeMean = exactMean({
     attacks: 3,
@@ -2038,6 +2041,20 @@ test("source-backed situational Attacks replacements reach C/Wasm exactly", asyn
       .attacksReplacement,
     0,
   );
+
+  const kommandos = catalogue.units.find((unit) => unit.name === "Kommandos");
+  const distractionGrot = kommandos.combatPresets.find(
+    (preset) => preset.name === "Distraction Grot",
+  );
+  assert.equal(distractionGrot.weaponScope, "Ranged");
+  assert.equal(combatPresetSupportsWeapon(distractionGrot, "Ranged"), true);
+  assert.equal(combatPresetSupportsWeapon(distractionGrot, "Melee"), false);
+
+  const ridgerunners = catalogue.units.find((unit) => unit.name === "Achilles Ridgerunners");
+  const crossfire = ridgerunners.combatPresets.find((preset) => preset.name === "Crossfire");
+  assert.equal(crossfire.weaponScope, "Any");
+  assert.equal(combatPresetSupportsWeapon(crossfire, "Ranged"), true);
+  assert.equal(combatPresetSupportsWeapon(crossfire, "Melee"), true);
 });
 
 test("source-backed defensive profile values reduce C/Wasm exact damage", async () => {
