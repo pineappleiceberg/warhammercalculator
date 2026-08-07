@@ -170,6 +170,10 @@ CREATE TABLE unit_combat_presets (
         CHECK (requires_oath_target IN (0, 1)),
     requires_oath_wound_bonus INTEGER NOT NULL DEFAULT 0
         CHECK (requires_oath_wound_bonus IN (0, 1)),
+    requires_source_on_objective INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_source_on_objective IN (0, 1)),
+    requires_target_on_objective INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_target_on_objective IN (0, 1)),
     requires_target_battle_shocked INTEGER NOT NULL DEFAULT 0
         CHECK (requires_target_battle_shocked IN (0, 1)),
     requires_attacker_not_battle_shocked INTEGER NOT NULL DEFAULT 0
@@ -579,6 +583,194 @@ def combat_is_oath_of_moment(text: str) -> bool:
             re.IGNORECASE,
         )
     )
+
+
+def combat_direct_objective_presets(
+    name: str, text: str, allow_bearer_defenses: bool
+) -> list[dict[str, object]] | None:
+    normalized = plain_text(text).strip()
+    if name == "Black Rage" and re.fullmatch(
+        r"Each time this model makes a melee attack, you can re-roll the Hit roll\. "
+        r"While this model[’']s unit is not within 6[\"”] of one or more friendly "
+        r"Blood Angels Character models, or 12[\"”] of one or more friendly Chaplain "
+        r"models, it cannot be selected to Fall Back and its Objective Control "
+        r"characteristic is 0\.",
+        normalized,
+        re.IGNORECASE,
+    ):
+        effects = combat_preset(normalized.split(". ", 1)[0] + ".", allow_bearer_defenses)
+        if effects:
+            return [
+                {
+                    "name": name,
+                    "description": normalized,
+                    "is_exclusive_choice": 0,
+                    "activation": "automatic",
+                    **effects,
+                }
+            ]
+    if name == "Voice of Experience" and re.fullmatch(
+        r"While this model is leading a unit, improve the Objective Control "
+        r"characteristic of models in that unit by 1 and each time a model in that "
+        r"unit makes an attack, add 1 to the Hit roll\.",
+        normalized,
+        re.IGNORECASE,
+    ):
+        effects = combat_preset(normalized, allow_bearer_defenses)
+        if effects:
+            effects["requires_attached_unit"] = True
+            return [
+                {
+                    "name": name,
+                    "description": normalized,
+                    "is_exclusive_choice": 0,
+                    "activation": "automatic",
+                    **effects,
+                }
+            ]
+    if re.search(
+        r"objective marker (?:you|your opponent) (?:control|controls)|"
+        r"objective marker you do not control|that objective marker|"
+        r"closest eligible|Pain token|within 6[\"”] of one or more friendly",
+        normalized,
+        re.IGNORECASE,
+    ):
+        return None
+
+    sentences = re.split(r"(?<=\.)\s+", normalized)
+    if len(sentences) == 2:
+        baseline_roll = re.search(
+            r"re-roll a (Hit|Wound) roll of 1\.$", sentences[0], re.IGNORECASE
+        )
+        objective_upgrade = re.fullmatch(
+            r"If (?:that attack targets (?:an enemy |a )?unit(?: that is)?|"
+            r"the target(?: of that attack)? is(?: an enemy unit)?|that enemy unit is) "
+            r"within range of (?:an |one or more )?objective markers?, you can re-roll "
+            r"the (Hit|Wound) roll(?: instead)?\.",
+            sentences[1],
+            re.IGNORECASE,
+        )
+        if baseline_roll and objective_upgrade and (
+            baseline_roll.group(1).casefold() == objective_upgrade.group(1).casefold()
+        ):
+            baseline = combat_preset(sentences[0], allow_bearer_defenses)
+            if not baseline or baseline["maximum_target_distance"]:
+                return None
+            roll = baseline_roll.group(1).casefold()
+            upgrade = {
+                **baseline,
+                f"reroll_{roll}_ones": 0,
+                f"reroll_{roll}s": 1,
+                "requires_target_on_objective": True,
+            }
+            baseline["requires_target_on_objective"] = False
+            return [
+                {
+                    "name": f"{name} — Base re-roll",
+                    "description": normalized,
+                    "is_exclusive_choice": 0,
+                    "activation": "automatic",
+                    **baseline,
+                },
+                {
+                    "name": f"{name} — Objective re-roll",
+                    "description": normalized,
+                    "is_exclusive_choice": 0,
+                    "activation": "automatic",
+                    **upgrade,
+                },
+            ]
+
+        baseline_hit = re.search(
+            r"re-roll a Hit roll of 1\.$", sentences[0], re.IGNORECASE
+        )
+        objective_wound = re.fullmatch(
+            r"If the target is within range of (?:an |one or more )?objective markers?, "
+            r"re-roll a Wound roll of 1 as well\.",
+            sentences[1],
+            re.IGNORECASE,
+        )
+        if baseline_hit and objective_wound:
+            baseline = combat_preset(sentences[0], allow_bearer_defenses)
+            if not baseline:
+                return None
+            upgrade = {
+                **baseline,
+                "reroll_hit_ones": 0,
+                "hit_reroll_role": None,
+                "hit_reroll_subject": None,
+                "reroll_wound_ones": 1,
+                "wound_reroll_role": baseline["hit_reroll_role"],
+                "wound_reroll_subject": baseline["hit_reroll_subject"],
+                "requires_target_on_objective": True,
+            }
+            baseline["requires_target_on_objective"] = False
+            return [
+                {
+                    "name": f"{name} — Base re-roll",
+                    "description": normalized,
+                    "is_exclusive_choice": 0,
+                    "activation": "automatic",
+                    **baseline,
+                },
+                {
+                    "name": f"{name} — Objective re-roll",
+                    "description": normalized,
+                    "is_exclusive_choice": 0,
+                    "activation": "automatic",
+                    **upgrade,
+                },
+            ]
+
+        if name == "Aggressor Guardian":
+            parsed: list[dict[str, object]] = []
+            for suffix, sentence, source_required, target_required in (
+                ("Defence", sentences[0], True, False),
+                ("Offence", sentences[1], False, True),
+            ):
+                effects = combat_preset(sentence, allow_bearer_defenses)
+                if not effects:
+                    return None
+                effects["requires_source_on_objective"] = source_required
+                effects["requires_target_on_objective"] = target_required
+                parsed.append(
+                    {
+                        "name": f"{name} — {suffix}",
+                        "description": normalized,
+                        "is_exclusive_choice": 0,
+                        "activation": "automatic",
+                        **effects,
+                    }
+                )
+            return parsed
+
+    effects = combat_preset(normalized, allow_bearer_defenses)
+    if not effects:
+        return None
+    if re.fullmatch(
+        r"Each time (?:this model|a model in this unit) makes a ranged attack "
+        r"that targets (?:an enemy |a )?unit (?:(?:that )?is )?within range of "
+        r"(?:an |one or more )?objective markers?, that attack has the "
+        r"\[IGNORES COVER\] ability\.",
+        normalized,
+        re.IGNORECASE,
+    ) or re.fullmatch(
+        r"Each time a model in this unit makes a ranged attack that targets an "
+        r"enemy unit within range of an objective marker, you can re-roll the Wound roll\.",
+        normalized,
+        re.IGNORECASE,
+    ):
+        effects["requires_target_on_objective"] = True
+        return [
+            {
+                "name": name,
+                "description": normalized,
+                "is_exclusive_choice": 0,
+                "activation": "automatic",
+                **effects,
+            }
+        ]
+    return None
 
 
 def combat_battle_shock_requirements(text: str) -> tuple[bool, bool]:
@@ -1594,6 +1786,8 @@ def combat_preset(
     effects["requires_waaagh_active"] = combat_requires_waaagh_active(text)
     effects["requires_oath_target"] = combat_is_oath_of_moment(text)
     effects["requires_oath_wound_bonus"] = False
+    effects["requires_source_on_objective"] = False
+    effects["requires_target_on_objective"] = False
     (
         effects["requires_target_battle_shocked"],
         effects["requires_attacker_not_battle_shocked"],
@@ -1613,6 +1807,8 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
             "requires_waaagh_active",
             "requires_oath_target",
             "requires_oath_wound_bonus",
+            "requires_source_on_objective",
+            "requires_target_on_objective",
             "requires_target_battle_shocked",
             "requires_attacker_not_battle_shocked",
             "required_target_strength_state",
@@ -1773,6 +1969,11 @@ def combat_presets(
                 **defensive,
             },
         ]
+    objective_presets = combat_direct_objective_presets(
+        name, text, allow_bearer_defenses
+    )
+    if objective_presets:
+        return objective_presets
     has_choice = bool(
         re.search(
             r"\b(?:select|choose) one of (?:the )?[^.]{0,160}(?:following|below)",
@@ -1972,6 +2173,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     requires_attached_unit,
                     requires_waaagh_active,
                     requires_oath_target, requires_oath_wound_bonus,
+                    requires_source_on_objective, requires_target_on_objective,
                     requires_target_battle_shocked,
                     requires_attacker_not_battle_shocked,
                     required_target_strength_state,
@@ -1980,7 +2182,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                     hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
                     wound_reroll_subject)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     ability_position,
@@ -1997,6 +2199,8 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     int(preset["requires_waaagh_active"]),
                     int(preset["requires_oath_target"]),
                     int(preset["requires_oath_wound_bonus"]),
+                    int(preset["requires_source_on_objective"]),
+                    int(preset["requires_target_on_objective"]),
                     int(preset["requires_target_battle_shocked"]),
                     int(preset["requires_attacker_not_battle_shocked"]),
                     preset["required_target_strength_state"],
@@ -2181,7 +2385,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "37"),
+                    ("schema_version", "38"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

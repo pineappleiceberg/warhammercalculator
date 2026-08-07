@@ -59,6 +59,8 @@ class ProfileDataTests(unittest.TestCase):
                 "requires_waaagh_active": False,
                 "requires_oath_target": False,
                 "requires_oath_wound_bonus": False,
+                "requires_source_on_objective": False,
+                "requires_target_on_objective": False,
                 "requires_target_battle_shocked": False,
                 "requires_attacker_not_battle_shocked": False,
                 "required_target_strength_state": None,
@@ -156,6 +158,79 @@ class ProfileDataTests(unittest.TestCase):
         changed = description.replace("add 1 to the Wound roll as well", "re-roll the Wound roll")
         self.assertEqual(len(combat_presets("Oath of Moment", changed)), 1)
         self.assertFalse(combat_presets("Oath of Moment", changed)[0]["requires_oath_target"])
+
+    def test_combat_preset_parser_splits_direct_objective_rerolls(self):
+        description = (
+            "Each time a model in this unit makes an attack, re-roll a Wound roll of 1. "
+            "If the target is within range of an objective marker, you can re-roll the "
+            "Wound roll instead."
+        )
+        presets = combat_presets("Breaching Team", description)
+        self.assertEqual(
+            [preset["name"] for preset in presets],
+            ["Breaching Team — Base re-roll", "Breaching Team — Objective re-roll"],
+        )
+        self.assertEqual([preset["activation"] for preset in presets], ["automatic", "automatic"])
+        self.assertEqual(
+            [preset["requires_target_on_objective"] for preset in presets],
+            [False, True],
+        )
+        self.assertEqual(
+            [(preset["reroll_wounds"], preset["reroll_wound_ones"]) for preset in presets],
+            [(0, 1), (1, 0)],
+        )
+
+        controlled = description.replace(
+            "an objective marker", "an objective marker you do not control"
+        )
+        self.assertEqual(len(combat_presets("Breaching Team", controlled)), 1)
+        self.assertFalse(
+            combat_presets("Breaching Team", controlled)[0]["requires_target_on_objective"]
+        )
+        compound = description.replace(
+            "If the target is", "If the target is the closest eligible target and is"
+        )
+        self.assertEqual(len(combat_presets("Breaching Team", compound)), 1)
+        self.assertFalse(
+            combat_presets("Breaching Team", compound)[0]["requires_target_on_objective"]
+        )
+
+        vanguard = combat_presets(
+            "Vanguard Predator",
+            "Each time a model in this unit makes an attack, re-roll a Hit roll of 1. "
+            "If the target is within range of one or more objective markers, re-roll a "
+            "Wound roll of 1 as well.",
+        )
+        self.assertEqual([preset["activation"] for preset in vanguard], ["automatic", "automatic"])
+        self.assertEqual(
+            [
+                (preset["reroll_hit_ones"], preset["reroll_wound_ones"])
+                for preset in vanguard
+            ],
+            [(1, 0), (0, 1)],
+        )
+
+    def test_combat_preset_parser_projects_combat_effects_from_objective_control_text(self):
+        black_rage = (
+            "Each time this model makes a melee attack, you can re-roll the Hit roll. "
+            'While this model’s unit is not within 6" of one or more friendly Blood Angels '
+            'Character models, or 12" of one or more friendly Chaplain models, it cannot '
+            "be selected to Fall Back and its Objective Control characteristic is 0."
+        )
+        preset = combat_presets("Black Rage", black_rage)[0]
+        self.assertEqual(preset["activation"], "automatic")
+        self.assertEqual(preset["weapon_scope"], "Melee")
+        self.assertEqual((preset["reroll_hits"], preset["reroll_hit_ones"]), (1, 0))
+
+        voice = (
+            "While this model is leading a unit, improve the Objective Control "
+            "characteristic of models in that unit by 1 and each time a model in that "
+            "unit makes an attack, add 1 to the Hit roll."
+        )
+        preset = combat_presets("Voice of Experience", voice)[0]
+        self.assertEqual(preset["activation"], "automatic")
+        self.assertTrue(preset["requires_attached_unit"])
+        self.assertEqual(preset["hit_modifier"], 1)
 
     def test_combat_preset_parser_classifies_each_effect_without_using_its_sign(self):
         self_penalty = combat_preset(
@@ -1062,7 +1137,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "37",
+                "38",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1347,14 +1422,14 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 933), ("inherent", 32), ("situational", 951)],
+                [("automatic", 983), ("inherent", 32), ("situational", 919)],
             )
             self.assertEqual(
                 connection.execute(
                     "SELECT weapon_scope, count(*) FROM unit_combat_presets "
                     "GROUP BY weapon_scope ORDER BY weapon_scope"
                 ).fetchall(),
-                [("Any", 1176), ("Melee", 398), ("Ranged", 342)],
+                [("Any", 1188), ("Melee", 402), ("Ranged", 344)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1436,6 +1511,51 @@ class ProfileDataTests(unittest.TestCase):
                 ).fetchone()[0],
                 0,
             )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT sum(requires_source_on_objective),
+                              sum(requires_target_on_objective)
+                       FROM unit_combat_presets"""
+                ).fetchone(),
+                (1, 21),
+            )
+            objective_rows = connection.execute(
+                """SELECT name, requires_source_on_objective,
+                          requires_target_on_objective, count(*)
+                   FROM unit_combat_presets
+                   WHERE requires_source_on_objective = 1
+                      OR requires_target_on_objective = 1
+                   GROUP BY name, requires_source_on_objective,
+                            requires_target_on_objective
+                   ORDER BY name"""
+            ).fetchall()
+            self.assertIn(("Aggressor Guardian — Defence", 1, 0, 1), objective_rows)
+            self.assertIn(("Breach and Clear", 0, 1, 1), objective_rows)
+            self.assertIn(("Reavers of the Void — Objective re-roll", 0, 1, 2), objective_rows)
+            self.assertIn(("Veterans of the Long War — Objective re-roll", 0, 1, 2), objective_rows)
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_combat_presets
+                       WHERE (requires_source_on_objective = 1
+                           OR requires_target_on_objective = 1)
+                         AND activation != 'automatic'"""
+                ).fetchone()[0],
+                0,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT activation, count(*) FROM unit_combat_presets
+                       WHERE name = 'Black Rage' GROUP BY activation"""
+                ).fetchall(),
+                [("automatic", 10)],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT activation, requires_attached_unit
+                       FROM unit_combat_presets WHERE name = 'Voice of Experience'"""
+                ).fetchone(),
+                ("automatic", 1),
+            )
             waaagh_rows = connection.execute(
                 """SELECT datasheet.name, preset.name, preset.weapon_scope
                    FROM unit_combat_presets AS preset
@@ -1473,7 +1593,7 @@ class ProfileDataTests(unittest.TestCase):
                    WHERE preset.requires_attached_unit = 1
                    ORDER BY datasheet.name, preset.name"""
             ).fetchall()
-            self.assertEqual(len(attached_rows), 156)
+            self.assertEqual(len(attached_rows), 157)
             self.assertIn(("Chaplain", "Litany of Hate"), attached_rows)
             self.assertIn(("Chronomancer", "Timesplinter Mantle"), attached_rows)
             self.assertIn(("Imagifier", "Stanchion of Holy Martyrs"), attached_rows)
@@ -2301,6 +2421,22 @@ class ProfileDataTests(unittest.TestCase):
             [(preset["rerollHits"], preset["woundModifier"]) for preset in oath],
             [(True, 0), (False, 1)],
         )
+        breachers = next(unit for unit in catalogue["units"] if unit["name"] == "Breacher Team")
+        breach = next(
+            preset for preset in breachers["combatPresets"] if preset["name"] == "Breach and Clear"
+        )
+        self.assertTrue(breach["requiresTargetOnObjective"])
+        self.assertTrue(breach["rerollWounds"])
+        self.assertEqual(breach["activation"], "automatic")
+        sentinel = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Canoptek Tomb Sentinel"
+        )
+        guardian = {
+            preset["name"]: preset for preset in sentinel["combatPresets"]
+            if preset["name"].startswith("Aggressor Guardian —")
+        }
+        self.assertTrue(guardian["Aggressor Guardian — Defence"]["requiresSourceOnObjective"])
+        self.assertTrue(guardian["Aggressor Guardian — Offence"]["requiresTargetOnObjective"])
         troupe = next(unit for unit in catalogue["units"] if unit["id"] == "000002536")
         dance = [preset for preset in troupe["combatPresets"] if preset["choiceGroup"]]
         self.assertEqual(len(dance), 3)

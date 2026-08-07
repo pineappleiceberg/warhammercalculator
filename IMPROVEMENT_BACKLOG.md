@@ -17,9 +17,9 @@ priority over feature count.
 ## Prioritized backlog
 
 1. Extend the source-backed rules eligibility layer beyond the now-covered
-   direct states to objective control, observer/marked-target relationships,
-   aura proximity, and other compound conditions that still require manual
-   interpretation.
+   direct any-objective position to objective ownership and selected-marker
+   relationships, observer/marked-target relationships, aura proximity, and
+   other compound conditions that still require manual interpretation.
 2. Represent casualty- and nearby-unit-count-scaled Attacks modifiers as
    explicit reproducible state instead of requiring manual arithmetic; direct
    source-unit and nearby-enemy model counts are now covered.
@@ -28,6 +28,19 @@ priority over feature count.
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added exact direct objective-marker position. SQLite schema 38
+  marks 22 source/target objective-dependent effects automatic and splits 17
+  baseline re-roll abilities from their stronger objective upgrade, so the
+  baseline remains active away from an objective. Editable attacker and target
+  state now round-trips through Model vs Model, Unit vs Unit, Play recovery,
+  normalized API profiles, and static agent URLs. The same projection audit
+  makes ten Black Rage Hit re-rolls unconditional and Voice of Experience
+  Attached-unit-dependent because their Objective Control text does not gate
+  the combat effect. Exact parser negatives exclude controlled/selected markers,
+  closest-target, token, aura, and alternative conditions. Generated database
+  and catalogue snapshots, URL/recovery round trips, workflow rendering, and
+  C/WebAssembly damage monotonicity cover the change.
 
 - 2026-08-07: Corrected and automated Oath of Moment across 275 Adeptus Astartes
   datasheets. SQLite schema 37 splits the rule into a Hit re-roll gated by an

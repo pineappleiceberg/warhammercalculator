@@ -73,6 +73,8 @@ export type CombatProfile = {
   targetWaaaghActive: boolean;
   targetOathOfMoment: boolean;
   attackerOathWoundBonusEligible: boolean;
+  attackerOnObjective: boolean;
+  targetOnObjective: boolean;
   attackerBattleShocked: boolean;
   targetBattleShocked: boolean;
   targetStrengthState: TargetStrengthState;
@@ -258,6 +260,8 @@ export const DEFAULT_PROFILE: CombatProfile = {
   targetWaaaghActive: false,
   targetOathOfMoment: false,
   attackerOathWoundBonusEligible: false,
+  attackerOnObjective: false,
+  targetOnObjective: false,
   attackerBattleShocked: false,
   targetBattleShocked: false,
   targetStrengthState: "full",
@@ -413,6 +417,8 @@ export function normalizeProfile(input: unknown): CombatProfile {
     targetWaaaghActive: booleanValue("targetWaaaghActive"),
     targetOathOfMoment: booleanValue("targetOathOfMoment"),
     attackerOathWoundBonusEligible: booleanValue("attackerOathWoundBonusEligible"),
+    attackerOnObjective: booleanValue("attackerOnObjective"),
+    targetOnObjective: booleanValue("targetOnObjective"),
     attackerBattleShocked: booleanValue("attackerBattleShocked"),
     targetBattleShocked: booleanValue("targetBattleShocked"),
     targetStrengthState: targetStrengthState as TargetStrengthState,

@@ -109,6 +109,8 @@ export default function UnitVsUnit() {
   const [targetWaaaghActive, setTargetWaaaghActive] = useState(false);
   const [targetOathOfMoment, setTargetOathOfMoment] = useState(false);
   const [attackerOathWoundBonusEligible, setAttackerOathWoundBonusEligible] = useState(false);
+  const [attackerOnObjective, setAttackerOnObjective] = useState(false);
+  const [targetOnObjective, setTargetOnObjective] = useState(false);
   const [attackerBattleShocked, setAttackerBattleShocked] = useState(false);
   const [targetBattleShocked, setTargetBattleShocked] = useState(false);
   const [targetStrengthState, setTargetStrengthState] = useState<TargetStrengthState>("full");
@@ -186,6 +188,8 @@ export default function UnitVsUnit() {
     targetWaaaghActive,
     targetOathOfMoment,
     attackerOathWoundBonusEligible,
+    attackerOnObjective,
+    targetOnObjective,
     attackerBattleShocked,
     targetBattleShocked,
     targetStrengthState,
@@ -207,6 +211,7 @@ export default function UnitVsUnit() {
     setAttackerWaaaghActive(false);
     setTargetOathOfMoment(false);
     setAttackerOathWoundBonusEligible(false);
+    setAttackerOnObjective(false);
     setAttackerUnitModels(0);
     setNearbyEnemyModels(0);
     setAttackerBattleShocked(false);
@@ -244,6 +249,7 @@ export default function UnitVsUnit() {
     setTargetAttached(false);
     setTargetWaaaghActive(false);
     setTargetOathOfMoment(false);
+    setTargetOnObjective(false);
     setTargetBattleShocked(false);
     setTargetStrengthState("full");
     const unit = targetUnits.find((entry) => entry.id === unitId);
@@ -305,6 +311,8 @@ export default function UnitVsUnit() {
             targetWaaaghActive,
             targetOathOfMoment,
             attackerOathWoundBonusEligible,
+            attackerOnObjective,
+            targetOnObjective,
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
@@ -329,6 +337,8 @@ export default function UnitVsUnit() {
           attackerWaaaghActive,
           targetOathOfMoment,
           attackerOathWoundBonusEligible,
+          attackerOnObjective,
+          targetOnObjective,
         ),
         selectedAndAutomaticCombatPresets(
           targetUnit?.combatPresets ?? [],
@@ -347,6 +357,8 @@ export default function UnitVsUnit() {
           targetWaaaghActive,
           false,
           false,
+          targetOnObjective,
+          attackerOnObjective,
         ),
         line.weapon.type,
         {
@@ -366,6 +378,8 @@ export default function UnitVsUnit() {
           targetWaaaghActive,
           targetOathOfMoment,
           attackerOathWoundBonusEligible,
+          attackerOnObjective,
+          targetOnObjective,
         },
       ),
     );
@@ -393,6 +407,8 @@ export default function UnitVsUnit() {
               targetWaaaghActive,
               false,
               false,
+              targetOnObjective,
+              attackerOnObjective,
             ),
           )
           .map((preset) => [preset.id, preset]),
@@ -415,6 +431,8 @@ export default function UnitVsUnit() {
         attackerRemainedStationary,
         targetAttached,
         targetWaaaghActive,
+        attackerOnObjective,
+        targetOnObjective,
       })),
     );
   };
@@ -551,6 +569,7 @@ export default function UnitVsUnit() {
                   setAttackerWaaaghActive(false);
                   setTargetOathOfMoment(false);
                   setAttackerOathWoundBonusEligible(false);
+                  setAttackerOnObjective(false);
                   setAttackerUnitModels(0);
                   setNearbyEnemyModels(0);
                   setAttackerBattleShocked(false);
@@ -860,6 +879,7 @@ export default function UnitVsUnit() {
                   setTargetAttached(false);
                   setTargetWaaaghActive(false);
                   setTargetOathOfMoment(false);
+                  setTargetOnObjective(false);
                 }}
               >
                 <option value="">Choose faction</option>
@@ -981,6 +1001,27 @@ export default function UnitVsUnit() {
                   onChange={(event) => setAttackerOathWoundBonusEligible(event.target.checked)}
                 />
                 Codex +1 Wound eligible
+              </span>
+            </label>
+            <label>
+              <span>Objective marker range</span>
+              <span className="inline-checkbox">
+                <input
+                  aria-label="Attacker is within range of an objective marker"
+                  type="checkbox"
+                  checked={attackerOnObjective}
+                  onChange={(event) => setAttackerOnObjective(event.target.checked)}
+                />
+                Attacker
+              </span>
+              <span className="inline-checkbox">
+                <input
+                  aria-label="Target is within range of an objective marker"
+                  type="checkbox"
+                  checked={targetOnObjective}
+                  onChange={(event) => setTargetOnObjective(event.target.checked)}
+                />
+                Target
               </span>
             </label>
             <label>

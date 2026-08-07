@@ -2023,6 +2023,50 @@ test("source-backed Oath states improve exact C/Wasm damage only at their own bo
   assert.ok(lessThanOrEqual(hitOnlyDamage, fullDamage));
 });
 
+test("source-backed objective position upgrades the exact C/Wasm re-roll boundary", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const breachers = catalogue.units.find((unit) => unit.name === "Imperial Navy Breachers");
+  const weapon = breachers.weapons.find((entry) => entry.type === "Ranged");
+  const selected = (targetOnObjective) =>
+    selectedAndAutomaticCombatPresets(
+      breachers.combatPresets,
+      [],
+      weapon.type,
+      weapon.name,
+      [],
+      attackKeywordsForWeapon(weapon),
+      0,
+      false,
+      false,
+      false,
+      "full",
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      targetOnObjective,
+    );
+  const baseline = applyCombatPresets({}, selected(false), [], weapon.type);
+  const objective = applyCombatPresets(
+    { targetOnObjective: true },
+    selected(true),
+    [],
+    weapon.type,
+    { targetOnObjective: true },
+  );
+  assert.equal(baseline.rerollWoundOnes, true);
+  assert.equal(baseline.rerollWounds, false);
+  assert.equal(objective.rerollWounds, true);
+  assert.equal(objective.rerollWoundOnes, false);
+  const baselineDamage = exactMean({ flags: 32768 });
+  const objectiveDamage = exactMean({ flags: 16384 });
+  assert.ok(lessThanOrEqual(baselineDamage, objectiveDamage));
+});
+
 test("source-backed target distance changes preset composition at its exact boundary", async () => {
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),

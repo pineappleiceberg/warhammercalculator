@@ -36,10 +36,11 @@ The main tables are:
   defaults. Rules whose complete eligibility is an exact selected-target,
   attacking-weapon keyword, unambiguous attacker-charge or stationary test, or
   direct attacker/target Battle-shock, target unit-strength, simple
-  Attached-unit, exact direct Waaagh-benefit, or exact Oath of Moment test are
+  Attached-unit, exact direct Waaagh-benefit, exact Oath of Moment, or direct
+  any-objective-marker test are
   `automatic`;
   they apply only to matching weapon, target, and battlefield state. Charge-or-
-  charged, Order-dependent, aura-, compound leader-, objective-, observer-,
+  charged, Order-dependent, aura-, compound leader-, controlled/selected-objective-, observer-,
   alternative-branch, and combined-mode wording remains situational. Target
   strength is stored as an
   exact `below_half` or `not_below_half` requirement; the calculator preserves
@@ -62,6 +63,11 @@ The main tables are:
   row additionally carries `requires_oath_wound_bonus`. This preserves the
   published Codex-detachment and excluded-chapter condition instead of treating
   both benefits as one manual toggle
+- direct objective-marker rules carry `requires_source_on_objective` or
+  `requires_target_on_objective`. Seventeen baseline/upgrade abilities are split
+  so their re-roll of 1 remains automatic while the full re-roll requires the
+  objective state. Control ownership, selected markers, and compound alternatives
+  remain situational rather than being inferred
 - exact bearer Save, invulnerable-save, Feel No Pain, and Damage-reduction
   effects are imported as optional situational presets only when structured
   composition proves that the datasheet contains exactly one model; bearer

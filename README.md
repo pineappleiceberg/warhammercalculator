@@ -194,6 +194,15 @@ Marines Detachment and the army contains none of the excluded chapter keywords.
 The conditional +1 Wound bonus requires both states, so it can no longer be
 accidentally bundled with the universal Hit re-roll.
 
+Direct rules whose complete condition is that the source or target is within
+range of any objective marker use the editable `attackerOnObjective` and
+`targetOnObjective` states. Baseline re-rolls remain automatic off an objective,
+while the stronger objective re-roll activates only in range. Conditions that
+name a selected marker, require a particular player to control it, or combine
+the marker with an aura, token, closest-target, or alternative condition remain
+explicit choices. Objective Control characteristic text that does not condition
+the combat effect no longer makes Black Rage or Voice of Experience manual.
+
 Published Attacks modifiers that scale by a count use explicit editable state
 instead of an assumed average. `attackerUnitModels` records the total models in
 the attacking unit, while `nearbyEnemyModels` records enemy models inside the
@@ -521,7 +530,8 @@ comma-separated `torrent`, `blast`, `heavy`, `lance`, `cover`, `ignores-cover`,
 
 Model vs Model, Unit vs Unit, and Play Mode expose the same target distance,
 attacker charge and stationary states, attacker/target Battle-shock state, and
-target unit-strength, Attached-unit, Waaagh!, and Oath of Moment states. A catalogue agent request can
+target unit-strength, Attached-unit, Waaagh!, Oath of Moment, and objective-marker
+position states. A catalogue agent request can
 pass `charged=true` to activate every compatible, unambiguous charge-triggered
 source rule without an `attackerPreset` parameter and activate Lance for
 compatible catalogue weapons.
@@ -536,6 +546,8 @@ direct Waaagh-dependent rules for the corresponding Orks unit without requiring
 manual profile arithmetic.
 `oathTarget=true` activates the Oath Hit re-roll; `oathWoundBonus=true` adds the
 Codex +1 Wound effect only when the target is also marked.
+`attackerObjective=true` and `targetObjective=true` activate exact rules that
+require the corresponding unit to be within range of any objective marker.
 Likewise, `targetBattleShocked=true` or `attackerBattleShocked=true` resolves
 compatible exact source rules before later numeric overrides are applied.
 `targetStrength=below-half` and the other two strength values likewise resolve

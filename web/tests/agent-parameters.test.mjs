@@ -200,6 +200,8 @@ test("canonical agent parameters round-trip every supported profile field", () =
     targetWaaaghActive: true,
     targetOathOfMoment: true,
     attackerOathWoundBonusEligible: true,
+    attackerOnObjective: true,
+    targetOnObjective: true,
     attackerBattleShocked: true,
     targetBattleShocked: true,
     targetStrengthState: "below_half",
@@ -289,6 +291,11 @@ test("catalogue agent Attached-unit state selects exact automatic leader rules",
     parseAgentProfile("oathWoundBonus=true", defaults, false).attackerOathWoundBonusEligible,
     true,
   );
+  assert.equal(
+    parseAgentProfile("attackerObjective=true", defaults, false).attackerOnObjective,
+    true,
+  );
+  assert.equal(parseAgentProfile("targetObjective=true", defaults, false).targetOnObjective, true);
   assert.equal(parseAgentProfile("unitModels=12", defaults, false).attackerUnitModels, 12);
   assert.equal(parseAgentProfile("nearbyEnemyModels=9", defaults, false).nearbyEnemyModels, 9);
 });
@@ -395,6 +402,55 @@ test("catalogue agent Oath state separates the Hit re-roll from the Codex Wound 
   );
   assert.equal(full.rerollHits, true);
   assert.equal(full.woundModifier, 1);
+});
+
+test("catalogue agent objective state separates a base re-roll from its objective upgrade", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const breachers = catalogue.units.find((unit) => unit.name === "Imperial Navy Breachers");
+  const weapon = breachers.weapons.find((entry) => entry.type === "Ranged");
+  const selected = (targetOnObjective) =>
+    selectedAndAutomaticCombatPresets(
+      breachers.combatPresets,
+      [],
+      weapon.type,
+      weapon.name,
+      [],
+      attackKeywordsForWeapon(weapon),
+      0,
+      false,
+      false,
+      false,
+      "full",
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      targetOnObjective,
+    );
+  assert.deepEqual(
+    selected(false).map((preset) => preset.name),
+    ["Breaching Team — Base re-roll"],
+  );
+  assert.deepEqual(
+    selected(true).map((preset) => preset.name),
+    ["Breaching Team — Base re-roll", "Breaching Team — Objective re-roll"],
+  );
+  const baseline = applyCombatPresets({}, selected(false), [], weapon.type);
+  const objective = applyCombatPresets(
+    { targetOnObjective: true },
+    selected(true),
+    [],
+    weapon.type,
+    { targetOnObjective: true },
+  );
+  assert.equal(baseline.rerollWoundOnes, true);
+  assert.equal(baseline.rerollWounds, false);
+  assert.equal(objective.rerollWounds, true);
+  assert.equal(objective.rerollWoundOnes, false);
 });
 
 test("catalogue agent model counts compose exact automatic Attacks scaling", async () => {

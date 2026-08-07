@@ -108,6 +108,8 @@ export type CatalogueCombatPreset = {
   requiresWaaaghActive?: boolean;
   requiresOathTarget?: boolean;
   requiresOathWoundBonusEligible?: boolean;
+  requiresSourceOnObjective?: boolean;
+  requiresTargetOnObjective?: boolean;
   requiresTargetBattleShocked?: boolean;
   requiresAttackerNotBattleShocked?: boolean;
   requiredTargetStrengthState?: "below_starting" | "below_half" | "not_below_half";
@@ -234,6 +236,8 @@ type CombatPresetContext = {
   targetWaaaghActive?: boolean;
   targetOathOfMoment?: boolean;
   attackerOathWoundBonusEligible?: boolean;
+  attackerOnObjective?: boolean;
+  targetOnObjective?: boolean;
   attackerBattleShocked?: boolean;
   targetBattleShocked?: boolean;
   targetStrengthState?: CombatProfile["targetStrengthState"];

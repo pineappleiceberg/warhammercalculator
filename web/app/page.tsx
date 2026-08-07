@@ -904,6 +904,8 @@ export default function Home() {
     sourceUnitWaaaghActive = false,
     targetOathOfMoment = false,
     sourceUnitOathWoundBonusEligible = false,
+    sourceUnitOnObjective = false,
+    targetUnitOnObjective = false,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -922,6 +924,8 @@ export default function Home() {
       sourceUnitWaaaghActive,
       targetOathOfMoment,
       sourceUnitOathWoundBonusEligible,
+      sourceUnitOnObjective,
+      targetUnitOnObjective,
     );
   const withActivePresets = (
     current: Profile,
@@ -1011,6 +1015,8 @@ export default function Home() {
         baseProfile.attackerWaaaghActive,
         baseProfile.targetOathOfMoment,
         baseProfile.attackerOathWoundBonusEligible,
+        baseProfile.attackerOnObjective,
+        baseProfile.targetOnObjective,
       ),
       selectedPresets(
         selectedTargetUnit,
@@ -1027,6 +1033,8 @@ export default function Home() {
         baseProfile.targetWaaaghActive,
         false,
         false,
+        baseProfile.targetOnObjective,
+        baseProfile.attackerOnObjective,
       ),
       weapon?.type ?? "Ranged",
       {
@@ -1046,6 +1054,8 @@ export default function Home() {
         targetWaaaghActive: baseProfile.targetWaaaghActive,
         targetOathOfMoment: baseProfile.targetOathOfMoment,
         attackerOathWoundBonusEligible: baseProfile.attackerOathWoundBonusEligible,
+        attackerOnObjective: baseProfile.attackerOnObjective,
+        targetOnObjective: baseProfile.targetOnObjective,
       },
     ) as Profile;
   };
@@ -1257,6 +1267,7 @@ export default function Home() {
                             attackerWaaaghActive: false,
                             targetOathOfMoment: false,
                             attackerOathWoundBonusEligible: false,
+                            attackerOnObjective: false,
                             attackerUnitModels: 0,
                             nearbyEnemyModels: 0,
                             attackerBattleShocked: false,
@@ -1295,6 +1306,7 @@ export default function Home() {
                             attackerWaaaghActive: false,
                             targetOathOfMoment: false,
                             attackerOathWoundBonusEligible: false,
+                            attackerOnObjective: false,
                             attackerUnitModels: 0,
                             nearbyEnemyModels: 0,
                             attackerBattleShocked: false,
@@ -1462,6 +1474,7 @@ export default function Home() {
                             targetAttached: false,
                             targetWaaaghActive: false,
                             targetOathOfMoment: false,
+                            targetOnObjective: false,
                             targetStrengthState: "full",
                           },
                           selectedWeapon,
@@ -1496,6 +1509,7 @@ export default function Home() {
                             targetAttached: false,
                             targetWaaaghActive: false,
                             targetOathOfMoment: false,
+                            targetOnObjective: false,
                             targetStrengthState: "full",
                           },
                           selectedWeapon,
@@ -1996,6 +2010,28 @@ export default function Home() {
                       attackerOathWoundBonusEligible: value,
                     }),
                   )
+                }
+              />
+              <Toggle
+                label="Attacker is within range of an objective marker"
+                checked={profile.attackerOnObjective}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({ ...current, attackerOnObjective: value }),
+                  )
+                }
+              />
+              <Toggle
+                label="Target is within range of an objective marker"
+                checked={profile.targetOnObjective}
+                onChange={(value) =>
+                  selectedTargetModel
+                    ? applyTarget(selectedTargetModel, activeTargetPresetIds, {
+                        targetOnObjective: value,
+                      })
+                    : setProfile((current) =>
+                        withActivePresets({ ...current, targetOnObjective: value }),
+                      )
                 }
               />
               <Toggle

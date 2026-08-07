@@ -185,6 +185,8 @@ export default function PlayMode() {
     sourceUnitWaaaghActive = false,
     targetOathOfMoment = false,
     sourceUnitOathWoundBonusEligible = false,
+    sourceUnitOnObjective = false,
+    targetUnitOnObjective = false,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -203,6 +205,8 @@ export default function PlayMode() {
       sourceUnitWaaaghActive,
       targetOathOfMoment,
       sourceUnitOathWoundBonusEligible,
+      sourceUnitOnObjective,
+      targetUnitOnObjective,
     );
 
   const refreshProfile = (
@@ -225,6 +229,8 @@ export default function PlayMode() {
     nextAttackerOathWoundBonusEligible = profile.attackerOathWoundBonusEligible,
     nextAttackerUnitModels = profile.attackerUnitModels,
     nextNearbyEnemyModels = profile.nearbyEnemyModels,
+    nextAttackerOnObjective = profile.attackerOnObjective,
+    nextTargetOnObjective = profile.targetOnObjective,
   ) => {
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
@@ -258,6 +264,8 @@ export default function PlayMode() {
             targetWaaaghActive: nextTargetWaaaghActive,
             targetOathOfMoment: nextTargetOathOfMoment,
             attackerOathWoundBonusEligible: nextAttackerOathWoundBonusEligible,
+            attackerOnObjective: nextAttackerOnObjective,
+            targetOnObjective: nextTargetOnObjective,
             attackerBattleShocked: nextAttackerBattleShocked,
             targetBattleShocked: nextTargetBattleShocked,
             targetStrengthState: nextTargetStrengthState,
@@ -280,6 +288,8 @@ export default function PlayMode() {
           nextAttackerWaaaghActive,
           nextTargetOathOfMoment,
           nextAttackerOathWoundBonusEligible,
+          nextAttackerOnObjective,
+          nextTargetOnObjective,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -296,6 +306,8 @@ export default function PlayMode() {
           nextTargetWaaaghActive,
           false,
           false,
+          nextTargetOnObjective,
+          nextAttackerOnObjective,
         ),
         weapon.type,
         {
@@ -312,6 +324,8 @@ export default function PlayMode() {
           targetWaaaghActive: nextTargetWaaaghActive,
           targetOathOfMoment: nextTargetOathOfMoment,
           attackerOathWoundBonusEligible: nextAttackerOathWoundBonusEligible,
+          attackerOnObjective: nextAttackerOnObjective,
+          targetOnObjective: nextTargetOnObjective,
           attackerBattleShocked: nextAttackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
@@ -357,6 +371,7 @@ export default function PlayMode() {
     const nextTargetAttached = false;
     const nextTargetWaaaghActive = false;
     const nextTargetOathOfMoment = false;
+    const nextTargetOnObjective = false;
     const nextTargetStrengthState = "full" as const;
     setTargetModelId(model ? String(model.id) : "");
     setActiveTargetPresetIds(nextTargetPresetIds);
@@ -366,6 +381,7 @@ export default function PlayMode() {
         targetAttached: nextTargetAttached,
         targetWaaaghActive: nextTargetWaaaghActive,
         targetOathOfMoment: nextTargetOathOfMoment,
+        targetOnObjective: nextTargetOnObjective,
         targetBattleShocked: nextTargetBattleShocked,
         targetStrengthState: nextTargetStrengthState,
       }));
@@ -391,6 +407,8 @@ export default function PlayMode() {
             targetWaaaghActive: nextTargetWaaaghActive,
             targetOathOfMoment: nextTargetOathOfMoment,
             attackerOathWoundBonusEligible: profile.attackerOathWoundBonusEligible,
+            attackerOnObjective: profile.attackerOnObjective,
+            targetOnObjective: nextTargetOnObjective,
             targetStrengthState: nextTargetStrengthState,
           },
           weaponProfile,
@@ -411,6 +429,8 @@ export default function PlayMode() {
           profile.attackerWaaaghActive,
           nextTargetOathOfMoment,
           profile.attackerOathWoundBonusEligible,
+          profile.attackerOnObjective,
+          nextTargetOnObjective,
         ),
         selectedCombatPresets(
           nextTargetPresetIds,
@@ -427,6 +447,8 @@ export default function PlayMode() {
           nextTargetWaaaghActive,
           false,
           false,
+          nextTargetOnObjective,
+          profile.attackerOnObjective,
         ),
         weaponProfile.type,
         {
@@ -443,6 +465,8 @@ export default function PlayMode() {
           targetWaaaghActive: nextTargetWaaaghActive,
           targetOathOfMoment: nextTargetOathOfMoment,
           attackerOathWoundBonusEligible: profile.attackerOathWoundBonusEligible,
+          attackerOnObjective: profile.attackerOnObjective,
+          targetOnObjective: nextTargetOnObjective,
           attackerBattleShocked: profile.attackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
@@ -566,6 +590,7 @@ export default function PlayMode() {
                         attackerWaaaghActive: false,
                         targetOathOfMoment: false,
                         attackerOathWoundBonusEligible: false,
+                        attackerOnObjective: false,
                         attackerUnitModels: 0,
                         nearbyEnemyModels: 0,
                         attackerBattleShocked: false,
@@ -602,6 +627,7 @@ export default function PlayMode() {
                         attackerWaaaghActive: false,
                         targetOathOfMoment: false,
                         attackerOathWoundBonusEligible: false,
+                        attackerOnObjective: false,
                         attackerUnitModels: 0,
                         nearbyEnemyModels: 0,
                         attackerBattleShocked: false,
@@ -666,6 +692,7 @@ export default function PlayMode() {
                         targetAttached: false,
                         targetWaaaghActive: false,
                         targetOathOfMoment: false,
+                        targetOnObjective: false,
                         targetBattleShocked: false,
                         targetStrengthState: "full",
                       }));
@@ -880,6 +907,75 @@ export default function PlayMode() {
                       }
                     />
                     Codex +1 Wound eligible
+                  </span>
+                </label>
+                <label>
+                  <span>Objective marker range</span>
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Attacker is within range of an objective marker"
+                      type="checkbox"
+                      checked={profile.attackerOnObjective}
+                      onChange={(event) =>
+                        refreshProfile(
+                          weaponId,
+                          targetModelId,
+                          profileId,
+                          activeAttackerPresetIds,
+                          activeTargetPresetIds,
+                          profile.targetDistance,
+                          profile.attackerCharged,
+                          profile.attackerBattleShocked,
+                          profile.targetBattleShocked,
+                          profile.targetStrengthState,
+                          profile.attackerRemainedStationary,
+                          profile.attackerAttached,
+                          profile.targetAttached,
+                          profile.attackerWaaaghActive,
+                          profile.targetWaaaghActive,
+                          profile.targetOathOfMoment,
+                          profile.attackerOathWoundBonusEligible,
+                          profile.attackerUnitModels,
+                          profile.nearbyEnemyModels,
+                          event.target.checked,
+                          profile.targetOnObjective,
+                        )
+                      }
+                    />
+                    Attacker
+                  </span>
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Target is within range of an objective marker"
+                      type="checkbox"
+                      checked={profile.targetOnObjective}
+                      onChange={(event) =>
+                        refreshProfile(
+                          weaponId,
+                          targetModelId,
+                          profileId,
+                          activeAttackerPresetIds,
+                          activeTargetPresetIds,
+                          profile.targetDistance,
+                          profile.attackerCharged,
+                          profile.attackerBattleShocked,
+                          profile.targetBattleShocked,
+                          profile.targetStrengthState,
+                          profile.attackerRemainedStationary,
+                          profile.attackerAttached,
+                          profile.targetAttached,
+                          profile.attackerWaaaghActive,
+                          profile.targetWaaaghActive,
+                          profile.targetOathOfMoment,
+                          profile.attackerOathWoundBonusEligible,
+                          profile.attackerUnitModels,
+                          profile.nearbyEnemyModels,
+                          profile.attackerOnObjective,
+                          event.target.checked,
+                        )
+                      }
+                    />
+                    Target
                   </span>
                 </label>
                 <label>

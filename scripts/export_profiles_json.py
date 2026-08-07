@@ -170,6 +170,7 @@ def export(database: Path, output: Path) -> None:
                       requires_attached_unit,
                       requires_waaagh_active,
                       requires_oath_target, requires_oath_wound_bonus,
+                      requires_source_on_objective, requires_target_on_objective,
                       requires_target_battle_shocked,
                       requires_attacker_not_battle_shocked, required_target_strength_state,
                       hit_modifier, hit_modifier_role,
@@ -221,6 +222,16 @@ def export(database: Path, output: Path) -> None:
                     **(
                         {"requiresOathWoundBonusEligible": True}
                         if row["requires_oath_wound_bonus"]
+                        else {}
+                    ),
+                    **(
+                        {"requiresSourceOnObjective": True}
+                        if row["requires_source_on_objective"]
+                        else {}
+                    ),
+                    **(
+                        {"requiresTargetOnObjective": True}
+                        if row["requires_target_on_objective"]
                         else {}
                     ),
                     **(

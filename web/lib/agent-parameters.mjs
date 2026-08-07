@@ -61,6 +61,8 @@ const booleanParameters = [
   ["targetWaaaghActive", ["targetWaaaghActive"]],
   ["targetOathOfMoment", ["targetOathOfMoment", "oathTarget"]],
   ["attackerOathWoundBonusEligible", ["attackerOathWoundBonusEligible", "oathWoundBonus"]],
+  ["attackerOnObjective", ["attackerOnObjective", "attackerObjective"]],
+  ["targetOnObjective", ["targetOnObjective", "targetObjective"]],
   ["attackerBattleShocked", ["attackerBattleShocked"]],
   ["targetBattleShocked", ["targetBattleShocked", "battleShocked"]],
   ["withinHalfRange", ["withinHalfRange", "halfRange"]],

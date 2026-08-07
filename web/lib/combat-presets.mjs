@@ -97,6 +97,8 @@ export function combatPresetMeetsEligibility(
   sourceUnitWaaaghActive = false,
   targetOathOfMoment = false,
   sourceUnitOathWoundBonusEligible = false,
+  sourceUnitOnObjective = false,
+  targetUnitOnObjective = false,
 ) {
   const targets = new Set(targetKeywords.map(normalizedKeyword));
   const attacks = new Set(attackKeywords.map(normalizedKeyword));
@@ -118,6 +120,8 @@ export function combatPresetMeetsEligibility(
     (!preset.requiresWaaaghActive || sourceUnitWaaaghActive) &&
     (!preset.requiresOathTarget || targetOathOfMoment) &&
     (!preset.requiresOathWoundBonusEligible || sourceUnitOathWoundBonusEligible) &&
+    (!preset.requiresSourceOnObjective || sourceUnitOnObjective) &&
+    (!preset.requiresTargetOnObjective || targetUnitOnObjective) &&
     (!preset.requiresTargetBattleShocked || targetBattleShocked) &&
     (!preset.requiresAttackerNotBattleShocked || !attackerBattleShocked) &&
     (preset.effects ?? []).every(
@@ -147,6 +151,8 @@ export function selectedAndAutomaticCombatPresets(
   sourceUnitWaaaghActive = false,
   targetOathOfMoment = false,
   sourceUnitOathWoundBonusEligible = false,
+  sourceUnitOnObjective = false,
+  targetUnitOnObjective = false,
 ) {
   const selected = new Set(selectedIds);
   return presets.filter(
@@ -167,6 +173,8 @@ export function selectedAndAutomaticCombatPresets(
         sourceUnitWaaaghActive,
         targetOathOfMoment,
         sourceUnitOathWoundBonusEligible,
+        sourceUnitOnObjective,
+        targetUnitOnObjective,
       ),
   );
 }
@@ -220,6 +228,8 @@ export function combatPresetEffects(
   sourceUnitOathWoundBonusEligible = false,
   attackerUnitModels = 0,
   nearbyEnemyModels = 0,
+  sourceUnitOnObjective = false,
+  targetUnitOnObjective = false,
 ) {
   const applicable = presets.filter(
     (preset) =>
@@ -239,6 +249,8 @@ export function combatPresetEffects(
         sourceUnitWaaaghActive,
         targetOathOfMoment,
         sourceUnitOathWoundBonusEligible,
+        sourceUnitOnObjective,
+        targetUnitOnObjective,
       ),
   );
   const hitModifiers = applicable.filter((preset) =>
@@ -480,6 +492,8 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
       false,
       context.attackerUnitModels ?? 0,
       context.nearbyEnemyModels ?? 0,
+      context.targetOnObjective ?? false,
+      context.attackerOnObjective ?? false,
     ),
   );
   const candidates = effects.map((effect) =>
@@ -555,6 +569,8 @@ export function applyCombatPresets(
     context.attackerOathWoundBonusEligible ?? profile.attackerOathWoundBonusEligible ?? false,
     context.attackerUnitModels ?? profile.attackerUnitModels ?? 0,
     context.nearbyEnemyModels ?? profile.nearbyEnemyModels ?? 0,
+    context.attackerOnObjective ?? profile.attackerOnObjective ?? false,
+    context.targetOnObjective ?? profile.targetOnObjective ?? false,
   );
   const target = combatPresetEffects(
     targetPresets,
@@ -575,6 +591,8 @@ export function applyCombatPresets(
     false,
     context.attackerUnitModels ?? profile.attackerUnitModels ?? 0,
     context.nearbyEnemyModels ?? profile.nearbyEnemyModels ?? 0,
+    context.targetOnObjective ?? profile.targetOnObjective ?? false,
+    context.attackerOnObjective ?? profile.attackerOnObjective ?? false,
   );
   const attacksReplacements = [attacker.attacksReplacement, target.attacksReplacement].filter(
     (value) => value > 0,
