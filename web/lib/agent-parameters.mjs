@@ -52,6 +52,8 @@ const integerParameters = [
   ["damageModifier", ["damageModifier"]],
   ["melta", ["melta"]],
   ["targetDistance", ["targetDistance", "distance"]],
+  ["attackerSourceTargetDistance", ["attackerSourceTargetDistance", "sourceDistance"]],
+  ["targetSourceAttackerDistance", ["targetSourceAttackerDistance", "targetSourceDistance"]],
   ["supportDistance", ["supportDistance"]],
   ["targetSupportDistance", ["targetSupportDistance"]],
   ["attackerUnitModels", ["attackerUnitModels", "unitModels"]],
@@ -85,6 +87,8 @@ const booleanParameters = [
   ["attackerGuidedAgainstTarget", ["attackerGuidedAgainstTarget", "guided"]],
   ["targetSpotted", ["targetSpotted", "spotted"]],
   ["targetClosestEligible", ["targetClosestEligible", "closestTarget"]],
+  ["attackerSourceCanSeeTarget", ["attackerSourceCanSeeTarget", "sourceVisible"]],
+  ["targetSourceCanSeeAttacker", ["targetSourceCanSeeAttacker", "targetSourceVisible"]],
   [
     "targetSpottedByMarkerlightObserver",
     ["targetSpottedByMarkerlightObserver", "markerlightSpotted"],
@@ -487,6 +491,8 @@ export function canonicalAgentParameters(profile) {
   );
   search.set("melta", String(profile.melta));
   search.set("distance", String(profile.targetDistance ?? 0));
+  search.set("sourceDistance", String(profile.attackerSourceTargetDistance ?? 0));
+  search.set("targetSourceDistance", String(profile.targetSourceAttackerDistance ?? 0));
   search.set("supportDistance", String(profile.supportDistance ?? 0));
   search.set("targetSupportDistance", String(profile.targetSupportDistance ?? 0));
   search.set("attackerUnitModels", String(profile.attackerUnitModels ?? 0));

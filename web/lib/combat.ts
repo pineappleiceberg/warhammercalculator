@@ -63,6 +63,8 @@ export type CombatProfile = {
   rapidFire: number;
   melta: number;
   targetDistance: number;
+  attackerSourceTargetDistance: number;
+  targetSourceAttackerDistance: number;
   supportDistance: number;
   targetSupportDistance: number;
   attackerUnitModels: number;
@@ -87,6 +89,8 @@ export type CombatProfile = {
   targetSpotted: boolean;
   targetSpottedByMarkerlightObserver: boolean;
   targetClosestEligible: boolean;
+  attackerSourceCanSeeTarget: boolean;
+  targetSourceCanSeeAttacker: boolean;
   attackerBattleShocked: boolean;
   targetBattleShocked: boolean;
   targetStrengthState: TargetStrengthState;
@@ -263,6 +267,8 @@ export const DEFAULT_PROFILE: CombatProfile = {
   rapidFire: 0,
   melta: 0,
   targetDistance: 0,
+  attackerSourceTargetDistance: 0,
+  targetSourceAttackerDistance: 0,
   supportDistance: 0,
   targetSupportDistance: 0,
   attackerUnitModels: 0,
@@ -287,6 +293,8 @@ export const DEFAULT_PROFILE: CombatProfile = {
   targetSpotted: false,
   targetSpottedByMarkerlightObserver: false,
   targetClosestEligible: false,
+  attackerSourceCanSeeTarget: false,
+  targetSourceCanSeeAttacker: false,
   attackerBattleShocked: false,
   targetBattleShocked: false,
   targetStrengthState: "full",
@@ -444,6 +452,8 @@ export function normalizeProfile(input: unknown): CombatProfile {
     rapidFire: numberValue("rapidFire", 0, 100),
     melta: numberValue("melta", 0, 100),
     targetDistance: numberValue("targetDistance", 0, 1000),
+    attackerSourceTargetDistance: numberValue("attackerSourceTargetDistance", 0, 1000),
+    targetSourceAttackerDistance: numberValue("targetSourceAttackerDistance", 0, 1000),
     supportDistance: numberValue("supportDistance", 0, 1000),
     targetSupportDistance: numberValue("targetSupportDistance", 0, 1000),
     attackerUnitModels: numberValue("attackerUnitModels", 0, 1000),
@@ -468,6 +478,8 @@ export function normalizeProfile(input: unknown): CombatProfile {
     targetSpotted: booleanValue("targetSpotted"),
     targetSpottedByMarkerlightObserver: booleanValue("targetSpottedByMarkerlightObserver"),
     targetClosestEligible: booleanValue("targetClosestEligible"),
+    attackerSourceCanSeeTarget: booleanValue("attackerSourceCanSeeTarget"),
+    targetSourceCanSeeAttacker: booleanValue("targetSourceCanSeeAttacker"),
     attackerBattleShocked: booleanValue("attackerBattleShocked"),
     targetBattleShocked: booleanValue("targetBattleShocked"),
     targetStrengthState: targetStrengthState as TargetStrengthState,

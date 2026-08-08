@@ -151,6 +151,10 @@ test("server-renders every battle workflow", async () => {
       assert.match(html, /Quick overrides/);
       assert.match(html, /play-action-hint/);
       assert.match(html, /aria-label="Target distance in inches"/);
+      assert.match(html, /aria-label="Attacker-side source to target distance in inches"/);
+      assert.match(html, /aria-label="Target visible to attacker-side source"/);
+      assert.match(html, /aria-label="Target-side source to attacker distance in inches"/);
+      assert.match(html, /aria-label="Attacker visible to target-side source"/);
       assert.match(html, /aria-label="Models in the attacker unit"/);
       assert.match(html, /aria-label="Enemy models within the ability range"/);
       assert.match(html, /aria-label="Attacker is gaining Waaagh! benefits"/);
@@ -165,6 +169,10 @@ test("server-renders every battle workflow", async () => {
     }
     if (pathname === "/unit-vs-unit") {
       assert.match(html, /aria-label="Target distance in inches"/);
+      assert.match(html, /aria-label="Attacker-side source to target distance in inches"/);
+      assert.match(html, /aria-label="Target visible to attacker-side source"/);
+      assert.match(html, /aria-label="Target-side source to attacker distance in inches"/);
+      assert.match(html, /aria-label="Attacker visible to target-side source"/);
       assert.match(html, /aria-label="Models in the attacker unit"/);
       assert.match(html, /aria-label="Enemy models within the ability range"/);
       assert.match(html, /aria-label="Attacker is gaining Waaagh! benefits"/);
@@ -1677,6 +1685,8 @@ test("generated API profiles preserve combat invariants and reject malformed fie
     "targetModels",
     "attackerUnitModels",
     "nearbyEnemyModels",
+    "attackerSourceTargetDistance",
+    "targetSourceAttackerDistance",
   ];
   const booleanKeys = [
     "attackerRemainedStationary",
@@ -1696,6 +1706,8 @@ test("generated API profiles preserve combat invariants and reject malformed fie
     "targetSpotted",
     "targetSpottedByMarkerlightObserver",
     "targetClosestEligible",
+    "attackerSourceCanSeeTarget",
+    "targetSourceCanSeeAttacker",
     "torrent",
     "blast",
     "heavyActive",

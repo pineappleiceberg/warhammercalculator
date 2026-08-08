@@ -3011,6 +3011,63 @@ test("source-backed situational Attacks replacements reach C/Wasm exactly", asyn
   assert.equal(combatPresetSupportsWeapon(crossfire, "Melee"), true);
 });
 
+test("selected-target LOS and source range gate C/Wasm modifiers independently", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const sorcerer = catalogue.units.find((unit) =>
+    unit.combatPresets.some((preset) => preset.name === "Marked by Fate (Psychic)"),
+  );
+  const marked = sorcerer.combatPresets.find(
+    (preset) => preset.name === "Marked by Fate (Psychic)",
+  );
+  const base = {
+    hitModifier: 0,
+    woundModifier: 0,
+    rerollHits: false,
+    rerollHitOnes: false,
+    rerollWounds: false,
+    rerollWoundOnes: false,
+    attacksMultiplier: 1,
+    strengthMultiplier: 1,
+    damageMultiplier: 1,
+    damageReplacement: null,
+  };
+  const hidden = applyCombatPresets(base, [marked], [], "Ranged", {
+    attackerSourceCanSeeTarget: false,
+  });
+  const visible = applyCombatPresets(base, [marked], [], "Ranged", {
+    attackerSourceCanSeeTarget: true,
+  });
+  assert.equal(hidden.hitModifier, 0);
+  assert.equal(visible.hitModifier, 1);
+  assert.ok(
+    lessThanOrEqual(
+      exactMean({ attacks: 6, hitModifier: hidden.hitModifier, save: 7 }),
+      exactMean({ attacks: 6, hitModifier: visible.hitModifier, save: 7 }),
+    ),
+  );
+
+  const eldrad = catalogue.units.find((unit) => unit.name === "Eldrad Ulthran");
+  const doom = eldrad.combatPresets.find((preset) => preset.name === "Doom (Psychic)");
+  const atBoundary = applyCombatPresets(base, [doom], [], "Ranged", {
+    attackerSourceTargetDistance: 18,
+    attackerSourceCanSeeTarget: true,
+  });
+  const beyondBoundary = applyCombatPresets(base, [doom], [], "Ranged", {
+    attackerSourceTargetDistance: 19,
+    attackerSourceCanSeeTarget: true,
+  });
+  assert.equal(atBoundary.woundModifier, 1);
+  assert.equal(beyondBoundary.woundModifier, 0);
+  assert.ok(
+    lessThanOrEqual(
+      exactMean({ attacks: 6, woundModifier: beyondBoundary.woundModifier, save: 7 }),
+      exactMean({ attacks: 6, woundModifier: atBoundary.woundModifier, save: 7 }),
+    ),
+  );
+});
+
 test("source-backed defensive profile values reduce C/Wasm exact damage", async () => {
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),

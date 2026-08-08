@@ -161,6 +161,7 @@ CREATE TABLE unit_combat_presets (
     uses_per_battle INTEGER CHECK (uses_per_battle > 0),
     weapon_scope TEXT NOT NULL CHECK (weapon_scope IN ('Any', 'Ranged', 'Melee')),
     maximum_target_distance INTEGER CHECK (maximum_target_distance > 0),
+    maximum_source_target_distance INTEGER CHECK (maximum_source_target_distance > 0),
     maximum_support_distance INTEGER CHECK (maximum_support_distance > 0),
     requires_attacker_charge INTEGER NOT NULL DEFAULT 0
         CHECK (requires_attacker_charge IN (0, 1)),
@@ -200,6 +201,8 @@ CREATE TABLE unit_combat_presets (
         CHECK (requires_target_spotted_by_markerlight_observer IN (0, 1)),
     requires_target_closest_eligible INTEGER NOT NULL DEFAULT 0
         CHECK (requires_target_closest_eligible IN (0, 1)),
+    requires_source_target_visible INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_source_target_visible IN (0, 1)),
     required_target_strength_state TEXT
         CHECK (required_target_strength_state IN
             ('below_starting', 'below_half', 'not_below_half')),
@@ -497,6 +500,28 @@ def combat_maximum_target_distance(
     if len(matches) != 1 or " with " in matches[0].group(0).casefold():
         return None
     return int(matches[0].group(1))
+
+
+def combat_selected_enemy_target_requirements(text: str) -> tuple[int | None, bool]:
+    normalized = plain_text(text).strip()
+    lowered = normalized.casefold()
+    if "observer unit" in lowered and "guided unit" in lowered:
+        return None, False
+    selections = list(
+        re.finditer(
+            r"\bselect one (?:(?:visible)\s+)?enemy(?:\s+[A-Z][A-Z -]*)?\s+"
+            r"(?:model|unit)\b[^.]{0,180}",
+            normalized,
+            re.IGNORECASE,
+        )
+    )
+    visible = [selection for selection in selections if "visible" in selection.group(0).casefold()]
+    if len(visible) != 1:
+        return None, False
+    distances = re.findall(r'\bwithin\s+(\d+)\s*["”]', visible[0].group(0), re.IGNORECASE)
+    if len(set(distances)) > 1:
+        return None, False
+    return (int(distances[0]) if distances else None), True
 
 
 def combat_requires_attacker_charge(text: str) -> bool:
@@ -1956,6 +1981,10 @@ def combat_preset(
         return None
     effects["weapon_scope"] = combat_weapon_scope(text)
     effects["maximum_target_distance"] = combat_maximum_target_distance(text, effects)
+    (
+        effects["maximum_source_target_distance"],
+        effects["requires_source_target_visible"],
+    ) = combat_selected_enemy_target_requirements(text)
     effects["requires_attacker_charge"] = combat_requires_attacker_charge(text)
     effects["requires_attacker_stationary"] = combat_requires_attacker_stationary(text)
     effects["requires_attached_unit"] = combat_requires_attached_unit(text)
@@ -2746,7 +2775,8 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                    (datasheet_id, ability_position, preset_position, name, description_text,
                      is_exclusive_choice, activation, source_relationship, uses_per_battle,
                      weapon_scope,
-                    maximum_target_distance, maximum_support_distance,
+                    maximum_target_distance, maximum_source_target_distance,
+                    maximum_support_distance,
                     requires_attacker_charge, requires_attacker_stationary,
                     requires_attached_unit,
                     requires_waaagh_active,
@@ -2762,14 +2792,14 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     requires_source_guided_against_target,
                     requires_target_spotted,
                     requires_target_spotted_by_markerlight_observer,
-                    requires_target_closest_eligible,
+                    requires_target_closest_eligible, requires_source_target_visible,
                     required_target_strength_state,
                     hit_modifier, hit_modifier_role,
                     hit_modifier_subject, wound_modifier, wound_modifier_role,
                     wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                     hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
                     wound_reroll_subject)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     ability_position,
@@ -2782,6 +2812,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     preset.get("uses_per_battle"),
                     preset["weapon_scope"],
                     preset["maximum_target_distance"],
+                    preset["maximum_source_target_distance"],
                     preset.get("maximum_support_distance"),
                     int(preset["requires_attacker_charge"]),
                     int(preset["requires_attacker_stationary"]),
@@ -2802,6 +2833,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     int(preset["requires_target_spotted"]),
                     int(preset["requires_target_spotted_by_markerlight_observer"]),
                     int(preset["requires_target_closest_eligible"]),
+                    int(preset["requires_source_target_visible"]),
                     preset["required_target_strength_state"],
                     preset["hit_modifier"],
                     preset.get("hit_modifier_role"),
@@ -2993,7 +3025,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "47"),
+                    ("schema_version", "48"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

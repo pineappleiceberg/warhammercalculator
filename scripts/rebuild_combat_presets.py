@@ -28,6 +28,7 @@ CREATE TABLE unit_combat_presets (
     uses_per_battle INTEGER CHECK (uses_per_battle > 0),
     weapon_scope TEXT NOT NULL CHECK (weapon_scope IN ('Any', 'Ranged', 'Melee')),
     maximum_target_distance INTEGER CHECK (maximum_target_distance > 0),
+    maximum_source_target_distance INTEGER CHECK (maximum_source_target_distance > 0),
     maximum_support_distance INTEGER CHECK (maximum_support_distance > 0),
     requires_attacker_charge INTEGER NOT NULL DEFAULT 0
         CHECK (requires_attacker_charge IN (0, 1)),
@@ -67,6 +68,8 @@ CREATE TABLE unit_combat_presets (
         CHECK (requires_target_spotted_by_markerlight_observer IN (0, 1)),
     requires_target_closest_eligible INTEGER NOT NULL DEFAULT 0
         CHECK (requires_target_closest_eligible IN (0, 1)),
+    requires_source_target_visible INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_source_target_visible IN (0, 1)),
     required_target_strength_state TEXT
         CHECK (required_target_strength_state IN
             ('below_starting', 'below_half', 'not_below_half')),
@@ -154,7 +157,7 @@ def main() -> None:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
         connection.execute(
-            "UPDATE metadata SET value = '47' WHERE key = 'schema_version'"
+            "UPDATE metadata SET value = '48' WHERE key = 'schema_version'"
         )
         connection.execute("PRAGMA optimize")
         connection.commit()

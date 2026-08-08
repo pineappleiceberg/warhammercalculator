@@ -138,6 +138,8 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
       hitOn: 3,
       damage: 2,
       targetDistance: 9,
+      attackerSourceTargetDistance: 18,
+      targetSourceAttackerDistance: 12,
       supportDistance: 6,
       targetSupportDistance: 3,
       attackerUnitModels: 11,
@@ -161,6 +163,8 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
       targetSpotted: true,
       targetSpottedByMarkerlightObserver: true,
       targetClosestEligible: true,
+      attackerSourceCanSeeTarget: true,
+      targetSourceCanSeeAttacker: true,
       attackerBattleShocked: true,
       targetBattleShocked: true,
       targetStrengthState: "below_half",
@@ -186,6 +190,8 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
     "unit-2": { "datasheet-3:ability:5": 1 },
   });
   assert.equal(recovery.profile.targetDistance, 9);
+  assert.equal(recovery.profile.attackerSourceTargetDistance, 18);
+  assert.equal(recovery.profile.targetSourceAttackerDistance, 12);
   assert.equal(recovery.profile.supportDistance, 6);
   assert.equal(recovery.profile.targetSupportDistance, 3);
   assert.equal(recovery.profile.attackerUnitModels, 11);
@@ -209,6 +215,8 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   assert.equal(recovery.profile.targetSpotted, true);
   assert.equal(recovery.profile.targetSpottedByMarkerlightObserver, true);
   assert.equal(recovery.profile.targetClosestEligible, true);
+  assert.equal(recovery.profile.attackerSourceCanSeeTarget, true);
+  assert.equal(recovery.profile.targetSourceCanSeeAttacker, true);
   assert.equal(recovery.profile.attackerBattleShocked, true);
   assert.equal(recovery.profile.targetBattleShocked, true);
   assert.equal(recovery.profile.targetStrengthState, "below_half");
@@ -227,7 +235,15 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   assert.deepEqual(migrated.supportUsesSpent, {});
   const legacyProfile = JSON.parse(JSON.stringify(recovery));
   delete legacyProfile.profile.targetClosestEligible;
+  delete legacyProfile.profile.attackerSourceTargetDistance;
+  delete legacyProfile.profile.targetSourceAttackerDistance;
+  delete legacyProfile.profile.attackerSourceCanSeeTarget;
+  delete legacyProfile.profile.targetSourceCanSeeAttacker;
   assert.equal(parsePlayRecovery(legacyProfile).profile.targetClosestEligible, false);
+  assert.equal(parsePlayRecovery(legacyProfile).profile.attackerSourceTargetDistance, 0);
+  assert.equal(parsePlayRecovery(legacyProfile).profile.targetSourceAttackerDistance, 0);
+  assert.equal(parsePlayRecovery(legacyProfile).profile.attackerSourceCanSeeTarget, false);
+  assert.equal(parsePlayRecovery(legacyProfile).profile.targetSourceCanSeeAttacker, false);
   assert.throws(
     () => parsePlayRecovery({ ...recovery, history: [{ ...recovery.history[0], damage: -1 }] }),
     /damage/i,

@@ -125,6 +125,10 @@ export default function AgentCalculator() {
           const targetSpottedByMarkerlightObserver =
             requestedContext.targetSpottedByMarkerlightObserver;
           const targetClosestEligible = requestedContext.targetClosestEligible;
+          const attackerSourceTargetDistance = requestedContext.attackerSourceTargetDistance;
+          const targetSourceAttackerDistance = requestedContext.targetSourceAttackerDistance;
+          const attackerSourceCanSeeTarget = requestedContext.attackerSourceCanSeeTarget;
+          const targetSourceCanSeeAttacker = requestedContext.targetSourceCanSeeAttacker;
           const attackerBattleShocked = requestedContext.attackerBattleShocked;
           const targetBattleShocked = requestedContext.targetBattleShocked;
           const targetStrengthState = requestedContext.targetStrengthState;
@@ -155,6 +159,10 @@ export default function AgentCalculator() {
             targetSpotted,
             targetSpottedByMarkerlightObserver,
             targetClosestEligible,
+            attackerSourceTargetDistance,
+            targetSourceAttackerDistance,
+            attackerSourceCanSeeTarget,
+            targetSourceCanSeeAttacker,
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
@@ -193,6 +201,8 @@ export default function AgentCalculator() {
               [],
               0,
               targetClosestEligible,
+              attackerSourceTargetDistance,
+              attackerSourceCanSeeTarget,
             ),
             ...selectedAndAutomaticCombatPresets(
               selection.support?.combatPresets ?? [],
@@ -225,6 +235,8 @@ export default function AgentCalculator() {
               selection.attacker.models[0]?.keywords ?? [],
               supportDistance,
               targetClosestEligible,
+              attackerSourceTargetDistance,
+              attackerSourceCanSeeTarget,
             ),
           ];
           const targetPresets = [
@@ -259,6 +271,8 @@ export default function AgentCalculator() {
               [],
               0,
               targetClosestEligible,
+              targetSourceAttackerDistance,
+              targetSourceCanSeeAttacker,
             ),
             ...selectedAndAutomaticCombatPresets(
               selection.targetSupport?.combatPresets ?? [],
@@ -291,6 +305,8 @@ export default function AgentCalculator() {
               selection.model.keywords,
               targetSupportDistance,
               targetClosestEligible,
+              targetSourceAttackerDistance,
+              targetSourceCanSeeAttacker,
             ),
           ];
           profile = applyCombatPresets(
@@ -324,6 +340,10 @@ export default function AgentCalculator() {
               targetSpotted,
               targetSpottedByMarkerlightObserver,
               targetClosestEligible,
+              attackerSourceTargetDistance,
+              targetSourceAttackerDistance,
+              attackerSourceCanSeeTarget,
+              targetSourceCanSeeAttacker,
               attackerBattleShocked,
               targetBattleShocked,
               targetStrengthState,

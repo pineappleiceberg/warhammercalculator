@@ -177,7 +177,8 @@ def export(database: Path, output: Path) -> None:
             """SELECT datasheet_id, ability_position, preset_position, name, description_text,
                       is_exclusive_choice, activation, source_relationship, uses_per_battle,
                       weapon_scope,
-                      maximum_target_distance, maximum_support_distance,
+                      maximum_target_distance, maximum_source_target_distance,
+                      maximum_support_distance,
                       requires_attacker_charge, requires_attacker_stationary,
                       requires_attached_unit,
                       requires_waaagh_active,
@@ -193,7 +194,7 @@ def export(database: Path, output: Path) -> None:
                       requires_source_guided_against_target,
                       requires_target_spotted,
                       requires_target_spotted_by_markerlight_observer,
-                      requires_target_closest_eligible,
+                      requires_target_closest_eligible, requires_source_target_visible,
                       hit_modifier, hit_modifier_role,
                       hit_modifier_subject, wound_modifier, wound_modifier_role,
                       wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
@@ -220,6 +221,11 @@ def export(database: Path, output: Path) -> None:
                     **(
                         {"maximumTargetDistance": row["maximum_target_distance"]}
                         if row["maximum_target_distance"]
+                        else {}
+                    ),
+                    **(
+                        {"maximumSourceTargetDistance": row["maximum_source_target_distance"]}
+                        if row["maximum_source_target_distance"]
                         else {}
                     ),
                     **(
@@ -325,6 +331,11 @@ def export(database: Path, output: Path) -> None:
                     **(
                         {"requiresTargetClosestEligible": True}
                         if row["requires_target_closest_eligible"]
+                        else {}
+                    ),
+                    **(
+                        {"requiresSourceTargetVisible": True}
+                        if row["requires_source_target_visible"]
                         else {}
                     ),
                     **(

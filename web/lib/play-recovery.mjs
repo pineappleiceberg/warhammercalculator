@@ -52,6 +52,10 @@ export function createPlayRecovery(state, savedAt = Date.now()) {
   recovery.profile = {
     ...profile,
     targetClosestEligible: profile.targetClosestEligible ?? false,
+    attackerSourceTargetDistance: profile.attackerSourceTargetDistance ?? 0,
+    targetSourceAttackerDistance: profile.targetSourceAttackerDistance ?? 0,
+    attackerSourceCanSeeTarget: profile.attackerSourceCanSeeTarget ?? false,
+    targetSourceCanSeeAttacker: profile.targetSourceCanSeeAttacker ?? false,
   };
   recovery.supportUsesSpent = normalizeSupportUses(value.supportUsesSpent ?? {});
   if (!Array.isArray(value.history) || value.history.length > 30) {

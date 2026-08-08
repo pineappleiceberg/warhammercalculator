@@ -526,6 +526,10 @@ expression such as `D6+2`. Optional parameters include `weaponCount`, `model`,
 `attackerOnAttackerSelectedObjective`, `targetOnAttackerSelectedObjective`,
 `attackerOnTargetSelectedObjective`, `targetOnTargetSelectedObjective`,
 `closestTarget` (alias for `targetClosestEligible`),
+`sourceDistance` (attacker-side ability source to selected target),
+`targetSourceDistance` (target-side ability source to attacker),
+`sourceVisible` (alias for `attackerSourceCanSeeTarget`),
+`targetSourceVisible` (alias for `targetSourceCanSeeAttacker`),
 `targetStrength` (`full`, `below-starting`, or `below-half`), `damageDivisor`,
 `attacksReplacement`, `attacksMultiplier`, `attacksModifier`,
 `strengthReplacement`, `strengthMultiplier`, `strengthModifier`, `damageReplacement`,
@@ -537,9 +541,11 @@ modifiers and re-roll modes, repeated `attackerPreset` or
 comma-separated `torrent`, `blast`, `heavy`, `lance`, `cover`, `ignores-cover`,
 `indirect`, `lethal-hits`, `devastating-wounds`, `twin-linked`, and
 `half-range` values. AP is a nonnegative magnitude, so AP -4 is passed as
-`ap=4`.
+`ap=4`. `indirect` is only the explicit Indirect Fire penalty override; it is
+not used as line-of-sight state for selected-target abilities.
 
 Model vs Model, Unit vs Unit, and Play Mode expose the same target distance,
+directional ability-source distance and visibility,
 attacker charge and stationary states, attacker/target Battle-shock state, and
 target unit-strength, Attached-unit, Waaagh!, Oath of Moment, and objective-marker
 position states. A catalogue agent request can

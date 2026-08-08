@@ -8,6 +8,7 @@ from pathlib import Path
 from scripts.build_profiles_db import (
     combat_preset,
     combat_presets,
+    combat_selected_enemy_target_requirements,
     combat_guidance_presets,
     composition_components,
     composition_range,
@@ -121,6 +122,7 @@ class ProfileDataTests(unittest.TestCase):
                 "reroll_wound_ones": 0,
                 "additional_effects": [],
                 "maximum_target_distance": None,
+                "maximum_source_target_distance": None,
                 "requires_attacker_charge": False,
                 "requires_attacker_stationary": False,
                 "requires_attached_unit": True,
@@ -140,6 +142,7 @@ class ProfileDataTests(unittest.TestCase):
                 "requires_target_spotted": False,
                 "requires_target_spotted_by_markerlight_observer": False,
                 "requires_target_closest_eligible": False,
+                "requires_source_target_visible": False,
                 "uses_per_battle": None,
                 "required_target_strength_state": None,
                 "hit_modifier_role": "attacker",
@@ -434,6 +437,45 @@ class ProfileDataTests(unittest.TestCase):
             "move, improve the Strength characteristic of that attack by 2.",
         )[0]
         self.assertFalse(compound["requires_target_closest_eligible"])
+
+    def test_combat_preset_parser_gates_selected_visible_enemy_targets(self):
+        marked = combat_presets(
+            "Marked by Fate (Psychic)",
+            "At the start of your Shooting phase, select one enemy unit that is visible "
+            "to this PSYKER model. Until the end of the phase, each time a model in this "
+            "unit makes an attack that targets that enemy unit, add 1 to the Hit roll.",
+        )[0]
+        self.assertTrue(marked["requires_source_target_visible"])
+        self.assertIsNone(marked["maximum_source_target_distance"])
+        self.assertEqual(marked["activation"], "situational")
+
+        doom = combat_presets(
+            "Doom (Psychic)",
+            'At the start of your Shooting phase, select one enemy unit within 24" of and '
+            "visible to this model. Until the end of the phase, each time a friendly Aeldari "
+            "model makes an attack that targets that unit, add 1 to the Wound roll.",
+        )[0]
+        self.assertTrue(doom["requires_source_target_visible"])
+        self.assertEqual(doom["maximum_source_target_distance"], 24)
+
+        greater_good = (
+            "Select one enemy unit that is visible to both your Observer unit and your "
+            "Guided unit. That enemy unit is then your Guided unit’s Spotted unit."
+        )
+        self.assertEqual(combat_selected_enemy_target_requirements(greater_good), (None, False))
+        self.assertEqual(
+            combat_selected_enemy_target_requirements(
+                greater_good.replace("Observer unit", "spotter unit")
+            ),
+            (None, True),
+        )
+        self.assertEqual(
+            combat_selected_enemy_target_requirements(
+                'Select one enemy unit within 12" of and visible to this model, then select '
+                'one enemy unit within 24" of and visible to this model.'
+            ),
+            (None, False),
+        )
 
     def test_combat_preset_parser_projects_combat_effects_from_objective_control_text(self):
         black_rage = (
@@ -1437,7 +1479,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "47",
+                "48",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1787,6 +1829,23 @@ class ProfileDataTests(unittest.TestCase):
                        WHERE requires_attacker_charge = 1 AND activation != 'automatic'"""
                 ).fetchone()[0],
                 0,
+            )
+            visible_target_rows = connection.execute(
+                """SELECT datasheet.name, preset.name,
+                          preset.maximum_source_target_distance, preset.activation
+                   FROM unit_combat_presets AS preset
+                   JOIN datasheets AS datasheet ON datasheet.id = preset.datasheet_id
+                   WHERE preset.requires_source_target_visible = 1
+                   ORDER BY datasheet.name, preset.name"""
+            ).fetchall()
+            self.assertEqual(len(visible_target_rows), 20)
+            self.assertIn(
+                ("Eldrad Ulthran", "Doom (Psychic)", 18, "situational"),
+                visible_target_rows,
+            )
+            self.assertIn(
+                ("Sorcerer In Terminator Armour", "Marked by Fate (Psychic)", None, "situational"),
+                visible_target_rows,
             )
             closest_rows = connection.execute(
                 """SELECT datasheet.name, preset.name, preset.maximum_target_distance
@@ -3002,6 +3061,24 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(forgefiend_closest["maximumTargetDistance"], 18)
         self.assertTrue(all(preset["activation"] == "automatic" for _, preset in closest_presets))
+        visible_target_presets = [
+            (unit["name"], preset)
+            for unit in catalogue["units"]
+            for preset in unit["combatPresets"]
+            if preset.get("requiresSourceTargetVisible")
+        ]
+        self.assertEqual(len(visible_target_presets), 20)
+        self.assertTrue(
+            all(preset["activation"] == "situational" for _, preset in visible_target_presets)
+        )
+        self.assertEqual(
+            next(
+                preset["maximumSourceTargetDistance"]
+                for unit, preset in visible_target_presets
+                if unit == "Eldrad Ulthran" and preset["name"] == "Doom (Psychic)"
+            ),
+            18,
+        )
         brigand = next(
             unit for unit in catalogue["units"] if unit["name"] == "Leman Russ Battle Tank"
         )

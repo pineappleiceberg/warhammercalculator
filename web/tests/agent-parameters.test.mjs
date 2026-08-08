@@ -63,6 +63,8 @@ const defaults = {
   rapidFire: 0,
   melta: 0,
   targetDistance: 0,
+  attackerSourceTargetDistance: 0,
+  targetSourceAttackerDistance: 0,
   attackerUnitModels: 0,
   nearbyEnemyModels: 0,
   attackerCharged: false,
@@ -71,6 +73,8 @@ const defaults = {
   targetAttached: false,
   attackerWaaaghActive: false,
   targetWaaaghActive: false,
+  attackerSourceCanSeeTarget: false,
+  targetSourceCanSeeAttacker: false,
   attackerBattleShocked: false,
   targetBattleShocked: false,
   targetStrengthState: "full",
@@ -194,6 +198,8 @@ test("canonical agent parameters round-trip every supported profile field", () =
     criticalWounds: 5,
     rapidFire: 2,
     targetDistance: 9,
+    attackerSourceTargetDistance: 24,
+    targetSourceAttackerDistance: 12,
     supportDistance: 8,
     targetSupportDistance: 5,
     attackerUnitModels: 11,
@@ -218,6 +224,8 @@ test("canonical agent parameters round-trip every supported profile field", () =
     targetSpotted: true,
     targetSpottedByMarkerlightObserver: true,
     targetClosestEligible: true,
+    attackerSourceCanSeeTarget: true,
+    targetSourceCanSeeAttacker: true,
     attackerBattleShocked: true,
     targetBattleShocked: true,
     targetStrengthState: "below_half",
@@ -1019,6 +1027,78 @@ test("catalogue agent closest-target state gates exact automatic rules", async (
   assert.equal(
     applyCombatPresets({ ...defaults, targetClosestEligible: true }, [preset], [], "Ranged").ap,
     1,
+  );
+});
+
+test("selected visible-target rules require directional LOS and source range", async () => {
+  const parsed = parseAgentProfile(
+    "sourceDistance=18&targetSourceDistance=12&sourceVisible=true&targetSourceVisible=true",
+    defaults,
+    false,
+  );
+  assert.equal(parsed.attackerSourceTargetDistance, 18);
+  assert.equal(parsed.targetSourceAttackerDistance, 12);
+  assert.equal(parsed.attackerSourceCanSeeTarget, true);
+  assert.equal(parsed.targetSourceCanSeeAttacker, true);
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const sorcerer = catalogue.units.find(
+    (unit) =>
+      unit.name.toLowerCase() === "sorcerer in terminator armour" &&
+      unit.combatPresets.some((preset) => preset.name === "Marked by Fate (Psychic)"),
+  );
+  const marked = sorcerer.combatPresets.find(
+    (preset) => preset.name === "Marked by Fate (Psychic)",
+  );
+  assert.equal(marked.requiresSourceTargetVisible, true);
+  assert.equal(
+    applyCombatPresets({ ...defaults, indirect: true }, [marked], [], "Ranged", {
+      attackerSourceCanSeeTarget: false,
+    }).hitModifier,
+    0,
+  );
+  assert.equal(
+    applyCombatPresets(defaults, [marked], [], "Ranged", {
+      attackerSourceCanSeeTarget: true,
+    }).hitModifier,
+    1,
+  );
+
+  const eldrad = catalogue.units.find((unit) => unit.name === "Eldrad Ulthran");
+  const doom = eldrad.combatPresets.find((preset) => preset.name === "Doom (Psychic)");
+  assert.equal(doom.maximumSourceTargetDistance, 18);
+  const woundModifier = (distance, visible) =>
+    applyCombatPresets(defaults, [doom], [], "Ranged", {
+      attackerSourceTargetDistance: distance,
+      attackerSourceCanSeeTarget: visible,
+    }).woundModifier;
+  assert.equal(woundModifier(0, true), 0);
+  assert.equal(woundModifier(18, false), 0);
+  assert.equal(woundModifier(18, true), 1);
+  assert.equal(woundModifier(19, true), 0);
+
+  const skyrunner = catalogue.units.find((unit) => unit.name === "Farseer Skyrunner");
+  const misfortune = skyrunner.combatPresets.find(
+    (preset) => preset.name === "Misfortune (Psychic)",
+  );
+  assert.equal(
+    applyCombatPresets(defaults, [], [misfortune], "Ranged", {
+      attackerSourceTargetDistance: 18,
+      attackerSourceCanSeeTarget: true,
+      targetSourceAttackerDistance: 18,
+      targetSourceCanSeeAttacker: false,
+    }).woundModifier,
+    0,
+  );
+  assert.equal(
+    applyCombatPresets(defaults, [], [misfortune], "Ranged", {
+      attackerSourceTargetDistance: 0,
+      attackerSourceCanSeeTarget: false,
+      targetSourceAttackerDistance: 18,
+      targetSourceCanSeeAttacker: true,
+    }).woundModifier,
+    -1,
   );
 });
 

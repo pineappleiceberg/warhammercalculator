@@ -104,6 +104,7 @@ export type CatalogueCombatPreset = {
   description: string;
   weaponScope: "Any" | "Ranged" | "Melee";
   maximumTargetDistance?: number;
+  maximumSourceTargetDistance?: number;
   maximumSupportDistance?: number;
   requiredSupportedKeywords?: string[];
   requiresAttackerCharge?: boolean;
@@ -125,6 +126,7 @@ export type CatalogueCombatPreset = {
   requiresTargetSpotted?: boolean;
   requiresTargetSpottedByMarkerlightObserver?: boolean;
   requiresTargetClosestEligible?: boolean;
+  requiresSourceTargetVisible?: boolean;
   requiredTargetStrengthState?: "below_starting" | "below_half" | "not_below_half";
   hitModifier: number;
   hitModifierRole: CombatPresetRole | null;
@@ -242,6 +244,8 @@ type CombatPresetContext = {
   targetKeywords?: string[];
   attackKeywords?: string[];
   targetDistance?: number;
+  attackerSourceTargetDistance?: number;
+  targetSourceAttackerDistance?: number;
   supportDistance?: number;
   supportedUnitKeywords?: string[];
   targetSupportDistance?: number;
@@ -266,6 +270,8 @@ type CombatPresetContext = {
   targetSpotted?: boolean;
   targetSpottedByMarkerlightObserver?: boolean;
   targetClosestEligible?: boolean;
+  attackerSourceCanSeeTarget?: boolean;
+  targetSourceCanSeeAttacker?: boolean;
   attackerBattleShocked?: boolean;
   targetBattleShocked?: boolean;
   targetStrengthState?: CombatProfile["targetStrengthState"];

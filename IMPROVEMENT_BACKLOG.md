@@ -16,9 +16,9 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Add explicit target visibility and source-to-target line-of-sight/range
-   state for selected-target abilities, and separate it cleanly from the
-   existing Indirect Fire penalty override.
+1. Classify cross-unit selected-target abilities by source relationship,
+   affected-unit keywords, and weapon qualifiers, splitting multi-tier effects
+   such as Blight Bombardment instead of treating them as source-unit-only.
 2. Represent casualty- and nearby-unit-count-scaled Attacks modifiers as
    explicit reproducible state instead of requiring manual arithmetic; direct
    source-unit and nearby-enemy model counts are now covered.
@@ -27,6 +27,20 @@ priority over feature count.
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added directional selected-target visibility and source range.
+  Model vs Model, Unit vs Unit, Play Mode recovery, normalized API profiles,
+  and static agent URLs independently preserve attacker-source-to-target and
+  target-source-to-attacker distances and line of sight. SQLite schema 48
+  conservatively marks 20 existing situational combat presets whose source
+  text contains exactly one visible-enemy selection; 16 also enforce their
+  published source range, with zero remaining unknown and inactive. Selected
+  abilities still require explicit user activation, so visibility alone never
+  invents a choice. The separate `indirect` override now says only “Apply
+  Indirect Fire penalties” and cannot satisfy selected-target LOS. Parser
+  exclusions, database/catalogue snapshots, directional URL and recovery
+  round trips, rendered workflow checks, API validation, and C/WebAssembly
+  modifier and boundary regressions cover the change.
 
 - 2026-08-07: Added exact closest-eligible-target state. Model vs Model, Unit
   vs Unit, Play Mode recovery, shared matchup profiles, normalized API inputs,

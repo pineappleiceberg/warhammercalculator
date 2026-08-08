@@ -107,6 +107,10 @@ export default function UnitVsUnit() {
   const [targetSegments, setTargetSegments] = useState<TargetSegment[]>([]);
   const [initialWoundsLost, setInitialWoundsLost] = useState(0);
   const [targetDistance, setTargetDistance] = useState(0);
+  const [attackerSourceTargetDistance, setAttackerSourceTargetDistance] = useState(0);
+  const [targetSourceAttackerDistance, setTargetSourceAttackerDistance] = useState(0);
+  const [attackerSourceCanSeeTarget, setAttackerSourceCanSeeTarget] = useState(false);
+  const [targetSourceCanSeeAttacker, setTargetSourceCanSeeAttacker] = useState(false);
   const [attackerUnitModels, setAttackerUnitModels] = useState(0);
   const [nearbyEnemyModels, setNearbyEnemyModels] = useState(0);
   const [attackerCharged, setAttackerCharged] = useState(false);
@@ -203,6 +207,10 @@ export default function UnitVsUnit() {
   const inputKey = JSON.stringify({
     initialWoundsLost,
     targetDistance,
+    attackerSourceTargetDistance,
+    targetSourceAttackerDistance,
+    attackerSourceCanSeeTarget,
+    targetSourceCanSeeAttacker,
     attackerUnitModels,
     nearbyEnemyModels,
     attackerCharged,
@@ -261,6 +269,10 @@ export default function UnitVsUnit() {
     setAttackerGuidedAgainstTarget(false);
     setTargetSpotted(false);
     setTargetClosestEligible(false);
+    setAttackerSourceTargetDistance(0);
+    setTargetSourceAttackerDistance(0);
+    setAttackerSourceCanSeeTarget(false);
+    setTargetSourceCanSeeAttacker(false);
     setTargetSpottedByMarkerlightObserver(false);
     setAttackerUnitModels(0);
     setNearbyEnemyModels(0);
@@ -311,6 +323,10 @@ export default function UnitVsUnit() {
     setAttackerGuidedAgainstTarget(false);
     setTargetSpotted(false);
     setTargetClosestEligible(false);
+    setAttackerSourceTargetDistance(0);
+    setTargetSourceAttackerDistance(0);
+    setAttackerSourceCanSeeTarget(false);
+    setTargetSourceCanSeeAttacker(false);
     setTargetSpottedByMarkerlightObserver(false);
     setTargetBattleShocked(false);
     setTargetStrengthState("full");
@@ -366,6 +382,10 @@ export default function UnitVsUnit() {
             targetModels,
             weaponCount: line.count,
             targetDistance,
+            attackerSourceTargetDistance,
+            targetSourceAttackerDistance,
+            attackerSourceCanSeeTarget,
+            targetSourceCanSeeAttacker,
             attackerUnitModels,
             nearbyEnemyModels,
             attackerCharged,
@@ -388,6 +408,8 @@ export default function UnitVsUnit() {
             targetSpotted,
             targetSpottedByMarkerlightObserver,
             targetClosestEligible,
+            attackerSourceTargetDistance,
+            attackerSourceCanSeeTarget,
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
@@ -429,6 +451,8 @@ export default function UnitVsUnit() {
             [],
             0,
             targetClosestEligible,
+            attackerSourceTargetDistance,
+            attackerSourceCanSeeTarget,
           ),
           ...selectedAndAutomaticCombatPresets(
             supportUnit?.combatPresets ?? [],
@@ -461,6 +485,8 @@ export default function UnitVsUnit() {
             attackerUnit?.models[0]?.keywords ?? [],
             supportDistance,
             targetClosestEligible,
+            targetSourceAttackerDistance,
+            targetSourceCanSeeAttacker,
           ),
         ],
         [
@@ -495,6 +521,8 @@ export default function UnitVsUnit() {
             [],
             0,
             targetClosestEligible,
+            targetSourceAttackerDistance,
+            targetSourceCanSeeAttacker,
           ),
           ...selectedAndAutomaticCombatPresets(
             targetSupportUnit?.combatPresets ?? [],
@@ -559,6 +587,10 @@ export default function UnitVsUnit() {
           targetSpotted,
           targetSpottedByMarkerlightObserver,
           targetClosestEligible,
+          attackerSourceTargetDistance,
+          targetSourceAttackerDistance,
+          attackerSourceCanSeeTarget,
+          targetSourceCanSeeAttacker,
           supportDistance,
           supportedUnitKeywords: attackerUnit?.models[0]?.keywords ?? [],
           targetSupportDistance,
@@ -604,6 +636,8 @@ export default function UnitVsUnit() {
               [],
               0,
               targetClosestEligible,
+              targetSourceAttackerDistance,
+              targetSourceCanSeeAttacker,
             ),
             ...selectedAndAutomaticCombatPresets(
               targetSupportUnit?.combatPresets ?? [],
@@ -636,6 +670,8 @@ export default function UnitVsUnit() {
               targetSegments[0]?.keywords ?? [],
               targetSupportDistance,
               targetClosestEligible,
+              targetSourceAttackerDistance,
+              targetSourceCanSeeAttacker,
             ),
           ])
           .map((preset) => [preset.id, preset]),
@@ -670,6 +706,8 @@ export default function UnitVsUnit() {
         targetSpotted,
         targetSpottedByMarkerlightObserver,
         targetClosestEligible,
+        targetSourceAttackerDistance,
+        targetSourceCanSeeAttacker,
         targetSupportDistance,
         targetSupportedUnitKeywords: targetSegments[0]?.keywords ?? [],
       })),
@@ -878,6 +916,8 @@ export default function UnitVsUnit() {
                   attackerBattleShocked={attackerBattleShocked}
                   targetBattleShocked={targetBattleShocked}
                   targetStrengthState={targetStrengthState}
+                  sourceTargetDistance={attackerSourceTargetDistance}
+                  sourceTargetVisible={attackerSourceCanSeeTarget}
                 />
                 <SupportPresetSelector
                   units={supportUnits}
@@ -898,6 +938,8 @@ export default function UnitVsUnit() {
                   attackerBattleShocked={attackerBattleShocked}
                   targetBattleShocked={targetBattleShocked}
                   targetStrengthState={targetStrengthState}
+                  sourceTargetDistance={attackerSourceTargetDistance}
+                  sourceTargetVisible={attackerSourceCanSeeTarget}
                 />
                 {attackerUnit.unresolvedLoadoutSubjects.length > 0 && (
                   <details className="source-choice-pools model-composition-editor" open>
@@ -1439,6 +1481,54 @@ export default function UnitVsUnit() {
               </span>
             </label>
             <label>
+              <span>Attacker-side source to target</span>
+              <input
+                aria-label="Attacker-side source to target distance in inches"
+                type="number"
+                min={0}
+                max={1000}
+                value={attackerSourceTargetDistance}
+                onChange={(event) =>
+                  setAttackerSourceTargetDistance(
+                    Math.min(1000, Math.max(0, +event.target.value || 0)),
+                  )
+                }
+              />
+              <span className="inline-checkbox">
+                <input
+                  aria-label="Target visible to attacker-side source"
+                  type="checkbox"
+                  checked={attackerSourceCanSeeTarget}
+                  onChange={(event) => setAttackerSourceCanSeeTarget(event.target.checked)}
+                />
+                Visible
+              </span>
+            </label>
+            <label>
+              <span>Target-side source to attacker</span>
+              <input
+                aria-label="Target-side source to attacker distance in inches"
+                type="number"
+                min={0}
+                max={1000}
+                value={targetSourceAttackerDistance}
+                onChange={(event) =>
+                  setTargetSourceAttackerDistance(
+                    Math.min(1000, Math.max(0, +event.target.value || 0)),
+                  )
+                }
+              />
+              <span className="inline-checkbox">
+                <input
+                  aria-label="Attacker visible to target-side source"
+                  type="checkbox"
+                  checked={targetSourceCanSeeAttacker}
+                  onChange={(event) => setTargetSourceCanSeeAttacker(event.target.checked)}
+                />
+                Visible
+              </span>
+            </label>
+            <label>
               <span>Models in attacker unit</span>
               <input
                 aria-label="Models in the attacker unit"
@@ -1495,6 +1585,8 @@ export default function UnitVsUnit() {
                   attackerBattleShocked={attackerBattleShocked}
                   targetBattleShocked={targetBattleShocked}
                   targetStrengthState={targetStrengthState}
+                  sourceTargetDistance={targetSourceAttackerDistance}
+                  sourceTargetVisible={targetSourceCanSeeAttacker}
                 />
                 <SupportPresetSelector
                   units={targetSupportUnits}
@@ -1515,6 +1607,8 @@ export default function UnitVsUnit() {
                   attackerBattleShocked={attackerBattleShocked}
                   targetBattleShocked={targetBattleShocked}
                   targetStrengthState={targetStrengthState}
+                  sourceTargetDistance={targetSourceAttackerDistance}
+                  sourceTargetVisible={targetSourceCanSeeAttacker}
                 />
                 <div className="sequence-heading">
                   <div>

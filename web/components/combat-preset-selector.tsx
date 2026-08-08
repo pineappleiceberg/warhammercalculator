@@ -17,6 +17,8 @@ type Props = {
   hint?: string;
   targetDistance?: number;
   supportDistance?: number;
+  sourceTargetDistance?: number;
+  sourceTargetVisible?: boolean;
   supportedUnitKeywords?: string[];
   attackerCharged?: boolean;
   attackerRemainedStationary?: boolean;
@@ -39,6 +41,8 @@ export function CombatPresetSelector({
   hint,
   targetDistance = 0,
   supportDistance = 0,
+  sourceTargetDistance = 0,
+  sourceTargetVisible = false,
   supportedUnitKeywords = [],
   attackerCharged = false,
   attackerRemainedStationary = false,
@@ -101,6 +105,22 @@ export function CombatPresetSelector({
                 {supportDistance > 0 && supportDistance <= preset.maximumSupportDistance
                   ? " · active at current distance"
                   : " · inactive at current distance"}
+              </small>
+            ) : null}
+            {preset.maximumSourceTargetDistance ? (
+              <small>
+                Requires source within {preset.maximumSourceTargetDistance}&quot; of its selected
+                target
+                {sourceTargetDistance > 0 &&
+                sourceTargetDistance <= preset.maximumSourceTargetDistance
+                  ? " · active at current distance"
+                  : " · inactive at current distance"}
+              </small>
+            ) : null}
+            {preset.requiresSourceTargetVisible ? (
+              <small>
+                Requires the selected target to be visible to the source
+                {sourceTargetVisible ? " · active" : " · inactive"}
               </small>
             ) : null}
             {preset.requiredSupportedKeywords?.length ? (

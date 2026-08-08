@@ -932,6 +932,8 @@ export default function Home() {
     supportedUnitKeywords: string[] = [],
     supportDistance = 0,
     targetClosestEligible = profile.targetClosestEligible,
+    sourceTargetDistance = profile.attackerSourceTargetDistance,
+    sourceTargetVisible = profile.attackerSourceCanSeeTarget,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -964,6 +966,8 @@ export default function Home() {
       supportedUnitKeywords,
       supportDistance,
       targetClosestEligible,
+      sourceTargetDistance,
+      sourceTargetVisible,
     );
   const withActivePresets = (
     current: Profile,
@@ -1074,6 +1078,8 @@ export default function Home() {
           [],
           0,
           baseProfile.targetClosestEligible,
+          baseProfile.attackerSourceTargetDistance,
+          baseProfile.attackerSourceCanSeeTarget,
         ),
         ...selectedPresets(
           supportUnit,
@@ -1104,6 +1110,8 @@ export default function Home() {
           selectedAttackerUnit?.models[0]?.keywords ?? [],
           baseProfile.supportDistance,
           baseProfile.targetClosestEligible,
+          baseProfile.attackerSourceTargetDistance,
+          baseProfile.attackerSourceCanSeeTarget,
         ),
       ],
       [
@@ -1137,6 +1145,8 @@ export default function Home() {
           [],
           0,
           baseProfile.targetClosestEligible,
+          baseProfile.targetSourceAttackerDistance,
+          baseProfile.targetSourceCanSeeAttacker,
         ),
         ...selectedPresets(
           targetSupportUnit,
@@ -1167,6 +1177,8 @@ export default function Home() {
           selectedTargetModel?.keywords ?? [],
           baseProfile.targetSupportDistance,
           baseProfile.targetClosestEligible,
+          baseProfile.targetSourceAttackerDistance,
+          baseProfile.targetSourceCanSeeAttacker,
         ),
       ],
       weapon?.type ?? "Ranged",
@@ -1199,6 +1211,10 @@ export default function Home() {
         targetSpotted: baseProfile.targetSpotted,
         targetSpottedByMarkerlightObserver: baseProfile.targetSpottedByMarkerlightObserver,
         targetClosestEligible: baseProfile.targetClosestEligible,
+        attackerSourceTargetDistance: baseProfile.attackerSourceTargetDistance,
+        targetSourceAttackerDistance: baseProfile.targetSourceAttackerDistance,
+        attackerSourceCanSeeTarget: baseProfile.attackerSourceCanSeeTarget,
+        targetSourceCanSeeAttacker: baseProfile.targetSourceCanSeeAttacker,
         supportedUnitKeywords: selectedAttackerUnit?.models[0]?.keywords ?? [],
         supportDistance: baseProfile.supportDistance,
         targetSupportedUnitKeywords: selectedTargetModel?.keywords ?? [],
@@ -1579,6 +1595,8 @@ export default function Home() {
                   onChange={chooseAttackerPresets}
                   title="Active attacking abilities"
                   targetDistance={profile.targetDistance}
+                  sourceTargetDistance={profile.attackerSourceTargetDistance}
+                  sourceTargetVisible={profile.attackerSourceCanSeeTarget}
                   attackerCharged={profile.attackerCharged}
                   attackerRemainedStationary={profile.attackerRemainedStationary}
                   sourceUnitAttached={profile.attackerAttached}
@@ -1617,6 +1635,8 @@ export default function Home() {
                     )
                   }
                   supportedUnitKeywords={selectedAttackerUnit.models[0]?.keywords ?? []}
+                  sourceTargetDistance={profile.attackerSourceTargetDistance}
+                  sourceTargetVisible={profile.attackerSourceCanSeeTarget}
                   attackerCharged={profile.attackerCharged}
                   attackerRemainedStationary={profile.attackerRemainedStationary}
                   attackerBattleShocked={profile.attackerBattleShocked}
@@ -1735,6 +1755,10 @@ export default function Home() {
                             targetSpotted: false,
                             targetSpottedByMarkerlightObserver: false,
                             targetClosestEligible: false,
+                            attackerSourceTargetDistance: 0,
+                            targetSourceAttackerDistance: 0,
+                            attackerSourceCanSeeTarget: false,
+                            targetSourceCanSeeAttacker: false,
                             targetStrengthState: "full",
                             targetSupportDistance: 0,
                           },
@@ -1787,6 +1811,10 @@ export default function Home() {
                             targetSpotted: false,
                             targetSpottedByMarkerlightObserver: false,
                             targetClosestEligible: false,
+                            attackerSourceTargetDistance: 0,
+                            targetSourceAttackerDistance: 0,
+                            attackerSourceCanSeeTarget: false,
+                            targetSourceCanSeeAttacker: false,
                             targetStrengthState: "full",
                             targetSupportDistance: 0,
                           },
@@ -1806,7 +1834,14 @@ export default function Home() {
                         applyTarget(
                           unit.models[0],
                           [],
-                          { targetSupportDistance: 0, targetClosestEligible: false },
+                          {
+                            targetSupportDistance: 0,
+                            targetClosestEligible: false,
+                            attackerSourceTargetDistance: 0,
+                            targetSourceAttackerDistance: 0,
+                            attackerSourceCanSeeTarget: false,
+                            targetSourceCanSeeAttacker: false,
+                          },
                           undefined,
                           [],
                           unit,
@@ -1860,6 +1895,8 @@ export default function Home() {
                   onChange={chooseTargetPresets}
                   title="Active defensive abilities"
                   targetDistance={profile.targetDistance}
+                  sourceTargetDistance={profile.targetSourceAttackerDistance}
+                  sourceTargetVisible={profile.targetSourceCanSeeAttacker}
                   attackerCharged={profile.attackerCharged}
                   attackerRemainedStationary={profile.attackerRemainedStationary}
                   sourceUnitAttached={profile.targetAttached}
@@ -1900,6 +1937,8 @@ export default function Home() {
                     )
                   }
                   supportedUnitKeywords={selectedTargetModel.keywords}
+                  sourceTargetDistance={profile.targetSourceAttackerDistance}
+                  sourceTargetVisible={profile.targetSourceCanSeeAttacker}
                   attackerCharged={profile.attackerCharged}
                   attackerRemainedStationary={profile.attackerRemainedStationary}
                   attackerBattleShocked={profile.attackerBattleShocked}
@@ -2238,6 +2277,46 @@ export default function Home() {
                   setProfile((current) => withActivePresets({ ...current, targetDistance: value }))
                 }
                 suffix='"'
+              />
+              <NumberField
+                label="Attacker-side source to target (0 = unknown)"
+                value={profile.attackerSourceTargetDistance}
+                max={1000}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({ ...current, attackerSourceTargetDistance: value }),
+                  )
+                }
+                suffix='"'
+              />
+              <Toggle
+                label="Target visible to attacker-side source"
+                checked={profile.attackerSourceCanSeeTarget}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({ ...current, attackerSourceCanSeeTarget: value }),
+                  )
+                }
+              />
+              <NumberField
+                label="Target-side source to attacker (0 = unknown)"
+                value={profile.targetSourceAttackerDistance}
+                max={1000}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({ ...current, targetSourceAttackerDistance: value }),
+                  )
+                }
+                suffix='"'
+              />
+              <Toggle
+                label="Attacker visible to target-side source"
+                checked={profile.targetSourceCanSeeAttacker}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({ ...current, targetSourceCanSeeAttacker: value }),
+                  )
+                }
               />
               <NumberField
                 label="Models in attacker unit (0 = unknown)"
@@ -2582,7 +2661,7 @@ export default function Home() {
                 onChange={(value) => set("ignoresCover", value)}
               />
               <Toggle
-                label="Indirect · no LOS"
+                label="Apply Indirect Fire penalties"
                 checked={profile.indirect}
                 onChange={(value) => set("indirect", value)}
               />

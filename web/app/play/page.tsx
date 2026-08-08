@@ -253,6 +253,8 @@ export default function PlayMode() {
     supportedUnitKeywords: string[] = [],
     supportDistance = 0,
     targetClosestEligible = profile.targetClosestEligible,
+    sourceTargetDistance = profile.attackerSourceTargetDistance,
+    sourceTargetVisible = profile.attackerSourceCanSeeTarget,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -285,6 +287,8 @@ export default function PlayMode() {
       supportedUnitKeywords,
       supportDistance,
       targetClosestEligible,
+      sourceTargetDistance,
+      sourceTargetVisible,
     );
 
   const refreshProfile = (
@@ -325,6 +329,10 @@ export default function PlayMode() {
     nextTargetSupportCatalogueUnit = targetSupportCatalogueUnit,
     nextTargetSupportDistance = profile.targetSupportDistance,
     nextTargetClosestEligible = profile.targetClosestEligible,
+    nextAttackerSourceTargetDistance = profile.attackerSourceTargetDistance,
+    nextTargetSourceAttackerDistance = profile.targetSourceAttackerDistance,
+    nextAttackerSourceCanSeeTarget = profile.attackerSourceCanSeeTarget,
+    nextTargetSourceCanSeeAttacker = profile.targetSourceCanSeeAttacker,
   ) => {
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
@@ -370,6 +378,10 @@ export default function PlayMode() {
             targetSpotted: nextTargetSpotted,
             targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
             targetClosestEligible: nextTargetClosestEligible,
+            attackerSourceTargetDistance: nextAttackerSourceTargetDistance,
+            targetSourceAttackerDistance: nextTargetSourceAttackerDistance,
+            attackerSourceCanSeeTarget: nextAttackerSourceCanSeeTarget,
+            targetSourceCanSeeAttacker: nextTargetSourceCanSeeAttacker,
             attackerBattleShocked: nextAttackerBattleShocked,
             targetBattleShocked: nextTargetBattleShocked,
             targetStrengthState: nextTargetStrengthState,
@@ -409,6 +421,8 @@ export default function PlayMode() {
             [],
             0,
             nextTargetClosestEligible,
+            nextAttackerSourceTargetDistance,
+            nextAttackerSourceCanSeeTarget,
           ),
           ...selectedCombatPresets(
             nextSupportPresetIds,
@@ -439,6 +453,8 @@ export default function PlayMode() {
             attackerCatalogueUnit?.models[0]?.keywords ?? [],
             nextSupportDistance,
             nextTargetClosestEligible,
+            nextAttackerSourceTargetDistance,
+            nextAttackerSourceCanSeeTarget,
           ),
         ],
         [
@@ -472,6 +488,8 @@ export default function PlayMode() {
             [],
             0,
             nextTargetClosestEligible,
+            nextTargetSourceAttackerDistance,
+            nextTargetSourceCanSeeAttacker,
           ),
           ...selectedCombatPresets(
             nextTargetSupportPresetIds,
@@ -502,6 +520,8 @@ export default function PlayMode() {
             model.keywords,
             nextTargetSupportDistance,
             nextTargetClosestEligible,
+            nextTargetSourceAttackerDistance,
+            nextTargetSourceCanSeeAttacker,
           ),
         ],
         weapon.type,
@@ -531,6 +551,10 @@ export default function PlayMode() {
           targetSpotted: nextTargetSpotted,
           targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
           targetClosestEligible: nextTargetClosestEligible,
+          attackerSourceTargetDistance: nextAttackerSourceTargetDistance,
+          targetSourceAttackerDistance: nextTargetSourceAttackerDistance,
+          attackerSourceCanSeeTarget: nextAttackerSourceCanSeeTarget,
+          targetSourceCanSeeAttacker: nextTargetSourceCanSeeAttacker,
           attackerBattleShocked: nextAttackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
@@ -712,6 +736,56 @@ export default function PlayMode() {
       targetClosestEligible,
     );
 
+  const refreshSourceTargetState = (
+    attackerSourceTargetDistance: number,
+    targetSourceAttackerDistance: number,
+    attackerSourceCanSeeTarget: boolean,
+    targetSourceCanSeeAttacker: boolean,
+  ) =>
+    refreshProfile(
+      weaponId,
+      targetModelId,
+      profileId,
+      activeAttackerPresetIds,
+      activeTargetPresetIds,
+      profile.targetDistance,
+      profile.attackerCharged,
+      profile.attackerBattleShocked,
+      profile.targetBattleShocked,
+      profile.targetStrengthState,
+      profile.attackerRemainedStationary,
+      profile.attackerAttached,
+      profile.targetAttached,
+      profile.attackerWaaaghActive,
+      profile.targetWaaaghActive,
+      profile.targetOathOfMoment,
+      profile.attackerOathWoundBonusEligible,
+      profile.attackerUnitModels,
+      profile.nearbyEnemyModels,
+      profile.attackerOnObjective,
+      profile.targetOnObjective,
+      profile.attackerObjectiveOwner,
+      profile.targetObjectiveOwner,
+      profile.attackerOnAttackerSelectedObjective,
+      profile.targetOnAttackerSelectedObjective,
+      profile.attackerOnTargetSelectedObjective,
+      profile.targetOnTargetSelectedObjective,
+      profile.attackerGuidedAgainstTarget,
+      profile.targetSpotted,
+      profile.targetSpottedByMarkerlightObserver,
+      activeSupportPresetIds,
+      supportCatalogueUnit,
+      profile.supportDistance,
+      activeTargetSupportPresetIds,
+      targetSupportCatalogueUnit,
+      profile.targetSupportDistance,
+      profile.targetClosestEligible,
+      attackerSourceTargetDistance,
+      targetSourceAttackerDistance,
+      attackerSourceCanSeeTarget,
+      targetSourceCanSeeAttacker,
+    );
+
   const refreshSupportState = (
     ids: string[],
     unitId = supportUnitId,
@@ -827,6 +901,10 @@ export default function PlayMode() {
     const nextTargetSpotted = false;
     const nextTargetSpottedByMarkerlightObserver = false;
     const nextTargetClosestEligible = false;
+    const nextAttackerSourceTargetDistance = 0;
+    const nextTargetSourceAttackerDistance = 0;
+    const nextAttackerSourceCanSeeTarget = false;
+    const nextTargetSourceCanSeeAttacker = false;
     const nextTargetStrengthState = "full" as const;
     setTargetModelId(model ? String(model.id) : "");
     setActiveTargetPresetIds(nextTargetPresetIds);
@@ -848,6 +926,10 @@ export default function PlayMode() {
         targetSpotted: nextTargetSpotted,
         targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
         targetClosestEligible: nextTargetClosestEligible,
+        attackerSourceTargetDistance: nextAttackerSourceTargetDistance,
+        targetSourceAttackerDistance: nextTargetSourceAttackerDistance,
+        attackerSourceCanSeeTarget: nextAttackerSourceCanSeeTarget,
+        targetSourceCanSeeAttacker: nextTargetSourceCanSeeAttacker,
         targetBattleShocked: nextTargetBattleShocked,
         targetStrengthState: nextTargetStrengthState,
         targetSupportDistance: 0,
@@ -886,6 +968,10 @@ export default function PlayMode() {
             targetSpotted: nextTargetSpotted,
             targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
             targetClosestEligible: nextTargetClosestEligible,
+            attackerSourceTargetDistance: nextAttackerSourceTargetDistance,
+            targetSourceAttackerDistance: nextTargetSourceAttackerDistance,
+            attackerSourceCanSeeTarget: nextAttackerSourceCanSeeTarget,
+            targetSourceCanSeeAttacker: nextTargetSourceCanSeeAttacker,
             targetStrengthState: nextTargetStrengthState,
             supportDistance: profile.supportDistance,
             targetSupportDistance: 0,
@@ -923,6 +1009,8 @@ export default function PlayMode() {
             [],
             0,
             nextTargetClosestEligible,
+            nextAttackerSourceTargetDistance,
+            nextAttackerSourceCanSeeTarget,
           ),
           ...selectedCombatPresets(
             activeSupportPresetIds,
@@ -953,6 +1041,8 @@ export default function PlayMode() {
             attackerCatalogueUnit?.models[0]?.keywords ?? [],
             profile.supportDistance,
             nextTargetClosestEligible,
+            nextAttackerSourceTargetDistance,
+            nextAttackerSourceCanSeeTarget,
           ),
         ],
         selectedCombatPresets(
@@ -985,6 +1075,8 @@ export default function PlayMode() {
           [],
           0,
           nextTargetClosestEligible,
+          nextTargetSourceAttackerDistance,
+          nextTargetSourceCanSeeAttacker,
         ),
         weaponProfile.type,
         {
@@ -1013,6 +1105,10 @@ export default function PlayMode() {
           targetSpotted: nextTargetSpotted,
           targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
           targetClosestEligible: nextTargetClosestEligible,
+          attackerSourceTargetDistance: nextAttackerSourceTargetDistance,
+          targetSourceAttackerDistance: nextTargetSourceAttackerDistance,
+          attackerSourceCanSeeTarget: nextAttackerSourceCanSeeTarget,
+          targetSourceCanSeeAttacker: nextTargetSourceCanSeeAttacker,
           attackerBattleShocked: profile.attackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
@@ -1368,6 +1464,74 @@ export default function PlayMode() {
                     }
                   />
                   <small>Inches; 0 means unknown</small>
+                </label>
+                <label>
+                  <span>Attacker-side source to target</span>
+                  <input
+                    aria-label="Attacker-side source to target distance in inches"
+                    type="number"
+                    min={0}
+                    max={1000}
+                    value={profile.attackerSourceTargetDistance}
+                    onChange={(event) =>
+                      refreshSourceTargetState(
+                        Math.min(1000, Math.max(0, +event.target.value || 0)),
+                        profile.targetSourceAttackerDistance,
+                        profile.attackerSourceCanSeeTarget,
+                        profile.targetSourceCanSeeAttacker,
+                      )
+                    }
+                  />
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Target visible to attacker-side source"
+                      type="checkbox"
+                      checked={profile.attackerSourceCanSeeTarget}
+                      onChange={(event) =>
+                        refreshSourceTargetState(
+                          profile.attackerSourceTargetDistance,
+                          profile.targetSourceAttackerDistance,
+                          event.target.checked,
+                          profile.targetSourceCanSeeAttacker,
+                        )
+                      }
+                    />
+                    Visible
+                  </span>
+                </label>
+                <label>
+                  <span>Target-side source to attacker</span>
+                  <input
+                    aria-label="Target-side source to attacker distance in inches"
+                    type="number"
+                    min={0}
+                    max={1000}
+                    value={profile.targetSourceAttackerDistance}
+                    onChange={(event) =>
+                      refreshSourceTargetState(
+                        profile.attackerSourceTargetDistance,
+                        Math.min(1000, Math.max(0, +event.target.value || 0)),
+                        profile.attackerSourceCanSeeTarget,
+                        profile.targetSourceCanSeeAttacker,
+                      )
+                    }
+                  />
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Attacker visible to target-side source"
+                      type="checkbox"
+                      checked={profile.targetSourceCanSeeAttacker}
+                      onChange={(event) =>
+                        refreshSourceTargetState(
+                          profile.attackerSourceTargetDistance,
+                          profile.targetSourceAttackerDistance,
+                          profile.attackerSourceCanSeeTarget,
+                          event.target.checked,
+                        )
+                      }
+                    />
+                    Visible
+                  </span>
                 </label>
                 <label>
                   <span>Attacker unit models</span>
@@ -1929,6 +2093,8 @@ export default function PlayMode() {
                   attackerBattleShocked={profile.attackerBattleShocked}
                   targetBattleShocked={profile.targetBattleShocked}
                   targetStrengthState={profile.targetStrengthState}
+                  sourceTargetDistance={profile.attackerSourceTargetDistance}
+                  sourceTargetVisible={profile.attackerSourceCanSeeTarget}
                 />
               )}
               {attackerCatalogueUnit ? (
@@ -1958,6 +2124,8 @@ export default function PlayMode() {
                   attackerBattleShocked={profile.attackerBattleShocked}
                   targetBattleShocked={profile.targetBattleShocked}
                   targetStrengthState={profile.targetStrengthState}
+                  sourceTargetDistance={profile.attackerSourceTargetDistance}
+                  sourceTargetVisible={profile.attackerSourceCanSeeTarget}
                 />
               ) : null}
               {targetCatalogueUnit && (
@@ -1978,6 +2146,8 @@ export default function PlayMode() {
                   attackerBattleShocked={profile.attackerBattleShocked}
                   targetBattleShocked={profile.targetBattleShocked}
                   targetStrengthState={profile.targetStrengthState}
+                  sourceTargetDistance={profile.targetSourceAttackerDistance}
+                  sourceTargetVisible={profile.targetSourceCanSeeAttacker}
                 />
               )}
               {targetCatalogueUnit ? (
@@ -2014,6 +2184,8 @@ export default function PlayMode() {
                   attackerBattleShocked={profile.attackerBattleShocked}
                   targetBattleShocked={profile.targetBattleShocked}
                   targetStrengthState={profile.targetStrengthState}
+                  sourceTargetDistance={profile.targetSourceAttackerDistance}
+                  sourceTargetVisible={profile.targetSourceCanSeeAttacker}
                 />
               ) : null}
             </div>
