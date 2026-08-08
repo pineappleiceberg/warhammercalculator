@@ -226,7 +226,11 @@ export default function PlayMode() {
   const attackerTransportReport =
     catalogue && attackerList
       ? transportAssignmentReport(catalogue, attackerList)
-      : { assignments: [], errors: [] };
+      : { assignments: [], errors: [], attachedUnitIds: new Set<string>() };
+  const targetTransportReport =
+    catalogue && targetList
+      ? transportAssignmentReport(catalogue, targetList)
+      : { assignments: [], errors: [], attachedUnitIds: new Set<string>() };
   const validFiringDeckPassengerIds = new Set(
     attackerTransportReport.assignments
       .filter((assignment) => assignment.transportUnit.id === attackerUnitId)
@@ -1057,7 +1061,7 @@ export default function PlayMode() {
     const nextTargetPresetIds = nextTarget?.combatPresetIds ?? [];
     setTargetUnitId(id);
     const nextTargetBattleShocked = false;
-    const nextTargetAttached = false;
+    const nextTargetAttached = targetTransportReport.attachedUnitIds.has(id);
     const nextTargetWaaaghActive = false;
     const nextTargetOathOfMoment = false;
     const nextTargetOnObjective = false;
@@ -1486,6 +1490,9 @@ export default function PlayMode() {
                       const nextUnit = attackerList?.units.find(
                         (unit) => unit.id === event.target.value,
                       );
+                      const nextAttackerAttached = attackerTransportReport.attachedUnitIds.has(
+                        event.target.value,
+                      );
                       const nextEmbarkedAssignments = attackerTransportReport.assignments.filter(
                         (assignment) => assignment.transportUnit.id === event.target.value,
                       );
@@ -1513,7 +1520,7 @@ export default function PlayMode() {
                         ...current,
                         attackerCharged: false,
                         attackerRemainedStationary: false,
-                        attackerAttached: false,
+                        attackerAttached: nextAttackerAttached,
                         attackerWaaaghActive: false,
                         targetOathOfMoment: false,
                         attackerOathWoundBonusEligible: false,

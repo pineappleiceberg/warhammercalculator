@@ -16,14 +16,26 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Normalize Leader eligibility so declared attachment links can be audited
-   against published Leader lists, including any source-backed attachment
-   exceptions and multi-Leader limits.
+1. Normalize Leader-formation cardinality and source-backed exceptions so the
+   roster audit can enforce the normal one-Leader limit without rejecting legal
+   multi-Leader combinations.
 2. Extend normalized defensive-equipment selection to Model vs Model and Play
    Mode while preserving model-by-model allocation and preventing bearer-only
    gear from becoming a homogeneous unit-wide defense.
 
 ## Completed cycles
+
+- 2026-08-08: Added source-backed Leader-to-Bodyguard eligibility. SQLite
+  schema 62 pins `Datasheets_leader.csv`, deduplicates its 1,918 source rows
+  into 1,902 exact pairs covering 411 Leaders and 297 Bodyguard datasheets, and
+  proves that all referenced IDs resolve. Army Lists offers only published
+  Bodyguards, preserves stale invalid links for repair, and reports missing,
+  circular, non-Leader, and illegal cross-datasheet attachments. Play Mode
+  derives Attached-unit state from valid saved formations, and the API exposes
+  both discovery lists and direct pair checks. Database provenance, catalogue,
+  legal/illegal pair, permissive multi-Leader, Transport integration, UI build,
+  and API regressions cover the change. Multi-Leader cardinality remains
+  deliberately permissive until its published exceptions are normalized.
 
 - 2026-08-08: Completed exact Transport coverage. SQLite schema 61 normalizes
   the Orion Assault Dropship's independent one-model allowance for its three

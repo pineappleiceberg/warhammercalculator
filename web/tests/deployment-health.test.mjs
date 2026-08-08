@@ -5,7 +5,7 @@ import { checkDeployment } from "../scripts/check-deployment.mjs";
 const profiles = {
   sourceUpdatedAt: "2026-06-13 12:02:41",
   factions: [{ id: "NEC", name: "Necrons" }],
-  units: [{ id: "1", name: "Doomsday Ark" }],
+  units: [{ id: "1", name: "Doomsday Ark", leaderBodyguardIds: [] }],
 };
 
 function healthyFetch(request) {

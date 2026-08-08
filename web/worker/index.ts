@@ -35,6 +35,7 @@ import {
 } from "../lib/loadout.mjs";
 import type { CatalogueCombatPreset } from "../lib/catalogue";
 import { resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
+import { leaderAttachmentEligibility } from "../lib/attachments.mjs";
 import { transportCapacityPools, transportPassengerEligibility } from "../lib/transport.mjs";
 
 interface Env {
@@ -138,6 +139,7 @@ type Catalogue = {
       capacityModifiers: Array<{ equipment: string; capacity: number }>;
     } | null;
     transportKeywords: string[];
+    leaderBodyguardIds: string[];
   }>;
 };
 
@@ -811,6 +813,7 @@ async function handleApi(request: Request, env: Env) {
           units: "GET /api/v1/units?faction={factionId}&kind={attacker|target|all}",
           weapons: "GET /api/v1/weapons?unit={datasheetId}",
           loadout: "GET /api/v1/loadout?unit={datasheetId}",
+          leader: "GET /api/v1/leader?unit={leaderDatasheetId}&bodyguard={bodyguardDatasheetId}",
           validateLoadout: "POST /api/v1/validate-loadout",
           firingDeck:
             "GET /api/v1/firing-deck?unit={transportDatasheetId}&passenger={passengerDatasheetId}&attached={attachedDatasheetId}",
@@ -897,6 +900,7 @@ async function handleApi(request: Request, env: Env) {
           weaponGroupCount: new Set(unit.weapons.map((weapon) => weapon.groupId)).size,
           firingDeck: unit.firingDeck,
           transport: unit.transport,
+          leaderBodyguardIds: unit.leaderBodyguardIds,
           suggestedModelCount: unit.suggestedModelCount,
           maximumModelCount: unit.maximumModelCount,
         }));
@@ -926,9 +930,39 @@ async function handleApi(request: Request, env: Env) {
           firingDeckModelCost: unit.firingDeckModelCost,
           transport: unit.transport,
           transportKeywords: unit.transportKeywords,
+          leaderBodyguardIds: unit.leaderBodyguardIds,
           suggestedModelCount: unit.suggestedModelCount,
           maximumModelCount: unit.maximumModelCount,
           weapons: unit.weapons,
+        },
+        sourceUpdatedAt: catalogue.sourceUpdatedAt,
+      });
+    }
+
+    if (url.pathname === "/api/v1/leader" && request.method === "GET") {
+      const unitId = url.searchParams.get("unit");
+      if (!unitId) return apiError("Missing required unit query parameter");
+      const catalogue = await loadCatalogue(request, env);
+      const leader = catalogue.units.find((entry) => entry.id === unitId);
+      if (!leader) return apiError("Leader unit not found", 404);
+      const bodyguardId = url.searchParams.get("bodyguard");
+      const bodyguard = bodyguardId
+        ? catalogue.units.find((entry) => entry.id === bodyguardId)
+        : null;
+      if (bodyguardId && !bodyguard) return apiError("Bodyguard unit not found", 404);
+      const eligibility = bodyguard
+        ? leaderAttachmentEligibility(leader, bodyguard)
+        : { eligible: null, reason: "" };
+      return json({
+        data: {
+          leader: { id: leader.id, name: leader.name },
+          bodyguard: bodyguard ? { id: bodyguard.id, name: bodyguard.name } : null,
+          eligible: eligibility.eligible,
+          reason: eligibility.reason,
+          options: leader.leaderBodyguardIds.map((id) => {
+            const option = catalogue.units.find((entry) => entry.id === id);
+            return { id, name: option?.name ?? id };
+          }),
         },
         sourceUpdatedAt: catalogue.sourceUpdatedAt,
       });

@@ -95,7 +95,8 @@ async function checkProfiles(fetchImpl, baseUrl, timeoutMs) {
       if (
         typeof body?.sourceUpdatedAt !== "string" ||
         !Array.isArray(body?.factions) ||
-        !Array.isArray(body?.units)
+        !Array.isArray(body?.units) ||
+        !body.units.every((unit) => Array.isArray(unit?.leaderBodyguardIds))
       ) {
         const error = new Error("Profile catalogue schema is incomplete");
         error.code = "INVALID_PROFILE_SCHEMA";

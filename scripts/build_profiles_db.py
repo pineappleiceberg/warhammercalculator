@@ -36,6 +36,7 @@ FILES = (
     "Datasheets_unit_composition.csv",
     "Datasheets_options.csv",
     "Datasheets_abilities.csv",
+    "Datasheets_leader.csv",
 )
 
 SCHEMA = (
@@ -73,6 +74,13 @@ CREATE TABLE datasheets (
     transport_text TEXT NOT NULL DEFAULT '',
     is_virtual INTEGER NOT NULL DEFAULT 0 CHECK (is_virtual IN (0, 1)),
     source_url TEXT NOT NULL
+) WITHOUT ROWID;
+
+CREATE TABLE unit_leader_eligibility (
+    leader_datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    bodyguard_datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    source_line INTEGER NOT NULL CHECK (source_line >= 2),
+    PRIMARY KEY (leader_datasheet_id, bodyguard_datasheet_id)
 ) WITHOUT ROWID;
 
 CREATE TABLE model_profiles (
@@ -538,6 +546,8 @@ CREATE TABLE wargear_options (
 ) WITHOUT ROWID;
 
 CREATE INDEX idx_datasheets_faction_name ON datasheets(faction_id, name);
+CREATE INDEX idx_unit_leader_eligibility_bodyguard
+    ON unit_leader_eligibility(bodyguard_datasheet_id, leader_datasheet_id);
 CREATE INDEX idx_models_datasheet_name ON model_profiles(datasheet_id, name);
 CREATE INDEX idx_weapons_datasheet_name ON weapon_profiles(datasheet_id, name);
 CREATE INDEX idx_weapons_type ON weapon_profiles(weapon_type);
@@ -3883,6 +3893,20 @@ def create_database(
         for row in rows["Datasheets_abilities.csv"]
         if row["datasheet_id"] in datasheet_ids
     ]
+    leader_rows = []
+    seen_leader_pairs = set()
+    orphan_leader_count = 0
+    duplicate_leader_count = 0
+    for source_line, row in enumerate(rows["Datasheets_leader.csv"], start=2):
+        pair = (row["leader_id"], row["attached_id"])
+        if pair[0] not in datasheet_ids or pair[1] not in datasheet_ids:
+            orphan_leader_count += 1
+            continue
+        if pair in seen_leader_pairs:
+            duplicate_leader_count += 1
+            continue
+        seen_leader_pairs.add(pair)
+        leader_rows.append((*pair, source_line))
     orphan_model_count = len(rows["Datasheets_models.csv"]) - len(model_rows)
     orphan_weapon_count = len(rows["Datasheets_wargear.csv"]) - len(linked_weapon_rows)
     placeholder_weapon_count = len(linked_weapon_rows) - len(weapon_rows)
@@ -3907,12 +3931,14 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "61"),
+                    ("schema_version", "62"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
                     ("skipped_orphan_composition_rows", str(orphan_composition_count)),
                     ("skipped_orphan_option_rows", str(orphan_option_count)),
+                    ("skipped_orphan_leader_rows", str(orphan_leader_count)),
+                    ("skipped_duplicate_leader_rows", str(duplicate_leader_count)),
                 ),
             )
             connection.executemany(
@@ -3955,6 +3981,12 @@ def create_database(
                     )
                     for row in rows["Datasheets.csv"]
                 ),
+            )
+            connection.executemany(
+                """INSERT INTO unit_leader_eligibility
+                   (leader_datasheet_id, bodyguard_datasheet_id, source_line)
+                   VALUES (?, ?, ?)""",
+                leader_rows,
             )
             connection.executemany(
                 """INSERT OR REPLACE INTO abilities
@@ -4183,6 +4215,7 @@ def create_database(
             for table in (
                 "factions",
                 "datasheets",
+                "unit_leader_eligibility",
                 "model_profiles",
                 "datasheet_keywords",
                 "weapon_profiles",

@@ -123,6 +123,7 @@ def export(database: Path, output: Path) -> None:
                 "firingDeckModelCost": 1,
                 "transport": None,
                 "transportKeywords": [],
+                "leaderBodyguardIds": [],
                 "suggestedModelCount": None,
                 "maximumModelCount": None,
             }
@@ -134,6 +135,14 @@ def export(database: Path, output: Path) -> None:
 
         keywords: dict[str, list[str]] = {}
         preset_lookup: dict[tuple[str, int, int], dict] = {}
+        for row in connection.execute(
+            """SELECT leader_datasheet_id, bodyguard_datasheet_id
+               FROM unit_leader_eligibility
+               ORDER BY leader_datasheet_id, bodyguard_datasheet_id"""
+        ):
+            units[row["leader_datasheet_id"]]["leaderBodyguardIds"].append(
+                row["bodyguard_datasheet_id"]
+            )
         for row in connection.execute(
             """SELECT datasheet_id, keyword
                FROM datasheet_keywords

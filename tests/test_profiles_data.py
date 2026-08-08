@@ -2023,7 +2023,33 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "61",
+                "62",
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM unit_leader_eligibility"
+                ).fetchone()[0],
+                1902,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_leader_eligibility
+                       WHERE leader_datasheet_id = '000000073'
+                         AND bodyguard_datasheet_id = '000000070'"""
+                ).fetchone()[0],
+                1,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT value FROM metadata WHERE key = 'skipped_orphan_leader_rows'"
+                ).fetchone()[0],
+                "0",
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT value FROM metadata WHERE key = 'skipped_duplicate_leader_rows'"
+                ).fetchone()[0],
+                "16",
             )
             self.assertEqual(
                 connection.execute("SELECT count(*) FROM unit_firing_deck").fetchone()[
@@ -2398,6 +2424,7 @@ class ProfileDataTests(unittest.TestCase):
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
                 ("Datasheets_abilities.csv", 7_000),
+                ("Datasheets_leader.csv", 1_900),
             ):
                 row = connection.execute(
                     "SELECT row_count, sha256 FROM source_files WHERE filename = ?",
@@ -4220,6 +4247,10 @@ class ProfileDataTests(unittest.TestCase):
         self.assertIn("mega armour", trukk["transport"]["modelCosts"][0]["keywords"])
         boyz = next(unit for unit in catalogue["units"] if unit["name"] == "Boyz")
         self.assertIn("boss nob", boyz["transportKeywords"])
+        captain = next(unit for unit in catalogue["units"] if unit["id"] == "000000073")
+        self.assertIn("000000070", captain["leaderBodyguardIds"])
+        self.assertNotIn("000000534", captain["leaderBodyguardIds"])
+        self.assertEqual(boyz["leaderBodyguardIds"], [])
         rhino = next(unit for unit in catalogue["units"] if unit["id"] == "000002723")
         self.assertTrue(rhino["transport"]["exactRules"])
         tacticus_exclusion = next(

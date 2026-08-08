@@ -281,6 +281,7 @@ export type CatalogueUnit = {
     capacityModifiers: Array<{ equipment: string; capacity: number }>;
   } | null;
   transportKeywords: string[];
+  leaderBodyguardIds: string[];
   suggestedModelCount: number | null;
   maximumModelCount: number | null;
 };

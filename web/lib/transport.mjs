@@ -1,3 +1,5 @@
+import { attachmentFormationReport } from "./attachments.mjs";
+
 function normalized(value) {
   return String(value)
     .normalize("NFKC")
@@ -214,36 +216,14 @@ export function transportAssignmentReport(catalogue, armyList) {
   const catalogueUnits = new Map((catalogue?.units ?? []).map((unit) => [unit.id, unit]));
   const savedUnits = new Map((armyList?.units ?? []).map((unit) => [unit.id, unit]));
   const assignments = [];
-  const errors = [];
+  const formation = attachmentFormationReport(catalogue, armyList);
+  const errors = [...formation.errors];
   const slotsByTransport = new Map();
   const poolSlotsByTransport = new Map();
   const allowanceModelsByTransport = new Map();
   const effectivePrimaryCapacityByTransport = new Map();
-  const invalidFormationUnits = new Set();
-  for (const unit of armyList?.units ?? []) {
-    if (!unit.attachedToId) continue;
-    const attachedUnit = savedUnits.get(unit.attachedToId);
-    if (!attachedUnit) {
-      errors.push(`${unit.name} references an attached unit that is not in this list`);
-      invalidFormationUnits.add(unit.id);
-      continue;
-    }
-    if (attachedUnit.id === unit.id) {
-      errors.push(`${unit.name} cannot be attached to itself`);
-      invalidFormationUnits.add(unit.id);
-      continue;
-    }
-    const seen = new Set([unit.id]);
-    let nextAttachedId = unit.attachedToId;
-    while (nextAttachedId) {
-      if (seen.has(nextAttachedId)) {
-        errors.push(`${unit.name} is part of a circular attachment`);
-        invalidFormationUnits.add(unit.id);
-        break;
-      }
-      seen.add(nextAttachedId);
-      nextAttachedId = savedUnits.get(nextAttachedId)?.attachedToId;
-    }
+  const invalidFormationUnits = new Set(formation.invalidUnitIds);
+  for (const { leaderUnit: unit, bodyguardUnit: attachedUnit } of formation.attachments) {
     if (
       unit.transportId !== attachedUnit.transportId &&
       (unit.transportId || attachedUnit.transportId)
@@ -405,6 +385,8 @@ export function transportAssignmentReport(catalogue, armyList) {
     }
   }
   return {
+    attachments: formation.attachments,
+    attachedUnitIds: formation.attachedUnitIds,
     assignments: completeAssignments.filter(
       (assignment) =>
         !overCapacity.has(assignment.transportUnit.id) &&

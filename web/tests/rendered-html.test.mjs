@@ -207,6 +207,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.match(documented.endpoints.volleySimulate, /POST \/api\/v1\/volley\/simulate/);
   assert.match(documented.endpoints.firingDeck, /GET \/api\/v1\/firing-deck/);
   assert.match(documented.endpoints.transport, /GET \/api\/v1\/transport/);
+  assert.match(documented.endpoints.leader, /GET \/api\/v1\/leader/);
   assert.match(documented.endpoints.validateFiringDeck, /POST \/api\/v1\/validate-firing-deck/);
   assert.match(documented.endpoints.lists, /lists\/export/);
 
@@ -348,6 +349,26 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const rhino = catalogue.units.find((unit) => unit.id === "000002723");
   const transportCaptain = catalogue.units.find((unit) => unit.id === "000000073");
   const tacticalSquad = catalogue.units.find((unit) => unit.id === "000000070");
+  const leader = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/leader?unit=${transportCaptain.id}&bodyguard=${tacticalSquad.id}`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.equal(leader.status, 200);
+  const leaderBody = await leader.json();
+  assert.equal(leaderBody.data.eligible, true);
+  assert.ok(leaderBody.data.options.some((option) => option.id === tacticalSquad.id));
+  const illegalLeader = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/leader?unit=${transportCaptain.id}&bodyguard=${warriors.id}`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.equal(illegalLeader.status, 200);
+  assert.equal((await illegalLeader.json()).data.eligible, false);
   const attachedTransport = await worker.fetch(
     new Request(
       `http://localhost/api/v1/transport?unit=${rhino.id}&passenger=${transportCaptain.id}&attached=${tacticalSquad.id}`,

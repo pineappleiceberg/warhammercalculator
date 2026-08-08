@@ -253,7 +253,13 @@ are tracked separately for Dreadclaws, Kharybdis Assault Claws, Tyrannocytes,
 and the Valkyrie Sky Talon; Army Lists rejects formations that mix their primary
 and alternative passengers. Tyrannocyte Monsters also enforce their published
 12-Wound ceiling. Army Lists preserves which bodyguard unit a Character began the
-battle attached to. Tacticus Characters can use the published Rhino, Razorback,
+battle attached to and limits that menu to the 1,902 published Leader-to-
+Bodyguard datasheet pairs. Imported or stale illegal links remain visible for
+editing but fail the roster rules check. Play Mode derives Attached-unit state
+from valid saved links while keeping its quick override editable. The structured
+Leader export does not identify exceptions to the normal Leader-count limit, so
+pair eligibility is exact while multi-Leader cardinality remains permissive
+until those exception clauses are normalized. Tacticus Characters can use the published Rhino, Razorback,
 and Terrax exception only when linked to a non-Tacticus unit, and both saved
 units must embark in the same transport. Conditional clauses that are not fully
 normalized remain unavailable instead of being guessed. Melee and One Shot weapons are excluded, a passenger
@@ -682,6 +688,10 @@ cache so a recovered dependency can be retried without restarting the service.
 
 `GET /api/v1/firing-deck?unit={transportId}&passenger={passengerId}&attached={attachedUnitId}` discovers
 that legally compatible passenger's eligible ranged weapons and slot cost.
+`GET /api/v1/leader?unit={leaderId}&bodyguard={bodyguardId}` lists the Leader's
+published Bodyguard options and, when `bodyguard` is supplied, returns exact
+pair eligibility and a readable reason. The same `leaderBodyguardIds` are
+included in catalogue and loadout discovery responses.
 `GET /api/v1/transport?unit={transportId}&passenger={passengerId}&attached={attachedUnitId}&models={count}`
 returns the exact source clause, eligibility, per-model cost, total spaces, and
 whether the selection fits in its matched independent pool; the response lists

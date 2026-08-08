@@ -358,7 +358,11 @@ export default function ArmyLists() {
                     const attachedUnit = catalogue?.units.find(
                       (entry) => entry.id === attachedSavedUnit?.unitId,
                     );
-                    const isCharacter = passenger?.transportKeywords.includes("character");
+                    const attachmentOptions = draft.units.filter(
+                      (candidate) =>
+                        candidate.id !== unit.id &&
+                        passenger?.leaderBodyguardIds.includes(candidate.unitId),
+                    );
                     const transports = draft.units.filter((candidate) => {
                       if (candidate.id === unit.id) return false;
                       const transport = catalogue?.units.find(
@@ -373,7 +377,7 @@ export default function ArmyLists() {
                     );
                     return (
                       <>
-                        {isCharacter && (
+                        {(attachmentOptions.length > 0 || unit.attachedToId) && (
                           <label>
                             <span>Attached to</span>
                             <select
@@ -389,15 +393,21 @@ export default function ArmyLists() {
                               }
                             >
                               <option value="">Not attached</option>
-                              {draft.units
-                                .filter((candidate) => candidate.id !== unit.id)
-                                .map((candidate) => (
-                                  <option key={candidate.id} value={candidate.id}>
-                                    {candidate.name}
+                              {attachmentOptions.map((candidate) => (
+                                <option key={candidate.id} value={candidate.id}>
+                                  {candidate.name}
+                                </option>
+                              ))}
+                              {unit.attachedToId &&
+                                !attachmentOptions.some(
+                                  (candidate) => candidate.id === unit.attachedToId,
+                                ) && (
+                                  <option value={unit.attachedToId}>
+                                    Unavailable Leader attachment
                                   </option>
-                                ))}
+                                )}
                             </select>
-                            <small>Declare the bodyguard unit this Character joined.</small>
+                            <small>Choose from this Leader&apos;s published Bodyguard units.</small>
                           </label>
                         )}
                         <label>
@@ -740,13 +750,13 @@ export default function ArmyLists() {
             </div>
             {transportReport.errors.length > 0 && (
               <div className="loadout-warnings" role="status">
-                <strong>Transport assignment check</strong>
+                <strong>Roster rules check</strong>
                 <ul>
                   {transportReport.errors.map((error) => (
                     <li key={error}>{error}</li>
                   ))}
                 </ul>
-                <small>Correct these assignments before using Firing Deck in Play Mode.</small>
+                <small>Correct these attachments or Transport assignments before Play Mode.</small>
               </div>
             )}
           </div>
