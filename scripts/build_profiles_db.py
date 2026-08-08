@@ -2101,7 +2101,7 @@ def combat_guidance_presets(
     if not effects:
         return []
 
-    support_auras = (
+    support_rules = (
         (
             "Brood Progenitor (Aura, Psychic)",
             "While a friendly Termagants unit is within 6\" of this model, ranged weapons "
@@ -2145,9 +2145,75 @@ def combat_guidance_presets(
             6,
             ["grey knights", "infantry"],
         ),
+        (
+            "Blessing of the Omnissiah",
+            "In your Command phase, you can select one friendly Adeptus Astartes Vehicle model "
+            "within 3\" of this model. That model regains up to D3 lost wounds and, until the "
+            "start of your next Command phase, each time that VEHICLE model makes an attack, add "
+            "1 to the Hit roll. Each model can only be selected for this ability once per turn.",
+            3,
+            ["adeptus astartes", "vehicle"],
+        ),
+        (
+            "Blessing of the Omnissiah",
+            "In your Command phase, you can select one friendly Adeptus Astartes Vehicle model "
+            "within 3\" of this model. That model regains up to D3 lost wounds and, until the "
+            "start of your next Command phase, each time that Vehicle model makes an attack, add "
+            "1 to the Hit roll. Each model can only be selected for this ability once per turn.",
+            3,
+            ["adeptus astartes", "vehicle"],
+        ),
+        (
+            "Blessing of the Omnissiah",
+            "In your Command phase, you can select one friendly Grey Knights Vehicle model within "
+            "3\" of this model. That model regains up to D3 lost wounds and, until the start of "
+            "your next Command phase, each time that VEHICLE model makes an attack, add 1 to the "
+            "Hit roll. Each model can only be selected for this ability once per turn.",
+            3,
+            ["grey knights", "vehicle"],
+        ),
+        (
+            "Master of Mechanisms",
+            "In your Command phase, select one friendly Heretic Astartes Vehicle model within 3\" "
+            "of this model. That VEHICLE model regains up to D3 lost wounds and, until the start "
+            "of your next Command phase, each time that VEHICLE makes an attack, add 1 to the Hit "
+            "roll. Each model can only be selected for this ability once per Command phase.",
+            3,
+            ["heretic astartes", "vehicle"],
+        ),
+        (
+            "Master of the Forge",
+            "In your Command phase, select one friendly ADEPTUS ASTARTES VEHICLE model within 3\" "
+            "of this model. That model regains up to 3 lost wounds and, until the start of your "
+            "next Command phase, each time that VEHICLE model makes an attack, add 1 to the Hit "
+            "roll. You cannot select a unit for this ability that has already been selected for "
+            "the Blessing of the Omnissiah ability this phase, and vice versa.",
+            3,
+            ["adeptus astartes", "vehicle"],
+        ),
+        (
+            "Mekaniak",
+            "At the end of your Movement phase, you can select one friendly Orks Vehicle model "
+            "within 3\" of this model. That VEHICLE model regains up to D3 lost wounds, and, until "
+            "the start of your next Movement phase, each time that VEHICLE model makes an attack, "
+            "add 1 to the Hit roll. Each model can only be selected for this ability once per turn.",
+            3,
+            ["orks", "vehicle"],
+        ),
+        (
+            "Support Vehicle",
+            "In your Command phase, select one friendly Astra Militarum Vehicle model within 3\" "
+            "of this model. That VEHICLE model regains up to D3 lost wounds and, until the start "
+            "of your next Command phase, each time that VEHICLE model makes an attack, re-roll a "
+            "Hit roll of 1. The same VEHICLE model cannot be selected for both this ability and "
+            "the Regimental Enginseer’s Omnissiah’s Blessing ability in the same turn, and each "
+            "model can only be selected for this ability once per Command phase.",
+            3,
+            ["astra militarum", "vehicle"],
+        ),
     )
-    for aura_name, aura_text, distance, supported_keywords in support_auras:
-        if name == aura_name and text.casefold() == aura_text.casefold():
+    for rule_name, rule_text, distance, supported_keywords in support_rules:
+        if name == rule_name and text.casefold() == rule_text.casefold():
             return [
                 {
                     "name": name,
@@ -2550,7 +2616,13 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     )
                 }
                 if all(keyword.casefold() in source_keywords for keyword in required_supported_keywords):
-                    continue
+                    preset = {
+                        key: value
+                        for key, value in preset.items()
+                        if key not in {"maximum_support_distance", "required_supported_keywords"}
+                    }
+                    preset["source_relationship"] = "self"
+                    required_supported_keywords = []
             connection.execute(
                 """INSERT INTO unit_combat_presets
                    (datasheet_id, ability_position, preset_position, name, description_text,
@@ -2801,7 +2873,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "44"),
+                    ("schema_version", "45"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

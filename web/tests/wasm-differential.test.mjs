@@ -2352,6 +2352,71 @@ test("source-backed target distance changes preset composition at its exact boun
   assert.equal(applyCombatPresets({ ...base, targetDistance: 10 }, [driveBy], [], "Ranged").ap, 0);
 });
 
+test("targeted vehicle support reaches C/Wasm only for the selected eligible nearby unit", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const techmarine = catalogue.units.find((unit) => unit.name === "Techmarine");
+  const repulsor = catalogue.units.find((unit) => unit.name === "Repulsor");
+  const blessing = techmarine.combatPresets.find(
+    (preset) => preset.name === "Blessing of the Omnissiah",
+  );
+  const weapon = repulsor.weapons.find((entry) => entry.type === "Ranged");
+  const selected = (keywords, distance, relationship = "supporting_unit") =>
+    selectedAndAutomaticCombatPresets(
+      techmarine.combatPresets,
+      [blessing.id],
+      weapon.type,
+      weapon.name,
+      [],
+      attackKeywordsForWeapon(weapon),
+      0,
+      false,
+      false,
+      false,
+      "full",
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      relationship,
+      keywords,
+      distance,
+    );
+  assert.deepEqual(selected(repulsor.models[0].keywords, 0), []);
+  assert.deepEqual(selected(repulsor.models[0].keywords, 4), []);
+  assert.deepEqual(selected(["adeptus astartes", "infantry"], 3), []);
+  assert.deepEqual(selected(repulsor.models[0].keywords, 3, "self"), []);
+  const active = selected(repulsor.models[0].keywords, 3);
+  assert.deepEqual(
+    active.map((preset) => preset.name),
+    ["Blessing of the Omnissiah"],
+  );
+  const profile = applyCombatPresets(
+    { weaponName: weapon.name, hitOn: 4, hitModifier: 0, supportDistance: 3 },
+    active,
+    [],
+    "Ranged",
+    {
+      supportDistance: 3,
+      supportedUnitKeywords: repulsor.models[0].keywords,
+    },
+  );
+  assert.equal(profile.hitModifier, 1);
+  assert.ok(lessThanOrEqual(exactMean({ hitOn: 4 }), exactMean({ hitOn: 4, hitModifier: 1 })));
+});
+
 test("source-backed charge rules require the explicit attacker charge state", async () => {
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),

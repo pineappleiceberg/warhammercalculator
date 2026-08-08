@@ -16,9 +16,9 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Classify the remaining friendly-unit auras conservatively: self-applicable
-   sources, exclusions, closest-target clauses, and defensive target-side
-   support still need explicit relationship state before automation.
+1. Add defensive target-side support selection, then classify exact defensive
+   auras such as Mechanical Augmentation without applying their protection to
+   the supporting model or unrelated targets.
 2. Add reproducible closest-target and line-of-sight relationship state for the
    remaining compound attack conditions that still require manual
    interpretation.
@@ -30,6 +30,20 @@ priority over feature count.
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added exact targeted Vehicle support. SQLite schema 45
+  classifies eight Techmarine, Warpsmith, and Mek source rows that select a
+  friendly Vehicle within 3 inches for either +1 Hit or re-roll Hit rolls of 1.
+  The selected attacker must have every published faction and Vehicle keyword,
+  and zero distance remains conservatively unknown. Meka-dread and both Trojan
+  Support Vehicle rows can satisfy their own target keywords, so they remain
+  editable self abilities rather than disappearing or being forced into a
+  separate-unit relationship. The existing support selector, shares, Play
+  recovery, APIs, and static agent URLs consume the new data without changing
+  user-entered profiles. Exact-source parser negatives, self-versus-support
+  database and catalogue snapshots, agent resolution, eligibility boundaries,
+  C/WebAssembly damage monotonicity, native and Wasm builds, 330/330 proofs,
+  zero Eva alarms, E-ACSL, and a 2,000-input sanitizer campaign cover the change.
 
 - 2026-08-07: Added exact range and affected-keyword eligibility for simple
   non-self friendly-unit auras. SQLite schema 44 classifies Brood Progenitor,

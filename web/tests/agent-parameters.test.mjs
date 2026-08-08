@@ -833,6 +833,17 @@ test("catalogue agent query resolves stable IDs or unambiguous names", async () 
     catalogue,
   );
   assert.equal(limitedSupport.supportPresets[0].usesPerBattle, 2);
+  const targetedSupport = resolveAgentCatalogueSelection(
+    "attacker=000002721&weapon=5537&target=000000136&support=000000140&" +
+      "supportPreset=Blessing%20of%20the%20Omnissiah&supportDistance=3",
+    catalogue,
+  );
+  assert.equal(targetedSupport.support.name, "Techmarine");
+  assert.equal(targetedSupport.supportPresets[0].maximumSupportDistance, 3);
+  assert.deepEqual(targetedSupport.supportPresets[0].requiredSupportedKeywords, [
+    "adeptus astartes",
+    "vehicle",
+  ]);
   assert.throws(
     () =>
       resolveAgentCatalogueSelection(

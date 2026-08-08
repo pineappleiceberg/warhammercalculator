@@ -56,6 +56,27 @@ class ProfileDataTests(unittest.TestCase):
             [],
         )
 
+    def test_combat_guidance_classifies_exact_targeted_vehicle_support(self):
+        description = (
+            "In your Command phase, you can select one friendly Grey Knights Vehicle model within "
+            '3" of this model. That model regains up to D3 lost wounds and, until the start of '
+            "your next Command phase, each time that VEHICLE model makes an attack, add 1 to the "
+            "Hit roll. Each model can only be selected for this ability once per turn."
+        )
+        blessing = combat_guidance_presets("Blessing of the Omnissiah", description)[0]
+        self.assertEqual(blessing["source_relationship"], "supporting_unit")
+        self.assertEqual(blessing["maximum_support_distance"], 3)
+        self.assertEqual(
+            blessing["required_supported_keywords"], ["grey knights", "vehicle"]
+        )
+        self.assertEqual(blessing["hit_modifier"], 1)
+        self.assertEqual(
+            combat_guidance_presets(
+                "Blessing of the Omnissiah", description.replace('within 3"', 'within 6"')
+            ),
+            [],
+        )
+
     def test_combat_preset_parser_preserves_scope_and_first_reroll_tier(self):
         self.assertEqual(
             combat_preset(
@@ -1343,7 +1364,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "44",
+                "45",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1801,7 +1822,33 @@ class ProfileDataTests(unittest.TestCase):
                        FROM unit_combat_presets
                        GROUP BY source_relationship ORDER BY source_relationship"""
                 ).fetchall(),
-                [("self", 1979), ("supporting_unit", 10)],
+                [("self", 1971), ("supporting_unit", 18)],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT datasheets.name, unit_combat_presets.name,
+                              unit_combat_presets.source_relationship,
+                              unit_combat_presets.maximum_support_distance
+                       FROM unit_combat_presets
+                       JOIN datasheets ON datasheets.id = unit_combat_presets.datasheet_id
+                       WHERE unit_combat_presets.name IN
+                             ('Blessing of the Omnissiah', 'Master of Mechanisms',
+                              'Master of the Forge', 'Mekaniak', 'Support Vehicle')
+                       ORDER BY datasheets.name, unit_combat_presets.name"""
+                ).fetchall(),
+                [
+                    ("Big Mek On Warbike", "Mekaniak", "supporting_unit", 3),
+                    ("Brotherhood Techmarine", "Blessing of the Omnissiah", "supporting_unit", 3),
+                    ("Iron Father Feirros", "Master of the Forge", "supporting_unit", 3),
+                    ("Iron Priest On Thunderwolf", "Blessing of the Omnissiah", "supporting_unit", 3),
+                    ("Mek", "Mekaniak", "supporting_unit", 3),
+                    ("Meka-dread", "Mekaniak", "self", None),
+                    ("Techmarine", "Blessing of the Omnissiah", "supporting_unit", 3),
+                    ("Techmarine on Bike", "Blessing of the Omnissiah", "supporting_unit", 3),
+                    ("Trojan Support Vehicle", "Support Vehicle", "self", None),
+                    ("Trojan Support Vehicle", "Support Vehicle", "self", None),
+                    ("Warpsmith", "Master of Mechanisms", "supporting_unit", 3),
+                ],
             )
             oath_rows = connection.execute(
                 """SELECT preset.name, preset.requires_oath_wound_bonus,
@@ -2258,7 +2305,7 @@ class ProfileDataTests(unittest.TestCase):
             for preset in unit["combatPresets"]
             if preset["sourceRelationship"] == "supporting_unit"
         ]
-        self.assertEqual(len(support_presets), 10)
+        self.assertEqual(len(support_presets), 18)
         self.assertEqual(
             {
                 preset["name"]: preset.get("usesPerBattle")
@@ -2278,6 +2325,23 @@ class ProfileDataTests(unittest.TestCase):
         taskmaster = next(preset for preset in support_presets if preset["name"] == "Taskmaster (Aura)")
         self.assertEqual(taskmaster["maximumSupportDistance"], 9)
         self.assertEqual(taskmaster["requiredSupportedKeywords"], ["war dog"])
+        techmarine = next(unit for unit in catalogue["units"] if unit["name"] == "Techmarine")
+        blessing = next(
+            preset
+            for preset in techmarine["combatPresets"]
+            if preset["name"] == "Blessing of the Omnissiah"
+        )
+        self.assertEqual(blessing["sourceRelationship"], "supporting_unit")
+        self.assertEqual(blessing["maximumSupportDistance"], 3)
+        self.assertEqual(
+            blessing["requiredSupportedKeywords"], ["adeptus astartes", "vehicle"]
+        )
+        meka_dread = next(unit for unit in catalogue["units"] if unit["name"] == "Meka-dread")
+        mekaniak = next(
+            preset for preset in meka_dread["combatPresets"] if preset["name"] == "Mekaniak"
+        )
+        self.assertEqual(mekaniak["sourceRelationship"], "self")
+        self.assertNotIn("maximumSupportDistance", mekaniak)
 
     def test_bearer_defenses_are_limited_to_single_model_datasheets(self):
         connection = sqlite3.connect(DATABASE)
