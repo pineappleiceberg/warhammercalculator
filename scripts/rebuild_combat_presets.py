@@ -12,6 +12,8 @@ except ModuleNotFoundError:
 
 
 TABLE_SCHEMA = """
+DROP TABLE IF EXISTS unit_defensive_equipment_effects;
+DROP TABLE IF EXISTS unit_defensive_equipment_options;
 DROP TABLE IF EXISTS unit_combat_preset_effects;
 DROP TABLE IF EXISTS unit_combat_preset_keyword_requirements;
 DROP TABLE IF EXISTS unit_combat_preset_supported_keywords;
@@ -162,6 +164,32 @@ CREATE TABLE unit_combat_preset_effects (
 ) WITHOUT ROWID;
 CREATE INDEX idx_unit_combat_preset_effects_datasheet
     ON unit_combat_preset_effects(datasheet_id);
+CREATE TABLE unit_defensive_equipment_options (
+    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    ability_position INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    description_text TEXT NOT NULL,
+    effect_scope TEXT NOT NULL CHECK (effect_scope IN ('bearer', 'unit')),
+    guidance_text TEXT,
+    PRIMARY KEY (datasheet_id, ability_position),
+    FOREIGN KEY (datasheet_id, ability_position)
+        REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
+) WITHOUT ROWID;
+CREATE TABLE unit_defensive_equipment_effects (
+    datasheet_id TEXT NOT NULL,
+    ability_position INTEGER NOT NULL,
+    effect_position INTEGER NOT NULL CHECK (effect_position >= 1),
+    effect_type TEXT NOT NULL CHECK (effect_type IN
+        ('save_target', 'invulnerable_save', 'feel_no_pain',
+         'damage_reduction', 'first_failed_save_damage_replacement')),
+    value INTEGER NOT NULL,
+    uses INTEGER NOT NULL DEFAULT 0 CHECK (uses >= 0),
+    required_attack_keyword TEXT,
+    PRIMARY KEY (datasheet_id, ability_position, effect_position),
+    FOREIGN KEY (datasheet_id, ability_position)
+        REFERENCES unit_defensive_equipment_options(datasheet_id, ability_position)
+        ON DELETE CASCADE
+) WITHOUT ROWID;
 """
 
 
@@ -177,7 +205,7 @@ def main() -> None:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
         connection.execute(
-            "UPDATE metadata SET value = '50' WHERE key = 'schema_version'"
+            "UPDATE metadata SET value = '51' WHERE key = 'schema_version'"
         )
         connection.execute("PRAGMA optimize")
         connection.commit()

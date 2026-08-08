@@ -295,6 +295,34 @@ CREATE TABLE unit_combat_preset_effects (
         ON DELETE CASCADE
 ) WITHOUT ROWID;
 
+CREATE TABLE unit_defensive_equipment_options (
+    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    ability_position INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    description_text TEXT NOT NULL,
+    effect_scope TEXT NOT NULL CHECK (effect_scope IN ('bearer', 'unit')),
+    guidance_text TEXT,
+    PRIMARY KEY (datasheet_id, ability_position),
+    FOREIGN KEY (datasheet_id, ability_position)
+        REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE TABLE unit_defensive_equipment_effects (
+    datasheet_id TEXT NOT NULL,
+    ability_position INTEGER NOT NULL,
+    effect_position INTEGER NOT NULL CHECK (effect_position >= 1),
+    effect_type TEXT NOT NULL CHECK (effect_type IN
+        ('save_target', 'invulnerable_save', 'feel_no_pain',
+         'damage_reduction', 'first_failed_save_damage_replacement')),
+    value INTEGER NOT NULL,
+    uses INTEGER NOT NULL DEFAULT 0 CHECK (uses >= 0),
+    required_attack_keyword TEXT,
+    PRIMARY KEY (datasheet_id, ability_position, effect_position),
+    FOREIGN KEY (datasheet_id, ability_position)
+        REFERENCES unit_defensive_equipment_options(datasheet_id, ability_position)
+        ON DELETE CASCADE
+) WITHOUT ROWID;
+
 CREATE TABLE unit_composition (
     datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
     position INTEGER NOT NULL,
@@ -460,6 +488,110 @@ def parse_ability(raw: str) -> tuple[str, str | None]:
 def plain_text(value: str) -> str:
     without_tags = re.sub(r"<[^>]+>", " ", value)
     return re.sub(r"\s+", " ", html.unescape(without_tags)).strip()
+
+
+def defensive_equipment_option(name: str, description: str) -> dict[str, object] | None:
+    text = plain_text(description).strip()
+    patterns = (
+        (
+            "bearer",
+            "invulnerable_save",
+            re.fullmatch(
+                r"The bearer has a ([2-6])\+ invulnerable save\.", text, re.IGNORECASE
+            ),
+            None,
+        ),
+        (
+            "unit",
+            "invulnerable_save",
+            re.fullmatch(
+                r"Models in the bearer[’']s unit have a ([2-6])\+ invulnerable save\.",
+                text,
+                re.IGNORECASE,
+            ),
+            None,
+        ),
+        (
+            "bearer",
+            "feel_no_pain",
+            re.fullmatch(
+                r"The bearer has the Feel No Pain ([2-6])\+ ability against Psychic Attacks\.",
+                text,
+                re.IGNORECASE,
+            ),
+            "psychic",
+        ),
+        (
+            "unit",
+            "feel_no_pain",
+            re.fullmatch(
+                r"Models in the bearer[’']s unit have the Feel No Pain ([2-6])\+ ability"
+                r"(?: against Psychic Attacks)?\.",
+                text,
+                re.IGNORECASE,
+            ),
+            "psychic" if re.search(r"against Psychic Attacks", text, re.IGNORECASE) else None,
+        ),
+    )
+    for scope, effect_type, match, attack_keyword in patterns:
+        if match:
+            return {
+                "name": name,
+                "description_text": text,
+                "effect_scope": scope,
+                "effects": [
+                    {
+                        "type": effect_type,
+                        "value": int(match.group(1)),
+                        "uses": 0,
+                        "required_attack_keyword": attack_keyword,
+                    }
+                ],
+            }
+
+    save_match = re.fullmatch(
+        r"The bearer has (?:a Move characteristic of \d+[\"”] and a Save characteristic of "
+        r"([2-6])\+|a ([2-6])\+ Save characteristic and a Move characteristic of \d+[\"”])\.",
+        text,
+        re.IGNORECASE,
+    )
+    if save_match:
+        return {
+            "name": name,
+            "description_text": text,
+            "effect_scope": "bearer",
+            "effects": [
+                {
+                    "type": "save_target",
+                    "value": int(save_match.group(1) or save_match.group(2)),
+                    "uses": 0,
+                    "required_attack_keyword": None,
+                }
+            ],
+        }
+
+    failed_save = re.fullmatch(
+        r"Once per turn, the first time a saving throw is failed for "
+        r"(?:the bearer[’']s unit|a model in the bearer[’']s unit), change the Damage "
+        r"characteristic of that attack to (\d+)\.",
+        text,
+        re.IGNORECASE,
+    )
+    if failed_save:
+        return {
+            "name": name,
+            "description_text": text,
+            "effect_scope": "unit",
+            "effects": [
+                {
+                    "type": "first_failed_save_damage_replacement",
+                    "value": int(failed_save.group(1)),
+                    "uses": 1,
+                    "required_attack_keyword": None,
+                }
+            ],
+        }
+    return None
 
 
 def combat_weapon_scope(text: str) -> str:
@@ -2856,6 +2988,8 @@ def combat_presets(
 
 
 def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
+    connection.execute("DELETE FROM unit_defensive_equipment_effects")
+    connection.execute("DELETE FROM unit_defensive_equipment_options")
     connection.execute("DELETE FROM unit_combat_preset_effects")
     connection.execute("DELETE FROM unit_combat_presets")
     inserted = 0
@@ -2875,6 +3009,48 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
            FROM datasheet_abilities ORDER BY datasheet_id, position"""
     ).fetchall()
     for datasheet_id, ability_position, name, description in abilities:
+        equipment = None
+        if datasheet_id not in single_model_datasheets:
+            equipment = defensive_equipment_option(name, description)
+        if equipment:
+            guidance_rows = connection.execute(
+                """SELECT description_text FROM wargear_options
+                   WHERE datasheet_id = ? AND instr(lower(description_text), lower(?)) > 0
+                   ORDER BY position""",
+                (datasheet_id, name),
+            ).fetchall()
+            guidance = "\n".join(row[0] for row in guidance_rows) or None
+            connection.execute(
+                """INSERT INTO unit_defensive_equipment_options
+                   (datasheet_id, ability_position, name, description_text,
+                    effect_scope, guidance_text) VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    datasheet_id,
+                    ability_position,
+                    equipment["name"],
+                    equipment["description_text"],
+                    equipment["effect_scope"],
+                    guidance,
+                ),
+            )
+            connection.executemany(
+                """INSERT INTO unit_defensive_equipment_effects
+                   (datasheet_id, ability_position, effect_position, effect_type,
+                    value, uses, required_attack_keyword) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    (
+                        datasheet_id,
+                        ability_position,
+                        position,
+                        effect["type"],
+                        effect["value"],
+                        effect["uses"],
+                        effect["required_attack_keyword"],
+                    )
+                    for position, effect in enumerate(equipment["effects"], start=1)
+                ),
+            )
+            continue
         selected_target_classification = combat_selected_target_classification(
             name, description
         )
@@ -3221,7 +3397,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "50"),
+                    ("schema_version", "51"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

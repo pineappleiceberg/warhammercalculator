@@ -16,14 +16,20 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Extend bearer and subset-model defenses beyond composition-proven
-   single-model datasheets with per-target-segment equipment selection, so a
-   shield or crest never affects models that do not carry it.
-2. Represent embarked-model-count-scaled Attacks for Hunta Rig and Raider with
+1. Represent embarked-model-count-scaled Attacks for Hunta Rig and Raider with
    explicit transport contents and the Hunta Rig's published +6 cap, without
    treating every embarked model as a Wrack.
 
 ## Completed cycles
+
+- 2026-08-07: Added normalized defensive equipment for multi-model target
+  units. SQLite schema 51 classifies exact bearer- and unit-scoped Save,
+  invulnerable-save, Feel No Pain, and first-failed-save Damage replacement
+  equipment while preserving source descriptions and matching wargear
+  guidance. Unit vs Unit exposes the options on each ordered target segment;
+  bearer effects apply only to that segment, unit effects apply across all
+  segments, and keyword-limited defenses reject mixed-eligibility volleys.
+  Editable stats remain authoritative after selection.
 
 - 2026-08-07: Generalized exact count-scaled Attacks. SQLite schema 50 imports
   Brotherhood Champion and Judiciar bonuses per enemy Character model

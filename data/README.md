@@ -77,9 +77,10 @@ The main tables are:
   `requires_source_not_battle_shocked`. Compound alternatives remain
   situational rather than being inferred
 - exact bearer Save, invulnerable-save, Feel No Pain, and Damage-reduction
-  effects are imported as optional situational presets only when structured
-  composition proves that the datasheet contains exactly one model; bearer
-  defenses on multi-model datasheets remain omitted
+  effects are imported as optional situational presets when structured
+  composition proves that the datasheet contains exactly one model;
+  multi-model datasheets instead expose normalized bearer- or unit-scoped
+  defensive equipment for explicit per-target-segment selection
 - fixed Attacks replacements gated by a phase, selected target, or battlefield
   event are stored as named-weapon situational effects; compound Sustained Hits
   changes and mutually exclusive replacement/defense modes remain grouped with

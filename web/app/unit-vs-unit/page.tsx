@@ -46,6 +46,7 @@ import {
   loadCatalogue,
   type Catalogue,
   type CatalogueModel,
+  type CatalogueDefensiveEquipment,
   type CatalogueWeapon,
 } from "../../lib/catalogue";
 
@@ -54,6 +55,7 @@ type TargetSegment = OrderedTargetSegment & {
   modelId: number;
   name: string;
   keywords: string[];
+  defensiveEquipmentIds: string[];
 };
 type WeaponLine = {
   weapon: CatalogueWeapon;
@@ -68,6 +70,7 @@ function targetSegment(model: CatalogueModel, modelCount: number): TargetSegment
     modelId: model.id,
     name: model.name,
     keywords: model.keywords,
+    defensiveEquipmentIds: [],
     toughness: model.t ?? 8,
     save: model.save ?? 7,
     invulnerable: model.invuln ?? 0,
@@ -81,6 +84,47 @@ function targetSegment(model: CatalogueModel, modelCount: number): TargetSegment
     allocatedAttackDamageReplacementSkip: 0,
     modelCount,
   };
+}
+
+function applyDefensiveEquipment(
+  segments: TargetSegment[],
+  options: CatalogueDefensiveEquipment[],
+  attackKeywords: string[],
+) {
+  const selected = new Set(segments.flatMap((segment) => segment.defensiveEquipmentIds));
+  return segments.map((segment) => {
+    const result = { ...segment };
+    for (const option of options) {
+      if (
+        (option.scope === "unit" && !selected.has(option.id)) ||
+        (option.scope === "bearer" && !segment.defensiveEquipmentIds.includes(option.id))
+      )
+        continue;
+      for (const effect of option.effects) {
+        if (
+          effect.requiredAttackKeyword &&
+          !attackKeywords.some(
+            (keyword) => keyword.toLowerCase() === effect.requiredAttackKeyword?.toLowerCase(),
+          )
+        )
+          continue;
+        if (effect.type === "save_target") result.save = Math.min(result.save, effect.value);
+        if (effect.type === "invulnerable_save")
+          result.invulnerable = result.invulnerable
+            ? Math.min(result.invulnerable, effect.value)
+            : effect.value;
+        if (effect.type === "feel_no_pain")
+          result.feelNoPain = result.feelNoPain
+            ? Math.min(result.feelNoPain, effect.value)
+            : effect.value;
+        if (effect.type === "damage_reduction")
+          result.reduction = Math.max(result.reduction, effect.value);
+        if (effect.type === "first_failed_save_damage_replacement")
+          result.firstFailedSaveDamageReplacement = effect.value;
+      }
+    }
+    return result;
+  });
 }
 
 export default function UnitVsUnit() {
@@ -701,8 +745,28 @@ export default function UnitVsUnit() {
           .map((preset) => [preset.id, preset]),
       ).values(),
     ];
+    const equipmentCandidates = orderedLines.map((line) =>
+      applyDefensiveEquipment(
+        targetSegments,
+        targetUnit?.defensiveEquipment ?? [],
+        attackKeywordsForWeapon(line.weapon),
+      ),
+    );
+    const equipmentSignatures = equipmentCandidates.map((candidate) =>
+      JSON.stringify(
+        candidate.map((segment) => [
+          segment.save,
+          segment.invulnerable,
+          segment.feelNoPain,
+          segment.reduction,
+          segment.firstFailedSaveDamageReplacement,
+        ]),
+      ),
+    );
+    if (new Set(equipmentSignatures).size > 1)
+      throw new Error("Resolve weapons with different defensive equipment eligibility separately");
     return applyTargetCombatPresets(
-      targetSegments,
+      equipmentCandidates[0] ?? targetSegments,
       targetPresets,
       orderedLines.map((line) => ({
         weaponType: line.weapon.type,
@@ -1758,6 +1822,39 @@ export default function UnitVsUnit() {
                         </button>
                       </div>
                     </div>
+                    {targetUnit.defensiveEquipment.length > 0 && (
+                      <fieldset className="preset-options">
+                        <legend>Defensive equipment</legend>
+                        {targetUnit.defensiveEquipment.map((option) => (
+                          <label key={option.id} title={option.guidance ?? option.description}>
+                            <input
+                              type="checkbox"
+                              checked={segment.defensiveEquipmentIds.includes(option.id)}
+                              onChange={(event) =>
+                                setTargetSegments((current) =>
+                                  current.map((entry) =>
+                                    entry.id === segment.id
+                                      ? {
+                                          ...entry,
+                                          defensiveEquipmentIds: event.target.checked
+                                            ? [...entry.defensiveEquipmentIds, option.id]
+                                            : entry.defensiveEquipmentIds.filter(
+                                                (id) => id !== option.id,
+                                              ),
+                                        }
+                                      : entry,
+                                  ),
+                                )
+                              }
+                            />
+                            <span>
+                              {option.name} ({option.scope === "unit" ? "whole unit" : "bearer"})
+                              <small>{option.description}</small>
+                            </span>
+                          </label>
+                        ))}
+                      </fieldset>
+                    )}
                     <div className="stat-row target-stats">
                       {(
                         [

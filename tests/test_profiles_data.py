@@ -1564,7 +1564,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "50",
+                "51",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1783,10 +1783,7 @@ class ProfileDataTests(unittest.TestCase):
                                 effect.subject
                        ORDER BY preset.name"""
                 ).fetchall(),
-                [
-                    ("Channeller Stones", 0, "target", "led_unit", 2),
-                    ("Stimm-needler", 0, "target", "led_unit", 1),
-                ],
+                [],
             )
             self.assertEqual(
                 connection.execute(
@@ -1840,8 +1837,8 @@ class ProfileDataTests(unittest.TestCase):
                 [
                     ("damage_divisor", 4),
                     ("damage_reduction", 32),
-                    ("feel_no_pain", 41),
-                    ("invulnerable_save", 140),
+                    ("feel_no_pain", 36),
+                    ("invulnerable_save", 137),
                     ("save_target", 3),
                 ],
             )
@@ -1849,14 +1846,14 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 1118), ("inherent", 32), ("situational", 844)],
+                [("automatic", 1118), ("inherent", 32), ("situational", 833)],
             )
             self.assertEqual(
                 connection.execute(
                     "SELECT weapon_scope, count(*) FROM unit_combat_presets "
                     "GROUP BY weapon_scope ORDER BY weapon_scope"
                 ).fetchall(),
-                [("Any", 1201), ("Melee", 403), ("Ranged", 390)],
+                [("Any", 1190), ("Melee", 403), ("Ranged", 390)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1961,6 +1958,21 @@ class ProfileDataTests(unittest.TestCase):
                        WHERE requires_attacker_charge = 1 AND activation != 'automatic'"""
                 ).fetchone()[0],
                 0,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT unit_defensive_equipment_options.effect_scope,
+                              unit_defensive_equipment_effects.effect_type,
+                              unit_defensive_equipment_effects.value
+                       FROM unit_defensive_equipment_options
+                       JOIN unit_defensive_equipment_effects USING
+                           (datasheet_id, ability_position)
+                       JOIN datasheets ON datasheets.id =
+                           unit_defensive_equipment_options.datasheet_id
+                       WHERE datasheets.name = 'Lychguard'
+                         AND unit_defensive_equipment_options.name = 'Dispersion Shield'"""
+                ).fetchone(),
+                ("bearer", "invulnerable_save", 4),
             )
             visible_target_rows = connection.execute(
                 """SELECT datasheet.name, preset.name,
@@ -2150,7 +2162,7 @@ class ProfileDataTests(unittest.TestCase):
                        GROUP BY source_relationship ORDER BY source_relationship"""
                 ).fetchall(),
                 [
-                    ("self", 1957),
+                    ("self", 1946),
                     ("self_or_supporting_unit", 18),
                     ("supporting_unit", 19),
                 ],
@@ -2488,7 +2500,6 @@ class ProfileDataTests(unittest.TestCase):
                     ("automatic", 2, "self", 1),
                     ("automatic", 4, "led_unit", 12),
                     ("situational", 3, "self", 1),
-                    ("situational", 4, "led_unit", 2),
                 ],
             )
             self.assertEqual(

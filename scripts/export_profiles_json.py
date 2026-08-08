@@ -112,6 +112,7 @@ def export(database: Path, output: Path) -> None:
                 "weaponLimits": [],
                 "wargearChoicePools": [],
                 "combatPresets": [],
+                "defensiveEquipment": [],
                 "suggestedModelCount": None,
                 "maximumModelCount": None,
             }
@@ -452,6 +453,43 @@ def export(database: Path, output: Path) -> None:
                     ),
                     "role": row["application_role"],
                     "subject": row["subject"],
+                }
+            )
+
+        equipment_lookup: dict[tuple[str, int], dict] = {}
+        for row in connection.execute(
+            """SELECT datasheet_id, ability_position, name, description_text,
+                      effect_scope, guidance_text
+               FROM unit_defensive_equipment_options
+               ORDER BY datasheet_id, ability_position"""
+        ):
+            option = {
+                "id": f"{row['datasheet_id']}:defensive-equipment:{row['ability_position']}",
+                "name": row["name"],
+                "description": row["description_text"],
+                "scope": row["effect_scope"],
+                **({"guidance": row["guidance_text"]} if row["guidance_text"] else {}),
+                "effects": [],
+            }
+            units[row["datasheet_id"]]["defensiveEquipment"].append(option)
+            equipment_lookup[(row["datasheet_id"], row["ability_position"])] = option
+
+        for row in connection.execute(
+            """SELECT datasheet_id, ability_position, effect_type, value, uses,
+                      required_attack_keyword
+               FROM unit_defensive_equipment_effects
+               ORDER BY datasheet_id, ability_position, effect_position"""
+        ):
+            equipment_lookup[(row["datasheet_id"], row["ability_position"])]["effects"].append(
+                {
+                    "type": row["effect_type"],
+                    "value": row["value"],
+                    **({"uses": row["uses"]} if row["uses"] else {}),
+                    **(
+                        {"requiredAttackKeyword": row["required_attack_keyword"]}
+                        if row["required_attack_keyword"]
+                        else {}
+                    ),
                 }
             )
 

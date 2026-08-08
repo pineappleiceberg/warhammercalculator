@@ -202,6 +202,24 @@ export type CatalogueCombatPresetEffect = {
   requiredTargetKeyword?: string;
   requiredAttackKeyword?: string;
 };
+export type CatalogueDefensiveEquipment = {
+  id: string;
+  name: string;
+  description: string;
+  scope: "bearer" | "unit";
+  guidance?: string;
+  effects: Array<{
+    type:
+      | "save_target"
+      | "invulnerable_save"
+      | "feel_no_pain"
+      | "damage_reduction"
+      | "first_failed_save_damage_replacement";
+    value: number;
+    uses?: number;
+    requiredAttackKeyword?: string;
+  }>;
+};
 export type CatalogueUnit = {
   id: string;
   factionId: string;
@@ -217,6 +235,7 @@ export type CatalogueUnit = {
   weaponLimits: CatalogueWeaponLimit[];
   wargearChoicePools: CatalogueWargearChoicePool[];
   combatPresets: CatalogueCombatPreset[];
+  defensiveEquipment: CatalogueDefensiveEquipment[];
   suggestedModelCount: number | null;
   maximumModelCount: number | null;
 };
