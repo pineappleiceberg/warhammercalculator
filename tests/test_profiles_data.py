@@ -113,6 +113,25 @@ class ProfileDataTests(unittest.TestCase):
                 "forbiddenAttachedKeyword": "tacticus",
             },
         )
+        mixed = parse_transport_rule(
+            "This model has a transport capacity of 12 Adeptus Astartes Infantry models and "
+            "1 Dreadnought model. Each Terminator model takes up the space of 2 models.",
+            {
+                normalized_term(value)
+                for value in (
+                    "Adeptus Astartes",
+                    "Infantry",
+                    "Dreadnought",
+                    "Terminator",
+                )
+            },
+        )
+        self.assertTrue(mixed["exact"])
+        self.assertEqual(mixed["allowed"], [["adeptus astartes", "infantry"]])
+        self.assertEqual(
+            mixed["additionalPools"],
+            [{"capacity": 1, "allowed": [["dreadnought"]]}],
+        )
 
     def test_combat_guidance_classifies_exact_non_self_support_auras(self):
         taskmaster = combat_guidance_presets(
@@ -1735,7 +1754,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "55",
+                "56",
             )
             self.assertEqual(
                 connection.execute("SELECT count(*) FROM unit_firing_deck").fetchone()[
@@ -1755,9 +1774,21 @@ class ProfileDataTests(unittest.TestCase):
             )
             self.assertEqual(
                 connection.execute(
+                    "SELECT count(*) FROM unit_transport_additional_pools"
+                ).fetchone()[0],
+                9,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM unit_transport_additional_pool_keywords"
+                ).fetchone()[0],
+                12,
+            )
+            self.assertEqual(
+                connection.execute(
                     "SELECT count(*) FROM unit_transport WHERE exact_rules = 1"
                 ).fetchone()[0],
-                146,
+                155,
             )
             self.assertEqual(
                 connection.execute(
@@ -1812,6 +1843,17 @@ class ProfileDataTests(unittest.TestCase):
                          AND keywords.keyword = 'tacticus'"""
                 ).fetchone(),
                 (1, "character", "tacticus"),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT pools.capacity, group_concat(keywords.keyword, '|')
+                       FROM unit_transport_additional_pools AS pools
+                       JOIN unit_transport_additional_pool_keywords AS keywords
+                         USING (datasheet_id, pool_position)
+                       WHERE pools.datasheet_id = '000001191'
+                       GROUP BY pools.datasheet_id, pools.pool_position, pools.capacity"""
+                ).fetchone(),
+                (1, "dreadnought"),
             )
             self.assertEqual(
                 connection.execute(
@@ -3052,6 +3094,20 @@ class ProfileDataTests(unittest.TestCase):
                 "Forward Observers": None,
                 "High-intensity Markerlights": None,
             },
+        )
+        stormraven = next(
+            unit for unit in catalogue["units"] if unit["id"] == "000001191"
+        )
+        self.assertTrue(stormraven["transport"]["exactRules"])
+        self.assertEqual(
+            stormraven["transport"]["additionalPools"],
+            [
+                {
+                    "position": 1,
+                    "capacity": 1,
+                    "allowedKeywords": [["dreadnought"]],
+                }
+            ],
         )
         taskmaster = next(
             preset

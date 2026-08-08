@@ -30,6 +30,7 @@ def keyword_partition(value: str, vocabulary: set[str]) -> tuple[str, ...] | Non
         "grotesque": "grotesques",
         "hernkyn yaegir": "hernkyn yaegirs",
         "inquisitorial agent": "inquisitorial agents",
+        "necron warrior": "necron warriors",
         "obliterator": "obliterators",
         "possessed": "possessed",
         "veteran heavy weapons team": "veteran heavy weapons team",
@@ -89,6 +90,7 @@ def parse_transport_rule(source: str, vocabulary: set[str]) -> dict:
         "allowed": [],
         "excluded": [],
         "costs": [],
+        "additionalPools": [],
         "capacityModifiers": [],
         "exact": True,
     }
@@ -102,6 +104,21 @@ def parse_transport_rule(source: str, vocabulary: set[str]) -> dict:
         return result
     result["capacity"] = int(match.group(1))
     allowed_text = match.group(2).strip()
+    additional_pool = re.fullmatch(
+        r"(.+?) models? and (\d+) (.+?) models?", allowed_text, re.IGNORECASE
+    )
+    if additional_pool:
+        allowed_text = additional_pool.group(1).strip()
+        additional_allowed = groups_from_phrase(additional_pool.group(3), vocabulary)
+        if additional_allowed is None:
+            result["exact"] = False
+        else:
+            result["additionalPools"].append(
+                {
+                    "capacity": int(additional_pool.group(2)),
+                    "allowed": [list(group) for group in additional_allowed],
+                }
+            )
     parenthetical = re.search(r"\(excluding (.+?)\)", allowed_text, re.IGNORECASE)
     if parenthetical:
         excluded = groups_from_phrase(parenthetical.group(1), vocabulary)

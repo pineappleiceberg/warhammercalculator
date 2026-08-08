@@ -16,16 +16,30 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Normalize the remaining compound Transport clauses: mixed Infantry/Vehicle
-   capacity pools, nested transported Vehicles, variable Wounds-based Vehicle
-   space, and per-model costs in mixed-composition units. Add explicit
-   model-composition formation state where exact evaluation requires it, and
-   normalize Leader eligibility so declared attachment links can be audited.
+1. Normalize the remaining compound Transport clauses: alternative
+   Infantry/Monster or Walker modes, reduced primary capacity while carrying a
+   Vehicle, nested transported Vehicles, variable Wounds-based Vehicle space,
+   and per-model costs in mixed-composition units. Add explicit model-composition
+   formation state where exact evaluation requires it, and normalize Leader
+   eligibility so declared attachment links can be audited.
 2. Extend normalized defensive-equipment selection to Model vs Model and Play
    Mode while preserving model-by-model allocation and preventing bearer-only
    gear from becoming a homogeneous unit-wide defense.
 
 ## Completed cycles
+
+- 2026-08-08: Added exact independent Transport capacity pools. SQLite schema
+  56 normalizes nine published “primary models and N additional models” clauses
+  across five Storm Eagles, two Stormravens, the Ghost Ark, and the Harridan,
+  increasing exact Transport coverage from 146 to 155 of 178 datasheets. Saved
+  passengers are assigned to their matching keyword pool, each pool enforces
+  its own capacity, and total display usage no longer causes a Dreadnought or
+  Character allowance to consume Infantry capacity. Army Lists identifies the
+  matched pool, while catalogue data and the Transport API expose every pool and
+  its required keywords. Exact parser, schema/catalogue snapshots, primary and
+  additional passenger eligibility, full-primary-plus-additional boundaries,
+  additional-pool overflow, Ghost Ark multi-keyword allocation, and API fit
+  tests cover the change.
 
 - 2026-08-08: Added exact attached-Tacticus Transport exceptions. SQLite schema
   55 normalizes the published Character/non-Tacticus attachment condition for

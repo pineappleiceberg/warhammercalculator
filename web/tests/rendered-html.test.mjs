@@ -244,6 +244,15 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     passenger: { id: boyz.id, name: "Boyz" },
     attached: null,
     capacity: 12,
+    pool: { position: 0, label: "primary", capacity: 12 },
+    pools: [
+      {
+        position: 0,
+        label: "primary",
+        capacity: 12,
+        allowedKeywords: [["orks", "infantry"]],
+      },
+    ],
     eligible: true,
     reason: "",
     modelCost: 1,
@@ -351,6 +360,24 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     context,
   );
   assert.equal((await unattachedTransport.json()).data.eligible, false);
+  const stormraven = catalogue.units.find((unit) => unit.id === "000001191");
+  const dreadnought = catalogue.units.find((unit) => unit.id === "000000117");
+  const additionalPool = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/transport?unit=${stormraven.id}&passenger=${dreadnought.id}&models=2`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.equal(additionalPool.status, 200);
+  const additionalPoolBody = await additionalPool.json();
+  assert.equal(additionalPoolBody.data.capacity, 1);
+  assert.deepEqual(additionalPoolBody.data.pool, {
+    position: 1,
+    label: "dreadnought",
+    capacity: 1,
+  });
+  assert.equal(additionalPoolBody.data.fits, false);
   const warboss = catalogue.units.find((unit) => unit.name === "Warboss");
   const mightIsRight = warboss.combatPresets.find((preset) => preset.name === "Might is Right");
   assert.equal(mightIsRight.hitModifierRole, "attacker");

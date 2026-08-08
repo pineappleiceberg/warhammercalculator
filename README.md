@@ -231,7 +231,9 @@ the attacking saved list only after that saved unit has been assigned to the
 specific transport in Army Lists. Published Transport faction/unit keywords,
 explicit exclusions, Wounds thresholds, fixed per-model space costs, aggregate
 capacity, and equipped killkannon/kannon/supa-kannon capacity changes are
-validated. Army Lists also preserves which bodyguard unit a Character began the
+validated. Independent capacity pools are tracked separately for Storm Eagles,
+Stormravens, the Ghost Ark, and the Harridan, so a Dreadnought or Character slot
+does not consume the Infantry or named-unit allowance. Army Lists also preserves which bodyguard unit a Character began the
 battle attached to. Tacticus Characters can use the published Rhino, Razorback,
 and Terrax exception only when linked to a non-Tacticus unit, and both saved
 units must embark in the same transport. Conditional clauses that are not fully
@@ -663,7 +665,8 @@ cache so a recovered dependency can be retried without restarting the service.
 that legally compatible passenger's eligible ranged weapons and slot cost.
 `GET /api/v1/transport?unit={transportId}&passenger={passengerId}&attached={attachedUnitId}&models={count}`
 returns the exact source clause, eligibility, per-model cost, total spaces, and
-whether the selection fits. `attached` is optional except when a published
+whether the selection fits in its matched independent pool; the response lists
+every pool and its required keywords. `attached` is optional except when a published
 attachment exception is required. `POST
 /api/v1/validate-firing-deck` validates one or more explicit passenger/model/
 weapon selections, the aggregate Firing Deck limit, phase eligibility, and

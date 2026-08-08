@@ -5,6 +5,7 @@ import { resolveFiringDeckSelection } from "../lib/firing-deck.mjs";
 import {
   transportAssignmentReport,
   transportCapacity,
+  transportCapacityPools,
   transportPassengerEligibility,
 } from "../lib/transport.mjs";
 
@@ -29,6 +30,9 @@ test("published Transport keywords and model-space costs gate passengers exactly
     eligible: true,
     reason: "",
     modelCost: 1,
+    poolPosition: 0,
+    poolCapacity: 12,
+    poolLabel: "primary",
   });
   assert.equal(transportPassengerEligibility(trukk, meganobz).modelCost, 2);
   const meganobWeapon = meganobz.weapons.find((weapon) => weapon.type === "Ranged");
@@ -128,6 +132,78 @@ test("equipped capacity modifiers and circular assignments are deterministic", (
     ],
   });
   assert.ok(report.errors.every((error) => /circular/i.test(error)));
+});
+
+test("independent Transport pools do not consume each other's capacity", () => {
+  const stormraven = unit("Stormraven Gunship", "000001191");
+  const tacticalSquad = unit("Tactical Squad", "000000070");
+  const dreadnought = unit("Dreadnought", "000000117");
+  assert.deepEqual(transportCapacityPools(stormraven), [
+    {
+      position: 0,
+      capacity: 12,
+      allowedKeywords: [["adeptus astartes", "infantry"]],
+      label: "primary",
+    },
+    {
+      position: 1,
+      capacity: 1,
+      allowedKeywords: [["dreadnought"]],
+      label: "dreadnought",
+    },
+  ]);
+  assert.equal(transportPassengerEligibility(stormraven, tacticalSquad).poolPosition, 0);
+  assert.equal(transportPassengerEligibility(stormraven, dreadnought).poolPosition, 1);
+
+  const army = {
+    units: [
+      {
+        id: "stormraven",
+        unitId: stormraven.id,
+        name: stormraven.name,
+        modelCount: 1,
+        weapons: [],
+      },
+      {
+        id: "tactical",
+        unitId: tacticalSquad.id,
+        name: tacticalSquad.name,
+        modelCount: 12,
+        weapons: [],
+        transportId: "stormraven",
+      },
+      {
+        id: "dreadnought",
+        unitId: dreadnought.id,
+        name: dreadnought.name,
+        modelCount: 1,
+        weapons: [],
+        transportId: "stormraven",
+      },
+    ],
+  };
+  const legal = transportAssignmentReport(catalogue, army);
+  assert.deepEqual(legal.errors, []);
+  assert.equal(legal.slotsByTransport.get("stormraven"), 13);
+  assert.equal(legal.poolSlotsByTransport.get("stormraven:0"), 12);
+  assert.equal(legal.poolSlotsByTransport.get("stormraven:1"), 1);
+
+  const tooManyDreadnoughts = transportAssignmentReport(catalogue, {
+    ...army,
+    units: army.units.map((entry) =>
+      entry.id === "dreadnought" ? { ...entry, modelCount: 2 } : entry,
+    ),
+  });
+  assert.match(tooManyDreadnoughts.errors[0], /uses 2 of 1.*dreadnought pool/i);
+  assert.deepEqual(tooManyDreadnoughts.assignments, []);
+
+  const ghostArk = unit("Ghost Ark", "000000543");
+  const warriors = unit("Necron Warriors", "000000534");
+  const overlord = unit("Overlord", "000000523");
+  assert.equal(transportPassengerEligibility(ghostArk, warriors).poolPosition, 0);
+  const characterPool = transportPassengerEligibility(ghostArk, overlord);
+  assert.equal(characterPool.poolPosition, 1);
+  assert.equal(characterPool.poolCapacity, 1);
 });
 
 test("Tacticus Characters use the published non-Tacticus attachment exception", () => {

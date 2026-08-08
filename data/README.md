@@ -25,7 +25,9 @@ The main tables are:
   non-Character exclusions, fixed space costs, and equipped-wargear capacity
   changes. Exclusion rows can additionally require a Character passenger to be
   attached to a unit without a named keyword, preserving the exact Tacticus
-  exception instead of weakening the exclusion globally
+  exception instead of weakening the exclusion globally.
+  `unit_transport_additional_pools` and its keyword child table preserve
+  independent passenger allowances such as “12 Infantry and 1 Dreadnought”
 - `unit_combat_presets` and `unit_combat_preset_effects` for conservatively
   extracted Hit/Wound modifiers, re-roll modes, weapon-keyword grants, AP
   changes, Critical Hit/Wound thresholds, direct signed Attacks, Strength, and

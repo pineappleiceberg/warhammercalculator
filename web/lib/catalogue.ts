@@ -245,6 +245,11 @@ export type CatalogueUnit = {
     exactRules: boolean;
     source: string;
     allowedKeywords: string[][];
+    additionalPools: Array<{
+      position: number;
+      capacity: number;
+      allowedKeywords: string[][];
+    }>;
     excluded: Array<{
       keywords: string[];
       minimumWounds: number | null;

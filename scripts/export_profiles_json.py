@@ -192,6 +192,44 @@ def export(database: Path, output: Path) -> None:
             transport_allowed.setdefault(
                 (row["datasheet_id"], row["group_position"]), []
             ).append(row["keyword"])
+        additional_pool_keywords: dict[tuple[str, int, int], list[str]] = {}
+        for row in connection.execute(
+            """SELECT datasheet_id, pool_position, group_position, keyword
+               FROM unit_transport_additional_pool_keywords
+               ORDER BY datasheet_id, pool_position, group_position, keyword_position"""
+        ):
+            additional_pool_keywords.setdefault(
+                (
+                    row["datasheet_id"],
+                    row["pool_position"],
+                    row["group_position"],
+                ),
+                [],
+            ).append(row["keyword"])
+        additional_pools: dict[str, list[dict]] = {}
+        for row in connection.execute(
+            """SELECT datasheet_id, pool_position, capacity
+               FROM unit_transport_additional_pools
+               ORDER BY datasheet_id, pool_position"""
+        ):
+            datasheet_id = row["datasheet_id"]
+            pool_position = row["pool_position"]
+            allowed_groups = [
+                keywords
+                for (
+                    candidate_id,
+                    candidate_pool,
+                    _,
+                ), keywords in additional_pool_keywords.items()
+                if candidate_id == datasheet_id and candidate_pool == pool_position
+            ]
+            additional_pools.setdefault(datasheet_id, []).append(
+                {
+                    "position": pool_position,
+                    "capacity": row["capacity"],
+                    "allowedKeywords": allowed_groups,
+                }
+            )
         transport_excluded: dict[tuple[str, int], list[str]] = {}
         for row in connection.execute(
             """SELECT datasheet_id, group_position, keyword
@@ -278,6 +316,7 @@ def export(database: Path, output: Path) -> None:
                 "exactRules": bool(row["exact_rules"]),
                 "source": row["source_text"],
                 "allowedKeywords": allowed_groups,
+                "additionalPools": additional_pools.get(datasheet_id, []),
                 "excluded": exclusions.get(datasheet_id, []),
                 "modelCosts": model_costs.get(datasheet_id, []),
                 "capacityModifiers": modifiers.get(datasheet_id, []),

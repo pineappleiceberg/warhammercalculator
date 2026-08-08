@@ -40,6 +40,22 @@ export function transportCapacity(transport, armyUnit) {
   );
 }
 
+export function transportCapacityPools(transport, armyUnit) {
+  if (!transport?.transport) return [];
+  return [
+    {
+      position: 0,
+      capacity: transportCapacity(transport, armyUnit),
+      allowedKeywords: transport.transport.allowedKeywords,
+      label: "primary",
+    },
+    ...(transport.transport.additionalPools ?? []).map((pool) => ({
+      ...pool,
+      label: pool.allowedKeywords.map((group) => group.join(" + ")).join(" or "),
+    })),
+  ];
+}
+
 export function transportPassengerEligibility(transport, passenger, context = {}) {
   if (!transport?.transport) {
     return { eligible: false, reason: `${transport?.name ?? "Selected unit"} is not a Transport` };
@@ -61,8 +77,12 @@ export function transportPassengerEligibility(transport, passenger, context = {}
     return { eligible: false, reason: "A Transport cannot embark itself" };
   }
   const keywords = keywordSet(passenger);
-  const allowed = transport.transport.allowedKeywords;
-  if (allowed.length > 0 && !allowed.some((group) => matchesKeywords(keywords, group))) {
+  const matchingPool = transportCapacityPools(transport).find(
+    (pool) =>
+      pool.allowedKeywords.length === 0 ||
+      pool.allowedKeywords.some((group) => matchesKeywords(keywords, group)),
+  );
+  if (!matchingPool) {
     return {
       eligible: false,
       reason: `${passenger.name} does not have the required Transport keywords`,
@@ -99,7 +119,14 @@ export function transportPassengerEligibility(transport, passenger, context = {}
       )
       .map((rule) => Number(rule.cost) || 1),
   );
-  return { eligible: true, reason: "", modelCost };
+  return {
+    eligible: true,
+    reason: "",
+    modelCost,
+    poolPosition: matchingPool.position,
+    poolCapacity: matchingPool.capacity,
+    poolLabel: matchingPool.label,
+  };
 }
 
 export function transportPassengerAttachmentOptions(catalogue, transport, passenger) {
@@ -125,6 +152,7 @@ export function transportAssignmentReport(catalogue, armyList) {
   const assignments = [];
   const errors = [];
   const slotsByTransport = new Map();
+  const poolSlotsByTransport = new Map();
   const invalidFormationUnits = new Set();
   for (const unit of armyList?.units ?? []) {
     if (!unit.attachedToId) continue;
@@ -202,10 +230,15 @@ export function transportAssignmentReport(catalogue, armyList) {
       transportUnit,
       transport,
       modelCost: eligibility.modelCost,
+      poolPosition: eligibility.poolPosition,
+      poolCapacity: eligibility.poolCapacity,
+      poolLabel: eligibility.poolLabel,
       slots,
     };
     assignments.push(assignment);
     slotsByTransport.set(transportUnit.id, (slotsByTransport.get(transportUnit.id) ?? 0) + slots);
+    const poolKey = `${transportUnit.id}:${eligibility.poolPosition}`;
+    poolSlotsByTransport.set(poolKey, (poolSlotsByTransport.get(poolKey) ?? 0) + slots);
   }
   const incompleteAttachments = new Set();
   const assignedUnitIds = new Set(assignments.map((assignment) => assignment.passengerUnit.id));
@@ -221,21 +254,27 @@ export function transportAssignmentReport(catalogue, armyList) {
     (assignment) => !incompleteAttachments.has(assignment.passengerUnit.id),
   );
   slotsByTransport.clear();
+  poolSlotsByTransport.clear();
   for (const assignment of completeAssignments) {
     slotsByTransport.set(
       assignment.transportUnit.id,
       (slotsByTransport.get(assignment.transportUnit.id) ?? 0) + assignment.slots,
     );
+    const poolKey = `${assignment.transportUnit.id}:${assignment.poolPosition}`;
+    poolSlotsByTransport.set(poolKey, (poolSlotsByTransport.get(poolKey) ?? 0) + assignment.slots);
   }
   const overCapacity = new Set();
   for (const transportUnit of armyList?.units ?? []) {
     const transport = catalogueUnits.get(transportUnit.unitId);
     if (!transport?.transport) continue;
-    const used = slotsByTransport.get(transportUnit.id) ?? 0;
-    const capacity = transportCapacity(transport, transportUnit);
-    if (used > capacity) {
-      errors.push(`${transportUnit.name} uses ${used} of ${capacity} Transport spaces`);
-      overCapacity.add(transportUnit.id);
+    for (const pool of transportCapacityPools(transport, transportUnit)) {
+      const used = poolSlotsByTransport.get(`${transportUnit.id}:${pool.position}`) ?? 0;
+      if (used > pool.capacity) {
+        errors.push(
+          `${transportUnit.name} uses ${used} of ${pool.capacity} Transport spaces in its ${pool.label} pool`,
+        );
+        overCapacity.add(transportUnit.id);
+      }
     }
   }
   return {
@@ -244,5 +283,6 @@ export function transportAssignmentReport(catalogue, armyList) {
     ),
     errors,
     slotsByTransport,
+    poolSlotsByTransport,
   };
 }

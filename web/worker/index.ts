@@ -35,7 +35,7 @@ import {
 } from "../lib/loadout.mjs";
 import type { CatalogueCombatPreset } from "../lib/catalogue";
 import { resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
-import { transportPassengerEligibility } from "../lib/transport.mjs";
+import { transportCapacityPools, transportPassengerEligibility } from "../lib/transport.mjs";
 
 interface Env {
   ASSETS: Fetcher;
@@ -999,15 +999,26 @@ async function handleApi(request: Request, env: Env) {
           transport: { id: transport.id, name: transport.name },
           passenger: { id: passenger.id, name: passenger.name },
           attached: attached ? { id: attached.id, name: attached.name } : null,
-          capacity: transport.transport?.capacity ?? 0,
+          capacity: eligibility.poolCapacity ?? transport.transport?.capacity ?? 0,
+          pool: eligibility.eligible
+            ? {
+                position: eligibility.poolPosition,
+                label: eligibility.poolLabel,
+                capacity: eligibility.poolCapacity,
+              }
+            : null,
+          pools: transportCapacityPools(transport).map((pool) => ({
+            position: pool.position,
+            label: pool.label,
+            capacity: pool.capacity,
+            allowedKeywords: pool.allowedKeywords,
+          })),
           eligible: eligibility.eligible,
           reason: eligibility.reason,
           modelCost: eligibility.modelCost ?? null,
           models,
           slots: eligibility.eligible ? models * eligibility.modelCost : null,
-          fits:
-            eligibility.eligible &&
-            models * eligibility.modelCost <= (transport.transport?.capacity ?? 0),
+          fits: eligibility.eligible && models * eligibility.modelCost <= eligibility.poolCapacity,
           source: transport.transport?.source ?? null,
         },
         sourceUpdatedAt: catalogue.sourceUpdatedAt,
