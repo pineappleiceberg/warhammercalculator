@@ -33,6 +33,7 @@ def keyword_partition(value: str, vocabulary: set[str]) -> tuple[str, ...] | Non
         "necron warrior": "necron warriors",
         "obliterator": "obliterators",
         "possessed": "possessed",
+        "visarch": "the visarch",
         "veteran heavy weapons team": "veteran heavy weapons team",
     }
     if value in aliases and (
@@ -173,6 +174,7 @@ def parse_transport_rule(source: str, vocabulary: set[str]) -> dict:
             )
             continue
         attachment_exception = None
+        keyword_exceptions = None
         exception = re.search(
             r"\((?:excluding|except for)\s+TACTICUS CHARACTER models that "
             r"(?:began|begin) the battle attached to a non-\s*TACTICUS unit\)",
@@ -185,11 +187,24 @@ def parse_transport_rule(source: str, vocabulary: set[str]) -> dict:
                 "requiredPassengerKeyword": "character",
                 "forbiddenAttachedKeyword": "tacticus",
             }
+        else:
+            exception = re.search(
+                r"\(excluding\s+(.+?)\)$",
+                phrase,
+                re.IGNORECASE,
+            )
+            if exception:
+                phrase = (
+                    phrase[: exception.start()] + phrase[exception.end() :]
+                ).strip()
+                keyword_exceptions = groups_from_phrase(exception.group(1), vocabulary)
+                if keyword_exceptions is None:
+                    result["exact"] = False
         groups = groups_from_phrase(phrase, vocabulary)
         if groups is None:
             result["exact"] = False
         else:
-            for group in groups:
+            for group_position, group in enumerate(groups):
                 result["excluded"].append(
                     {
                         "keywords": list(group),
@@ -197,6 +212,15 @@ def parse_transport_rule(source: str, vocabulary: set[str]) -> dict:
                         "nonCharacter": False,
                         "attachmentException": (
                             attachment_exception if group == ("tacticus",) else None
+                        ),
+                        "keywordExceptions": (
+                            [
+                                list(exception_group)
+                                for exception_group in keyword_exceptions
+                            ]
+                            if keyword_exceptions is not None
+                            and group_position == len(groups) - 1
+                            else []
                         ),
                     }
                 )

@@ -24,8 +24,9 @@ The main tables are:
   capacity child tables retain normalized OR/AND groups, Wounds thresholds,
   non-Character exclusions, fixed space costs, and equipped-wargear capacity
   changes. Exclusion rows can additionally require a Character passenger to be
-  attached to a unit without a named keyword, preserving the exact Tacticus
-  exception instead of weakening the exclusion globally.
+  attached to a unit without a named keyword, or contain explicit passenger-
+  keyword exceptions. This preserves the exact Tacticus and Aeldari/Ynnari
+  exceptions instead of weakening their exclusions globally.
   `unit_transport_additional_pools` and its keyword child table preserve
   independent passenger allowances such as “12 Infantry and 1 Dreadnought”
 - `unit_combat_presets` and `unit_combat_preset_effects` for conservatively

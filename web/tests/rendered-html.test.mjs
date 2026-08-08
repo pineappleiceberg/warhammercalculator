@@ -378,6 +378,25 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     capacity: 1,
   });
   assert.equal(additionalPoolBody.data.fits, false);
+  const waveSerpent = catalogue.units.find((unit) => unit.id === "000000599");
+  const yvraine = catalogue.units.find((unit) => unit.id === "000002542");
+  const ynnariKabalites = catalogue.units.find((unit) => unit.id === "000003916");
+  const yvraineTransport = await worker.fetch(
+    new Request(`http://localhost/api/v1/transport?unit=${waveSerpent.id}&passenger=${yvraine.id}`),
+    testEnv,
+    context,
+  );
+  assert.equal(yvraineTransport.status, 200);
+  assert.equal((await yvraineTransport.json()).data.eligible, true);
+  const kabaliteTransport = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/transport?unit=${waveSerpent.id}&passenger=${ynnariKabalites.id}`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.equal(kabaliteTransport.status, 200);
+  assert.equal((await kabaliteTransport.json()).data.eligible, false);
   const warboss = catalogue.units.find((unit) => unit.name === "Warboss");
   const mightIsRight = warboss.combatPresets.find((preset) => preset.name === "Might is Right");
   assert.equal(mightIsRight.hitModifierRole, "attacker");

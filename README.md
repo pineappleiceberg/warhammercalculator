@@ -231,7 +231,10 @@ the attacking saved list only after that saved unit has been assigned to the
 specific transport in Army Lists. Published Transport faction/unit keywords,
 explicit exclusions, Wounds thresholds, fixed per-model space costs, aggregate
 capacity, and equipped killkannon/kannon/supa-kannon capacity changes are
-validated. Independent capacity pools are tracked separately for Storm Eagles,
+validated. The Falcon, Firestorm, Vampire Raider, and Wave Serpent apply their
+published Ynnari exclusions without rejecting the named Yvraine, Visarch, and
+Asuryani exceptions; Jump Pack exclusions remain independent. Independent
+capacity pools are tracked separately for Storm Eagles,
 Stormravens, the Ghost Ark, and the Harridan, so a Dreadnought or Character slot
 does not consume the Infantry or named-unit allowance. Army Lists also preserves which bodyguard unit a Character began the
 battle attached to. Tacticus Characters can use the published Rhino, Razorback,

@@ -16,7 +16,7 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Normalize the remaining compound Transport clauses: alternative
+1. Normalize the remaining 19 compound Transport clauses: alternative
    Infantry/Monster or Walker modes, reduced primary capacity while carrying a
    Vehicle, nested transported Vehicles, variable Wounds-based Vehicle space,
    and per-model costs in mixed-composition units. Add explicit model-composition
@@ -27,6 +27,16 @@ priority over feature count.
    gear from becoming a homogeneous unit-wide defense.
 
 ## Completed cycles
+
+- 2026-08-08: Added exact passenger-keyword exceptions to Transport exclusions.
+  SQLite schema 57 normalizes the published Ynnari exceptions for the Falcon,
+  Firestorm, Vampire Raider, and Wave Serpent, increasing exact Transport
+  coverage from 155 to 159 of 178 datasheets. Yvraine and the Visarch can now
+  embark while other Ynnari passengers remain excluded; the separate Jump Pack
+  exclusion is never weakened by those exceptions. Parser, database, catalogue,
+  allocation, and Transport API
+  regressions cover allowed named Characters, a rejected Ynnari unit, and a
+  rejected Asuryani Jump Pack unit.
 
 - 2026-08-08: Added exact independent Transport capacity pools. SQLite schema
   56 normalizes nine published “primary models and N additional models” clauses

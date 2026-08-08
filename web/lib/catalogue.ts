@@ -258,6 +258,7 @@ export type CatalogueUnit = {
         requiredPassengerKeyword: string;
         forbiddenAttachedKeyword: string;
       } | null;
+      keywordExceptions: string[][];
     }>;
     modelCosts: Array<{ keywords: string[]; minimumWounds: number | null; cost: number }>;
     capacityModifiers: Array<{ equipment: string; capacity: number }>;

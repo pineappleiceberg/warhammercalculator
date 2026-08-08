@@ -132,6 +132,49 @@ class ProfileDataTests(unittest.TestCase):
             mixed["additionalPools"],
             [{"capacity": 1, "allowed": [["dreadnought"]]}],
         )
+        aeldari = parse_transport_rule(
+            "This model has a transport capacity of 12 Aeldari Infantry models. "
+            "Each Wraith Construct model takes the space of 2 models. "
+            "It cannot transport Jump Pack models or Ynnari models "
+            "(excluding Asuryani, Yvraine and The Visarch models).",
+            {
+                normalized_term(value)
+                for value in (
+                    "Aeldari",
+                    "Infantry",
+                    "Wraith Construct",
+                    "Jump Pack",
+                    "Ynnari",
+                    "Asuryani",
+                    "Yvraine",
+                    "The Visarch",
+                )
+            },
+        )
+        self.assertTrue(aeldari["exact"])
+        self.assertEqual(
+            aeldari["excluded"],
+            [
+                {
+                    "keywords": ["jump pack"],
+                    "minimumWounds": None,
+                    "nonCharacter": False,
+                    "attachmentException": None,
+                    "keywordExceptions": [],
+                },
+                {
+                    "keywords": ["ynnari"],
+                    "minimumWounds": None,
+                    "nonCharacter": False,
+                    "attachmentException": None,
+                    "keywordExceptions": [
+                        ["asuryani"],
+                        ["yvraine"],
+                        ["the visarch"],
+                    ],
+                },
+            ],
+        )
 
     def test_combat_guidance_classifies_exact_non_self_support_auras(self):
         taskmaster = combat_guidance_presets(
@@ -1754,7 +1797,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "56",
+                "57",
             )
             self.assertEqual(
                 connection.execute("SELECT count(*) FROM unit_firing_deck").fetchone()[
@@ -1786,9 +1829,26 @@ class ProfileDataTests(unittest.TestCase):
             )
             self.assertEqual(
                 connection.execute(
+                    "SELECT count(*) FROM unit_transport_exclusion_exception_keywords"
+                ).fetchone()[0],
+                10,
+            )
+            self.assertEqual(
+                connection.execute(
                     "SELECT count(*) FROM unit_transport WHERE exact_rules = 1"
                 ).fetchone()[0],
-                155,
+                159,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*)
+                       FROM unit_transport AS transport
+                       JOIN datasheets ON datasheets.id = transport.datasheet_id
+                       WHERE datasheets.name IN
+                             ('Falcon', 'Firestorm', 'Vampire Raider', 'Wave Serpent')
+                         AND transport.exact_rules = 1"""
+                ).fetchone()[0],
+                4,
             )
             self.assertEqual(
                 connection.execute(
@@ -1854,6 +1914,28 @@ class ProfileDataTests(unittest.TestCase):
                        GROUP BY pools.datasheet_id, pools.pool_position, pools.capacity"""
                 ).fetchone(),
                 (1, "dreadnought"),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT transport.exact_rules, exclusions.group_position,
+                              excluded.keyword,
+                              group_concat(exceptions.keyword, '|')
+                       FROM unit_transport AS transport
+                       JOIN unit_transport_exclusion_groups AS exclusions
+                         USING (datasheet_id)
+                       JOIN unit_transport_exclusion_keywords AS excluded
+                         USING (datasheet_id, group_position)
+                       LEFT JOIN unit_transport_exclusion_exception_keywords AS exceptions
+                         USING (datasheet_id, group_position)
+                       WHERE transport.datasheet_id = '000000599'
+                       GROUP BY transport.datasheet_id, exclusions.group_position,
+                                excluded.keyword
+                       ORDER BY exclusions.group_position"""
+                ).fetchall(),
+                [
+                    (1, 1, "jump pack", None),
+                    (1, 2, "ynnari", "asuryani|yvraine|the visarch"),
+                ],
             )
             self.assertEqual(
                 connection.execute(

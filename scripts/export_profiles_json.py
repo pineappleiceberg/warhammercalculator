@@ -239,6 +239,21 @@ def export(database: Path, output: Path) -> None:
             transport_excluded.setdefault(
                 (row["datasheet_id"], row["group_position"]), []
             ).append(row["keyword"])
+        transport_exclusion_exceptions: dict[tuple[str, int, int], list[str]] = {}
+        for row in connection.execute(
+            """SELECT datasheet_id, group_position, exception_group_position, keyword
+               FROM unit_transport_exclusion_exception_keywords
+               ORDER BY datasheet_id, group_position, exception_group_position,
+                        keyword_position"""
+        ):
+            transport_exclusion_exceptions.setdefault(
+                (
+                    row["datasheet_id"],
+                    row["group_position"],
+                    row["exception_group_position"],
+                ),
+                [],
+            ).append(row["keyword"])
         transport_costs: dict[tuple[str, int], list[str]] = {}
         for row in connection.execute(
             """SELECT datasheet_id, group_position, keyword
@@ -275,6 +290,16 @@ def export(database: Path, output: Path) -> None:
                         if row["exception_required_passenger_keyword"] is not None
                         else None
                     ),
+                    "keywordExceptions": [
+                        keywords
+                        for (
+                            candidate_id,
+                            candidate_group,
+                            _,
+                        ), keywords in transport_exclusion_exceptions.items()
+                        if candidate_id == row["datasheet_id"]
+                        and candidate_group == row["group_position"]
+                    ],
                 }
             )
         model_costs: dict[str, list[dict]] = {}

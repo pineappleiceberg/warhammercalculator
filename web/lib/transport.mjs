@@ -101,7 +101,16 @@ export function transportPassengerEligibility(transport, passenger, context = {}
       attachedKeywords &&
       keywords.has(normalized(exception.requiredPassengerKeyword)) &&
       !attachedKeywords.has(normalized(exception.forbiddenAttachedKeyword));
-    if (keywordMatch && woundsMatch && characterMatch && !attachmentExceptionSatisfied) {
+    const keywordExceptionSatisfied = (exclusion.keywordExceptions ?? []).some((group) =>
+      matchesKeywords(keywords, group),
+    );
+    if (
+      keywordMatch &&
+      woundsMatch &&
+      characterMatch &&
+      !attachmentExceptionSatisfied &&
+      !keywordExceptionSatisfied
+    ) {
       return {
         eligible: false,
         reason: `${passenger.name} matches a published exclusion for ${transport.name}`,

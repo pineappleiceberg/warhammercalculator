@@ -311,3 +311,33 @@ test("Tacticus Characters use the published non-Tacticus attachment exception", 
   });
   assert.ok(circularAttachment.errors.every((error) => /circular attachment/i.test(error)));
 });
+
+test("Aeldari Transports apply Ynnari exceptions only to the published exclusion", () => {
+  const waveSerpent = unit("Wave Serpent", "000000599");
+  const yvraine = unit("Yvraine", "000002542");
+  const visarch = unit("The Visarch", "000002543");
+  const ynnariKabalites = unit("Ynnari Kabalite Warriors", "000003916");
+  const warpSpiders = unit("Warp Spiders", "000000601");
+
+  assert.equal(waveSerpent.transport.exactRules, true);
+  assert.deepEqual(waveSerpent.transport.excluded, [
+    {
+      keywords: ["jump pack"],
+      minimumWounds: null,
+      nonCharacter: false,
+      attachmentException: null,
+      keywordExceptions: [],
+    },
+    {
+      keywords: ["ynnari"],
+      minimumWounds: null,
+      nonCharacter: false,
+      attachmentException: null,
+      keywordExceptions: [["asuryani"], ["yvraine"], ["the visarch"]],
+    },
+  ]);
+  assert.equal(transportPassengerEligibility(waveSerpent, yvraine).eligible, true);
+  assert.equal(transportPassengerEligibility(waveSerpent, visarch).eligible, true);
+  assert.equal(transportPassengerEligibility(waveSerpent, ynnariKabalites).eligible, false);
+  assert.equal(transportPassengerEligibility(waveSerpent, warpSpiders).eligible, false);
+});
