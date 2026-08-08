@@ -100,6 +100,15 @@ export type CatalogueWargearChoiceItemLimit = {
   modelsPerIncrement: number;
   source: string;
 };
+export type CatalogueWargearChoicePairingRule = {
+  poolId: string;
+  weaponType: "Ranged" | "Melee";
+  triggerCount: number;
+  requiredAbility: string;
+  requiredMinimum: number;
+  requiredMaximum: number;
+  source: string;
+};
 export type CatalogueWeaponTypeLimit = {
   weaponType: "Ranged" | "Melee";
   fixed: number;
@@ -301,6 +310,7 @@ export type CatalogueUnit = {
   weaponLimits: CatalogueWeaponLimit[];
   wargearChoicePools: CatalogueWargearChoicePool[];
   wargearChoiceItemLimits: CatalogueWargearChoiceItemLimit[];
+  wargearChoicePairingRules: CatalogueWargearChoicePairingRule[];
   weaponTypeLimits: CatalogueWeaponTypeLimit[];
   combatPresets: CatalogueCombatPreset[];
   defensiveEquipment: CatalogueDefensiveEquipment[];

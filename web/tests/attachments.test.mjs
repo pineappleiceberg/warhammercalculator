@@ -37,6 +37,7 @@ import {
   savedUnitCombatPresetIds,
 } from "../lib/formations.mjs";
 import {
+  choiceSelectionLimitWarnings,
   compositionLoadoutSubjectCounts,
   defaultLoadoutSubjectCounts,
   defaultWeaponCounts,
@@ -912,6 +913,25 @@ test("single-model defensive presets follow source equipment choices", () => {
     2,
   );
 
+  for (const [unitId, presetName, choicePattern] of [
+    ["000001137", "Shining Aegis", /shining aegis/i],
+    ["000004097", "Shining Aegis", /shining aegis/i],
+    ["000002351", "Nanoscarab Amulet", /nanoscarab amulet/i],
+    ["000000032", "Blastajet Force Field", /blastajet force field/i],
+    ["000002804", "Storm Shield", /storm shield/i],
+    ["000002802", "Storm Shield", /storm shield/i],
+  ]) {
+    const sourceUnit = unit(unitId);
+    const preset = sourceUnit.combatPresets.find((entry) => entry.name === presetName);
+    const choice = sourceUnit.wargearChoicePools
+      .flatMap((pool) => pool.alternatives)
+      .find((alternative) => choicePattern.test(alternative.label));
+    assert.ok(preset && choice, `${sourceUnit.name} should expose ${presetName}`);
+    assert.equal(preset.sourceEquipmentChoiceExact, true);
+    assert.equal(combatPresetSourceEquipmentActive(preset, {}), false);
+    assert.equal(combatPresetSourceEquipmentActive(preset, { [choice.id]: 1 }), true);
+  }
+
   const savedImpulsor = {
     id: "impulsor",
     unitId: impulsor.id,
@@ -938,6 +958,48 @@ test("single-model defensive presets follow source equipment choices", () => {
       ],
     }),
     [shieldDome.id],
+  );
+});
+
+test("distinct Wolf Guard choices enforce item uniqueness and pistol pairing", () => {
+  const leader = unit("000002804");
+  const pool = leader.wargearChoicePools.find((entry) => entry.id === "000002804:2");
+  assert.ok(pool);
+  assert.equal(pool.fixed, 2);
+  assert.equal(leader.wargearChoicePairingRules.length, 1);
+  const choice = (pattern) => {
+    const alternative = pool.alternatives.find((entry) => pattern.test(entry.label));
+    assert.ok(alternative);
+    return alternative;
+  };
+  const boltPistol = choice(/^1 bolt pistol$/i);
+  const plasmaPistol = choice(/^1 plasma pistol$/i);
+  const boltgun = choice(/^1 boltgun$/i);
+  const stormBolter = choice(/^1 storm bolter$/i);
+  assert.deepEqual(
+    choiceSelectionLimitWarnings(leader, 1, {
+      [boltPistol.id]: 1,
+      [boltgun.id]: 1,
+    }),
+    [],
+  );
+  assert.match(
+    choiceSelectionLimitWarnings(leader, 1, {
+      [boltgun.id]: 1,
+      [stormBolter.id]: 1,
+    }).join("\n"),
+    /requires at least 1 pistol selection/i,
+  );
+  assert.match(
+    choiceSelectionLimitWarnings(leader, 1, {
+      [boltPistol.id]: 1,
+      [plasmaPistol.id]: 1,
+    }).join("\n"),
+    /pistol selections exceeds the limit of 1/i,
+  );
+  assert.match(
+    choiceSelectionLimitWarnings(leader, 1, { [boltgun.id]: 2 }).join("\n"),
+    /boltgun: 2 selections.*exceeds the shared limit of 1/i,
   );
 });
 

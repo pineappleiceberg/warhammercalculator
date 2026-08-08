@@ -548,7 +548,7 @@ expose both their weapon-replacement and duplicate-capable equipment pools.
 Starred items share their published no-duplicate limit across both paths, and
 Crisis suits enforce the published three-ranged-weapons-per-model limit.
 Single-model defensive presets now use the same source-choice relationship.
-Schema 74 links 81 published alternatives to 15 defensive presets, all with
+Schema 75 links 111 published alternatives to 23 defensive presets, all with
 complete equipment-choice coverage. Selecting an Impulsor shield dome, Ogryn
 brute shield, Lieutenant storm shield, or Commander shield generator activates
 its defense without a second ability toggle. Replacing a default weavefield crest
@@ -556,7 +556,11 @@ or scattershield removes the defense, while always-equipped gear such as
 Karanak’s Collar of Khorne starts active. Army Lists carries the derived state
 into Play Mode, Unit vs Unit reconciles target source choices immediately, and
 the loadout API returns the resulting preset IDs. Battle-local ability controls
-remain editable after initialization.
+remain editable after initialization. Keeper shining aegises, the Lokhust
+Lord’s nanoscarab amulet, the Wazbom force field, and Wolf Guard Pack Leader
+storm shields follow their equipment-only alternatives. Exact two-different-
+weapon pools also enforce item uniqueness and their published Pistol pairing
+rule instead of accepting an illegal pair silently.
 Schema 73 stores published legal starting sizes independently from editable
 current model counts. Inclusive compositions such as 10–20 models remain one
 range, while source alternatives such as exactly 5 or 10 models remain two

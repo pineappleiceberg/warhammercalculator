@@ -397,6 +397,45 @@ export function choiceSelectionLimitWarnings(unit, modelCount, choiceSelections 
       );
     }
   }
+  const weaponProfilesByGroup = new Map();
+  for (const weapon of unit.weapons ?? []) {
+    const profiles = weaponProfilesByGroup.get(weapon.groupId) ?? [];
+    profiles.push(weapon);
+    weaponProfilesByGroup.set(weapon.groupId, profiles);
+  }
+  for (const rule of unit.wargearChoicePairingRules ?? []) {
+    const pool = (unit.wargearChoicePools ?? []).find((entry) => entry.id === rule.poolId);
+    if (!pool) continue;
+    let typedSelections = 0;
+    let abilitySelections = 0;
+    for (const alternative of pool.alternatives) {
+      const selected = normalizeEquippedCount(choiceSelections[alternative.id] ?? 0);
+      for (const choice of alternative.weapons) {
+        const profiles = weaponProfilesByGroup.get(choice.groupId) ?? [];
+        if (!profiles.some((weapon) => weapon.type === rule.weaponType)) continue;
+        const copies = selected * choice.quantity;
+        typedSelections += copies;
+        if (
+          profiles.some((weapon) =>
+            (weapon.abilities ?? []).some(
+              (ability) => ability.name.toLowerCase() === rule.requiredAbility.toLowerCase(),
+            ),
+          )
+        ) {
+          abilitySelections += copies;
+        }
+      }
+    }
+    if (abilitySelections > rule.requiredMaximum) {
+      warnings.push(
+        `Source choice pairing: ${abilitySelections} ${rule.requiredAbility} selections exceeds the limit of ${rule.requiredMaximum} — ${rule.source}`,
+      );
+    } else if (typedSelections >= rule.triggerCount && abilitySelections < rule.requiredMinimum) {
+      warnings.push(
+        `Source choice pairing: ${typedSelections} ${rule.weaponType.toLowerCase()} selections requires at least ${rule.requiredMinimum} ${rule.requiredAbility} selection — ${rule.source}`,
+      );
+    }
+  }
   return warnings;
 }
 

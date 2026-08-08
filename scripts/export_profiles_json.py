@@ -118,6 +118,7 @@ def export(database: Path, output: Path) -> None:
                 "weaponLimits": [],
                 "wargearChoicePools": [],
                 "wargearChoiceItemLimits": [],
+                "wargearChoicePairingRules": [],
                 "weaponTypeLimits": [],
                 "combatPresets": [],
                 "defensiveEquipment": [],
@@ -1368,6 +1369,24 @@ def export(database: Path, output: Path) -> None:
             )
 
         for row in connection.execute(
+            """SELECT datasheet_id, option_position, weapon_type, trigger_count,
+                      required_ability, required_minimum, required_maximum, source_text
+               FROM wargear_choice_pairing_rules
+               ORDER BY datasheet_id, option_position, required_ability"""
+        ):
+            units[row["datasheet_id"]]["wargearChoicePairingRules"].append(
+                {
+                    "poolId": f"{row['datasheet_id']}:{row['option_position']}",
+                    "weaponType": row["weapon_type"],
+                    "triggerCount": row["trigger_count"],
+                    "requiredAbility": row["required_ability"],
+                    "requiredMinimum": row["required_minimum"],
+                    "requiredMaximum": row["required_maximum"],
+                    "source": row["source_text"],
+                }
+            )
+
+        for row in connection.execute(
             """SELECT datasheet_id, weapon_type, fixed_limit,
                       limit_per_increment, models_per_increment, source_text
                FROM wargear_weapon_type_limits
@@ -1530,6 +1549,9 @@ def export(database: Path, output: Path) -> None:
                 "choicePoolCount": len(pools),
                 "choiceItemLimitCount": connection.execute(
                     "SELECT count(*) FROM wargear_choice_item_limits"
+                ).fetchone()[0],
+                "choicePairingRuleCount": connection.execute(
+                    "SELECT count(*) FROM wargear_choice_pairing_rules"
                 ).fetchone()[0],
                 "weaponTypeLimitCount": connection.execute(
                     "SELECT count(*) FROM wargear_weapon_type_limits"

@@ -2245,6 +2245,43 @@ def populate_single_model_defensive_preset_metadata(
         )
 
 
+def single_model_defensive_equipment_ability(description: str) -> bool:
+    text = plain_text(description)
+    if not re.search(r"\bthe bearer\b", text, re.IGNORECASE):
+        return False
+    preset = combat_preset(text, allow_bearer_defenses=True)
+    if not preset:
+        return False
+    if any(
+        preset.get(field)
+        for field in (
+            "hit_modifier",
+            "wound_modifier",
+            "reroll_hits",
+            "reroll_hit_ones",
+            "reroll_wounds",
+            "reroll_wound_ones",
+        )
+    ):
+        return False
+    defensive_effect_types = {
+        "save_target",
+        "invulnerable_save",
+        "feel_no_pain",
+        "damage_reduction",
+        "damage_divisor",
+        "first_failed_save_damage_replacement",
+        "allocated_attack_damage_replacement",
+    }
+    effects = preset.get("additional_effects", [])
+    return bool(effects) and all(
+        effect["type"] in defensive_effect_types
+        and effect["role"] == "target"
+        and effect["subject"] == "self"
+        for effect in effects
+    )
+
+
 def combat_weapon_scope(text: str) -> str:
     lowered = text.casefold()
     has_melee = "melee attack" in lowered or "melee weapon" in lowered
@@ -5535,7 +5572,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "74"),
+                    ("schema_version", "75"),
                     ("leader_global_maximum", "2"),
                     ("leader_global_rule_source_url", LEADER_GLOBAL_RULE_SOURCE_URL),
                     (
@@ -5934,7 +5971,9 @@ def create_database(
                 """SELECT datasheet_id, name, description_text
                    FROM datasheet_abilities ORDER BY datasheet_id, position"""
             ):
-                if defensive_equipment_option(equipment_name, equipment_description):
+                if defensive_equipment_option(
+                    equipment_name, equipment_description
+                ) or single_model_defensive_equipment_ability(equipment_description):
                     equipment_names_by_unit.setdefault(equipment_datasheet_id, set()).add(
                         normalized_wargear_name(equipment_name)
                     )
@@ -6082,6 +6121,7 @@ def create_database(
                 "wargear_choice_alternative_replaced_weapons",
                 "wargear_choice_replaced_weapons",
                 "wargear_choice_item_limits",
+                "wargear_choice_pairing_rules",
                 "wargear_weapon_type_limits",
                 "default_weapon_loadout",
                 "default_loadout_subjects",

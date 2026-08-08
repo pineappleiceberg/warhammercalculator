@@ -246,6 +246,23 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
       ["000002568:3:4", 1],
     ],
   );
+  const wolfGuardLeader = catalogue.units.find((unit) => unit.id === "000002804");
+  const wolfGuardShield = wolfGuardLeader.combatPresets.find(
+    (preset) => preset.name === "Storm Shield",
+  );
+  assert.equal(wolfGuardShield.sourceEquipmentChoiceExact, true);
+  assert.deepEqual(wolfGuardLeader.wargearChoicePairingRules, [
+    {
+      poolId: "000002804:2",
+      weaponType: "Ranged",
+      triggerCount: 2,
+      requiredAbility: "pistol",
+      requiredMinimum: 1,
+      requiredMaximum: 1,
+      source:
+        "* This model can only be equipped with two ranged weapons if one of them is a Pistol (and it can only have one Pistol).",
+    },
+  ]);
   const assault = catalogue.units.find((unit) => unit.name === "Assault Squad");
   const assaultSourceModelId = assault.models[0].sourceModelId;
   assert.deepEqual(
@@ -1117,7 +1134,35 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     /shared limit of 3/i,
   );
   assert.equal(duplicateCrisisShieldData.wargearChoiceItemLimits.length, 4);
+  assert.deepEqual(duplicateCrisisShieldData.wargearChoicePairingRules, []);
   assert.deepEqual(duplicateCrisisShieldData.weaponTypeLimits, crisis.weaponTypeLimits);
+
+  const wolfPool = wolfGuardLeader.wargearChoicePools.find((pool) => pool.id === "000002804:2");
+  const wolfBoltgun = wolfPool.alternatives.find((choice) => /^1 boltgun$/i.test(choice.label));
+  const wolfStormBolter = wolfPool.alternatives.find((choice) =>
+    /^1 storm bolter$/i.test(choice.label),
+  );
+  const invalidWolfPair = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: wolfGuardLeader.id,
+        modelCount: 1,
+        weaponCounts: {},
+        choiceSelections: { [wolfBoltgun.id]: 1, [wolfStormBolter.id]: 1 },
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  const invalidWolfPairData = (await invalidWolfPair.json()).data;
+  assert.equal(invalidWolfPairData.valid, false);
+  assert.deepEqual(
+    invalidWolfPairData.wargearChoicePairingRules,
+    wolfGuardLeader.wargearChoicePairingRules,
+  );
+  assert.match(invalidWolfPairData.warnings.join("\n"), /requires at least 1 pistol selection/i);
 
   const burstGroup = crisis.weapons.find((weapon) => weapon.groupName === "Burst cannon").groupId;
   const tooManyRangedWeapons = await worker.fetch(

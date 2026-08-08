@@ -160,6 +160,15 @@ type Catalogue = {
       modelsPerIncrement: number;
       source: string;
     }>;
+    wargearChoicePairingRules: Array<{
+      poolId: string;
+      weaponType: "Ranged" | "Melee";
+      triggerCount: number;
+      requiredAbility: string;
+      requiredMinimum: number;
+      requiredMaximum: number;
+      source: string;
+    }>;
     weaponTypeLimits: Array<{
       weaponType: "Ranged" | "Melee";
       fixed: number;
@@ -1041,6 +1050,7 @@ async function handleApi(request: Request, env: Env) {
           weaponLimits: unit.weaponLimits,
           wargearChoicePools: unit.wargearChoicePools,
           wargearChoiceItemLimits: unit.wargearChoiceItemLimits,
+          wargearChoicePairingRules: unit.wargearChoicePairingRules,
           weaponTypeLimits: unit.weaponTypeLimits,
           firingDeck: unit.firingDeck,
           firingDeckModelCost: unit.firingDeckModelCost,
@@ -1450,6 +1460,7 @@ async function handleApi(request: Request, env: Env) {
           weaponLimits: unit.weaponLimits,
           wargearChoicePools: unit.wargearChoicePools,
           wargearChoiceItemLimits: unit.wargearChoiceItemLimits,
+          wargearChoicePairingRules: unit.wargearChoicePairingRules,
           weaponTypeLimits: unit.weaponTypeLimits,
           selectedChoiceItemCounts: choiceSelectionItemCounts(unit, choiceSelections),
           selectedWeaponCounts: choiceSelectionWeaponCounts(unit, choiceSelections),

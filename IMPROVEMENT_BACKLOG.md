@@ -16,11 +16,27 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Normalize the remaining unstructured single-model equipment lists and
-   replacement paths, including Keeper, Lokhust, Wolf Guard, and Wazbom options,
-   so every published defensive wargear preset can follow its source selection.
+1. Bind the remaining named wargear-derived combat presets to their source
+   choices, including Survey Augur, Rod of Office, Panspectral Scanner,
+   Grav-talon, Oversight Drone, and Death Totem rules, so offensive and utility
+   equipment no longer needs a second manual ability toggle.
+2. Normalize the remaining mixed “twin lightning claws or two different
+   weapons” pools and the Terminator cyclone pairing rule without flattening
+   their mutually exclusive branches.
 
 ## Completed cycles
+
+- 2026-08-08: Normalized equipment-only and distinct-weapon choices in SQLite
+  schema 75. Both Keeper of Secrets records, the Lokhust Lord, Wazbom
+  Blastajet, and both Wolf Guard Pack Leaders now bind Shining Aegis,
+  Nanoscarab Amulet, Blastajet Force Field, and Storm Shield defenses directly
+  to their published selections. Implicit one-item weapon choices retain their
+  weapon profiles. Three exact “two different weapons” pools enforce one copy
+  per item, and source-backed pairing rules reject two non-Pistol ranged
+  weapons or two Pistols. Catalogue, saved-list, Play, Unit vs Unit, and API
+  consumers share the same choices and warnings while preserving editable
+  overrides. Parser, database, false-positive, UI, API, native, WebAssembly,
+  and formal regressions cover the change.
 
 - 2026-08-08: Structured the duplicate-capable battlesuit equipment pools and
   their linked footnotes in SQLite schema 74. Crisis Battlesuits and all three

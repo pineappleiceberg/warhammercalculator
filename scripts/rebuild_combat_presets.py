@@ -329,10 +329,17 @@ def main() -> None:
             for row in connection.execute(
                 """SELECT name FROM sqlite_schema
                    WHERE type = 'table' AND name IN
-                       ('wargear_choice_item_limits', 'wargear_weapon_type_limits')"""
+                       ('wargear_choice_item_limits', 'wargear_weapon_type_limits',
+                        'wargear_choice_pairing_rules')"""
             )
         }
-        schema_version = "74" if len(schema_tables) == 2 else "73"
+        schema_version = (
+            "75"
+            if len(schema_tables) == 3
+            else "74"
+            if len(schema_tables) == 2
+            else "73"
+        )
         connection.execute(
             "UPDATE metadata SET value = ? WHERE key = 'schema_version'",
             (schema_version,),

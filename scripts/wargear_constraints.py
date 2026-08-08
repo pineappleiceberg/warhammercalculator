@@ -83,6 +83,22 @@ CREATE TABLE IF NOT EXISTS wargear_weapon_type_limits (
     PRIMARY KEY (datasheet_id, weapon_type)
 ) WITHOUT ROWID;
 
+CREATE TABLE IF NOT EXISTS wargear_choice_pairing_rules (
+    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    option_position INTEGER NOT NULL,
+    weapon_type TEXT NOT NULL CHECK (weapon_type IN ('Ranged', 'Melee')),
+    trigger_count INTEGER NOT NULL CHECK (trigger_count >= 1),
+    required_ability TEXT NOT NULL,
+    required_minimum INTEGER NOT NULL CHECK (required_minimum >= 0),
+    required_maximum INTEGER NOT NULL CHECK
+        (required_maximum >= required_minimum),
+    source_text TEXT NOT NULL,
+    PRIMARY KEY (datasheet_id, option_position, required_ability),
+    FOREIGN KEY (datasheet_id, option_position)
+        REFERENCES wargear_choice_pools(datasheet_id, option_position)
+        ON DELETE CASCADE
+) WITHOUT ROWID;
+
 CREATE TABLE IF NOT EXISTS wargear_choice_alternative_weapons (
     datasheet_id TEXT NOT NULL,
     option_position INTEGER NOT NULL,
@@ -289,6 +305,37 @@ def duplicate_choice_allowance(description: str) -> tuple[int, int, int] | None:
     return (maximum, 0, 1) if match.group(1) == "this model" else (0, maximum, 1)
 
 
+def different_choice_allowance(description: str) -> tuple[int, int, int] | None:
+    value = normalized_name(description)
+    match = re.search(
+        r"\bcan be replaced with ([a-z0-9]+) different weapons from the following list\b",
+        value,
+    )
+    if not match:
+        return None
+    maximum = parsed_number(match.group(1))
+    if maximum is None or maximum < 1:
+        return None
+    return maximum, 0, 1
+
+
+def pistol_pairing_rule(
+    description: str,
+) -> tuple[str, int, str, int, int] | None:
+    value = normalized_name(description)
+    match = re.fullmatch(
+        r"this model can only be equipped with ([a-z0-9]+) ranged weapons if one "
+        r"of them is a pistol and it can only have one pistol",
+        value,
+    )
+    if not match:
+        return None
+    trigger_count = parsed_number(match.group(1))
+    if trigger_count is None or trigger_count < 1:
+        return None
+    return "Ranged", trigger_count, "pistol", 1, 1
+
+
 def duplicate_item_limit(
     options: list[tuple],
 ) -> tuple[int, int, int, str] | None:
@@ -378,9 +425,13 @@ def choice_weapon_vector(
         if candidate in replaced_names:
             continue
         match = re.search(rf"(?:^|\s)(\d+)\s+{re.escape(candidate)}s?(?:\s|$)", value)
-        if not match:
+        if match:
+            quantity = int(match.group(1))
+        elif re.fullmatch(rf"{re.escape(candidate)}s?", value):
+            quantity = 1
+        else:
             continue
-        parsed[weapon_group_id] = (weapon_name, int(match.group(1)))
+        parsed[weapon_group_id] = (weapon_name, quantity)
     return parsed
 
 
@@ -389,10 +440,10 @@ def simple_choice_item(
     vector: dict[str, tuple[str, int]],
 ) -> tuple[str, str, int] | None:
     value = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", choice))).strip()
-    match = re.fullmatch(r"(\d+)\s+(.+?)\s*\**", value)
+    match = re.fullmatch(r"(?:(\d+)\s+)?(.+?)\s*\**", value)
     if not match:
         return None
-    quantity = int(match.group(1))
+    quantity = int(match.group(1) or 1)
     name = match.group(2).strip()
     if re.search(r"\b(?:and|or)\b", normalized_name(name)):
         return None
@@ -629,6 +680,7 @@ def populate_constraints(
     connection.execute("DELETE FROM wargear_choice_alternative_replaced_weapons")
     connection.execute("DELETE FROM wargear_choice_alternative_weapons")
     connection.execute("DELETE FROM wargear_choice_alternatives")
+    connection.execute("DELETE FROM wargear_choice_pairing_rules")
     connection.execute("DELETE FROM wargear_choice_pools")
     connection.execute("DELETE FROM wargear_choice_item_limits")
     connection.execute("DELETE FROM wargear_weapon_type_limits")
@@ -769,13 +821,22 @@ def populate_constraints(
         for _unit_id, position, description_html, description_text in options:
             normalized = f" {normalized_name(description_text)} "
             duplicate_limit = duplicate_choice_allowance(description_text)
-            limit = duplicate_limit or allowance(description_text)
+            different_limit = different_choice_allowance(description_text)
+            limit = duplicate_limit or different_limit or allowance(description_text)
             choices = option_choices(description_html, description_text)
             if (
                 not limit
                 or not choices
                 or (" duplicate" in normalized and duplicate_limit is None)
-                or any(marker in normalized for marker in COMPLEX_MARKERS)
+                or (
+                    " different weapons " in normalized
+                    and different_limit is None
+                )
+                or any(
+                    marker in normalized
+                    for marker in COMPLEX_MARKERS
+                    if marker != " different weapons "
+                )
             ):
                 continue
             preamble = option_preamble(description_html, description_text)
@@ -824,6 +885,15 @@ def populate_constraints(
                         if previous is not None and previous != candidate:
                             raise RuntimeError(
                                 f"conflicting shared choice limit for {datasheet_id}:{item_key}"
+                            )
+                        shared_item_limits[item_key] = candidate
+                    if selection is not None and different_limit is not None:
+                        item_key, item_name, _quantity = selection
+                        candidate = (item_name, 1, 0, 1, description_text)
+                        previous = shared_item_limits.get(item_key)
+                        if previous is not None and previous != candidate:
+                            raise RuntimeError(
+                                f"conflicting distinct choice limit for {datasheet_id}:{item_key}"
                             )
                         shared_item_limits[item_key] = candidate
             if alternatives:
@@ -904,6 +974,7 @@ def populate_constraints(
                         for group_id, (name, quantity) in common_replaced.items()
                     ),
                 )
+
             parsed: dict[str, tuple[str, int]] = {}
             valid = True
             for choice in choices:
@@ -944,6 +1015,38 @@ def populate_constraints(
                 ),
             )
             inserted += 1
+
+        pool_positions = {
+            row[0]
+            for row in connection.execute(
+                "SELECT option_position FROM wargear_choice_pools WHERE datasheet_id = ?",
+                (datasheet_id,),
+            )
+        }
+        for _unit_id, position, _description_html, description_text in options:
+            rule = pistol_pairing_rule(description_text)
+            if rule is None:
+                continue
+            option_position = position - 1
+            if option_position not in pool_positions:
+                continue
+            pool_source = next(
+                (
+                    source
+                    for _id, source_position, _html, source in options
+                    if source_position == option_position
+                ),
+                "",
+            )
+            if different_choice_allowance(pool_source) is None:
+                continue
+            connection.execute(
+                """INSERT INTO wargear_choice_pairing_rules
+                   (datasheet_id, option_position, weapon_type, trigger_count,
+                    required_ability, required_minimum, required_maximum, source_text)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (datasheet_id, option_position, *rule, description_text),
+            )
 
         connection.executemany(
             """INSERT INTO wargear_choice_item_limits
