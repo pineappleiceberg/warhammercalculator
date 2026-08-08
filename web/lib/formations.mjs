@@ -35,6 +35,23 @@ function uniqueCompositionCounts(unit, modelCount) {
     : { counts: [modelCount, ...new Array(models.length - 1).fill(0)], exact: false };
 }
 
+export function catalogueModelSegments(unit, modelCount) {
+  const composition = uniqueCompositionCounts(unit, modelCount);
+  return {
+    exact: composition.exact,
+    segments: (unit?.models ?? [])
+      .map((model, index) => ({ model, modelCount: composition.counts[index] ?? 0 }))
+      .filter((segment) => segment.modelCount > 0),
+  };
+}
+
+export function bodyguardJoinerOptions(catalogue, bodyguard) {
+  if (!bodyguard) return [];
+  return (catalogue?.units ?? []).filter((unit) =>
+    (unit.bodyguardJoinOptions ?? []).some((option) => option.bodyguardId === bodyguard.id),
+  );
+}
+
 function modelRoleOrder(role) {
   if (role === "bodyguard") return 0;
   if (role === "joined") return 1;
@@ -119,13 +136,11 @@ export function savedFormationModelSegments(formation) {
   const segments = [];
   const ambiguousComponents = [];
   for (const component of formation?.components ?? []) {
-    const models = component.catalogueUnit?.models ?? [];
-    if (models.length === 0) continue;
-    const composition = uniqueCompositionCounts(component.catalogueUnit, component.unit.modelCount);
+    const models = catalogueModelSegments(component.catalogueUnit, component.unit.modelCount);
+    if (models.segments.length === 0) continue;
+    const composition = models;
     if (!composition.exact) ambiguousComponents.push(component.unit.name);
-    for (const [index, model] of models.entries()) {
-      const modelCount = composition.counts[index] ?? 0;
-      if (modelCount < 1) continue;
+    for (const { model, modelCount } of models.segments) {
       segments.push({
         id: `${component.unit.id}:${model.id}`,
         savedUnitId: component.unit.id,

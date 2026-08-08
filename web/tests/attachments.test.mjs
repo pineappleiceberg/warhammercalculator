@@ -9,6 +9,8 @@ import {
 } from "../lib/attachments.mjs";
 import { transportAssignmentReport } from "../lib/transport.mjs";
 import {
+  bodyguardJoinerOptions,
+  catalogueModelSegments,
   savedFormationForUnit,
   savedFormationGroups,
   savedFormationModelSegments,
@@ -24,6 +26,40 @@ function unit(id) {
   assert.ok(value, `Missing catalogue unit ${id}`);
   return value;
 }
+
+function namedUnit(name) {
+  const value = catalogue.units.find((candidate) => candidate.name === name);
+  assert.ok(value, `Missing catalogue unit ${name}`);
+  return value;
+}
+
+test("Unit vs Unit exposes published joined formations with exact model segments", () => {
+  const guardians = namedUnit("Guardian Defenders");
+  const conclave = namedUnit("Warlock Conclave");
+  const windriders = namedUnit("Windriders");
+  const skyrunners = namedUnit("Warlock Skyrunners");
+
+  assert.deepEqual(
+    bodyguardJoinerOptions(catalogue, guardians).map((candidate) => candidate.id),
+    [conclave.id],
+  );
+  assert.deepEqual(
+    bodyguardJoinerOptions(catalogue, windriders).map((candidate) => candidate.id),
+    [skyrunners.id],
+  );
+  assert.deepEqual(bodyguardJoinerOptions(catalogue, namedUnit("Necron Warriors")), []);
+
+  const guardianSegments = catalogueModelSegments(guardians, 11);
+  assert.equal(guardianSegments.exact, true);
+  assert.deepEqual(
+    guardianSegments.segments.map((segment) => [segment.model.name, segment.modelCount]),
+    [
+      ["GUARDIAN DEFENDER", 10],
+      ["HEAVY WEAPON PLATFORM", 1],
+    ],
+  );
+  assert.equal(catalogueModelSegments(conclave, 2).exact, true);
+});
 
 test("published Leader pairs allow only listed Bodyguard datasheets", () => {
   const captain = unit("000000073");

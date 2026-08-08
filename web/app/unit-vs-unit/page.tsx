@@ -58,9 +58,11 @@ import {
   transportPassengerAttachmentOptions,
   transportPassengerCanEmbark,
 } from "../../lib/transport.mjs";
+import { bodyguardJoinerOptions, catalogueModelSegments } from "../../lib/formations.mjs";
 
 type TargetSegment = OrderedTargetSegment & {
   id: string;
+  unitId: string;
   modelId: number;
   name: string;
   keywords: string[];
@@ -86,9 +88,10 @@ type FiringDeckSelection = {
   unitAlreadyShot: boolean;
 };
 
-function targetSegment(model: CatalogueModel, modelCount: number): TargetSegment {
+function targetSegment(model: CatalogueModel, modelCount: number, unitId = ""): TargetSegment {
   return {
     id: crypto.randomUUID(),
+    unitId,
     modelId: model.id,
     name: model.name,
     keywords: model.keywords,
@@ -156,6 +159,10 @@ export default function UnitVsUnit() {
   const [targetFaction, setTargetFaction] = useState("");
   const [targetUnitId, setTargetUnitId] = useState("");
   const [attackerModels, setAttackerModels] = useState(1);
+  const [attackerJoinerId, setAttackerJoinerId] = useState("");
+  const [attackerJoinerModels, setAttackerJoinerModels] = useState(1);
+  const [targetJoinerId, setTargetJoinerId] = useState("");
+  const [targetJoinerModels, setTargetJoinerModels] = useState(1);
   const [weaponCounts, setWeaponCounts] = useState<Record<string, number>>({});
   const [optionCounts, setOptionCounts] = useState<Record<string, number>>({});
   const [choiceSelections, setChoiceSelections] = useState<Record<string, number>>({});
@@ -246,10 +253,52 @@ export default function UnitVsUnit() {
   const supportUnits = catalogue?.units.filter((unit) => unit.factionId === attackerFaction) ?? [];
   const supportUnit = supportUnits.find((unit) => unit.id === supportUnitId);
   const targetUnit = targetUnits.find((unit) => unit.id === targetUnitId);
+  const attackerJoinerOptions = bodyguardJoinerOptions(catalogue, attackerUnit);
+  const attackerJoiner = attackerJoinerOptions.find((unit) => unit.id === attackerJoinerId);
+  const targetJoinerOptions = bodyguardJoinerOptions(catalogue, targetUnit);
+  const targetJoiner = targetJoinerOptions.find((unit) => unit.id === targetJoinerId);
+  const attackerFormationUnits = [attackerUnit, attackerJoiner].filter(
+    (unit): unit is NonNullable<typeof attackerUnit> => Boolean(unit),
+  );
+  const targetFormationUnits = [targetUnit, targetJoiner].filter(
+    (unit): unit is NonNullable<typeof targetUnit> => Boolean(unit),
+  );
+  const attackerFormationUnit = attackerUnit
+    ? {
+        ...attackerUnit,
+        combatPresets: attackerFormationUnits.flatMap((unit) => unit.combatPresets),
+      }
+    : undefined;
+  const targetFormationUnit = targetUnit
+    ? {
+        ...targetUnit,
+        combatPresets: targetFormationUnits.flatMap((unit) => unit.combatPresets),
+      }
+    : undefined;
+  const attackerFormationKeywords = [
+    ...new Set(
+      attackerFormationUnits.flatMap((unit) => unit.models.flatMap((model) => model.keywords)),
+    ),
+  ];
   const targetSupportUnits =
     catalogue?.units.filter((unit) => unit.factionId === targetFaction) ?? [];
   const targetSupportUnit = targetSupportUnits.find((unit) => unit.id === targetSupportUnitId);
-  const weaponGroups = groupWeaponProfiles(attackerUnit?.weapons ?? []);
+  const weaponGroups = groupWeaponProfiles(attackerFormationUnits.flatMap((unit) => unit.weapons));
+  const weaponGroupSources = new Map(
+    attackerFormationUnits.flatMap((unit) =>
+      groupWeaponProfiles(unit.weapons).map((group) => [group.id, unit] as const),
+    ),
+  );
+  const targetEquipmentOptions = targetFormationUnits.flatMap((unit) =>
+    unit.defensiveEquipment.map((option) => ({
+      ...option,
+      sourceUnitId: unit.id,
+      sourceUnitName: unit.name,
+    })),
+  );
+  const targetModelOptions = targetFormationUnits.flatMap((unit) =>
+    unit.models.map((model) => ({ unit, model })),
+  );
   const firingDeckPassengerUnits =
     catalogue?.units.filter(
       (unit) =>
@@ -258,24 +307,33 @@ export default function UnitVsUnit() {
         transportPassengerCanEmbark(catalogue, attackerUnit, unit),
     ) ?? [];
   const structuredGroupIds = new Set(
-    attackerUnit?.wargearChoicePools.flatMap((pool) =>
-      pool.replaces
-        .map((weapon) => weapon.groupId)
-        .concat(
-          pool.alternatives.flatMap((alternative) =>
-            alternative.weapons.map((weapon) => weapon.groupId),
+    attackerFormationUnits.flatMap((unit) =>
+      unit.wargearChoicePools.flatMap((pool) =>
+        pool.replaces
+          .map((weapon) => weapon.groupId)
+          .concat(
+            pool.alternatives.flatMap((alternative) =>
+              alternative.weapons.map((weapon) => weapon.groupId),
+            ),
           ),
-        ),
-    ) ?? [],
+      ),
+    ),
   );
-  const structuredOptionCounts = choiceSelectionWeaponCounts(attackerUnit, choiceSelections);
-  const loadoutWarnings = unitLoadoutWarnings(
-    attackerUnit,
-    attackerModels,
-    { ...optionCounts, ...structuredOptionCounts },
-    weaponCounts,
-    choiceSelections,
-    loadoutSubjectCounts,
+  const structuredOptionCounts = Object.assign(
+    {},
+    ...attackerFormationUnits.map((unit) => choiceSelectionWeaponCounts(unit, choiceSelections)),
+  );
+  const attackerComponentModelCount = (unitId: string) =>
+    unitId === attackerJoiner?.id ? attackerJoinerModels : attackerModels;
+  const loadoutWarnings = attackerFormationUnits.flatMap((unit) =>
+    unitLoadoutWarnings(
+      unit,
+      attackerComponentModelCount(unit.id),
+      { ...optionCounts, ...structuredOptionCounts },
+      weaponCounts,
+      choiceSelections,
+      loadoutSubjectCounts,
+    ),
   );
   const orderIndex = new Map(weaponOrder.map((weaponId, index) => [weaponId, index]));
   const completeFiringDeckSelections = firingDeckSelections.filter(
@@ -310,6 +368,10 @@ export default function UnitVsUnit() {
       (orderIndex.get(right.weapon.id) ?? Number.MAX_SAFE_INTEGER),
   );
   const inputKey = JSON.stringify({
+    attackerJoinerId,
+    attackerJoinerModels,
+    targetJoinerId,
+    targetJoinerModels,
     initialWoundsLost,
     targetDistance,
     attackerSourceTargetDistance,
@@ -365,6 +427,8 @@ export default function UnitVsUnit() {
 
   const selectAttacker = (unitId: string) => {
     setAttackerUnitId(unitId);
+    setAttackerJoinerId("");
+    setAttackerJoinerModels(1);
     setAttackerCharged(false);
     setAttackerRemainedStationary(false);
     setAttackerAttached(false);
@@ -385,7 +449,6 @@ export default function UnitVsUnit() {
     setAttackerSourceCanSeeTarget(false);
     setTargetSourceCanSeeAttacker(false);
     setTargetSpottedByMarkerlightObserver(false);
-    setAttackerUnitModels(0);
     setNearbyEnemyModels(0);
     setNearbyEnemyUnits(0);
     setEnemyCharacterModelsDestroyed(0);
@@ -400,6 +463,7 @@ export default function UnitVsUnit() {
     const subjectCounts = defaultLoadoutSubjectCounts(unit);
     const defaults = defaultWeaponCounts(unit, models, subjectCounts);
     setAttackerModels(models);
+    setAttackerUnitModels(unit ? models : 0);
     setWeaponCounts(Object.fromEntries(groups.map((group) => [group.id, defaults[group.id] ?? 0])));
     setOptionCounts(Object.fromEntries(groups.map((group) => [group.id, 0])));
     setChoiceSelections(
@@ -426,8 +490,82 @@ export default function UnitVsUnit() {
     setStatus(unit ? "Source loadout applied; edit it if needed" : "Choose both units");
   };
 
+  const selectAttackerJoiner = (unitId: string) => {
+    const previous = attackerJoiner;
+    const unit = attackerJoinerOptions.find((entry) => entry.id === unitId);
+    const previousGroups = groupWeaponProfiles(previous?.weapons ?? []);
+    const previousGroupIds = new Set(previousGroups.map((group) => group.id));
+    const previousProfileIds = new Set(
+      previousGroups.flatMap((group) => group.profiles.map((profile) => profile.id)),
+    );
+    const previousChoiceIds = new Set(
+      (previous?.wargearChoicePools ?? []).flatMap((pool) =>
+        pool.alternatives.map((alternative) => alternative.id),
+      ),
+    );
+    const previousSubjectIds = new Set(
+      (previous?.unresolvedLoadoutSubjects ?? []).map((subject) => subject.id),
+    );
+    const groups = groupWeaponProfiles(unit?.weapons ?? []);
+    const models = unit?.suggestedModelCount ?? 1;
+    const subjectCounts = defaultLoadoutSubjectCounts(unit);
+    const defaults = defaultWeaponCounts(unit, models, subjectCounts);
+    const without = <T extends number>(current: Record<string, T>, ids: Set<string>) =>
+      Object.fromEntries(Object.entries(current).filter(([id]) => !ids.has(id))) as Record<
+        string,
+        T
+      >;
+    setAttackerJoinerId(unitId);
+    setAttackerJoinerModels(models);
+    setAttackerUnitModels(attackerModels + (unit ? models : 0));
+    setWeaponCounts((current) => ({
+      ...without(current, previousGroupIds),
+      ...Object.fromEntries(groups.map((group) => [group.id, defaults[group.id] ?? 0])),
+    }));
+    setOptionCounts((current) => ({
+      ...without(current, previousGroupIds),
+      ...Object.fromEntries(groups.map((group) => [group.id, 0])),
+    }));
+    setChoiceSelections((current) => ({
+      ...without(current, previousChoiceIds),
+      ...Object.fromEntries(
+        (unit?.wargearChoicePools ?? []).flatMap((pool) =>
+          pool.alternatives.map((alternative) => [alternative.id, 0]),
+        ),
+      ),
+    }));
+    setLoadoutSubjectCounts((current) => ({
+      ...without(current, previousSubjectIds),
+      ...subjectCounts,
+    }));
+    setProfileCounts((current) => ({
+      ...without(
+        Object.fromEntries(Object.entries(current).map(([id, value]) => [id, value])),
+        new Set([...previousProfileIds].map(String)),
+      ),
+      ...Object.fromEntries(
+        groups.flatMap((group) => group.profiles.map((profile) => [profile.id, 0])),
+      ),
+    }));
+    setWeaponOrder((current) => [
+      ...current.filter((id) => !previousProfileIds.has(id)),
+      ...groups.flatMap((group) => group.profiles.map((profile) => profile.id)),
+    ]);
+    setActiveAttackerPresetIds((current) =>
+      current.filter((id) => !(previous?.combatPresets ?? []).some((preset) => preset.id === id)),
+    );
+    setResults([]);
+    setVolleySummary(null);
+    setRollResult(null);
+    setStatus(
+      unit ? `${unit.name} joined with an independent editable loadout` : "Joined unit removed",
+    );
+  };
+
   const selectTarget = (unitId: string) => {
     setTargetUnitId(unitId);
+    setTargetJoinerId("");
+    setTargetJoinerModels(1);
     setTargetAttached(false);
     setTargetWaaaghActive(false);
     setTargetOathOfMoment(false);
@@ -448,8 +586,13 @@ export default function UnitVsUnit() {
     setTargetBattleShocked(false);
     setTargetStrengthState("full");
     const unit = targetUnits.find((entry) => entry.id === unitId);
-    const model = unit?.models[0];
-    setTargetSegments(model ? [targetSegment(model, unit?.suggestedModelCount ?? 1)] : []);
+    const models = unit?.suggestedModelCount ?? 1;
+    const composition = catalogueModelSegments(unit, models);
+    setTargetSegments(
+      composition.segments.map((segment) =>
+        targetSegment(segment.model, segment.modelCount, unit?.id),
+      ),
+    );
     setInitialWoundsLost(0);
     setActiveTargetPresetIds([]);
     setTargetSupportUnitId("");
@@ -458,6 +601,36 @@ export default function UnitVsUnit() {
     setResults([]);
     setVolleySummary(null);
     setRollResult(null);
+  };
+
+  const selectTargetJoiner = (unitId: string) => {
+    const unit = targetJoinerOptions.find((entry) => entry.id === unitId);
+    const models = unit?.suggestedModelCount ?? 1;
+    const rootComposition = catalogueModelSegments(
+      targetUnit,
+      targetUnit?.suggestedModelCount ?? 1,
+    );
+    const joinedComposition = catalogueModelSegments(unit, models);
+    setTargetJoinerId(unitId);
+    setTargetJoinerModels(models);
+    setTargetSegments([
+      ...rootComposition.segments.map((segment) =>
+        targetSegment(segment.model, segment.modelCount, targetUnit?.id),
+      ),
+      ...joinedComposition.segments.map((segment) =>
+        targetSegment(segment.model, segment.modelCount, unit?.id),
+      ),
+    ]);
+    setInitialWoundsLost(0);
+    setActiveTargetPresetIds((current) =>
+      current.filter(
+        (id) => !(targetJoiner?.combatPresets ?? []).some((preset) => preset.id === id),
+      ),
+    );
+    setResults([]);
+    setVolleySummary(null);
+    setRollResult(null);
+    setStatus(unit ? `${unit.name} joined the target formation` : "Target joined unit removed");
   };
 
   const moveWeapon = (weaponId: number, direction: -1 | 1) => {
@@ -541,7 +714,7 @@ export default function UnitVsUnit() {
         ),
         [
           ...selectedAndAutomaticCombatPresets(
-            attackerUnit?.combatPresets ?? [],
+            attackerFormationUnit?.combatPresets ?? [],
             activeAttackerPresetIds,
             line.weapon.type,
             line.weapon.name,
@@ -573,7 +746,7 @@ export default function UnitVsUnit() {
             targetClosestEligible,
             attackerSourceTargetDistance,
             attackerSourceCanSeeTarget,
-            attackerUnit?.models[0]?.keywords ?? [],
+            attackerFormationKeywords,
           ),
           ...selectedAndAutomaticCombatPresets(
             supportUnit?.combatPresets ?? [],
@@ -603,17 +776,17 @@ export default function UnitVsUnit() {
             targetSpotted,
             targetSpottedByMarkerlightObserver,
             "supporting_unit",
-            attackerUnit?.models[0]?.keywords ?? [],
+            attackerFormationKeywords,
             supportDistance,
             targetClosestEligible,
             attackerSourceTargetDistance,
             attackerSourceCanSeeTarget,
-            attackerUnit?.models[0]?.keywords ?? [],
+            attackerFormationKeywords,
           ),
         ],
         [
           ...selectedAndAutomaticCombatPresets(
-            targetUnit?.combatPresets ?? [],
+            targetFormationUnit?.combatPresets ?? [],
             activeTargetPresetIds,
             line.weapon.type,
             line.weapon.name,
@@ -645,7 +818,7 @@ export default function UnitVsUnit() {
             targetClosestEligible,
             targetSourceAttackerDistance,
             targetSourceCanSeeAttacker,
-            attackerUnit?.models[0]?.keywords ?? [],
+            attackerFormationKeywords,
           ),
           ...selectedAndAutomaticCombatPresets(
             targetSupportUnit?.combatPresets ?? [],
@@ -680,12 +853,12 @@ export default function UnitVsUnit() {
             targetClosestEligible,
             targetSourceAttackerDistance,
             targetSourceCanSeeAttacker,
-            attackerUnit?.models[0]?.keywords ?? [],
+            attackerFormationKeywords,
           ),
         ],
         line.weapon.type,
         {
-          attackerKeywords: attackerUnit?.models[0]?.keywords ?? [],
+          attackerKeywords: attackerFormationKeywords,
           targetKeywords: targetSegments[0]?.keywords ?? [],
           attackKeywords: attackKeywordsForWeapon(line.weapon),
           targetDistance,
@@ -724,7 +897,7 @@ export default function UnitVsUnit() {
           attackerSourceCanSeeTarget,
           targetSourceCanSeeAttacker,
           supportDistance,
-          supportedUnitKeywords: attackerUnit?.models[0]?.keywords ?? [],
+          supportedUnitKeywords: attackerFormationKeywords,
           targetSupportDistance,
           targetSupportedUnitKeywords: targetSegments[0]?.keywords ?? [],
         },
@@ -738,7 +911,7 @@ export default function UnitVsUnit() {
         orderedLines
           .flatMap((line) => [
             ...selectedAndAutomaticCombatPresets(
-              targetUnit?.combatPresets ?? [],
+              targetFormationUnit?.combatPresets ?? [],
               activeTargetPresetIds,
               line.weapon.type,
               line.weapon.name,
@@ -770,7 +943,7 @@ export default function UnitVsUnit() {
               targetClosestEligible,
               targetSourceAttackerDistance,
               targetSourceCanSeeAttacker,
-              attackerUnit?.models[0]?.keywords ?? [],
+              attackerFormationKeywords,
             ),
             ...selectedAndAutomaticCombatPresets(
               targetSupportUnit?.combatPresets ?? [],
@@ -805,7 +978,7 @@ export default function UnitVsUnit() {
               targetClosestEligible,
               targetSourceAttackerDistance,
               targetSourceCanSeeAttacker,
-              attackerUnit?.models[0]?.keywords ?? [],
+              attackerFormationKeywords,
             ),
           ])
           .map((preset) => [preset.id, preset]),
@@ -814,7 +987,7 @@ export default function UnitVsUnit() {
     const equipmentCandidates = orderedLines.map((line) =>
       applyDefensiveEquipment(
         targetSegments,
-        targetUnit?.defensiveEquipment ?? [],
+        targetEquipmentOptions,
         attackKeywordsForWeapon(line.weapon),
       ),
     );
@@ -838,7 +1011,7 @@ export default function UnitVsUnit() {
         weaponType: line.weapon.type,
         weaponName: line.weapon.name,
         attackKeywords: attackKeywordsForWeapon(line.weapon),
-        attackerKeywords: attackerUnit?.models[0]?.keywords ?? [],
+        attackerKeywords: attackerFormationKeywords,
         targetDistance,
         attackerUnitModels,
         nearbyEnemyModels,
@@ -1036,6 +1209,8 @@ export default function UnitVsUnit() {
                 onChange={(event) => {
                   setAttackerFaction(event.target.value);
                   setAttackerUnitId("");
+                  setAttackerJoinerId("");
+                  setAttackerJoinerModels(1);
                   setAttackerCharged(false);
                   setAttackerRemainedStationary(false);
                   setAttackerAttached(false);
@@ -1099,13 +1274,58 @@ export default function UnitVsUnit() {
                     ),
                   );
                   setAttackerModels(next);
+                  setAttackerUnitModels(next + (attackerJoiner ? attackerJoinerModels : 0));
                 }}
               />
             </label>
+            {attackerJoinerOptions.length > 0 && (
+              <label>
+                <span>Joined formation unit</span>
+                <select
+                  aria-label="Attacker joined Bodyguard unit"
+                  value={attackerJoinerId}
+                  onChange={(event) => selectAttackerJoiner(event.target.value)}
+                >
+                  <option value="">None</option>
+                  {attackerJoinerOptions.map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.name}
+                    </option>
+                  ))}
+                </select>
+                <small>Uses the published pre-battle Bodyguard join rule</small>
+              </label>
+            )}
+            {attackerJoiner && (
+              <label>
+                <span>{attackerJoiner.name} models firing</span>
+                <input
+                  aria-label="Attacker joined unit models firing"
+                  type="number"
+                  min={1}
+                  max={attackerJoiner.maximumModelCount ?? 100}
+                  value={attackerJoinerModels}
+                  onChange={(event) => {
+                    const next = Math.max(1, +event.target.value);
+                    setWeaponCounts((current) =>
+                      applyModelCountChange(
+                        current,
+                        attackerJoiner,
+                        attackerJoinerModels,
+                        next,
+                        loadoutSubjectCounts,
+                      ),
+                    );
+                    setAttackerJoinerModels(next);
+                    setAttackerUnitModels(attackerModels + next);
+                  }}
+                />
+              </label>
+            )}
             {attackerUnit && (
               <div className="loadout-list">
                 <CombatPresetSelector
-                  presets={attackerUnit.combatPresets}
+                  presets={attackerFormationUnit?.combatPresets ?? []}
                   role="attacker"
                   selectedIds={activeAttackerPresetIds}
                   onChange={setActiveAttackerPresetIds}
@@ -1134,7 +1354,7 @@ export default function UnitVsUnit() {
                   onPresetChange={setActiveSupportPresetIds}
                   supportDistance={supportDistance}
                   onSupportDistanceChange={setSupportDistance}
-                  supportedUnitKeywords={attackerUnit.models[0]?.keywords ?? []}
+                  supportedUnitKeywords={attackerFormationKeywords}
                   attackerCharged={attackerCharged}
                   attackerRemainedStationary={attackerRemainedStationary}
                   attackerBattleShocked={attackerBattleShocked}
@@ -1143,78 +1363,85 @@ export default function UnitVsUnit() {
                   sourceTargetDistance={attackerSourceTargetDistance}
                   sourceTargetVisible={attackerSourceCanSeeTarget}
                 />
-                {attackerUnit.unresolvedLoadoutSubjects.length > 0 && (
+                {attackerFormationUnits.some(
+                  (unit) => unit.unresolvedLoadoutSubjects.length > 0,
+                ) && (
                   <details className="source-choice-pools model-composition-editor" open>
                     <summary>Model composition</summary>
                     <small>
                       Enter how many models match each published loadout clause. Weapon totals
                       remain editable.
                     </small>
-                    {attackerUnit.unresolvedLoadoutSubjects.map((subject) => (
-                      <label key={subject.id}>
-                        <span>
-                          {subject.subject}
-                          <small>{subject.equipment}</small>
-                        </span>
-                        <input
-                          aria-label={`${subject.subject} model count`}
-                          type="number"
-                          min={0}
-                          max={1000}
-                          value={loadoutSubjectCounts[subject.id] ?? 0}
-                          onChange={(event) => {
-                            const next = normalizeEquippedCount(+event.target.value, 1000);
-                            const previous = loadoutSubjectCounts[subject.id] ?? 0;
-                            setWeaponCounts((current) =>
-                              applyLoadoutSubjectCountChange(current, subject, previous, next),
-                            );
-                            setLoadoutSubjectCounts((current) => ({
-                              ...current,
-                              [subject.id]: next,
-                            }));
-                          }}
-                        />
-                      </label>
-                    ))}
+                    {attackerFormationUnits.flatMap((unit) =>
+                      unit.unresolvedLoadoutSubjects.map((subject) => (
+                        <label key={subject.id}>
+                          <span>
+                            {subject.subject}
+                            <small>
+                              {unit.name} · {subject.equipment}
+                            </small>
+                          </span>
+                          <input
+                            aria-label={`${unit.name} ${subject.subject} model count`}
+                            type="number"
+                            min={0}
+                            max={1000}
+                            value={loadoutSubjectCounts[subject.id] ?? 0}
+                            onChange={(event) => {
+                              const next = normalizeEquippedCount(+event.target.value, 1000);
+                              const previous = loadoutSubjectCounts[subject.id] ?? 0;
+                              setWeaponCounts((current) =>
+                                applyLoadoutSubjectCountChange(current, subject, previous, next),
+                              );
+                              setLoadoutSubjectCounts((current) => ({
+                                ...current,
+                                [subject.id]: next,
+                              }));
+                            }}
+                          />
+                        </label>
+                      )),
+                    )}
                   </details>
                 )}
                 <h3>Total weapons equipped</h3>
-                {weaponGroups.map((group) => (
-                  <div className="weapon-group" key={group.id}>
-                    <label>
-                      <span>
-                        {group.name}
-                        <small>
-                          {group.profiles.length > 1
-                            ? `${group.profiles.length} mutually exclusive profiles`
-                            : `${group.profiles[0].attacks} · S${group.profiles[0].strength} · AP ${group.profiles[0].ap ?? "—"} · D ${group.profiles[0].damage}`}
-                          {" · copies across unit"}
-                          {attackerUnit.weaponLimits?.find((limit) => limit.groupId === group.id)
-                            ? ` · options allow up to ${weaponLimitMaximum(
-                                attackerUnit.weaponLimits.find(
-                                  (limit) => limit.groupId === group.id,
-                                )!,
-                                attackerModels,
-                              )}`
-                            : ""}
-                        </small>
-                      </span>
-                      <input
-                        aria-label={`${group.name} count`}
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={weaponCounts[group.id] ?? 0}
-                        onChange={(event) =>
-                          setWeaponCounts((current) => ({
-                            ...current,
-                            [group.id]: normalizeEquippedCount(+event.target.value),
-                          }))
-                        }
-                      />
-                    </label>
-                    {attackerUnit.weaponLimits.some((limit) => limit.groupId === group.id) &&
-                      !structuredGroupIds.has(group.id) && (
+                {weaponGroups.map((group) => {
+                  const sourceUnit = weaponGroupSources.get(group.id) ?? attackerUnit;
+                  const sourceModelCount = attackerComponentModelCount(sourceUnit.id);
+                  const sourceLimit = sourceUnit.weaponLimits.find(
+                    (limit) => limit.groupId === group.id,
+                  );
+                  return (
+                    <div className="weapon-group" key={group.id}>
+                      <label>
+                        <span>
+                          {group.name}
+                          <small>
+                            {group.profiles.length > 1
+                              ? `${group.profiles.length} mutually exclusive profiles`
+                              : `${group.profiles[0].attacks} · S${group.profiles[0].strength} · AP ${group.profiles[0].ap ?? "—"} · D ${group.profiles[0].damage}`}
+                            {" · copies across unit"}
+                            {attackerJoiner ? ` · ${sourceUnit.name}` : ""}
+                            {sourceLimit
+                              ? ` · options allow up to ${weaponLimitMaximum(sourceLimit, sourceModelCount)}`
+                              : ""}
+                          </small>
+                        </span>
+                        <input
+                          aria-label={`${group.name} count`}
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={weaponCounts[group.id] ?? 0}
+                          onChange={(event) =>
+                            setWeaponCounts((current) => ({
+                              ...current,
+                              [group.id]: normalizeEquippedCount(+event.target.value),
+                            }))
+                          }
+                        />
+                      </label>
+                      {sourceLimit && !structuredGroupIds.has(group.id) && (
                         <label className="option-count">
                           <span>
                             Selected through wargear options
@@ -1235,40 +1462,41 @@ export default function UnitVsUnit() {
                           />
                         </label>
                       )}
-                    {group.profiles.length > 1 && (
-                      <div className="profile-allocations">
-                        <span>Copies using each profile this volley</span>
-                        {group.profiles.map((profile) => (
-                          <label key={profile.id}>
-                            <span>
-                              {profile.profileName ?? profile.name}
-                              <small>
-                                {profile.attacks} · S{profile.strength} · AP {profile.ap ?? "—"} · D{" "}
-                                {profile.damage}
-                              </small>
-                            </span>
-                            <input
-                              aria-label={`${profile.name} firing count`}
-                              type="number"
-                              min={0}
-                              max={weaponCounts[group.id] ?? 0}
-                              value={profileCounts[profile.id] ?? 0}
-                              onChange={(event) =>
-                                setProfileCounts((current) => ({
-                                  ...current,
-                                  [profile.id]: normalizeEquippedCount(
-                                    +event.target.value,
-                                    weaponCounts[group.id] ?? 0,
-                                  ),
-                                }))
-                              }
-                            />
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                      {group.profiles.length > 1 && (
+                        <div className="profile-allocations">
+                          <span>Copies using each profile this volley</span>
+                          {group.profiles.map((profile) => (
+                            <label key={profile.id}>
+                              <span>
+                                {profile.profileName ?? profile.name}
+                                <small>
+                                  {profile.attacks} · S{profile.strength} · AP {profile.ap ?? "—"} ·
+                                  D {profile.damage}
+                                </small>
+                              </span>
+                              <input
+                                aria-label={`${profile.name} firing count`}
+                                type="number"
+                                min={0}
+                                max={weaponCounts[group.id] ?? 0}
+                                value={profileCounts[profile.id] ?? 0}
+                                onChange={(event) =>
+                                  setProfileCounts((current) => ({
+                                    ...current,
+                                    [profile.id]: normalizeEquippedCount(
+                                      +event.target.value,
+                                      weaponCounts[group.id] ?? 0,
+                                    ),
+                                  }))
+                                }
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
                 {attackerUnit.firingDeck && (
                   <details className="source-choice-pools" open>
                     <summary>
@@ -1460,59 +1688,72 @@ export default function UnitVsUnit() {
                     {firingDeckError && <div className="field-error">{firingDeckError}</div>}
                   </details>
                 )}
-                {attackerUnit.wargearChoicePools.length > 0 && (
+                {attackerFormationUnits.some((unit) => unit.wargearChoicePools.length > 0) && (
                   <details className="source-choice-pools">
                     <summary>
-                      Source option choices ({attackerUnit.wargearChoicePools.length})
+                      Source option choices (
+                      {attackerFormationUnits.reduce(
+                        (sum, unit) => sum + unit.wargearChoicePools.length,
+                        0,
+                      )}
+                      )
                     </summary>
                     <p>
                       Enter how many times each alternative is selected. Alternatives in the same
                       block share one allowance, including bundled weapons.
                     </p>
-                    {attackerUnit.wargearChoicePools.map((pool) => {
-                      const maximum = choicePoolMaximum(pool, attackerModels);
-                      const used = pool.alternatives.reduce(
-                        (sum, alternative) => sum + (choiceSelections[alternative.id] ?? 0),
-                        0,
-                      );
-                      return (
-                        <fieldset key={pool.id}>
-                          <legend>
-                            {used}/{maximum} selections
-                          </legend>
-                          <small>{pool.source}</small>
-                          {pool.alternatives.map((alternative) => (
-                            <label key={alternative.id}>
-                              <span>{alternative.label}</span>
-                              <input
-                                aria-label={`${alternative.label} source selections`}
-                                type="number"
-                                min={0}
-                                max={maximum}
-                                value={choiceSelections[alternative.id] ?? 0}
-                                onChange={(event) => {
-                                  const previous = choiceSelections[alternative.id] ?? 0;
-                                  const next = normalizeEquippedCount(+event.target.value, maximum);
-                                  setWeaponCounts((current) =>
-                                    applyChoiceSelectionChange(
-                                      current,
-                                      pool,
-                                      alternative,
-                                      previous,
-                                      next,
-                                    ),
-                                  );
-                                  setChoiceSelections((current) => ({
-                                    ...current,
-                                    [alternative.id]: next,
-                                  }));
-                                }}
-                              />
-                            </label>
-                          ))}
-                        </fieldset>
-                      );
-                    })}
+                    {attackerFormationUnits.flatMap((unit) =>
+                      unit.wargearChoicePools.map((pool) => {
+                        const maximum = choicePoolMaximum(
+                          pool,
+                          attackerComponentModelCount(unit.id),
+                        );
+                        const used = pool.alternatives.reduce(
+                          (sum, alternative) => sum + (choiceSelections[alternative.id] ?? 0),
+                          0,
+                        );
+                        return (
+                          <fieldset key={pool.id}>
+                            <legend>
+                              {unit.name}: {used}/{maximum} selections
+                            </legend>
+                            <small>{pool.source}</small>
+                            {pool.alternatives.map((alternative) => (
+                              <label key={alternative.id}>
+                                <span>{alternative.label}</span>
+                                <input
+                                  aria-label={`${alternative.label} source selections`}
+                                  type="number"
+                                  min={0}
+                                  max={maximum}
+                                  value={choiceSelections[alternative.id] ?? 0}
+                                  onChange={(event) => {
+                                    const previous = choiceSelections[alternative.id] ?? 0;
+                                    const next = normalizeEquippedCount(
+                                      +event.target.value,
+                                      maximum,
+                                    );
+                                    setWeaponCounts((current) =>
+                                      applyChoiceSelectionChange(
+                                        current,
+                                        pool,
+                                        alternative,
+                                        previous,
+                                        next,
+                                      ),
+                                    );
+                                    setChoiceSelections((current) => ({
+                                      ...current,
+                                      [alternative.id]: next,
+                                    }));
+                                  }}
+                                />
+                              </label>
+                            ))}
+                          </fieldset>
+                        );
+                      }),
+                    )}
                   </details>
                 )}
                 {loadoutWarnings.length > 0 && (
@@ -1528,30 +1769,36 @@ export default function UnitVsUnit() {
                     </small>
                   </div>
                 )}
-                <details className="source-guidance" open>
-                  <summary>Unit composition</summary>
-                  <ul>
-                    {attackerUnit.composition.map((line, index) => (
-                      <li key={`${line.text}-${index}`}>{line.text}</li>
-                    ))}
-                  </ul>
-                </details>
-                {attackerUnit.loadout && (
-                  <details className="source-guidance" open>
-                    <summary>Starting equipment</summary>
-                    <p>{attackerUnit.loadout}</p>
-                  </details>
-                )}
-                {attackerUnit.wargearOptions.length > 0 && (
-                  <details className="source-guidance">
-                    <summary>Wargear options ({attackerUnit.wargearOptions.length})</summary>
-                    <ul>
-                      {attackerUnit.wargearOptions.map((option, index) => (
-                        <li key={`${option}-${index}`}>{option}</li>
-                      ))}
-                    </ul>
-                  </details>
-                )}
+                {attackerFormationUnits.map((unit) => (
+                  <div key={unit.id}>
+                    <details className="source-guidance" open>
+                      <summary>{unit.name} composition</summary>
+                      <ul>
+                        {unit.composition.map((line, index) => (
+                          <li key={`${line.text}-${index}`}>{line.text}</li>
+                        ))}
+                      </ul>
+                    </details>
+                    {unit.loadout && (
+                      <details className="source-guidance" open>
+                        <summary>{unit.name} starting equipment</summary>
+                        <p>{unit.loadout}</p>
+                      </details>
+                    )}
+                    {unit.wargearOptions.length > 0 && (
+                      <details className="source-guidance">
+                        <summary>
+                          {unit.name} wargear options ({unit.wargearOptions.length})
+                        </summary>
+                        <ul>
+                          {unit.wargearOptions.map((option, index) => (
+                            <li key={`${option}-${index}`}>{option}</li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -1572,6 +1819,8 @@ export default function UnitVsUnit() {
                 onChange={(event) => {
                   setTargetFaction(event.target.value);
                   setTargetUnitId("");
+                  setTargetJoinerId("");
+                  setTargetJoinerModels(1);
                   setTargetBattleShocked(false);
                   setTargetStrengthState("full");
                   setTargetAttached(false);
@@ -1603,6 +1852,48 @@ export default function UnitVsUnit() {
                 ))}
               </select>
             </label>
+            {targetJoinerOptions.length > 0 && (
+              <label>
+                <span>Joined formation unit</span>
+                <select
+                  aria-label="Target joined Bodyguard unit"
+                  value={targetJoinerId}
+                  onChange={(event) => selectTargetJoiner(event.target.value)}
+                >
+                  <option value="">None</option>
+                  {targetJoinerOptions.map((unit) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.name}
+                    </option>
+                  ))}
+                </select>
+                <small>Uses the published pre-battle Bodyguard join rule</small>
+              </label>
+            )}
+            {targetJoiner && (
+              <label>
+                <span>{targetJoiner.name} models</span>
+                <input
+                  aria-label="Target joined unit model count"
+                  type="number"
+                  min={1}
+                  max={targetJoiner.maximumModelCount ?? 100}
+                  value={targetJoinerModels}
+                  onChange={(event) => {
+                    const next = Math.max(1, +event.target.value);
+                    const composition = catalogueModelSegments(targetJoiner, next);
+                    setTargetJoinerModels(next);
+                    setTargetSegments((current) => [
+                      ...current.filter((segment) => segment.unitId !== targetJoiner.id),
+                      ...composition.segments.map((segment) =>
+                        targetSegment(segment.model, segment.modelCount, targetJoiner.id),
+                      ),
+                    ]);
+                    setInitialWoundsLost(0);
+                  }}
+                />
+              </label>
+            )}
             <label>
               <span>Charge state</span>
               <span className="inline-checkbox">
@@ -2038,7 +2329,7 @@ export default function UnitVsUnit() {
             {targetUnit && (
               <div className="target-sequence">
                 <CombatPresetSelector
-                  presets={targetUnit.combatPresets}
+                  presets={targetFormationUnit?.combatPresets ?? []}
                   role="target"
                   selectedIds={activeTargetPresetIds}
                   onChange={setActiveTargetPresetIds}
@@ -2085,9 +2376,12 @@ export default function UnitVsUnit() {
                     type="button"
                     disabled={targetSegments.length >= 16}
                     onClick={() => {
-                      const model = targetUnit.models[0];
-                      if (model)
-                        setTargetSegments((current) => [...current, targetSegment(model, 1)]);
+                      const option = targetModelOptions[0];
+                      if (option)
+                        setTargetSegments((current) => [
+                          ...current,
+                          targetSegment(option.model, 1, option.unit.id),
+                        ]);
                     }}
                   >
                     Add profile
@@ -2101,24 +2395,35 @@ export default function UnitVsUnit() {
                         aria-label={`Target profile ${index + 1}`}
                         value={segment.modelId}
                         onChange={(event) => {
-                          const model = targetUnit.models.find(
-                            (entry) => entry.id === +event.target.value,
+                          const option = targetModelOptions.find(
+                            (entry) => entry.model.id === +event.target.value,
                           );
-                          if (!model) return;
+                          if (!option) return;
                           setTargetSegments((current) =>
                             current.map((entry) =>
                               entry.id === segment.id
-                                ? { ...targetSegment(model, entry.modelCount), id: entry.id }
+                                ? {
+                                    ...targetSegment(
+                                      option.model,
+                                      entry.modelCount,
+                                      option.unit.id,
+                                    ),
+                                    id: entry.id,
+                                  }
                                 : entry,
                             ),
                           );
                           if (index === 0) setInitialWoundsLost(0);
                         }}
                       >
-                        {targetUnit.models.map((model) => (
-                          <option key={model.id} value={model.id}>
-                            {model.name}
-                          </option>
+                        {targetFormationUnits.map((unit) => (
+                          <optgroup key={unit.id} label={unit.name}>
+                            {unit.models.map((model) => (
+                              <option key={model.id} value={model.id}>
+                                {model.name}
+                              </option>
+                            ))}
+                          </optgroup>
                         ))}
                       </select>
                       <div className="order-actions">
@@ -2151,37 +2456,41 @@ export default function UnitVsUnit() {
                         </button>
                       </div>
                     </div>
-                    {targetUnit.defensiveEquipment.length > 0 && (
+                    {targetEquipmentOptions.some(
+                      (option) => option.sourceUnitId === segment.unitId,
+                    ) && (
                       <fieldset className="preset-options">
                         <legend>Defensive equipment</legend>
-                        {targetUnit.defensiveEquipment.map((option) => (
-                          <label key={option.id} title={option.guidance ?? option.description}>
-                            <input
-                              type="checkbox"
-                              checked={segment.defensiveEquipmentIds.includes(option.id)}
-                              onChange={(event) =>
-                                setTargetSegments((current) =>
-                                  current.map((entry) =>
-                                    entry.id === segment.id
-                                      ? {
-                                          ...entry,
-                                          defensiveEquipmentIds: event.target.checked
-                                            ? [...entry.defensiveEquipmentIds, option.id]
-                                            : entry.defensiveEquipmentIds.filter(
-                                                (id) => id !== option.id,
-                                              ),
-                                        }
-                                      : entry,
-                                  ),
-                                )
-                              }
-                            />
-                            <span>
-                              {option.name} ({option.scope === "unit" ? "whole unit" : "bearer"})
-                              <small>{option.description}</small>
-                            </span>
-                          </label>
-                        ))}
+                        {targetEquipmentOptions
+                          .filter((option) => option.sourceUnitId === segment.unitId)
+                          .map((option) => (
+                            <label key={option.id} title={option.guidance ?? option.description}>
+                              <input
+                                type="checkbox"
+                                checked={segment.defensiveEquipmentIds.includes(option.id)}
+                                onChange={(event) =>
+                                  setTargetSegments((current) =>
+                                    current.map((entry) =>
+                                      entry.id === segment.id
+                                        ? {
+                                            ...entry,
+                                            defensiveEquipmentIds: event.target.checked
+                                              ? [...entry.defensiveEquipmentIds, option.id]
+                                              : entry.defensiveEquipmentIds.filter(
+                                                  (id) => id !== option.id,
+                                                ),
+                                          }
+                                        : entry,
+                                    ),
+                                  )
+                                }
+                              />
+                              <span>
+                                {option.name} ({option.scope === "unit" ? "whole unit" : "bearer"})
+                                <small>{option.description}</small>
+                              </span>
+                            </label>
+                          ))}
                       </fieldset>
                     )}
                     <div className="stat-row target-stats">

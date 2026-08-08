@@ -473,6 +473,11 @@ calculation or run the existing reproducible seeded simulation. API clients can
 make the same preflight request with `POST /api/v1/volley/complexity`; an exact
 calculation that actually exhausts the budget returns HTTP 422 with code
 `EXACT_STATE_LIMIT` and names the simulation endpoint.
+Unit vs Unit also recognizes the published exceptional Warlock joins for
+Guardian Defenders, Storm Guardians, and Windriders. Each joined component has
+its own editable model count and structured loadout, while its weapons and
+abilities resolve as part of one formation. Defending formations retain their
+exact mixed-model profiles in the editable damage-allocation order.
 Model vs Model, Unit vs Unit, and Play Mode expose unit abilities imported with
 their published source text. Strictly unconditional, whole-model/unit defenses
 load as native editable target values; conditional abilities remain explicit
