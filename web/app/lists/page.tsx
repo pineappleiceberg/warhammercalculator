@@ -140,7 +140,6 @@ export default function ArmyLists() {
       ),
       loadoutSubjectCounts,
       combatPresetIds: [],
-      defensiveEquipmentCounts: {},
     };
     setDraft((current) => ({ ...current, units: [...current.units, item] }));
     setUnitId("");
@@ -152,9 +151,16 @@ export default function ArmyLists() {
       units: current.units.map((unit) => (unit.id === id ? update(unit) : unit)),
     }));
 
-  const changeUnitDefensiveEquipment = (unitId: string, key: string, count: number) =>
+  const changeUnitDefensiveEquipment = (
+    unitId: string,
+    key: string,
+    count: number,
+    sourceUnit: Catalogue["units"][number] | undefined,
+  ) =>
     changeUnit(unitId, (unit) => {
-      const defensiveEquipmentCounts = { ...(unit.defensiveEquipmentCounts ?? {}) };
+      const defensiveEquipmentCounts = sourceUnit
+        ? savedUnitDefensiveEquipmentDefaults(unit, sourceUnit)
+        : { ...(unit.defensiveEquipmentCounts ?? {}) };
       if (count > 0) defensiveEquipmentCounts[key] = count;
       else delete defensiveEquipmentCounts[key];
       return { ...unit, defensiveEquipmentCounts };
@@ -344,7 +350,8 @@ export default function ArmyLists() {
                                   count: adjusted[weapon.groupId ?? String(weapon.weaponId)] ?? 0,
                                 })),
                                 defensiveEquipmentCounts:
-                                  sourceUnit === undefined
+                                  sourceUnit === undefined ||
+                                  current.defensiveEquipmentCounts === undefined
                                     ? current.defensiveEquipmentCounts
                                     : savedUnitDefensiveEquipmentDefaults(
                                         { ...current, modelCount: next },
@@ -725,6 +732,9 @@ export default function ArmyLists() {
                   </div>
                   {(() => {
                     const sourceUnit = catalogue?.units.find((entry) => entry.id === unit.unitId);
+                    const defensiveEquipmentCounts = sourceUnit
+                      ? savedUnitDefensiveEquipmentDefaults(unit, sourceUnit)
+                      : (unit.defensiveEquipmentCounts ?? {});
                     const counts = Object.fromEntries(
                       unit.weapons.map((weapon) => [
                         weapon.groupId ?? String(weapon.weaponId),
@@ -785,56 +795,61 @@ export default function ArmyLists() {
                                     <input
                                       aria-label={`${unit.name} ${option.name} default equipped`}
                                       type="checkbox"
-                                      checked={(unit.defensiveEquipmentCounts?.[key] ?? 0) > 0}
+                                      checked={(defensiveEquipmentCounts[key] ?? 0) > 0}
                                       onChange={(event) =>
                                         changeUnitDefensiveEquipment(
                                           unit.id,
                                           key,
                                           event.target.checked ? 1 : 0,
+                                          sourceUnit,
                                         )
                                       }
                                     />
                                   </label>
                                 );
                               }
-                              return catalogueModelSegments(
-                                sourceUnit,
-                                unit.modelCount,
-                              ).segments.map((segment) => {
-                                const key = defensiveEquipmentSelectionKey(
-                                  unit.id,
-                                  segment.model.id,
-                                  option.id,
-                                );
-                                return (
-                                  <label key={key} title={option.guidance ?? option.description}>
-                                    <span>
-                                      {segment.model.name} · {option.name}
-                                      <small>{option.description}</small>
-                                    </span>
-                                    <input
-                                      aria-label={`${unit.name} ${segment.model.name} ${option.name} default bearers`}
-                                      type="number"
-                                      min={0}
-                                      max={segment.modelCount}
-                                      value={Math.min(
-                                        segment.modelCount,
-                                        unit.defensiveEquipmentCounts?.[key] ?? 0,
-                                      )}
-                                      onChange={(event) =>
-                                        changeUnitDefensiveEquipment(
-                                          unit.id,
-                                          key,
-                                          Math.min(
-                                            segment.modelCount,
-                                            Math.max(0, +event.target.value || 0),
-                                          ),
-                                        )
-                                      }
-                                    />
-                                  </label>
-                                );
-                              });
+                              return catalogueModelSegments(sourceUnit, unit.modelCount)
+                                .segments.filter(
+                                  (segment) =>
+                                    !option.eligibleModelIds.length ||
+                                    option.eligibleModelIds.includes(segment.model.id),
+                                )
+                                .map((segment) => {
+                                  const key = defensiveEquipmentSelectionKey(
+                                    unit.id,
+                                    segment.model.id,
+                                    option.id,
+                                  );
+                                  return (
+                                    <label key={key} title={option.guidance ?? option.description}>
+                                      <span>
+                                        {segment.model.name} · {option.name}
+                                        <small>{option.description}</small>
+                                      </span>
+                                      <input
+                                        aria-label={`${unit.name} ${segment.model.name} ${option.name} default bearers`}
+                                        type="number"
+                                        min={0}
+                                        max={segment.modelCount}
+                                        value={Math.min(
+                                          segment.modelCount,
+                                          defensiveEquipmentCounts[key] ?? 0,
+                                        )}
+                                        onChange={(event) =>
+                                          changeUnitDefensiveEquipment(
+                                            unit.id,
+                                            key,
+                                            Math.min(
+                                              segment.modelCount,
+                                              Math.max(0, +event.target.value || 0),
+                                            ),
+                                            sourceUnit,
+                                          )
+                                        }
+                                      />
+                                    </label>
+                                  );
+                                });
                             })}
                           </details>
                         )}

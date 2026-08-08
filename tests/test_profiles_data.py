@@ -2082,7 +2082,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "64",
+                "65",
             )
             self.assertEqual(
                 connection.execute(
@@ -2977,6 +2977,69 @@ class ProfileDataTests(unittest.TestCase):
                 ).fetchone(),
                 ("bearer", "invulnerable_save", 4),
             )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_defensive_equipment_options
+                       WHERE selection_kind = 'unknown'
+                          OR selection_source_text IS NULL"""
+                ).fetchone()[0],
+                0,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM unit_defensive_equipment_options"
+                ).fetchone()[0],
+                44,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM unit_defensive_equipment_bearers"
+                ).fetchone()[0],
+                44,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM unit_defensive_equipment_default_terms"
+                ).fetchone()[0],
+                16,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT option.selection_kind, option.eligibility_exact,
+                              bearer.model_profile_id, term.fixed_quantity
+                       FROM unit_defensive_equipment_options AS option
+                       JOIN unit_defensive_equipment_bearers AS bearer USING
+                           (datasheet_id, ability_position)
+                       JOIN unit_defensive_equipment_default_terms AS term USING
+                           (datasheet_id, ability_position)
+                       WHERE option.datasheet_id = '000000590'
+                         AND option.name = 'Serpent Shield'"""
+                ).fetchone(),
+                ("default", 1, 366, 1),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT option.selection_kind, option.eligibility_exact,
+                              bearer.model_profile_id
+                       FROM unit_defensive_equipment_options AS option
+                       JOIN unit_defensive_equipment_bearers AS bearer USING
+                           (datasheet_id, ability_position)
+                       WHERE option.datasheet_id = '000000593'
+                         AND option.name = 'Shimmershield'"""
+                ).fetchone(),
+                ("optional", 1, 370),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT option.selection_kind, term.loadout_subject_position
+                       FROM unit_defensive_equipment_options AS option
+                       JOIN unit_defensive_equipment_default_terms AS term USING
+                           (datasheet_id, ability_position)
+                       WHERE option.datasheet_id = '000002532'
+                         AND option.name = 'Channeller Stones'"""
+                ).fetchone(),
+                ("conditional", 3),
+            )
             visible_target_rows = connection.execute(
                 """SELECT datasheet.name, preset.name,
                           preset.maximum_source_target_distance, preset.activation
@@ -3651,13 +3714,13 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT count(*) FROM default_loadout_subjects"
                 ).fetchone()[0],
-                1_971,
+                1_972,
             )
             self.assertEqual(
                 connection.execute(
                     "SELECT count(*) FROM default_loadout_subjects WHERE resolved = 1"
                 ).fetchone()[0],
-                1_883,
+                1_884,
             )
             self.assertEqual(
                 connection.execute(
@@ -3917,9 +3980,9 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(catalogue["structuredWargear"]["defaultWeaponCount"], 4349)
         self.assertEqual(catalogue["structuredWargear"]["defaultWeaponTermCount"], 4494)
-        self.assertEqual(catalogue["structuredWargear"]["loadoutSubjectCount"], 1971)
+        self.assertEqual(catalogue["structuredWargear"]["loadoutSubjectCount"], 1972)
         self.assertEqual(
-            catalogue["structuredWargear"]["resolvedLoadoutSubjectCount"], 1883
+            catalogue["structuredWargear"]["resolvedLoadoutSubjectCount"], 1884
         )
         self.assertEqual(
             catalogue["structuredWargear"]["unresolvedLoadoutSubjectCount"], 88

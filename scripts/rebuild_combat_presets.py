@@ -13,6 +13,8 @@ except ModuleNotFoundError:
 
 TABLE_SCHEMA = """
 DROP TABLE IF EXISTS unit_defensive_equipment_effects;
+DROP TABLE IF EXISTS unit_defensive_equipment_default_terms;
+DROP TABLE IF EXISTS unit_defensive_equipment_bearers;
 DROP TABLE IF EXISTS unit_defensive_equipment_options;
 DROP TABLE IF EXISTS unit_combat_preset_effects;
 DROP TABLE IF EXISTS unit_combat_preset_keyword_requirements;
@@ -172,9 +174,49 @@ CREATE TABLE unit_defensive_equipment_options (
     description_text TEXT NOT NULL,
     effect_scope TEXT NOT NULL CHECK (effect_scope IN ('bearer', 'unit')),
     guidance_text TEXT,
+    selection_kind TEXT NOT NULL DEFAULT 'unknown' CHECK
+        (selection_kind IN ('default', 'optional', 'mixed', 'conditional', 'unknown')),
+    eligibility_exact INTEGER NOT NULL DEFAULT 0 CHECK (eligibility_exact IN (0, 1)),
+    selection_source_text TEXT,
     PRIMARY KEY (datasheet_id, ability_position),
     FOREIGN KEY (datasheet_id, ability_position)
         REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
+) WITHOUT ROWID;
+CREATE TABLE unit_defensive_equipment_bearers (
+    datasheet_id TEXT NOT NULL,
+    ability_position INTEGER NOT NULL,
+    model_profile_id INTEGER NOT NULL REFERENCES model_profiles(id) ON DELETE CASCADE,
+    model_position INTEGER NOT NULL CHECK (model_position >= 1),
+    PRIMARY KEY (datasheet_id, ability_position, model_profile_id),
+    FOREIGN KEY (datasheet_id, ability_position)
+        REFERENCES unit_defensive_equipment_options(datasheet_id, ability_position)
+        ON DELETE CASCADE
+) WITHOUT ROWID;
+CREATE TABLE unit_defensive_equipment_default_terms (
+    datasheet_id TEXT NOT NULL,
+    ability_position INTEGER NOT NULL,
+    term_position INTEGER NOT NULL CHECK (term_position >= 1),
+    fixed_quantity INTEGER,
+    quantity_per_model INTEGER,
+    quantity_per_increment INTEGER,
+    models_per_increment INTEGER,
+    loadout_subject_position INTEGER,
+    source_text TEXT NOT NULL,
+    PRIMARY KEY (datasheet_id, ability_position, term_position),
+    FOREIGN KEY (datasheet_id, ability_position)
+        REFERENCES unit_defensive_equipment_options(datasheet_id, ability_position)
+        ON DELETE CASCADE,
+    FOREIGN KEY (datasheet_id, loadout_subject_position)
+        REFERENCES default_loadout_subjects(datasheet_id, position) ON DELETE CASCADE,
+    CHECK (
+        (loadout_subject_position IS NULL AND fixed_quantity IS NOT NULL
+         AND quantity_per_model IS NOT NULL AND quantity_per_increment IS NOT NULL
+         AND models_per_increment IS NOT NULL)
+        OR
+        (loadout_subject_position IS NOT NULL AND fixed_quantity IS NULL
+         AND quantity_per_model IS NULL AND quantity_per_increment IS NULL
+         AND models_per_increment IS NULL)
+    )
 ) WITHOUT ROWID;
 CREATE TABLE unit_defensive_equipment_effects (
     datasheet_id TEXT NOT NULL,

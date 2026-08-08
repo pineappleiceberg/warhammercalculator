@@ -209,6 +209,20 @@ export type CatalogueDefensiveEquipment = {
   name: string;
   description: string;
   scope: "bearer" | "unit";
+  selectionKind: "default" | "optional" | "mixed" | "conditional" | "unknown";
+  eligibilityExact: boolean;
+  eligibleModelIds: number[];
+  selectionSource?: string;
+  defaultTerms: Array<
+    | {
+        fixed: number;
+        perModel: number;
+        perIncrement: number;
+        modelsPerIncrement: number;
+        source: string;
+      }
+    | { loadoutSubjectId: string; source: string }
+  >;
   guidance?: string;
   effects: Array<{
     type:

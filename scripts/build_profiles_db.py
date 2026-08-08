@@ -401,9 +401,51 @@ CREATE TABLE unit_defensive_equipment_options (
     description_text TEXT NOT NULL,
     effect_scope TEXT NOT NULL CHECK (effect_scope IN ('bearer', 'unit')),
     guidance_text TEXT,
+    selection_kind TEXT NOT NULL DEFAULT 'unknown' CHECK
+        (selection_kind IN ('default', 'optional', 'mixed', 'conditional', 'unknown')),
+    eligibility_exact INTEGER NOT NULL DEFAULT 0 CHECK (eligibility_exact IN (0, 1)),
+    selection_source_text TEXT,
     PRIMARY KEY (datasheet_id, ability_position),
     FOREIGN KEY (datasheet_id, ability_position)
         REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE TABLE unit_defensive_equipment_bearers (
+    datasheet_id TEXT NOT NULL,
+    ability_position INTEGER NOT NULL,
+    model_profile_id INTEGER NOT NULL REFERENCES model_profiles(id) ON DELETE CASCADE,
+    model_position INTEGER NOT NULL CHECK (model_position >= 1),
+    PRIMARY KEY (datasheet_id, ability_position, model_profile_id),
+    FOREIGN KEY (datasheet_id, ability_position)
+        REFERENCES unit_defensive_equipment_options(datasheet_id, ability_position)
+        ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE TABLE unit_defensive_equipment_default_terms (
+    datasheet_id TEXT NOT NULL,
+    ability_position INTEGER NOT NULL,
+    term_position INTEGER NOT NULL CHECK (term_position >= 1),
+    fixed_quantity INTEGER,
+    quantity_per_model INTEGER,
+    quantity_per_increment INTEGER,
+    models_per_increment INTEGER,
+    loadout_subject_position INTEGER,
+    source_text TEXT NOT NULL,
+    PRIMARY KEY (datasheet_id, ability_position, term_position),
+    FOREIGN KEY (datasheet_id, ability_position)
+        REFERENCES unit_defensive_equipment_options(datasheet_id, ability_position)
+        ON DELETE CASCADE,
+    FOREIGN KEY (datasheet_id, loadout_subject_position)
+        REFERENCES default_loadout_subjects(datasheet_id, position) ON DELETE CASCADE,
+    CHECK (
+        (loadout_subject_position IS NULL AND fixed_quantity IS NOT NULL
+         AND quantity_per_model IS NOT NULL AND quantity_per_increment IS NOT NULL
+         AND models_per_increment IS NOT NULL)
+        OR
+        (loadout_subject_position IS NOT NULL AND fixed_quantity IS NULL
+         AND quantity_per_model IS NULL AND quantity_per_increment IS NULL
+         AND models_per_increment IS NULL)
+    )
 ) WITHOUT ROWID;
 
 CREATE TABLE unit_defensive_equipment_effects (
@@ -872,6 +914,172 @@ def defensive_equipment_option(name: str, description: str) -> dict[str, object]
             ],
         }
     return None
+
+
+DEFENSIVE_EQUIPMENT_MODEL_OVERRIDES = {
+    ("000004174", 4): (("deathwatch veteran",), False),
+    ("000004175", 4): (("deathwatch veteran",), False),
+    ("000000593", 3): (("dire avenger exarch",), True),
+    ("000000602", 3): (("shining spear exarch",), True),
+    ("000000590", 4): (("serpent’s scale platform",), True),
+    ("000003821", 7): (("kill team veteran",), False),
+    ("000003875", 7): (("kill team veteran",), False),
+    ("000003824", 4): (("kill team veterans",), True),
+    ("000004188", 4): (("gaius silva",), False),
+    ("000004188", 5): (("veteran sergeant metaurus",), False),
+    ("000004131", 5): (("wolf guard headtakers",), True),
+}
+
+
+def equipment_name_in_text(name: str, text: str) -> bool:
+    return normalized_phrase(name) in normalized_phrase(text)
+
+
+def populate_defensive_equipment_metadata(connection: sqlite3.Connection) -> None:
+    options = connection.execute(
+        """SELECT datasheet_id, ability_position, name, effect_scope,
+                  guidance_text
+           FROM unit_defensive_equipment_options
+           ORDER BY datasheet_id, ability_position"""
+    ).fetchall()
+    for datasheet_id, ability_position, name, _scope, guidance in options:
+        subject_rows = [
+            row
+            for row in connection.execute(
+                """SELECT position, subject_text, equipment_text, fixed_quantity,
+                          quantity_per_model, quantity_per_increment,
+                          models_per_increment, resolved
+                   FROM default_loadout_subjects
+                   WHERE datasheet_id = ? ORDER BY position""",
+                (datasheet_id,),
+            )
+            if equipment_name_in_text(name, row[2])
+        ]
+        guidance_text = guidance or ""
+        if not subject_rows and equipment_name_in_text(name, guidance_text):
+            equipped = re.match(
+                r"(.+?)\s+is(?: additionally)? equipped with:\s*(.+)$",
+                guidance_text,
+                re.IGNORECASE,
+            )
+            if equipped and equipment_name_in_text(name, equipped.group(2)):
+                subject_rows = [
+                    (None, equipped.group(1), equipped.group(2), 1, 0, 0, 1, 1)
+                ]
+
+        for term_position, row in enumerate(subject_rows, start=1):
+            (
+                subject_position,
+                subject_text,
+                equipment_text,
+                fixed,
+                per_model,
+                per_increment,
+                models_per_increment,
+                resolved,
+            ) = row
+            source = f"{subject_text} is equipped with: {equipment_text}"
+            connection.execute(
+                """INSERT INTO unit_defensive_equipment_default_terms
+                   (datasheet_id, ability_position, term_position, fixed_quantity,
+                    quantity_per_model, quantity_per_increment, models_per_increment,
+                    loadout_subject_position, source_text)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    datasheet_id,
+                    ability_position,
+                    term_position,
+                    fixed if resolved else None,
+                    per_model if resolved else None,
+                    per_increment if resolved else None,
+                    models_per_increment if resolved else None,
+                    None if resolved or subject_position is None else subject_position,
+                    source,
+                ),
+            )
+
+        model_rows = connection.execute(
+            """SELECT id, name FROM model_profiles
+               WHERE datasheet_id = ? ORDER BY id""",
+            (datasheet_id,),
+        ).fetchall()
+        override = DEFENSIVE_EQUIPMENT_MODEL_OVERRIDES.get(
+            (datasheet_id, ability_position)
+        )
+        if override:
+            tokens, eligibility_exact = override
+            eligible = [
+                row
+                for row in model_rows
+                if any(normalized_phrase(token) in normalized_phrase(row[1]) for token in tokens)
+            ]
+        elif len(model_rows) == 1:
+            eligible = model_rows
+            aggregate = [0, 0, 0, 1]
+            for row in subject_rows:
+                if not row[7]:
+                    continue
+                aggregate[0] += row[3]
+                aggregate[1] += row[4]
+                aggregate[2] += row[5]
+                if row[5]:
+                    aggregate[3] = row[6]
+            source = " ".join(
+                [guidance_text, *(f"{row[1]} {row[2]}" for row in subject_rows)]
+            )
+            eligibility_exact = bool(
+                (aggregate[0] == 0 and aggregate[1] == 1 and aggregate[2] == 0)
+                or re.search(
+                    r"\b(?:any number of models|all (?:of the )?models)\b",
+                    source,
+                    re.IGNORECASE,
+                )
+            )
+        else:
+            raise RuntimeError(
+                "Defensive equipment needs an explicit model-profile mapping: "
+                f"{datasheet_id}:{ability_position} {name!r}"
+            )
+        if not eligible:
+            raise RuntimeError(
+                "Defensive equipment model-profile mapping matched no profiles: "
+                f"{datasheet_id}:{ability_position} {name!r}"
+            )
+        connection.executemany(
+            """INSERT INTO unit_defensive_equipment_bearers
+               (datasheet_id, ability_position, model_profile_id, model_position)
+               VALUES (?, ?, ?, ?)""",
+            (
+                (datasheet_id, ability_position, model_id, position)
+                for position, (model_id, _model_name) in enumerate(eligible, start=1)
+            ),
+        )
+        if subject_rows:
+            selection_kind = (
+                "conditional"
+                if all(not row[7] for row in subject_rows)
+                else "mixed"
+                if (datasheet_id, ability_position) == ("000002103", 2)
+                else "default"
+            )
+        else:
+            selection_kind = "optional"
+        sources = [
+            *(f"{row[1]} is equipped with: {row[2]}" for row in subject_rows),
+            *([guidance_text] if guidance_text else []),
+        ]
+        connection.execute(
+            """UPDATE unit_defensive_equipment_options
+               SET selection_kind = ?, eligibility_exact = ?, selection_source_text = ?
+               WHERE datasheet_id = ? AND ability_position = ?""",
+            (
+                selection_kind,
+                int(eligibility_exact),
+                "\n".join(dict.fromkeys(sources)) or None,
+                datasheet_id,
+                ability_position,
+            ),
+        )
 
 
 def combat_weapon_scope(text: str) -> str:
@@ -3317,6 +3525,8 @@ def combat_presets(
 
 
 def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
+    connection.execute("DELETE FROM unit_defensive_equipment_default_terms")
+    connection.execute("DELETE FROM unit_defensive_equipment_bearers")
     connection.execute("DELETE FROM unit_defensive_equipment_effects")
     connection.execute("DELETE FROM unit_defensive_equipment_options")
     connection.execute("DELETE FROM unit_combat_preset_effects")
@@ -3601,6 +3811,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     ),
                 )
             inserted += 1
+    populate_defensive_equipment_metadata(connection)
     return inserted
 
 
@@ -4041,7 +4252,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "64"),
+                    ("schema_version", "65"),
                     ("leader_global_maximum", "2"),
                     ("leader_global_rule_source_url", LEADER_GLOBAL_RULE_SOURCE_URL),
                     (
@@ -4431,10 +4642,10 @@ def create_database(
                         (weapon_id, position, name, value, raw),
                     )
 
+            populate_constraints(connection)
             rebuild_combat_presets(connection)
             populate_firing_deck(connection)
             populate_transports(connection)
-            populate_constraints(connection)
             for leader_datasheet_id, rule in attachment_condition_rules:
                 alternative_rows = list(
                     connection.execute(
@@ -4536,6 +4747,10 @@ def create_database(
                 "datasheet_abilities",
                 "unit_combat_presets",
                 "unit_combat_preset_effects",
+                "unit_defensive_equipment_options",
+                "unit_defensive_equipment_bearers",
+                "unit_defensive_equipment_default_terms",
+                "unit_defensive_equipment_effects",
                 "unit_firing_deck",
                 "unit_firing_deck_passenger_costs",
                 "unit_transport",

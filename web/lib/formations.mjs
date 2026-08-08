@@ -1,5 +1,9 @@
 import { attachmentFormationReport } from "./attachments.mjs";
-import { defensiveEquipmentSelectionKey } from "./defensive-equipment.mjs";
+import {
+  defensiveEquipmentDefaultCount,
+  defensiveEquipmentEligibleForModel,
+  defensiveEquipmentSelectionKey,
+} from "./defensive-equipment.mjs";
 
 function uniqueCompositionCounts(unit, modelCount) {
   const composition = unit?.compositionModels ?? [];
@@ -156,19 +160,26 @@ export function savedFormationModelSegments(formation) {
 }
 
 export function savedUnitDefensiveEquipmentDefaults(savedUnit, catalogueUnit) {
-  const stored = savedUnit?.defensiveEquipmentCounts ?? {};
+  const stored = savedUnit?.defensiveEquipmentCounts;
   const defaults = {};
   const modelSegments = catalogueModelSegments(catalogueUnit, savedUnit?.modelCount ?? 0).segments;
   for (const option of catalogueUnit?.defensiveEquipment ?? []) {
+    const sourceDefault = defensiveEquipmentDefaultCount(option, savedUnit);
     if (option.scope === "unit") {
       const key = defensiveEquipmentSelectionKey(savedUnit.id, null, option.id);
-      if ((stored[key] ?? 0) > 0) defaults[key] = 1;
+      if ((stored?.[key] ?? (stored === undefined ? sourceDefault : 0)) > 0) defaults[key] = 1;
       continue;
     }
+    let remainingDefault = sourceDefault;
     for (const segment of modelSegments) {
+      if (!defensiveEquipmentEligibleForModel(option, segment.model.id)) continue;
       const key = defensiveEquipmentSelectionKey(savedUnit.id, segment.model.id, option.id);
-      const count = Math.min(segment.modelCount, stored[key] ?? 0);
+      const count = Math.min(
+        segment.modelCount,
+        stored?.[key] ?? (stored === undefined ? remainingDefault : 0),
+      );
       if (count > 0) defaults[key] = count;
+      remainingDefault -= count;
     }
   }
   return defaults;
@@ -206,7 +217,10 @@ export function savedFormationTargetSequence(
       (candidate) => candidate.unit.id === segment.savedUnitId,
     );
     const bearerSelections = (component?.catalogueUnit?.defensiveEquipment ?? [])
-      .filter((option) => option.scope === "bearer")
+      .filter(
+        (option) =>
+          option.scope === "bearer" && defensiveEquipmentEligibleForModel(option, segment.model.id),
+      )
       .map((option) => ({
         option,
         count:

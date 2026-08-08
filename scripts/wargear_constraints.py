@@ -402,7 +402,7 @@ def loadout_subjects(loadout_html: str) -> list[tuple[str, str]]:
     clauses = []
     for line in (re.sub(r"\s+", " ", item).strip() for item in value.splitlines()):
         match = re.match(
-            r"(.+?)\s+(?:is|are)(?: both)? equipped with:\s*(.+)$",
+            r"(.+?)\s+(?:is|are)(?: both)?(?: additionally)? equipped with:\s*(.+)$",
             line,
             re.IGNORECASE,
         )

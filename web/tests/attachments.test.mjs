@@ -24,6 +24,7 @@ import {
   savedFormationGroups,
   savedFormationModelSegments,
   savedFormationTargetSequence,
+  savedUnitDefensiveEquipmentDefaults,
 } from "../lib/formations.mjs";
 
 const catalogue = JSON.parse(
@@ -504,6 +505,7 @@ test("Play Mode splits bearer equipment from unequipped models and preserves uni
   })[0];
   const crest = hearthkyn.defensiveEquipment.find((option) => option.name === "Weavefield Crest");
   assert.ok(crest);
+  assert.ok(crest);
   const crestKey = defensiveEquipmentSelectionKey("hearthkyn", null, crest.id);
   const protectedUnit = savedFormationTargetSequence(hearthkynFormation, "", { [crestKey]: 1 });
   assert.deepEqual(
@@ -570,6 +572,82 @@ test("saved defensive equipment initializes Play Mode without preventing battle 
       [1, [shield.id]],
       [2, []],
     ],
+  );
+});
+
+test("source-backed defensive defaults prefill only eligible proven equipment", () => {
+  const hearthkyn = namedUnit("Hearthkyn Warriors");
+  const crest = hearthkyn.defensiveEquipment.find((option) => option.name === "Weavefield Crest");
+  const savedHearthkyn = {
+    id: "hearthkyn",
+    unitId: hearthkyn.id,
+    name: hearthkyn.name,
+    modelCount: 10,
+  };
+  const crestKey = defensiveEquipmentSelectionKey("hearthkyn", null, crest.id);
+  assert.equal(crest.selectionKind, "default");
+  assert.deepEqual(savedUnitDefensiveEquipmentDefaults(savedHearthkyn, hearthkyn), {
+    [crestKey]: 1,
+  });
+  assert.deepEqual(
+    savedUnitDefensiveEquipmentDefaults(
+      { ...savedHearthkyn, defensiveEquipmentCounts: {} },
+      hearthkyn,
+    ),
+    {},
+  );
+
+  const hounds = namedUnit("Flesh Hounds");
+  const collar = hounds.defensiveEquipment.find((option) => option.name === "Collar of Khorne");
+  assert.ok(collar);
+  const collarKey = defensiveEquipmentSelectionKey("hounds", hounds.models[0].id, collar.id);
+  assert.equal(collar.eligibilityExact, true);
+  assert.deepEqual(
+    savedUnitDefensiveEquipmentDefaults(
+      { id: "hounds", unitId: hounds.id, name: hounds.name, modelCount: 5 },
+      hounds,
+    ),
+    { [collarKey]: 5 },
+  );
+
+  const voidscarred = unit("000002532");
+  const stones = voidscarred.defensiveEquipment.find(
+    (option) => option.name === "Channeller Stones",
+  );
+  assert.ok(stones);
+  const stonesKey = defensiveEquipmentSelectionKey("voidscarred", null, stones.id);
+  assert.deepEqual(
+    savedUnitDefensiveEquipmentDefaults(
+      {
+        id: "voidscarred",
+        unitId: voidscarred.id,
+        name: voidscarred.name,
+        modelCount: 5,
+        loadoutSubjectCounts: { "000002532:3": 1 },
+      },
+      voidscarred,
+    ),
+    { [stonesKey]: 1 },
+  );
+
+  const direAvengers = namedUnit("Dire Avengers");
+  const shimmershield = direAvengers.defensiveEquipment.find(
+    (option) => option.name === "Shimmershield",
+  );
+  assert.ok(shimmershield);
+  assert.deepEqual(shimmershield.eligibleModelIds, [370]);
+  assert.equal(shimmershield.selectionKind, "optional");
+  assert.deepEqual(
+    savedUnitDefensiveEquipmentDefaults(
+      {
+        id: "avengers",
+        unitId: direAvengers.id,
+        name: direAvengers.name,
+        modelCount: 5,
+      },
+      direAvengers,
+    ),
+    {},
   );
 });
 

@@ -2010,7 +2010,12 @@ export default function PlayMode() {
                         );
                       }
                       return targetBaseModels.segments
-                        .filter((segment) => segment.savedUnitId === option.savedUnitId)
+                        .filter(
+                          (segment) =>
+                            segment.savedUnitId === option.savedUnitId &&
+                            (!option.eligibleModelIds.length ||
+                              option.eligibleModelIds.includes(segment.model.id)),
+                        )
                         .map((segment) => {
                           const key = defensiveEquipmentSelectionKey(
                             option.savedUnitId,

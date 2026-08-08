@@ -272,7 +272,12 @@ export default function UnitVsUnit() {
         .filter((option) => option.scope === "bearer")
         .flatMap((option) =>
           targetSegments
-            .filter((segment) => segment.unitId === option.sourceUnitId)
+            .filter(
+              (segment) =>
+                segment.unitId === option.sourceUnitId &&
+                (!option.eligibleModelIds.length ||
+                  option.eligibleModelIds.includes(segment.modelId)),
+            )
             .map(
               (segment) =>
                 [

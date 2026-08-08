@@ -527,6 +527,11 @@ the current battle, and attack-keyword conditions are applied per weapon. Army
 Lists can also save these choices as defaults: selecting that target in Play
 Mode starts from the saved whole-unit and bearer counts, while later battle
 changes remain local and editable.
+Published default defensive equipment is derived from normalized loadout text,
+and bearer controls are limited to eligible model profiles. Optional and
+conditional choices remain off until selected or their structured loadout
+subject is present; users can still save explicit overrides for casualties and
+narrative rules.
 Conflicting bearer assignments and ambiguous model compositions fail closed.
 Other subset-model rules, friendly-aura, affected-model,
 unrepresented attack-type conditions, conflicting, random, subset-model multiplicative,

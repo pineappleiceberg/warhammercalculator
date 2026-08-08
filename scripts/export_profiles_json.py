@@ -899,7 +899,8 @@ def export(database: Path, output: Path) -> None:
         equipment_lookup: dict[tuple[str, int], dict] = {}
         for row in connection.execute(
             """SELECT datasheet_id, ability_position, name, description_text,
-                      effect_scope, guidance_text
+                      effect_scope, guidance_text, selection_kind,
+                      eligibility_exact, selection_source_text
                FROM unit_defensive_equipment_options
                ORDER BY datasheet_id, ability_position"""
         ):
@@ -908,11 +909,54 @@ def export(database: Path, output: Path) -> None:
                 "name": row["name"],
                 "description": row["description_text"],
                 "scope": row["effect_scope"],
+                "selectionKind": row["selection_kind"],
+                "eligibilityExact": bool(row["eligibility_exact"]),
+                "eligibleModelIds": [],
+                "defaultTerms": [],
                 **({"guidance": row["guidance_text"]} if row["guidance_text"] else {}),
+                **(
+                    {"selectionSource": row["selection_source_text"]}
+                    if row["selection_source_text"]
+                    else {}
+                ),
                 "effects": [],
             }
             units[row["datasheet_id"]]["defensiveEquipment"].append(option)
             equipment_lookup[(row["datasheet_id"], row["ability_position"])] = option
+
+        for row in connection.execute(
+            """SELECT datasheet_id, ability_position, model_profile_id
+               FROM unit_defensive_equipment_bearers
+               ORDER BY datasheet_id, ability_position, model_position"""
+        ):
+            equipment_lookup[(row["datasheet_id"], row["ability_position"])][
+                "eligibleModelIds"
+            ].append(row["model_profile_id"])
+
+        for row in connection.execute(
+            """SELECT datasheet_id, ability_position, fixed_quantity,
+                      quantity_per_model, quantity_per_increment,
+                      models_per_increment, loadout_subject_position, source_text
+               FROM unit_defensive_equipment_default_terms
+               ORDER BY datasheet_id, ability_position, term_position"""
+        ):
+            term = {"source": row["source_text"]}
+            if row["loadout_subject_position"] is not None:
+                term["loadoutSubjectId"] = (
+                    f"{row['datasheet_id']}:{row['loadout_subject_position']}"
+                )
+            else:
+                term.update(
+                    {
+                        "fixed": row["fixed_quantity"],
+                        "perModel": row["quantity_per_model"],
+                        "perIncrement": row["quantity_per_increment"],
+                        "modelsPerIncrement": row["models_per_increment"],
+                    }
+                )
+            equipment_lookup[(row["datasheet_id"], row["ability_position"])][
+                "defaultTerms"
+            ].append(term)
 
         for row in connection.execute(
             """SELECT datasheet_id, ability_position, effect_type, value, uses,

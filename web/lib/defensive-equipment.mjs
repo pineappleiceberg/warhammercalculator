@@ -2,6 +2,29 @@ export function defensiveEquipmentSelectionKey(savedUnitId, modelId, optionId) {
   return `${savedUnitId}::${modelId ?? "unit"}::${optionId}`;
 }
 
+export function defensiveEquipmentEligibleForModel(option, modelId) {
+  return !option?.eligibleModelIds?.length || option.eligibleModelIds.includes(modelId);
+}
+
+export function defensiveEquipmentDefaultCount(option, savedUnit) {
+  const modelCount = Math.max(0, Math.floor(savedUnit?.modelCount ?? 0));
+  const count = (option?.defaultTerms ?? []).reduce((total, term) => {
+    if (term.loadoutSubjectId) {
+      return (
+        total +
+        Math.max(0, Math.floor(savedUnit?.loadoutSubjectCounts?.[term.loadoutSubjectId] ?? 0))
+      );
+    }
+    return (
+      total +
+      term.fixed +
+      term.perModel * modelCount +
+      Math.floor(modelCount / term.modelsPerIncrement) * term.perIncrement
+    );
+  }, 0);
+  return Math.min(modelCount, Math.max(0, count));
+}
+
 export function normalizeDefensiveEquipmentCounts(
   value,
   fieldName = "targetDefensiveEquipmentCounts",

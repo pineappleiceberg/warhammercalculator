@@ -16,14 +16,24 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Normalize bearer model eligibility and default-versus-optional equipment
-   provenance from datasheet composition and loadout text so Army Lists can
-   prefill only equipment that is provable without guessing.
-2. Cross-check saved defensive-equipment counts against normalized source
+1. Cross-check saved defensive-equipment counts against normalized source
    choice limits and surface explicit warnings for casualty or narrative
    overrides instead of silently accepting impossible rosters.
+2. Split grouped model profiles where source composition combines eligible and
+   ineligible defensive-equipment bearers, eliminating the remaining
+   conservative `eligibilityExact=false` cases without guessing.
 
 ## Completed cycles
+
+- 2026-08-08: Normalized defensive-equipment selection provenance and bearer
+  eligibility in SQLite schema 65. All 44 equipment options now retain their
+  exact source text, default/optional/mixed/conditional classification, and a
+  source-backed eligible model profile; 16 published default terms are stored
+  as fixed, per-model, per-increment, or structured loadout-subject expressions.
+  Army Lists derives only provable defaults, keeps conditional defaults reactive
+  until a user makes an explicit override, and limits bearer controls throughout
+  Model vs Model, Unit vs Unit, Army Lists, and Play Mode. Ambiguous grouped
+  profiles remain marked inexact instead of inventing bearer identities.
 
 - 2026-08-08: Persisted defensive-equipment selections with each Army List
   unit. Whole-unit choices and bounded bearer counts now initialize a newly

@@ -1297,7 +1297,12 @@ export default function Home() {
     ) as Profile;
     return applyDefensiveEquipmentProfile(
       resolved,
-      targetPresetUnit?.defensiveEquipment ?? [],
+      (targetPresetUnit?.defensiveEquipment ?? []).filter(
+        (option) =>
+          option.scope === "unit" ||
+          !option.eligibleModelIds.length ||
+          option.eligibleModelIds.includes(model.id),
+      ),
       targetEquipmentIds,
       attackKeywordsForWeapon(weapon),
     ) as Profile;
@@ -2097,33 +2102,40 @@ export default function Home() {
                 selectedTargetUnit.defensiveEquipment.length > 0 && (
                   <fieldset className="preset-options">
                     <legend>Defensive equipment on this model</legend>
-                    {selectedTargetUnit.defensiveEquipment.map((option) => (
-                      <label key={option.id} title={option.guidance ?? option.description}>
-                        <input
-                          type="checkbox"
-                          checked={activeTargetEquipmentIds.includes(option.id)}
-                          onChange={(event) => {
-                            const next = event.target.checked
-                              ? [...activeTargetEquipmentIds, option.id]
-                              : activeTargetEquipmentIds.filter((id) => id !== option.id);
-                            setActiveTargetEquipmentIds(next);
-                            applyTarget(
-                              selectedTargetModel,
-                              activeTargetPresetIds,
-                              {},
-                              selectedTargetSupportUnit,
-                              activeTargetSupportPresetIds,
-                              selectedTargetUnit,
-                              next,
-                            );
-                          }}
-                        />
-                        <span>
-                          {option.name} ({option.scope === "unit" ? "whole unit" : "this model"})
-                          <small>{option.description}</small>
-                        </span>
-                      </label>
-                    ))}
+                    {selectedTargetUnit.defensiveEquipment
+                      .filter(
+                        (option) =>
+                          option.scope === "unit" ||
+                          !option.eligibleModelIds.length ||
+                          option.eligibleModelIds.includes(selectedTargetModel.id),
+                      )
+                      .map((option) => (
+                        <label key={option.id} title={option.guidance ?? option.description}>
+                          <input
+                            type="checkbox"
+                            checked={activeTargetEquipmentIds.includes(option.id)}
+                            onChange={(event) => {
+                              const next = event.target.checked
+                                ? [...activeTargetEquipmentIds, option.id]
+                                : activeTargetEquipmentIds.filter((id) => id !== option.id);
+                              setActiveTargetEquipmentIds(next);
+                              applyTarget(
+                                selectedTargetModel,
+                                activeTargetPresetIds,
+                                {},
+                                selectedTargetSupportUnit,
+                                activeTargetSupportPresetIds,
+                                selectedTargetUnit,
+                                next,
+                              );
+                            }}
+                          />
+                          <span>
+                            {option.name} ({option.scope === "unit" ? "whole unit" : "this model"})
+                            <small>{option.description}</small>
+                          </span>
+                        </label>
+                      ))}
                   </fieldset>
                 )}
               {selectedTargetUnit && (
