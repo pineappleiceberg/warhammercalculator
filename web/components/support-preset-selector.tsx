@@ -3,6 +3,11 @@
 import type { CatalogueCombatPreset } from "../lib/catalogue";
 import { combatPresetSupportsRole } from "../lib/combat-presets.mjs";
 import { CombatPresetSelector } from "./combat-preset-selector";
+import {
+  commitSupportPresetSelection,
+  setSupportUsesRemaining,
+  supportUsesRemaining,
+} from "../lib/support-uses.mjs";
 
 type Props = {
   units: Array<{ id: string; name: string; combatPresets: CatalogueCombatPreset[] }>;
@@ -18,6 +23,8 @@ type Props = {
   attackerBattleShocked?: boolean;
   targetBattleShocked?: boolean;
   targetStrengthState?: "full" | "below_starting" | "below_half";
+  supportUsesSpent?: Record<string, Record<string, number>>;
+  onSupportUsesChange?: (uses: Record<string, Record<string, number>>) => void;
 };
 
 export function SupportPresetSelector({
@@ -27,6 +34,8 @@ export function SupportPresetSelector({
   selectedIds,
   onUnitChange,
   onPresetChange,
+  supportUsesSpent = {},
+  onSupportUsesChange,
   ...eligibility
 }: Props) {
   const supportUnits = units.filter((unit) =>
@@ -37,6 +46,17 @@ export function SupportPresetSelector({
   );
   if (!supportUnits.length) return null;
   const selectedUnit = supportUnits.find((unit) => unit.id === selectedUnitId);
+  const tracked = Boolean(onSupportUsesChange);
+  const limitedPresets =
+    selectedUnit?.combatPresets.filter(
+      (preset) => preset.sourceRelationship === "supporting_unit" && preset.usesPerBattle,
+    ) ?? [];
+  const remaining = Object.fromEntries(
+    limitedPresets.map((preset) => [
+      preset.id,
+      supportUsesRemaining(supportUsesSpent, selectedUnitId, preset.id, preset.usesPerBattle),
+    ]),
+  );
   return (
     <div className="support-preset-selector">
       <label>
@@ -51,16 +71,92 @@ export function SupportPresetSelector({
         </select>
       </label>
       {selectedUnit ? (
-        <CombatPresetSelector
-          presets={selectedUnit.combatPresets}
-          role={role}
-          selectedIds={selectedIds}
-          onChange={onPresetChange}
-          title="Active supporting abilities"
-          hint="Select an ability only when this unit is providing it to the attacker against this target."
-          sourceRelationship="supporting_unit"
-          {...eligibility}
-        />
+        <>
+          <CombatPresetSelector
+            presets={selectedUnit.combatPresets}
+            role={role}
+            selectedIds={selectedIds}
+            onChange={(ids) => {
+              if (!tracked) {
+                onPresetChange(ids);
+                return;
+              }
+              try {
+                const next = commitSupportPresetSelection(
+                  selectedUnit.combatPresets,
+                  selectedIds,
+                  ids,
+                  selectedUnitId,
+                  supportUsesSpent,
+                );
+                onSupportUsesChange?.(next.uses);
+                onPresetChange(next.selectedIds);
+              } catch {
+                onPresetChange(selectedIds);
+              }
+            }}
+            title="Active supporting abilities"
+            hint={
+              tracked && limitedPresets.length
+                ? "Turning on a limited ability spends one use. Leave it on while resolving every weapon it supports."
+                : "Select an ability only when this unit is providing it to the attacker against this target."
+            }
+            sourceRelationship="supporting_unit"
+            disabledIds={
+              tracked
+                ? limitedPresets
+                    .filter((preset) => remaining[preset.id] === 0)
+                    .map((preset) => preset.id)
+                : []
+            }
+            usageLabels={
+              tracked
+                ? Object.fromEntries(
+                    limitedPresets.map((preset) => [
+                      preset.id,
+                      `${remaining[preset.id]} of ${preset.usesPerBattle} uses remaining`,
+                    ]),
+                  )
+                : {}
+            }
+            {...eligibility}
+          />
+          {tracked && limitedPresets.length ? (
+            <div className="support-use-controls">
+              {limitedPresets.map((preset) => (
+                <label key={preset.id}>
+                  <span>{preset.name} uses remaining</span>
+                  <input
+                    aria-label={`${preset.name} uses remaining`}
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={preset.usesPerBattle}
+                    value={remaining[preset.id]}
+                    onChange={(event) => {
+                      const nextRemaining = Math.min(
+                        preset.usesPerBattle ?? 0,
+                        Math.max(0, Number(event.target.value) || 0),
+                      );
+                      onSupportUsesChange?.(
+                        setSupportUsesRemaining(
+                          supportUsesSpent,
+                          selectedUnitId,
+                          preset.id,
+                          preset.usesPerBattle,
+                          nextRemaining,
+                        ),
+                      );
+                      if (nextRemaining === 0 && selectedIds.includes(preset.id)) {
+                        onPresetChange(selectedIds.filter((id) => id !== preset.id));
+                      }
+                    }}
+                  />
+                </label>
+              ))}
+            </div>
+          ) : null}
+        </>
       ) : null}
     </div>
   );

@@ -71,6 +71,7 @@ class ProfileDataTests(unittest.TestCase):
                 "requires_source_guided_against_target": False,
                 "requires_target_spotted": False,
                 "requires_target_spotted_by_markerlight_observer": False,
+                "uses_per_battle": None,
                 "required_target_strength_state": None,
                 "hit_modifier_role": "attacker",
                 "hit_modifier_subject": "led_unit",
@@ -168,12 +169,22 @@ class ProfileDataTests(unittest.TestCase):
                 self.assertEqual(support["weapon_scope"], "Ranged")
                 self.assertTrue(support["requires_source_guided_against_target"])
                 self.assertTrue(support["requires_target_spotted"])
+                self.assertEqual(
+                    support["uses_per_battle"],
+                    2 if name == "Blacklight Marker Drones" else None,
+                )
 
         unsupported = combat_presets(
             "Forward Observers",
             support_cases["Forward Observers"].replace("their Spotted unit", "any enemy unit"),
         )[0]
         self.assertNotIn("source_relationship", unsupported)
+        changed_limit = combat_presets(
+            "Blacklight Marker Drones",
+            support_cases["Blacklight Marker Drones"].replace("Twice per battle", "Three times per battle"),
+        )[0]
+        self.assertNotIn("source_relationship", changed_limit)
+        self.assertIsNone(changed_limit["uses_per_battle"])
         self.assertTrue(uploaded["requires_target_spotted"])
 
         changed = greater_good.replace("Markerlight keyword", "Marker Beacon keyword")
@@ -1313,7 +1324,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "42",
+                "43",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1751,7 +1762,7 @@ class ProfileDataTests(unittest.TestCase):
             )
             self.assertEqual(
                 connection.execute(
-                    """SELECT name, activation, source_relationship, weapon_scope,
+                    """SELECT name, activation, source_relationship, uses_per_battle, weapon_scope,
                               requires_source_guided_against_target,
                               requires_target_spotted
                        FROM unit_combat_presets
@@ -1760,9 +1771,9 @@ class ProfileDataTests(unittest.TestCase):
                        ORDER BY name"""
                 ).fetchall(),
                 [
-                    ("Blacklight Marker Drones", "situational", "supporting_unit", "Ranged", 1, 1),
-                    ("Forward Observers", "situational", "supporting_unit", "Ranged", 1, 1),
-                    ("High-intensity Markerlights", "situational", "supporting_unit", "Ranged", 1, 1),
+                    ("Blacklight Marker Drones", "situational", "supporting_unit", 2, "Ranged", 1, 1),
+                    ("Forward Observers", "situational", "supporting_unit", None, "Ranged", 1, 1),
+                    ("High-intensity Markerlights", "situational", "supporting_unit", None, "Ranged", 1, 1),
                 ],
             )
             self.assertEqual(
@@ -2219,6 +2230,27 @@ class ProfileDataTests(unittest.TestCase):
             )
         finally:
             connection.close()
+
+    def test_browser_catalogue_exports_limited_support_uses_exactly(self):
+        catalogue = json.loads(CATALOGUE.read_text(encoding="utf-8"))
+        support_presets = [
+            preset
+            for unit in catalogue["units"]
+            for preset in unit["combatPresets"]
+            if preset["sourceRelationship"] == "supporting_unit"
+        ]
+        self.assertEqual(len(support_presets), 3)
+        self.assertEqual(
+            {
+                preset["name"]: preset.get("usesPerBattle")
+                for preset in support_presets
+            },
+            {
+                "Blacklight Marker Drones": 2,
+                "Forward Observers": None,
+                "High-intensity Markerlights": None,
+            },
+        )
 
     def test_bearer_defenses_are_limited_to_single_model_datasheets(self):
         connection = sqlite3.connect(DATABASE)

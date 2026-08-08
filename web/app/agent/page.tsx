@@ -291,6 +291,7 @@ export default function AgentCalculator() {
             supportPresets: selection.supportPresets.map((preset) => ({
               id: preset.id,
               name: preset.name,
+              usesPerBattle: preset.usesPerBattle ?? null,
             })),
             attackerPresets: attackerPresets.map((preset) => ({
               id: preset.id,
@@ -419,7 +420,8 @@ export default function AgentCalculator() {
               targetOnTargetSelectedObjective, guided, spotted, markerlightSpotted, targetStrength,
               attackerPreset, targetPreset, support, supportPreset, and rules. A supportPreset is
               resolved only from the named same-faction supporting unit and cannot be applied as the
-              attacker&apos;s own ability.
+              attacker&apos;s own ability. Limited-use metadata is returned in the result; this
+              stateless URL does not spend battle uses.
             </p>
             <p>
               <code>rules</code> accepts comma-separated values such as{" "}

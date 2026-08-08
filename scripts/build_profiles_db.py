@@ -158,6 +158,7 @@ CREATE TABLE unit_combat_presets (
     activation TEXT NOT NULL CHECK (activation IN ('inherent', 'automatic', 'situational')),
     source_relationship TEXT NOT NULL DEFAULT 'self'
         CHECK (source_relationship IN ('self', 'supporting_unit')),
+    uses_per_battle INTEGER CHECK (uses_per_battle > 0),
     weapon_scope TEXT NOT NULL CHECK (weapon_scope IN ('Any', 'Ranged', 'Melee')),
     maximum_target_distance INTEGER CHECK (maximum_target_distance > 0),
     requires_attacker_charge INTEGER NOT NULL DEFAULT 0
@@ -1956,6 +1957,7 @@ def combat_preset(
     effects["requires_source_guided_against_target"] = False
     effects["requires_target_spotted"] = False
     effects["requires_target_spotted_by_markerlight_observer"] = False
+    effects["uses_per_battle"] = None
     (
         effects["requires_target_battle_shocked"],
         effects["requires_attacker_not_battle_shocked"],
@@ -2160,6 +2162,7 @@ def combat_guidance_presets(
                 "activation": "situational",
                 "source_relationship": "supporting_unit",
                 **effects,
+                "uses_per_battle": 2 if name == "Blacklight Marker Drones" else None,
                 "requires_source_guided_against_target": True,
                 "requires_target_spotted": True,
             }
@@ -2467,7 +2470,8 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
             connection.execute(
                 """INSERT INTO unit_combat_presets
                    (datasheet_id, ability_position, preset_position, name, description_text,
-                    is_exclusive_choice, activation, source_relationship, weapon_scope,
+                     is_exclusive_choice, activation, source_relationship, uses_per_battle,
+                     weapon_scope,
                     maximum_target_distance,
                     requires_attacker_charge, requires_attacker_stationary,
                     requires_attached_unit,
@@ -2490,7 +2494,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                     hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
                     wound_reroll_subject)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     ability_position,
@@ -2500,6 +2504,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     preset["is_exclusive_choice"],
                     preset["activation"],
                     preset.get("source_relationship", "self"),
+                    preset.get("uses_per_battle"),
                     preset["weapon_scope"],
                     preset["maximum_target_distance"],
                     int(preset["requires_attacker_charge"]),
@@ -2702,7 +2707,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "42"),
+                    ("schema_version", "43"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

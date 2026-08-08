@@ -53,6 +53,9 @@ export default function PlayMode() {
   const [activeTargetPresetIds, setActiveTargetPresetIds] = useState<string[]>([]);
   const [supportUnitId, setSupportUnitId] = useState("");
   const [activeSupportPresetIds, setActiveSupportPresetIds] = useState<string[]>([]);
+  const [supportUsesSpent, setSupportUsesSpent] = useState<Record<string, Record<string, number>>>(
+    {},
+  );
   const [profile, setProfile] = useState<CombatProfile>(DEFAULT_PROFILE);
   const [result, setResult] = useState<RollResult | null>(null);
   const [history, setHistory] = useState<LogEntry[]>([]);
@@ -93,6 +96,7 @@ export default function PlayMode() {
             activeTargetPresetIds: string[];
             supportUnitId: string;
             activeSupportPresetIds: string[];
+            supportUsesSpent: Record<string, Record<string, number>>;
           };
           setAttackerListId(saved.attackerListId);
           setTargetListId(saved.targetListId);
@@ -105,6 +109,7 @@ export default function PlayMode() {
           setActiveTargetPresetIds(saved.activeTargetPresetIds);
           setSupportUnitId(saved.supportUnitId);
           setActiveSupportPresetIds(saved.activeSupportPresetIds);
+          setSupportUsesSpent(saved.supportUsesSpent);
           setProfile(normalizeProfile(saved.profile));
           setHistory(saved.history);
           recovered.current = true;
@@ -139,6 +144,7 @@ export default function PlayMode() {
       activeTargetPresetIds,
       supportUnitId,
       activeSupportPresetIds,
+      supportUsesSpent,
       profile,
       history,
     });
@@ -157,6 +163,7 @@ export default function PlayMode() {
     targetModelId,
     targetUnitId,
     supportUnitId,
+    supportUsesSpent,
     weaponId,
   ]);
 
@@ -643,6 +650,7 @@ export default function PlayMode() {
     const nextTargetStrengthState = "full" as const;
     setTargetModelId(model ? String(model.id) : "");
     setActiveTargetPresetIds(nextTargetPresetIds);
+    setActiveSupportPresetIds([]);
     if (!weaponProfile || !model || !nextTarget) {
       setProfile((current) => ({
         ...current,
@@ -851,6 +859,7 @@ export default function PlayMode() {
     setActiveTargetPresetIds([]);
     setSupportUnitId("");
     setActiveSupportPresetIds([]);
+    setSupportUsesSpent({});
     setProfile(DEFAULT_PROFILE);
     setResult(null);
     setHistory([]);
@@ -1019,6 +1028,7 @@ export default function PlayMode() {
                       setTargetUnitId("");
                       setTargetModelId("");
                       setActiveTargetPresetIds([]);
+                      setActiveSupportPresetIds([]);
                       setProfile((current) => ({
                         ...current,
                         targetAttached: false,
@@ -1676,6 +1686,8 @@ export default function PlayMode() {
                   role="attacker"
                   selectedUnitId={supportUnitId}
                   selectedIds={activeSupportPresetIds}
+                  supportUsesSpent={supportUsesSpent}
+                  onSupportUsesChange={setSupportUsesSpent}
                   onUnitChange={(unitId) => {
                     setSupportUnitId(unitId);
                     setActiveSupportPresetIds([]);
@@ -1956,7 +1968,8 @@ export default function PlayMode() {
           </div>
         </div>
         <small className="storage-note">
-          Selections, overrides, and the attack log recover automatically on this device.
+          Selections, overrides, limited supporting-ability uses, and the attack log recover
+          automatically on this device.
         </small>
         {history.length === 0 ? (
           <p>Resolved attacks will appear here for this play session.</p>

@@ -24,6 +24,8 @@ type Props = {
   targetBattleShocked?: boolean;
   targetStrengthState?: "full" | "below_starting" | "below_half";
   sourceRelationship?: "self" | "supporting_unit";
+  disabledIds?: string[];
+  usageLabels?: Record<string, string>;
 };
 
 export function CombatPresetSelector({
@@ -42,6 +44,8 @@ export function CombatPresetSelector({
   targetBattleShocked = false,
   targetStrengthState = "full",
   sourceRelationship = "self",
+  disabledIds = [],
+  usageLabels = {},
 }: Props) {
   const available = presets.filter(
     (preset) =>
@@ -51,6 +55,7 @@ export function CombatPresetSelector({
   );
   if (!available.length) return null;
   const selected = new Set(selectedIds);
+  const disabled = new Set(disabledIds);
   return (
     <fieldset className="combat-preset-selector">
       <legend>{title ?? "Conditional unit abilities"}</legend>
@@ -60,6 +65,7 @@ export function CombatPresetSelector({
           <input
             type="checkbox"
             checked={selected.has(preset.id)}
+            disabled={disabled.has(preset.id) && !selected.has(preset.id)}
             onChange={(event) =>
               onChange(
                 updateCombatPresetSelection(
@@ -140,6 +146,7 @@ export function CombatPresetSelector({
               </small>
             ) : null}
             <small>Affects {combatPresetSubjectSummary(preset, role)}</small>
+            {usageLabels[preset.id] ? <small>{usageLabels[preset.id]}</small> : null}
           </span>
         </label>
       ))}

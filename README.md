@@ -552,6 +552,10 @@ faction, and only abilities classified as supporting-unit effects can be used
 there. Observer effects additionally require `guided=true&spotted=true`, which
 prevents an Observer ability from being treated as the Observer's own attack
 bonus.
+Play Mode spends and recovers limited supporting-unit uses per saved unit
+instance; keep an activated support ability on while resolving each weapon it
+supports. Agent URLs are stateless and do not spend uses, but their result
+source reports `usesPerBattle` for selected limited support presets.
 `unitModels` and `nearbyEnemyModels` activate exact model-count-scaled Attacks
 bonuses at their published rounding boundaries; `0` means unknown.
 `stationary=true` likewise activates exact stationary rules and the Heavy bonus

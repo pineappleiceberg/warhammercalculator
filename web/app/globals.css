@@ -501,6 +501,24 @@ main {
   margin-top: 3px;
   line-height: 1.35;
 }
+.support-use-controls {
+  display: grid;
+  gap: 8px;
+  margin: -6px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+.support-use-controls label {
+  display: grid;
+  grid-template-columns: 1fr minmax(72px, 96px);
+  align-items: center;
+  gap: 12px;
+}
+.support-use-controls span {
+  color: var(--muted);
+  font-size: 12px;
+}
 .play-ability-selectors {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

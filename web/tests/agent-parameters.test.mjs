@@ -826,6 +826,12 @@ test("catalogue agent query resolves stable IDs or unambiguous names", async () 
     supported.supportPresets.map((preset) => preset.name),
     ["Forward Observers"],
   );
+  const limitedSupport = resolveAgentCatalogueSelection(
+    "attacker=Breacher%20Team&weapon=Pulse%20blaster&target=Brutalis%20Dreadnought&" +
+      "support=000000439&supportPreset=Blacklight%20Marker%20Drones",
+    catalogue,
+  );
+  assert.equal(limitedSupport.supportPresets[0].usesPerBattle, 2);
   assert.throws(
     () =>
       resolveAgentCatalogueSelection(

@@ -16,11 +16,9 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Extend the new supporting-unit relationship to conservative friendly-unit
-   aura and targeted-support abilities, with explicit source distance and
-   eligibility where their published conditions require it. Add Play Mode
-   per-battle use tracking for limited support abilities such as the two uses
-   of Blacklight Marker Drones.
+1. Extend the supporting-unit relationship to conservative friendly-unit aura
+   and targeted-support abilities, with explicit source distance and eligibility
+   where their published conditions require it.
 2. Add reproducible closest-target and line-of-sight relationship state for the
    remaining compound attack conditions that still require manual
    interpretation.
@@ -32,6 +30,19 @@ priority over feature count.
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added exact per-battle support-use tracking. SQLite schema 43
+  records the published two-use limit only on Blacklight Marker Drones and
+  exports it to every catalogue consumer; altered source wording is rejected
+  rather than inferred. Play Mode spends one token when that ability is turned
+  on for an Observer activation, never for each weapon roll, and keeps the
+  ability active across all supported weapon profiles. Counters are isolated by
+  saved support-unit instance, editable for tabletop corrections, disabled at
+  zero, cleared by a full battle reset, and recovered after reload alongside
+  legacy recovery data. Static agent results expose `usesPerBattle` but remain
+  explicitly stateless. Parser negatives, schema/catalogue snapshots, bounded
+  state validation, exhaustion, correction, per-instance isolation, recovery,
+  rendered Play guidance, and full C/WebAssembly release gates cover the change.
 
 - 2026-08-07: Added explicit cross-unit support sources. SQLite schema 42 gives
   every combat preset a source relationship and classifies Forward Observers,

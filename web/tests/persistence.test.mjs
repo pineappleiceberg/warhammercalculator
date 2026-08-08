@@ -7,6 +7,13 @@ import {
   parseArmyListBackup,
 } from "../lib/army-list-codec.mjs";
 import { createPlayRecovery, parsePlayRecovery } from "../lib/play-recovery.mjs";
+import {
+  commitSupportPresetSelection,
+  normalizeSupportUses,
+  setSupportUsesRemaining,
+  spendSupportUse,
+  supportUsesRemaining,
+} from "../lib/support-uses.mjs";
 
 const list = {
   id: "01234567-89ab-4cde-8fab-0123456789ab",
@@ -123,6 +130,7 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
     activeTargetPresetIds: ["datasheet-2:ability:4"],
     supportUnitId: "unit-2",
     activeSupportPresetIds: ["datasheet-3:ability:5"],
+    supportUsesSpent: { "unit-2": { "datasheet-3:ability:5": 1 } },
     profile: {
       attacks: 2,
       hitOn: 3,
@@ -167,6 +175,9 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   assert.deepEqual(recovery.activeAttackerPresetIds, ["datasheet-1:ability:2"]);
   assert.equal(recovery.supportUnitId, "unit-2");
   assert.deepEqual(recovery.activeSupportPresetIds, ["datasheet-3:ability:5"]);
+  assert.deepEqual(recovery.supportUsesSpent, {
+    "unit-2": { "datasheet-3:ability:5": 1 },
+  });
   assert.equal(recovery.profile.targetDistance, 9);
   assert.equal(recovery.profile.attackerUnitModels, 11);
   assert.equal(recovery.profile.nearbyEnemyModels, 7);
@@ -195,9 +206,11 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   const legacy = { ...recovery };
   delete legacy.supportUnitId;
   delete legacy.activeSupportPresetIds;
+  delete legacy.supportUsesSpent;
   const migrated = parsePlayRecovery(legacy);
   assert.equal(migrated.supportUnitId, "");
   assert.deepEqual(migrated.activeSupportPresetIds, []);
+  assert.deepEqual(migrated.supportUsesSpent, {});
   assert.throws(
     () => parsePlayRecovery({ ...recovery, history: [{ ...recovery.history[0], damage: -1 }] }),
     /damage/i,
@@ -214,4 +227,63 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
     () => parsePlayRecovery({ ...recovery, activeSupportPresetIds: [42] }),
     /activeSupportPresetIds/,
   );
+  assert.throws(
+    () => parsePlayRecovery({ ...recovery, supportUsesSpent: { "unit-2": { preset: -1 } } }),
+    /use count/i,
+  );
+});
+
+test("tracks limited support uses per saved unit without spending per attack", () => {
+  const limited = {
+    id: "datasheet:ability",
+    name: "Blacklight Marker Drones",
+    usesPerBattle: 2,
+  };
+  const unlimited = { id: "datasheet:other", name: "Forward Observers" };
+  let state = {};
+  let selection = commitSupportPresetSelection(
+    [limited, unlimited],
+    [],
+    [limited.id],
+    "army-unit-a",
+    state,
+  );
+  state = selection.uses;
+  assert.equal(supportUsesRemaining(state, "army-unit-a", limited.id, 2), 1);
+  assert.deepEqual(selection.selectedIds, [limited.id]);
+
+  selection = commitSupportPresetSelection(
+    [limited, unlimited],
+    selection.selectedIds,
+    selection.selectedIds,
+    "army-unit-a",
+    state,
+  );
+  assert.equal(supportUsesRemaining(selection.uses, "army-unit-a", limited.id, 2), 1);
+
+  selection = commitSupportPresetSelection(
+    [limited, unlimited],
+    [limited.id],
+    [],
+    "army-unit-a",
+    selection.uses,
+  );
+  selection = commitSupportPresetSelection(
+    [limited, unlimited],
+    [],
+    [limited.id],
+    "army-unit-a",
+    selection.uses,
+  );
+  assert.equal(supportUsesRemaining(selection.uses, "army-unit-a", limited.id, 2), 0);
+  assert.equal(supportUsesRemaining(selection.uses, "army-unit-b", limited.id, 2), 2);
+  assert.throws(
+    () => spendSupportUse(selection.uses, "army-unit-a", limited.id, 2),
+    /no uses remaining/i,
+  );
+  const corrected = setSupportUsesRemaining(selection.uses, "army-unit-a", limited.id, 2, 1);
+  assert.equal(supportUsesRemaining(corrected, "army-unit-a", limited.id, 2), 1);
+  assert.deepEqual(setSupportUsesRemaining(corrected, "army-unit-a", limited.id, 2, 2), {});
+  assert.deepEqual(normalizeSupportUses({ "army-unit-a": { [limited.id]: 0 } }), {});
+  assert.throws(() => normalizeSupportUses({ "army-unit-a": { [limited.id]: 1.5 } }), /count/);
 });

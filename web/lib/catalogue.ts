@@ -99,6 +99,7 @@ export type CatalogueCombatPreset = {
   choiceGroup: string | null;
   activation: "inherent" | "automatic" | "situational";
   sourceRelationship: "self" | "supporting_unit";
+  usesPerBattle?: number;
   name: string;
   description: string;
   weaponScope: "Any" | "Ranged" | "Melee";
