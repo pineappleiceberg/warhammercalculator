@@ -18,9 +18,13 @@ import {
   setBearerEquipmentCount,
 } from "../lib/defensive-equipment.mjs";
 import {
+  applyCombatPresets,
+  combatPresetSourceEquipmentCount,
   combatPresetSourceEquipmentActive,
   reconcileCombatPresetSourceChoices,
   sourceEquipmentCombatPresetIds,
+  sourceEquipmentWeaponLineSegments,
+  unavailableSourceEquipmentCombatPresetIds,
 } from "../lib/combat-presets.mjs";
 import {
   bodyguardJoinerOptions,
@@ -958,6 +962,197 @@ test("single-model defensive presets follow source equipment choices", () => {
       ],
     }),
     [shieldDome.id],
+  );
+});
+
+test("named combat wargear enforces source choices and bearer-only attack splits", () => {
+  const findChoice = (sourceUnit, pattern) => {
+    const choice = sourceUnit.wargearChoicePools
+      .flatMap((pool) => pool.alternatives)
+      .find((alternative) => pattern.test(alternative.label));
+    assert.ok(choice, `${sourceUnit.name} should expose ${pattern}`);
+    return choice;
+  };
+
+  const wulfen = unit("000000311");
+  const deathTotem = wulfen.combatPresets.find((preset) => preset.name === "Death Totem");
+  const stormfrag = findChoice(wulfen, /stormfrag auto-launcher/i);
+  assert.ok(deathTotem);
+  assert.equal(combatPresetSourceEquipmentCount(deathTotem, { unit: wulfen, modelCount: 5 }), 5);
+  const wulfenSegments = sourceEquipmentWeaponLineSegments(
+    wulfen,
+    { weapon: wulfen.weapons.find((weapon) => weapon.type === "Melee"), count: 5 },
+    {
+      modelCount: 5,
+      choiceSelections: { [stormfrag.id]: 1 },
+    },
+  );
+  assert.deepEqual(
+    wulfenSegments.map((segment) => [
+      segment.count,
+      segment.sourceEquipmentPresetIds,
+      segment.sourceEquipmentLabel,
+    ]),
+    [
+      [4, [deathTotem.id], "Death Totem"],
+      [1, [], "without Death Totem"],
+    ],
+  );
+
+  const reavers = unit("000000658");
+  const gravTalon = reavers.combatPresets.find((preset) => preset.name === "Grav-talon");
+  const gravChoice = findChoice(reavers, /grav-talon/i);
+  const bladevanes = reavers.weapons.find((weapon) => weapon.name === "Bladevanes");
+  assert.ok(gravTalon && bladevanes);
+  assert.deepEqual(
+    sourceEquipmentWeaponLineSegments(
+      reavers,
+      { weapon: bladevanes, count: 3 },
+      { modelCount: 3, choiceSelections: { [gravChoice.id]: 1 } },
+    ).map((segment) => [segment.count, segment.sourceEquipmentPresetIds]),
+    [
+      [1, [gravTalon.id]],
+      [2, []],
+    ],
+  );
+  const gravProfile = applyCombatPresets(
+    { ap: 1, lethalHits: false, attackerCharged: false },
+    [gravTalon],
+    [],
+    "Melee",
+    { attackerCharged: false },
+  );
+  assert.equal(gravProfile.ap, 2);
+  assert.equal(gravProfile.lethalHits, true);
+
+  const canoness = unit("000000899");
+  const rod = canoness.combatPresets.find((preset) => preset.name === "Rod of Office");
+  const rodChoice = findChoice(canoness, /rod of office/i);
+  const plasma = findChoice(canoness, /plasma pistol/i);
+  const powerWeapon = findChoice(canoness, /power weapon/i);
+  assert.ok(rod);
+  const invalidRodChoices = { [rodChoice.id]: 1 };
+  assert.equal(
+    combatPresetSourceEquipmentCount(rod, {
+      unit: canoness,
+      modelCount: 1,
+      choiceSelections: invalidRodChoices,
+    }),
+    0,
+  );
+  assert.ok(choiceSelectionLimitWarnings(canoness, 1, invalidRodChoices).length > 0);
+  const validRodChoices = {
+    [rodChoice.id]: 1,
+    [plasma.id]: 1,
+    [powerWeapon.id]: 1,
+  };
+  assert.equal(
+    combatPresetSourceEquipmentCount(rod, {
+      unit: canoness,
+      modelCount: 1,
+      choiceSelections: validRodChoices,
+    }),
+    1,
+  );
+  assert.deepEqual(choiceSelectionLimitWarnings(canoness, 1, validRodChoices), []);
+
+  const hekaton = unit("000002604");
+  const hekatonScanner = hekaton.combatPresets.find(
+    (preset) => preset.name === "Panspectral Scanner",
+  );
+  const warhead = findChoice(hekaton, /Hekaton warhead/i);
+  assert.ok(hekatonScanner);
+  assert.equal(
+    combatPresetSourceEquipmentCount(hekatonScanner, { unit: hekaton, modelCount: 1 }),
+    1,
+  );
+  assert.equal(
+    combatPresetSourceEquipmentCount(hekatonScanner, {
+      unit: hekaton,
+      modelCount: 1,
+      choiceSelections: { [warhead.id]: 1 },
+    }),
+    0,
+  );
+
+  const pioneers = unit("000002601");
+  const pioneerScanner = pioneers.combatPresets.find(
+    (preset) => preset.name === "Panspectral Scanner",
+  );
+  const scannerChoice = findChoice(pioneers, /panspectral scanner/i);
+  const rotary = findChoice(pioneers, /HYLas rotary cannon/i);
+  assert.ok(pioneerScanner);
+  assert.equal(
+    combatPresetSourceEquipmentCount(pioneerScanner, {
+      unit: pioneers,
+      modelCount: 3,
+      choiceSelections: { [scannerChoice.id]: 1, [rotary.id]: 1 },
+    }),
+    0,
+  );
+  assert.equal(
+    combatPresetSourceEquipmentCount(pioneerScanner, {
+      unit: pioneers,
+      modelCount: 3,
+      choiceSelections: { [scannerChoice.id]: 1 },
+    }),
+    1,
+  );
+
+  const ridgerunners = unit("000001573");
+  const surveyAugur = ridgerunners.combatPresets.find((preset) => preset.name === "Survey Augur");
+  const surveyChoice = findChoice(ridgerunners, /survey augur/i);
+  assert.ok(surveyAugur);
+  assert.equal(surveyAugur.sourceRelationship, "supporting_unit");
+  assert.deepEqual(surveyAugur.requiredSupportedKeywords, ["genestealer cults"]);
+  assert.deepEqual(
+    sourceEquipmentCombatPresetIds(ridgerunners, {
+      modelCount: 1,
+      choiceSelections: { [surveyChoice.id]: 1 },
+    }),
+    [],
+  );
+  assert.deepEqual(
+    unavailableSourceEquipmentCombatPresetIds(ridgerunners, {
+      modelCount: 1,
+      choiceSelections: { [surveyChoice.id]: 1 },
+    }),
+    [],
+  );
+
+  const vespid = unit("000000427");
+  const oversight = vespid.combatPresets.find((preset) => preset.name === "Oversight Drone");
+  const oversightChoice = findChoice(vespid, /oversight drone/i);
+  assert.ok(oversight);
+  assert.equal(
+    combatPresetSourceEquipmentCount(oversight, {
+      unit: vespid,
+      modelCount: 5,
+      choiceSelections: { [oversightChoice.id]: 1 },
+    }),
+    0,
+  );
+  assert.deepEqual(
+    unavailableSourceEquipmentCombatPresetIds(vespid, {
+      modelCount: 5,
+      choiceSelections: { [oversightChoice.id]: 1 },
+    }),
+    [oversight.id],
+  );
+  assert.equal(
+    combatPresetSourceEquipmentCount(oversight, {
+      unit: vespid,
+      modelCount: 10,
+      choiceSelections: { [oversightChoice.id]: 1 },
+    }),
+    1,
+  );
+  assert.deepEqual(
+    sourceEquipmentCombatPresetIds(vespid, {
+      modelCount: 10,
+      choiceSelections: { [oversightChoice.id]: 1 },
+    }),
+    [],
   );
 });
 

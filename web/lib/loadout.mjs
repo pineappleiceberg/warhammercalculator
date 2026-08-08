@@ -73,6 +73,7 @@ export function weaponLimitMaximum(limit, modelCount) {
 
 export function choicePoolMaximum(pool, modelCount) {
   const models = normalizeEquippedCount(modelCount, 1000);
+  if (models < (pool.minimumModels ?? 1)) return 0;
   return pool.fixed + Math.floor(models / pool.modelsPerIncrement) * pool.perIncrement;
 }
 
@@ -369,12 +370,29 @@ export function choiceSelectionLimitWarnings(unit, modelCount, choiceSelections 
   if (!unit) return [];
   const warnings = [];
   const knownAlternativeIds = new Set();
+  const alternativeNames = new Map(
+    (unit.wargearChoicePools ?? []).flatMap((pool) =>
+      pool.alternatives.map((alternative) => [alternative.id, alternative.label]),
+    ),
+  );
   for (const pool of unit.wargearChoicePools ?? []) {
     const maximum = choicePoolMaximum(pool, modelCount);
     let selected = 0;
     for (const alternative of pool.alternatives) {
       knownAlternativeIds.add(alternative.id);
-      selected += normalizeEquippedCount(choiceSelections[alternative.id] ?? 0);
+      const alternativeCount = normalizeEquippedCount(choiceSelections[alternative.id] ?? 0);
+      selected += alternativeCount;
+      if (alternativeCount <= 0) continue;
+      for (const prerequisite of alternative.prerequisites ?? []) {
+        const requiredCount = normalizeEquippedCount(
+          choiceSelections[prerequisite.alternativeId] ?? 0,
+        );
+        if (requiredCount < prerequisite.minimum || requiredCount > prerequisite.maximum) {
+          warnings.push(
+            `${alternative.label}: requires ${prerequisite.minimum === prerequisite.maximum ? prerequisite.minimum : `${prerequisite.minimum}-${prerequisite.maximum}`} selection(s) of ${alternativeNames.get(prerequisite.alternativeId) ?? prerequisite.alternativeId} — ${prerequisite.source}`,
+          );
+        }
+      }
     }
     if (selected > maximum) {
       warnings.push(

@@ -6,7 +6,10 @@ import {
   defensiveEquipmentSelectionKey,
 } from "./defensive-equipment.mjs";
 import { catalogueModelComposition } from "./catalogue-models.mjs";
-import { sourceEquipmentCombatPresetIds } from "./combat-presets.mjs";
+import {
+  combatPresetSourceEquipmentActive,
+  sourceEquipmentCombatPresetIds,
+} from "./combat-presets.mjs";
 
 export function catalogueModelSegments(unit, modelCount, loadoutSubjectCounts = {}) {
   const composition = catalogueModelComposition(unit, modelCount, loadoutSubjectCounts);
@@ -132,14 +135,23 @@ export function savedFormationModelSegments(formation) {
 }
 
 export function savedUnitCombatPresetIds(savedUnit, catalogueUnit) {
-  const sourceLinked = new Set(
-    (catalogueUnit?.combatPresets ?? [])
-      .filter((preset) => preset.sourceEquipmentChoiceExact)
-      .map((preset) => preset.id),
+  const sourceContext = {
+    choiceSelections: savedUnit?.choiceSelections,
+    modelCount: savedUnit?.modelCount,
+    loadoutSubjectCounts: savedUnit?.loadoutSubjectCounts,
+    unit: catalogueUnit,
+  };
+  const presets = new Map(
+    (catalogueUnit?.combatPresets ?? []).map((preset) => [preset.id, preset]),
   );
   return [
-    ...(savedUnit?.combatPresetIds ?? []).filter((id) => !sourceLinked.has(id)),
-    ...sourceEquipmentCombatPresetIds(catalogueUnit, savedUnit?.choiceSelections),
+    ...(savedUnit?.combatPresetIds ?? []).filter((id) => {
+      const preset = presets.get(id);
+      if (!preset?.sourceEquipmentChoiceExact) return true;
+      if (preset.sourceEquipmentAutoEnable ?? true) return false;
+      return combatPresetSourceEquipmentActive(preset, sourceContext);
+    }),
+    ...sourceEquipmentCombatPresetIds(catalogueUnit, sourceContext),
   ];
 }
 

@@ -2247,7 +2247,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "75",
+                "76",
             )
             cadian_ranges = connection.execute(
                 """SELECT minimum_models, maximum_models
@@ -3746,9 +3746,9 @@ class ProfileDataTests(unittest.TestCase):
                        GROUP BY source_relationship ORDER BY source_relationship"""
                 ).fetchall(),
                 [
-                    ("self", 1948),
+                    ("self", 1947),
                     ("self_or_supporting_unit", 18),
-                    ("supporting_unit", 19),
+                    ("supporting_unit", 20),
                 ],
             )
             self.assertEqual(
@@ -4273,20 +4273,20 @@ class ProfileDataTests(unittest.TestCase):
                     """SELECT count(*) FROM unit_combat_presets
                        WHERE source_equipment_choice_exact = 1"""
                 ).fetchone()[0],
-                23,
+                32,
             )
             self.assertEqual(
                 connection.execute(
                     """SELECT count(*) FROM unit_combat_presets
                        WHERE source_equipment_default = 1"""
                 ).fetchone()[0],
-                5,
+                8,
             )
             self.assertEqual(
                 connection.execute(
                     "SELECT count(*) FROM unit_combat_preset_wargear_alternatives"
                 ).fetchone()[0],
-                111,
+                123,
             )
             self.assertEqual(
                 connection.execute(
@@ -4408,6 +4408,95 @@ class ProfileDataTests(unittest.TestCase):
                     "idx_unit_combat_preset_wargear_alternatives_choice" in row[3]
                     for row in plan
                 )
+            )
+        finally:
+            connection.close()
+
+    def test_named_combat_wargear_tracks_scope_counts_and_exact_choice_requirements(self):
+        connection = sqlite3.connect(DATABASE)
+        try:
+            self.assertEqual(
+                connection.execute(
+                    """SELECT datasheets.name, presets.name,
+                              presets.source_equipment_scope,
+                              presets.source_equipment_auto_enable,
+                              presets.source_relationship,
+                              presets.uses_per_battle
+                       FROM unit_combat_presets AS presets
+                       JOIN datasheets ON datasheets.id = presets.datasheet_id
+                       WHERE (presets.datasheet_id, presets.ability_position) IN
+                           (('000001573', 6), ('000000899', 6),
+                            ('000002604', 4), ('000002601', 5),
+                            ('000000658', 5), ('000000427', 3),
+                            ('000000311', 4), ('000004132', 4),
+                            ('000003919', 5))
+                       ORDER BY datasheets.name"""
+                ).fetchall(),
+                [
+                    ("Achilles Ridgerunners", "Survey Augur", "unit", 0, "supporting_unit", None),
+                    ("Canoness", "Rod of Office", "unit", 1, "self", None),
+                    ("Hekaton Land Fortress", "Panspectral Scanner", "unit", 1, "self", None),
+                    ("Hernkyn Pioneers", "Panspectral Scanner", "unit", 1, "self", None),
+                    ("Reavers", "Grav-talon", "bearer", 1, "self", None),
+                    ("Vespid Stingwings", "Oversight Drone", "unit", 0, "self", 1),
+                    ("Wulfen", "Death Totem", "bearer", 1, "self", None),
+                    ("Wulfen with Storm Shields", "Death Totem", "bearer", 1, "self", None),
+                    ("Ynnari Reavers", "Grav-talon", "bearer", 1, "self", None),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT fixed_quantity, quantity_per_model,
+                              quantity_per_increment, models_per_increment,
+                              equipment_quantity
+                       FROM unit_combat_preset_equipment_default_terms
+                       WHERE datasheet_id = '000000311' AND ability_position = 4"""
+                ).fetchone(),
+                (0, 1, 0, 1, 1),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT effect_type, value, application_role, subject
+                       FROM unit_combat_preset_effects
+                       WHERE datasheet_id = '000000658' AND ability_position = 5
+                       ORDER BY effect_position"""
+                ).fetchall(),
+                [("lethal_hits", 1, "attacker", "self"),
+                 ("ap_replacement", 2, "attacker", "self")],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT option_position, minimum_models
+                       FROM wargear_choice_pools
+                       WHERE datasheet_id = '000000427'"""
+                ).fetchone(),
+                (1, 10),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT option_position, alternative_position,
+                              required_option_position,
+                              required_alternative_position,
+                              required_minimum, required_maximum
+                       FROM wargear_choice_prerequisites
+                       ORDER BY datasheet_id, option_position,
+                                required_option_position,
+                                required_alternative_position"""
+                ).fetchall(),
+                [
+                    (4, 1, 1, 3, 1, 1),
+                    (4, 1, 2, 2, 1, 1),
+                    (3, 1, 1, 1, 0, 0),
+                    (3, 1, 1, 2, 0, 0),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT keyword
+                       FROM unit_combat_preset_supported_keywords
+                       WHERE datasheet_id = '000001573' AND ability_position = 6"""
+                ).fetchall(),
+                [("genestealer cults",)],
             )
         finally:
             connection.close()
@@ -4574,7 +4663,12 @@ class ProfileDataTests(unittest.TestCase):
             for preset in unit["combatPresets"]
             if preset["sourceRelationship"] == "supporting_unit"
         ]
-        self.assertEqual(len(support_presets), 19)
+        self.assertEqual(len(support_presets), 20)
+        survey_augur = next(
+            preset for preset in support_presets if preset["name"] == "Survey Augur"
+        )
+        self.assertEqual(survey_augur["requiredSupportedKeywords"], ["genestealer cults"])
+        self.assertFalse(survey_augur["sourceEquipmentAutoEnable"])
         self.assertEqual(
             {
                 preset["name"]: preset.get("usesPerBattle")
@@ -4752,9 +4846,10 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(eviscerator["terms"][0]["modelsPerIncrement"], 5)
         self.assertEqual(catalogue["structuredWargear"]["constraintCount"], 1831)
-        self.assertEqual(catalogue["structuredWargear"]["choicePoolCount"], 2087)
+        self.assertEqual(catalogue["structuredWargear"]["choicePoolCount"], 2093)
         self.assertEqual(catalogue["structuredWargear"]["choiceItemLimitCount"], 45)
         self.assertEqual(catalogue["structuredWargear"]["choicePairingRuleCount"], 3)
+        self.assertEqual(catalogue["structuredWargear"]["choicePrerequisiteCount"], 4)
         self.assertEqual(catalogue["structuredWargear"]["weaponTypeLimitCount"], 1)
         self.assertEqual(
             catalogue["structuredWargear"]["compoundAlternativeCount"], 295
@@ -4777,7 +4872,11 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(
             catalogue["structuredWargear"]["combatPresetEquipmentChoiceLinkCount"],
-            111,
+            123,
+        )
+        self.assertEqual(
+            catalogue["structuredWargear"]["combatPresetEquipmentDefaultTermCount"],
+            8,
         )
         self.assertEqual(
             catalogue["structuredStartingSizes"]["discreteAlternativeUnitCount"], 13

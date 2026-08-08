@@ -13,7 +13,12 @@ import {
 } from "../lib/support-uses.mjs";
 
 type Props = {
-  units: Array<{ id: string; name: string; combatPresets: CatalogueCombatPreset[] }>;
+  units: Array<{
+    id: string;
+    name: string;
+    combatPresets: CatalogueCombatPreset[];
+    disabledPresetIds?: string[];
+  }>;
   role: "attacker" | "target" | "either";
   selectedUnitId: string;
   selectedIds: string[];
@@ -141,13 +146,14 @@ export function SupportPresetSelector({
             sourceRelationship="supporting_unit"
             supportDistance={supportDistance}
             supportedUnitKeywords={supportedUnitKeywords}
-            disabledIds={
-              tracked
+            disabledIds={[
+              ...(selectedUnit.disabledPresetIds ?? []),
+              ...(tracked
                 ? limitedPresets
                     .filter((preset) => remaining[preset.id] === 0)
                     .map((preset) => preset.id)
-                : []
-            }
+                : []),
+            ]}
             usageLabels={
               tracked
                 ? Object.fromEntries(

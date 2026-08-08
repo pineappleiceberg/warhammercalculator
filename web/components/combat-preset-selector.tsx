@@ -92,6 +92,13 @@ export function CombatPresetSelector({
               {preset.weaponScope}
               {preset.choiceGroup ? " · choose one mode" : ""} · {preset.description}
             </small>
+            {preset.usesPerBattle ? (
+              <small>
+                {preset.usesPerBattle === 1
+                  ? "Once per battle"
+                  : `${preset.usesPerBattle} uses per battle`}
+              </small>
+            ) : null}
             {preset.maximumTargetDistance ? (
               <small>
                 Requires target within {preset.maximumTargetDistance}&quot;

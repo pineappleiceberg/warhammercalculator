@@ -44,7 +44,11 @@ import {
 } from "../lib/attachments.mjs";
 import { transportCapacityPools, transportPassengerEligibility } from "../lib/transport.mjs";
 import { savedUnitDefensiveEquipmentWarnings } from "../lib/formations.mjs";
-import { sourceEquipmentCombatPresetIds } from "../lib/combat-presets.mjs";
+import {
+  combatPresetSourceEquipmentCount,
+  sourceEquipmentCombatPresetIds,
+  unavailableSourceEquipmentCombatPresetIds,
+} from "../lib/combat-presets.mjs";
 
 interface Env {
   ASSETS: Fetcher;
@@ -141,6 +145,7 @@ type Catalogue = {
       fixed: number;
       perIncrement: number;
       modelsPerIncrement: number;
+      minimumModels: number;
       source: string;
       replaces: Array<{ groupId: string; groupName: string; quantity: number }>;
       alternatives: Array<{
@@ -150,6 +155,12 @@ type Catalogue = {
         selectionKey?: string;
         selectionName?: string;
         selectionQuantity?: number;
+        prerequisites?: Array<{
+          alternativeId: string;
+          minimum: number;
+          maximum: number;
+          source: string;
+        }>;
       }>;
     }>;
     wargearChoiceItemLimits: Array<{
@@ -1471,7 +1482,29 @@ async function handleApi(request: Request, env: Env) {
             choiceSelections,
             loadoutSubjectCounts,
           ),
-          sourceCombatPresetIds: sourceEquipmentCombatPresetIds(unit, choiceSelections),
+          sourceCombatPresetIds: sourceEquipmentCombatPresetIds(unit, {
+            choiceSelections,
+            modelCount: body.modelCount as number,
+            loadoutSubjectCounts,
+          }),
+          unavailableSourceCombatPresetIds: unavailableSourceEquipmentCombatPresetIds(unit, {
+            choiceSelections,
+            modelCount: body.modelCount as number,
+            loadoutSubjectCounts,
+          }),
+          sourceCombatPresetEquipmentCounts: Object.fromEntries(
+            unit.combatPresets
+              .filter((preset) => preset.sourceEquipmentChoiceExact)
+              .map((preset) => [
+                preset.id,
+                combatPresetSourceEquipmentCount(preset, {
+                  unit,
+                  choiceSelections,
+                  modelCount: body.modelCount as number,
+                  loadoutSubjectCounts,
+                }),
+              ]),
+          ),
           startingSizeRanges: unit.startingSizeRanges,
           modelCountStatus: unitStartingSizeStatus(unit, body.modelCount as number),
         },

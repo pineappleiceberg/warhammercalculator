@@ -82,12 +82,19 @@ export type CatalogueWargearAlternative = {
   selectionKey?: string;
   selectionName?: string;
   selectionQuantity?: number;
+  prerequisites?: Array<{
+    alternativeId: string;
+    minimum: number;
+    maximum: number;
+    source: string;
+  }>;
 };
 export type CatalogueWargearChoicePool = {
   id: string;
   fixed: number;
   perIncrement: number;
   modelsPerIncrement: number;
+  minimumModels: number;
   source: string;
   replaces: CatalogueWargearChoice[];
   alternatives: CatalogueWargearAlternative[];
@@ -140,6 +147,17 @@ export type CatalogueCombatPreset = {
   activation: "inherent" | "automatic" | "situational";
   sourceEquipmentDefault?: boolean;
   sourceEquipmentChoiceExact?: boolean;
+  sourceEquipmentScope?: "unit" | "bearer";
+  sourceEquipmentAutoEnable?: boolean;
+  sourceEquipmentDefaultTerms?: Array<{
+    equipmentQuantity: number;
+    fixed?: number;
+    perModel?: number;
+    perIncrement?: number;
+    modelsPerIncrement?: number;
+    loadoutSubjectId?: string;
+    source: string;
+  }>;
   sourceEquipmentChoiceLinks?: Array<{
     alternativeId: string;
     quantityDelta: number;
@@ -213,6 +231,7 @@ export type CatalogueCombatPresetEffect = {
     | "lance"
     | "heavy"
     | "ap_modifier"
+    | "ap_replacement"
     | "skill_modifier"
     | "critical_hits"
     | "critical_wounds"
@@ -487,6 +506,7 @@ export type Catalogue = {
     constraintCount: number;
     constrainedWeaponCount: number;
     choicePoolCount: number;
+    choicePrerequisiteCount: number;
     defaultWeaponCount: number;
     defaultWeaponTermCount: number;
     loadoutSubjectCount: number;
@@ -496,6 +516,7 @@ export type Catalogue = {
     replacementWeaponCount: number;
     defensiveEquipmentChoiceLinkCount: number;
     combatPresetEquipmentChoiceLinkCount: number;
+    combatPresetEquipmentDefaultTermCount: number;
     compoundAlternativeCount: number;
     optionCount: number;
     conservative: boolean;

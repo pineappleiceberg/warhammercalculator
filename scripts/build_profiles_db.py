@@ -294,6 +294,10 @@ CREATE TABLE unit_combat_presets (
         CHECK (source_equipment_default IN (0, 1)),
     source_equipment_choice_exact INTEGER NOT NULL DEFAULT 0
         CHECK (source_equipment_choice_exact IN (0, 1)),
+    source_equipment_scope TEXT NOT NULL DEFAULT 'unit'
+        CHECK (source_equipment_scope IN ('unit', 'bearer')),
+    source_equipment_auto_enable INTEGER NOT NULL DEFAULT 1
+        CHECK (source_equipment_auto_enable IN (0, 1)),
     source_relationship TEXT NOT NULL DEFAULT 'self'
         CHECK (source_relationship IN ('self', 'supporting_unit', 'self_or_supporting_unit')),
     uses_per_battle INTEGER CHECK (uses_per_battle > 0),
@@ -402,7 +406,8 @@ CREATE TABLE unit_combat_preset_effects (
     effect_position INTEGER NOT NULL CHECK (effect_position >= 1),
     effect_type TEXT NOT NULL CHECK (effect_type IN
         ('lethal_hits', 'devastating_wounds', 'twin_linked', 'ignores_cover',
-         'sustained_hits', 'rapid_fire', 'lance', 'heavy', 'ap_modifier', 'skill_modifier',
+         'sustained_hits', 'rapid_fire', 'lance', 'heavy', 'ap_modifier', 'ap_replacement',
+         'skill_modifier',
          'critical_hits', 'critical_wounds', 'attacks_replacement', 'strength_replacement',
          'damage_replacement', 'first_failed_save_damage_replacement',
          'allocated_attack_damage_replacement',
@@ -453,6 +458,37 @@ CREATE TABLE unit_combat_preset_wargear_alternatives (
         REFERENCES wargear_choice_alternatives(
             datasheet_id, option_position, alternative_position
         ) ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE TABLE unit_combat_preset_equipment_default_terms (
+    datasheet_id TEXT NOT NULL,
+    ability_position INTEGER NOT NULL,
+    preset_position INTEGER NOT NULL,
+    term_position INTEGER NOT NULL CHECK (term_position >= 1),
+    equipment_quantity INTEGER NOT NULL CHECK (equipment_quantity >= 1),
+    fixed_quantity INTEGER,
+    quantity_per_model INTEGER,
+    quantity_per_increment INTEGER,
+    models_per_increment INTEGER,
+    loadout_subject_position INTEGER,
+    source_text TEXT NOT NULL,
+    PRIMARY KEY (
+        datasheet_id, ability_position, preset_position, term_position
+    ),
+    FOREIGN KEY (datasheet_id, ability_position, preset_position)
+        REFERENCES unit_combat_presets(datasheet_id, ability_position, preset_position)
+        ON DELETE CASCADE,
+    FOREIGN KEY (datasheet_id, loadout_subject_position)
+        REFERENCES default_loadout_subjects(datasheet_id, position) ON DELETE CASCADE,
+    CHECK (
+        (loadout_subject_position IS NULL AND fixed_quantity IS NOT NULL
+         AND quantity_per_model IS NOT NULL AND quantity_per_increment IS NOT NULL
+         AND models_per_increment IS NOT NULL)
+        OR
+        (loadout_subject_position IS NOT NULL AND fixed_quantity IS NULL
+         AND quantity_per_model IS NULL AND quantity_per_increment IS NULL
+         AND models_per_increment IS NULL)
+    )
 ) WITHOUT ROWID;
 
 CREATE TABLE unit_defensive_equipment_options (
@@ -2107,6 +2143,92 @@ def populate_defensive_equipment_metadata(connection: sqlite3.Connection) -> Non
         )
 
 
+COMBAT_SOURCE_EQUIPMENT_RULES = {
+    ("000001573", 6): {
+        "name": "Survey Augur",
+        "description": "Each time the bearer’s unit has shot, select one enemy unit that was hit by one or more attacks made by the bearer this phase. Until the end of the phase, each time a friendly GENESTEALER CULTS model makes an attack against that unit, that attack has the [IGNORES COVER] ability.",
+        "names": ("Survey Augur",),
+        "scope": "unit",
+        "auto_enable": False,
+        "source_relationship": "supporting_unit",
+        "required_supported_keywords": ("genestealer cults",),
+    },
+    ("000000899", 6): {
+        "name": "Rod of Office",
+        "description": "Each time a model in the bearer’s unit makes an attack, re-roll a Hit roll of 1.",
+        "names": ("Rod of Office",),
+        "scope": "unit",
+        "auto_enable": True,
+    },
+    ("000002604", 4): {
+        "name": "Panspectral Scanner",
+        "description": "Each time a model in the bearer’s unit makes a ranged attack, re-roll a Hit roll of 1.",
+        "names": ("Panspectral Scanner", "Pan Spectral Scanner"),
+        "scope": "unit",
+        "auto_enable": True,
+    },
+    ("000002601", 5): {
+        "name": "Panspectral Scanner",
+        "description": "Each time a model in the bearer’s unit makes a ranged attack, re-roll a Hit roll of 1.",
+        "names": ("Panspectral Scanner", "Pan Spectral Scanner"),
+        "scope": "unit",
+        "auto_enable": True,
+    },
+    ("000000658", 5): {
+        "name": "Grav-talon",
+        "description": "The bearer’s melee weapons have an Armour Penetration characteristic of -2 and the [LETHAL HITS] ability.",
+        "names": ("Grav-talon",),
+        "scope": "bearer",
+        "auto_enable": True,
+    },
+    ("000000427", 3): {
+        "name": "Oversight Drone",
+        "description": "Once per battle, when the bearer’s unit is selected to shoot, until the end of the phase, ranged weapons equipped by models in this unit have the [IGNORES COVER] ability. Designer’s Note: Place an Oversight Drone token next to the bearer, removing it once this ability has been used.",
+        "names": ("Oversight Drone",),
+        "scope": "unit",
+        "auto_enable": False,
+        "uses_per_battle": 1,
+    },
+    ("000000311", 4): {
+        "name": "Death Totem",
+        "description": "Each time the bearer makes a melee attack, re-roll a Hit roll of 1.",
+        "names": ("Death Totem",),
+        "scope": "bearer",
+        "auto_enable": True,
+    },
+    ("000004132", 4): {
+        "name": "Death Totem",
+        "description": "Each time the bearer makes a melee attack, re-roll a Hit roll of 1.",
+        "names": ("Death Totem",),
+        "scope": "bearer",
+        "auto_enable": True,
+    },
+    ("000003919", 5): {
+        "name": "Grav-talon",
+        "description": "The bearer’s melee weapons have the [LANCE] ability.",
+        "names": ("Grav-talon",),
+        "scope": "bearer",
+        "auto_enable": True,
+    },
+}
+
+
+def combat_source_equipment_rule(
+    datasheet_id: str,
+    ability_position: int,
+    name: str,
+    description: str,
+) -> dict | None:
+    rule = COMBAT_SOURCE_EQUIPMENT_RULES.get((datasheet_id, ability_position))
+    if rule is None:
+        return None
+    if name != rule["name"] or description.casefold() != rule["description"].casefold():
+        raise RuntimeError(
+            f"combat source equipment rule changed: {datasheet_id}:{ability_position}"
+        )
+    return rule
+
+
 def populate_single_model_defensive_preset_metadata(
     connection: sqlite3.Connection,
 ) -> None:
@@ -2119,6 +2241,7 @@ def populate_single_model_defensive_preset_metadata(
         "first_failed_save_damage_replacement",
         "allocated_attack_damage_replacement",
     }
+    seen_source_rules: set[tuple[str, int]] = set()
     presets = connection.execute(
         """SELECT presets.datasheet_id, presets.ability_position,
                   presets.preset_position, presets.name,
@@ -2147,13 +2270,26 @@ def populate_single_model_defensive_preset_metadata(
                ORDER BY effect_position""",
             (datasheet_id, ability_position, preset_position),
         ).fetchall()
-        if not effects or any(
-            effect_type not in defensive_effect_types
-            or role != "target"
-            or subject != "self"
+        defensive_source = bool(effects) and all(
+            effect_type in defensive_effect_types
+            and role == "target"
+            and subject == "self"
             for effect_type, role, subject in effects
-        ):
+        )
+        source_rule = combat_source_equipment_rule(
+            datasheet_id, ability_position, name, description_text
+        )
+        if source_rule is not None:
+            seen_source_rules.add((datasheet_id, ability_position))
+        if not defensive_source and source_rule is None:
             continue
+        equipment_names = tuple(source_rule["names"]) if source_rule else (name,)
+
+        def equipment_quantity(value: str) -> int:
+            return max(
+                (named_equipment_quantity(value, equipment_name) for equipment_name in equipment_names),
+                default=0,
+            )
 
         source_options = [
             row
@@ -2163,9 +2299,53 @@ def populate_single_model_defensive_preset_metadata(
                    WHERE datasheet_id = ? ORDER BY position""",
                 (datasheet_id,),
             )
-            if equipment_name_in_text(name, row[2])
+            if any(equipment_name_in_text(equipment_name, row[2]) for equipment_name in equipment_names)
         ]
-        source_default = named_equipment_quantity(loadout_text, name) > 0
+        default_subjects = [
+            row
+            for row in connection.execute(
+                """SELECT position, subject_text, equipment_text, fixed_quantity,
+                          quantity_per_model, quantity_per_increment,
+                          models_per_increment, resolved
+                   FROM default_loadout_subjects
+                   WHERE datasheet_id = ? ORDER BY position""",
+                (datasheet_id,),
+            )
+            if equipment_quantity(row[2]) > 0
+        ]
+        for term_position, row in enumerate(default_subjects, start=1):
+            (
+                subject_position,
+                subject_text,
+                equipment_text,
+                fixed,
+                per_model,
+                per_increment,
+                models_per_increment,
+                resolved,
+            ) = row
+            connection.execute(
+                """INSERT INTO unit_combat_preset_equipment_default_terms
+                   (datasheet_id, ability_position, preset_position, term_position,
+                    equipment_quantity, fixed_quantity, quantity_per_model,
+                    quantity_per_increment, models_per_increment,
+                    loadout_subject_position, source_text)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    datasheet_id,
+                    ability_position,
+                    preset_position,
+                    term_position,
+                    equipment_quantity(equipment_text),
+                    fixed if resolved else None,
+                    per_model if resolved else None,
+                    per_increment if resolved else None,
+                    models_per_increment if resolved else None,
+                    None if resolved else subject_position,
+                    f"{subject_text} is equipped with: {equipment_text}",
+                ),
+            )
+        source_default = bool(default_subjects) or equipment_quantity(loadout_text) > 0
         if not source_default and not source_options:
             continue
 
@@ -2196,15 +2376,11 @@ def populate_single_model_defensive_preset_metadata(
                 for position, value in enumerate(choices, start=1)
             }
             preamble = option_preamble(description_html, description_text)
-            common_removed = named_equipment_quantity(
-                replacement_items_text(preamble), name
-            )
+            common_removed = equipment_quantity(replacement_items_text(preamble))
             for alternative_position, alternative_text in alternatives:
                 source_choice = choice_text.get(alternative_position, alternative_text)
-                granted = named_equipment_quantity(source_choice, name)
-                specifically_removed = named_equipment_quantity(
-                    replacement_items_text(source_choice), name
-                )
+                granted = equipment_quantity(source_choice)
+                specifically_removed = equipment_quantity(replacement_items_text(source_choice))
                 delta = granted - common_removed - specifically_removed
                 has_grant = has_grant or delta > 0
                 connection.execute(
@@ -2232,16 +2408,56 @@ def populate_single_model_defensive_preset_metadata(
         connection.execute(
             """UPDATE unit_combat_presets
                SET source_equipment_default = ?,
-                   source_equipment_choice_exact = ?
+                   source_equipment_choice_exact = ?,
+                   source_equipment_scope = ?,
+                   source_equipment_auto_enable = ?,
+                   source_relationship = ?,
+                   uses_per_battle = COALESCE(?, uses_per_battle)
                WHERE datasheet_id = ? AND ability_position = ?
                  AND preset_position = ?""",
             (
                 int(source_default),
                 int(coverage_exact),
+                source_rule["scope"] if source_rule else "unit",
+                int(source_rule["auto_enable"]) if source_rule else 1,
+                source_rule.get("source_relationship", "self") if source_rule else "self",
+                source_rule.get("uses_per_battle") if source_rule else None,
                 datasheet_id,
                 ability_position,
                 preset_position,
             ),
+        )
+        if source_rule and source_rule.get("required_supported_keywords"):
+            existing_keywords = connection.execute(
+                """SELECT keyword FROM unit_combat_preset_supported_keywords
+                   WHERE datasheet_id = ? AND ability_position = ?
+                     AND preset_position = ? ORDER BY keyword_position""",
+                (datasheet_id, ability_position, preset_position),
+            ).fetchall()
+            expected_keywords = [
+                (keyword,) for keyword in source_rule["required_supported_keywords"]
+            ]
+            if existing_keywords and existing_keywords != expected_keywords:
+                raise RuntimeError(
+                    f"combat source equipment keyword conflict: {datasheet_id}:{ability_position}"
+                )
+            if not existing_keywords:
+                connection.executemany(
+                    """INSERT INTO unit_combat_preset_supported_keywords
+                       (datasheet_id, ability_position, preset_position,
+                        keyword_position, keyword)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (
+                        (datasheet_id, ability_position, preset_position, position, keyword)
+                        for position, keyword in enumerate(
+                            source_rule["required_supported_keywords"], start=1
+                        )
+                    ),
+                )
+    missing_source_rules = set(COMBAT_SOURCE_EQUIPMENT_RULES) - seen_source_rules
+    if missing_source_rules:
+        raise RuntimeError(
+            f"combat source equipment rules were not generated: {sorted(missing_source_rules)!r}"
         )
 
 
@@ -3201,6 +3417,22 @@ def combat_additional_effects(
                 "dice_sides": 0,
                 "role": role,
                 "subject": subject,
+            }
+        )
+
+    grav_talon_ap = (
+        "The bearer’s melee weapons have an Armour Penetration characteristic of -2 "
+        "and the [LETHAL HITS] ability."
+    )
+    if normalized.casefold() == grav_talon_ap.casefold():
+        effects.append(
+            {
+                "type": "ap_replacement",
+                "value": 2,
+                "dice_count": 0,
+                "dice_sides": 0,
+                "role": "attacker",
+                "subject": "self",
             }
         )
 
@@ -4730,6 +4962,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
     connection.execute("DELETE FROM unit_defensive_equipment_effects")
     connection.execute("DELETE FROM unit_defensive_equipment_options")
     connection.execute("DELETE FROM unit_combat_preset_wargear_alternatives")
+    connection.execute("DELETE FROM unit_combat_preset_equipment_default_terms")
     connection.execute("DELETE FROM unit_combat_preset_effects")
     connection.execute("DELETE FROM unit_combat_presets")
     inserted = 0
@@ -5572,7 +5805,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "75"),
+                    ("schema_version", "76"),
                     ("leader_global_maximum", "2"),
                     ("leader_global_rule_source_url", LEADER_GLOBAL_RULE_SOURCE_URL),
                     (
@@ -5967,11 +6200,26 @@ def create_database(
                     )
 
             equipment_names_by_unit: dict[str, set[str]] = {}
-            for equipment_datasheet_id, equipment_name, equipment_description in connection.execute(
-                """SELECT datasheet_id, name, description_text
+            for (
+                equipment_datasheet_id,
+                equipment_position,
+                equipment_name,
+                equipment_description,
+            ) in connection.execute(
+                """SELECT datasheet_id, position, name, description_text
                    FROM datasheet_abilities ORDER BY datasheet_id, position"""
             ):
-                if defensive_equipment_option(
+                source_rule = combat_source_equipment_rule(
+                    equipment_datasheet_id,
+                    equipment_position,
+                    equipment_name,
+                    equipment_description,
+                )
+                if source_rule:
+                    equipment_names_by_unit.setdefault(equipment_datasheet_id, set()).update(
+                        normalized_wargear_name(name) for name in source_rule["names"]
+                    )
+                elif defensive_equipment_option(
                     equipment_name, equipment_description
                 ) or single_model_defensive_equipment_ability(equipment_description):
                     equipment_names_by_unit.setdefault(equipment_datasheet_id, set()).add(
@@ -6085,6 +6333,7 @@ def create_database(
                 "unit_combat_presets",
                 "unit_combat_preset_effects",
                 "unit_combat_preset_wargear_alternatives",
+                "unit_combat_preset_equipment_default_terms",
                 "unit_defensive_equipment_options",
                 "unit_defensive_equipment_wargear_alternatives",
                 "unit_defensive_equipment_bearers",
@@ -6122,6 +6371,7 @@ def create_database(
                 "wargear_choice_replaced_weapons",
                 "wargear_choice_item_limits",
                 "wargear_choice_pairing_rules",
+                "wargear_choice_prerequisites",
                 "wargear_weapon_type_limits",
                 "default_weapon_loadout",
                 "default_loadout_subjects",

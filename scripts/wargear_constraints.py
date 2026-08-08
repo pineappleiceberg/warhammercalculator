@@ -43,10 +43,35 @@ CREATE TABLE IF NOT EXISTS wargear_choice_pools (
     fixed_limit INTEGER NOT NULL CHECK (fixed_limit >= 0),
     limit_per_increment INTEGER NOT NULL CHECK (limit_per_increment >= 0),
     models_per_increment INTEGER NOT NULL CHECK (models_per_increment >= 1),
+    minimum_models INTEGER NOT NULL DEFAULT 1 CHECK (minimum_models >= 1),
     description_text TEXT NOT NULL,
     PRIMARY KEY (datasheet_id, option_position),
     FOREIGN KEY (datasheet_id, option_position)
         REFERENCES wargear_options(datasheet_id, position) ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS wargear_choice_prerequisites (
+    datasheet_id TEXT NOT NULL,
+    option_position INTEGER NOT NULL,
+    alternative_position INTEGER NOT NULL,
+    required_option_position INTEGER NOT NULL,
+    required_alternative_position INTEGER NOT NULL,
+    required_minimum INTEGER NOT NULL CHECK (required_minimum >= 0),
+    required_maximum INTEGER NOT NULL CHECK (required_maximum >= required_minimum),
+    source_text TEXT NOT NULL,
+    PRIMARY KEY (
+        datasheet_id, option_position, alternative_position,
+        required_option_position, required_alternative_position
+    ),
+    FOREIGN KEY (datasheet_id, option_position, alternative_position)
+        REFERENCES wargear_choice_alternatives(
+            datasheet_id, option_position, alternative_position
+        ) ON DELETE CASCADE,
+    FOREIGN KEY (
+        datasheet_id, required_option_position, required_alternative_position
+    ) REFERENCES wargear_choice_alternatives(
+        datasheet_id, option_position, alternative_position
+    ) ON DELETE CASCADE
 ) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS wargear_choice_alternatives (
@@ -387,6 +412,90 @@ def option_preamble(description_html: str, description_text: str) -> str:
     return description_text
 
 
+SOURCE_EQUIPMENT_CHOICE_OVERRIDES = {
+    ("000000899", 4): {
+        "description": "If this model is equipped with a plasma pistol and a power weapon, it can be equipped with: 1 rod of office",
+        "limit": (1, 0, 1),
+        "minimum_models": 1,
+        "equipment": {"rod of office"},
+    },
+    ("000000427", 1): {
+        "description": "If this unit contains 10 models: The Vespid Strain Leader can be equipped with 1 Oversight Drone. 1 Vespid Stingwing can replace its neutron blaster with 1 T’au flamer 1 Vespid Stingwing can replace its neutron blaster with 1 neutron grenade launcher 1 Vespid Stingwing can replace its neutron blaster with 1 neutron rail rifle.",
+        "limit": (1, 0, 1),
+        "minimum_models": 10,
+        "equipment": {"oversight drone"},
+    },
+    ("000002601", 3): {
+        "description": "1 model that is not equipped with either a HYLas rotary cannon or an ion beamer can be equipped with 1 panspectral scanner.*",
+        "limit": (1, 0, 1),
+        "minimum_models": 1,
+        "equipment": {"panspectral scanner"},
+    },
+}
+
+SOURCE_EQUIPMENT_CHOICE_PREREQUISITES = (
+    (
+        "000000899",
+        4,
+        1,
+        "1 rod of office",
+        1,
+        3,
+        "1 plasma pistol",
+        1,
+        1,
+    ),
+    (
+        "000000899",
+        4,
+        1,
+        "1 rod of office",
+        2,
+        2,
+        "1 power weapon",
+        1,
+        1,
+    ),
+    (
+        "000002601",
+        3,
+        1,
+        "1 panspectral scanner",
+        1,
+        1,
+        "1 HYLas rotary cannon",
+        0,
+        0,
+    ),
+    (
+        "000002601",
+        3,
+        1,
+        "1 panspectral scanner",
+        1,
+        2,
+        "1 ion beamer",
+        0,
+        0,
+    ),
+)
+
+
+def source_equipment_choice_override(
+    datasheet_id: str,
+    position: int,
+    description: str,
+) -> dict | None:
+    override = SOURCE_EQUIPMENT_CHOICE_OVERRIDES.get((datasheet_id, position))
+    if override is None:
+        return None
+    if description.casefold() != override["description"].casefold():
+        raise RuntimeError(
+            f"source equipment choice text changed: {datasheet_id}:{position}"
+        )
+    return override
+
+
 def replacement_items_text(description: str) -> str:
     value = normalized_name(description)
     patterns = (
@@ -478,6 +587,14 @@ def ensure_choice_selection_columns(connection: sqlite3.Connection) -> None:
             connection.execute(
                 f"ALTER TABLE wargear_choice_alternatives ADD COLUMN {name} {declaration}"
             )
+    pool_columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(wargear_choice_pools)")
+    }
+    if pool_columns and "minimum_models" not in pool_columns:
+        connection.execute(
+            "ALTER TABLE wargear_choice_pools ADD COLUMN minimum_models "
+            "INTEGER NOT NULL DEFAULT 1 CHECK (minimum_models >= 1)"
+        )
 
 
 def weapon_vector(
@@ -679,6 +796,7 @@ def populate_constraints(
     connection.execute("DELETE FROM wargear_choice_replaced_weapons")
     connection.execute("DELETE FROM wargear_choice_alternative_replaced_weapons")
     connection.execute("DELETE FROM wargear_choice_alternative_weapons")
+    connection.execute("DELETE FROM wargear_choice_prerequisites")
     connection.execute("DELETE FROM wargear_choice_alternatives")
     connection.execute("DELETE FROM wargear_choice_pairing_rules")
     connection.execute("DELETE FROM wargear_choice_pools")
@@ -822,8 +940,32 @@ def populate_constraints(
             normalized = f" {normalized_name(description_text)} "
             duplicate_limit = duplicate_choice_allowance(description_text)
             different_limit = different_choice_allowance(description_text)
-            limit = duplicate_limit or different_limit or allowance(description_text)
+            source_override = source_equipment_choice_override(
+                datasheet_id, position, description_text
+            )
+            limit = (
+                source_override["limit"]
+                if source_override is not None
+                else duplicate_limit or different_limit or allowance(description_text)
+            )
             choices = option_choices(description_html, description_text)
+            if source_override is not None:
+                allowed_equipment = source_override["equipment"]
+                if "<li" not in description_html.casefold():
+                    choices = [f"1 {name}" for name in sorted(allowed_equipment)]
+                choices = [
+                    choice
+                    for choice in choices
+                    if any(
+                        re.search(
+                            rf"\b{re.escape(name)}s?\b",
+                            normalized_name(choice),
+                        )
+                        for name in allowed_equipment
+                    )
+                ]
+                if not choices and len(allowed_equipment) == 1:
+                    choices = [f"1 {next(iter(allowed_equipment))}"]
             if (
                 not limit
                 or not choices
@@ -832,10 +974,13 @@ def populate_constraints(
                     " different weapons " in normalized
                     and different_limit is None
                 )
-                or any(
-                    marker in normalized
-                    for marker in COMPLEX_MARKERS
-                    if marker != " different weapons "
+                or (
+                    source_override is None
+                    and any(
+                        marker in normalized
+                        for marker in COMPLEX_MARKERS
+                        if marker != " different weapons "
+                    )
                 )
             ):
                 continue
@@ -900,9 +1045,17 @@ def populate_constraints(
                 connection.execute(
                     """INSERT INTO wargear_choice_pools
                        (datasheet_id, option_position, fixed_limit, limit_per_increment,
-                        models_per_increment, description_text)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (datasheet_id, position, *limit, description_text),
+                        models_per_increment, minimum_models, description_text)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        datasheet_id,
+                        position,
+                        *limit,
+                        source_override["minimum_models"]
+                        if source_override is not None
+                        else 1,
+                        description_text,
+                    ),
                 )
                 for (
                     alternative_position,
@@ -1048,6 +1201,66 @@ def populate_constraints(
                 (datasheet_id, option_position, *rule, description_text),
             )
 
+        for prerequisite in SOURCE_EQUIPMENT_CHOICE_PREREQUISITES:
+            (
+                prerequisite_datasheet_id,
+                option_position,
+                alternative_position,
+                expected_alternative,
+                required_option_position,
+                required_alternative_position,
+                expected_required_alternative,
+                required_minimum,
+                required_maximum,
+            ) = prerequisite
+            if prerequisite_datasheet_id != datasheet_id:
+                continue
+            alternative = connection.execute(
+                """SELECT description_text FROM wargear_choice_alternatives
+                   WHERE datasheet_id = ? AND option_position = ?
+                     AND alternative_position = ?""",
+                (datasheet_id, option_position, alternative_position),
+            ).fetchone()
+            required = connection.execute(
+                """SELECT description_text FROM wargear_choice_alternatives
+                   WHERE datasheet_id = ? AND option_position = ?
+                     AND alternative_position = ?""",
+                (
+                    datasheet_id,
+                    required_option_position,
+                    required_alternative_position,
+                ),
+            ).fetchone()
+            if alternative != (expected_alternative,) or required != (
+                expected_required_alternative,
+            ):
+                raise RuntimeError(
+                    "source equipment prerequisite alternatives changed: "
+                    f"{datasheet_id}:{option_position}:{alternative_position}"
+                )
+            source_text = next(
+                source
+                for _id, source_position, _html, source in options
+                if source_position == option_position
+            )
+            connection.execute(
+                """INSERT INTO wargear_choice_prerequisites
+                   (datasheet_id, option_position, alternative_position,
+                    required_option_position, required_alternative_position,
+                    required_minimum, required_maximum, source_text)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    datasheet_id,
+                    option_position,
+                    alternative_position,
+                    required_option_position,
+                    required_alternative_position,
+                    required_minimum,
+                    required_maximum,
+                    source_text,
+                ),
+            )
+
         connection.executemany(
             """INSERT INTO wargear_choice_item_limits
                (datasheet_id, item_key, item_name, fixed_limit,
@@ -1070,7 +1283,7 @@ def main() -> None:
     try:
         with connection:
             count = populate_constraints(connection)
-            connection.execute("UPDATE metadata SET value = '74' WHERE key = 'schema_version'")
+            connection.execute("UPDATE metadata SET value = '76' WHERE key = 'schema_version'")
         print(f"Structured {count} source-backed wargear constraints")
         pools = connection.execute("SELECT count(*) FROM wargear_choice_pools").fetchone()[0]
         print(f"Structured {pools} source-backed wargear choice pools")

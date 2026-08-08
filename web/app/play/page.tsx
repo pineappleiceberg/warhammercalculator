@@ -26,6 +26,8 @@ import {
   applyTargetCombatPresets,
   attackKeywordsForWeapon,
   selectedAndAutomaticCombatPresets,
+  sourceEquipmentWeaponLineSegments,
+  unavailableSourceEquipmentCombatPresetIds,
 } from "../../lib/combat-presets.mjs";
 import {
   createPlayRecovery,
@@ -277,6 +279,7 @@ export default function PlayMode() {
       String(weapon.weaponId) ===
       String(firingDeckChoice?.weaponId ?? formationWeaponChoice?.weaponId ?? weaponId),
   );
+  const weaponSourceArmyUnit = firingDeckPassengerUnit ?? formationWeaponUnit ?? attackerUnit;
   const attackerCatalogueUnit = catalogue?.units.find((unit) => unit.id === attackerUnit?.unitId);
   const firingDeckPassengerCatalogueUnit = catalogue?.units.find(
     (unit) => unit.id === firingDeckPassengerUnit?.unitId,
@@ -284,6 +287,11 @@ export default function PlayMode() {
   const formationWeaponCatalogueUnit = catalogue?.units.find(
     (unit) => unit.id === formationWeaponUnit?.unitId,
   );
+  const weaponSourceCatalogueUnit = firingDeckChoice
+    ? firingDeckPassengerCatalogueUnit
+    : formationWeaponChoice
+      ? formationWeaponCatalogueUnit
+      : attackerCatalogueUnit;
   const targetCatalogueUnit = catalogue?.units.find((unit) => unit.id === targetUnit?.unitId);
   const attackerFormationCatalogueUnit = attackerCatalogueUnit
     ? {
@@ -336,6 +344,14 @@ export default function PlayMode() {
         combatPresets:
           catalogue?.units.find((catalogueUnit) => catalogueUnit.id === unit.unitId)
             ?.combatPresets ?? [],
+        disabledPresetIds: unavailableSourceEquipmentCombatPresetIds(
+          catalogue?.units.find((catalogueUnit) => catalogueUnit.id === unit.unitId),
+          {
+            choiceSelections: unit.choiceSelections,
+            modelCount: unit.modelCount,
+            loadoutSubjectCounts: unit.loadoutSubjectCounts,
+          },
+        ),
       })) ?? [];
   const supportArmyUnit = attackerList?.units.find((unit) => unit.id === supportUnitId);
   const supportCatalogueUnit = catalogue?.units.find((unit) => unit.id === supportArmyUnit?.unitId);
@@ -350,6 +366,14 @@ export default function PlayMode() {
         combatPresets:
           catalogue?.units.find((catalogueUnit) => catalogueUnit.id === unit.unitId)
             ?.combatPresets ?? [],
+        disabledPresetIds: unavailableSourceEquipmentCombatPresetIds(
+          catalogue?.units.find((catalogueUnit) => catalogueUnit.id === unit.unitId),
+          {
+            choiceSelections: unit.choiceSelections,
+            modelCount: unit.modelCount,
+            loadoutSubjectCounts: unit.loadoutSubjectCounts,
+          },
+        ),
       })) ?? [];
   const targetSupportArmyUnit = targetList?.units.find((unit) => unit.id === targetSupportUnitId);
   const targetSupportCatalogueUnit = catalogue?.units.find(
@@ -371,6 +395,29 @@ export default function PlayMode() {
   const weaponProfile =
     selectedWeaponGroup?.profiles.find((weapon) => String(weapon.id) === profileId) ??
     selectedWeaponGroup?.profiles[0];
+  const selectedSourceEquipmentSegments = weaponProfile
+    ? sourceEquipmentWeaponLineSegments(
+        weaponSourceCatalogueUnit,
+        { weapon: weaponProfile, count: profile.weaponCount },
+        {
+          choiceSelections: weaponSourceArmyUnit?.choiceSelections,
+          modelCount: weaponSourceArmyUnit?.modelCount,
+          loadoutSubjectCounts: weaponSourceArmyUnit?.loadoutSubjectCounts,
+        },
+      )
+    : [];
+  const selectedFullSourceEquipmentPresetIds =
+    selectedSourceEquipmentSegments.length === 1
+      ? (selectedSourceEquipmentSegments[0].sourceEquipmentPresetIds ?? [])
+      : [];
+  const unavailableAttackerSourcePresetIds =
+    attackerFormation?.components.flatMap((component) =>
+      unavailableSourceEquipmentCombatPresetIds(component.catalogueUnit, {
+        choiceSelections: component.unit.choiceSelections,
+        modelCount: component.unit.modelCount,
+        loadoutSubjectCounts: component.unit.loadoutSubjectCounts,
+      }),
+    ) ?? [];
   const targetBaseModels = savedFormationModelSegments(targetFormation);
   const targetFormationModels = savedFormationTargetSequence(
     targetFormation,
@@ -617,6 +664,19 @@ export default function PlayMode() {
       });
       weaponCount = selectedModels;
     }
+    const sourceEquipmentSegments = sourceEquipmentWeaponLineSegments(
+      weaponSourceCatalogueUnit,
+      { weapon, count: weaponCount },
+      {
+        choiceSelections: weaponSourceArmyUnit?.choiceSelections,
+        modelCount: weaponSourceArmyUnit?.modelCount,
+        loadoutSubjectCounts: weaponSourceArmyUnit?.loadoutSubjectCounts,
+      },
+    );
+    const fullSourceEquipmentPresetIds =
+      sourceEquipmentSegments.length === 1
+        ? (sourceEquipmentSegments[0].sourceEquipmentPresetIds ?? [])
+        : [];
     setProfile(
       applyCombatPresets(
         applyWeaponProfile(
@@ -667,7 +727,7 @@ export default function PlayMode() {
         ),
         [
           ...selectedCombatPresets(
-            nextAttackerPresetIds,
+            [...nextAttackerPresetIds, ...fullSourceEquipmentPresetIds],
             attackerFormationCatalogueUnit,
             weapon,
             model.keywords,
@@ -1347,7 +1407,7 @@ export default function PlayMode() {
         ),
         [
           ...selectedCombatPresets(
-            activeAttackerPresetIds,
+            [...activeAttackerPresetIds, ...selectedFullSourceEquipmentPresetIds],
             attackerFormationCatalogueUnit,
             weaponProfile,
             model.keywords,
@@ -1572,10 +1632,50 @@ export default function PlayMode() {
         targetDefensiveEquipmentOptions,
         attackKeywords,
       );
+      const attackProfiles = (
+        selectedSourceEquipmentSegments.length
+          ? selectedSourceEquipmentSegments
+          : [{ count: profile.weaponCount, sourceEquipmentPresetIds: [] }]
+      ).map((segment) => {
+        const base = { ...profile, weaponCount: segment.count };
+        if (
+          selectedSourceEquipmentSegments.length <= 1 ||
+          !(segment.sourceEquipmentPresetIds ?? []).length
+        ) {
+          return base;
+        }
+        return applyCombatPresets(
+          base,
+          selectedCombatPresets(
+            segment.sourceEquipmentPresetIds ?? [],
+            weaponSourceCatalogueUnit,
+            weaponProfile,
+            selectedTargetSegment?.model.keywords ?? [],
+            profile.targetDistance,
+            profile.attackerCharged,
+            profile.attackerBattleShocked,
+            profile.targetBattleShocked,
+            profile.targetStrengthState,
+            profile.attackerRemainedStationary,
+          ),
+          [],
+          weaponProfile.type,
+          {
+            attackerCharged: profile.attackerCharged,
+            attackerBattleShocked: profile.attackerBattleShocked,
+            targetBattleShocked: profile.targetBattleShocked,
+            targetStrengthState: profile.targetStrengthState,
+            targetKeywords: selectedTargetSegment?.model.keywords ?? [],
+            attackKeywords,
+          },
+        );
+      });
       rolled =
-        orderedTargets.length > 1 || Object.keys(targetDefensiveEquipmentCounts).length > 0
-          ? simulateOrderedVolley([profile], orderedTargets)
-          : simulateAttack(profile);
+        attackProfiles.length > 1 ||
+        orderedTargets.length > 1 ||
+        Object.keys(targetDefensiveEquipmentCounts).length > 0
+          ? simulateOrderedVolley(attackProfiles, orderedTargets)
+          : simulateAttack(attackProfiles[0]);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Attack could not be resolved");
       return;
@@ -1927,6 +2027,19 @@ export default function PlayMode() {
                       ))}
                     </select>
                   </label>
+                )}
+                {selectedSourceEquipmentSegments.length > 1 && (
+                  <div className="loadout-warnings" role="status">
+                    <strong>Bearer-only equipment split</strong>
+                    <ul>
+                      {selectedSourceEquipmentSegments.map((segment) => (
+                        <li key={`${segment.count}:${segment.sourceEquipmentLabel ?? "base"}`}>
+                          {segment.count} weapon{segment.count === 1 ? "" : "s"}
+                          {segment.sourceEquipmentLabel ? ` · ${segment.sourceEquipmentLabel}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </fieldset>
               <fieldset className="play-selector-group">
@@ -2848,7 +2961,11 @@ export default function PlayMode() {
             <div className="play-ability-selectors">
               {attackerFormationCatalogueUnit && (
                 <CombatPresetSelector
-                  presets={attackerFormationCatalogueUnit.combatPresets}
+                  presets={attackerFormationCatalogueUnit.combatPresets.filter(
+                    (preset) =>
+                      !preset.sourceEquipmentChoiceExact ||
+                      preset.sourceEquipmentAutoEnable === false,
+                  )}
                   role="attacker"
                   selectedIds={activeAttackerPresetIds}
                   onChange={(ids) => {
@@ -2866,6 +2983,7 @@ export default function PlayMode() {
                   targetStrengthState={profile.targetStrengthState}
                   sourceTargetDistance={profile.attackerSourceTargetDistance}
                   sourceTargetVisible={profile.attackerSourceCanSeeTarget}
+                  disabledIds={unavailableAttackerSourcePresetIds}
                 />
               )}
               {attackerCatalogueUnit ? (

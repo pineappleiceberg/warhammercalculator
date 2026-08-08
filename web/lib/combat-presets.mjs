@@ -8,23 +8,149 @@ function legacyModifierRole(value) {
   return null;
 }
 
-export function combatPresetSourceEquipmentActive(preset, choiceSelections = {}) {
-  if (!preset) return false;
-  const quantity =
-    (preset.sourceEquipmentChoiceExact && preset.sourceEquipmentDefault ? 1 : 0) +
-    (preset.sourceEquipmentChoiceLinks ?? []).reduce(
-      (total, link) =>
-        total +
-        Math.max(0, Math.floor(choiceSelections?.[link.alternativeId] ?? 0)) * link.quantityDelta,
-      0,
-    );
-  return quantity > 0;
+function sourceEquipmentContext(value = {}) {
+  if (
+    value &&
+    (Object.hasOwn(value, "choiceSelections") ||
+      Object.hasOwn(value, "modelCount") ||
+      Object.hasOwn(value, "loadoutSubjectCounts") ||
+      Object.hasOwn(value, "unit"))
+  ) {
+    return value;
+  }
+  return { choiceSelections: value };
 }
 
-export function sourceEquipmentCombatPresetIds(unit, choiceSelections = {}) {
+function sourceChoiceQuantity(alternativeId, context) {
+  const selected = Math.max(0, Math.floor(context.choiceSelections?.[alternativeId] ?? 0));
+  const unit = context.unit;
+  if (!unit || selected <= 0) return selected;
+  const pool = (unit.wargearChoicePools ?? []).find((candidate) =>
+    candidate.alternatives.some((alternative) => alternative.id === alternativeId),
+  );
+  const alternative = pool?.alternatives.find((candidate) => candidate.id === alternativeId);
+  if (!pool || !alternative) return 0;
+  const modelCount = Math.max(0, Math.floor(context.modelCount ?? 1));
+  if (modelCount < (pool.minimumModels ?? 1)) return 0;
+  const maximum = pool.fixed + Math.floor(modelCount / pool.modelsPerIncrement) * pool.perIncrement;
+  const poolSelections = pool.alternatives.reduce(
+    (total, candidate) =>
+      total + Math.max(0, Math.floor(context.choiceSelections?.[candidate.id] ?? 0)),
+    0,
+  );
+  if (poolSelections > maximum) return 0;
+  const prerequisitesMet = (alternative.prerequisites ?? []).every((prerequisite) => {
+    const count = Math.max(
+      0,
+      Math.floor(context.choiceSelections?.[prerequisite.alternativeId] ?? 0),
+    );
+    return count >= prerequisite.minimum && count <= prerequisite.maximum;
+  });
+  return prerequisitesMet ? selected : 0;
+}
+
+export function combatPresetSourceEquipmentCount(preset, value = {}) {
+  if (!preset?.sourceEquipmentChoiceExact) return 0;
+  const context = sourceEquipmentContext(value);
+  const modelCount = Math.max(0, Math.floor(context.modelCount ?? 1));
+  const loadoutSubjectCounts = context.loadoutSubjectCounts ?? {};
+  const defaultTerms = preset.sourceEquipmentDefaultTerms ?? [];
+  const defaultQuantity = defaultTerms.length
+    ? defaultTerms.reduce((total, term) => {
+        const subjects = term.loadoutSubjectId
+          ? Math.max(0, Math.floor(loadoutSubjectCounts[term.loadoutSubjectId] ?? 0))
+          : (term.fixed ?? 0) +
+            modelCount * (term.perModel ?? 0) +
+            Math.floor(modelCount / (term.modelsPerIncrement ?? 1)) * (term.perIncrement ?? 0);
+        return total + subjects * (term.equipmentQuantity ?? 1);
+      }, 0)
+    : preset.sourceEquipmentDefault
+      ? 1
+      : 0;
+  const choiceQuantity = (preset.sourceEquipmentChoiceLinks ?? []).reduce(
+    (total, link) => total + sourceChoiceQuantity(link.alternativeId, context) * link.quantityDelta,
+    0,
+  );
+  return Math.max(0, Math.floor(defaultQuantity + choiceQuantity));
+}
+
+export function combatPresetSourceEquipmentActive(preset, value = {}) {
+  return combatPresetSourceEquipmentCount(preset, value) > 0;
+}
+
+export function sourceEquipmentCombatPresetIds(unit, value = {}, options = {}) {
+  const context = { ...sourceEquipmentContext(value), unit };
+  const scope = options.scope ?? "unit";
   return (unit?.combatPresets ?? [])
-    .filter((preset) => combatPresetSourceEquipmentActive(preset, choiceSelections))
+    .filter(
+      (preset) =>
+        (preset.sourceEquipmentAutoEnable ?? true) &&
+        (preset.sourceEquipmentScope ?? "unit") === scope &&
+        combatPresetSourceEquipmentActive(preset, context),
+    )
     .map((preset) => preset.id);
+}
+
+export function unavailableSourceEquipmentCombatPresetIds(unit, value = {}) {
+  const context = { ...sourceEquipmentContext(value), unit };
+  return (unit?.combatPresets ?? [])
+    .filter(
+      (preset) =>
+        preset.sourceEquipmentChoiceExact &&
+        !(preset.sourceEquipmentAutoEnable ?? true) &&
+        !combatPresetSourceEquipmentActive(preset, context),
+    )
+    .map((preset) => preset.id);
+}
+
+export function sourceEquipmentWeaponLineSegments(unit, line, value = {}) {
+  const context = { ...sourceEquipmentContext(value), unit };
+  const bearerPresets = (unit?.combatPresets ?? []).filter(
+    (preset) =>
+      preset.sourceEquipmentChoiceExact &&
+      (preset.sourceEquipmentAutoEnable ?? true) &&
+      preset.sourceEquipmentScope === "bearer" &&
+      (preset.weaponScope === "Any" || preset.weaponScope === line.weapon.type),
+  );
+  const active = bearerPresets
+    .map((preset) => ({
+      preset,
+      count: Math.min(
+        Math.max(0, Math.floor(line.count ?? 0)),
+        combatPresetSourceEquipmentCount(preset, context),
+      ),
+    }))
+    .filter((entry) => entry.count > 0);
+  if (!active.length) return [{ ...line, sourceEquipmentPresetIds: [] }];
+  const lineCount = Math.max(0, Math.floor(line.count ?? 0));
+  const fullIds = active
+    .filter((entry) => entry.count >= lineCount)
+    .map((entry) => entry.preset.id);
+  const partial = active.filter((entry) => entry.count < lineCount);
+  const partialCounts = new Set(partial.map((entry) => entry.count));
+  if (partialCounts.size > 1) {
+    throw new Error("Resolve overlapping bearer-only equipment allocations separately");
+  }
+  if (!partial.length) {
+    return [{ ...line, sourceEquipmentPresetIds: fullIds }];
+  }
+  const affectedCount = partial[0].count;
+  const partialIds = partial.map((entry) => entry.preset.id);
+  const label = partial.map((entry) => entry.preset.name).join(" + ");
+  return [
+    {
+      ...line,
+      count: affectedCount,
+      sourceEquipmentPresetIds: [...fullIds, ...partialIds],
+      sourceEquipmentLabel: label,
+    },
+    {
+      ...line,
+      count: lineCount - affectedCount,
+      sourceEquipmentPresetIds: fullIds,
+      sourceEquipmentLabel: `without ${label}`,
+    },
+  ];
 }
 
 export function reconcileCombatPresetSourceChoices(
@@ -35,6 +161,9 @@ export function reconcileCombatPresetSourceChoices(
 ) {
   const selected = new Set(selectedIds ?? []);
   for (const preset of presets ?? []) {
+    if (!(preset.sourceEquipmentAutoEnable ?? true) || preset.sourceEquipmentScope === "bearer") {
+      continue;
+    }
     if (!(preset.sourceEquipmentChoiceLinks ?? []).length && !preset.sourceEquipmentChoiceExact) {
       continue;
     }
@@ -562,6 +691,7 @@ export function combatPresetEffects(
     apModifier: additional
       .filter((effect) => effect.type === "ap_modifier")
       .reduce((sum, effect) => sum + effect.value, 0),
+    apReplacement: replacement("ap_replacement", "Armour Penetration"),
     skillModifier: additional
       .filter((effect) => effect.type === "skill_modifier")
       .reduce((sum, effect) => sum + effect.value, 0),
@@ -904,6 +1034,12 @@ export function applyCombatPresets(
   if (new Set(strengthReplacements).size > 1) {
     throw new Error("Choose only one Strength characteristic replacement");
   }
+  const apReplacements = [attacker.apReplacement, target.apReplacement].filter(
+    (value) => value !== null,
+  );
+  if (new Set(apReplacements).size > 1) {
+    throw new Error("Choose only one Armour Penetration characteristic replacement");
+  }
   const damageReplacements = [attacker.damageReplacement, target.damageReplacement].filter(
     (value) => value !== null,
   );
@@ -1021,7 +1157,10 @@ export function applyCombatPresets(
       characteristicModifierStrength: characteristicRoll.strength,
       characteristicModifierDamage: characteristicRoll.damage,
       characteristicModifierGroup: characteristicRoll.group,
-      ap: Math.max(0, (profile.ap ?? 0) + attacker.apModifier + target.apModifier),
+      ap: Math.max(
+        0,
+        (apReplacements[0] ?? profile.ap ?? 0) + attacker.apModifier + target.apModifier,
+      ),
       hitOn: Math.max(2, (profile.hitOn ?? 2) - attacker.skillModifier - target.skillModifier),
       criticalHits: criticalHits.length ? Math.min(...criticalHits) : 0,
       criticalWounds: criticalWounds.length ? Math.min(...criticalWounds) : 0,

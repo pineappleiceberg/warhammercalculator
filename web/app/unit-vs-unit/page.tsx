@@ -10,6 +10,8 @@ import {
   reconcileCombatPresetSourceChoices,
   selectedAndAutomaticCombatPresets,
   sourceEquipmentCombatPresetIds,
+  sourceEquipmentWeaponLineSegments,
+  unavailableSourceEquipmentCombatPresetIds,
 } from "../../lib/combat-presets.mjs";
 import {
   calculateOrderedVolley,
@@ -88,6 +90,8 @@ type WeaponLine = {
   };
   incrementalMean?: number;
   cumulativeMean?: number;
+  sourceEquipmentPresetIds?: string[];
+  sourceEquipmentLabel?: string;
 };
 type FiringDeckSelection = {
   id: string;
@@ -380,6 +384,29 @@ export default function UnitVsUnit() {
       (orderIndex.get(left.weapon.id) ?? Number.MAX_SAFE_INTEGER) -
       (orderIndex.get(right.weapon.id) ?? Number.MAX_SAFE_INTEGER),
   );
+  const automaticUnitPresetIds = attackerFormationUnits.flatMap((unit) =>
+    sourceEquipmentCombatPresetIds(unit, {
+      choiceSelections,
+      modelCount: attackerComponentModelCount(unit.id),
+      loadoutSubjectCounts,
+    }),
+  );
+  const unavailableAttackerSourcePresetIds = attackerFormationUnits.flatMap((unit) =>
+    unavailableSourceEquipmentCombatPresetIds(unit, {
+      choiceSelections,
+      modelCount: attackerComponentModelCount(unit.id),
+      loadoutSubjectCounts,
+    }),
+  );
+  const calculationLines = orderedLines.flatMap((line) => {
+    const sourceUnit = weaponGroupSources.get(line.weapon.groupId);
+    if (!sourceUnit) return [{ ...line, sourceEquipmentPresetIds: [] }];
+    return sourceEquipmentWeaponLineSegments(sourceUnit, line, {
+      choiceSelections,
+      modelCount: attackerComponentModelCount(sourceUnit.id),
+      loadoutSubjectCounts,
+    });
+  });
   const inputKey = JSON.stringify({
     attackerJoinerId,
     attackerJoinerModels,
@@ -423,6 +450,12 @@ export default function UnitVsUnit() {
     targetBattleShocked,
     targetStrengthState,
     orderedLines: orderedLines.map((line) => [line.weapon.id, line.count]),
+    calculationLines: calculationLines.map((line) => [
+      line.weapon.id,
+      line.count,
+      line.sourceEquipmentPresetIds,
+    ]),
+    choiceSelections,
     targetSegments,
     activeAttackerPresetIds,
     activeTargetPresetIds,
@@ -725,7 +758,7 @@ export default function UnitVsUnit() {
 
   const currentProfiles = () => {
     const targetModels = targetSegments.reduce((sum, segment) => sum + segment.modelCount, 0);
-    return orderedLines.map((line) =>
+    return calculationLines.map((line) =>
       applyCombatPresets(
         applyWeaponProfile(
           {
@@ -776,7 +809,11 @@ export default function UnitVsUnit() {
         [
           ...selectedAndAutomaticCombatPresets(
             attackerFormationUnit?.combatPresets ?? [],
-            activeAttackerPresetIds,
+            [
+              ...activeAttackerPresetIds,
+              ...automaticUnitPresetIds,
+              ...(line.sourceEquipmentPresetIds ?? []),
+            ],
             line.weapon.type,
             line.weapon.name,
             targetSegments[0]?.keywords ?? [],
@@ -969,7 +1006,7 @@ export default function UnitVsUnit() {
   const currentTargets = () => {
     const targetPresets = [
       ...new Map(
-        orderedLines
+        calculationLines
           .flatMap((line) => [
             ...selectedAndAutomaticCombatPresets(
               targetFormationUnit?.combatPresets ?? [],
@@ -1045,7 +1082,7 @@ export default function UnitVsUnit() {
           .map((preset) => [preset.id, preset]),
       ).values(),
     ];
-    const equipmentCandidates = orderedLines.map((line) =>
+    const equipmentCandidates = calculationLines.map((line) =>
       applyDefensiveEquipmentTargets(
         targetSegments,
         targetEquipmentOptions,
@@ -1068,7 +1105,7 @@ export default function UnitVsUnit() {
     return applyTargetCombatPresets(
       equipmentCandidates[0] ?? targetSegments,
       targetPresets,
-      orderedLines.map((line) => ({
+      calculationLines.map((line) => ({
         weaponType: line.weapon.type,
         weaponName: line.weapon.name,
         attackKeywords: attackKeywordsForWeapon(line.weapon),
@@ -1128,7 +1165,7 @@ export default function UnitVsUnit() {
       setStatus(allocationErrors[0]);
       return;
     }
-    const lines = orderedLines;
+    const lines = calculationLines;
     if (!lines.length) {
       setStatus("Enter at least one equipped weapon quantity");
       return;
@@ -1402,7 +1439,11 @@ export default function UnitVsUnit() {
             {attackerUnit && (
               <div className="loadout-list">
                 <CombatPresetSelector
-                  presets={attackerFormationUnit?.combatPresets ?? []}
+                  presets={(attackerFormationUnit?.combatPresets ?? []).filter(
+                    (preset) =>
+                      !preset.sourceEquipmentChoiceExact ||
+                      preset.sourceEquipmentAutoEnable === false,
+                  )}
                   role="attacker"
                   selectedIds={activeAttackerPresetIds}
                   onChange={setActiveAttackerPresetIds}
@@ -1417,6 +1458,7 @@ export default function UnitVsUnit() {
                   targetStrengthState={targetStrengthState}
                   sourceTargetDistance={attackerSourceTargetDistance}
                   sourceTargetVisible={attackerSourceCanSeeTarget}
+                  disabledIds={unavailableAttackerSourcePresetIds}
                 />
                 <SupportPresetSelector
                   units={supportUnits}
@@ -3059,9 +3101,10 @@ export default function UnitVsUnit() {
         {resultsAreCurrent && results.length > 0 && volleySummary && (
           <div className="result-lines">
             {results.map((line, index) => (
-              <div key={line.weapon.id}>
+              <div key={`${line.weapon.id}-${line.sourceEquipmentLabel ?? "base"}`}>
                 <span>
                   {index + 1}. {line.count} × {line.weapon.name}
+                  {line.sourceEquipmentLabel ? ` · ${line.sourceEquipmentLabel}` : ""}
                   {line.firingDeck
                     ? ` · Firing Deck from ${line.firingDeck.passengerUnitName}`
                     : ""}
@@ -3109,9 +3152,14 @@ export default function UnitVsUnit() {
             </div>
             <div className="result-lines">
               {rollResult.lines.map((line, index) => (
-                <div key={`${orderedLines[index]?.weapon.id ?? index}-roll`}>
+                <div
+                  key={`${calculationLines[index]?.weapon.id ?? index}-${calculationLines[index]?.sourceEquipmentLabel ?? "base"}-roll`}
+                >
                   <span>
-                    {index + 1}. {orderedLines[index]?.weapon.name ?? "Weapon"}
+                    {index + 1}. {calculationLines[index]?.weapon.name ?? "Weapon"}
+                    {calculationLines[index]?.sourceEquipmentLabel
+                      ? ` · ${calculationLines[index].sourceEquipmentLabel}`
+                      : ""}
                   </span>
                   <b>{line.appliedDamage} damage applied</b>
                   <small>

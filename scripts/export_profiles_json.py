@@ -653,7 +653,8 @@ def export(database: Path, output: Path) -> None:
         for row in connection.execute(
             """SELECT datasheet_id, ability_position, preset_position, name, description_text,
                       is_exclusive_choice, activation, source_equipment_default,
-                      source_equipment_choice_exact, source_relationship, uses_per_battle,
+                      source_equipment_choice_exact, source_equipment_scope,
+                      source_equipment_auto_enable, source_relationship, uses_per_battle,
                       weapon_scope,
                       maximum_target_distance, maximum_source_target_distance,
                       maximum_support_distance,
@@ -701,6 +702,17 @@ def export(database: Path, output: Path) -> None:
                 **(
                     {"sourceEquipmentChoiceExact": True}
                     if row["source_equipment_choice_exact"]
+                    else {}
+                ),
+                **(
+                    {
+                        "sourceEquipmentScope": row["source_equipment_scope"],
+                        "sourceEquipmentAutoEnable": bool(
+                            row["source_equipment_auto_enable"]
+                        ),
+                    }
+                    if row["source_equipment_default"]
+                    or row["source_equipment_choice_exact"]
                     else {}
                 ),
                 "sourceRelationship": row["source_relationship"],
@@ -938,6 +950,39 @@ def export(database: Path, output: Path) -> None:
                     "subject": row["subject"],
                 }
             )
+
+        for row in connection.execute(
+            """SELECT datasheet_id, ability_position, preset_position,
+                      equipment_quantity, fixed_quantity, quantity_per_model,
+                      quantity_per_increment, models_per_increment,
+                      loadout_subject_position, source_text
+               FROM unit_combat_preset_equipment_default_terms
+               ORDER BY datasheet_id, ability_position, preset_position, term_position"""
+        ):
+            term = {
+                "equipmentQuantity": row["equipment_quantity"],
+                "source": row["source_text"],
+            }
+            if row["loadout_subject_position"] is not None:
+                term["loadoutSubjectId"] = (
+                    f"{row['datasheet_id']}:{row['loadout_subject_position']}"
+                )
+            else:
+                term.update(
+                    {
+                        "fixed": row["fixed_quantity"],
+                        "perModel": row["quantity_per_model"],
+                        "perIncrement": row["quantity_per_increment"],
+                        "modelsPerIncrement": row["models_per_increment"],
+                    }
+                )
+            preset_lookup[
+                (
+                    row["datasheet_id"],
+                    row["ability_position"],
+                    row["preset_position"],
+                )
+            ].setdefault("sourceEquipmentDefaultTerms", []).append(term)
 
         for row in connection.execute(
             """SELECT datasheet_id, ability_position, preset_position,
@@ -1295,6 +1340,7 @@ def export(database: Path, output: Path) -> None:
         for row in connection.execute(
             """SELECT pool.datasheet_id, pool.option_position, pool.fixed_limit,
                       pool.limit_per_increment, pool.models_per_increment,
+                      pool.minimum_models,
                       pool.description_text AS source_text,
                       alternative.alternative_position,
                       alternative.description_text AS alternative_text,
@@ -1317,6 +1363,7 @@ def export(database: Path, output: Path) -> None:
                     "fixed": row["fixed_limit"],
                     "perIncrement": row["limit_per_increment"],
                     "modelsPerIncrement": row["models_per_increment"],
+                    "minimumModels": row["minimum_models"],
                     "source": row["source_text"],
                     "replaces": [],
                     "alternatives": [],
@@ -1348,6 +1395,31 @@ def export(database: Path, output: Path) -> None:
                         "quantity": row["quantity"],
                     }
                 )
+        for row in connection.execute(
+            """SELECT datasheet_id, option_position, alternative_position,
+                      required_option_position, required_alternative_position,
+                      required_minimum, required_maximum, source_text
+               FROM wargear_choice_prerequisites
+               ORDER BY datasheet_id, option_position, alternative_position,
+                        required_option_position, required_alternative_position"""
+        ):
+            alternatives[
+                (
+                    row["datasheet_id"],
+                    row["option_position"],
+                    row["alternative_position"],
+                )
+            ].setdefault("prerequisites", []).append(
+                {
+                    "alternativeId": (
+                        f"{row['datasheet_id']}:{row['required_option_position']}:"
+                        f"{row['required_alternative_position']}"
+                    ),
+                    "minimum": row["required_minimum"],
+                    "maximum": row["required_maximum"],
+                    "source": row["source_text"],
+                }
+            )
         for (datasheet_id, _position), pool in pools.items():
             units[datasheet_id]["wargearChoicePools"].append(pool)
 
@@ -1553,6 +1625,9 @@ def export(database: Path, output: Path) -> None:
                 "choicePairingRuleCount": connection.execute(
                     "SELECT count(*) FROM wargear_choice_pairing_rules"
                 ).fetchone()[0],
+                "choicePrerequisiteCount": connection.execute(
+                    "SELECT count(*) FROM wargear_choice_prerequisites"
+                ).fetchone()[0],
                 "weaponTypeLimitCount": connection.execute(
                     "SELECT count(*) FROM wargear_weapon_type_limits"
                 ).fetchone()[0],
@@ -1583,6 +1658,9 @@ def export(database: Path, output: Path) -> None:
             ).fetchone()[0],
             "combatPresetEquipmentChoiceLinkCount": connection.execute(
                 "SELECT count(*) FROM unit_combat_preset_wargear_alternatives"
+            ).fetchone()[0],
+            "combatPresetEquipmentDefaultTermCount": connection.execute(
+                "SELECT count(*) FROM unit_combat_preset_equipment_default_terms"
             ).fetchone()[0],
                 "compoundAlternativeCount": sum(
                     1

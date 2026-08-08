@@ -1106,6 +1106,52 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     shieldDome.id,
   ]);
 
+  const wulfen = catalogue.units.find((unit) => unit.id === "000000311");
+  const deathTotem = wulfen.combatPresets.find((preset) => preset.name === "Death Totem");
+  assert.ok(deathTotem);
+  const wulfenLoadout = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: wulfen.id,
+        modelCount: 5,
+        weaponCounts: {},
+        choiceSelections: {},
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  const wulfenData = (await wulfenLoadout.json()).data;
+  assert.equal(wulfenData.sourceCombatPresetEquipmentCounts[deathTotem.id], 5);
+  assert.deepEqual(wulfenData.sourceCombatPresetIds, []);
+
+  const vespid = catalogue.units.find((unit) => unit.id === "000000427");
+  const oversight = vespid.combatPresets.find((preset) => preset.name === "Oversight Drone");
+  const oversightChoice = vespid.wargearChoicePools
+    .flatMap((pool) => pool.alternatives)
+    .find((alternative) => /oversight drone/i.test(alternative.label));
+  assert.ok(oversight && oversightChoice);
+  const undersizedVespidLoadout = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: vespid.id,
+        modelCount: 5,
+        weaponCounts: {},
+        choiceSelections: { [oversightChoice.id]: 1 },
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  const undersizedVespidData = (await undersizedVespidLoadout.json()).data;
+  assert.equal(undersizedVespidData.valid, false);
+  assert.equal(undersizedVespidData.sourceCombatPresetEquipmentCounts[oversight.id], 0);
+  assert.deepEqual(undersizedVespidData.unavailableSourceCombatPresetIds, [oversight.id]);
+
   const crisis = catalogue.units.find((unit) => unit.id === "000000418");
   const crisisShieldChoices = crisis.wargearChoicePools
     .flatMap((pool) => pool.alternatives)

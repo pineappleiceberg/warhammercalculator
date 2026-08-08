@@ -16,15 +16,29 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Bind the remaining named wargear-derived combat presets to their source
-   choices, including Survey Augur, Rod of Office, Panspectral Scanner,
-   Grav-talon, Oversight Drone, and Death Totem rules, so offensive and utility
-   equipment no longer needs a second manual ability toggle.
+1. Track limited self-unit abilities such as Oversight Drone in Play Mode with
+   the same explicit per-battle spend and recovery semantics already used for
+   supporting abilities.
 2. Normalize the remaining mixed “twin lightning claws or two different
    weapons” pools and the Terminator cyclone pairing rule without flattening
    their mutually exclusive branches.
 
 ## Completed cycles
+
+- 2026-08-08: Bound the remaining named wargear-derived combat rules in SQLite
+  schema 76. Survey Augur, Rod of Office, both Panspectral Scanner rules,
+  Grav-talons, Oversight Drone, and both Death Totem rules now derive equipment
+  counts from exact default terms and structured source choices. Canoness and
+  Hernkyn prerequisites fail closed, the Vespid option requires ten models,
+  Hekaton and Wulfen replacements subtract their default equipment, and Survey
+  Augur is correctly exposed as a Genestealer Cults support effect. Passive
+  unit-wide gear activates automatically, activated gear remains an available
+  manual condition, and bearer-only Reaver and Wulfen attacks split into
+  independently resolved weapon lines. Reaver Grav-talons also replace AP with
+  2 instead of merely granting Lethal Hits. Army Lists, Play, Unit vs Unit, the
+  loadout API, and the static catalogue share equipment counts, availability,
+  prerequisites, and false-positive behavior. Parser, database, API, saved-list,
+  browser-library, native, WebAssembly, and formal regressions cover the change.
 
 - 2026-08-08: Normalized equipment-only and distinct-weapon choices in SQLite
   schema 75. Both Keeper of Secrets records, the Lokhust Lord, Wazbom

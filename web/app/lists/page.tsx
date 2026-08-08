@@ -37,7 +37,10 @@ import {
   savedUnitLoadout,
 } from "../../lib/attachments.mjs";
 import { defensiveEquipmentSelectionKey } from "../../lib/defensive-equipment.mjs";
-import { sourceEquipmentCombatPresetIds } from "../../lib/combat-presets.mjs";
+import {
+  sourceEquipmentCombatPresetIds,
+  unavailableSourceEquipmentCombatPresetIds,
+} from "../../lib/combat-presets.mjs";
 import {
   catalogueModelSegments,
   reconcileSavedUnitDefensiveEquipmentChoices,
@@ -848,7 +851,9 @@ export default function ArmyLists() {
                           <>
                             <CombatPresetSelector
                               presets={sourceUnit.combatPresets.filter(
-                                (preset) => !preset.sourceEquipmentChoiceExact,
+                                (preset) =>
+                                  !preset.sourceEquipmentChoiceExact ||
+                                  preset.sourceEquipmentAutoEnable === false,
                               )}
                               role="either"
                               selectedIds={unit.combatPresetIds ?? []}
@@ -860,6 +865,11 @@ export default function ArmyLists() {
                               }
                               title="Play Mode ability defaults"
                               hint="Save conditions that normally begin active; you can change them during play."
+                              disabledIds={unavailableSourceEquipmentCombatPresetIds(sourceUnit, {
+                                choiceSelections: unit.choiceSelections,
+                                modelCount: unit.modelCount,
+                                loadoutSubjectCounts: unit.loadoutSubjectCounts,
+                              })}
                             />
                             {sourceUnit.combatPresets.some(
                               (preset) =>
@@ -868,8 +878,11 @@ export default function ArmyLists() {
                             ) && (
                               <small>
                                 Equipment abilities follow Source option choices automatically
-                                {sourceEquipmentCombatPresetIds(sourceUnit, unit.choiceSelections)
-                                  .length > 0
+                                {sourceEquipmentCombatPresetIds(sourceUnit, {
+                                  choiceSelections: unit.choiceSelections,
+                                  modelCount: unit.modelCount,
+                                  loadoutSubjectCounts: unit.loadoutSubjectCounts,
+                                }).length > 0
                                   ? ": active"
                                   : ": inactive"}
                                 .
