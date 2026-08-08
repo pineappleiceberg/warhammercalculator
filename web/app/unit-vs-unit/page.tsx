@@ -32,6 +32,7 @@ import {
   applyLoadoutSubjectCountsChange,
   applyModelCountChange,
   choicePoolMaximum,
+  choiceSelectionLimitWarnings,
   choiceSelectionWeaponCounts,
   compositionLoadoutSubjectCounts,
   defaultWeaponCounts,
@@ -333,6 +334,19 @@ export default function UnitVsUnit() {
       choiceSelections,
       loadoutSubjectCounts,
     ),
+  );
+  const targetUnitModelCount = targetUnit
+    ? Math.max(
+        1,
+        targetSegments
+          .filter((segment) => segment.unitId === targetUnit.id)
+          .reduce((total, segment) => total + segment.modelCount, 0),
+      )
+    : 0;
+  const targetChoiceWarnings = choiceSelectionLimitWarnings(
+    targetUnit,
+    targetUnitModelCount,
+    targetChoiceSelections,
   );
   const orderIndex = new Map(weaponOrder.map((weaponId, index) => [weaponId, index]));
   const completeFiringDeckSelections = firingDeckSelections.filter(
@@ -1978,7 +1992,7 @@ export default function UnitVsUnit() {
                   automatically and remain editable below.
                 </p>
                 {targetUnit.wargearChoicePools.map((pool) => {
-                  const maximum = choicePoolMaximum(pool, targetUnit.suggestedModelCount ?? 1);
+                  const maximum = choicePoolMaximum(pool, targetUnitModelCount);
                   const used = pool.alternatives.reduce(
                     (sum, alternative) => sum + (targetChoiceSelections[alternative.id] ?? 0),
                     0,
@@ -2027,6 +2041,17 @@ export default function UnitVsUnit() {
                   );
                 })}
               </details>
+            )}
+            {targetChoiceWarnings.length > 0 && (
+              <div className="loadout-warnings" role="status">
+                <strong>Check these target choices</strong>
+                <ul>
+                  {targetChoiceWarnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+                <small>You can keep the override for casualties or narrative rules.</small>
+              </div>
             )}
             <label>
               <span>Charge state</span>

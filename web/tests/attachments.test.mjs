@@ -13,6 +13,7 @@ import {
   applyDefensiveEquipmentTargets,
   bearerEquipmentAvailableCount,
   bearerEquipmentCount,
+  defensiveEquipmentDefaultCount,
   defensiveEquipmentSelectionKey,
   setBearerEquipmentCount,
 } from "../lib/defensive-equipment.mjs";
@@ -866,13 +867,50 @@ test("single-model defensive presets follow source equipment choices", () => {
 
   const coldstar = unit("000000402");
   const generator = coldstar.combatPresets.find((preset) => preset.name === "Shield Generator");
-  const generatorChoice = coldstar.wargearChoicePools
+  const generatorChoices = coldstar.wargearChoicePools
     .flatMap((pool) => pool.alternatives)
-    .find((alternative) => /shield generator/i.test(alternative.label));
-  assert.ok(generator && generatorChoice);
-  assert.equal(generator.sourceEquipmentChoiceExact, undefined);
+    .filter((alternative) => /shield generator/i.test(alternative.label));
+  assert.ok(generator);
+  assert.deepEqual(
+    generatorChoices.map((choice) => choice.id),
+    ["000000402:1:8", "000000402:3:8"],
+  );
+  assert.equal(generator.sourceEquipmentChoiceExact, true);
   assert.equal(combatPresetSourceEquipmentActive(generator, {}), false);
-  assert.equal(combatPresetSourceEquipmentActive(generator, { [generatorChoice.id]: 1 }), true);
+  assert.equal(combatPresetSourceEquipmentActive(generator, { [generatorChoices[0].id]: 1 }), true);
+  assert.equal(combatPresetSourceEquipmentActive(generator, { [generatorChoices[1].id]: 1 }), true);
+  assert.deepEqual(
+    coldstar.wargearChoiceItemLimits.find(
+      (limit) => limit.itemKey === "equipment:shield generator",
+    ),
+    {
+      itemKey: "equipment:shield generator",
+      itemName: "shield generator",
+      fixed: 1,
+      perIncrement: 0,
+      modelsPerIncrement: 1,
+      source: "* This model cannot have duplicates of these pieces of wargear.",
+    },
+  );
+
+  const crisis = unit("000000418");
+  const crisisShield = crisis.defensiveEquipment.find(
+    (option) => option.name === "Shield Generator",
+  );
+  assert.ok(crisisShield);
+  const crisisShieldChoices = crisisShield.choiceLinks.filter((link) => link.quantityDelta === 1);
+  assert.equal(crisisShield.choiceCoverageExact, true);
+  assert.deepEqual(
+    crisisShieldChoices.map((link) => link.alternativeId),
+    ["000000418:1:7", "000000418:3:8"],
+  );
+  assert.equal(
+    defensiveEquipmentDefaultCount(crisisShield, {
+      modelCount: 3,
+      choiceSelections: { [crisisShieldChoices[1].alternativeId]: 2 },
+    }),
+    2,
+  );
 
   const savedImpulsor = {
     id: "impulsor",

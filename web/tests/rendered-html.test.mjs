@@ -1089,6 +1089,58 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     shieldDome.id,
   ]);
 
+  const crisis = catalogue.units.find((unit) => unit.id === "000000418");
+  const crisisShieldChoices = crisis.wargearChoicePools
+    .flatMap((pool) => pool.alternatives)
+    .filter((alternative) => alternative.selectionKey === "equipment:shield generator");
+  const duplicateCrisisShield = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: crisis.id,
+        modelCount: 3,
+        weaponCounts: {},
+        choiceSelections: Object.fromEntries(
+          crisisShieldChoices.map((alternative) => [alternative.id, 2]),
+        ),
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  const duplicateCrisisShieldData = (await duplicateCrisisShield.json()).data;
+  assert.equal(duplicateCrisisShieldData.valid, false);
+  assert.equal(duplicateCrisisShieldData.selectedChoiceItemCounts["equipment:shield generator"], 4);
+  assert.match(
+    duplicateCrisisShieldData.warnings.find((warning) => /shield generator/i.test(warning)),
+    /shared limit of 3/i,
+  );
+  assert.equal(duplicateCrisisShieldData.wargearChoiceItemLimits.length, 4);
+  assert.deepEqual(duplicateCrisisShieldData.weaponTypeLimits, crisis.weaponTypeLimits);
+
+  const burstGroup = crisis.weapons.find((weapon) => weapon.groupName === "Burst cannon").groupId;
+  const tooManyRangedWeapons = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: crisis.id,
+        modelCount: 3,
+        weaponCounts: { [burstGroup]: 10 },
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  const tooManyRangedWeaponsData = (await tooManyRangedWeapons.json()).data;
+  assert.equal(tooManyRangedWeaponsData.valid, false);
+  assert.ok(
+    tooManyRangedWeaponsData.warnings.some((warning) =>
+      /10 equipped copies.*limit of 9/i.test(warning),
+    ),
+  );
+
   const assaultWithChoices = catalogue.units.find((unit) => unit.id === "000000061");
   const assaultChoicePool = assaultWithChoices.wargearChoicePools.find(
     (pool) => pool.id === "000000061:3",

@@ -54,9 +54,33 @@ CREATE TABLE IF NOT EXISTS wargear_choice_alternatives (
     option_position INTEGER NOT NULL,
     alternative_position INTEGER NOT NULL,
     description_text TEXT NOT NULL,
+    selection_key TEXT,
+    selection_name TEXT,
+    selection_quantity INTEGER CHECK (selection_quantity >= 1),
     PRIMARY KEY (datasheet_id, option_position, alternative_position),
     FOREIGN KEY (datasheet_id, option_position)
         REFERENCES wargear_choice_pools(datasheet_id, option_position) ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS wargear_choice_item_limits (
+    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    item_key TEXT NOT NULL,
+    item_name TEXT NOT NULL,
+    fixed_limit INTEGER NOT NULL CHECK (fixed_limit >= 0),
+    limit_per_increment INTEGER NOT NULL CHECK (limit_per_increment >= 0),
+    models_per_increment INTEGER NOT NULL CHECK (models_per_increment >= 1),
+    source_text TEXT NOT NULL,
+    PRIMARY KEY (datasheet_id, item_key)
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS wargear_weapon_type_limits (
+    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    weapon_type TEXT NOT NULL CHECK (weapon_type IN ('Ranged', 'Melee')),
+    fixed_limit INTEGER NOT NULL CHECK (fixed_limit >= 0),
+    limit_per_increment INTEGER NOT NULL CHECK (limit_per_increment >= 0),
+    models_per_increment INTEGER NOT NULL CHECK (models_per_increment >= 1),
+    source_text TEXT NOT NULL,
+    PRIMARY KEY (datasheet_id, weapon_type)
 ) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS wargear_choice_alternative_weapons (
@@ -166,11 +190,23 @@ PROFILE_SEPARATORS = (" – ", " - ", " — ")
 COMPLEX_MARKERS = (
     " additional ",
     " different weapons ",
-    " duplicates",
     " cannot ",
     " only ",
     " instead of ",
 )
+
+NUMBER_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+}
 
 
 def normalized_name(value: str) -> str:
@@ -234,6 +270,57 @@ def allowance(description: str) -> tuple[int, int, int] | None:
     return None
 
 
+def parsed_number(value: str) -> int | None:
+    return int(value) if value.isdigit() else NUMBER_WORDS.get(value)
+
+
+def duplicate_choice_allowance(description: str) -> tuple[int, int, int] | None:
+    value = normalized_name(description)
+    match = re.match(
+        r"(this model|any number of models) can (?:each )?be equipped with up to "
+        r"([a-z0-9]+) of the following and can take duplicates?\b",
+        value,
+    )
+    if not match:
+        return None
+    maximum = parsed_number(match.group(2))
+    if maximum is None or maximum < 1:
+        return None
+    return (maximum, 0, 1) if match.group(1) == "this model" else (0, maximum, 1)
+
+
+def duplicate_item_limit(
+    options: list[tuple],
+) -> tuple[int, int, int, str] | None:
+    for _datasheet_id, _position, _description_html, description_text in options:
+        value = normalized_name(description_text)
+        if value == "this model cannot have duplicates of these pieces of wargear":
+            return 1, 0, 1, description_text
+        if value == "each model cannot have duplicates of these pieces of wargear":
+            return 0, 1, 1, description_text
+    return None
+
+
+def weapon_type_limit(
+    description: str,
+) -> tuple[str, int, int, int] | None:
+    value = normalized_name(description)
+    match = re.fullmatch(
+        r"(this model|each model) cannot be equipped with more than (\d+) "
+        r"(ranged|melee) weapons",
+        value,
+    )
+    if not match:
+        return None
+    maximum = int(match.group(2))
+    weapon_type = match.group(3).title()
+    return (
+        (weapon_type, maximum, 0, 1)
+        if match.group(1) == "this model"
+        else (weapon_type, 0, maximum, 1)
+    )
+
+
 def option_choices(description_html: str, description_text: str) -> list[str]:
     items = re.findall(r"<li[^>]*>(.*?)</li>", description_html, re.IGNORECASE | re.DOTALL)
     if items:
@@ -295,6 +382,51 @@ def choice_weapon_vector(
             continue
         parsed[weapon_group_id] = (weapon_name, int(match.group(1)))
     return parsed
+
+
+def simple_choice_item(
+    choice: str,
+    vector: dict[str, tuple[str, int]],
+) -> tuple[str, str, int] | None:
+    value = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", choice))).strip()
+    match = re.fullmatch(r"(\d+)\s+(.+?)\s*\**", value)
+    if not match:
+        return None
+    quantity = int(match.group(1))
+    name = match.group(2).strip()
+    if re.search(r"\b(?:and|or)\b", normalized_name(name)):
+        return None
+    if len(vector) == 1:
+        weapon_group_id, (weapon_name, weapon_quantity) = next(iter(vector.items()))
+        if weapon_quantity == quantity:
+            return f"weapon:{weapon_group_id}", weapon_name, quantity
+        return None
+    if vector:
+        return None
+    key = normalized_name(name)
+    return (f"equipment:{key}", name, quantity) if key else None
+
+
+def has_single_footnote_marker(choice: str) -> bool:
+    value = html.unescape(re.sub(r"<[^>]+>", " ", choice))
+    return bool(re.search(r"(?<!\*)\*(?!\*)", value))
+
+
+def ensure_choice_selection_columns(connection: sqlite3.Connection) -> None:
+    existing = {
+        row[1]
+        for row in connection.execute("PRAGMA table_info(wargear_choice_alternatives)")
+    }
+    columns = {
+        "selection_key": "TEXT",
+        "selection_name": "TEXT",
+        "selection_quantity": "INTEGER CHECK (selection_quantity >= 1)",
+    }
+    for name, declaration in columns.items():
+        if name not in existing:
+            connection.execute(
+                f"ALTER TABLE wargear_choice_alternatives ADD COLUMN {name} {declaration}"
+            )
 
 
 def weapon_vector(
@@ -489,6 +621,7 @@ def populate_constraints(
     equipment_names_by_unit: dict[str, set[str]] | None = None,
 ) -> int:
     connection.executescript(CONSTRAINT_SCHEMA)
+    ensure_choice_selection_columns(connection)
     connection.execute("DELETE FROM default_weapon_loadout")
     connection.execute("DELETE FROM default_loadout_subject_weapons")
     connection.execute("DELETE FROM default_loadout_subjects")
@@ -497,6 +630,8 @@ def populate_constraints(
     connection.execute("DELETE FROM wargear_choice_alternative_weapons")
     connection.execute("DELETE FROM wargear_choice_alternatives")
     connection.execute("DELETE FROM wargear_choice_pools")
+    connection.execute("DELETE FROM wargear_choice_item_limits")
+    connection.execute("DELETE FROM wargear_weapon_type_limits")
     connection.execute("DELETE FROM wargear_constraint_weapons")
     connection.execute("DELETE FROM wargear_constraints")
 
@@ -608,12 +743,40 @@ def populate_constraints(
     for datasheet_id, options in options_by_unit.items():
         known = names_by_unit.get(datasheet_id, {})
         equipment_names = equipment_names_by_unit.get(datasheet_id, set())
+        shared_duplicate_limit = duplicate_item_limit(options)
+        shared_item_limits: dict[str, tuple[str, int, int, int, str]] = {}
+
+        for _unit_id, _position, _description_html, description_text in options:
+            parsed_type_limit = weapon_type_limit(description_text)
+            if parsed_type_limit is None:
+                continue
+            weapon_type, fixed_limit, per_increment, models_per_increment = parsed_type_limit
+            connection.execute(
+                """INSERT INTO wargear_weapon_type_limits
+                   (datasheet_id, weapon_type, fixed_limit, limit_per_increment,
+                    models_per_increment, source_text)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    datasheet_id,
+                    weapon_type,
+                    fixed_limit,
+                    per_increment,
+                    models_per_increment,
+                    description_text,
+                ),
+            )
 
         for _unit_id, position, description_html, description_text in options:
             normalized = f" {normalized_name(description_text)} "
-            limit = allowance(description_text)
+            duplicate_limit = duplicate_choice_allowance(description_text)
+            limit = duplicate_limit or allowance(description_text)
             choices = option_choices(description_html, description_text)
-            if not limit or not choices or any(marker in normalized for marker in COMPLEX_MARKERS):
+            if (
+                not limit
+                or not choices
+                or (" duplicate" in normalized and duplicate_limit is None)
+                or any(marker in normalized for marker in COMPLEX_MARKERS)
+            ):
                 continue
             preamble = option_preamble(description_html, description_text)
             common_replaced = replaced_weapon_vector(preamble, known, set())
@@ -631,9 +794,38 @@ def populate_constraints(
                 alternative_replaced = replaced_weapon_vector(choice, known, set())
                 if vector or alternative_replaced or equipment_relevant:
                     alternative_text = html.unescape(re.sub(r"<[^>]+>", " ", choice)).strip()
+                    selection = simple_choice_item(choice, vector)
                     alternatives.append(
-                        (alternative_position, alternative_text, vector, alternative_replaced)
+                        (
+                            alternative_position,
+                            alternative_text,
+                            vector,
+                            alternative_replaced,
+                            selection,
+                        )
                     )
+                    if (
+                        selection is not None
+                        and shared_duplicate_limit is not None
+                        and has_single_footnote_marker(choice)
+                    ):
+                        item_key, item_name, _quantity = selection
+                        fixed_limit, per_increment, models_per_increment, source = (
+                            shared_duplicate_limit
+                        )
+                        candidate = (
+                            item_name,
+                            fixed_limit,
+                            per_increment,
+                            models_per_increment,
+                            source,
+                        )
+                        previous = shared_item_limits.get(item_key)
+                        if previous is not None and previous != candidate:
+                            raise RuntimeError(
+                                f"conflicting shared choice limit for {datasheet_id}:{item_key}"
+                            )
+                        shared_item_limits[item_key] = candidate
             if alternatives:
                 connection.execute(
                     """INSERT INTO wargear_choice_pools
@@ -647,12 +839,23 @@ def populate_constraints(
                     alternative_text,
                     vector,
                     alternative_replaced,
+                    selection,
                 ) in alternatives:
                     connection.execute(
                         """INSERT INTO wargear_choice_alternatives
-                           (datasheet_id, option_position, alternative_position, description_text)
-                           VALUES (?, ?, ?, ?)""",
-                        (datasheet_id, position, alternative_position, alternative_text),
+                           (datasheet_id, option_position, alternative_position,
+                            description_text, selection_key, selection_name,
+                            selection_quantity)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            datasheet_id,
+                            position,
+                            alternative_position,
+                            alternative_text,
+                            selection[0] if selection is not None else None,
+                            selection[1] if selection is not None else None,
+                            selection[2] if selection is not None else None,
+                        ),
                     )
                     connection.executemany(
                         """INSERT INTO wargear_choice_alternative_weapons
@@ -742,6 +945,17 @@ def populate_constraints(
             )
             inserted += 1
 
+        connection.executemany(
+            """INSERT INTO wargear_choice_item_limits
+               (datasheet_id, item_key, item_name, fixed_limit,
+                limit_per_increment, models_per_increment, source_text)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                (datasheet_id, item_key, *values)
+                for item_key, values in shared_item_limits.items()
+            ),
+        )
+
     return inserted
 
 
@@ -753,7 +967,7 @@ def main() -> None:
     try:
         with connection:
             count = populate_constraints(connection)
-            connection.execute("UPDATE metadata SET value = '8' WHERE key = 'schema_version'")
+            connection.execute("UPDATE metadata SET value = '74' WHERE key = 'schema_version'")
         print(f"Structured {count} source-backed wargear constraints")
         pools = connection.execute("SELECT count(*) FROM wargear_choice_pools").fetchone()[0]
         print(f"Structured {pools} source-backed wargear choice pools")

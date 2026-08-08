@@ -76,6 +76,16 @@ export function choicePoolMaximum(pool, modelCount) {
   return pool.fixed + Math.floor(models / pool.modelsPerIncrement) * pool.perIncrement;
 }
 
+export function choiceItemLimitMaximum(limit, modelCount) {
+  const models = normalizeEquippedCount(modelCount, 1000);
+  return limit.fixed + Math.floor(models / limit.modelsPerIncrement) * limit.perIncrement;
+}
+
+export function weaponTypeLimitMaximum(limit, modelCount) {
+  const models = normalizeEquippedCount(modelCount, 1000);
+  return limit.fixed + Math.floor(models / limit.modelsPerIncrement) * limit.perIncrement;
+}
+
 export function choiceSelectionWeaponCounts(unit, choiceSelections = {}) {
   const counts = {};
   for (const pool of unit?.wargearChoicePools ?? []) {
@@ -84,6 +94,20 @@ export function choiceSelectionWeaponCounts(unit, choiceSelections = {}) {
       for (const weapon of alternative.weapons) {
         counts[weapon.groupId] = (counts[weapon.groupId] ?? 0) + selected * weapon.quantity;
       }
+    }
+  }
+  return counts;
+}
+
+export function choiceSelectionItemCounts(unit, choiceSelections = {}) {
+  const counts = {};
+  for (const pool of unit?.wargearChoicePools ?? []) {
+    for (const alternative of pool.alternatives) {
+      if (!alternative.selectionKey) continue;
+      const selected = normalizeEquippedCount(choiceSelections[alternative.id] ?? 0);
+      counts[alternative.selectionKey] =
+        (counts[alternative.selectionKey] ?? 0) +
+        selected * normalizeEquippedCount(alternative.selectionQuantity ?? 1);
     }
   }
   return counts;
@@ -341,13 +365,7 @@ export function loadoutSubjectWarnings(
   return warnings;
 }
 
-export function choiceSelectionWarnings(
-  unit,
-  modelCount,
-  choiceSelections = {},
-  equippedCounts = {},
-  loadoutSubjectCounts = {},
-) {
+export function choiceSelectionLimitWarnings(unit, modelCount, choiceSelections = {}) {
   if (!unit) return [];
   const warnings = [];
   const knownAlternativeIds = new Set();
@@ -369,6 +387,28 @@ export function choiceSelectionWarnings(
       warnings.push(`Unknown source choice: ${alternativeId}`);
     }
   }
+  const selectedItems = choiceSelectionItemCounts(unit, choiceSelections);
+  for (const limit of unit.wargearChoiceItemLimits ?? []) {
+    const selected = selectedItems[limit.itemKey] ?? 0;
+    const maximum = choiceItemLimitMaximum(limit, modelCount);
+    if (selected > maximum) {
+      warnings.push(
+        `${limit.itemName}: ${selected} selections across source choice pools exceeds the shared limit of ${maximum} for ${modelCount} models — ${limit.source}`,
+      );
+    }
+  }
+  return warnings;
+}
+
+export function choiceSelectionWarnings(
+  unit,
+  modelCount,
+  choiceSelections = {},
+  equippedCounts = {},
+  loadoutSubjectCounts = {},
+) {
+  if (!unit) return [];
+  const warnings = choiceSelectionLimitWarnings(unit, modelCount, choiceSelections);
   const selectedWeapons = choiceSelectionWeaponCounts(unit, choiceSelections);
   const replacedWeapons = choiceSelectionReplacementCounts(unit, choiceSelections);
   const defaultWeapons = defaultWeaponCounts(unit, modelCount, loadoutSubjectCounts);
@@ -425,6 +465,28 @@ export function unitLoadoutWarnings(
     if (count > maximum) {
       warnings.push(
         `${limit.groupName}: ${count} option-selected copies exceeds the source-backed limit of ${maximum} for ${models} models`,
+      );
+    }
+  }
+  const weaponTypesByGroup = new Map();
+  for (const weapon of unit.weapons ?? []) {
+    const types = weaponTypesByGroup.get(weapon.groupId) ?? new Set();
+    types.add(weapon.type);
+    weaponTypesByGroup.set(weapon.groupId, types);
+  }
+  for (const limit of unit.weaponTypeLimits ?? []) {
+    const equipped = Object.entries(equippedCounts).reduce(
+      (total, [groupId, count]) =>
+        total +
+        (weaponTypesByGroup.get(groupId)?.has(limit.weaponType)
+          ? normalizeEquippedCount(count)
+          : 0),
+      0,
+    );
+    const maximum = weaponTypeLimitMaximum(limit, models);
+    if (equipped > maximum) {
+      warnings.push(
+        `${limit.weaponType} weapons: ${equipped} equipped copies exceeds the source-backed limit of ${maximum} for ${models} models — ${limit.source}`,
       );
     }
   }

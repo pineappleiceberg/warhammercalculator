@@ -540,19 +540,18 @@ choices no longer assume every alternative replaces the same weapons, so an
 Assault Sergeant loses its pistol and chainsword for twin lightning claws but
 keeps both when merely adding a shield. Default equipment removal is linked in
 the opposite direction for choices such as paired Wolf Guard Headtaker weapons
-and the Einhyr teleport crest. Thirty-one of the 44 multi-model defensive
+and the Einhyr teleport crest. Thirty-two of the 44 multi-model defensive
 equipment options have complete choice coverage; their derived counts remain
 editable, but a divergent saved roster requires the existing casualty or
-narrative acknowledgement. The Crisis Battlesuit shield remains conservative
-because its second, duplicate-capable equipment pool is not yet fully
-structured.
+narrative acknowledgement. Crisis Battlesuits and all three T’au Commanders
+expose both their weapon-replacement and duplicate-capable equipment pools.
+Starred items share their published no-duplicate limit across both paths, and
+Crisis suits enforce the published three-ranged-weapons-per-model limit.
 Single-model defensive presets now use the same source-choice relationship.
-Schema 72 links 51 published alternatives to 15 defensive presets: 12 have
-complete equipment-choice coverage and the three T’au Commander shield
-generators have a proven replacement-path link while their duplicate-capable
-pool remains conservative. Selecting an Impulsor shield dome, Ogryn brute
-shield, Lieutenant storm shield, or Commander shield generator activates its
-defense without a second ability toggle. Replacing a default weavefield crest
+Schema 74 links 81 published alternatives to 15 defensive presets, all with
+complete equipment-choice coverage. Selecting an Impulsor shield dome, Ogryn
+brute shield, Lieutenant storm shield, or Commander shield generator activates
+its defense without a second ability toggle. Replacing a default weavefield crest
 or scattershield removes the defense, while always-equipped gear such as
 Karanak’s Collar of Khorne starts active. Army Lists carries the derived state
 into Play Mode, Unit vs Unit reconciles target source choices immediately, and
@@ -644,7 +643,9 @@ produce warnings that can be acknowledged for casualties or narrative rules.
 Shared source allowances are represented as choice pools, and compound
 alternatives retain every tracked weapon in the bundle. Unit editors, saved
 lists, and `POST /api/v1/validate-loadout` accept per-alternative selections,
-derive the resulting weapon counts, and flag a combined pool only once.
+derive the resulting weapon and equipment-item counts, and flag a combined
+pool only once. Shared item identities enforce cross-pool duplicate limits,
+while source-backed weapon-type limits validate the final editable loadout.
 Published starting equipment now pre-fills those editable counts and scales
 when every model carries a weapon. Structured replacement choices subtract the
 old equipment before adding the selected alternative. Alternate profiles are

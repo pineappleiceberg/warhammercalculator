@@ -29,10 +29,15 @@ from scripts.wargear_constraints import (
     allowance,
     choice_weapon_vector,
     default_loadout_clauses,
+    duplicate_choice_allowance,
+    ensure_choice_selection_columns,
+    has_single_footnote_marker,
     normalized_name,
     option_choices,
     replacement_items_text,
+    simple_choice_item,
     subject_count,
+    weapon_type_limit,
     weapon_vector,
 )
 
@@ -2107,6 +2112,49 @@ class ProfileDataTests(unittest.TestCase):
             ["1 flamer", "1 meltagun"],
         )
         self.assertEqual(
+            duplicate_choice_allowance(
+                "This model can be equipped with up to three of the following, "
+                "and can take duplicates:"
+            ),
+            (3, 0, 1),
+        )
+        self.assertEqual(
+            duplicate_choice_allowance(
+                "Any number of models can each be equipped with up to three of the "
+                "following, and can take duplicates**:"
+            ),
+            (0, 3, 1),
+        )
+        self.assertEqual(
+            simple_choice_item("1 shield generator*", {}),
+            ("equipment:shield generator", "shield generator", 1),
+        )
+        self.assertTrue(has_single_footnote_marker("1 shield generator*"))
+        self.assertFalse(has_single_footnote_marker("duplicates**"))
+        self.assertEqual(
+            weapon_type_limit(
+                "** Each model cannot be equipped with more than 3 ranged weapons."
+            ),
+            ("Ranged", 0, 3, 1),
+        )
+        with closing(sqlite3.connect(":memory:")) as connection:
+            connection.execute(
+                """CREATE TABLE wargear_choice_alternatives (
+                       datasheet_id TEXT NOT NULL,
+                       option_position INTEGER NOT NULL,
+                       alternative_position INTEGER NOT NULL,
+                       description_text TEXT NOT NULL,
+                       PRIMARY KEY (datasheet_id, option_position, alternative_position)
+                   ) WITHOUT ROWID"""
+            )
+            ensure_choice_selection_columns(connection)
+            self.assertEqual(
+                [row[1] for row in connection.execute(
+                    "PRAGMA table_info(wargear_choice_alternatives)"
+                )][-3:],
+                ["selection_key", "selection_name", "selection_quantity"],
+            )
+        self.assertEqual(
             profile_group_names(
                 ["Plasma pistol – standard", "Plasma pistol – supercharge"]
             ),
@@ -2158,7 +2206,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "73",
+                "74",
             )
             cadian_ranges = connection.execute(
                 """SELECT minimum_models, maximum_models
@@ -3108,13 +3156,13 @@ class ProfileDataTests(unittest.TestCase):
                     "FROM unit_defensive_equipment_options "
                     "GROUP BY choice_coverage_exact ORDER BY choice_coverage_exact"
                 ).fetchall(),
-                [(0, 13), (1, 31)],
+                [(0, 12), (1, 32)],
             )
             self.assertEqual(
                 connection.execute(
                     "SELECT count(*) FROM unit_defensive_equipment_wargear_alternatives"
                 ).fetchone()[0],
-                98,
+                108,
             )
             self.assertEqual(
                 connection.execute(
@@ -4184,7 +4232,7 @@ class ProfileDataTests(unittest.TestCase):
                     """SELECT count(*) FROM unit_combat_presets
                        WHERE source_equipment_choice_exact = 1"""
                 ).fetchone()[0],
-                12,
+                15,
             )
             self.assertEqual(
                 connection.execute(
@@ -4197,7 +4245,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT count(*) FROM unit_combat_preset_wargear_alternatives"
                 ).fetchone()[0],
-                51,
+                81,
             )
             self.assertEqual(
                 connection.execute(
@@ -4245,16 +4293,17 @@ class ProfileDataTests(unittest.TestCase):
                        WHERE datasheet_id = '000000402'
                          AND name = 'Shield Generator'"""
                 ).fetchone(),
-                (0, 0),
+                (0, 1),
             )
             self.assertEqual(
                 connection.execute(
-                    """SELECT quantity_delta
+                    """SELECT option_position, alternative_position, quantity_delta
                        FROM unit_combat_preset_wargear_alternatives
                        WHERE datasheet_id = '000000402'
-                         AND option_position = 1 AND alternative_position = 8"""
-                ).fetchone()[0],
-                1,
+                         AND quantity_delta = 1
+                       ORDER BY option_position"""
+                ).fetchall(),
+                [(1, 8, 1), (3, 8, 1)],
             )
             self.assertEqual(
                 connection.execute(
@@ -4290,6 +4339,83 @@ class ProfileDataTests(unittest.TestCase):
                     for row in plan
                 )
             )
+        finally:
+            connection.close()
+
+    def test_battlesuit_duplicate_pools_share_item_and_weapon_type_limits(self):
+        connection = sqlite3.connect(DATABASE)
+        try:
+            self.assertEqual(
+                connection.execute(
+                    """SELECT datasheet_id, option_position, fixed_limit,
+                              limit_per_increment, models_per_increment
+                       FROM wargear_choice_pools
+                       WHERE datasheet_id IN
+                           ('000000402', '000000418', '000001477', '000001478')
+                         AND option_position = 3
+                       ORDER BY datasheet_id"""
+                ).fetchall(),
+                [
+                    ("000000402", 3, 3, 0, 1),
+                    ("000000418", 3, 0, 3, 1),
+                    ("000001477", 3, 3, 0, 1),
+                    ("000001478", 3, 3, 0, 1),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT datasheet_id, fixed_limit, limit_per_increment,
+                              models_per_increment
+                       FROM wargear_choice_item_limits
+                       WHERE item_key = 'equipment:shield generator'
+                       ORDER BY datasheet_id"""
+                ).fetchall(),
+                [
+                    ("000000402", 1, 0, 1),
+                    ("000000418", 0, 1, 1),
+                    ("000001477", 1, 0, 1),
+                    ("000001478", 1, 0, 1),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT weapon_type, fixed_limit, limit_per_increment,
+                              models_per_increment
+                       FROM wargear_weapon_type_limits
+                       WHERE datasheet_id = '000000418'"""
+                ).fetchone(),
+                ("Ranged", 0, 3, 1),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT option_position, alternative_position,
+                              selection_key, selection_quantity
+                       FROM wargear_choice_alternatives
+                       WHERE datasheet_id = '000000418'
+                         AND selection_key = 'equipment:shield generator'
+                       ORDER BY option_position"""
+                ).fetchall(),
+                [
+                    (1, 7, "equipment:shield generator", 1),
+                    (3, 8, "equipment:shield generator", 1),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT choice_coverage_exact
+                       FROM unit_defensive_equipment_options
+                       WHERE datasheet_id = '000000418'
+                         AND name = 'Shield Generator'"""
+                ).fetchone(),
+                (1,),
+            )
+            plan = connection.execute(
+                """EXPLAIN QUERY PLAN
+                   SELECT item_key FROM wargear_choice_item_limits
+                   WHERE datasheet_id = ? ORDER BY item_key""",
+                ("000000418",),
+            ).fetchall()
+            self.assertTrue(any("USING PRIMARY KEY" in row[3] for row in plan))
         finally:
             connection.close()
 
@@ -4500,8 +4626,10 @@ class ProfileDataTests(unittest.TestCase):
             if limit["groupName"] == "Eviscerator"
         )
         self.assertEqual(eviscerator["terms"][0]["modelsPerIncrement"], 5)
-        self.assertEqual(catalogue["structuredWargear"]["constraintCount"], 1824)
-        self.assertEqual(catalogue["structuredWargear"]["choicePoolCount"], 2069)
+        self.assertEqual(catalogue["structuredWargear"]["constraintCount"], 1828)
+        self.assertEqual(catalogue["structuredWargear"]["choicePoolCount"], 2073)
+        self.assertEqual(catalogue["structuredWargear"]["choiceItemLimitCount"], 18)
+        self.assertEqual(catalogue["structuredWargear"]["weaponTypeLimitCount"], 1)
         self.assertEqual(
             catalogue["structuredWargear"]["compoundAlternativeCount"], 295
         )
@@ -4519,11 +4647,11 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(catalogue["structuredWargear"]["replacementWeaponCount"], 1562)
         self.assertEqual(
-            catalogue["structuredWargear"]["defensiveEquipmentChoiceLinkCount"], 98
+            catalogue["structuredWargear"]["defensiveEquipmentChoiceLinkCount"], 108
         )
         self.assertEqual(
             catalogue["structuredWargear"]["combatPresetEquipmentChoiceLinkCount"],
-            51,
+            81,
         )
         self.assertEqual(
             catalogue["structuredStartingSizes"]["discreteAlternativeUnitCount"], 13
@@ -4554,6 +4682,47 @@ class ProfileDataTests(unittest.TestCase):
                 ("000002568:3:3", 0),
                 ("000002568:3:4", 1),
             ],
+        )
+        crisis = next(unit for unit in catalogue["units"] if unit["id"] == "000000418")
+        self.assertEqual(
+            [
+                (pool["id"], pool["fixed"], pool["perIncrement"])
+                for pool in crisis["wargearChoicePools"]
+            ],
+            [("000000418:1", 0, 1), ("000000418:3", 0, 3)],
+        )
+        self.assertEqual(
+            [
+                alternative["id"]
+                for pool in crisis["wargearChoicePools"]
+                for alternative in pool["alternatives"]
+                if alternative.get("selectionKey") == "equipment:shield generator"
+            ],
+            ["000000418:1:7", "000000418:3:8"],
+        )
+        self.assertEqual(
+            next(
+                limit
+                for limit in crisis["wargearChoiceItemLimits"]
+                if limit["itemKey"] == "equipment:shield generator"
+            )["perIncrement"],
+            1,
+        )
+        self.assertEqual(crisis["weaponTypeLimits"][0]["weaponType"], "Ranged")
+        self.assertEqual(crisis["weaponTypeLimits"][0]["perIncrement"], 3)
+        crisis_shield = next(
+            option
+            for option in crisis["defensiveEquipment"]
+            if option["name"] == "Shield Generator"
+        )
+        self.assertTrue(crisis_shield["choiceCoverageExact"])
+        self.assertEqual(
+            [
+                link["alternativeId"]
+                for link in crisis_shield["choiceLinks"]
+                if link["quantityDelta"] == 1
+            ],
+            ["000000418:1:7", "000000418:3:8"],
         )
         self.assertTrue(catalogue["structuredWargear"]["conservative"])
         warboss = next(unit for unit in catalogue["units"] if unit["name"] == "Warboss")
@@ -5232,6 +5401,18 @@ class ProfileDataTests(unittest.TestCase):
                     for weapon in alternative.get("replaces", []):
                         self.assertIn(weapon["groupId"], weapon_group_ids)
                         self.assertGreater(weapon["quantity"], 0)
+            selection_keys = {
+                alternative["selectionKey"]
+                for pool in unit["wargearChoicePools"]
+                for alternative in pool["alternatives"]
+                if "selectionKey" in alternative
+            }
+            for limit in unit["wargearChoiceItemLimits"]:
+                self.assertIn(limit["itemKey"], selection_keys)
+                self.assertIn(limit["source"], unit["wargearOptions"])
+            for limit in unit["weaponTypeLimits"]:
+                self.assertIn(limit["weaponType"], {"Ranged", "Melee"})
+                self.assertIn(limit["source"], unit["wargearOptions"])
             for weapon in unit["defaultWeapons"]:
                 self.assertIn(weapon["groupId"], weapon_group_ids)
                 self.assertTrue(weapon["terms"])

@@ -117,6 +117,8 @@ def export(database: Path, output: Path) -> None:
                 "wargearOptions": [],
                 "weaponLimits": [],
                 "wargearChoicePools": [],
+                "wargearChoiceItemLimits": [],
+                "weaponTypeLimits": [],
                 "combatPresets": [],
                 "defensiveEquipment": [],
                 "firingDeck": None,
@@ -1295,6 +1297,8 @@ def export(database: Path, output: Path) -> None:
                       pool.description_text AS source_text,
                       alternative.alternative_position,
                       alternative.description_text AS alternative_text,
+                      alternative.selection_key, alternative.selection_name,
+                      alternative.selection_quantity,
                       weapon.weapon_group_id, weapon.weapon_group_name, weapon.quantity
                FROM wargear_choice_pools AS pool
                JOIN wargear_choice_alternatives AS alternative
@@ -1325,6 +1329,14 @@ def export(database: Path, output: Path) -> None:
                     "label": row["alternative_text"],
                     "weapons": [],
                 }
+                if row["selection_key"] is not None:
+                    alternative.update(
+                        {
+                            "selectionKey": row["selection_key"],
+                            "selectionName": row["selection_name"],
+                            "selectionQuantity": row["selection_quantity"],
+                        }
+                    )
                 alternatives[alternative_key] = alternative
                 pool["alternatives"].append(alternative)
             if row["weapon_group_id"] is not None:
@@ -1337,6 +1349,39 @@ def export(database: Path, output: Path) -> None:
                 )
         for (datasheet_id, _position), pool in pools.items():
             units[datasheet_id]["wargearChoicePools"].append(pool)
+
+        for row in connection.execute(
+            """SELECT datasheet_id, item_key, item_name, fixed_limit,
+                      limit_per_increment, models_per_increment, source_text
+               FROM wargear_choice_item_limits
+               ORDER BY datasheet_id, item_key"""
+        ):
+            units[row["datasheet_id"]]["wargearChoiceItemLimits"].append(
+                {
+                    "itemKey": row["item_key"],
+                    "itemName": row["item_name"],
+                    "fixed": row["fixed_limit"],
+                    "perIncrement": row["limit_per_increment"],
+                    "modelsPerIncrement": row["models_per_increment"],
+                    "source": row["source_text"],
+                }
+            )
+
+        for row in connection.execute(
+            """SELECT datasheet_id, weapon_type, fixed_limit,
+                      limit_per_increment, models_per_increment, source_text
+               FROM wargear_weapon_type_limits
+               ORDER BY datasheet_id, weapon_type"""
+        ):
+            units[row["datasheet_id"]]["weaponTypeLimits"].append(
+                {
+                    "weaponType": row["weapon_type"],
+                    "fixed": row["fixed_limit"],
+                    "perIncrement": row["limit_per_increment"],
+                    "modelsPerIncrement": row["models_per_increment"],
+                    "source": row["source_text"],
+                }
+            )
 
         for row in connection.execute(
             """SELECT datasheet_id, option_position, weapon_group_id,
@@ -1483,6 +1528,12 @@ def export(database: Path, output: Path) -> None:
                 ).fetchone()[0],
                 "constrainedWeaponCount": len(limits),
                 "choicePoolCount": len(pools),
+                "choiceItemLimitCount": connection.execute(
+                    "SELECT count(*) FROM wargear_choice_item_limits"
+                ).fetchone()[0],
+                "weaponTypeLimitCount": connection.execute(
+                    "SELECT count(*) FROM wargear_weapon_type_limits"
+                ).fetchone()[0],
                 "defaultWeaponCount": len(defaults),
                 "defaultWeaponTermCount": connection.execute(
                     "SELECT count(*) FROM default_weapon_loadout"

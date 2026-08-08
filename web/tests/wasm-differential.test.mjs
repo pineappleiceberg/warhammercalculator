@@ -38,6 +38,8 @@ import {
   applyModelCountChange,
   armyListWeaponsFromGroups,
   choicePoolMaximum,
+  choiceSelectionItemCounts,
+  choiceSelectionLimitWarnings,
   choiceSelectionWeaponCounts,
   defaultWeaponCounts,
   defaultLoadoutSubjectCounts,
@@ -372,6 +374,92 @@ test("source choice pools share allowances and preserve compound bundles", () =>
     )[0],
     /2 selections exceeds the shared limit of 1/i,
   );
+});
+
+test("duplicate-capable source pools share item and weapon-type limits", () => {
+  const unit = {
+    name: "Battlesuit",
+    suggestedModelCount: 1,
+    maximumModelCount: 1,
+    startingSizeRanges: [{ minimum: 1, maximum: 1, source: "1 Battlesuit" }],
+    weaponLimits: [],
+    weapons: [
+      { groupId: "unit:burst", groupName: "Burst cannon", type: "Ranged" },
+      { groupId: "unit:fusion", groupName: "Fusion blaster", type: "Ranged" },
+      { groupId: "unit:fists", groupName: "Fists", type: "Melee" },
+    ],
+    defaultWeapons: [],
+    wargearChoiceItemLimits: [
+      {
+        itemKey: "equipment:shield generator",
+        itemName: "Shield Generator",
+        fixed: 1,
+        perIncrement: 0,
+        modelsPerIncrement: 1,
+        source: "This model cannot have duplicates",
+      },
+    ],
+    weaponTypeLimits: [
+      {
+        weaponType: "Ranged",
+        fixed: 3,
+        perIncrement: 0,
+        modelsPerIncrement: 1,
+        source: "This model cannot have more than 3 ranged weapons",
+      },
+    ],
+    wargearChoicePools: [
+      {
+        id: "unit:replace",
+        fixed: 1,
+        perIncrement: 0,
+        modelsPerIncrement: 1,
+        source: "Replace one weapon",
+        replaces: [],
+        alternatives: [
+          {
+            id: "unit:replace:shield",
+            label: "1 shield generator*",
+            weapons: [],
+            selectionKey: "equipment:shield generator",
+            selectionName: "Shield Generator",
+            selectionQuantity: 1,
+          },
+        ],
+      },
+      {
+        id: "unit:add",
+        fixed: 3,
+        perIncrement: 0,
+        modelsPerIncrement: 1,
+        source: "Add up to three items",
+        replaces: [],
+        alternatives: [
+          {
+            id: "unit:add:shield",
+            label: "1 shield generator*",
+            weapons: [],
+            selectionKey: "equipment:shield generator",
+            selectionName: "Shield Generator",
+            selectionQuantity: 1,
+          },
+        ],
+      },
+    ],
+  };
+  const choices = { "unit:replace:shield": 1, "unit:add:shield": 1 };
+  assert.deepEqual(choiceSelectionItemCounts(unit, choices), {
+    "equipment:shield generator": 2,
+  });
+  assert.match(choiceSelectionLimitWarnings(unit, 1, choices)[0], /shared limit of 1/i);
+  const warnings = unitLoadoutWarnings(
+    unit,
+    1,
+    {},
+    { "unit:burst": 1, "unit:fusion": 3, "unit:fists": 1 },
+    choices,
+  );
+  assert.ok(warnings.some((warning) => /4 equipped copies.*limit of 3/i.test(warning)));
 });
 
 test("unit ability presets separate attacking and defensive effects", () => {

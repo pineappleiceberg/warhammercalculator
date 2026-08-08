@@ -28,6 +28,7 @@ import {
   parseArmyListBackup,
 } from "../lib/army-list-codec.mjs";
 import {
+  choiceSelectionItemCounts,
   choiceSelectionWeaponCounts,
   loadoutSubjectWeaponCounts,
   sourceEquippedWeaponCounts,
@@ -146,7 +147,25 @@ type Catalogue = {
         id: string;
         label: string;
         weapons: Array<{ groupId: string; groupName: string; quantity: number }>;
+        selectionKey?: string;
+        selectionName?: string;
+        selectionQuantity?: number;
       }>;
+    }>;
+    wargearChoiceItemLimits: Array<{
+      itemKey: string;
+      itemName: string;
+      fixed: number;
+      perIncrement: number;
+      modelsPerIncrement: number;
+      source: string;
+    }>;
+    weaponTypeLimits: Array<{
+      weaponType: "Ranged" | "Melee";
+      fixed: number;
+      perIncrement: number;
+      modelsPerIncrement: number;
+      source: string;
     }>;
     startingSizeRanges: Array<{
       minimum: number;
@@ -1021,6 +1040,8 @@ async function handleApi(request: Request, env: Env) {
           wargearOptions: unit.wargearOptions,
           weaponLimits: unit.weaponLimits,
           wargearChoicePools: unit.wargearChoicePools,
+          wargearChoiceItemLimits: unit.wargearChoiceItemLimits,
+          weaponTypeLimits: unit.weaponTypeLimits,
           firingDeck: unit.firingDeck,
           firingDeckModelCost: unit.firingDeckModelCost,
           transport: unit.transport,
@@ -1428,6 +1449,9 @@ async function handleApi(request: Request, env: Env) {
           warnings,
           weaponLimits: unit.weaponLimits,
           wargearChoicePools: unit.wargearChoicePools,
+          wargearChoiceItemLimits: unit.wargearChoiceItemLimits,
+          weaponTypeLimits: unit.weaponTypeLimits,
+          selectedChoiceItemCounts: choiceSelectionItemCounts(unit, choiceSelections),
           selectedWeaponCounts: choiceSelectionWeaponCounts(unit, choiceSelections),
           compositionWeaponCounts: loadoutSubjectWeaponCounts(unit, loadoutSubjectCounts),
           suggestedEquippedCounts: sourceEquippedWeaponCounts(

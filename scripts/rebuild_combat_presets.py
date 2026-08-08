@@ -324,8 +324,18 @@ def main() -> None:
         connection.execute("DELETE FROM unit_starting_size_ranges")
         populate_starting_size_ranges(connection)
         count = rebuild_combat_presets(connection)
+        schema_tables = {
+            row[0]
+            for row in connection.execute(
+                """SELECT name FROM sqlite_schema
+                   WHERE type = 'table' AND name IN
+                       ('wargear_choice_item_limits', 'wargear_weapon_type_limits')"""
+            )
+        }
+        schema_version = "74" if len(schema_tables) == 2 else "73"
         connection.execute(
-            "UPDATE metadata SET value = '73' WHERE key = 'schema_version'"
+            "UPDATE metadata SET value = ? WHERE key = 'schema_version'",
+            (schema_version,),
         )
         connection.execute("PRAGMA optimize")
         connection.commit()

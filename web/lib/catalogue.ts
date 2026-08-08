@@ -79,6 +79,9 @@ export type CatalogueWargearAlternative = {
   label: string;
   weapons: CatalogueWargearChoice[];
   replaces?: CatalogueWargearChoice[];
+  selectionKey?: string;
+  selectionName?: string;
+  selectionQuantity?: number;
 };
 export type CatalogueWargearChoicePool = {
   id: string;
@@ -88,6 +91,21 @@ export type CatalogueWargearChoicePool = {
   source: string;
   replaces: CatalogueWargearChoice[];
   alternatives: CatalogueWargearAlternative[];
+};
+export type CatalogueWargearChoiceItemLimit = {
+  itemKey: string;
+  itemName: string;
+  fixed: number;
+  perIncrement: number;
+  modelsPerIncrement: number;
+  source: string;
+};
+export type CatalogueWeaponTypeLimit = {
+  weaponType: "Ranged" | "Melee";
+  fixed: number;
+  perIncrement: number;
+  modelsPerIncrement: number;
+  source: string;
 };
 export type CatalogueDefaultWeapon = {
   groupId: string;
@@ -282,6 +300,8 @@ export type CatalogueUnit = {
   wargearOptions: string[];
   weaponLimits: CatalogueWeaponLimit[];
   wargearChoicePools: CatalogueWargearChoicePool[];
+  wargearChoiceItemLimits: CatalogueWargearChoiceItemLimit[];
+  weaponTypeLimits: CatalogueWeaponTypeLimit[];
   combatPresets: CatalogueCombatPreset[];
   defensiveEquipment: CatalogueDefensiveEquipment[];
   firingDeck: { capacity: number; abilityId: string | null } | null;

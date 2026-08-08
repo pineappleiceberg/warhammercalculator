@@ -16,13 +16,23 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Structure duplicate-capable non-weapon equipment pools so Crisis Battlesuit
-   shield-generator counts can be derived across both published selection paths.
-2. Normalize the remaining unstructured single-model equipment lists and
+1. Normalize the remaining unstructured single-model equipment lists and
    replacement paths, including Keeper, Lokhust, Wolf Guard, and Wazbom options,
    so every published defensive wargear preset can follow its source selection.
 
 ## Completed cycles
+
+- 2026-08-08: Structured the duplicate-capable battlesuit equipment pools and
+  their linked footnotes in SQLite schema 74. Crisis Battlesuits and all three
+  T’au Commanders now expose both the weapon-replacement path and the separate
+  three-item path. Eighteen normalized item limits enforce starred no-duplicate
+  rules across both pools, and the Crisis ranged-weapon limit scales at three
+  per model. Shield Generator bearer counts and Commander defensive presets now
+  derive from either published path with complete source coverage while staying
+  editable. Army Lists, Unit vs Unit attacker and target choices, Play defaults,
+  and the loadout API share the same warnings and selected-item counts. Parser,
+  database, provenance, saved-list, UI, API, native, WebAssembly, and formal
+  regressions cover the change.
 
 - 2026-08-08: Normalized legal starting-size ranges in SQLite schema 73. All
   1,711 datasheets with published composition data now have exact inclusive
