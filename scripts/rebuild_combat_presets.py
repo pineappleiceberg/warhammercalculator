@@ -6,12 +6,24 @@ from contextlib import closing
 from pathlib import Path
 
 try:
-    from scripts.build_profiles_db import rebuild_combat_presets
+    from scripts.build_profiles_db import (
+        populate_starting_size_ranges,
+        rebuild_combat_presets,
+    )
 except ModuleNotFoundError:
-    from build_profiles_db import rebuild_combat_presets
+    from build_profiles_db import populate_starting_size_ranges, rebuild_combat_presets
 
 
 TABLE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS unit_starting_size_ranges (
+    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 1),
+    minimum_models INTEGER NOT NULL CHECK (minimum_models >= 1),
+    maximum_models INTEGER NOT NULL CHECK (maximum_models >= minimum_models),
+    source_text TEXT NOT NULL,
+    PRIMARY KEY (datasheet_id, position),
+    UNIQUE (datasheet_id, minimum_models, maximum_models)
+) WITHOUT ROWID;
 DROP TABLE IF EXISTS unit_defensive_equipment_wargear_alternatives;
 DROP TABLE IF EXISTS unit_defensive_equipment_effects;
 DROP TABLE IF EXISTS unit_defensive_equipment_default_terms;
@@ -309,9 +321,11 @@ def main() -> None:
     args = parser.parse_args()
     with closing(sqlite3.connect(args.database)) as connection:
         connection.executescript(TABLE_SCHEMA)
+        connection.execute("DELETE FROM unit_starting_size_ranges")
+        populate_starting_size_ranges(connection)
         count = rebuild_combat_presets(connection)
         connection.execute(
-            "UPDATE metadata SET value = '72' WHERE key = 'schema_version'"
+            "UPDATE metadata SET value = '73' WHERE key = 'schema_version'"
         )
         connection.execute("PRAGMA optimize")
         connection.commit()

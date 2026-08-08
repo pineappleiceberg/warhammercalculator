@@ -27,6 +27,7 @@ import {
   groupWeaponProfiles,
   normalizeEquippedCount,
   rebaseCompositionLoadoutSubjectCounts,
+  startingSizeRangeLabel,
   unitLoadoutWarnings,
 } from "../../lib/loadout.mjs";
 import { transportAssignmentReport, transportPassengerEligibility } from "../../lib/transport.mjs";
@@ -367,7 +368,7 @@ export default function ArmyLists() {
                     <div>
                       <h3>{unit.name}</h3>
                       <label>
-                        <span>Models</span>
+                        <span>Current models</span>
                         <input
                           type="number"
                           min={1}
@@ -426,6 +427,18 @@ export default function ArmyLists() {
                           }}
                         />
                       </label>
+                      {(() => {
+                        const sourceUnit = catalogue?.units.find(
+                          (entry) => entry.id === unit.unitId,
+                        );
+                        return (sourceUnit?.startingSizeRanges.length ?? 0) > 0 ? (
+                          <small>
+                            Published starting sizes:{" "}
+                            {startingSizeRangeLabel(sourceUnit?.startingSizeRanges)}. Other counts
+                            are treated as battlefield casualties.
+                          </small>
+                        ) : null;
+                      })()}
                       {transportReport.startingStrengthByBodyguard.get(unit.id) !== undefined && (
                         <small>
                           Formation Starting Strength:{" "}

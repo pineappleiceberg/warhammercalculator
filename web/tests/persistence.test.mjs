@@ -81,6 +81,18 @@ test("round-trips a versioned army-list backup", () => {
   );
 });
 
+test("preserves editable casualty counts independently of catalogue starting sizes", () => {
+  const casualtyList = {
+    ...list,
+    units: [{ ...list.units[0], name: "Cadian Shock Troops", modelCount: 15 }],
+  };
+  const backup = createArmyListBackup([casualtyList]);
+  assert.equal(
+    parseArmyListBackup(JSON.parse(JSON.stringify(backup))).lists[0].units[0].modelCount,
+    15,
+  );
+});
+
 test("rejects incompatible and malformed army-list backups", () => {
   const backup = createArmyListBackup([list]);
   assert.throws(() => parseArmyListBackup({ ...backup, version: 2 }), /unsupported/i);

@@ -127,6 +127,9 @@ The main tables are:
 - `unit_composition` and `unit_composition_models` for source ordering, display
   text, safely parsed unit-size ranges, and the named model components within
   each composition row
+- `unit_starting_size_ranges` for exact inclusive legal starting ranges;
+  separate rows preserve discrete `OR` and `one of the following` alternatives
+  instead of filling the gaps between them
 - `wargear_options` for the complete published loadout guidance, preserved as
   both original HTML and plain text
 - `wargear_constraints` and `wargear_constraint_weapons` for conservatively

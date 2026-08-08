@@ -129,6 +129,7 @@ def export(database: Path, output: Path) -> None:
                 "leaderAttachmentException": None,
                 "bodyguardLeaderRule": None,
                 "bodyguardJoinOptions": [],
+                "startingSizeRanges": [],
                 "suggestedModelCount": None,
                 "maximumModelCount": None,
             }
@@ -1376,9 +1377,26 @@ def export(database: Path, output: Path) -> None:
                     }
                 )
 
+        for row in connection.execute(
+            """SELECT datasheet_id, minimum_models, maximum_models, source_text
+               FROM unit_starting_size_ranges
+               ORDER BY datasheet_id, position"""
+        ):
+            units[row["datasheet_id"]]["startingSizeRanges"].append(
+                {
+                    "minimum": row["minimum_models"],
+                    "maximum": row["maximum_models"],
+                    "source": row["source_text"],
+                }
+            )
+
         for unit in units.values():
-            composition = unit["composition"]
-            minimum, maximum = unit_model_range(composition)
+            ranges = unit["startingSizeRanges"]
+            if ranges:
+                minimum = min(row["minimum"] for row in ranges)
+                maximum = max(row["maximum"] for row in ranges)
+            else:
+                minimum, maximum = unit_model_range(unit["composition"])
             unit["suggestedModelCount"] = minimum
             unit["maximumModelCount"] = maximum
 
@@ -1502,6 +1520,21 @@ def export(database: Path, output: Path) -> None:
                     "SELECT count(*) FROM wargear_options"
                 ).fetchone()[0],
                 "conservative": True,
+            },
+            "structuredStartingSizes": {
+                "rangeCount": connection.execute(
+                    "SELECT count(*) FROM unit_starting_size_ranges"
+                ).fetchone()[0],
+                "exactUnitCount": connection.execute(
+                    "SELECT count(DISTINCT datasheet_id) FROM unit_starting_size_ranges"
+                ).fetchone()[0],
+                "discreteAlternativeUnitCount": connection.execute(
+                    """SELECT count(*) FROM (
+                           SELECT datasheet_id
+                           FROM unit_starting_size_ranges
+                           GROUP BY datasheet_id HAVING count(*) > 1
+                       )"""
+                ).fetchone()[0],
             },
             "factions": factions,
             "units": list(units.values()),

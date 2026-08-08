@@ -16,16 +16,24 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Normalize discrete legal starting-size alternatives separately from casualty
-   counts so datasheets published as, for example, exactly 5 or 10 models do not
-   treat intermediate roster sizes as ordinary legal starting compositions.
-2. Structure duplicate-capable non-weapon equipment pools so Crisis Battlesuit
+1. Structure duplicate-capable non-weapon equipment pools so Crisis Battlesuit
    shield-generator counts can be derived across both published selection paths.
-3. Normalize the remaining unstructured single-model equipment lists and
+2. Normalize the remaining unstructured single-model equipment lists and
    replacement paths, including Keeper, Lokhust, Wolf Guard, and Wazbom options,
    so every published defensive wargear preset can follow its source selection.
 
 ## Completed cycles
+
+- 2026-08-08: Normalized legal starting-size ranges in SQLite schema 73. All
+  1,711 datasheets with published composition data now have exact inclusive
+  ranges: 1,724 rows preserve 13 datasheets with discrete alternatives,
+  including the 5-or-10-model Kill Teams, 10-or-20-model Astra Militarum units,
+  Gretchin, Jakhals, Wolf Scouts, and both Grenadier composition forms. Army
+  Lists now labels editable counts as current models and identifies off-range
+  values as possible battlefield casualties rather than legal roster starts.
+  Catalogue and loadout APIs expose the ranges and their source text, and the
+  shared validator applies the same distinction. Parser, cap, database-plan,
+  continuous-range, discrete-gap, UI, and API regressions cover the change.
 
 - 2026-08-08: Linked single-model defensive wargear to situational combat
   presets in SQLite schema 72. Fifty-one normalized alternative links cover 15

@@ -403,16 +403,8 @@ export function unitLoadoutWarnings(
   if (!unit) return [];
   const models = normalizeEquippedCount(modelCount, 1000);
   const warnings = [];
-  if (unit.suggestedModelCount !== null && models < unit.suggestedModelCount) {
-    warnings.push(
-      `${unit.name} source composition starts at ${unit.suggestedModelCount} models; ${models} may represent battlefield casualties`,
-    );
-  }
-  if (unit.maximumModelCount !== null && models > unit.maximumModelCount) {
-    warnings.push(
-      `${unit.name} source composition allows at most ${unit.maximumModelCount} models`,
-    );
-  }
+  const startingSizeWarning = unitStartingSizeWarning(unit, models);
+  if (startingSizeWarning) warnings.push(startingSizeWarning);
   const structuredCounts = choiceSelectionWeaponCounts(unit, choiceSelections);
   const effectiveOptionCounts = { ...optionCounts };
   for (const [groupId, count] of Object.entries(structuredCounts)) {
@@ -441,4 +433,63 @@ export function unitLoadoutWarnings(
       choiceSelectionWarnings(unit, models, choiceSelections, equippedCounts, loadoutSubjectCounts),
     )
     .concat(loadoutSubjectWarnings(unit, models, loadoutSubjectCounts, equippedCounts));
+}
+
+export function startingSizeRangeLabel(ranges = []) {
+  return ranges
+    .map((range) =>
+      range.minimum === range.maximum ? String(range.minimum) : `${range.minimum}–${range.maximum}`,
+    )
+    .join(" or ");
+}
+
+export function unitStartingSizeWarning(unit, modelCount) {
+  if (!unit) return null;
+  const models = normalizeEquippedCount(modelCount, 1000);
+  const status = unitStartingSizeStatus(unit, models);
+  const ranges = Array.isArray(unit.startingSizeRanges) ? unit.startingSizeRanges : [];
+  if (ranges.length > 0) {
+    if (status.legal) return null;
+    if (status.interpretation === "above_maximum") {
+      return `${unit.name} source composition allows at most ${status.maximum} models`;
+    }
+    return `${unit.name} published starting sizes are ${startingSizeRangeLabel(ranges)}; ${models} is not a legal starting size and may represent battlefield casualties`;
+  }
+  if (unit.suggestedModelCount !== null && models < unit.suggestedModelCount) {
+    return `${unit.name} source composition starts at ${unit.suggestedModelCount} models; ${models} may represent battlefield casualties`;
+  }
+  if (unit.maximumModelCount !== null && models > unit.maximumModelCount) {
+    return `${unit.name} source composition allows at most ${unit.maximumModelCount} models`;
+  }
+  return null;
+}
+
+export function unitStartingSizeStatus(unit, modelCount) {
+  if (!unit) return { legal: null, interpretation: "unknown", maximum: null };
+  const models = normalizeEquippedCount(modelCount, 1000);
+  const ranges = Array.isArray(unit.startingSizeRanges) ? unit.startingSizeRanges : [];
+  if (ranges.length > 0) {
+    const maximum = Math.max(...ranges.map((range) => range.maximum));
+    if (ranges.some((range) => models >= range.minimum && models <= range.maximum)) {
+      return { legal: true, interpretation: "legal_start", maximum };
+    }
+    return {
+      legal: false,
+      interpretation: models > maximum ? "above_maximum" : "possible_casualties",
+      maximum,
+    };
+  }
+  const minimum = Number.isInteger(unit.suggestedModelCount) ? unit.suggestedModelCount : null;
+  const maximum = Number.isInteger(unit.maximumModelCount) ? unit.maximumModelCount : null;
+  if (maximum !== null && models > maximum) {
+    return { legal: false, interpretation: "above_maximum", maximum };
+  }
+  if (minimum !== null && models < minimum) {
+    return { legal: false, interpretation: "possible_casualties", maximum };
+  }
+  return {
+    legal: minimum !== null || maximum !== null ? true : null,
+    interpretation: minimum !== null || maximum !== null ? "legal_start" : "unknown",
+    maximum,
+  };
 }

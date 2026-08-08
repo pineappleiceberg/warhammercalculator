@@ -361,6 +361,11 @@ export type CatalogueUnit = {
     increasesStartingStrength: boolean;
     source: string;
   }>;
+  startingSizeRanges: Array<{
+    minimum: number;
+    maximum: number;
+    source: string;
+  }>;
   suggestedModelCount: number | null;
   maximumModelCount: number | null;
 };
@@ -464,6 +469,11 @@ export type Catalogue = {
     compoundAlternativeCount: number;
     optionCount: number;
     conservative: boolean;
+  };
+  structuredStartingSizes: {
+    rangeCount: number;
+    exactUnitCount: number;
+    discreteAlternativeUnitCount: number;
   };
   factions: CatalogueFaction[];
   units: CatalogueUnit[];

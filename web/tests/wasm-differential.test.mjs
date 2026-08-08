@@ -46,7 +46,10 @@ import {
   loadoutSubjectWeaponCounts,
   normalizeEquippedCount,
   sourceEquippedWeaponCounts,
+  startingSizeRangeLabel,
   unitLoadoutWarnings,
+  unitStartingSizeStatus,
+  unitStartingSizeWarning,
   weaponAllocationErrors,
   weaponLimitMaximum,
 } from "../lib/loadout.mjs";
@@ -1856,6 +1859,42 @@ test("source-backed loadout limits scale with unit size and remain overridable w
   assert.match(
     unitLoadoutWarnings(unit, 10, { "assault:eviscerator": 2 }, { "assault:eviscerator": 1 })[0],
     /exceeds 1 total equipped/i,
+  );
+});
+
+test("discrete published starting sizes remain distinct from casualty counts", () => {
+  const unit = {
+    name: "Cadian Shock Troops",
+    startingSizeRanges: [
+      { minimum: 10, maximum: 10, source: "1 Sergeant and 9 Troopers" },
+      { minimum: 20, maximum: 20, source: "2 Sergeants and 18 Troopers" },
+    ],
+    suggestedModelCount: 10,
+    maximumModelCount: 20,
+    weaponLimits: [],
+  };
+  assert.equal(startingSizeRangeLabel(unit.startingSizeRanges), "10 or 20");
+  assert.equal(unitStartingSizeWarning(unit, 10), null);
+  assert.equal(unitStartingSizeWarning(unit, 20), null);
+  assert.deepEqual(unitStartingSizeStatus(unit, 15), {
+    legal: false,
+    interpretation: "possible_casualties",
+    maximum: 20,
+  });
+  assert.match(unitStartingSizeWarning(unit, 15), /not a legal starting size.*casualties/i);
+  assert.match(unitLoadoutWarnings(unit, 15)[0], /starting sizes are 10 or 20/i);
+  assert.match(unitStartingSizeWarning(unit, 21), /at most 20 models/i);
+  assert.deepEqual(unitStartingSizeStatus(unit, 21), {
+    legal: false,
+    interpretation: "above_maximum",
+    maximum: 20,
+  });
+  assert.equal(
+    unitStartingSizeWarning(
+      { ...unit, startingSizeRanges: [{ minimum: 10, maximum: 20, source: "10-20" }] },
+      15,
+    ),
+    null,
   );
 });
 

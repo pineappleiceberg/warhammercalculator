@@ -53,6 +53,7 @@ SNAPSHOT_TABLES = (
     "unit_defensive_equipment_default_terms",
     "unit_defensive_equipment_effects",
     "unit_composition",
+    "unit_starting_size_ranges",
     "unit_composition_models",
     "unit_composition_model_loadout_subjects",
     "catalogue_model_composition_terms",

@@ -558,6 +558,14 @@ Karanak’s Collar of Khorne starts active. Army Lists carries the derived state
 into Play Mode, Unit vs Unit reconciles target source choices immediately, and
 the loadout API returns the resulting preset IDs. Battle-local ability controls
 remain editable after initialization.
+Schema 73 stores published legal starting sizes independently from editable
+current model counts. Inclusive compositions such as 10–20 models remain one
+range, while source alternatives such as exactly 5 or 10 models remain two
+distinct ranges. Army Lists labels its model count as the current battlefield
+count, shows the published starting choices, and reports intermediate values as
+possible casualties instead of silently accepting them as legal roster starts.
+The catalogue and loadout API expose the same normalized ranges, including
+source text, so browser and agent callers apply the same distinction.
 Uniform grouped statlines are split into source-composition-backed catalogue
 models when that distinction is required for an exact bearer limit. Command
 Squad shields therefore distinguish the Champion and Company Veterans from the

@@ -14,6 +14,7 @@ from scripts.build_profiles_db import (
     composition_components,
     composition_range,
     plain_text,
+    starting_size_ranges,
     source_manifest_differences,
 )
 from scripts.export_profiles_json import export, profile_group_names, unit_model_range
@@ -2007,6 +2008,57 @@ class ProfileDataTests(unittest.TestCase):
             "1 Hero – EPIC HERO",
         )
         self.assertEqual(composition_range("OR"), (None, None))
+
+    def test_starting_size_parser_preserves_discrete_alternatives(self):
+        self.assertEqual(
+            starting_size_ranges(
+                [
+                    ("1 Sergeant and 4 Troopers", 5, 5),
+                    ("OR", None, None),
+                    ("2 Sergeants and 8 Troopers", 10, 10),
+                ]
+            ),
+            [
+                (5, 5, "1 Sergeant and 4 Troopers"),
+                (10, 10, "2 Sergeants and 8 Troopers"),
+            ],
+        )
+        self.assertEqual(
+            starting_size_ranges([("5-10 Troopers", 5, 10)]),
+            [(5, 10, "5-10 Troopers")],
+        )
+        self.assertEqual(
+            starting_size_ranges(
+                [
+                    ("One of the following:", None, None),
+                    ("1 Sergeant and 9 Troopers", 10, 10),
+                    ("1 Sergeant, 7 Troopers and 1 Team", 9, 9),
+                ]
+            ),
+            [
+                (9, 9, "1 Sergeant, 7 Troopers and 1 Team"),
+                (10, 10, "1 Sergeant and 9 Troopers"),
+            ],
+        )
+        self.assertEqual(starting_size_ranges([("Choose models", None, None)]), [])
+        self.assertEqual(
+            starting_size_ranges(
+                [
+                    ("This unit can contain a maximum of 10 models.", None, None),
+                    ("1 Felarch", 1, 1),
+                    ("4-9 Voidscarred", 4, 9),
+                    ("0-1 Specialist", 0, 1),
+                ]
+            ),
+            [
+                (
+                    5,
+                    10,
+                    "This unit can contain a maximum of 10 models. | "
+                    "1 Felarch | 4-9 Voidscarred | 0-1 Specialist",
+                )
+            ],
+        )
         self.assertEqual(
             unit_model_range(
                 [
@@ -2106,8 +2158,31 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "72",
+                "73",
             )
+            cadian_ranges = connection.execute(
+                """SELECT minimum_models, maximum_models
+                   FROM unit_starting_size_ranges
+                   WHERE datasheet_id = '000002612' ORDER BY position"""
+            ).fetchall()
+            self.assertEqual(cadian_ranges, [(10, 10), (20, 20)])
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM (
+                           SELECT datasheet_id
+                           FROM unit_starting_size_ranges
+                           GROUP BY datasheet_id HAVING count(*) > 1
+                       )"""
+                ).fetchone()[0],
+                13,
+            )
+            plan = connection.execute(
+                """EXPLAIN QUERY PLAN
+                   SELECT minimum_models, maximum_models
+                   FROM unit_starting_size_ranges WHERE datasheet_id = ?""",
+                ("000002612",),
+            ).fetchall()
+            self.assertTrue(any("COVERING INDEX" in row[3] for row in plan))
             self.assertEqual(
                 connection.execute(
                     "SELECT count(*) FROM unit_leader_eligibility"
@@ -4391,6 +4466,16 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(warriors["suggestedModelCount"], 10)
         self.assertEqual(warriors["maximumModelCount"], 20)
+        self.assertEqual(
+            warriors["startingSizeRanges"],
+            [
+                {
+                    "minimum": 10,
+                    "maximum": 20,
+                    "source": "10-20 Necron Warriors",
+                }
+            ],
+        )
         self.assertEqual(warriors["composition"][0]["text"], "10-20 Necron Warriors")
         self.assertTrue(
             any(
@@ -4439,6 +4524,18 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(
             catalogue["structuredWargear"]["combatPresetEquipmentChoiceLinkCount"],
             51,
+        )
+        self.assertEqual(
+            catalogue["structuredStartingSizes"]["discreteAlternativeUnitCount"], 13
+        )
+        self.assertEqual(catalogue["structuredStartingSizes"]["rangeCount"], 1724)
+        self.assertEqual(catalogue["structuredStartingSizes"]["exactUnitCount"], 1711)
+        cadian = next(
+            unit for unit in catalogue["units"] if unit["id"] == "000002612"
+        )
+        self.assertEqual(
+            [(row["minimum"], row["maximum"]) for row in cadian["startingSizeRanges"]],
+            [(10, 10), (20, 20)],
         )
         impulsor = next(unit for unit in catalogue["units"] if unit["id"] == "000002568")
         shield_dome = next(

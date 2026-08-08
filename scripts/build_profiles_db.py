@@ -746,6 +746,16 @@ CREATE TABLE unit_composition (
     PRIMARY KEY (datasheet_id, position)
 ) WITHOUT ROWID;
 
+CREATE TABLE unit_starting_size_ranges (
+    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 1),
+    minimum_models INTEGER NOT NULL CHECK (minimum_models >= 1),
+    maximum_models INTEGER NOT NULL CHECK (maximum_models >= minimum_models),
+    source_text TEXT NOT NULL,
+    PRIMARY KEY (datasheet_id, position),
+    UNIQUE (datasheet_id, minimum_models, maximum_models)
+) WITHOUT ROWID;
+
 CREATE TABLE unit_composition_models (
     datasheet_id TEXT NOT NULL,
     composition_position INTEGER NOT NULL,
@@ -5267,6 +5277,122 @@ def composition_range(value: str) -> tuple[int | None, int | None]:
     return sum(row[1] for row in components), sum(row[2] for row in components)
 
 
+def starting_size_ranges(
+    composition: list[tuple[str, int | None, int | None]],
+) -> list[tuple[int, int, str]]:
+    if not composition:
+        return []
+
+    separators = {
+        index
+        for index, (text, _, _) in enumerate(composition)
+        if text.strip().casefold() in {"or", "or:"}
+    }
+    groups: list[list[tuple[str, int | None, int | None]]] = []
+    if separators:
+        current: list[tuple[str, int | None, int | None]] = []
+        for index, row in enumerate(composition):
+            if index in separators:
+                if not current:
+                    return []
+                groups.append(current)
+                current = []
+            else:
+                current.append(row)
+        if not current:
+            return []
+        groups.append(current)
+    else:
+        one_of = next(
+            (
+                index
+                for index, (text, _, _) in enumerate(composition)
+                if "one of the following" in text.casefold()
+            ),
+            None,
+        )
+        if one_of is not None:
+            if one_of != 0 or len(composition) == 1:
+                return []
+            groups = [[row] for row in composition[1:]]
+        else:
+            groups = [composition]
+
+    ranges: list[tuple[int, int, str]] = []
+    for group in groups:
+        numeric = [row for row in group if row[1] is not None and row[2] is not None]
+        caps = []
+        for text, minimum, maximum in group:
+            if minimum is not None and maximum is not None:
+                continue
+            match = re.fullmatch(
+                r"\s*(?:(?:this unit can contain a )?maximum of\s+(\d+)(?:\s+models?)?"
+                r"|(\d+)\s+models?\s+maximum)\.?\s*",
+                text,
+                re.IGNORECASE,
+            )
+            if match:
+                caps.append(int(match.group(1) or match.group(2)))
+            elif text.strip():
+                return []
+        if not numeric:
+            return []
+        minimum_models = sum(int(row[1]) for row in numeric)
+        maximum_models = sum(int(row[2]) for row in numeric)
+        if caps:
+            maximum_models = min(maximum_models, *caps)
+        if minimum_models < 1 or maximum_models < minimum_models:
+            return []
+        ranges.append(
+            (
+                minimum_models,
+                maximum_models,
+                " | ".join(row[0] for row in group),
+            )
+        )
+
+    unique = []
+    seen = set()
+    for row in ranges:
+        key = row[:2]
+        if key not in seen:
+            seen.add(key)
+            unique.append(row)
+    return sorted(unique, key=lambda row: (row[0], row[1], row[2].casefold()))
+
+
+def populate_starting_size_ranges(connection: sqlite3.Connection) -> int:
+    inserted = 0
+    datasheet_ids = [
+        row[0]
+        for row in connection.execute(
+            "SELECT DISTINCT datasheet_id FROM unit_composition ORDER BY datasheet_id"
+        )
+    ]
+    for datasheet_id in datasheet_ids:
+        composition = [
+            (row[0], row[1], row[2])
+            for row in connection.execute(
+                """SELECT description_text, min_models, max_models
+                   FROM unit_composition
+                   WHERE datasheet_id = ? ORDER BY position""",
+                (datasheet_id,),
+            )
+        ]
+        ranges = starting_size_ranges(composition)
+        connection.executemany(
+            """INSERT INTO unit_starting_size_ranges
+               (datasheet_id, position, minimum_models, maximum_models, source_text)
+               VALUES (?, ?, ?, ?, ?)""",
+            (
+                (datasheet_id, position, minimum, maximum, source)
+                for position, (minimum, maximum, source) in enumerate(ranges, start=1)
+            ),
+        )
+        inserted += len(ranges)
+    return inserted
+
+
 def download_exports() -> tuple[dict[str, bytes], str, str]:
     fetched_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     exports = {name: fetch(f"{BASE_URL}/{name}") for name in FILES}
@@ -5409,7 +5535,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "72"),
+                    ("schema_version", "73"),
                     ("leader_global_maximum", "2"),
                     ("leader_global_rule_source_url", LEADER_GLOBAL_RULE_SOURCE_URL),
                     (
@@ -5737,6 +5863,7 @@ def create_database(
                         ),
                     )
 
+            populate_starting_size_ranges(connection)
             populate_composition_derived_model_profiles(connection)
             populate_explicit_named_model_profiles(connection)
 
@@ -5942,6 +6069,7 @@ def create_database(
                 "unit_transport_model_cost_keywords",
                 "unit_transport_capacity_modifiers",
                 "unit_composition",
+                "unit_starting_size_ranges",
                 "unit_composition_models",
                 "unit_composition_model_loadout_subjects",
                 "catalogue_model_composition_terms",

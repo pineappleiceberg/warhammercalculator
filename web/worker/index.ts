@@ -32,6 +32,7 @@ import {
   loadoutSubjectWeaponCounts,
   sourceEquippedWeaponCounts,
   unitLoadoutWarnings,
+  unitStartingSizeStatus,
 } from "../lib/loadout.mjs";
 import type { Catalogue, CatalogueCombatPreset } from "../lib/catalogue";
 import { resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
@@ -146,6 +147,11 @@ type Catalogue = {
         label: string;
         weapons: Array<{ groupId: string; groupName: string; quantity: number }>;
       }>;
+    }>;
+    startingSizeRanges: Array<{
+      minimum: number;
+      maximum: number;
+      source: string;
     }>;
     suggestedModelCount: number | null;
     maximumModelCount: number | null;
@@ -989,6 +995,7 @@ async function handleApi(request: Request, env: Env) {
           leaderAttachmentException: unit.leaderAttachmentException,
           bodyguardLeaderRule: unit.bodyguardLeaderRule,
           bodyguardJoinOptions: unit.bodyguardJoinOptions,
+          startingSizeRanges: unit.startingSizeRanges,
           suggestedModelCount: unit.suggestedModelCount,
           maximumModelCount: unit.maximumModelCount,
         }));
@@ -1024,6 +1031,7 @@ async function handleApi(request: Request, env: Env) {
           leaderAttachmentException: unit.leaderAttachmentException,
           bodyguardLeaderRule: unit.bodyguardLeaderRule,
           bodyguardJoinOptions: unit.bodyguardJoinOptions,
+          startingSizeRanges: unit.startingSizeRanges,
           suggestedModelCount: unit.suggestedModelCount,
           maximumModelCount: unit.maximumModelCount,
           weapons: unit.weapons,
@@ -1429,6 +1437,8 @@ async function handleApi(request: Request, env: Env) {
             loadoutSubjectCounts,
           ),
           sourceCombatPresetIds: sourceEquipmentCombatPresetIds(unit, choiceSelections),
+          startingSizeRanges: unit.startingSizeRanges,
+          modelCountStatus: unitStartingSizeStatus(unit, body.modelCount as number),
         },
         sourceUpdatedAt: catalogue.sourceUpdatedAt,
       });

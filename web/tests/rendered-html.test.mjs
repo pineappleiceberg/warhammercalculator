@@ -881,6 +881,9 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const loadoutData = (await loadout.json()).data;
   assert.equal(loadoutData.suggestedModelCount, 10);
   assert.equal(loadoutData.maximumModelCount, 20);
+  assert.deepEqual(loadoutData.startingSizeRanges, [
+    { minimum: 10, maximum: 20, source: "10-20 Necron Warriors" },
+  ]);
   assert.match(loadoutData.composition[0].text, /10-20 Necron Warriors/i);
   assert.match(loadoutData.loadout, /Every model is equipped with.*gauss flayer/i);
   assert.equal(
@@ -927,6 +930,33 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     context,
   );
   assert.equal((await standardEquipment.json()).data.valid, true);
+
+  const cadianDiscrete = catalogue.units.find((unit) => unit.id === "000002612");
+  assert.deepEqual(
+    cadianDiscrete.startingSizeRanges.map((range) => [range.minimum, range.maximum]),
+    [
+      [10, 10],
+      [20, 20],
+    ],
+  );
+  const casualtyLoadout = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ unitId: cadianDiscrete.id, modelCount: 15, weaponCounts: {} }),
+    }),
+    testEnv,
+    context,
+  );
+  const casualtyLoadoutData = (await casualtyLoadout.json()).data;
+  assert.equal(casualtyLoadoutData.valid, false);
+  assert.match(casualtyLoadoutData.warnings[0], /starting sizes are 10 or 20/i);
+  assert.deepEqual(casualtyLoadoutData.startingSizeRanges, cadianDiscrete.startingSizeRanges);
+  assert.deepEqual(casualtyLoadoutData.modelCountStatus, {
+    legal: false,
+    interpretation: "possible_casualties",
+    maximum: 20,
+  });
 
   const accursed = catalogue.units.find((unit) => unit.name === "Accursed Cultists");
   const tormentSubject = accursed.unresolvedLoadoutSubjects.find(
@@ -1181,6 +1211,10 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   );
   const sistersSummary = (await sisterUnits.json()).data.find((unit) => unit.id === sisters.id);
   assert.ok(sistersSummary.weaponGroupCount < sistersSummary.weaponProfileCount);
+  assert.deepEqual(
+    sistersSummary.startingSizeRanges.map((range) => [range.minimum, range.maximum]),
+    [[10, 10]],
+  );
   const sistersLoadout = await worker.fetch(
     new Request(`http://localhost/api/v1/loadout?unit=${sisters.id}`),
     testEnv,
