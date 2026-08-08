@@ -30,6 +30,7 @@ from scripts.wargear_constraints import (
     default_loadout_clauses,
     normalized_name,
     option_choices,
+    replacement_items_text,
     subject_count,
     weapon_vector,
 )
@@ -2024,6 +2025,27 @@ class ProfileDataTests(unittest.TestCase):
             allowance("Any number of models can each replace it."), (0, 1, 1)
         )
         self.assertEqual(
+            allowance("For every 5 models in the unit, up to 1 model can replace it."),
+            (0, 1, 5),
+        )
+        self.assertEqual(
+            allowance("All of the models in this unit can each replace it."),
+            (0, 1, 1),
+        )
+        self.assertEqual(
+            replacement_items_text(
+                "Any number of models can each have their bolt pistols replaced with "
+                "one of the following"
+            ),
+            "bolt pistols",
+        )
+        self.assertEqual(
+            replacement_items_text(
+                "Replace its bolt pistol and Astartes chainsword with twin lightning claws"
+            ),
+            "bolt pistol and astartes chainsword",
+        )
+        self.assertEqual(
             normalized_name("Power weapon’s – profile"), "power weapon s profile"
         )
         self.assertEqual(
@@ -2084,7 +2106,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "70",
+                "71",
             )
             self.assertEqual(
                 connection.execute(
@@ -3004,6 +3026,90 @@ class ProfileDataTests(unittest.TestCase):
                     "SELECT count(*) FROM unit_defensive_equipment_default_terms"
                 ).fetchone()[0],
                 16,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT choice_coverage_exact, count(*) "
+                    "FROM unit_defensive_equipment_options "
+                    "GROUP BY choice_coverage_exact ORDER BY choice_coverage_exact"
+                ).fetchall(),
+                [(0, 13), (1, 31)],
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM unit_defensive_equipment_wargear_alternatives"
+                ).fetchone()[0],
+                98,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT datasheets.name, equipment.name,
+                              link.alternative_position, link.quantity_delta,
+                              alternative.description_text
+                       FROM unit_defensive_equipment_wargear_alternatives AS link
+                       JOIN unit_defensive_equipment_options AS equipment USING
+                           (datasheet_id, ability_position)
+                       JOIN wargear_choice_alternatives AS alternative USING
+                           (datasheet_id, option_position, alternative_position)
+                       JOIN datasheets ON datasheets.id = link.datasheet_id
+                       WHERE link.datasheet_id IN
+                           ('000004174', '000000536', '000000061', '000004131')
+                       ORDER BY link.datasheet_id, link.alternative_position"""
+                ).fetchall(),
+                [
+                    (
+                        "Assault Squad",
+                        "Astartes Shield",
+                        1,
+                        0,
+                        "Replace its bolt pistol and Astartes chainsword with 1 twin lightning claws.",
+                    ),
+                    (
+                        "Assault Squad",
+                        "Astartes Shield",
+                        2,
+                        1,
+                        "Be equipped with 1 Astartes shield.",
+                    ),
+                    (
+                        "Lychguard",
+                        "Dispersion Shield",
+                        1,
+                        1,
+                        "1 hyperphase sword and 1 dispersion shield",
+                    ),
+                    (
+                        "Wolf Guard Headtakers",
+                        "Storm Shield",
+                        1,
+                        -1,
+                        "1 paired master-crafted power weapons",
+                    ),
+                    (
+                        "Aquila Kill Team",
+                        "Astartes Shield",
+                        1,
+                        1,
+                        "1 power weapon and 1 Astartes shield",
+                    ),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT common.weapon_group_name, specific.weapon_group_name
+                       FROM wargear_choice_replaced_weapons AS common
+                       CROSS JOIN wargear_choice_alternative_replaced_weapons AS specific
+                       WHERE common.datasheet_id = '000000322'
+                         AND common.option_position = 1
+                         AND specific.datasheet_id = '000000061'
+                         AND specific.option_position = 3
+                         AND specific.alternative_position = 1
+                       ORDER BY specific.weapon_group_name"""
+                ).fetchall(),
+                [
+                    ("Bolt pistol", "Astartes chainsword"),
+                    ("Bolt pistol", "Bolt pistol"),
+                ],
             )
             self.assertEqual(
                 connection.execute(
@@ -4192,10 +4298,10 @@ class ProfileDataTests(unittest.TestCase):
             if limit["groupName"] == "Eviscerator"
         )
         self.assertEqual(eviscerator["terms"][0]["modelsPerIncrement"], 5)
-        self.assertEqual(catalogue["structuredWargear"]["constraintCount"], 1798)
-        self.assertEqual(catalogue["structuredWargear"]["choicePoolCount"], 2009)
+        self.assertEqual(catalogue["structuredWargear"]["constraintCount"], 1824)
+        self.assertEqual(catalogue["structuredWargear"]["choicePoolCount"], 2069)
         self.assertEqual(
-            catalogue["structuredWargear"]["compoundAlternativeCount"], 241
+            catalogue["structuredWargear"]["compoundAlternativeCount"], 295
         )
         self.assertEqual(catalogue["structuredWargear"]["defaultWeaponCount"], 4339)
         self.assertEqual(catalogue["structuredWargear"]["defaultWeaponTermCount"], 4494)
@@ -4209,7 +4315,10 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(
             catalogue["structuredWargear"]["loadoutSubjectWeaponCount"], 4701
         )
-        self.assertEqual(catalogue["structuredWargear"]["replacementWeaponCount"], 1172)
+        self.assertEqual(catalogue["structuredWargear"]["replacementWeaponCount"], 1562)
+        self.assertEqual(
+            catalogue["structuredWargear"]["defensiveEquipmentChoiceLinkCount"], 98
+        )
         self.assertTrue(catalogue["structuredWargear"]["conservative"])
         warboss = next(unit for unit in catalogue["units"] if unit["name"] == "Warboss")
         might = next(
@@ -4880,8 +4989,11 @@ class ProfileDataTests(unittest.TestCase):
                     self.assertIn(weapon["groupId"], weapon_group_ids)
                     self.assertGreater(weapon["quantity"], 0)
                 for alternative in pool["alternatives"]:
-                    self.assertTrue(alternative["weapons"])
+                    self.assertTrue(alternative["label"])
                     for weapon in alternative["weapons"]:
+                        self.assertIn(weapon["groupId"], weapon_group_ids)
+                        self.assertGreater(weapon["quantity"], 0)
+                    for weapon in alternative.get("replaces", []):
                         self.assertIn(weapon["groupId"], weapon_group_ids)
                         self.assertGreater(weapon["quantity"], 0)
             for weapon in unit["defaultWeapons"]:
@@ -4955,7 +5067,16 @@ class ProfileDataTests(unittest.TestCase):
                     ),
                     "groupName": "Infernus incinerator",
                     "quantity": 1,
-                }
+                },
+                {
+                    "groupId": next(
+                        weapon["groupId"]
+                        for weapon in achillus["weapons"]
+                        if weapon["groupName"] == "Lastrum storm bolter"
+                    ),
+                    "groupName": "Lastrum storm bolter",
+                    "quantity": 1,
+                },
             ],
         )
 

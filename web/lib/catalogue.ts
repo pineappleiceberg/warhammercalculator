@@ -78,6 +78,7 @@ export type CatalogueWargearAlternative = {
   id: string;
   label: string;
   weapons: CatalogueWargearChoice[];
+  replaces?: CatalogueWargearChoice[];
 };
 export type CatalogueWargearChoicePool = {
   id: string;
@@ -229,6 +230,12 @@ export type CatalogueDefensiveEquipment = {
   maximumModelsPerIncrement: number;
   limitExact: boolean;
   limitSource: string;
+  choiceCoverageExact: boolean;
+  choiceLinks: Array<{
+    alternativeId: string;
+    quantityDelta: number;
+    source: string;
+  }>;
   eligibleModelIds: number[];
   selectionSource?: string;
   defaultTerms: Array<
@@ -445,6 +452,7 @@ export type Catalogue = {
     unresolvedLoadoutSubjectCount: number;
     loadoutSubjectWeaponCount: number;
     replacementWeaponCount: number;
+    defensiveEquipmentChoiceLinkCount: number;
     compoundAlternativeCount: number;
     optionCount: number;
     conservative: boolean;

@@ -12,6 +12,7 @@ except ModuleNotFoundError:
 
 
 TABLE_SCHEMA = """
+DROP TABLE IF EXISTS unit_defensive_equipment_wargear_alternatives;
 DROP TABLE IF EXISTS unit_defensive_equipment_effects;
 DROP TABLE IF EXISTS unit_defensive_equipment_default_terms;
 DROP TABLE IF EXISTS unit_defensive_equipment_bearers;
@@ -187,10 +188,34 @@ CREATE TABLE unit_defensive_equipment_options (
         (maximum_models_per_increment >= 1),
     limit_exact INTEGER NOT NULL DEFAULT 0 CHECK (limit_exact IN (0, 1)),
     limit_source_text TEXT,
+    choice_coverage_exact INTEGER NOT NULL DEFAULT 0 CHECK
+        (choice_coverage_exact IN (0, 1)),
     PRIMARY KEY (datasheet_id, ability_position),
     FOREIGN KEY (datasheet_id, ability_position)
         REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
 ) WITHOUT ROWID;
+CREATE TABLE unit_defensive_equipment_wargear_alternatives (
+    datasheet_id TEXT NOT NULL,
+    ability_position INTEGER NOT NULL,
+    option_position INTEGER NOT NULL,
+    alternative_position INTEGER NOT NULL,
+    quantity_delta INTEGER NOT NULL,
+    source_text TEXT NOT NULL,
+    PRIMARY KEY (
+        datasheet_id, ability_position, option_position, alternative_position
+    ),
+    FOREIGN KEY (datasheet_id, ability_position)
+        REFERENCES unit_defensive_equipment_options(datasheet_id, ability_position)
+        ON DELETE CASCADE,
+    FOREIGN KEY (datasheet_id, option_position, alternative_position)
+        REFERENCES wargear_choice_alternatives(
+            datasheet_id, option_position, alternative_position
+        ) ON DELETE CASCADE
+) WITHOUT ROWID;
+CREATE INDEX idx_defensive_equipment_wargear_alternatives_choice
+    ON unit_defensive_equipment_wargear_alternatives(
+        datasheet_id, option_position, alternative_position
+    );
 CREATE TABLE unit_defensive_equipment_bearers (
     datasheet_id TEXT NOT NULL,
     ability_position INTEGER NOT NULL,
@@ -257,7 +282,7 @@ def main() -> None:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
         connection.execute(
-            "UPDATE metadata SET value = '70' WHERE key = 'schema_version'"
+            "UPDATE metadata SET value = '71' WHERE key = 'schema_version'"
         )
         connection.execute("PRAGMA optimize")
         connection.commit()

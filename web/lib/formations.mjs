@@ -167,6 +167,57 @@ export function savedUnitDefensiveEquipmentDefaults(savedUnit, catalogueUnit) {
   return defaults;
 }
 
+export function reconcileSavedUnitDefensiveEquipmentChoices(
+  savedUnit,
+  catalogueUnit,
+  nextChoiceSelections,
+) {
+  if (savedUnit?.defensiveEquipmentCounts === undefined) return undefined;
+  const previousEffective = savedUnitDefensiveEquipmentDefaults(savedUnit, catalogueUnit);
+  const nextCounts = { ...savedUnit.defensiveEquipmentCounts };
+  const modelSegments = catalogueModelSegments(
+    catalogueUnit,
+    savedUnit.modelCount,
+    savedUnit.loadoutSubjectCounts,
+  ).segments;
+  for (const option of catalogueUnit?.defensiveEquipment ?? []) {
+    if (!option.choiceCoverageExact || !(option.choiceLinks ?? []).length) continue;
+    const previousExpected = defensiveEquipmentDefaultCount(option, savedUnit);
+    const nextExpected = defensiveEquipmentDefaultCount(option, {
+      ...savedUnit,
+      choiceSelections: nextChoiceSelections,
+    });
+    if (previousExpected === nextExpected) continue;
+    const optionKeys = Object.keys(previousEffective).filter(
+      (key) => key.startsWith(`${savedUnit.id}::`) && key.endsWith(`::${option.id}`),
+    );
+    const actual = optionKeys.reduce((total, key) => total + previousEffective[key], 0);
+    if (actual !== previousExpected) continue;
+    for (const key of Object.keys(nextCounts)) {
+      if (key.startsWith(`${savedUnit.id}::`) && key.endsWith(`::${option.id}`)) {
+        delete nextCounts[key];
+      }
+    }
+    if (option.scope === "unit") {
+      if (nextExpected > 0) {
+        nextCounts[defensiveEquipmentSelectionKey(savedUnit.id, null, option.id)] = 1;
+      }
+      continue;
+    }
+    let remaining = nextExpected;
+    for (const segment of modelSegments) {
+      if (!defensiveEquipmentEligibleForModel(option, segment.model.id)) continue;
+      const count = Math.min(remaining, segment.modelCount);
+      if (count > 0) {
+        nextCounts[defensiveEquipmentSelectionKey(savedUnit.id, segment.model.id, option.id)] =
+          count;
+      }
+      remaining -= count;
+    }
+  }
+  return nextCounts;
+}
+
 export function savedUnitDefensiveEquipmentWarnings(savedUnit, catalogueUnit) {
   if (!savedUnit || !catalogueUnit) return [];
   const effective =
@@ -209,7 +260,10 @@ export function savedUnitDefensiveEquipmentWarnings(savedUnit, catalogueUnit) {
     }
     const { minimum, maximum } = defensiveEquipmentBounds(option, savedUnit, eligibleModelCount);
     let message = null;
-    if (count < minimum) {
+    const expected = defensiveEquipmentDefaultCount(option, savedUnit);
+    if (option.choiceCoverageExact && count !== expected) {
+      message = `${option.name}: ${count} equipped does not match the ${expected} selected by its source option choices`;
+    } else if (count < minimum) {
       message = `${option.name}: ${count} equipped is below the required source minimum of ${minimum}`;
     } else if (count > maximum) {
       message = `${option.name}: ${count} equipped exceeds the source maximum of ${maximum} for ${savedUnit.modelCount} models`;

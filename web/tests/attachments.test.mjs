@@ -19,6 +19,7 @@ import {
 import {
   bodyguardJoinerOptions,
   catalogueModelSegments,
+  reconcileSavedUnitDefensiveEquipmentChoices,
   savedFormationForUnit,
   savedFormationDefensiveEquipmentDefaults,
   savedFormationGroups,
@@ -31,6 +32,7 @@ import {
   compositionLoadoutSubjectCounts,
   defaultLoadoutSubjectCounts,
   defaultWeaponCounts,
+  sourceEquippedWeaponCounts,
   loadoutSubjectWarnings,
   rebaseCompositionLoadoutSubjectCounts,
 } from "../lib/loadout.mjs";
@@ -665,6 +667,141 @@ test("source-backed defensive defaults prefill only eligible proven equipment", 
   );
 });
 
+test("source choices reconcile replaced weapons and linked defensive equipment", () => {
+  const aquila = unit("000004174");
+  const shield = aquila.defensiveEquipment.find((option) => option.name === "Astartes Shield");
+  const pool = aquila.wargearChoicePools.find((candidate) => candidate.id === "000004174:2");
+  const alternative = pool?.alternatives[0];
+  assert.ok(shield && pool && alternative);
+  assert.equal(shield.choiceCoverageExact, true);
+  assert.deepEqual(shield.choiceLinks, [
+    {
+      alternativeId: alternative.id,
+      quantityDelta: 1,
+      source: pool.source,
+    },
+  ]);
+  assert.deepEqual(
+    pool.replaces.map((weapon) => weapon.groupName),
+    ["Heavy thunder hammer"],
+  );
+  assert.deepEqual(
+    alternative.weapons.map((weapon) => weapon.groupName),
+    ["Power weapon"],
+  );
+
+  const base = defaultWeaponCounts(aquila, 5, defaultLoadoutSubjectCounts(aquila, 5));
+  const selected = sourceEquippedWeaponCounts(
+    aquila,
+    5,
+    { [alternative.id]: 1 },
+    defaultLoadoutSubjectCounts(aquila, 5),
+  );
+  const hammerId = pool.replaces[0].groupId;
+  const powerWeaponId = alternative.weapons[0].groupId;
+  assert.equal(base[hammerId], 1);
+  assert.equal(selected[hammerId], 0);
+  assert.equal(selected[powerWeaponId], (base[powerWeaponId] ?? 0) + 1);
+
+  const saved = {
+    id: "aquila",
+    unitId: aquila.id,
+    name: aquila.name,
+    modelCount: 5,
+    loadoutSubjectCounts: defaultLoadoutSubjectCounts(aquila, 5),
+    choiceSelections: { [alternative.id]: 1 },
+  };
+  const shieldKey = defensiveEquipmentSelectionKey(
+    saved.id,
+    aquila.models.find((model) => model.name.includes("heavy thunder hammer")).id,
+    shield.id,
+  );
+  assert.deepEqual(savedUnitDefensiveEquipmentDefaults(saved, aquila), { [shieldKey]: 1 });
+  assert.deepEqual(savedUnitDefensiveEquipmentWarnings(saved, aquila), []);
+  assert.match(
+    savedUnitDefensiveEquipmentWarnings({ ...saved, defensiveEquipmentCounts: {} }, aquila)[0]
+      .message,
+    /does not match the 1 selected by its source option choices/i,
+  );
+
+  const explicitUntouched = {
+    ...saved,
+    choiceSelections: { [alternative.id]: 0 },
+    defensiveEquipmentCounts: {},
+  };
+  assert.deepEqual(
+    reconcileSavedUnitDefensiveEquipmentChoices(explicitUntouched, aquila, {
+      [alternative.id]: 1,
+    }),
+    { [shieldKey]: 1 },
+  );
+  const explicitCustom = {
+    ...explicitUntouched,
+    defensiveEquipmentCounts: { [shieldKey]: 1 },
+  };
+  assert.deepEqual(
+    reconcileSavedUnitDefensiveEquipmentChoices(explicitCustom, aquila, {
+      [alternative.id]: 1,
+    }),
+    { [shieldKey]: 1 },
+  );
+
+  const assault = unit("000000061");
+  const assaultPool = assault.wargearChoicePools.find(
+    (candidate) => candidate.id === "000000061:3",
+  );
+  assert.ok(assaultPool);
+  assert.deepEqual(assaultPool.replaces, []);
+  assert.deepEqual(
+    assaultPool.alternatives.map((choice) => ({
+      label: choice.label,
+      replaces: (choice.replaces ?? []).map((weapon) => weapon.groupName),
+    })),
+    [
+      {
+        label: "Replace its bolt pistol and Astartes chainsword with 1 twin lightning claws.",
+        replaces: ["Bolt pistol", "Astartes chainsword"],
+      },
+      { label: "Be equipped with 1 Astartes shield.", replaces: [] },
+    ],
+  );
+  const assaultDefaults = defaultWeaponCounts(assault, 5, defaultLoadoutSubjectCounts(assault, 5));
+  const claws = sourceEquippedWeaponCounts(assault, 5, {
+    [assaultPool.alternatives[0].id]: 1,
+  });
+  const shieldOnly = sourceEquippedWeaponCounts(assault, 5, {
+    [assaultPool.alternatives[1].id]: 1,
+  });
+  for (const name of ["Bolt pistol", "Astartes chainsword"]) {
+    const groupId = assault.weapons.find((weapon) => weapon.groupName === name).groupId;
+    assert.equal(claws[groupId], assaultDefaults[groupId] - 1);
+    assert.equal(shieldOnly[groupId], assaultDefaults[groupId]);
+  }
+
+  const headtakers = unit("000004131");
+  const stormShield = headtakers.defensiveEquipment.find(
+    (option) => option.name === "Storm Shield",
+  );
+  const paired = headtakers.wargearChoicePools[0].alternatives[0];
+  assert.ok(stormShield);
+  const headtakerSaved = {
+    id: "headtakers",
+    unitId: headtakers.id,
+    name: headtakers.name,
+    modelCount: 3,
+    loadoutSubjectCounts: { "000004131:1": 3, "000004131:2": 0 },
+    choiceSelections: { [paired.id]: 2 },
+  };
+  assert.equal(stormShield.choiceLinks[0].quantityDelta, -1);
+  assert.equal(
+    Object.values(savedUnitDefensiveEquipmentDefaults(headtakerSaved, headtakers)).reduce(
+      (total, count) => total + count,
+      0,
+    ),
+    1,
+  );
+});
+
 test("defensive equipment source bounds require explicit saved-list overrides", () => {
   const veterans = namedUnit("Deathwatch Veterans");
   const shield = veterans.defensiveEquipment.find((option) => option.name === "Astartes Shield");
@@ -678,6 +815,9 @@ test("defensive equipment source bounds require explicit saved-list overrides", 
     unitId: veterans.id,
     name: veterans.name,
     modelCount: 5,
+    choiceSelections: {
+      [shield.choiceLinks.find((link) => link.quantityDelta === 1).alternativeId]: 3,
+    },
     defensiveEquipmentCounts: { [shieldKey]: 3, "other-unit::7::other-option": 1 },
   };
   assert.deepEqual(
@@ -705,6 +845,9 @@ test("defensive equipment source bounds require explicit saved-list overrides", 
     savedUnitDefensiveEquipmentWarnings(
       {
         ...invalidVeterans,
+        choiceSelections: {
+          [shield.choiceLinks.find((link) => link.quantityDelta === 1).alternativeId]: 2,
+        },
         defensiveEquipmentCounts: {
           [shieldKey]: 2,
           "veterans::999999::retired-equipment": 1,
@@ -740,6 +883,10 @@ test("defensive equipment source bounds require explicit saved-list overrides", 
         unitId: hearthguard.id,
         name: hearthguard.name,
         modelCount: 5,
+        choiceSelections: {
+          [hearthguard.wargearChoicePools.find((pool) => pool.id === "000002599:4").alternatives[0]
+            .id]: 1,
+        },
         defensiveEquipmentCounts: {},
       },
       hearthguard,
@@ -783,6 +930,9 @@ test("grouped Veteran statlines expose exact composition-backed shield bearers",
     name: command.name,
     modelCount: 5,
   };
+  const commandShieldChoice = commandShield.choiceLinks.find(
+    (link) => link.quantityDelta === 1,
+  ).alternativeId;
   assert.deepEqual(savedUnitDefensiveEquipmentDefaults(commandSaved, command), {
     [defensiveEquipmentSelectionKey("command", champion.id, commandShield.id)]: 1,
   });
@@ -790,6 +940,7 @@ test("grouped Veteran statlines expose exact composition-backed shield bearers",
     savedUnitDefensiveEquipmentDefaults(
       {
         ...commandSaved,
+        choiceSelections: { [commandShieldChoice]: 2 },
         defensiveEquipmentCounts: {
           [defensiveEquipmentSelectionKey("command", champion.sourceModelId, commandShield.id)]: 3,
         },
@@ -805,6 +956,7 @@ test("grouped Veteran statlines expose exact composition-backed shield bearers",
     savedUnitDefensiveEquipmentWarnings(
       {
         ...commandSaved,
+        choiceSelections: { [commandShieldChoice]: 2 },
         defensiveEquipmentCounts: {
           [defensiveEquipmentSelectionKey("command", champion.sourceModelId, commandShield.id)]: 3,
         },
@@ -817,6 +969,7 @@ test("grouped Veteran statlines expose exact composition-backed shield bearers",
     savedUnitDefensiveEquipmentWarnings(
       {
         ...commandSaved,
+        choiceSelections: { [commandShieldChoice]: 3 },
         defensiveEquipmentCounts: {
           [defensiveEquipmentSelectionKey("command", champion.id, commandShield.id)]: 1,
           [defensiveEquipmentSelectionKey("command", veterans.id, commandShield.id)]: 3,
@@ -856,6 +1009,9 @@ test("grouped Veteran statlines expose exact composition-backed shield bearers",
         unitId: bikes.id,
         name: bikes.name,
         modelCount: 5,
+        choiceSelections: {
+          [stormShield.choiceLinks.find((link) => link.quantityDelta === 1).alternativeId]: 5,
+        },
         defensiveEquipmentCounts: {
           [defensiveEquipmentSelectionKey("bikes", bikeVeterans.id, stormShield.id)]: 5,
         },

@@ -989,6 +989,54 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.equal(invalidAquilaData.valid, false);
   assert.ok(invalidAquilaData.warnings.some((warning) => /do not form a legal/i.test(warning)));
 
+  const aquilaShield = aquila.defensiveEquipment.find(
+    (option) => option.name === "Astartes Shield",
+  );
+  const aquilaShieldPool = aquila.wargearChoicePools.find((pool) => pool.id === "000004174:2");
+  const aquilaShieldChoice = aquilaShieldPool.alternatives[0];
+  assert.equal(aquilaShield.choiceCoverageExact, true);
+  assert.deepEqual(aquilaShield.choiceLinks, [
+    {
+      alternativeId: aquilaShieldChoice.id,
+      quantityDelta: 1,
+      source: aquilaShieldPool.source,
+    },
+  ]);
+  assert.deepEqual(
+    aquilaShieldPool.replaces.map((weapon) => weapon.groupName),
+    ["Heavy thunder hammer"],
+  );
+  const aquilaPowerWeapon = aquilaShieldChoice.weapons[0];
+  const aquilaShieldLoadout = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: aquila.id,
+        modelCount: 5,
+        weaponCounts: { [aquilaPowerWeapon.groupId]: 2 },
+        choiceSelections: { [aquilaShieldChoice.id]: 1 },
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  const aquilaShieldData = (await aquilaShieldLoadout.json()).data;
+  assert.equal(aquilaShieldData.suggestedEquippedCounts[aquilaShieldPool.replaces[0].groupId], 0);
+  assert.equal(aquilaShieldData.suggestedEquippedCounts[aquilaPowerWeapon.groupId], 2);
+
+  const assaultWithChoices = catalogue.units.find((unit) => unit.id === "000000061");
+  const assaultChoicePool = assaultWithChoices.wargearChoicePools.find(
+    (pool) => pool.id === "000000061:3",
+  );
+  assert.deepEqual(assaultChoicePool.replaces, []);
+  assert.deepEqual(
+    assaultChoicePool.alternatives.map((alternative) =>
+      (alternative.replaces ?? []).map((weapon) => weapon.groupName),
+    ),
+    [["Bolt pistol", "Astartes chainsword"], []],
+  );
+
   const achillus = catalogue.units.find((unit) => unit.name === "Contemptor-achillus Dreadnought");
   const achillusPool = achillus.wargearChoicePools[0];
   assert.equal(achillusPool.alternatives.length, 5);
@@ -2476,6 +2524,9 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
             name: command.name,
             modelCount: 5,
             weapons: [],
+            choiceSelections: {
+              [commandShield.choiceLinks.find((link) => link.quantityDelta === 1).alternativeId]: 3,
+            },
             defensiveEquipmentCounts: {
               [`api-command::${champion.id}::${commandShield.id}`]: 1,
               [`api-command::${companyVeterans.id}::${commandShield.id}`]: 3,

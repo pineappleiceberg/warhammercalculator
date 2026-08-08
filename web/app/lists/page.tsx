@@ -38,6 +38,7 @@ import {
 import { defensiveEquipmentSelectionKey } from "../../lib/defensive-equipment.mjs";
 import {
   catalogueModelSegments,
+  reconcileSavedUnitDefensiveEquipmentChoices,
   savedUnitDefensiveEquipmentDefaults,
   savedUnitDefensiveEquipmentWarnings,
 } from "../../lib/formations.mjs";
@@ -1018,6 +1019,10 @@ export default function ArmyLists() {
                                               previous,
                                               next,
                                             );
+                                            const choiceSelections = {
+                                              ...(current.choiceSelections ?? {}),
+                                              [alternative.id]: next,
+                                            };
                                             return {
                                               ...current,
                                               weapons: current.weapons.map((weapon) => ({
@@ -1027,10 +1032,14 @@ export default function ArmyLists() {
                                                     weapon.groupId ?? String(weapon.weaponId)
                                                   ] ?? 0,
                                               })),
-                                              choiceSelections: {
-                                                ...(current.choiceSelections ?? {}),
-                                                [alternative.id]: next,
-                                              },
+                                              choiceSelections,
+                                              defensiveEquipmentCounts:
+                                                reconcileSavedUnitDefensiveEquipmentChoices(
+                                                  current,
+                                                  sourceUnit,
+                                                  choiceSelections,
+                                                ),
+                                              defensiveEquipmentOverrides: undefined,
                                             };
                                           });
                                         }}

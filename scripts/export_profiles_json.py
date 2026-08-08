@@ -931,7 +931,7 @@ def export(database: Path, output: Path) -> None:
                       eligibility_exact, selection_source_text, minimum_kind,
                       maximum_kind, maximum_value,
                       maximum_models_per_increment, limit_exact,
-                      limit_source_text
+                      limit_source_text, choice_coverage_exact
                FROM unit_defensive_equipment_options
                ORDER BY datasheet_id, ability_position"""
         ):
@@ -948,6 +948,8 @@ def export(database: Path, output: Path) -> None:
                 "maximumModelsPerIncrement": row["maximum_models_per_increment"],
                 "limitExact": bool(row["limit_exact"]),
                 "limitSource": row["limit_source_text"],
+                "choiceCoverageExact": bool(row["choice_coverage_exact"]),
+                "choiceLinks": [],
                 "eligibleModelIds": [],
                 "defaultTerms": [],
                 **({"guidance": row["guidance_text"]} if row["guidance_text"] else {}),
@@ -960,6 +962,26 @@ def export(database: Path, output: Path) -> None:
             }
             units[row["datasheet_id"]]["defensiveEquipment"].append(option)
             equipment_lookup[(row["datasheet_id"], row["ability_position"])] = option
+
+        for row in connection.execute(
+            """SELECT datasheet_id, ability_position, option_position,
+                      alternative_position, quantity_delta, source_text
+               FROM unit_defensive_equipment_wargear_alternatives
+               ORDER BY datasheet_id, ability_position, option_position,
+                        alternative_position"""
+        ):
+            equipment_lookup[(row["datasheet_id"], row["ability_position"])][
+                "choiceLinks"
+            ].append(
+                {
+                    "alternativeId": (
+                        f"{row['datasheet_id']}:{row['option_position']}:"
+                        f"{row['alternative_position']}"
+                    ),
+                    "quantityDelta": row["quantity_delta"],
+                    "source": row["source_text"],
+                }
+            )
 
         for row in connection.execute(
             """SELECT datasheet_id, ability_position, model_profile_id
@@ -1240,7 +1262,7 @@ def export(database: Path, output: Path) -> None:
                FROM wargear_choice_pools AS pool
                JOIN wargear_choice_alternatives AS alternative
                  USING (datasheet_id, option_position)
-               JOIN wargear_choice_alternative_weapons AS weapon
+               LEFT JOIN wargear_choice_alternative_weapons AS weapon
                  USING (datasheet_id, option_position, alternative_position)
                ORDER BY pool.datasheet_id, pool.option_position,
                         alternative.alternative_position, weapon.weapon_group_id"""
@@ -1268,13 +1290,14 @@ def export(database: Path, output: Path) -> None:
                 }
                 alternatives[alternative_key] = alternative
                 pool["alternatives"].append(alternative)
-            alternative["weapons"].append(
-                {
-                    "groupId": row["weapon_group_id"],
-                    "groupName": row["weapon_group_name"],
-                    "quantity": row["quantity"],
-                }
-            )
+            if row["weapon_group_id"] is not None:
+                alternative["weapons"].append(
+                    {
+                        "groupId": row["weapon_group_id"],
+                        "groupName": row["weapon_group_name"],
+                        "quantity": row["quantity"],
+                    }
+                )
         for (datasheet_id, _position), pool in pools.items():
             units[datasheet_id]["wargearChoicePools"].append(pool)
 
@@ -1287,6 +1310,29 @@ def export(database: Path, output: Path) -> None:
             pool = pools.get((row["datasheet_id"], row["option_position"]))
             if pool is not None:
                 pool["replaces"].append(
+                    {
+                        "groupId": row["weapon_group_id"],
+                        "groupName": row["weapon_group_name"],
+                        "quantity": row["quantity"],
+                    }
+                )
+
+        for row in connection.execute(
+            """SELECT datasheet_id, option_position, alternative_position,
+                      weapon_group_id, weapon_group_name, quantity
+               FROM wargear_choice_alternative_replaced_weapons
+               ORDER BY datasheet_id, option_position, alternative_position,
+                        weapon_group_id"""
+        ):
+            alternative = alternatives.get(
+                (
+                    row["datasheet_id"],
+                    row["option_position"],
+                    row["alternative_position"],
+                )
+            )
+            if alternative is not None:
+                alternative.setdefault("replaces", []).append(
                     {
                         "groupId": row["weapon_group_id"],
                         "groupName": row["weapon_group_name"],
@@ -1400,7 +1446,13 @@ def export(database: Path, output: Path) -> None:
                     "SELECT count(*) FROM default_loadout_subject_weapons"
                 ).fetchone()[0],
                 "replacementWeaponCount": connection.execute(
-                    "SELECT count(*) FROM wargear_choice_replaced_weapons"
+                    """SELECT
+                           (SELECT count(*) FROM wargear_choice_replaced_weapons) +
+                           (SELECT count(*)
+                            FROM wargear_choice_alternative_replaced_weapons)"""
+                ).fetchone()[0],
+                "defensiveEquipmentChoiceLinkCount": connection.execute(
+                    "SELECT count(*) FROM unit_defensive_equipment_wargear_alternatives"
                 ).fetchone()[0],
                 "compoundAlternativeCount": sum(
                     1

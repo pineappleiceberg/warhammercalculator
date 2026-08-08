@@ -78,6 +78,25 @@ CREATE TABLE IF NOT EXISTS wargear_choice_alternative_weapons (
 CREATE INDEX IF NOT EXISTS idx_wargear_choice_weapons_datasheet
     ON wargear_choice_alternative_weapons(datasheet_id, weapon_group_id);
 
+CREATE TABLE IF NOT EXISTS wargear_choice_alternative_replaced_weapons (
+    datasheet_id TEXT NOT NULL,
+    option_position INTEGER NOT NULL,
+    alternative_position INTEGER NOT NULL,
+    weapon_group_id TEXT NOT NULL,
+    weapon_group_name TEXT NOT NULL,
+    quantity INTEGER NOT NULL CHECK (quantity >= 1),
+    PRIMARY KEY (
+        datasheet_id, option_position, alternative_position, weapon_group_id
+    ),
+    FOREIGN KEY (datasheet_id, option_position, alternative_position)
+        REFERENCES wargear_choice_alternatives(
+            datasheet_id, option_position, alternative_position
+        ) ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_wargear_choice_alt_replaced_datasheet
+    ON wargear_choice_alternative_replaced_weapons(datasheet_id, weapon_group_id);
+
 CREATE TABLE IF NOT EXISTS wargear_choice_replaced_weapons (
     datasheet_id TEXT NOT NULL,
     option_position INTEGER NOT NULL,
@@ -193,10 +212,16 @@ def allowance(description: str) -> tuple[int, int, int] | None:
         return int(match.group(1)), 0, 1
     if re.match(r"this model s .* can each be replaced", value):
         return None
-    match = re.match(r"for every (\d+) models? in this unit (?:up to )?(\d+) ", value)
+    match = re.match(
+        r"for every (\d+) models? in (?:this|the) unit (?:up to )?(\d+) ", value
+    )
     if match:
         return 0, int(match.group(2)), int(match.group(1))
-    if re.match(r"any number of .* can each ", value) or re.match(r"each .* can ", value):
+    if (
+        re.match(r"any number of .* can (?:each )?", value)
+        or re.match(r"each .* can ", value)
+        or re.match(r"all (?:of the )?models? in this unit can (?:each )?", value)
+    ):
         return 0, 1, 1
     match = re.match(r"up to (\d+) .* can ", value)
     if match:
@@ -219,6 +244,28 @@ def option_choices(description_html: str, description_text: str) -> list[str]:
         re.IGNORECASE,
     )
     return [match.group(1)] if match else []
+
+
+def option_preamble(description_html: str, description_text: str) -> str:
+    if re.search(r"<li[^>]*>", description_html, re.IGNORECASE):
+        prefix = re.split(r"<ul\b", description_html, maxsplit=1, flags=re.IGNORECASE)[0]
+        return html.unescape(re.sub(r"<[^>]+>", " ", prefix)).strip()
+    return description_text
+
+
+def replacement_items_text(description: str) -> str:
+    value = normalized_name(description)
+    patterns = (
+        r"\bcan (?:each )?have (?:their |its )?(.+?) replaced with\b",
+        r"\bcan replace (?:their |its )?(.+?) with\b",
+        r"\breplace (?:their |its )?(.+?) with\b",
+        r"\b(.+?) can be replaced with\b",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, value)
+        if match:
+            return match.group(1).strip()
+    return ""
 
 
 def source_names(description: str, known_names: set[str]) -> set[str]:
@@ -434,20 +481,19 @@ def replaced_weapon_vector(
     known: dict[str, tuple[str, str]],
     replaced_names: set[str],
 ) -> dict[str, tuple[str, int]]:
-    prefix = normalized_name(description).split(" can ", 1)[0]
-    return {
-        weapon_group_id: (weapon_name, quantity)
-        for weapon_group_id, (weapon_name, quantity) in weapon_vector(prefix, known).items()
-        if normalized_name(weapon_name) in replaced_names
-    }
+    return weapon_vector(replacement_items_text(description), known)
 
 
-def populate_constraints(connection: sqlite3.Connection) -> int:
+def populate_constraints(
+    connection: sqlite3.Connection,
+    equipment_names_by_unit: dict[str, set[str]] | None = None,
+) -> int:
     connection.executescript(CONSTRAINT_SCHEMA)
     connection.execute("DELETE FROM default_weapon_loadout")
     connection.execute("DELETE FROM default_loadout_subject_weapons")
     connection.execute("DELETE FROM default_loadout_subjects")
     connection.execute("DELETE FROM wargear_choice_replaced_weapons")
+    connection.execute("DELETE FROM wargear_choice_alternative_replaced_weapons")
     connection.execute("DELETE FROM wargear_choice_alternative_weapons")
     connection.execute("DELETE FROM wargear_choice_alternatives")
     connection.execute("DELETE FROM wargear_choice_pools")
@@ -558,8 +604,10 @@ def populate_constraints(connection: sqlite3.Connection) -> int:
                 )
 
     inserted = 0
+    equipment_names_by_unit = equipment_names_by_unit or {}
     for datasheet_id, options in options_by_unit.items():
         known = names_by_unit.get(datasheet_id, {})
+        equipment_names = equipment_names_by_unit.get(datasheet_id, set())
 
         for _unit_id, position, description_html, description_text in options:
             normalized = f" {normalized_name(description_text)} "
@@ -567,17 +615,25 @@ def populate_constraints(connection: sqlite3.Connection) -> int:
             choices = option_choices(description_html, description_text)
             if not limit or not choices or any(marker in normalized for marker in COMPLEX_MARKERS):
                 continue
-            replaced_names = (
-                source_names(description_text, set(known))
-                if "replaced" in normalized_name(description_text)
-                else set()
+            preamble = option_preamble(description_html, description_text)
+            common_replaced = replaced_weapon_vector(preamble, known, set())
+            replaced_names = {
+                normalized_name(weapon_name)
+                for weapon_name, _quantity in common_replaced.values()
+            }
+            equipment_relevant = any(
+                re.search(rf"\b{re.escape(name)}s?\b", normalized_name(description_text))
+                for name in equipment_names
             )
             alternatives = []
             for alternative_position, choice in enumerate(choices, start=1):
-                vector = choice_weapon_vector(choice, known, replaced_names)
-                if vector:
+                vector = choice_weapon_vector(choice, known, set())
+                alternative_replaced = replaced_weapon_vector(choice, known, set())
+                if vector or alternative_replaced or equipment_relevant:
                     alternative_text = html.unescape(re.sub(r"<[^>]+>", " ", choice)).strip()
-                    alternatives.append((alternative_position, alternative_text, vector))
+                    alternatives.append(
+                        (alternative_position, alternative_text, vector, alternative_replaced)
+                    )
             if alternatives:
                 connection.execute(
                     """INSERT INTO wargear_choice_pools
@@ -586,7 +642,12 @@ def populate_constraints(connection: sqlite3.Connection) -> int:
                        VALUES (?, ?, ?, ?, ?, ?)""",
                     (datasheet_id, position, *limit, description_text),
                 )
-                for alternative_position, alternative_text, vector in alternatives:
+                for (
+                    alternative_position,
+                    alternative_text,
+                    vector,
+                    alternative_replaced,
+                ) in alternatives:
                     connection.execute(
                         """INSERT INTO wargear_choice_alternatives
                            (datasheet_id, option_position, alternative_position, description_text)
@@ -610,7 +671,26 @@ def populate_constraints(connection: sqlite3.Connection) -> int:
                             for weapon_group_id, (weapon_name, quantity) in vector.items()
                         ),
                     )
-                replaced = replaced_weapon_vector(description_text, known, replaced_names)
+                    connection.executemany(
+                        """INSERT INTO wargear_choice_alternative_replaced_weapons
+                           (datasheet_id, option_position, alternative_position,
+                            weapon_group_id, weapon_group_name, quantity)
+                           VALUES (?, ?, ?, ?, ?, ?)""",
+                        (
+                            (
+                                datasheet_id,
+                                position,
+                                alternative_position,
+                                weapon_group_id,
+                                weapon_name,
+                                quantity,
+                            )
+                            for weapon_group_id, (
+                                weapon_name,
+                                quantity,
+                            ) in alternative_replaced.items()
+                        ),
+                    )
                 connection.executemany(
                     """INSERT INTO wargear_choice_replaced_weapons
                        (datasheet_id, option_position, weapon_group_id,
@@ -618,7 +698,7 @@ def populate_constraints(connection: sqlite3.Connection) -> int:
                        VALUES (?, ?, ?, ?, ?)""",
                     (
                         (datasheet_id, position, group_id, name, quantity)
-                        for group_id, (name, quantity) in replaced.items()
+                        for group_id, (name, quantity) in common_replaced.items()
                     ),
                 )
             parsed: dict[str, tuple[str, int]] = {}

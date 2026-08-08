@@ -22,7 +22,14 @@ try:
         normalized_phrase,
         parse_bodyguard_leader_rule,
     )
-    from scripts.wargear_constraints import CONSTRAINT_SCHEMA, populate_constraints
+    from scripts.wargear_constraints import (
+        CONSTRAINT_SCHEMA,
+        normalized_name as normalized_wargear_name,
+        option_choices,
+        option_preamble,
+        populate_constraints,
+        replacement_items_text,
+    )
     from scripts.transport_rules import normalized_term, parse_transport_rule
 except ModuleNotFoundError:
     from leader_rules import (
@@ -30,7 +37,14 @@ except ModuleNotFoundError:
         normalized_phrase,
         parse_bodyguard_leader_rule,
     )
-    from wargear_constraints import CONSTRAINT_SCHEMA, populate_constraints
+    from wargear_constraints import (
+        CONSTRAINT_SCHEMA,
+        normalized_name as normalized_wargear_name,
+        option_choices,
+        option_preamble,
+        populate_constraints,
+        replacement_items_text,
+    )
     from transport_rules import normalized_term, parse_transport_rule
 
 
@@ -436,10 +450,36 @@ CREATE TABLE unit_defensive_equipment_options (
         (maximum_models_per_increment >= 1),
     limit_exact INTEGER NOT NULL DEFAULT 0 CHECK (limit_exact IN (0, 1)),
     limit_source_text TEXT,
+    choice_coverage_exact INTEGER NOT NULL DEFAULT 0 CHECK
+        (choice_coverage_exact IN (0, 1)),
     PRIMARY KEY (datasheet_id, ability_position),
     FOREIGN KEY (datasheet_id, ability_position)
         REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
 ) WITHOUT ROWID;
+
+CREATE TABLE unit_defensive_equipment_wargear_alternatives (
+    datasheet_id TEXT NOT NULL,
+    ability_position INTEGER NOT NULL,
+    option_position INTEGER NOT NULL,
+    alternative_position INTEGER NOT NULL,
+    quantity_delta INTEGER NOT NULL,
+    source_text TEXT NOT NULL,
+    PRIMARY KEY (
+        datasheet_id, ability_position, option_position, alternative_position
+    ),
+    FOREIGN KEY (datasheet_id, ability_position)
+        REFERENCES unit_defensive_equipment_options(datasheet_id, ability_position)
+        ON DELETE CASCADE,
+    FOREIGN KEY (datasheet_id, option_position, alternative_position)
+        REFERENCES wargear_choice_alternatives(
+            datasheet_id, option_position, alternative_position
+        ) ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE INDEX idx_defensive_equipment_wargear_alternatives_choice
+    ON unit_defensive_equipment_wargear_alternatives(
+        datasheet_id, option_position, alternative_position
+    );
 
 CREATE TABLE unit_defensive_equipment_bearers (
     datasheet_id TEXT NOT NULL,
@@ -1744,6 +1784,15 @@ def equipment_name_in_text(name: str, text: str) -> bool:
     return normalized_phrase(name) in normalized_phrase(text)
 
 
+def named_equipment_quantity(text: str, name: str) -> int:
+    value = normalized_wargear_name(text)
+    equipment = normalized_wargear_name(name)
+    match = re.search(rf"(?:^|\s)(\d+)\s+{re.escape(equipment)}s?(?:\s|$)", value)
+    if match:
+        return int(match.group(1))
+    return int(bool(re.search(rf"\b{re.escape(equipment)}s?\b", value)))
+
+
 def defensive_equipment_limits(
     key: tuple[str, int],
     scope: str,
@@ -1950,6 +1999,72 @@ def populate_defensive_equipment_metadata(connection: sqlite3.Connection) -> Non
                 datasheet_id,
                 ability_position,
             ),
+        )
+
+    for datasheet_id, ability_position, name, _scope, _guidance in options:
+        source_options = list(
+            connection.execute(
+                """SELECT position, description_html, description_text
+                   FROM wargear_options
+                   WHERE datasheet_id = ?
+                     AND instr(lower(description_text), lower(?)) > 0
+                   ORDER BY position""",
+                (datasheet_id, name),
+            )
+        )
+        relevant_positions = {
+            position
+            for position, _description_html, description_text in source_options
+            if " can " in f" {normalized_wargear_name(description_text)} "
+        }
+        linked_positions = set()
+        for option_position, description_html, description_text in source_options:
+            alternatives = list(
+                connection.execute(
+                    """SELECT alternative_position, description_text
+                       FROM wargear_choice_alternatives
+                       WHERE datasheet_id = ? AND option_position = ?
+                       ORDER BY alternative_position""",
+                    (datasheet_id, option_position),
+                )
+            )
+            if not alternatives:
+                continue
+            choices = option_choices(description_html, description_text)
+            choice_text = {
+                position: re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", value))).strip()
+                for position, value in enumerate(choices, start=1)
+            }
+            preamble = option_preamble(description_html, description_text)
+            common_removed = named_equipment_quantity(replacement_items_text(preamble), name)
+            for alternative_position, alternative_text in alternatives:
+                source_choice = choice_text.get(alternative_position, alternative_text)
+                granted = named_equipment_quantity(source_choice, name)
+                specifically_removed = named_equipment_quantity(
+                    replacement_items_text(source_choice), name
+                )
+                delta = granted - common_removed - specifically_removed
+                connection.execute(
+                    """INSERT INTO unit_defensive_equipment_wargear_alternatives
+                       (datasheet_id, ability_position, option_position,
+                        alternative_position, quantity_delta, source_text)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        datasheet_id,
+                        ability_position,
+                        option_position,
+                        alternative_position,
+                        delta,
+                        description_text,
+                    ),
+                )
+            linked_positions.add(option_position)
+        coverage_exact = bool(relevant_positions) and relevant_positions == linked_positions
+        connection.execute(
+            """UPDATE unit_defensive_equipment_options
+               SET choice_coverage_exact = ?
+               WHERE datasheet_id = ? AND ability_position = ?""",
+            (int(coverage_exact), datasheet_id, ability_position),
         )
 
 
@@ -5125,7 +5240,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "70"),
+                    ("schema_version", "71"),
                     ("leader_global_maximum", "2"),
                     ("leader_global_rule_source_url", LEADER_GLOBAL_RULE_SOURCE_URL),
                     (
@@ -5518,7 +5633,16 @@ def create_database(
                         (weapon_id, position, name, value, raw),
                     )
 
-            populate_constraints(connection)
+            equipment_names_by_unit: dict[str, set[str]] = {}
+            for equipment_datasheet_id, equipment_name, equipment_description in connection.execute(
+                """SELECT datasheet_id, name, description_text
+                   FROM datasheet_abilities ORDER BY datasheet_id, position"""
+            ):
+                if defensive_equipment_option(equipment_name, equipment_description):
+                    equipment_names_by_unit.setdefault(equipment_datasheet_id, set()).add(
+                        normalized_wargear_name(equipment_name)
+                    )
+            populate_constraints(connection, equipment_names_by_unit)
             populate_explicit_catalogue_compositions(connection)
             populate_composition_loadout_subjects(connection)
             rebuild_combat_presets(connection)
@@ -5626,6 +5750,7 @@ def create_database(
                 "unit_combat_presets",
                 "unit_combat_preset_effects",
                 "unit_defensive_equipment_options",
+                "unit_defensive_equipment_wargear_alternatives",
                 "unit_defensive_equipment_bearers",
                 "unit_defensive_equipment_default_terms",
                 "unit_defensive_equipment_effects",
@@ -5656,6 +5781,7 @@ def create_database(
                 "wargear_choice_pools",
                 "wargear_choice_alternatives",
                 "wargear_choice_alternative_weapons",
+                "wargear_choice_alternative_replaced_weapons",
                 "wargear_choice_replaced_weapons",
                 "default_weapon_loadout",
                 "default_loadout_subjects",

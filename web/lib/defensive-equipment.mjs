@@ -6,29 +6,47 @@ export function defensiveEquipmentEligibleForModel(option, modelId) {
   return !option?.eligibleModelIds?.length || option.eligibleModelIds.includes(modelId);
 }
 
+export function defensiveEquipmentSourceDefaultCount(option, savedUnit) {
+  const modelCount = Math.max(0, Math.floor(savedUnit?.modelCount ?? 0));
+  return Math.min(
+    modelCount,
+    Math.max(
+      0,
+      (option?.defaultTerms ?? []).reduce((total, term) => {
+        if (term.loadoutSubjectId) {
+          return (
+            total +
+            Math.max(0, Math.floor(savedUnit?.loadoutSubjectCounts?.[term.loadoutSubjectId] ?? 0))
+          );
+        }
+        return (
+          total +
+          term.fixed +
+          term.perModel * modelCount +
+          Math.floor(modelCount / term.modelsPerIncrement) * term.perIncrement
+        );
+      }, 0),
+    ),
+  );
+}
+
 export function defensiveEquipmentDefaultCount(option, savedUnit) {
   const modelCount = Math.max(0, Math.floor(savedUnit?.modelCount ?? 0));
-  const count = (option?.defaultTerms ?? []).reduce((total, term) => {
-    if (term.loadoutSubjectId) {
-      return (
-        total +
-        Math.max(0, Math.floor(savedUnit?.loadoutSubjectCounts?.[term.loadoutSubjectId] ?? 0))
-      );
-    }
-    return (
+  const sourceDefault = defensiveEquipmentSourceDefaultCount(option, savedUnit);
+  const choiceDelta = (option?.choiceLinks ?? []).reduce(
+    (total, link) =>
       total +
-      term.fixed +
-      term.perModel * modelCount +
-      Math.floor(modelCount / term.modelsPerIncrement) * term.perIncrement
-    );
-  }, 0);
-  return Math.min(modelCount, Math.max(0, count));
+      Math.max(0, Math.floor(savedUnit?.choiceSelections?.[link.alternativeId] ?? 0)) *
+        link.quantityDelta,
+    0,
+  );
+  return Math.min(modelCount, Math.max(0, sourceDefault + choiceDelta));
 }
 
 export function defensiveEquipmentBounds(option, savedUnit, eligibleModelCount) {
   const modelCount = Math.max(0, Math.floor(savedUnit?.modelCount ?? 0));
   const eligible = Math.max(0, Math.floor(eligibleModelCount ?? modelCount));
-  const sourceDefault = defensiveEquipmentDefaultCount(option, savedUnit);
+  const sourceDefault = defensiveEquipmentSourceDefaultCount(option, savedUnit);
   const minimum = option?.minimumKind === "default" ? sourceDefault : 0;
   let maximum;
   switch (option?.maximumKind) {

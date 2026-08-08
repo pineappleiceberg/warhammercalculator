@@ -16,14 +16,32 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Normalize replacement and mutual-exclusion links between defensive equipment
-   and structured weapon choices so adding a shield can reconcile the weapon it
-   replaces instead of validating those selections independently.
+1. Link optional defensive wargear on single-model datasheets to its situational
+   combat preset, so selecting a Commander shield generator or Impulsor shield
+   dome activates the matching defense without a second manual choice.
 2. Normalize discrete legal starting-size alternatives separately from casualty
    counts so datasheets published as, for example, exactly 5 or 10 models do not
    treat intermediate roster sizes as ordinary legal starting compositions.
+3. Structure duplicate-capable non-weapon equipment pools so Crisis Battlesuit
+   shield-generator counts can be derived across both published selection paths.
 
 ## Completed cycles
+
+- 2026-08-08: Linked defensive equipment to structured source choices in SQLite
+  schema 71. Ninety-eight normalized alternative links cover 32 defensive
+  equipment options, with complete source-choice coverage for 31. Equipment-only
+  alternatives are retained, common and alternative-specific weapon
+  replacements are distinct, and replacement parsing now handles possessive,
+  `can have`, `can replace`, per-five, and all-model source forms. Aquila and
+  Decimus shields now exchange heavy thunder hammers for power weapons,
+  Lychguard and Wraithblade shield swaps reconcile both weapons, and Assault
+  Sergeant twin lightning claws remove the pistol and chainsword without making
+  the shield-only alternative do so. Default Storm Shields and Weavefield Crests
+  decrease when their paired-weapons or teleport-crest choices are selected.
+  Saved defaults rebase untouched equipment counts while preserving explicit
+  edits, and exact mismatches use the existing casualty/narrative override
+  workflow. Database, parser, catalogue, API, saved-list, Play Mode, legacy-key,
+  and source-limit regressions cover the change.
 
 - 2026-08-08: Resolved the final six conservative defensive-equipment bearer
   mappings in SQLite schema 70, making all 44 options exact. Forty normalized

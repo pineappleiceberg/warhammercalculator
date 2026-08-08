@@ -532,6 +532,20 @@ and bearer controls are limited to eligible model profiles. Optional and
 conditional choices remain off until selected or their structured loadout
 subject is present; users can still save explicit overrides for casualties and
 narrative rules.
+Source option choices now carry per-alternative weapon replacements and explicit
+defensive-equipment changes. Selecting an Aquila or Decimus shield therefore
+removes the heavy thunder hammer, adds the power weapon, and equips the shield
+as one operation; Lychguard and Wraithblade swaps behave the same way. Mixed
+choices no longer assume every alternative replaces the same weapons, so an
+Assault Sergeant loses its pistol and chainsword for twin lightning claws but
+keeps both when merely adding a shield. Default equipment removal is linked in
+the opposite direction for choices such as paired Wolf Guard Headtaker weapons
+and the Einhyr teleport crest. Thirty-one of the 44 multi-model defensive
+equipment options have complete choice coverage; their derived counts remain
+editable, but a divergent saved roster requires the existing casualty or
+narrative acknowledgement. The Crisis Battlesuit shield remains conservative
+because its second, duplicate-capable equipment pool is not yet fully
+structured.
 Uniform grouped statlines are split into source-composition-backed catalogue
 models when that distinction is required for an exact bearer limit. Command
 Squad shields therefore distinguish the Champion and Company Veterans from the

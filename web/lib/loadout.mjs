@@ -189,12 +189,11 @@ export function defaultWeaponCounts(unit, modelCount, loadoutSubjectCounts = {})
 export function choiceSelectionReplacementCounts(unit, choiceSelections = {}) {
   const counts = {};
   for (const pool of unit?.wargearChoicePools ?? []) {
-    const selected = pool.alternatives.reduce(
-      (sum, alternative) => sum + normalizeEquippedCount(choiceSelections[alternative.id] ?? 0),
-      0,
-    );
-    for (const weapon of pool.replaces ?? []) {
-      counts[weapon.groupId] = (counts[weapon.groupId] ?? 0) + selected * weapon.quantity;
+    for (const alternative of pool.alternatives) {
+      const selected = normalizeEquippedCount(choiceSelections[alternative.id] ?? 0);
+      for (const weapon of alternative.replaces ?? pool.replaces ?? []) {
+        counts[weapon.groupId] = (counts[weapon.groupId] ?? 0) + selected * weapon.quantity;
+      }
     }
   }
   return counts;
@@ -227,7 +226,7 @@ export function applyChoiceSelectionChange(
 ) {
   const delta = normalizeEquippedCount(nextValue) - normalizeEquippedCount(previousValue);
   const counts = { ...equippedCounts };
-  for (const weapon of pool.replaces ?? []) {
+  for (const weapon of alternative.replaces ?? pool.replaces ?? []) {
     counts[weapon.groupId] = normalizeEquippedCount(
       (counts[weapon.groupId] ?? 0) - delta * weapon.quantity,
     );
