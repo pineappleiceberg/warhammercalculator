@@ -1,3 +1,5 @@
+import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
+
 export const ARMY_LIST_BACKUP_KIND = "warhammer-calculator-army-lists";
 export const ARMY_LIST_BACKUP_VERSION = 1;
 
@@ -88,6 +90,13 @@ export function normalizeArmyListInput(value) {
       }
       combatPresetIds = [...new Set(unit.combatPresetIds)];
     }
+    let defensiveEquipmentCounts;
+    if (unit.defensiveEquipmentCounts !== undefined) {
+      defensiveEquipmentCounts = normalizeDefensiveEquipmentCounts(
+        unit.defensiveEquipmentCounts,
+        "defensiveEquipmentCounts",
+      );
+    }
     let transportId;
     if (unit.transportId !== undefined) {
       if (
@@ -165,6 +174,9 @@ export function normalizeArmyListInput(value) {
       normalized.loadoutSubjectCounts = loadoutSubjectCounts;
     }
     if (combatPresetIds !== undefined) normalized.combatPresetIds = combatPresetIds;
+    if (defensiveEquipmentCounts !== undefined) {
+      normalized.defensiveEquipmentCounts = defensiveEquipmentCounts;
+    }
     if (transportId !== undefined) normalized.transportId = transportId;
     if (attachedToId !== undefined) normalized.attachedToId = attachedToId;
     if (joinedToId !== undefined) normalized.joinedToId = joinedToId;

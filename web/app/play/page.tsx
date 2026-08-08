@@ -36,6 +36,7 @@ import { firingDeckWeapons, resolveFiringDeckSelection } from "../../lib/firing-
 import { transportAssignmentReport } from "../../lib/transport.mjs";
 import {
   savedFormationForUnit,
+  savedFormationDefensiveEquipmentDefaults,
   savedFormationGroups,
   savedFormationModelSegments,
   savedFormationTargetSequence,
@@ -1218,7 +1219,14 @@ export default function PlayMode() {
             ) ?? nextTargetCatalogueUnit.combatPresets,
         }
       : undefined;
-    const firstSegment = savedFormationModelSegments(nextFormation).segments[0];
+    const nextTargetDefensiveEquipmentCounts =
+      savedFormationDefensiveEquipmentDefaults(nextFormation);
+    const nextTargetSequence = savedFormationTargetSequence(
+      nextFormation,
+      "",
+      nextTargetDefensiveEquipmentCounts,
+    );
+    const firstSegment = nextTargetSequence.first;
     const model = firstSegment?.model ?? nextTargetCatalogueUnit?.models[0];
     const nextTargetPresetIds = [
       ...new Set(
@@ -1228,7 +1236,7 @@ export default function PlayMode() {
       ),
     ];
     setTargetUnitId(id);
-    setTargetDefensiveEquipmentCounts({});
+    setTargetDefensiveEquipmentCounts(nextTargetDefensiveEquipmentCounts);
     const nextTargetBattleShocked = false;
     const nextTargetAttached =
       nextFormation?.attached ?? targetTransportReport.attachedUnitIds.has(id);

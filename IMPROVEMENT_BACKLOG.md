@@ -16,13 +16,23 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Persist defensive-equipment selections in Army Lists as editable Play Mode
-   defaults while retaining battle-local overrides and backup compatibility.
-2. Normalize bearer model eligibility and default-versus-optional equipment
+1. Normalize bearer model eligibility and default-versus-optional equipment
    provenance from datasheet composition and loadout text so Army Lists can
    prefill only equipment that is provable without guessing.
+2. Cross-check saved defensive-equipment counts against normalized source
+   choice limits and surface explicit warnings for casualty or narrative
+   overrides instead of silently accepting impossible rosters.
 
 ## Completed cycles
+
+- 2026-08-08: Persisted defensive-equipment selections with each Army List
+  unit. Whole-unit choices and bounded bearer counts now initialize a newly
+  selected Play Mode target, while battle-local edits and recovered battles
+  retain precedence. Joined formations merge defaults from every saved
+  component, stale or unknown choices are filtered, counts clamp to current
+  model composition, and the optional field round-trips through device/cloud
+  storage and version-1 backups without breaking legacy backups. Persistence,
+  clamping, allocation, and local-override regressions cover the workflow.
 
 - 2026-08-08: Split Unit vs Unit bearer-only defensive equipment into exact
   equipped and unequipped target segments. The allocation count is bounded by

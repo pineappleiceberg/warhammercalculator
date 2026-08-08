@@ -2224,6 +2224,9 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
         choiceSelections: { "datasheet-1:pool:1": 1 },
         loadoutSubjectCounts: { "datasheet-1:subject:1": 4 },
         combatPresetIds: ["datasheet-1:ability:2"],
+        defensiveEquipmentCounts: {
+          "unit-1::3::datasheet-1:equipment:1": 1,
+        },
       },
     ],
   };
@@ -2242,6 +2245,9 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
   assert.equal(created.units[0].choiceSelections["datasheet-1:pool:1"], 1);
   assert.equal(created.units[0].loadoutSubjectCounts["datasheet-1:subject:1"], 4);
   assert.deepEqual(created.units[0].combatPresetIds, ["datasheet-1:ability:2"]);
+  assert.deepEqual(created.units[0].defensiveEquipmentCounts, {
+    "unit-1::3::datasheet-1:equipment:1": 1,
+  });
 
   const listed = await worker.fetch(new Request("http://localhost/api/v1/lists"), testEnv, context);
   assert.equal((await listed.json()).data.length, 1);
@@ -2256,6 +2262,10 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
   assert.equal(backup.version, 1);
   assert.equal(typeof backup.profileSourceUpdatedAt, "string");
   assert.equal(backup.lists[0].id, created.id);
+  assert.deepEqual(
+    backup.lists[0].units[0].defensiveEquipmentCounts,
+    created.units[0].defensiveEquipmentCounts,
+  );
 
   const updated = await worker.fetch(
     new Request(`http://localhost/api/v1/lists/${created.id}`, {
@@ -2288,6 +2298,10 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
   assert.equal(imported.status, 200);
   assert.equal(importedBody.imported, 1);
   assert.equal(importedBody.data[0].id, created.id);
+  assert.deepEqual(
+    importedBody.data[0].units[0].defensiveEquipmentCounts,
+    created.units[0].defensiveEquipmentCounts,
+  );
 
   const incompatible = await worker.fetch(
     new Request("http://localhost/api/v1/lists/import", {

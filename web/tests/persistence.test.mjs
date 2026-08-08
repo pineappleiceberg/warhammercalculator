@@ -37,6 +37,9 @@ const list = {
       choiceSelections: { "datasheet-1:choice:1": 0 },
       loadoutSubjectCounts: { "datasheet-1:subject:1": 4 },
       combatPresetIds: ["datasheet-1:ability:2"],
+      defensiveEquipmentCounts: {
+        "unit-1::3::datasheet-1:equipment:1": 1,
+      },
       transportId: "unit-transport",
       attachedToId: "unit-bodyguard",
       joinedToId: "unit-joined-bodyguard",
@@ -59,6 +62,12 @@ test("round-trips a versioned army-list backup", () => {
   assert.equal(backup.lists[0].units[0].transportId, "unit-transport");
   assert.equal(backup.lists[0].units[0].attachedToId, "unit-bodyguard");
   assert.equal(backup.lists[0].units[0].joinedToId, "unit-joined-bodyguard");
+  assert.deepEqual(backup.lists[0].units[0].defensiveEquipmentCounts, {
+    "unit-1::3::datasheet-1:equipment:1": 1,
+  });
+  const legacy = JSON.parse(JSON.stringify(backup));
+  delete legacy.lists[0].units[0].defensiveEquipmentCounts;
+  assert.equal(parseArmyListBackup(legacy).lists[0].units[0].defensiveEquipmentCounts, undefined);
 });
 
 test("rejects incompatible and malformed army-list backups", () => {
@@ -112,6 +121,19 @@ test("rejects incompatible and malformed army-list backups", () => {
         ],
       }),
     /combatPresetIds/i,
+  );
+  assert.throws(
+    () =>
+      parseArmyListBackup({
+        ...backup,
+        lists: [
+          {
+            ...list,
+            units: [{ ...list.units[0], defensiveEquipmentCounts: { shield: -1 } }],
+          },
+        ],
+      }),
+    /defensiveEquipmentCounts/i,
   );
   assert.throws(
     () =>

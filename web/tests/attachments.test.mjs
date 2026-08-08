@@ -20,6 +20,7 @@ import {
   bodyguardJoinerOptions,
   catalogueModelSegments,
   savedFormationForUnit,
+  savedFormationDefensiveEquipmentDefaults,
   savedFormationGroups,
   savedFormationModelSegments,
   savedFormationTargetSequence,
@@ -510,6 +511,65 @@ test("Play Mode splits bearer equipment from unequipped models and preserves uni
       (target) => target.invulnerable,
     ),
     [5],
+  );
+});
+
+test("saved defensive equipment initializes Play Mode without preventing battle overrides", () => {
+  const bullgryn = namedUnit("Bullgryn Squad");
+  const shield = bullgryn.defensiveEquipment.find((option) => option.name === "Brute Shield");
+  assert.ok(shield);
+  const shieldKey = defensiveEquipmentSelectionKey("bullgryn", bullgryn.models[0].id, shield.id);
+  const formation = savedFormationGroups(catalogue, {
+    units: [
+      {
+        id: "bullgryn",
+        unitId: bullgryn.id,
+        name: bullgryn.name,
+        modelCount: 3,
+        weapons: [],
+        defensiveEquipmentCounts: { [shieldKey]: 4, stale: 1 },
+      },
+    ],
+  })[0];
+  const defaults = savedFormationDefensiveEquipmentDefaults(formation);
+  assert.deepEqual(defaults, { [shieldKey]: 3 });
+  const hearthkyn = namedUnit("Hearthkyn Warriors");
+  const crest = hearthkyn.defensiveEquipment.find((option) => option.name === "Weavefield Crest");
+  assert.ok(crest);
+  const crestKey = defensiveEquipmentSelectionKey("hearthkyn", null, crest.id);
+  assert.deepEqual(
+    savedFormationDefensiveEquipmentDefaults({
+      components: [
+        ...formation.components,
+        {
+          unit: {
+            id: "hearthkyn",
+            unitId: hearthkyn.id,
+            name: hearthkyn.name,
+            modelCount: 10,
+            defensiveEquipmentCounts: { [crestKey]: 1 },
+          },
+          catalogueUnit: hearthkyn,
+        },
+      ],
+    }),
+    { [shieldKey]: 3, [crestKey]: 1 },
+  );
+  assert.deepEqual(
+    savedFormationTargetSequence(formation, "", defaults).targets.map((target) => [
+      target.modelCount,
+      target.defensiveEquipmentIds,
+    ]),
+    [[3, [shield.id]]],
+  );
+  assert.deepEqual(
+    savedFormationTargetSequence(formation, "", { ...defaults, [shieldKey]: 1 }).targets.map(
+      (target) => [target.modelCount, target.defensiveEquipmentIds],
+    ),
+    [
+      [1, [shield.id]],
+      [2, []],
+    ],
   );
 });
 

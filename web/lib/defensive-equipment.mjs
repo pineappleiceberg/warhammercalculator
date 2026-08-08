@@ -2,9 +2,12 @@ export function defensiveEquipmentSelectionKey(savedUnitId, modelId, optionId) {
   return `${savedUnitId}::${modelId ?? "unit"}::${optionId}`;
 }
 
-export function normalizeDefensiveEquipmentCounts(value) {
+export function normalizeDefensiveEquipmentCounts(
+  value,
+  fieldName = "targetDefensiveEquipmentCounts",
+) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("targetDefensiveEquipmentCounts must be an object");
+    throw new Error(`${fieldName} must be an object`);
   }
   const entries = Object.entries(value);
   if (
@@ -14,7 +17,7 @@ export function normalizeDefensiveEquipmentCounts(value) {
         !key || key.length > 500 || !Number.isSafeInteger(count) || count < 0 || count > 1000,
     )
   ) {
-    throw new Error("targetDefensiveEquipmentCounts contains invalid entries");
+    throw new Error(`${fieldName} contains invalid entries`);
   }
   return Object.fromEntries(entries.filter(([, count]) => count > 0));
 }

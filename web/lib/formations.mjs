@@ -155,6 +155,34 @@ export function savedFormationModelSegments(formation) {
   return { segments, ambiguousComponents };
 }
 
+export function savedUnitDefensiveEquipmentDefaults(savedUnit, catalogueUnit) {
+  const stored = savedUnit?.defensiveEquipmentCounts ?? {};
+  const defaults = {};
+  const modelSegments = catalogueModelSegments(catalogueUnit, savedUnit?.modelCount ?? 0).segments;
+  for (const option of catalogueUnit?.defensiveEquipment ?? []) {
+    if (option.scope === "unit") {
+      const key = defensiveEquipmentSelectionKey(savedUnit.id, null, option.id);
+      if ((stored[key] ?? 0) > 0) defaults[key] = 1;
+      continue;
+    }
+    for (const segment of modelSegments) {
+      const key = defensiveEquipmentSelectionKey(savedUnit.id, segment.model.id, option.id);
+      const count = Math.min(segment.modelCount, stored[key] ?? 0);
+      if (count > 0) defaults[key] = count;
+    }
+  }
+  return defaults;
+}
+
+export function savedFormationDefensiveEquipmentDefaults(formation) {
+  return Object.assign(
+    {},
+    ...(formation?.components ?? []).map((component) =>
+      savedUnitDefensiveEquipmentDefaults(component.unit, component.catalogueUnit),
+    ),
+  );
+}
+
 export function savedFormationTargetSequence(
   formation,
   firstSegmentId = "",

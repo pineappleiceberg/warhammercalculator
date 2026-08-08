@@ -523,7 +523,10 @@ whole formation. Play Mode keeps
 whole-unit equipment separate from editable bearer counts; equipped and
 unequipped models become distinct ordered allocation profiles, so a shield on
 one model never protects the rest of its unit. Equipment choices recover with
-the current battle, and attack-keyword conditions are applied per weapon.
+the current battle, and attack-keyword conditions are applied per weapon. Army
+Lists can also save these choices as defaults: selecting that target in Play
+Mode starts from the saved whole-unit and bearer counts, while later battle
+changes remain local and editable.
 Conflicting bearer assignments and ambiguous model compositions fail closed.
 Other subset-model rules, friendly-aura, affected-model,
 unrepresented attack-type conditions, conflicting, random, subset-model multiplicative,
@@ -545,7 +548,9 @@ a validated device copy for offline use and the static GitHub Pages build. Newer
 offline edits synchronize on reconnect, while deletion tombstones prevent removed
 lists from reappearing. The list screen can export and import a versioned JSON
 backup that includes the profile-source timestamp. Imports preserve list IDs and
-update matching records. Unfinished list drafts and Play Mode selections,
+update matching records. Optional defensive-equipment defaults remain compatible
+with older version-1 backups and synchronize with the rest of each saved unit.
+Unfinished list drafts and Play Mode selections,
 overrides, and attack history recover automatically on the current device.
 On narrow screens, Play Mode groups the attacker and target into guided steps,
 collapses optional overrides, and keeps the resolve action above the device safe
