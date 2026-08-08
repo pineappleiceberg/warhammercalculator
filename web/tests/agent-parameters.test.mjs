@@ -12,6 +12,7 @@ import {
 import {
   applyCombatPresets,
   attackKeywordsForWeapon,
+  combatPresetMatchesSourceRelationship,
   selectedAndAutomaticCombatPresets,
 } from "../lib/combat-presets.mjs";
 
@@ -837,6 +838,23 @@ test("catalogue agent query resolves stable IDs or unambiguous names", async () 
     supported.supportPresets.map((preset) => preset.name),
     ["Forward Observers"],
   );
+  const selectedTargetSupport = resolveAgentCatalogueSelection(
+    "attacker=Autarch&weapon=Death%20spinner&target=Brutalis%20Dreadnought&" +
+      "support=Eldrad%20Ulthran&supportPreset=Doom%20%28Psychic%29&" +
+      "sourceDistance=18&sourceVisible=true",
+    catalogue,
+  );
+  assert.equal(selectedTargetSupport.support.name, "Eldrad Ulthran");
+  assert.equal(
+    selectedTargetSupport.supportPresets[0].sourceRelationship,
+    "self_or_supporting_unit",
+  );
+  const selectedTargetSelf = resolveAgentCatalogueSelection(
+    "attacker=Eldrad%20Ulthran&weapon=Shuriken%20pistol&target=Brutalis%20Dreadnought&" +
+      "attackerPreset=Doom%20%28Psychic%29&sourceDistance=18&sourceVisible=true",
+    catalogue,
+  );
+  assert.equal(selectedTargetSelf.attackerPresets[0].name, "Doom (Psychic)");
   const limitedSupport = resolveAgentCatalogueSelection(
     "attacker=Breacher%20Team&weapon=Pulse%20blaster&target=Brutalis%20Dreadnought&" +
       "support=000000439&supportPreset=Blacklight%20Marker%20Drones",
@@ -1072,11 +1090,20 @@ test("selected visible-target rules require directional LOS and source range", a
     applyCombatPresets(defaults, [doom], [], "Ranged", {
       attackerSourceTargetDistance: distance,
       attackerSourceCanSeeTarget: visible,
+      attackerKeywords: ["Aeldari"],
     }).woundModifier;
   assert.equal(woundModifier(0, true), 0);
   assert.equal(woundModifier(18, false), 0);
   assert.equal(woundModifier(18, true), 1);
   assert.equal(woundModifier(19, true), 0);
+  assert.equal(
+    applyCombatPresets(defaults, [doom], [], "Ranged", {
+      attackerSourceTargetDistance: 18,
+      attackerSourceCanSeeTarget: true,
+      attackerKeywords: ["Necrons"],
+    }).woundModifier,
+    0,
+  );
 
   const skyrunner = catalogue.units.find((unit) => unit.name === "Farseer Skyrunner");
   const misfortune = skyrunner.combatPresets.find(
@@ -1099,6 +1126,98 @@ test("selected visible-target rules require directional LOS and source range", a
       targetSourceCanSeeAttacker: true,
     }).woundModifier,
     -1,
+  );
+});
+
+test("cross-unit selected targets enforce affected-unit and weapon qualifiers", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const preset = (unitName, presetName) =>
+    catalogue.units
+      .find((unit) => unit.name === unitName)
+      .combatPresets.find((candidate) => candidate.name === presetName);
+  const context = {
+    attackerSourceTargetDistance: 18,
+    attackerSourceCanSeeTarget: true,
+  };
+
+  const doom = preset("Eldrad Ulthran", "Doom (Psychic)");
+  assert.equal(doom.sourceRelationship, "self_or_supporting_unit");
+  assert.equal(combatPresetMatchesSourceRelationship(doom, "self"), true);
+  assert.equal(combatPresetMatchesSourceRelationship(doom, "supporting_unit"), true);
+  assert.equal(
+    applyCombatPresets(defaults, [doom], [], "Ranged", {
+      ...context,
+      attackerKeywords: ["Aeldari"],
+    }).woundModifier,
+    1,
+  );
+  assert.equal(
+    applyCombatPresets(defaults, [doom], [], "Ranged", {
+      ...context,
+      attackerKeywords: ["Necrons"],
+    }).woundModifier,
+    0,
+  );
+
+  const targetSighted = preset("Land Speeder", "Target Sighted");
+  const targetSightedProfile = (attackerKeywords, attackKeywords) =>
+    applyCombatPresets(defaults, [targetSighted], [], "Ranged", {
+      attackerSourceCanSeeTarget: true,
+      attackerKeywords,
+      attackKeywords,
+    });
+  assert.equal(targetSightedProfile(["Adeptus Astartes"], ["Blast"]).hitModifier, 1);
+  assert.equal(targetSightedProfile(["Adeptus Astartes"], []).hitModifier, 0);
+  assert.equal(targetSightedProfile(["Astra Militarum"], ["Blast"]).hitModifier, 0);
+
+  const spiritThief = preset("Lord Discordant On Helstalker", "Spirit Thief");
+  assert.equal(
+    applyCombatPresets(defaults, [spiritThief], [], "Ranged", {
+      attackerSourceCanSeeTarget: true,
+      attackerKeywords: ["Heretic Astartes"],
+      targetKeywords: ["Vehicle"],
+    }).rerollWoundOnes,
+    true,
+  );
+  assert.equal(
+    applyCombatPresets(defaults, [spiritThief], [], "Ranged", {
+      attackerSourceCanSeeTarget: true,
+      attackerKeywords: ["Heretic Astartes"],
+      targetKeywords: ["Infantry"],
+    }).rerollWoundOnes,
+    false,
+  );
+
+  const blight = preset("Lord of Virulence", "Blight Bombardment");
+  const blightProfile = (attackerKeywords, attackKeywords) =>
+    applyCombatPresets(defaults, [blight], [], "Ranged", {
+      attackerSourceTargetDistance: 30,
+      attackerSourceCanSeeTarget: true,
+      attackerKeywords,
+      attackKeywords,
+    });
+  assert.deepEqual(
+    [
+      blightProfile(["Death Guard"], []).rerollHits,
+      blightProfile(["Death Guard"], []).rerollHitOnes,
+    ],
+    [false, true],
+  );
+  assert.deepEqual(
+    [
+      blightProfile(["Death Guard"], ["Blast"]).rerollHits,
+      blightProfile(["Death Guard"], ["Blast"]).rerollHitOnes,
+    ],
+    [true, false],
+  );
+  assert.deepEqual(
+    [
+      blightProfile(["Necrons"], ["Blast"]).rerollHits,
+      blightProfile(["Necrons"], ["Blast"]).rerollHitOnes,
+    ],
+    [false, false],
   );
 });
 

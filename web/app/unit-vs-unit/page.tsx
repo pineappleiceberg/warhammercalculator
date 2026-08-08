@@ -453,6 +453,7 @@ export default function UnitVsUnit() {
             targetClosestEligible,
             attackerSourceTargetDistance,
             attackerSourceCanSeeTarget,
+            attackerUnit?.models[0]?.keywords ?? [],
           ),
           ...selectedAndAutomaticCombatPresets(
             supportUnit?.combatPresets ?? [],
@@ -485,8 +486,9 @@ export default function UnitVsUnit() {
             attackerUnit?.models[0]?.keywords ?? [],
             supportDistance,
             targetClosestEligible,
-            targetSourceAttackerDistance,
-            targetSourceCanSeeAttacker,
+            attackerSourceTargetDistance,
+            attackerSourceCanSeeTarget,
+            attackerUnit?.models[0]?.keywords ?? [],
           ),
         ],
         [
@@ -523,6 +525,7 @@ export default function UnitVsUnit() {
             targetClosestEligible,
             targetSourceAttackerDistance,
             targetSourceCanSeeAttacker,
+            attackerUnit?.models[0]?.keywords ?? [],
           ),
           ...selectedAndAutomaticCombatPresets(
             targetSupportUnit?.combatPresets ?? [],
@@ -555,10 +558,14 @@ export default function UnitVsUnit() {
             targetSegments[0]?.keywords ?? [],
             targetSupportDistance,
             targetClosestEligible,
+            targetSourceAttackerDistance,
+            targetSourceCanSeeAttacker,
+            attackerUnit?.models[0]?.keywords ?? [],
           ),
         ],
         line.weapon.type,
         {
+          attackerKeywords: attackerUnit?.models[0]?.keywords ?? [],
           targetKeywords: targetSegments[0]?.keywords ?? [],
           attackKeywords: attackKeywordsForWeapon(line.weapon),
           targetDistance,
@@ -638,6 +645,7 @@ export default function UnitVsUnit() {
               targetClosestEligible,
               targetSourceAttackerDistance,
               targetSourceCanSeeAttacker,
+              attackerUnit?.models[0]?.keywords ?? [],
             ),
             ...selectedAndAutomaticCombatPresets(
               targetSupportUnit?.combatPresets ?? [],
@@ -672,6 +680,7 @@ export default function UnitVsUnit() {
               targetClosestEligible,
               targetSourceAttackerDistance,
               targetSourceCanSeeAttacker,
+              attackerUnit?.models[0]?.keywords ?? [],
             ),
           ])
           .map((preset) => [preset.id, preset]),
@@ -684,6 +693,7 @@ export default function UnitVsUnit() {
         weaponType: line.weapon.type,
         weaponName: line.weapon.name,
         attackKeywords: attackKeywordsForWeapon(line.weapon),
+        attackerKeywords: attackerUnit?.models[0]?.keywords ?? [],
         targetDistance,
         attackerUnitModels,
         nearbyEnemyModels,

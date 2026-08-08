@@ -13,6 +13,7 @@ except ModuleNotFoundError:
 
 TABLE_SCHEMA = """
 DROP TABLE IF EXISTS unit_combat_preset_effects;
+DROP TABLE IF EXISTS unit_combat_preset_keyword_requirements;
 DROP TABLE IF EXISTS unit_combat_preset_supported_keywords;
 DROP TABLE unit_combat_presets;
 CREATE TABLE unit_combat_presets (
@@ -24,7 +25,7 @@ CREATE TABLE unit_combat_presets (
     is_exclusive_choice INTEGER NOT NULL CHECK (is_exclusive_choice IN (0, 1)),
     activation TEXT NOT NULL CHECK (activation IN ('inherent', 'automatic', 'situational')),
     source_relationship TEXT NOT NULL DEFAULT 'self'
-        CHECK (source_relationship IN ('self', 'supporting_unit')),
+        CHECK (source_relationship IN ('self', 'supporting_unit', 'self_or_supporting_unit')),
     uses_per_battle INTEGER CHECK (uses_per_battle > 0),
     weapon_scope TEXT NOT NULL CHECK (weapon_scope IN ('Any', 'Ranged', 'Melee')),
     maximum_target_distance INTEGER CHECK (maximum_target_distance > 0),
@@ -107,6 +108,21 @@ CREATE TABLE unit_combat_preset_supported_keywords (
         REFERENCES unit_combat_presets(datasheet_id, ability_position, preset_position)
         ON DELETE CASCADE
 ) WITHOUT ROWID;
+CREATE TABLE unit_combat_preset_keyword_requirements (
+    datasheet_id TEXT NOT NULL,
+    ability_position INTEGER NOT NULL,
+    preset_position INTEGER NOT NULL,
+    requirement_kind TEXT NOT NULL
+        CHECK (requirement_kind IN ('attacker_all', 'target_all', 'attack_any')),
+    keyword_position INTEGER NOT NULL CHECK (keyword_position >= 1),
+    keyword TEXT NOT NULL,
+    PRIMARY KEY (
+        datasheet_id, ability_position, preset_position, requirement_kind, keyword_position
+    ),
+    FOREIGN KEY (datasheet_id, ability_position, preset_position)
+        REFERENCES unit_combat_presets(datasheet_id, ability_position, preset_position)
+        ON DELETE CASCADE
+) WITHOUT ROWID;
 CREATE TABLE unit_combat_preset_effects (
     datasheet_id TEXT NOT NULL,
     ability_position INTEGER NOT NULL,
@@ -120,7 +136,7 @@ CREATE TABLE unit_combat_preset_effects (
          'allocated_attack_damage_replacement',
          'attacks_multiplier', 'strength_multiplier',
          'damage_multiplier', 'attacks_modifier', 'strength_modifier',
-         'damage_modifier', 'save_target',
+         'damage_modifier', 'reroll_hits', 'reroll_hit_ones', 'save_target',
          'invulnerable_save', 'feel_no_pain', 'damage_reduction', 'damage_divisor')),
     value INTEGER NOT NULL,
     uses INTEGER NOT NULL DEFAULT 0 CHECK (uses >= 0),
@@ -157,7 +173,7 @@ def main() -> None:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
         connection.execute(
-            "UPDATE metadata SET value = '48' WHERE key = 'schema_version'"
+            "UPDATE metadata SET value = '49' WHERE key = 'schema_version'"
         )
         connection.execute("PRAGMA optimize")
         connection.commit()

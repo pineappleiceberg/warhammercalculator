@@ -16,17 +16,29 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Classify cross-unit selected-target abilities by source relationship,
-   affected-unit keywords, and weapon qualifiers, splitting multi-tier effects
-   such as Blight Bombardment instead of treating them as source-unit-only.
-2. Represent casualty- and nearby-unit-count-scaled Attacks modifiers as
+1. Represent casualty- and nearby-unit-count-scaled Attacks modifiers as
    explicit reproducible state instead of requiring manual arithmetic; direct
    source-unit and nearby-enemy model counts are now covered.
-3. Extend bearer and subset-model defenses beyond composition-proven
+2. Extend bearer and subset-model defenses beyond composition-proven
    single-model datasheets with per-target-segment equipment selection, so a
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Corrected cross-unit selected-target abilities. SQLite schema 49
+  marks 18 generated presets from 15 exact source rules as usable by either the
+  source unit or a separate same-side source, while Fire Discipline and Marked
+  by Fate remain source-unit-only. Normalized attacker, target, and any-of
+  weapon keyword requirements now enforce Aeldari, Adepta Sororitas, Adeptus
+  Astartes, Astra Militarum Aircraft, Death Guard, Heretic Astartes, VEHICLE,
+  INFANTRY, Blast, Torrent, and Melta clauses across Model vs Model, Unit vs
+  Unit, Play Mode, API catalogue data, and static agent calculations. Blight
+  Bombardment now keeps its universal Death Guard ranged Hit re-roll of 1 and
+  upgrades it to a full Hit re-roll only for Blast attacks; effect-specific
+  qualifiers no longer suppress unrelated effects in the same preset. Exact
+  text negatives, schema and catalogue snapshots, both source relationships,
+  affected-keyword and weapon boundaries, agent resolution, API discovery,
+  and exact C/WebAssembly damage monotonicity cover the change.
 
 - 2026-08-07: Added directional selected-target visibility and source range.
   Model vs Model, Unit vs Unit, Play Mode recovery, normalized API profiles,

@@ -98,7 +98,7 @@ export type CatalogueCombatPreset = {
   id: string;
   choiceGroup: string | null;
   activation: "inherent" | "automatic" | "situational";
-  sourceRelationship: "self" | "supporting_unit";
+  sourceRelationship: "self" | "supporting_unit" | "self_or_supporting_unit";
   usesPerBattle?: number;
   name: string;
   description: string;
@@ -107,6 +107,9 @@ export type CatalogueCombatPreset = {
   maximumSourceTargetDistance?: number;
   maximumSupportDistance?: number;
   requiredSupportedKeywords?: string[];
+  requiredAttackerKeywords?: string[];
+  requiredTargetKeywords?: string[];
+  requiredAttackKeywordsAny?: string[];
   requiresAttackerCharge?: boolean;
   requiresAttackerStationary?: boolean;
   requiresAttachedUnit?: boolean;
@@ -174,6 +177,8 @@ export type CatalogueCombatPresetEffect = {
     | "attacks_modifier"
     | "strength_modifier"
     | "damage_modifier"
+    | "reroll_hits"
+    | "reroll_hit_ones"
     | "save_target"
     | "invulnerable_save"
     | "feel_no_pain"

@@ -157,7 +157,7 @@ CREATE TABLE unit_combat_presets (
     is_exclusive_choice INTEGER NOT NULL CHECK (is_exclusive_choice IN (0, 1)),
     activation TEXT NOT NULL CHECK (activation IN ('inherent', 'automatic', 'situational')),
     source_relationship TEXT NOT NULL DEFAULT 'self'
-        CHECK (source_relationship IN ('self', 'supporting_unit')),
+        CHECK (source_relationship IN ('self', 'supporting_unit', 'self_or_supporting_unit')),
     uses_per_battle INTEGER CHECK (uses_per_battle > 0),
     weapon_scope TEXT NOT NULL CHECK (weapon_scope IN ('Any', 'Ranged', 'Melee')),
     maximum_target_distance INTEGER CHECK (maximum_target_distance > 0),
@@ -241,6 +241,22 @@ CREATE TABLE unit_combat_preset_supported_keywords (
         ON DELETE CASCADE
 ) WITHOUT ROWID;
 
+CREATE TABLE unit_combat_preset_keyword_requirements (
+    datasheet_id TEXT NOT NULL,
+    ability_position INTEGER NOT NULL,
+    preset_position INTEGER NOT NULL,
+    requirement_kind TEXT NOT NULL
+        CHECK (requirement_kind IN ('attacker_all', 'target_all', 'attack_any')),
+    keyword_position INTEGER NOT NULL CHECK (keyword_position >= 1),
+    keyword TEXT NOT NULL,
+    PRIMARY KEY (
+        datasheet_id, ability_position, preset_position, requirement_kind, keyword_position
+    ),
+    FOREIGN KEY (datasheet_id, ability_position, preset_position)
+        REFERENCES unit_combat_presets(datasheet_id, ability_position, preset_position)
+        ON DELETE CASCADE
+) WITHOUT ROWID;
+
 CREATE TABLE unit_combat_preset_effects (
     datasheet_id TEXT NOT NULL,
     ability_position INTEGER NOT NULL,
@@ -254,7 +270,7 @@ CREATE TABLE unit_combat_preset_effects (
          'allocated_attack_damage_replacement',
          'attacks_multiplier', 'strength_multiplier',
          'damage_multiplier', 'attacks_modifier', 'strength_modifier',
-         'damage_modifier', 'save_target',
+         'damage_modifier', 'reroll_hits', 'reroll_hit_ones', 'save_target',
          'invulnerable_save', 'feel_no_pain', 'damage_reduction', 'damage_divisor')),
     value INTEGER NOT NULL,
     uses INTEGER NOT NULL DEFAULT 0 CHECK (uses >= 0),
@@ -2126,6 +2142,90 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
     return "situational"
 
 
+def combat_selected_target_classification(
+    name: str, description: str
+) -> dict[str, object] | None:
+    text = plain_text(description).strip()
+    rules: dict[str, tuple[str, dict[str, object]]] = {
+        "Mind in the Machine": (
+            "At the start of your opponent’s Shooting phase, select one enemy VEHICLE unit within 12\" of and visible to this model. That unit must take a Leadership test. If that test is passed, until the end of the phase, each time a model in that unit makes an attack, subtract 1 from the Hit roll; if that test is failed, that unit is not eligible to shoot this phase.",
+            {"required_attacker_keywords": ["vehicle"]},
+        ),
+        "Horrible Fascination(Psychic)": (
+            "At the start of your opponent’s Shooting phase, one Psyker model from your army with this ability can use it. If it does, select one enemy unit within 12\" of and visible to that PSYKER model and roll one D6: on a 1, that PSYKER model suffers D3 mortal wounds; on a 2-5, until the end of the phase, each time a model in that enemy unit makes an attack, subtract 1 from the Hit roll; on a 6, that enemy unit is not eligible to shoot this phase.",
+            {},
+        ),
+        "Doom (Psychic)": (
+            "At the end of your Movement phase, select one enemy unit within 18\" of and visible to this model. Until the start of your next Command phase, each time a friendly AELDARI model makes an attack that targets that enemy unit, add 1 to the Wound roll.",
+            {"required_attacker_keywords": ["aeldari"]},
+        ),
+        "Guide (Psychic)": (
+            "At the end of your Movement phase, select one enemy unit within 18\" of and visible to this model. Until the start of your next Command phase, each time a friendly AELDARI model makes an attack that targets that enemy unit, add 1 to the Hit roll. Each unit can only be selected for this ability once per turn.",
+            {"required_attacker_keywords": ["aeldari"]},
+        ),
+        "Misfortune (Psychic)": (
+            "At the end of your Movement phase, select one enemy unit within 18\" of and visible to this model. Until the start of your next Command phase, each time a model in that unit makes an attack, subtract 1 from the Wound roll. Each unit can only be selected for this ability once per turn.",
+            {},
+        ),
+        "Dominate Will (Psychic)": (
+            "At the start of your opponent’s Shooting phase, select one enemy INFANTRY unit that is within 12\" of and visible to this model and roll one D6: on a 1, this model suffers D3 mortal wounds; on a 2-5, until the end of the phase, each time a model in that unit makes an attack, subtract 1 from the Hit roll; on a 6, until the end of the phase, that unit is not eligible to shoot.",
+            {"required_attacker_keywords": ["infantry"]},
+        ),
+        "Judged for Execution": (
+            "At the end of your Movement phase, you can select one enemy unit within 18\" of and visible to this model. Until the start of your next Command phase, each time a friendly ADEPTA SORORITAS model makes an attack that targets that enemy unit, that attack has the [LETHAL HITS] ability.",
+            {"required_attacker_keywords": ["adepta sororitas"]},
+        ),
+        "Target Sighted": (
+            "At the start of your Shooting phase, select one enemy unit that is visible to this model. Until the end of the phase, each time a friendly Adeptus Astartes model makes an attack with a Blast weapon that targets that enemy unit, add 1 to the Hit roll and that attack has the [IGNORES COVER] ability.",
+            {
+                "required_attacker_keywords": ["adeptus astartes"],
+                "required_attack_keywords_any": ["blast"],
+            },
+        ),
+        "Spirit Thief": (
+            "At the start of your Shooting phase, select one visible enemy VEHICLE unit. Until the end of the phase, each time a friendly HERETIC ASTARTES model makes an attack that targets that unit, re-roll a Wound roll of 1.",
+            {
+                "required_attacker_keywords": ["heretic astartes"],
+                "required_target_keywords": ["vehicle"],
+            },
+        ),
+        "Blight Bombardment": (
+            "At the start of your Shooting phase, select one enemy unit within 30\" of and visible to this model. Until the end of the phase, each time a friendly Death Guard model makes a ranged attack that targets that unit, re-roll a Hit roll of 1 (if that attack is made with a Blast weapon, you can re-roll the Hit roll instead).",
+            {
+                "required_attacker_keywords": ["death guard"],
+                "blast_full_hit_reroll": True,
+            },
+        ),
+        "Aeronautica Commander": (
+            "At the start of your Shooting phase, select one enemy unit within 30\" of and visible to this unit’s Officer of the Fleet model. Until the end of the phase, each time a friendly Astra Militarum Aircraft model makes a ranged attack that targets that unit, add 1 to the Hit roll.",
+            {"required_attacker_keywords": ["astra militarum", "aircraft"]},
+        ),
+        "Daring Recon": (
+            "At the start of your Shooting phase, select one enemy unit within 18\" of and visible to this unit. Until the end of the phase, each time a friendly ASTRA MILITARUM model makes an attack that targets that unit, re-roll a Hit roll of 1.",
+            {"required_attacker_keywords": ["astra militarum"]},
+        ),
+        "Mischief and Confusion": (
+            "At the start of your opponent’s Shooting phase, select one enemy unit within 12\" of and visible to this model and roll one D6: on a 2-5, until the end of the phase, each time a model in that enemy unit makes an attack, subtract 1 from the Hit roll; on a 6, that enemy unit is not eligible to shoot this phase.",
+            {},
+        ),
+        "Forgefather": (
+            "In your Shooting phase, select one enemy unit within 24\" of and visible to this model. Until the end of the phase, each time a friendly ADEPTUS ASTARTES model makes a ranged attack with a Torrent or Melta weapon that targets that enemy unit, you can re-roll the Wound roll.",
+            {
+                "required_attacker_keywords": ["adeptus astartes"],
+                "required_attack_keywords_any": ["torrent", "melta"],
+            },
+        ),
+        "Paroxysm (Psychic)": (
+            "At the start of the Fight phase, you can select one enemy unit within 12\" of and visible to this model and roll one D6: on a 1, this PSYKER suffers D3 mortal wounds; on a 2+, until the end of the phase, subtract 1 from the Attacks characteristic of weapons equipped by models in that unit.",
+            {},
+        ),
+    }
+    expected = rules.get(name)
+    if expected is None or text.casefold() != expected[0].casefold():
+        return None
+    return {"source_relationship": "self_or_supporting_unit", **expected[1]}
+
+
 def combat_guidance_presets(
     name: str, description: str, allow_bearer_defenses: bool = False
 ) -> list[dict[str, object]]:
@@ -2721,6 +2821,9 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
            FROM datasheet_abilities ORDER BY datasheet_id, position"""
     ).fetchall()
     for datasheet_id, ability_position, name, description in abilities:
+        selected_target_classification = combat_selected_target_classification(
+            name, description
+        )
         for preset_position, preset in enumerate(
             combat_presets(
                 name,
@@ -2729,6 +2832,21 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
             ),
             start=1,
         ):
+            if selected_target_classification:
+                preset = {**preset, **selected_target_classification}
+                if preset.pop("blast_full_hit_reroll", False):
+                    preset["additional_effects"] = [
+                        *preset["additional_effects"],
+                        {
+                            "type": "reroll_hits",
+                            "value": 1,
+                            "dice_count": 0,
+                            "dice_sides": 0,
+                            "required_attack_keyword": "blast",
+                            "role": "attacker",
+                            "subject": "friendly_unit",
+                        },
+                    ]
             resolved_effects = []
             for effect in preset["additional_effects"]:
                 ability_name = effect.get("weapon_ability_name")
@@ -2858,6 +2976,29 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                 (
                     (datasheet_id, ability_position, preset_position, position, keyword)
                     for position, keyword in enumerate(required_supported_keywords, start=1)
+                ),
+            )
+            requirement_groups = (
+                ("attacker_all", preset.get("required_attacker_keywords", [])),
+                ("target_all", preset.get("required_target_keywords", [])),
+                ("attack_any", preset.get("required_attack_keywords_any", [])),
+            )
+            connection.executemany(
+                """INSERT INTO unit_combat_preset_keyword_requirements
+                   (datasheet_id, ability_position, preset_position, requirement_kind,
+                    keyword_position, keyword)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    (
+                        datasheet_id,
+                        ability_position,
+                        preset_position,
+                        requirement_kind,
+                        position,
+                        keyword,
+                    )
+                    for requirement_kind, keywords in requirement_groups
+                    for position, keyword in enumerate(keywords, start=1)
                 ),
             )
             for effect_position, effect in enumerate(resolved_effects, start=1):
@@ -3025,7 +3166,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "48"),
+                    ("schema_version", "49"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

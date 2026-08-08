@@ -1,5 +1,8 @@
 import { parseDice } from "./dice.mjs";
-import { combatPresetSupportsRole } from "./combat-presets.mjs";
+import {
+  combatPresetMatchesSourceRelationship,
+  combatPresetSupportsRole,
+} from "./combat-presets.mjs";
 
 export const AGENT_SCHEMA_VERSION = 1;
 
@@ -352,7 +355,7 @@ export function resolveAgentCatalogueSelection(input, catalogue) {
   const resolvePresets = (unit, name, relationship = "self") =>
     presetValues(search, name).map((value) => {
       const preset = matchOne(unit.combatPresets, value, name);
-      if ((preset.sourceRelationship ?? "self") !== relationship) {
+      if (!combatPresetMatchesSourceRelationship(preset, relationship)) {
         throw new Error(
           `${name} must identify a ${relationship === "supporting_unit" ? "supporting-unit" : "self"} ability`,
         );
@@ -390,7 +393,7 @@ export function resolveAgentCatalogueSelection(input, catalogue) {
     supportPresets: support
       ? requestedSupportPresets.map((value) => {
           const preset = matchOne(support.combatPresets, value, "supportPreset");
-          if ((preset.sourceRelationship ?? "self") !== "supporting_unit") {
+          if (!combatPresetMatchesSourceRelationship(preset, "supporting_unit")) {
             throw new Error("supportPreset must identify a supporting-unit ability");
           }
           if (!combatPresetSupportsRole(preset, "attacker")) {
@@ -403,7 +406,7 @@ export function resolveAgentCatalogueSelection(input, catalogue) {
     targetSupportPresets: targetSupport
       ? requestedTargetSupportPresets.map((value) => {
           const preset = matchOne(targetSupport.combatPresets, value, "targetSupportPreset");
-          if ((preset.sourceRelationship ?? "self") !== "supporting_unit") {
+          if (!combatPresetMatchesSourceRelationship(preset, "supporting_unit")) {
             throw new Error("targetSupportPreset must identify a supporting-unit ability");
           }
           if (!combatPresetSupportsRole(preset, "target")) {

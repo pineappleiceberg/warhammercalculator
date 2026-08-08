@@ -934,6 +934,7 @@ export default function Home() {
     targetClosestEligible = profile.targetClosestEligible,
     sourceTargetDistance = profile.attackerSourceTargetDistance,
     sourceTargetVisible = profile.attackerSourceCanSeeTarget,
+    attackerKeywords: string[] = unit?.models[0]?.keywords ?? [],
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -968,6 +969,7 @@ export default function Home() {
       targetClosestEligible,
       sourceTargetDistance,
       sourceTargetVisible,
+      attackerKeywords,
     );
   const withActivePresets = (
     current: Profile,
@@ -1080,6 +1082,7 @@ export default function Home() {
           baseProfile.targetClosestEligible,
           baseProfile.attackerSourceTargetDistance,
           baseProfile.attackerSourceCanSeeTarget,
+          selectedAttackerUnit?.models[0]?.keywords ?? [],
         ),
         ...selectedPresets(
           supportUnit,
@@ -1112,6 +1115,7 @@ export default function Home() {
           baseProfile.targetClosestEligible,
           baseProfile.attackerSourceTargetDistance,
           baseProfile.attackerSourceCanSeeTarget,
+          selectedAttackerUnit?.models[0]?.keywords ?? [],
         ),
       ],
       [
@@ -1147,6 +1151,7 @@ export default function Home() {
           baseProfile.targetClosestEligible,
           baseProfile.targetSourceAttackerDistance,
           baseProfile.targetSourceCanSeeAttacker,
+          selectedAttackerUnit?.models[0]?.keywords ?? [],
         ),
         ...selectedPresets(
           targetSupportUnit,
@@ -1179,11 +1184,13 @@ export default function Home() {
           baseProfile.targetClosestEligible,
           baseProfile.targetSourceAttackerDistance,
           baseProfile.targetSourceCanSeeAttacker,
+          selectedAttackerUnit?.models[0]?.keywords ?? [],
         ),
       ],
       weapon?.type ?? "Ranged",
       {
         targetKeywords,
+        attackerKeywords: selectedAttackerUnit?.models[0]?.keywords ?? [],
         attackKeywords: attackKeywordsForWeapon(weapon),
         targetDistance: baseProfile.targetDistance,
         attackerUnitModels: baseProfile.attackerUnitModels,

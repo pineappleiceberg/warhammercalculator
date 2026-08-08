@@ -72,6 +72,11 @@ export function combatPresetRequiresActivation(preset) {
   return preset.activation !== "inherent" && preset.activation !== "automatic";
 }
 
+export function combatPresetMatchesSourceRelationship(preset, relationship) {
+  const actual = preset.sourceRelationship ?? "self";
+  return actual === relationship || actual === "self_or_supporting_unit";
+}
+
 function normalizedKeyword(value) {
   return (value ?? "").normalize("NFKC").trim().toLocaleLowerCase("en");
 }
@@ -112,9 +117,11 @@ export function combatPresetMeetsEligibility(
   targetClosestEligible = false,
   sourceTargetDistance = 0,
   sourceTargetVisible = false,
+  attackerKeywords = [],
 ) {
   const targets = new Set(targetKeywords.map(normalizedKeyword));
   const attacks = new Set(attackKeywords.map(normalizedKeyword));
+  const attackers = new Set(attackerKeywords.map(normalizedKeyword));
   const supported = new Set(supportedUnitKeywords.map(normalizedKeyword));
   const distanceEligible =
     !preset.maximumTargetDistance ||
@@ -134,11 +141,39 @@ export function combatPresetMeetsEligibility(
   const supportedUnitEligible = (preset.requiredSupportedKeywords ?? []).every((keyword) =>
     supported.has(normalizedKeyword(keyword)),
   );
+  const attackerKeywordsEligible = (preset.requiredAttackerKeywords ?? []).every((keyword) =>
+    attackers.has(normalizedKeyword(keyword)),
+  );
+  const targetKeywordsEligible = (preset.requiredTargetKeywords ?? []).every((keyword) =>
+    targets.has(normalizedKeyword(keyword)),
+  );
+  const attackKeywordsEligible =
+    !(preset.requiredAttackKeywordsAny ?? []).length ||
+    preset.requiredAttackKeywordsAny.some((keyword) => attacks.has(normalizedKeyword(keyword)));
+  const hasUnscopedEffect =
+    preset.hitModifier !== 0 ||
+    preset.woundModifier !== 0 ||
+    preset.rerollHits ||
+    preset.rerollHitOnes ||
+    preset.rerollWounds ||
+    preset.rerollWoundOnes ||
+    !(preset.effects ?? []).length;
+  const hasEligibleAdditionalEffect = (preset.effects ?? []).some(
+    (effect) =>
+      (!effect.requiredTargetKeyword ||
+        targets.has(normalizedKeyword(effect.requiredTargetKeyword))) &&
+      (!effect.requiredAttackKeyword ||
+        attacks.has(normalizedKeyword(effect.requiredAttackKeyword))),
+  );
   return (
     distanceEligible &&
     sourceTargetDistanceEligible &&
     supportDistanceEligible &&
     supportedUnitEligible &&
+    attackerKeywordsEligible &&
+    targetKeywordsEligible &&
+    attackKeywordsEligible &&
+    (hasUnscopedEffect || hasEligibleAdditionalEffect) &&
     strengthEligible &&
     (!preset.requiresAttackerCharge || attackerCharged) &&
     (!preset.requiresAttackerStationary || attackerRemainedStationary) &&
@@ -161,14 +196,7 @@ export function combatPresetMeetsEligibility(
     (!preset.requiresTargetClosestEligible || targetClosestEligible) &&
     (!preset.requiresSourceTargetVisible || sourceTargetVisible) &&
     (!preset.requiresTargetBattleShocked || targetBattleShocked) &&
-    (!preset.requiresAttackerNotBattleShocked || !attackerBattleShocked) &&
-    (preset.effects ?? []).every(
-      (effect) =>
-        (!effect.requiredTargetKeyword ||
-          targets.has(normalizedKeyword(effect.requiredTargetKeyword))) &&
-        (!effect.requiredAttackKeyword ||
-          attacks.has(normalizedKeyword(effect.requiredAttackKeyword))),
-    )
+    (!preset.requiresAttackerNotBattleShocked || !attackerBattleShocked)
   );
 }
 
@@ -205,11 +233,12 @@ export function selectedAndAutomaticCombatPresets(
   targetClosestEligible = false,
   sourceTargetDistance = 0,
   sourceTargetVisible = false,
+  attackerKeywords = supportedUnitKeywords,
 ) {
   const selected = new Set(selectedIds);
   return presets.filter(
     (preset) =>
-      (preset.sourceRelationship ?? "self") === sourceRelationship &&
+      combatPresetMatchesSourceRelationship(preset, sourceRelationship) &&
       (selected.has(preset.id) || preset.activation === "automatic") &&
       combatPresetSupportsWeapon(preset, weaponType, weaponName) &&
       combatPresetMeetsEligibility(
@@ -241,6 +270,7 @@ export function selectedAndAutomaticCombatPresets(
         targetClosestEligible,
         sourceTargetDistance,
         sourceTargetVisible,
+        attackerKeywords,
       ),
   );
 }
@@ -309,6 +339,7 @@ export function combatPresetEffects(
   targetClosestEligible = false,
   sourceTargetDistance = 0,
   sourceTargetVisible = false,
+  attackerKeywords = [],
 ) {
   const applicable = presets.filter(
     (preset) =>
@@ -343,6 +374,7 @@ export function combatPresetEffects(
         targetClosestEligible,
         sourceTargetDistance,
         sourceTargetVisible,
+        attackerKeywords,
       ),
   );
   const hitModifiers = applicable.filter((preset) =>
@@ -367,6 +399,16 @@ export function combatPresetEffects(
     .filter(
       (effect) =>
         matchesRole(effect.role, role) &&
+        (!effect.requiredTargetKeyword ||
+          targetKeywords.some(
+            (keyword) =>
+              normalizedKeyword(keyword) === normalizedKeyword(effect.requiredTargetKeyword),
+          )) &&
+        (!effect.requiredAttackKeyword ||
+          attackKeywords.some(
+            (keyword) =>
+              normalizedKeyword(keyword) === normalizedKeyword(effect.requiredAttackKeyword),
+          )) &&
         (!effect.weaponName ||
           normalizedWeaponName(effect.weaponName) === normalizedWeaponName(weaponName)),
     );
@@ -459,10 +501,14 @@ export function combatPresetEffects(
     damageMultiplier: multiplier("damage_multiplier"),
     hitModifier: hitModifiers.reduce((sum, preset) => sum + preset.hitModifier, 0),
     woundModifier: woundModifiers.reduce((sum, preset) => sum + preset.woundModifier, 0),
-    rerollHits: hitRerolls.some((preset) => preset.rerollHits),
+    rerollHits:
+      hitRerolls.some((preset) => preset.rerollHits) ||
+      additional.some((effect) => effect.type === "reroll_hits"),
     rerollHitOnes:
       !hitRerolls.some((preset) => preset.rerollHits) &&
-      hitRerolls.some((preset) => preset.rerollHitOnes),
+      !additional.some((effect) => effect.type === "reroll_hits") &&
+      (hitRerolls.some((preset) => preset.rerollHitOnes) ||
+        additional.some((effect) => effect.type === "reroll_hit_ones")),
     rerollWounds: woundRerolls.some((preset) => preset.rerollWounds),
     rerollWoundOnes:
       !woundRerolls.some((preset) => preset.rerollWounds) &&
@@ -569,7 +615,12 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
   const uniqueContexts = [
     ...new Map(
       contexts.map((context) => [
-        JSON.stringify([context.weaponType, context.weaponName, context.attackKeywords]),
+        JSON.stringify([
+          context.weaponType,
+          context.weaponName,
+          context.attackKeywords,
+          context.attackerKeywords,
+        ]),
         context,
       ]),
     ).values(),
@@ -618,6 +669,7 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
       context.targetClosestEligible ?? false,
       context.targetSourceAttackerDistance ?? 0,
       context.targetSourceCanSeeAttacker ?? false,
+      context.attackerKeywords ?? [],
     ),
   );
   const candidates = effects.map((effect) =>
@@ -720,6 +772,7 @@ export function applyCombatPresets(
     context.targetClosestEligible ?? profile.targetClosestEligible ?? false,
     context.attackerSourceTargetDistance ?? profile.attackerSourceTargetDistance ?? 0,
     context.attackerSourceCanSeeTarget ?? profile.attackerSourceCanSeeTarget ?? false,
+    context.attackerKeywords ?? context.supportedUnitKeywords ?? [],
   );
   const target = combatPresetEffects(
     targetPresets,
@@ -765,6 +818,7 @@ export function applyCombatPresets(
     context.targetClosestEligible ?? profile.targetClosestEligible ?? false,
     context.targetSourceAttackerDistance ?? profile.targetSourceAttackerDistance ?? 0,
     context.targetSourceCanSeeAttacker ?? profile.targetSourceCanSeeAttacker ?? false,
+    context.attackerKeywords ?? [],
   );
   const attacksReplacements = [attacker.attacksReplacement, target.attacksReplacement].filter(
     (value) => value > 0,

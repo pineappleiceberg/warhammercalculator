@@ -173,6 +173,24 @@ def export(database: Path, output: Path) -> None:
                 (row["datasheet_id"], row["ability_position"], row["preset_position"]), []
             ).append(row["keyword"])
 
+        keyword_requirements: dict[tuple[str, int, int, str], list[str]] = {}
+        for row in connection.execute(
+            """SELECT datasheet_id, ability_position, preset_position,
+                      requirement_kind, keyword
+               FROM unit_combat_preset_keyword_requirements
+               ORDER BY datasheet_id, ability_position, preset_position,
+                        requirement_kind, keyword_position"""
+        ):
+            keyword_requirements.setdefault(
+                (
+                    row["datasheet_id"],
+                    row["ability_position"],
+                    row["preset_position"],
+                    row["requirement_kind"],
+                ),
+                [],
+            ).append(row["keyword"])
+
         for row in connection.execute(
             """SELECT datasheet_id, ability_position, preset_position, name, description_text,
                       is_exclusive_choice, activation, source_relationship, uses_per_battle,
@@ -236,6 +254,33 @@ def export(database: Path, output: Path) -> None:
                     **(
                         {"requiredSupportedKeywords": supported_keywords[preset_key]}
                         if preset_key in supported_keywords
+                        else {}
+                    ),
+                    **(
+                        {
+                            "requiredAttackerKeywords": keyword_requirements[
+                                (*preset_key, "attacker_all")
+                            ]
+                        }
+                        if (*preset_key, "attacker_all") in keyword_requirements
+                        else {}
+                    ),
+                    **(
+                        {
+                            "requiredTargetKeywords": keyword_requirements[
+                                (*preset_key, "target_all")
+                            ]
+                        }
+                        if (*preset_key, "target_all") in keyword_requirements
+                        else {}
+                    ),
+                    **(
+                        {
+                            "requiredAttackKeywordsAny": keyword_requirements[
+                                (*preset_key, "attack_any")
+                            ]
+                        }
+                        if (*preset_key, "attack_any") in keyword_requirements
                         else {}
                     ),
                     **(

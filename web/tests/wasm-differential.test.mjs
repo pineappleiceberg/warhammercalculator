@@ -3053,10 +3053,12 @@ test("selected-target LOS and source range gate C/Wasm modifiers independently",
   const atBoundary = applyCombatPresets(base, [doom], [], "Ranged", {
     attackerSourceTargetDistance: 18,
     attackerSourceCanSeeTarget: true,
+    attackerKeywords: ["Aeldari"],
   });
   const beyondBoundary = applyCombatPresets(base, [doom], [], "Ranged", {
     attackerSourceTargetDistance: 19,
     attackerSourceCanSeeTarget: true,
+    attackerKeywords: ["Aeldari"],
   });
   assert.equal(atBoundary.woundModifier, 1);
   assert.equal(beyondBoundary.woundModifier, 0);
@@ -3064,6 +3066,70 @@ test("selected-target LOS and source range gate C/Wasm modifiers independently",
     lessThanOrEqual(
       exactMean({ attacks: 6, woundModifier: beyondBoundary.woundModifier, save: 7 }),
       exactMean({ attacks: 6, woundModifier: atBoundary.woundModifier, save: 7 }),
+    ),
+  );
+});
+
+test("cross-unit selected-target qualifiers reach exact C/Wasm volleys", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const preset = (unitName, presetName) =>
+    catalogue.units
+      .find((unit) => unit.name === unitName)
+      .combatPresets.find((candidate) => candidate.name === presetName);
+  const base = {
+    hitModifier: 0,
+    woundModifier: 0,
+    rerollHits: false,
+    rerollHitOnes: false,
+    rerollWounds: false,
+    rerollWoundOnes: false,
+    attacksMultiplier: 1,
+    strengthMultiplier: 1,
+    damageMultiplier: 1,
+    damageReplacement: null,
+  };
+  const blight = preset("Lord of Virulence", "Blight Bombardment");
+  const composeBlight = (attackerKeywords, attackKeywords) =>
+    applyCombatPresets(base, [blight], [], "Ranged", {
+      attackerSourceTargetDistance: 30,
+      attackerSourceCanSeeTarget: true,
+      attackerKeywords,
+      attackKeywords,
+    });
+  const baseline = composeBlight(["Death Guard"], []);
+  const blast = composeBlight(["Death Guard"], ["Blast"]);
+  const wrongFaction = composeBlight(["Necrons"], ["Blast"]);
+  assert.deepEqual([baseline.rerollHits, baseline.rerollHitOnes], [false, true]);
+  assert.deepEqual([blast.rerollHits, blast.rerollHitOnes], [true, false]);
+  assert.deepEqual([wrongFaction.rerollHits, wrongFaction.rerollHitOnes], [false, false]);
+  const volley = { attacks: 12, hitOn: 4, strength: 8, toughness: 8, save: 7 };
+  const wrongMean = exactMean({ ...volley, ...wrongFaction });
+  const baselineMean = exactMean({ ...volley, ...baseline });
+  const blastMean = exactMean({ ...volley, ...blast });
+  assert.ok(lessThanOrEqual(wrongMean, baselineMean));
+  assert.ok(lessThanOrEqual(baselineMean, blastMean));
+
+  const targetSighted = preset("Land Speeder", "Target Sighted");
+  const qualified = applyCombatPresets(base, [targetSighted], [], "Ranged", {
+    attackerSourceCanSeeTarget: true,
+    attackerKeywords: ["Adeptus Astartes"],
+    attackKeywords: ["Blast"],
+  });
+  const wrongWeapon = applyCombatPresets(base, [targetSighted], [], "Ranged", {
+    attackerSourceCanSeeTarget: true,
+    attackerKeywords: ["Adeptus Astartes"],
+    attackKeywords: ["Melta"],
+  });
+  assert.equal(qualified.hitModifier, 1);
+  assert.equal(qualified.ignoresCover, true);
+  assert.equal(wrongWeapon.hitModifier, 0);
+  assert.equal(wrongWeapon.ignoresCover, false);
+  assert.ok(
+    lessThanOrEqual(
+      exactMean({ ...volley, ...wrongWeapon }),
+      exactMean({ ...volley, ...qualified }),
     ),
   );
 });

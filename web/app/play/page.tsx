@@ -255,6 +255,7 @@ export default function PlayMode() {
     targetClosestEligible = profile.targetClosestEligible,
     sourceTargetDistance = profile.attackerSourceTargetDistance,
     sourceTargetVisible = profile.attackerSourceCanSeeTarget,
+    attackerKeywords: string[] = unit?.models[0]?.keywords ?? [],
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -289,6 +290,7 @@ export default function PlayMode() {
       targetClosestEligible,
       sourceTargetDistance,
       sourceTargetVisible,
+      attackerKeywords,
     );
 
   const refreshProfile = (
@@ -423,6 +425,7 @@ export default function PlayMode() {
             nextTargetClosestEligible,
             nextAttackerSourceTargetDistance,
             nextAttackerSourceCanSeeTarget,
+            attackerCatalogueUnit?.models[0]?.keywords ?? [],
           ),
           ...selectedCombatPresets(
             nextSupportPresetIds,
@@ -455,6 +458,7 @@ export default function PlayMode() {
             nextTargetClosestEligible,
             nextAttackerSourceTargetDistance,
             nextAttackerSourceCanSeeTarget,
+            attackerCatalogueUnit?.models[0]?.keywords ?? [],
           ),
         ],
         [
@@ -490,6 +494,7 @@ export default function PlayMode() {
             nextTargetClosestEligible,
             nextTargetSourceAttackerDistance,
             nextTargetSourceCanSeeAttacker,
+            attackerCatalogueUnit?.models[0]?.keywords ?? [],
           ),
           ...selectedCombatPresets(
             nextTargetSupportPresetIds,
@@ -522,11 +527,13 @@ export default function PlayMode() {
             nextTargetClosestEligible,
             nextTargetSourceAttackerDistance,
             nextTargetSourceCanSeeAttacker,
+            attackerCatalogueUnit?.models[0]?.keywords ?? [],
           ),
         ],
         weapon.type,
         {
           targetKeywords: model.keywords,
+          attackerKeywords: attackerCatalogueUnit?.models[0]?.keywords ?? [],
           attackKeywords: attackKeywordsForWeapon(weapon),
           targetDistance: nextTargetDistance,
           attackerUnitModels: nextAttackerUnitModels,
@@ -1011,6 +1018,7 @@ export default function PlayMode() {
             nextTargetClosestEligible,
             nextAttackerSourceTargetDistance,
             nextAttackerSourceCanSeeTarget,
+            attackerCatalogueUnit?.models[0]?.keywords ?? [],
           ),
           ...selectedCombatPresets(
             activeSupportPresetIds,
@@ -1043,6 +1051,7 @@ export default function PlayMode() {
             nextTargetClosestEligible,
             nextAttackerSourceTargetDistance,
             nextAttackerSourceCanSeeTarget,
+            attackerCatalogueUnit?.models[0]?.keywords ?? [],
           ),
         ],
         selectedCombatPresets(
@@ -1077,10 +1086,12 @@ export default function PlayMode() {
           nextTargetClosestEligible,
           nextTargetSourceAttackerDistance,
           nextTargetSourceCanSeeAttacker,
+          attackerCatalogueUnit?.models[0]?.keywords ?? [],
         ),
         weaponProfile.type,
         {
           targetKeywords: model.keywords,
+          attackerKeywords: attackerCatalogueUnit?.models[0]?.keywords ?? [],
           attackKeywords: attackKeywordsForWeapon(weaponProfile),
           targetDistance: profile.targetDistance,
           attackerUnitModels: profile.attackerUnitModels,

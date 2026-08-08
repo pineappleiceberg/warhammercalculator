@@ -3,6 +3,7 @@
 import type { CatalogueCombatPreset } from "../lib/catalogue";
 import {
   combatPresetRequiresActivation,
+  combatPresetMatchesSourceRelationship,
   combatPresetSubjectSummary,
   combatPresetSupportsRole,
   updateCombatPresetSelection,
@@ -57,7 +58,7 @@ export function CombatPresetSelector({
 }: Props) {
   const available = presets.filter(
     (preset) =>
-      (preset.sourceRelationship ?? "self") === sourceRelationship &&
+      combatPresetMatchesSourceRelationship(preset, sourceRelationship) &&
       combatPresetRequiresActivation(preset) &&
       combatPresetSupportsRole(preset, role),
   );
@@ -133,6 +134,19 @@ export function CombatPresetSelector({
                 )
                   ? " · eligible"
                   : " · ineligible"}
+              </small>
+            ) : null}
+            {preset.requiredAttackerKeywords?.length ? (
+              <small>
+                Requires attacker keywords: {preset.requiredAttackerKeywords.join(", ")}
+              </small>
+            ) : null}
+            {preset.requiredTargetKeywords?.length ? (
+              <small>Requires target keywords: {preset.requiredTargetKeywords.join(", ")}</small>
+            ) : null}
+            {preset.requiredAttackKeywordsAny?.length ? (
+              <small>
+                Requires weapon keyword: {preset.requiredAttackKeywordsAny.join(" or ")}
               </small>
             ) : null}
             {preset.requiresAttackerCharge ? (

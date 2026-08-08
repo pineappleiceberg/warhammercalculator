@@ -1,7 +1,10 @@
 "use client";
 
 import type { CatalogueCombatPreset } from "../lib/catalogue";
-import { combatPresetSupportsRole } from "../lib/combat-presets.mjs";
+import {
+  combatPresetMatchesSourceRelationship,
+  combatPresetSupportsRole,
+} from "../lib/combat-presets.mjs";
 import { CombatPresetSelector } from "./combat-preset-selector";
 import {
   commitSupportPresetSelection,
@@ -47,7 +50,8 @@ export function SupportPresetSelector({
   const supportUnits = units.filter((unit) =>
     unit.combatPresets.some(
       (preset) =>
-        preset.sourceRelationship === "supporting_unit" && combatPresetSupportsRole(preset, role),
+        combatPresetMatchesSourceRelationship(preset, "supporting_unit") &&
+        combatPresetSupportsRole(preset, role),
     ),
   );
   if (!supportUnits.length) return null;
@@ -55,7 +59,8 @@ export function SupportPresetSelector({
   const tracked = Boolean(onSupportUsesChange);
   const limitedPresets =
     selectedUnit?.combatPresets.filter(
-      (preset) => preset.sourceRelationship === "supporting_unit" && preset.usesPerBattle,
+      (preset) =>
+        combatPresetMatchesSourceRelationship(preset, "supporting_unit") && preset.usesPerBattle,
     ) ?? [];
   const remaining = Object.fromEntries(
     limitedPresets.map((preset) => [
@@ -80,7 +85,8 @@ export function SupportPresetSelector({
         <>
           {selectedUnit.combatPresets.some(
             (preset) =>
-              preset.sourceRelationship === "supporting_unit" && preset.maximumSupportDistance,
+              combatPresetMatchesSourceRelationship(preset, "supporting_unit") &&
+              preset.maximumSupportDistance,
           ) && onSupportDistanceChange ? (
             <label>
               <span>Distance from supporting unit</span>
@@ -128,9 +134,9 @@ export function SupportPresetSelector({
             hint={
               tracked && limitedPresets.length
                 ? "Turning on a limited ability spends one use. Leave it on while resolving every weapon it supports."
-                : `Select an ability only when this unit is providing it to the ${
-                    role === "target" ? "target" : "attacker"
-                  } in this matchup.`
+                : `Select an ability only when this unit is providing it for the ${
+                    role === "target" ? "defending" : "attacking"
+                  } side of this matchup.`
             }
             sourceRelationship="supporting_unit"
             supportDistance={supportDistance}

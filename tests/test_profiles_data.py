@@ -9,6 +9,7 @@ from scripts.build_profiles_db import (
     combat_preset,
     combat_presets,
     combat_selected_enemy_target_requirements,
+    combat_selected_target_classification,
     combat_guidance_presets,
     composition_components,
     composition_range,
@@ -476,6 +477,43 @@ class ProfileDataTests(unittest.TestCase):
             ),
             (None, False),
         )
+
+    def test_selected_target_classification_is_exact_and_preserves_qualifiers(self):
+        blight = (
+            'At the start of your Shooting phase, select one enemy unit within 30" of and '
+            "visible to this model. Until the end of the phase, each time a friendly Death "
+            "Guard model makes a ranged attack that targets that unit, re-roll a Hit roll of "
+            "1 (if that attack is made with a Blast weapon, you can re-roll the Hit roll "
+            "instead)."
+        )
+        self.assertEqual(
+            combat_selected_target_classification("Blight Bombardment", blight),
+            {
+                "source_relationship": "self_or_supporting_unit",
+                "required_attacker_keywords": ["death guard"],
+                "blast_full_hit_reroll": True,
+            },
+        )
+        forgefather = (
+            'In your Shooting phase, select one enemy unit within 24" of and visible to this '
+            "model. Until the end of the phase, each time a friendly ADEPTUS ASTARTES model "
+            "makes a ranged attack with a Torrent or Melta weapon that targets that enemy "
+            "unit, you can re-roll the Wound roll."
+        )
+        self.assertEqual(
+            combat_selected_target_classification("Forgefather", forgefather),
+            {
+                "source_relationship": "self_or_supporting_unit",
+                "required_attacker_keywords": ["adeptus astartes"],
+                "required_attack_keywords_any": ["torrent", "melta"],
+            },
+        )
+        self.assertIsNone(
+            combat_selected_target_classification(
+                "Blight Bombardment", blight.replace('within 30"', 'within 24"')
+            )
+        )
+        self.assertIsNone(combat_selected_target_classification("Unknown Rule", blight))
 
     def test_combat_preset_parser_projects_combat_effects_from_objective_control_text(self):
         black_rage = (
@@ -1479,7 +1517,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "48",
+                "49",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1843,6 +1881,48 @@ class ProfileDataTests(unittest.TestCase):
                 ("Eldrad Ulthran", "Doom (Psychic)", 18, "situational"),
                 visible_target_rows,
             )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT source_relationship, count(*)
+                       FROM unit_combat_presets
+                       WHERE requires_source_target_visible = 1
+                       GROUP BY source_relationship ORDER BY source_relationship"""
+                ).fetchall(),
+                [("self", 2), ("self_or_supporting_unit", 18)],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT requirement_kind, keyword, count(*)
+                       FROM unit_combat_preset_keyword_requirements
+                       GROUP BY requirement_kind, keyword
+                       ORDER BY requirement_kind, keyword"""
+                ).fetchall(),
+                [
+                    ("attack_any", "blast", 1),
+                    ("attack_any", "melta", 1),
+                    ("attack_any", "torrent", 1),
+                    ("attacker_all", "adepta sororitas", 1),
+                    ("attacker_all", "adeptus astartes", 2),
+                    ("attacker_all", "aeldari", 2),
+                    ("attacker_all", "aircraft", 2),
+                    ("attacker_all", "astra militarum", 4),
+                    ("attacker_all", "death guard", 1),
+                    ("attacker_all", "heretic astartes", 1),
+                    ("attacker_all", "infantry", 1),
+                    ("attacker_all", "vehicle", 1),
+                    ("target_all", "vehicle", 1),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT effect_type, required_attack_keyword, application_role, subject
+                       FROM unit_combat_preset_effects
+                       JOIN unit_combat_presets USING
+                            (datasheet_id, ability_position, preset_position)
+                       WHERE unit_combat_presets.name = 'Blight Bombardment'"""
+                ).fetchall(),
+                [("reroll_hits", "blast", "attacker", "friendly_unit")],
+            )
             self.assertIn(
                 ("Sorcerer In Terminator Armour", "Marked by Fate (Psychic)", None, "situational"),
                 visible_target_rows,
@@ -1975,7 +2055,11 @@ class ProfileDataTests(unittest.TestCase):
                        FROM unit_combat_presets
                        GROUP BY source_relationship ORDER BY source_relationship"""
                 ).fetchall(),
-                [("self", 1971), ("supporting_unit", 19)],
+                [
+                    ("self", 1953),
+                    ("self_or_supporting_unit", 18),
+                    ("supporting_unit", 19),
+                ],
             )
             self.assertEqual(
                 connection.execute(
@@ -3078,6 +3162,32 @@ class ProfileDataTests(unittest.TestCase):
                 if unit == "Eldrad Ulthran" and preset["name"] == "Doom (Psychic)"
             ),
             18,
+        )
+        doom = next(
+            preset
+            for unit, preset in visible_target_presets
+            if unit == "Eldrad Ulthran" and preset["name"] == "Doom (Psychic)"
+        )
+        self.assertEqual(doom["sourceRelationship"], "self_or_supporting_unit")
+        self.assertEqual(doom["requiredAttackerKeywords"], ["aeldari"])
+        target_sighted = next(
+            preset
+            for unit, preset in visible_target_presets
+            if unit == "Land Speeder" and preset["name"] == "Target Sighted"
+        )
+        self.assertEqual(target_sighted["requiredAttackKeywordsAny"], ["blast"])
+        blight = next(
+            preset
+            for unit, preset in visible_target_presets
+            if unit == "Lord of Virulence" and preset["name"] == "Blight Bombardment"
+        )
+        self.assertEqual(blight["requiredAttackerKeywords"], ["death guard"])
+        self.assertEqual(
+            [
+                (effect["type"], effect.get("requiredAttackKeyword"))
+                for effect in blight["effects"]
+            ],
+            [("reroll_hits", "blast")],
         )
         brigand = next(
             unit for unit in catalogue["units"] if unit["name"] == "Leman Russ Battle Tank"

@@ -303,6 +303,26 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
       subject: "self",
     },
   ]);
+  const eldrad = catalogue.units.find((unit) => unit.name === "Eldrad Ulthran");
+  const doom = eldrad.combatPresets.find((preset) => preset.name === "Doom (Psychic)");
+  assert.equal(doom.sourceRelationship, "self_or_supporting_unit");
+  assert.deepEqual(doom.requiredAttackerKeywords, ["aeldari"]);
+  const lordOfVirulence = catalogue.units.find((unit) => unit.name === "Lord of Virulence");
+  const blight = lordOfVirulence.combatPresets.find(
+    (preset) => preset.name === "Blight Bombardment",
+  );
+  assert.deepEqual(blight.requiredAttackerKeywords, ["death guard"]);
+  assert.deepEqual(blight.effects, [
+    {
+      type: "reroll_hits",
+      value: 1,
+      diceCount: 0,
+      diceSides: 0,
+      requiredAttackKeyword: "blast",
+      role: "attacker",
+      subject: "friendly_unit",
+    },
+  ]);
   const captain = catalogue.units.find((unit) => unit.id === "000000073");
   const finestHour = captain.combatPresets.find((preset) => preset.name === "Finest Hour");
   assert.equal(finestHour.weaponScope, "Melee");

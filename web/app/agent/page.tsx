@@ -203,6 +203,7 @@ export default function AgentCalculator() {
               targetClosestEligible,
               attackerSourceTargetDistance,
               attackerSourceCanSeeTarget,
+              selection.attacker.models[0]?.keywords ?? [],
             ),
             ...selectedAndAutomaticCombatPresets(
               selection.support?.combatPresets ?? [],
@@ -237,6 +238,7 @@ export default function AgentCalculator() {
               targetClosestEligible,
               attackerSourceTargetDistance,
               attackerSourceCanSeeTarget,
+              selection.attacker.models[0]?.keywords ?? [],
             ),
           ];
           const targetPresets = [
@@ -273,6 +275,7 @@ export default function AgentCalculator() {
               targetClosestEligible,
               targetSourceAttackerDistance,
               targetSourceCanSeeAttacker,
+              selection.attacker.models[0]?.keywords ?? [],
             ),
             ...selectedAndAutomaticCombatPresets(
               selection.targetSupport?.combatPresets ?? [],
@@ -307,6 +310,7 @@ export default function AgentCalculator() {
               targetClosestEligible,
               targetSourceAttackerDistance,
               targetSourceCanSeeAttacker,
+              selection.attacker.models[0]?.keywords ?? [],
             ),
           ];
           profile = applyCombatPresets(
@@ -316,6 +320,7 @@ export default function AgentCalculator() {
             selection.weapon.type,
             {
               targetKeywords: selection.model.keywords,
+              attackerKeywords: selection.attacker.models[0]?.keywords ?? [],
               attackKeywords: attackKeywordsForWeapon(selection.weapon),
               targetDistance: requestedDistance,
               attackerUnitModels,
@@ -367,9 +372,13 @@ export default function AgentCalculator() {
             supportPresets: selection.supportPresets.map((preset) => ({
               id: preset.id,
               name: preset.name,
+              sourceRelationship: preset.sourceRelationship,
               usesPerBattle: preset.usesPerBattle ?? null,
               maximumSupportDistance: preset.maximumSupportDistance ?? null,
               requiredSupportedKeywords: preset.requiredSupportedKeywords ?? [],
+              requiredAttackerKeywords: preset.requiredAttackerKeywords ?? [],
+              requiredTargetKeywords: preset.requiredTargetKeywords ?? [],
+              requiredAttackKeywordsAny: preset.requiredAttackKeywordsAny ?? [],
             })),
             targetSupport: selection.targetSupport
               ? { id: selection.targetSupport.id, name: selection.targetSupport.name }
@@ -377,19 +386,31 @@ export default function AgentCalculator() {
             targetSupportPresets: selection.targetSupportPresets.map((preset) => ({
               id: preset.id,
               name: preset.name,
+              sourceRelationship: preset.sourceRelationship,
               usesPerBattle: preset.usesPerBattle ?? null,
               maximumSupportDistance: preset.maximumSupportDistance ?? null,
               requiredSupportedKeywords: preset.requiredSupportedKeywords ?? [],
+              requiredAttackerKeywords: preset.requiredAttackerKeywords ?? [],
+              requiredTargetKeywords: preset.requiredTargetKeywords ?? [],
+              requiredAttackKeywordsAny: preset.requiredAttackKeywordsAny ?? [],
             })),
             attackerPresets: attackerPresets.map((preset) => ({
               id: preset.id,
               name: preset.name,
               automatic: preset.activation === "automatic",
+              sourceRelationship: preset.sourceRelationship,
+              requiredAttackerKeywords: preset.requiredAttackerKeywords ?? [],
+              requiredTargetKeywords: preset.requiredTargetKeywords ?? [],
+              requiredAttackKeywordsAny: preset.requiredAttackKeywordsAny ?? [],
             })),
             targetPresets: targetPresets.map((preset) => ({
               id: preset.id,
               name: preset.name,
               automatic: preset.activation === "automatic",
+              sourceRelationship: preset.sourceRelationship,
+              requiredAttackerKeywords: preset.requiredAttackerKeywords ?? [],
+              requiredTargetKeywords: preset.requiredTargetKeywords ?? [],
+              requiredAttackKeywordsAny: preset.requiredAttackKeywordsAny ?? [],
             })),
           };
         } else {
