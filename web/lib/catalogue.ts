@@ -25,6 +25,9 @@ export type CatalogueWeapon = {
 export type CatalogueModel = {
   id: number;
   name: string;
+  sourceModelId?: number;
+  compositionPosition?: number;
+  compositionComponentPosition?: number;
   t: number | null;
   save: number | null;
   invuln: number | null;

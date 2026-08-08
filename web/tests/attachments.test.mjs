@@ -735,6 +735,124 @@ test("defensive equipment source bounds require explicit saved-list overrides", 
   );
 });
 
+test("grouped Veteran statlines expose exact composition-backed shield bearers", () => {
+  const command = namedUnit("Command Squad");
+  assert.deepEqual(
+    catalogueModelSegments(command, 5).segments.map(({ model, modelCount }) => [
+      model.name,
+      modelCount,
+      model.sourceModelId,
+    ]),
+    [
+      ["Apothecary", 1, 953],
+      ["Company Ancient", 1, 953],
+      ["Company Champion", 1, 953],
+      ["Company Veterans", 2, 953],
+    ],
+  );
+  const commandShield = command.defensiveEquipment.find(
+    (option) => option.name === "Astartes Shield",
+  );
+  assert.ok(commandShield);
+  assert.equal(commandShield.eligibilityExact, true);
+  assert.equal(commandShield.limitExact, true);
+  assert.deepEqual(
+    command.models
+      .filter((model) => commandShield.eligibleModelIds.includes(model.id))
+      .map((model) => model.name),
+    ["Company Champion", "Company Veterans"],
+  );
+  const champion = command.models.find((model) => model.name === "Company Champion");
+  const veterans = command.models.find((model) => model.name === "Company Veterans");
+  const commandSaved = {
+    id: "command",
+    unitId: command.id,
+    name: command.name,
+    modelCount: 5,
+  };
+  assert.deepEqual(savedUnitDefensiveEquipmentDefaults(commandSaved, command), {
+    [defensiveEquipmentSelectionKey("command", champion.id, commandShield.id)]: 1,
+  });
+  assert.deepEqual(
+    savedUnitDefensiveEquipmentDefaults(
+      {
+        ...commandSaved,
+        defensiveEquipmentCounts: {
+          [defensiveEquipmentSelectionKey("command", champion.sourceModelId, commandShield.id)]: 3,
+        },
+      },
+      command,
+    ),
+    {
+      [defensiveEquipmentSelectionKey("command", champion.id, commandShield.id)]: 1,
+      [defensiveEquipmentSelectionKey("command", veterans.id, commandShield.id)]: 2,
+    },
+  );
+  assert.deepEqual(
+    savedUnitDefensiveEquipmentWarnings(
+      {
+        ...commandSaved,
+        defensiveEquipmentCounts: {
+          [defensiveEquipmentSelectionKey("command", champion.sourceModelId, commandShield.id)]: 3,
+        },
+      },
+      command,
+    ),
+    [],
+  );
+  assert.match(
+    savedUnitDefensiveEquipmentWarnings(
+      {
+        ...commandSaved,
+        defensiveEquipmentCounts: {
+          [defensiveEquipmentSelectionKey("command", champion.id, commandShield.id)]: 1,
+          [defensiveEquipmentSelectionKey("command", veterans.id, commandShield.id)]: 3,
+        },
+      },
+      command,
+    )[0].message,
+    /maximum of 3 for 5 models/i,
+  );
+
+  const bikes = namedUnit("Company Veterans On Bikes");
+  assert.deepEqual(
+    catalogueModelSegments(bikes, 5).segments.map(({ model, modelCount }) => [
+      model.name,
+      modelCount,
+    ]),
+    [
+      ["Veteran Biker Sergeant", 1],
+      ["Veteran Bikers", 4],
+    ],
+  );
+  const stormShield = bikes.defensiveEquipment.find((option) => option.name === "Storm Shield");
+  const bikeVeterans = bikes.models.find((model) => model.name === "Veteran Bikers");
+  assert.ok(stormShield);
+  assert.equal(stormShield.eligibilityExact, true);
+  assert.equal(stormShield.limitExact, true);
+  assert.deepEqual(
+    bikes.models
+      .filter((model) => stormShield.eligibleModelIds.includes(model.id))
+      .map((model) => model.name),
+    ["Veteran Bikers"],
+  );
+  assert.match(
+    savedUnitDefensiveEquipmentWarnings(
+      {
+        id: "bikes",
+        unitId: bikes.id,
+        name: bikes.name,
+        modelCount: 5,
+        defensiveEquipmentCounts: {
+          [defensiveEquipmentSelectionKey("bikes", bikeVeterans.id, stormShield.id)]: 5,
+        },
+      },
+      bikes,
+    )[0].message,
+    /maximum of 4 for 5 models/i,
+  );
+});
+
 test("Model vs Model applies selected equipment only to matching attacks", () => {
   const hounds = namedUnit("Flesh Hounds");
   const collar = hounds.defensiveEquipment.find((option) => option.name === "Collar of Khorne");

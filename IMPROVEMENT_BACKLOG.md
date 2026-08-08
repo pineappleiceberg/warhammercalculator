@@ -16,14 +16,27 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Split grouped model profiles where source composition combines eligible and
-   ineligible defensive-equipment bearers, eliminating the remaining
-   conservative `eligibilityExact=false` cases without guessing.
+1. Continue source-backed composition splits for the 25 defensive-equipment
+   options across 22 datasheets whose published statlines still group eligible
+   and ineligible bearers; eliminate each remaining `eligibilityExact=false`
+   case without guessing identities or stats.
 2. Normalize replacement and mutual-exclusion links between defensive equipment
    and structured weapon choices so adding a shield can reconcile the weapon it
    replaces instead of validating those selections independently.
 
 ## Completed cycles
+
+- 2026-08-08: Made every defensive-equipment count limit exact in SQLite schema
+  67. Command Squad and Company Veterans on Bikes now expose six stable,
+  composition-derived catalogue models linked to their two original uniform
+  source statlines. Shield eligibility distinguishes the Company Champion and
+  Company Veterans from the Apothecary and Ancient, and excludes the Veteran
+  Biker Sergeant, so the respective five-model maxima are exactly three and
+  four. The hidden source templates remain queryable for provenance while
+  catalogue views expose only playable derived models. Existing saved lists
+  using the former grouped model IDs migrate deterministically to eligible
+  segments. Database, catalogue, formation, legacy persistence, and list API
+  regressions cover the split and both excessive-count boundaries.
 
 - 2026-08-08: Added source-backed defensive-equipment count validation in
   SQLite schema 66. All 44 equipment options now publish legal minimum and

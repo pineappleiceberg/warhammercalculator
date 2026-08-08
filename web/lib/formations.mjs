@@ -171,16 +171,23 @@ export function savedUnitDefensiveEquipmentDefaults(savedUnit, catalogueUnit) {
       if ((stored?.[key] ?? (stored === undefined ? sourceDefault : 0)) > 0) defaults[key] = 1;
       continue;
     }
-    let remainingDefault = sourceDefault;
+    const legacyKeys = new Set(
+      modelSegments
+        .filter((segment) => defensiveEquipmentEligibleForModel(option, segment.model.id))
+        .map((segment) => segment.model.sourceModelId)
+        .filter((modelId) => modelId !== undefined)
+        .map((modelId) => defensiveEquipmentSelectionKey(savedUnit.id, modelId, option.id)),
+    );
+    let remainingDefault =
+      stored === undefined
+        ? sourceDefault
+        : [...legacyKeys].reduce((total, key) => total + (stored[key] ?? 0), 0);
     for (const segment of modelSegments) {
       if (!defensiveEquipmentEligibleForModel(option, segment.model.id)) continue;
       const key = defensiveEquipmentSelectionKey(savedUnit.id, segment.model.id, option.id);
-      const count = Math.min(
-        segment.modelCount,
-        stored?.[key] ?? (stored === undefined ? remainingDefault : 0),
-      );
+      const count = Math.min(segment.modelCount, stored?.[key] ?? remainingDefault);
       if (count > 0) defaults[key] = count;
-      remainingDefault -= count;
+      if (stored?.[key] === undefined) remainingDefault -= count;
     }
   }
   return defaults;
@@ -204,12 +211,22 @@ export function savedUnitDefensiveEquipmentWarnings(savedUnit, catalogueUnit) {
       count = effective[key] ?? 0;
       eligibleModelCount = savedUnit.modelCount;
     } else {
+      const legacyKeys = new Set();
       for (const segment of segments) {
         if (!defensiveEquipmentEligibleForModel(option, segment.model.id)) continue;
         const key = defensiveEquipmentSelectionKey(savedUnit.id, segment.model.id, option.id);
         knownKeys.add(key);
         count += effective[key] ?? 0;
         eligibleModelCount += segment.modelCount;
+        if (segment.model.sourceModelId !== undefined) {
+          legacyKeys.add(
+            defensiveEquipmentSelectionKey(savedUnit.id, segment.model.sourceModelId, option.id),
+          );
+        }
+      }
+      for (const key of legacyKeys) {
+        knownKeys.add(key);
+        count += effective[key] ?? 0;
       }
     }
     const { minimum, maximum } = defensiveEquipmentBounds(option, savedUnit, eligibleModelCount);

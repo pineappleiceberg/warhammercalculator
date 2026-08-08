@@ -252,9 +252,14 @@ def export(database: Path, output: Path) -> None:
 
         for row in connection.execute(
             """SELECT id, datasheet_id, name, toughness, save_target,
-                      invulnerable_save_target, wounds
+                      invulnerable_save_target, wounds, source_model_profile_id,
+                      composition_position, composition_component_position
                FROM model_profiles
-               ORDER BY datasheet_id, source_line, name COLLATE NOCASE"""
+               WHERE is_catalogue_model = 1
+               ORDER BY datasheet_id,
+                        coalesce(composition_position, source_line),
+                        coalesce(composition_component_position, 1),
+                        name COLLATE NOCASE"""
         ):
             units[row["datasheet_id"]]["models"].append(
                 {
@@ -268,6 +273,17 @@ def export(database: Path, output: Path) -> None:
                     "damageDivisor": 1,
                     "wounds": row["wounds"],
                     "keywords": keywords.get(row["datasheet_id"], []),
+                    **(
+                        {
+                            "sourceModelId": row["source_model_profile_id"],
+                            "compositionPosition": row["composition_position"],
+                            "compositionComponentPosition": row[
+                                "composition_component_position"
+                            ],
+                        }
+                        if row["source_model_profile_id"] is not None
+                        else {}
+                    ),
                 }
             )
 

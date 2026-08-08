@@ -532,6 +532,13 @@ and bearer controls are limited to eligible model profiles. Optional and
 conditional choices remain off until selected or their structured loadout
 subject is present; users can still save explicit overrides for casualties and
 narrative rules.
+Uniform grouped statlines are split into source-composition-backed catalogue
+models when that distinction is required for an exact bearer limit. Command
+Squad shields therefore distinguish the Champion and Company Veterans from the
+Apothecary and Ancient, while Company Veterans on Bikes excludes its Sergeant.
+The derived models retain their original statline provenance, and saved counts
+using the former grouped model ID are distributed deterministically onto the
+new eligible segments.
 Fixed, every-model, and per-unit-size source limits are checked before an Army
 List can be saved. Removing required equipment, exceeding a bearer limit, or
 retaining an unknown selection requires an explicit battlefield-casualty or

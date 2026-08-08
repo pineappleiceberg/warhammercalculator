@@ -173,6 +173,11 @@ CREATE TABLE model_profiles (
     id INTEGER PRIMARY KEY,
     datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
     source_line INTEGER NOT NULL,
+    source_model_profile_id INTEGER REFERENCES model_profiles(id) ON DELETE CASCADE,
+    composition_position INTEGER,
+    composition_component_position INTEGER,
+    is_catalogue_model INTEGER NOT NULL DEFAULT 1
+        CHECK (is_catalogue_model IN (0, 1)),
     name TEXT NOT NULL,
     movement TEXT,
     movement_inches REAL,
@@ -185,7 +190,19 @@ CREATE TABLE model_profiles (
     objective_control INTEGER,
     base_size TEXT,
     base_size_note TEXT,
-    UNIQUE (datasheet_id, source_line)
+    CHECK (
+        (source_model_profile_id IS NULL
+         AND composition_position IS NULL
+         AND composition_component_position IS NULL)
+        OR
+        (source_model_profile_id IS NOT NULL
+         AND composition_position IS NOT NULL
+         AND composition_component_position IS NOT NULL)
+    ),
+    FOREIGN KEY (datasheet_id, composition_position, composition_component_position)
+        REFERENCES unit_composition_models(
+            datasheet_id, composition_position, component_position
+        ) ON DELETE CASCADE
 );
 
 CREATE TABLE weapon_profiles (
@@ -688,6 +705,12 @@ CREATE INDEX idx_unit_leader_eligibility_bodyguard
 CREATE INDEX idx_unit_bodyguard_joins_bodyguard
     ON unit_bodyguard_joins(bodyguard_datasheet_id, joiner_datasheet_id);
 CREATE INDEX idx_models_datasheet_name ON model_profiles(datasheet_id, name);
+CREATE UNIQUE INDEX idx_models_source_line
+    ON model_profiles(datasheet_id, source_line)
+    WHERE source_model_profile_id IS NULL;
+CREATE UNIQUE INDEX idx_models_composition_component
+    ON model_profiles(datasheet_id, composition_position, composition_component_position)
+    WHERE source_model_profile_id IS NOT NULL;
 CREATE INDEX idx_weapons_datasheet_name ON weapon_profiles(datasheet_id, name);
 CREATE INDEX idx_weapons_type ON weapon_profiles(weapon_type);
 CREATE INDEX idx_weapon_abilities_name ON weapon_abilities(name);
@@ -712,7 +735,8 @@ SELECT
     d.source_url
 FROM model_profiles AS m
 JOIN datasheets AS d ON d.id = m.datasheet_id
-JOIN factions AS f ON f.id = d.faction_id;
+JOIN factions AS f ON f.id = d.faction_id
+WHERE m.is_catalogue_model = 1;
 
 CREATE VIEW attacker_weapon_profiles AS
 SELECT
@@ -755,7 +779,8 @@ SELECT
     d.source_url
 FROM model_profiles AS m
 JOIN datasheets AS d ON d.id = m.datasheet_id
-JOIN factions AS f ON f.id = d.faction_id;
+JOIN factions AS f ON f.id = d.faction_id
+WHERE m.is_catalogue_model = 1;
 """
     + CONSTRAINT_SCHEMA
 )
@@ -925,6 +950,107 @@ def defensive_equipment_option(name: str, description: str) -> dict[str, object]
     return None
 
 
+COMPOSITION_DERIVED_MODEL_PROFILES = {
+    "000001166": (
+        "Company Veterans On Bikes",
+        ("Veteran Biker Sergeant", "Veteran Bikers"),
+    ),
+    "000002103": (
+        "Command Squad",
+        ("Apothecary", "Company Ancient", "Company Champion", "Company Veterans"),
+    ),
+}
+
+
+def populate_composition_derived_model_profiles(connection: sqlite3.Connection) -> None:
+    for datasheet_id, (source_name, expected_names) in (
+        COMPOSITION_DERIVED_MODEL_PROFILES.items()
+    ):
+        source_rows = connection.execute(
+            """SELECT id, source_line, movement, movement_inches, toughness,
+                      save_target, invulnerable_save_target, invulnerable_save_note,
+                      wounds, leadership_target, objective_control, base_size,
+                      base_size_note
+               FROM model_profiles
+               WHERE datasheet_id = ? AND name = ?
+                 AND source_model_profile_id IS NULL""",
+            (datasheet_id, source_name),
+        ).fetchall()
+        if len(source_rows) != 1:
+            raise RuntimeError(
+                "Composition-derived model profile needs exactly one source statline: "
+                f"{datasheet_id} {source_name!r}"
+            )
+        components = connection.execute(
+            """SELECT composition_position, component_position, model_name
+               FROM unit_composition_models
+               WHERE datasheet_id = ?
+               ORDER BY composition_position, component_position""",
+            (datasheet_id,),
+        ).fetchall()
+        if tuple(row[2] for row in components) != expected_names:
+            raise RuntimeError(
+                "Composition-derived model profile source changed: "
+                f"{datasheet_id} {tuple(row[2] for row in components)!r}"
+            )
+        (
+            source_id,
+            source_line,
+            movement,
+            movement_inches,
+            toughness,
+            save_target,
+            invulnerable_save_target,
+            invulnerable_save_note,
+            wounds,
+            leadership_target,
+            objective_control,
+            base_size,
+            base_size_note,
+        ) = source_rows[0]
+        for composition_position, component_position, model_name in components:
+            derived_id = -(
+                int(datasheet_id) * 1000
+                + composition_position * 10
+                + component_position
+            )
+            connection.execute(
+                """INSERT INTO model_profiles
+                   (id, datasheet_id, source_line, source_model_profile_id,
+                    composition_position, composition_component_position,
+                    is_catalogue_model, name, movement, movement_inches, toughness,
+                    save_target, invulnerable_save_target, invulnerable_save_note,
+                    wounds, leadership_target, objective_control, base_size,
+                    base_size_note)
+                   VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    derived_id,
+                    datasheet_id,
+                    source_line,
+                    source_id,
+                    composition_position,
+                    component_position,
+                    model_name,
+                    movement,
+                    movement_inches,
+                    toughness,
+                    save_target,
+                    invulnerable_save_target,
+                    invulnerable_save_note,
+                    wounds,
+                    leadership_target,
+                    objective_control,
+                    base_size,
+                    base_size_note,
+                ),
+            )
+        connection.execute(
+            """UPDATE model_profiles SET is_catalogue_model = 0
+               WHERE id = ?""",
+            (source_id,),
+        )
+
+
 DEFENSIVE_EQUIPMENT_MODEL_OVERRIDES = {
     ("000004174", 4): (("deathwatch veteran",), False),
     ("000004175", 4): (("deathwatch veteran",), False),
@@ -937,6 +1063,8 @@ DEFENSIVE_EQUIPMENT_MODEL_OVERRIDES = {
     ("000004188", 4): (("gaius silva",), False),
     ("000004188", 5): (("veteran sergeant metaurus",), False),
     ("000004131", 5): (("wolf guard headtakers",), True),
+    ("000001166", 2): (("veteran bikers",), True),
+    ("000002103", 2): (("company champion", "company veterans"), True),
 }
 
 DEFENSIVE_EQUIPMENT_REMOVABLE_DEFAULTS = {
@@ -1053,7 +1181,7 @@ def populate_defensive_equipment_metadata(connection: sqlite3.Connection) -> Non
 
         model_rows = connection.execute(
             """SELECT id, name FROM model_profiles
-               WHERE datasheet_id = ? ORDER BY id""",
+               WHERE datasheet_id = ? AND is_catalogue_model = 1 ORDER BY id""",
             (datasheet_id,),
         ).fetchall()
         override = DEFENSIVE_EQUIPMENT_MODEL_OVERRIDES.get(
@@ -4323,7 +4451,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "66"),
+                    ("schema_version", "67"),
                     ("leader_global_maximum", "2"),
                     ("leader_global_rule_source_url", LEADER_GLOBAL_RULE_SOURCE_URL),
                     (
@@ -4650,6 +4778,8 @@ def create_database(
                             plain_text(row["description"]),
                         ),
                     )
+
+            populate_composition_derived_model_profiles(connection)
 
             option_positions: dict[str, int] = {}
             for row in option_rows:

@@ -2082,7 +2082,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "66",
+                "67",
             )
             self.assertEqual(
                 connection.execute(
@@ -2995,7 +2995,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT count(*) FROM unit_defensive_equipment_bearers"
                 ).fetchone()[0],
-                44,
+                45,
             )
             self.assertEqual(
                 connection.execute(
@@ -3022,12 +3022,48 @@ class ProfileDataTests(unittest.TestCase):
             )
             self.assertEqual(
                 connection.execute(
-                    """SELECT minimum_kind, maximum_kind, limit_exact
+                    """SELECT minimum_kind, maximum_kind, eligibility_exact,
+                              limit_exact
                        FROM unit_defensive_equipment_options
                        WHERE datasheet_id = '000002103'
                          AND name = 'Astartes Shield'"""
                 ).fetchone(),
-                ("default", "per_model", 0),
+                ("default", "per_model", 1, 1),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*)
+                       FROM unit_defensive_equipment_options
+                       WHERE limit_exact = 0"""
+                ).fetchone()[0],
+                0,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT derived.name, source.name,
+                              derived.composition_position,
+                              derived.composition_component_position
+                       FROM model_profiles AS derived
+                       JOIN model_profiles AS source
+                         ON source.id = derived.source_model_profile_id
+                       WHERE derived.datasheet_id = '000002103'
+                       ORDER BY derived.composition_position,
+                                derived.composition_component_position"""
+                ).fetchall(),
+                [
+                    ("Apothecary", "Command Squad", 1, 1),
+                    ("Company Ancient", "Command Squad", 2, 1),
+                    ("Company Champion", "Command Squad", 3, 1),
+                    ("Company Veterans", "Command Squad", 4, 1),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT model_name FROM target_profiles
+                       WHERE datasheet_id = '000001166'
+                       ORDER BY target_profile_id"""
+                ).fetchall(),
+                [("Veteran Bikers",), ("Veteran Biker Sergeant",)],
             )
             self.assertEqual(
                 connection.execute(

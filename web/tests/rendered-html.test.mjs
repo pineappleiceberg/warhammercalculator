@@ -2318,6 +2318,40 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
     200,
   );
 
+  const command = sourceCatalogue.units.find((unit) => unit.name === "Command Squad");
+  const commandShield = command.defensiveEquipment.find(
+    (option) => option.name === "Astartes Shield",
+  );
+  const champion = command.models.find((model) => model.name === "Company Champion");
+  const companyVeterans = command.models.find((model) => model.name === "Company Veterans");
+  const rejectedGroupedEquipment = await worker.fetch(
+    new Request("http://localhost/api/v1/lists", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Invalid Command Squad shields",
+        factionId: command.factionId,
+        units: [
+          {
+            id: "api-command",
+            unitId: command.id,
+            name: command.name,
+            modelCount: 5,
+            weapons: [],
+            defensiveEquipmentCounts: {
+              [`api-command::${champion.id}::${commandShield.id}`]: 1,
+              [`api-command::${companyVeterans.id}::${commandShield.id}`]: 3,
+            },
+          },
+        ],
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(rejectedGroupedEquipment.status, 400);
+  assert.match((await rejectedGroupedEquipment.json()).error.message, /maximum of 3/i);
+
   const listed = await worker.fetch(new Request("http://localhost/api/v1/lists"), testEnv, context);
   assert.equal((await listed.json()).data.length, 1);
 
