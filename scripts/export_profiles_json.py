@@ -269,6 +269,47 @@ def export(database: Path, output: Path) -> None:
                     "allowedKeywords": allowed_groups,
                 }
             )
+        shared_allowance_keywords: dict[tuple[str, int, int], list[str]] = {}
+        for row in connection.execute(
+            """SELECT datasheet_id, allowance_position, group_position, keyword
+               FROM unit_transport_shared_allowance_keywords
+               ORDER BY datasheet_id, allowance_position, group_position, keyword_position"""
+        ):
+            shared_allowance_keywords.setdefault(
+                (
+                    row["datasheet_id"],
+                    row["allowance_position"],
+                    row["group_position"],
+                ),
+                [],
+            ).append(row["keyword"])
+        shared_allowances: dict[str, list[dict]] = {}
+        for row in connection.execute(
+            """SELECT datasheet_id, allowance_position, maximum_models,
+                      cost_equals_wounds
+               FROM unit_transport_shared_allowances
+               ORDER BY datasheet_id, allowance_position"""
+        ):
+            datasheet_id = row["datasheet_id"]
+            allowance_position = row["allowance_position"]
+            allowed_groups = [
+                keywords
+                for (
+                    candidate_id,
+                    candidate_allowance,
+                    _,
+                ), keywords in shared_allowance_keywords.items()
+                if candidate_id == datasheet_id
+                and candidate_allowance == allowance_position
+            ]
+            shared_allowances.setdefault(datasheet_id, []).append(
+                {
+                    "position": allowance_position,
+                    "maximumModels": row["maximum_models"],
+                    "costEqualsWounds": bool(row["cost_equals_wounds"]),
+                    "allowedKeywords": allowed_groups,
+                }
+            )
         transport_excluded: dict[tuple[str, int], list[str]] = {}
         for row in connection.execute(
             """SELECT datasheet_id, group_position, keyword
@@ -382,6 +423,7 @@ def export(database: Path, output: Path) -> None:
                 "allowedKeywords": allowed_groups,
                 "additionalPools": additional_pools.get(datasheet_id, []),
                 "alternativePools": alternative_pools.get(datasheet_id, []),
+                "sharedAllowances": shared_allowances.get(datasheet_id, []),
                 "excluded": exclusions.get(datasheet_id, []),
                 "modelCosts": model_costs.get(datasheet_id, []),
                 "capacityModifiers": modifiers.get(datasheet_id, []),

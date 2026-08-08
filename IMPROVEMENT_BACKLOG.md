@@ -16,17 +16,27 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Normalize the remaining 13 compound Transport clauses: reduced primary
-   capacity while carrying a Vehicle, nested transported Vehicles, variable
-   Wounds-based Vehicle space, and per-model costs in mixed-composition units.
-   Add explicit model-composition
-   formation state where exact evaluation requires it, and normalize Leader
-   eligibility so declared attachment links can be audited.
+1. Normalize the remaining 7 compound Transport clauses: the Orion's reduced
+   primary capacity while carrying a Vehicle, five Sokar-pattern Stormbirds'
+   nested transported Rhinos, and the Thunderhawk Transporter's nested
+   Vehicles. Add explicit model-composition formation state where exact
+   evaluation requires it, and normalize Leader eligibility so declared
+   attachment links can be audited.
 2. Extend normalized defensive-equipment selection to Model vs Model and Play
    Mode while preserving model-by-model allocation and preventing bearer-only
    gear from becoming a homogeneous unit-wide defense.
 
 ## Completed cycles
+
+- 2026-08-08: Added exact shared-capacity Transport allowances with dynamic
+  Wounds-based space costs and aggregate model ceilings. SQLite schema 59
+  normalizes the five Mastodon datasheets and the Orca Dropship, increasing
+  exact Transport coverage from 165 to 171 of 178 datasheets. Army Lists and
+  the Transport API now charge Dreadnoughts, Helbrutes, and Battlesuits space
+  equal to their Wounds and reject more than the published two or six matching
+  models even when total capacity remains. Parser negatives, schema/catalogue
+  snapshots, current-profile Wounds homogeneity, legal boundary, capacity,
+  model-ceiling, and API regressions cover the change.
 
 - 2026-08-08: Added exact mutually exclusive Transport modes and the Wounds-
   based passenger cost required by them. SQLite schema 58 normalizes five

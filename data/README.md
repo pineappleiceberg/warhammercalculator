@@ -32,6 +32,9 @@ The main tables are:
   `unit_transport_alternative_pools` and its keyword child table preserve
   mutually exclusive passenger modes, their separate capacities, and optional
   maximum-Wounds limits
+  `unit_transport_shared_allowances` and its keyword child table preserve
+  exceptional passengers that consume the primary capacity, including an
+  aggregate passenger-model ceiling and space equal to each model's Wounds
 - `unit_combat_presets` and `unit_combat_preset_effects` for conservatively
   extracted Hit/Wound modifiers, re-roll modes, weapon-keyword grants, AP
   changes, Critical Hit/Wound thresholds, direct signed Attacks, Strength, and

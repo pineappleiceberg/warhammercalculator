@@ -230,8 +230,11 @@ the number of embarked models using it; Play Mode selects the passenger from
 the attacking saved list only after that saved unit has been assigned to the
 specific transport in Army Lists. Published Transport faction/unit keywords,
 explicit exclusions, Wounds thresholds, fixed per-model space costs, aggregate
-capacity, and equipped killkannon/kannon/supa-kannon capacity changes are
-validated. The Falcon, Firestorm, Vampire Raider, and Wave Serpent apply their
+capacity, Wounds-based shared-capacity costs, special passenger model ceilings,
+and equipped killkannon/kannon/supa-kannon capacity changes are validated. The
+five Mastodons and the Orca Dropship charge Dreadnought, Helbrute, or Battlesuit
+passengers space equal to their Wounds while enforcing their aggregate two- or
+six-model allowance. The Falcon, Firestorm, Vampire Raider, and Wave Serpent apply their
 published Ynnari exclusions without rejecting the named Yvraine, Visarch, and
 Asuryani exceptions; Jump Pack exclusions remain independent. Independent
 capacity pools are tracked separately for Storm Eagles,
@@ -673,7 +676,8 @@ that legally compatible passenger's eligible ranged weapons and slot cost.
 `GET /api/v1/transport?unit={transportId}&passenger={passengerId}&attached={attachedUnitId}&models={count}`
 returns the exact source clause, eligibility, per-model cost, total spaces, and
 whether the selection fits in its matched independent pool; the response lists
-every pool or mode, its kind, Wounds ceiling, and required keywords. `attached` is optional except when a published
+every pool or mode, its kind, Wounds ceiling, and required keywords, plus all
+shared-capacity allowances and the matching allowance's model ceiling. `attached` is optional except when a published
 attachment exception is required. `POST
 /api/v1/validate-firing-deck` validates one or more explicit passenger/model/
 weapon selections, the aggregate Firing Deck limit, phase eligibility, and

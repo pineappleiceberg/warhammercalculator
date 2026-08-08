@@ -398,6 +398,26 @@ CREATE TABLE unit_transport_alternative_pool_keywords (
         ON DELETE CASCADE
 ) WITHOUT ROWID;
 
+CREATE TABLE unit_transport_shared_allowances (
+    datasheet_id TEXT NOT NULL REFERENCES unit_transport(datasheet_id) ON DELETE CASCADE,
+    allowance_position INTEGER NOT NULL CHECK (allowance_position >= 1),
+    maximum_models INTEGER NOT NULL CHECK (maximum_models > 0),
+    cost_equals_wounds INTEGER NOT NULL CHECK (cost_equals_wounds IN (0, 1)),
+    PRIMARY KEY (datasheet_id, allowance_position)
+) WITHOUT ROWID;
+
+CREATE TABLE unit_transport_shared_allowance_keywords (
+    datasheet_id TEXT NOT NULL,
+    allowance_position INTEGER NOT NULL,
+    group_position INTEGER NOT NULL CHECK (group_position >= 1),
+    keyword_position INTEGER NOT NULL CHECK (keyword_position >= 1),
+    keyword TEXT NOT NULL,
+    PRIMARY KEY (datasheet_id, allowance_position, group_position, keyword_position),
+    FOREIGN KEY (datasheet_id, allowance_position)
+        REFERENCES unit_transport_shared_allowances(datasheet_id, allowance_position)
+        ON DELETE CASCADE
+) WITHOUT ROWID;
+
 CREATE TABLE unit_transport_exclusion_groups (
     datasheet_id TEXT NOT NULL REFERENCES unit_transport(datasheet_id) ON DELETE CASCADE,
     group_position INTEGER NOT NULL CHECK (group_position >= 1),
@@ -3593,6 +3613,37 @@ def populate_transports(connection: sqlite3.Connection) -> tuple[int, int]:
                         for keyword_position, keyword in enumerate(keywords, start=1)
                     ),
                 )
+        for allowance_position, allowance in enumerate(
+            rules["sharedAllowances"], start=1
+        ):
+            connection.execute(
+                """INSERT INTO unit_transport_shared_allowances
+                   (datasheet_id, allowance_position, maximum_models, cost_equals_wounds)
+                   VALUES (?, ?, ?, ?)""",
+                (
+                    datasheet_id,
+                    allowance_position,
+                    allowance["maximumModels"],
+                    int(allowance["costEqualsWounds"]),
+                ),
+            )
+            for group_position, keywords in enumerate(allowance["allowed"], start=1):
+                connection.executemany(
+                    """INSERT INTO unit_transport_shared_allowance_keywords
+                       (datasheet_id, allowance_position, group_position,
+                        keyword_position, keyword)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (
+                        (
+                            datasheet_id,
+                            allowance_position,
+                            group_position,
+                            keyword_position,
+                            keyword,
+                        )
+                        for keyword_position, keyword in enumerate(keywords, start=1)
+                    ),
+                )
         for group_position, group in enumerate(rules["excluded"], start=1):
             connection.execute(
                 """INSERT INTO unit_transport_exclusion_groups
@@ -3812,7 +3863,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "58"),
+                    ("schema_version", "59"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
@@ -4104,6 +4155,8 @@ def create_database(
                 "unit_transport_additional_pool_keywords",
                 "unit_transport_alternative_pools",
                 "unit_transport_alternative_pool_keywords",
+                "unit_transport_shared_allowances",
+                "unit_transport_shared_allowance_keywords",
                 "unit_transport_exclusion_groups",
                 "unit_transport_exclusion_keywords",
                 "unit_transport_exclusion_exception_keywords",

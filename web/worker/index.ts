@@ -1009,6 +1009,12 @@ async function handleApi(request: Request, env: Env) {
                 maximumWounds: eligibility.poolMaximumWounds,
               }
             : null,
+          sharedAllowance: eligibility.eligible
+            ? (transport.transport?.sharedAllowances.find(
+                (allowance) => allowance.position === eligibility.sharedAllowancePosition,
+              ) ?? null)
+            : null,
+          sharedAllowances: transport.transport?.sharedAllowances ?? [],
           pools: transportCapacityPools(transport).map((pool) => ({
             position: pool.position,
             kind: pool.kind,
@@ -1022,7 +1028,11 @@ async function handleApi(request: Request, env: Env) {
           modelCost: eligibility.modelCost ?? null,
           models,
           slots: eligibility.eligible ? models * eligibility.modelCost : null,
-          fits: eligibility.eligible && models * eligibility.modelCost <= eligibility.poolCapacity,
+          fits:
+            eligibility.eligible &&
+            models * eligibility.modelCost <= eligibility.poolCapacity &&
+            (eligibility.sharedAllowanceMaximumModels === null ||
+              models <= eligibility.sharedAllowanceMaximumModels),
           source: transport.transport?.source ?? null,
         },
         sourceUpdatedAt: catalogue.sourceUpdatedAt,

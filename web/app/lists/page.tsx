@@ -433,6 +433,8 @@ export default function ArmyLists() {
                                 ` · ${assignment.poolLabel} ${
                                   assignment.poolKind === "alternative" ? "mode" : "pool"
                                 }`}
+                              {assignment.sharedAllowanceMaximumModels !== null &&
+                                ` · max ${assignment.sharedAllowanceMaximumModels} matching models`}
                             </small>
                           )}
                         </label>

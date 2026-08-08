@@ -261,6 +261,8 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
         allowedKeywords: [["orks", "infantry"]],
       },
     ],
+    sharedAllowance: null,
+    sharedAllowances: [],
     eligible: true,
     reason: "",
     modelCost: 1,
@@ -388,8 +390,23 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     maximumWounds: null,
   });
   assert.equal(additionalPoolBody.data.fits, false);
-  const dreadclaw = catalogue.units.find((unit) => unit.id === "000001310");
+  const mastodon = catalogue.units.find((unit) => unit.id === "000003646");
   const helbrute = catalogue.units.find((unit) => unit.id === "000000954");
+  const mastodonAllowance = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/transport?unit=${mastodon.id}&passenger=${helbrute.id}&models=3`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.equal(mastodonAllowance.status, 200);
+  const mastodonAllowanceBody = await mastodonAllowance.json();
+  assert.equal(mastodonAllowanceBody.data.eligible, true);
+  assert.equal(mastodonAllowanceBody.data.modelCost, 8);
+  assert.equal(mastodonAllowanceBody.data.slots, 24);
+  assert.equal(mastodonAllowanceBody.data.sharedAllowance.maximumModels, 2);
+  assert.equal(mastodonAllowanceBody.data.fits, false);
+  const dreadclaw = catalogue.units.find((unit) => unit.id === "000001310");
   const alternativeMode = await worker.fetch(
     new Request(`http://localhost/api/v1/transport?unit=${dreadclaw.id}&passenger=${helbrute.id}`),
     testEnv,

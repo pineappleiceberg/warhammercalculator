@@ -48,7 +48,12 @@ export function transportCapacityPools(transport, armyUnit) {
       kind: "primary",
       capacity: transportCapacity(transport, armyUnit),
       maximumWounds: null,
-      allowedKeywords: transport.transport.allowedKeywords,
+      allowedKeywords: [
+        ...transport.transport.allowedKeywords,
+        ...(transport.transport.sharedAllowances ?? []).flatMap(
+          (allowance) => allowance.allowedKeywords,
+        ),
+      ],
       label: "primary",
     },
     ...(transport.transport.additionalPools ?? []).map((pool) => ({
@@ -87,6 +92,9 @@ export function transportPassengerEligibility(transport, passenger, context = {}
   }
   const keywords = keywordSet(passenger);
   const wounds = maximumWounds(passenger);
+  const matchingSharedAllowance = (transport.transport.sharedAllowances ?? []).find((allowance) =>
+    allowance.allowedKeywords.some((group) => matchesKeywords(keywords, group)),
+  );
   const pools = transportCapacityPools(transport);
   const keywordPool = pools.find(
     (pool) =>
@@ -149,6 +157,7 @@ export function transportPassengerEligibility(transport, passenger, context = {}
           (rule.minimumWounds === null || wounds >= Number(rule.minimumWounds)),
       )
       .map((rule) => Number(rule.cost) || 1),
+    matchingSharedAllowance?.costEqualsWounds ? wounds : 1,
   );
   return {
     eligible: true,
@@ -159,6 +168,8 @@ export function transportPassengerEligibility(transport, passenger, context = {}
     poolCapacity: matchingPool.capacity,
     poolMaximumWounds: matchingPool.maximumWounds,
     poolLabel: matchingPool.label,
+    sharedAllowancePosition: matchingSharedAllowance?.position ?? null,
+    sharedAllowanceMaximumModels: matchingSharedAllowance?.maximumModels ?? null,
   };
 }
 
@@ -186,6 +197,7 @@ export function transportAssignmentReport(catalogue, armyList) {
   const errors = [];
   const slotsByTransport = new Map();
   const poolSlotsByTransport = new Map();
+  const allowanceModelsByTransport = new Map();
   const invalidFormationUnits = new Set();
   for (const unit of armyList?.units ?? []) {
     if (!unit.attachedToId) continue;
@@ -267,6 +279,8 @@ export function transportAssignmentReport(catalogue, armyList) {
       poolKind: eligibility.poolKind,
       poolCapacity: eligibility.poolCapacity,
       poolLabel: eligibility.poolLabel,
+      sharedAllowancePosition: eligibility.sharedAllowancePosition,
+      sharedAllowanceMaximumModels: eligibility.sharedAllowanceMaximumModels,
       slots,
     };
     assignments.push(assignment);
@@ -292,6 +306,7 @@ export function transportAssignmentReport(catalogue, armyList) {
   );
   slotsByTransport.clear();
   poolSlotsByTransport.clear();
+  allowanceModelsByTransport.clear();
   for (const assignment of completeAssignments) {
     slotsByTransport.set(
       assignment.transportUnit.id,
@@ -302,8 +317,16 @@ export function transportAssignmentReport(catalogue, armyList) {
         ? `${assignment.transportUnit.id}:alternative:${assignment.poolPosition}`
         : `${assignment.transportUnit.id}:${assignment.poolPosition}`;
     poolSlotsByTransport.set(poolKey, (poolSlotsByTransport.get(poolKey) ?? 0) + assignment.slots);
+    if (assignment.sharedAllowancePosition !== null) {
+      const allowanceKey = `${assignment.transportUnit.id}:${assignment.sharedAllowancePosition}`;
+      allowanceModelsByTransport.set(
+        allowanceKey,
+        (allowanceModelsByTransport.get(allowanceKey) ?? 0) + assignment.passengerUnit.modelCount,
+      );
+    }
   }
   const overCapacity = new Set();
+  const overAllowance = new Set();
   const mixedModes = new Set();
   const modesByTransport = new Map();
   for (const assignment of completeAssignments) {
@@ -323,6 +346,15 @@ export function transportAssignmentReport(catalogue, armyList) {
   for (const transportUnit of armyList?.units ?? []) {
     const transport = catalogueUnits.get(transportUnit.unitId);
     if (!transport?.transport) continue;
+    for (const allowance of transport.transport.sharedAllowances ?? []) {
+      const used = allowanceModelsByTransport.get(`${transportUnit.id}:${allowance.position}`) ?? 0;
+      if (used > allowance.maximumModels) {
+        errors.push(
+          `${transportUnit.name} carries ${used} models in an allowance limited to ${allowance.maximumModels}`,
+        );
+        overAllowance.add(transportUnit.id);
+      }
+    }
     for (const pool of transportCapacityPools(transport, transportUnit)) {
       const poolKey =
         pool.kind === "alternative"
@@ -341,10 +373,12 @@ export function transportAssignmentReport(catalogue, armyList) {
     assignments: completeAssignments.filter(
       (assignment) =>
         !overCapacity.has(assignment.transportUnit.id) &&
+        !overAllowance.has(assignment.transportUnit.id) &&
         !mixedModes.has(assignment.transportUnit.id),
     ),
     errors,
     slotsByTransport,
     poolSlotsByTransport,
+    allowanceModelsByTransport,
   };
 }

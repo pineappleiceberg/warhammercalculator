@@ -93,6 +93,7 @@ def parse_transport_rule(source: str, vocabulary: set[str]) -> dict:
         "costs": [],
         "additionalPools": [],
         "alternativePools": [],
+        "sharedAllowances": [],
         "capacityModifiers": [],
         "exact": True,
     }
@@ -261,6 +262,10 @@ def parse_transport_rule(source: str, vocabulary: set[str]) -> dict:
 
     recognized_cost_sentences = 0
     for sentence in source.split(". "):
+        if sentence.casefold().startswith("this model can also transport") or re.search(
+            r"\bwould take up the space", sentence, re.IGNORECASE
+        ):
+            continue
         more_than_wounds = re.search(
             r"Each(?: (.+?))? model with a Wounds characteristic of more than (\d+) "
             r"takes up the space of (\d+) models",
@@ -368,6 +373,26 @@ def parse_transport_rule(source: str, vocabulary: set[str]) -> dict:
             }
         )
         recognized_instead_sentences += 1
+    recognized_also_sentences = 0
+    for allowance in re.finditer(
+        r"This model can also transport up to (\d+) (.+?) models? "
+        r"\(these models take up the space of a number of models equal to their Wounds "
+        r"characteristic,? e\.g\. .+? would take up the space of \d+ models\)",
+        source,
+        re.IGNORECASE,
+    ):
+        allowance_allowed = groups_from_phrase(allowance.group(2), vocabulary)
+        if allowance_allowed is None:
+            result["exact"] = False
+            continue
+        result["sharedAllowances"].append(
+            {
+                "maximumModels": int(allowance.group(1)),
+                "allowed": [list(group) for group in allowance_allowed],
+                "costEqualsWounds": True,
+            }
+        )
+        recognized_also_sentences += 1
     if source.casefold().count("has a transport capacity of") != 1 + len(
         result["capacityModifiers"]
     ):
@@ -376,7 +401,10 @@ def parse_transport_rule(source: str, vocabulary: set[str]) -> dict:
         recognized_instead_sentences
     ):
         result["exact"] = False
-    if re.search(r"This model can also transport", source, re.IGNORECASE):
+    if (
+        source.casefold().count("this model can also transport")
+        != recognized_also_sentences
+    ):
         result["exact"] = False
     if re.search(
         r"This model can (?!instead transport|also transport)", source, re.IGNORECASE

@@ -209,6 +209,44 @@ class ProfileDataTests(unittest.TestCase):
                 }
             ],
         )
+        shared_capacity = parse_transport_rule(
+            "This model has a transport capacity of 45 Heretic Astartes Infantry models. "
+            "This model can also transport up to 2 Dreadnought or Helbrute models "
+            "(these models take up the space of a number of models equal to their "
+            "Wounds characteristic e.g. A Dreadnought with a Wounds characteristic "
+            "of 8 would take up the space of 8 models).",
+            {
+                normalized_term(value)
+                for value in (
+                    "Heretic Astartes",
+                    "Infantry",
+                    "Dreadnought",
+                    "Helbrute",
+                )
+            },
+        )
+        self.assertTrue(shared_capacity["exact"])
+        self.assertEqual(
+            shared_capacity["sharedAllowances"],
+            [
+                {
+                    "maximumModels": 2,
+                    "allowed": [["dreadnought"], ["helbrute"]],
+                    "costEqualsWounds": True,
+                }
+            ],
+        )
+        self.assertFalse(
+            parse_transport_rule(
+                "This model has a transport capacity of 45 Heretic Astartes Infantry "
+                "models. This model can also transport up to 2 Dreadnought models "
+                "(these models use a variable amount of space).",
+                {
+                    normalized_term(value)
+                    for value in ("Heretic Astartes", "Infantry", "Dreadnought")
+                },
+            )["exact"]
+        )
         aeldari = parse_transport_rule(
             "This model has a transport capacity of 12 Aeldari Infantry models. "
             "Each Wraith Construct model takes the space of 2 models. "
@@ -1874,7 +1912,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "58",
+                "59",
             )
             self.assertEqual(
                 connection.execute("SELECT count(*) FROM unit_firing_deck").fetchone()[
@@ -1918,6 +1956,18 @@ class ProfileDataTests(unittest.TestCase):
             )
             self.assertEqual(
                 connection.execute(
+                    "SELECT count(*) FROM unit_transport_shared_allowances"
+                ).fetchone()[0],
+                6,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM unit_transport_shared_allowance_keywords"
+                ).fetchone()[0],
+                11,
+            )
+            self.assertEqual(
+                connection.execute(
                     "SELECT count(*) FROM unit_transport_exclusion_exception_keywords"
                 ).fetchone()[0],
                 10,
@@ -1926,7 +1976,18 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT count(*) FROM unit_transport WHERE exact_rules = 1"
                 ).fetchone()[0],
-                165,
+                171,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*)
+                       FROM unit_transport AS transport
+                       JOIN datasheets ON datasheets.id = transport.datasheet_id
+                       WHERE (datasheets.name LIKE '%Mastodon%'
+                              OR datasheets.name = 'Orca Dropship')
+                         AND transport.exact_rules = 1"""
+                ).fetchone()[0],
+                6,
             )
             self.assertEqual(
                 connection.execute(
@@ -2029,6 +2090,54 @@ class ProfileDataTests(unittest.TestCase):
                                 pools.capacity, pools.maximum_wounds"""
                 ).fetchone(),
                 (1, 12, "tyranids|monster"),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT allowances.maximum_models,
+                              allowances.cost_equals_wounds,
+                              group_concat(keywords.keyword, '|')
+                       FROM unit_transport_shared_allowances AS allowances
+                       JOIN unit_transport_shared_allowance_keywords AS keywords
+                         USING (datasheet_id, allowance_position)
+                       WHERE allowances.datasheet_id = '000003646'
+                       GROUP BY allowances.datasheet_id,
+                                allowances.allowance_position,
+                                allowances.maximum_models,
+                                allowances.cost_equals_wounds"""
+                ).fetchone(),
+                (2, 1, "dreadnought|helbrute"),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT allowances.maximum_models,
+                              group_concat(keywords.keyword, '|')
+                       FROM unit_transport_shared_allowances AS allowances
+                       JOIN unit_transport_shared_allowance_keywords AS keywords
+                         USING (datasheet_id, allowance_position)
+                       WHERE allowances.datasheet_id = '000000456'
+                       GROUP BY allowances.datasheet_id,
+                                allowances.allowance_position,
+                                allowances.maximum_models"""
+                ).fetchone(),
+                (6, "battlesuit"),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*)
+                       FROM (
+                         SELECT datasheets.id
+                         FROM datasheets
+                         JOIN datasheet_keywords
+                           ON datasheet_keywords.datasheet_id = datasheets.id
+                         JOIN model_profiles
+                           ON model_profiles.datasheet_id = datasheets.id
+                         WHERE lower(datasheet_keywords.keyword) IN
+                               ('dreadnought', 'helbrute', 'battlesuit')
+                         GROUP BY datasheets.id
+                         HAVING count(DISTINCT model_profiles.wounds) > 1
+                       )"""
+                ).fetchone()[0],
+                0,
             )
             self.assertEqual(
                 connection.execute(

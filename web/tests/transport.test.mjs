@@ -35,6 +35,8 @@ test("published Transport keywords and model-space costs gate passengers exactly
     poolCapacity: 12,
     poolMaximumWounds: null,
     poolLabel: "primary",
+    sharedAllowancePosition: null,
+    sharedAllowanceMaximumModels: null,
   });
   assert.equal(transportPassengerEligibility(trukk, meganobz).modelCost, 2);
   const meganobWeapon = meganobz.weapons.find((weapon) => weapon.type === "Ranged");
@@ -456,4 +458,101 @@ test("alternative Transport modes enforce passenger type, capacity, and Wounds c
   const sentinels = unit("Armoured Sentinels", "000000691");
   assert.equal(transportPassengerEligibility(skyTalon, tauros).poolCapacity, 1);
   assert.equal(transportPassengerEligibility(skyTalon, sentinels).poolCapacity, 2);
+});
+
+test("shared Transport allowances use passenger Wounds and enforce combined model ceilings", () => {
+  const mastodon = unit("Mastodon", "000003646");
+  const legionaries = unit("Legionaries", "000002570");
+  const helbrute = unit("Helbrute", "000000954");
+  assert.equal(mastodon.transport.exactRules, true);
+  assert.deepEqual(mastodon.transport.sharedAllowances, [
+    {
+      position: 1,
+      maximumModels: 2,
+      costEqualsWounds: true,
+      allowedKeywords: [["dreadnought"], ["helbrute"]],
+    },
+  ]);
+  assert.equal(transportPassengerEligibility(mastodon, legionaries).modelCost, 1);
+  const helbruteEligibility = transportPassengerEligibility(mastodon, helbrute);
+  assert.equal(helbruteEligibility.eligible, true);
+  assert.equal(helbruteEligibility.modelCost, 8);
+  assert.equal(helbruteEligibility.sharedAllowanceMaximumModels, 2);
+
+  const transportUnit = {
+    id: "mastodon",
+    unitId: mastodon.id,
+    name: mastodon.name,
+    modelCount: 1,
+    weapons: [],
+  };
+  const legal = transportAssignmentReport(catalogue, {
+    units: [
+      transportUnit,
+      {
+        id: "legionaries",
+        unitId: legionaries.id,
+        name: legionaries.name,
+        modelCount: 29,
+        weapons: [],
+        transportId: transportUnit.id,
+      },
+      {
+        id: "helbrutes",
+        unitId: helbrute.id,
+        name: helbrute.name,
+        modelCount: 2,
+        weapons: [],
+        transportId: transportUnit.id,
+      },
+    ],
+  });
+  assert.deepEqual(legal.errors, []);
+  assert.equal(legal.slotsByTransport.get(transportUnit.id), 45);
+  assert.equal(legal.allowanceModelsByTransport.get(`${transportUnit.id}:1`), 2);
+
+  const tooMany = transportAssignmentReport(catalogue, {
+    units: [
+      transportUnit,
+      {
+        id: "helbrutes",
+        unitId: helbrute.id,
+        name: helbrute.name,
+        modelCount: 3,
+        weapons: [],
+        transportId: transportUnit.id,
+      },
+    ],
+  });
+  assert.ok(tooMany.errors.some((error) => /3 models.*limited to 2/i.test(error)));
+  assert.deepEqual(tooMany.assignments, []);
+
+  const overCapacity = transportAssignmentReport(catalogue, {
+    units: [
+      transportUnit,
+      {
+        id: "legionaries",
+        unitId: legionaries.id,
+        name: legionaries.name,
+        modelCount: 30,
+        weapons: [],
+        transportId: transportUnit.id,
+      },
+      {
+        id: "helbrutes",
+        unitId: helbrute.id,
+        name: helbrute.name,
+        modelCount: 2,
+        weapons: [],
+        transportId: transportUnit.id,
+      },
+    ],
+  });
+  assert.ok(overCapacity.errors.some((error) => /uses 46 of 45/i.test(error)));
+  assert.deepEqual(overCapacity.assignments, []);
+
+  const orca = unit("Orca Dropship", "000000456");
+  const crisis = unit("Crisis Fireknife Battlesuits", "000003700");
+  assert.equal(transportPassengerEligibility(orca, crisis).modelCost, 4);
+  assert.equal(transportPassengerEligibility(orca, crisis).sharedAllowanceMaximumModels, 6);
 });

@@ -256,6 +256,12 @@ export type CatalogueUnit = {
       maximumWounds: number | null;
       allowedKeywords: string[][];
     }>;
+    sharedAllowances: Array<{
+      position: number;
+      maximumModels: number;
+      costEqualsWounds: boolean;
+      allowedKeywords: string[][];
+    }>;
     excluded: Array<{
       keywords: string[];
       minimumWounds: number | null;
