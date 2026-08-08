@@ -132,6 +132,83 @@ class ProfileDataTests(unittest.TestCase):
             mixed["additionalPools"],
             [{"capacity": 1, "allowed": [["dreadnought"]]}],
         )
+        instead = parse_transport_rule(
+            "This model has a transport capacity of 12 Heretic Astartes Infantry models. "
+            "This model can instead transport 1 Helbrute or Dreadnought model.",
+            {
+                normalized_term(value)
+                for value in (
+                    "Heretic Astartes",
+                    "Infantry",
+                    "Helbrute",
+                    "Dreadnought",
+                )
+            },
+        )
+        self.assertTrue(instead["exact"])
+        self.assertEqual(
+            instead["alternativePools"],
+            [
+                {
+                    "capacity": 1,
+                    "allowed": [["helbrute"], ["dreadnought"]],
+                    "maximumWounds": None,
+                }
+            ],
+        )
+        self.assertFalse(
+            parse_transport_rule(
+                "This model has a transport capacity of 12 Heretic Astartes Infantry "
+                "models. This model can alternatively transport 1 Helbrute model.",
+                {
+                    normalized_term(value)
+                    for value in ("Heretic Astartes", "Infantry", "Helbrute")
+                },
+            )["exact"]
+        )
+        monster_mode = parse_transport_rule(
+            "This model has a transport capacity of 20 Tyranids Infantry models, or "
+            "1 Tyranids Monster model with a Wounds characteristic of 12 or less. "
+            "Each Infantry model with a Wounds characteristic of more than 1 takes up "
+            "the space of 3 models.",
+            {normalized_term(value) for value in ("Tyranids", "Infantry", "Monster")},
+        )
+        self.assertTrue(monster_mode["exact"])
+        self.assertEqual(monster_mode["allowed"], [["tyranids", "infantry"]])
+        self.assertEqual(
+            monster_mode["costs"],
+            [{"keywords": ["infantry"], "minimumWounds": 2, "cost": 3}],
+        )
+        self.assertEqual(
+            monster_mode["alternativePools"],
+            [
+                {
+                    "capacity": 1,
+                    "allowed": [["tyranids", "monster"]],
+                    "maximumWounds": 12,
+                }
+            ],
+        )
+        walker_mode = parse_transport_rule(
+            "This model has a transport capacity of 1 Tauros model or 2 Astra "
+            "Militarum Walker models.",
+            {
+                normalized_term(value)
+                for value in ("Tauros", "Astra Militarum", "Walker")
+            },
+        )
+        self.assertTrue(walker_mode["exact"])
+        self.assertEqual(walker_mode["allowed"], [["tauros"]])
+        self.assertEqual(
+            walker_mode["alternativePools"],
+            [
+                {
+                    "capacity": 2,
+                    "allowed": [["astra militarum", "walker"]],
+                    "maximumWounds": None,
+                }
+            ],
+        )
         aeldari = parse_transport_rule(
             "This model has a transport capacity of 12 Aeldari Infantry models. "
             "Each Wraith Construct model takes the space of 2 models. "
@@ -1797,7 +1874,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "57",
+                "58",
             )
             self.assertEqual(
                 connection.execute("SELECT count(*) FROM unit_firing_deck").fetchone()[
@@ -1829,6 +1906,18 @@ class ProfileDataTests(unittest.TestCase):
             )
             self.assertEqual(
                 connection.execute(
+                    "SELECT count(*) FROM unit_transport_alternative_pools"
+                ).fetchone()[0],
+                5,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM unit_transport_alternative_pool_keywords"
+                ).fetchone()[0],
+                10,
+            )
+            self.assertEqual(
+                connection.execute(
                     "SELECT count(*) FROM unit_transport_exclusion_exception_keywords"
                 ).fetchone()[0],
                 10,
@@ -1837,7 +1926,20 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT count(*) FROM unit_transport WHERE exact_rules = 1"
                 ).fetchone()[0],
-                159,
+                165,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*)
+                       FROM unit_transport AS transport
+                       JOIN datasheets ON datasheets.id = transport.datasheet_id
+                       WHERE datasheets.name IN
+                             ('Dreadclaw Drop Pod', 'Hierophant',
+                              'Kharybdis Assault Claw', 'Tyrannocyte',
+                              'Valkyrie Sky Talon')
+                         AND transport.exact_rules = 1"""
+                ).fetchone()[0],
+                6,
             )
             self.assertEqual(
                 connection.execute(
@@ -1914,6 +2016,39 @@ class ProfileDataTests(unittest.TestCase):
                        GROUP BY pools.datasheet_id, pools.pool_position, pools.capacity"""
                 ).fetchone(),
                 (1, "dreadnought"),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT pools.capacity, pools.maximum_wounds,
+                              group_concat(keywords.keyword, '|')
+                       FROM unit_transport_alternative_pools AS pools
+                       JOIN unit_transport_alternative_pool_keywords AS keywords
+                         USING (datasheet_id, pool_position)
+                       WHERE pools.datasheet_id = '000000489'
+                       GROUP BY pools.datasheet_id, pools.pool_position,
+                                pools.capacity, pools.maximum_wounds"""
+                ).fetchone(),
+                (1, 12, "tyranids|monster"),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*)
+                       FROM (
+                         SELECT datasheets.id
+                         FROM datasheets
+                         JOIN datasheet_keywords AS faction
+                           ON faction.datasheet_id = datasheets.id
+                          AND lower(faction.keyword) = 'tyranids'
+                         JOIN datasheet_keywords AS infantry
+                           ON infantry.datasheet_id = datasheets.id
+                          AND lower(infantry.keyword) = 'infantry'
+                         JOIN model_profiles ON model_profiles.datasheet_id = datasheets.id
+                         GROUP BY datasheets.id
+                         HAVING min(model_profiles.wounds) <= 1
+                            AND max(model_profiles.wounds) > 1
+                       )"""
+                ).fetchone()[0],
+                0,
             )
             self.assertEqual(
                 connection.execute(
@@ -3188,6 +3323,21 @@ class ProfileDataTests(unittest.TestCase):
                     "position": 1,
                     "capacity": 1,
                     "allowedKeywords": [["dreadnought"]],
+                }
+            ],
+        )
+        tyrannocyte = next(
+            unit for unit in catalogue["units"] if unit["id"] == "000000489"
+        )
+        self.assertTrue(tyrannocyte["transport"]["exactRules"])
+        self.assertEqual(
+            tyrannocyte["transport"]["alternativePools"],
+            [
+                {
+                    "position": 1,
+                    "capacity": 1,
+                    "maximumWounds": 12,
+                    "allowedKeywords": [["tyranids", "monster"]],
                 }
             ],
         )

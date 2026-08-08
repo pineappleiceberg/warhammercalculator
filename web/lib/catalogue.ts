@@ -250,6 +250,12 @@ export type CatalogueUnit = {
       capacity: number;
       allowedKeywords: string[][];
     }>;
+    alternativePools: Array<{
+      position: number;
+      capacity: number;
+      maximumWounds: number | null;
+      allowedKeywords: string[][];
+    }>;
     excluded: Array<{
       keywords: string[];
       minimumWounds: number | null;

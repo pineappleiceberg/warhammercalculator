@@ -244,12 +244,20 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     passenger: { id: boyz.id, name: "Boyz" },
     attached: null,
     capacity: 12,
-    pool: { position: 0, label: "primary", capacity: 12 },
+    pool: {
+      position: 0,
+      kind: "primary",
+      label: "primary",
+      capacity: 12,
+      maximumWounds: null,
+    },
     pools: [
       {
         position: 0,
+        kind: "primary",
         label: "primary",
         capacity: 12,
+        maximumWounds: null,
         allowedKeywords: [["orks", "infantry"]],
       },
     ],
@@ -374,10 +382,38 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.equal(additionalPoolBody.data.capacity, 1);
   assert.deepEqual(additionalPoolBody.data.pool, {
     position: 1,
+    kind: "additional",
     label: "dreadnought",
     capacity: 1,
+    maximumWounds: null,
   });
   assert.equal(additionalPoolBody.data.fits, false);
+  const dreadclaw = catalogue.units.find((unit) => unit.id === "000001310");
+  const helbrute = catalogue.units.find((unit) => unit.id === "000000954");
+  const alternativeMode = await worker.fetch(
+    new Request(`http://localhost/api/v1/transport?unit=${dreadclaw.id}&passenger=${helbrute.id}`),
+    testEnv,
+    context,
+  );
+  assert.equal(alternativeMode.status, 200);
+  assert.deepEqual((await alternativeMode.json()).data.pool, {
+    position: 1,
+    kind: "alternative",
+    label: "helbrute or dreadnought",
+    capacity: 1,
+    maximumWounds: null,
+  });
+  const tyrannocyte = catalogue.units.find((unit) => unit.id === "000000489");
+  const norn = catalogue.units.find((unit) => unit.id === "000002751");
+  const oversizedMonster = await worker.fetch(
+    new Request(`http://localhost/api/v1/transport?unit=${tyrannocyte.id}&passenger=${norn.id}`),
+    testEnv,
+    context,
+  );
+  assert.equal(oversizedMonster.status, 200);
+  const oversizedMonsterBody = await oversizedMonster.json();
+  assert.equal(oversizedMonsterBody.data.eligible, false);
+  assert.match(oversizedMonsterBody.data.reason, /12 Wounds limit/i);
   const waveSerpent = catalogue.units.find((unit) => unit.id === "000000599");
   const yvraine = catalogue.units.find((unit) => unit.id === "000002542");
   const ynnariKabalites = catalogue.units.find((unit) => unit.id === "000003916");

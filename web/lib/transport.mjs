@@ -45,12 +45,21 @@ export function transportCapacityPools(transport, armyUnit) {
   return [
     {
       position: 0,
+      kind: "primary",
       capacity: transportCapacity(transport, armyUnit),
+      maximumWounds: null,
       allowedKeywords: transport.transport.allowedKeywords,
       label: "primary",
     },
     ...(transport.transport.additionalPools ?? []).map((pool) => ({
       ...pool,
+      kind: "additional",
+      maximumWounds: null,
+      label: pool.allowedKeywords.map((group) => group.join(" + ")).join(" or "),
+    })),
+    ...(transport.transport.alternativePools ?? []).map((pool) => ({
+      ...pool,
+      kind: "alternative",
       label: pool.allowedKeywords.map((group) => group.join(" + ")).join(" or "),
     })),
   ];
@@ -77,18 +86,31 @@ export function transportPassengerEligibility(transport, passenger, context = {}
     return { eligible: false, reason: "A Transport cannot embark itself" };
   }
   const keywords = keywordSet(passenger);
-  const matchingPool = transportCapacityPools(transport).find(
+  const wounds = maximumWounds(passenger);
+  const pools = transportCapacityPools(transport);
+  const keywordPool = pools.find(
     (pool) =>
       pool.allowedKeywords.length === 0 ||
       pool.allowedKeywords.some((group) => matchesKeywords(keywords, group)),
   );
-  if (!matchingPool) {
+  if (!keywordPool) {
     return {
       eligible: false,
       reason: `${passenger.name} does not have the required Transport keywords`,
     };
   }
-  const wounds = maximumWounds(passenger);
+  const matchingPool = pools.find(
+    (pool) =>
+      (pool.allowedKeywords.length === 0 ||
+        pool.allowedKeywords.some((group) => matchesKeywords(keywords, group))) &&
+      (pool.maximumWounds === null || wounds <= Number(pool.maximumWounds)),
+  );
+  if (!matchingPool) {
+    return {
+      eligible: false,
+      reason: `${passenger.name} exceeds the ${keywordPool.maximumWounds} Wounds limit for ${transport.name}`,
+    };
+  }
   for (const exclusion of transport.transport.excluded) {
     const keywordMatch = matchesKeywords(keywords, exclusion.keywords);
     const woundsMatch =
@@ -133,7 +155,9 @@ export function transportPassengerEligibility(transport, passenger, context = {}
     reason: "",
     modelCost,
     poolPosition: matchingPool.position,
+    poolKind: matchingPool.kind,
     poolCapacity: matchingPool.capacity,
+    poolMaximumWounds: matchingPool.maximumWounds,
     poolLabel: matchingPool.label,
   };
 }
@@ -240,13 +264,17 @@ export function transportAssignmentReport(catalogue, armyList) {
       transport,
       modelCost: eligibility.modelCost,
       poolPosition: eligibility.poolPosition,
+      poolKind: eligibility.poolKind,
       poolCapacity: eligibility.poolCapacity,
       poolLabel: eligibility.poolLabel,
       slots,
     };
     assignments.push(assignment);
     slotsByTransport.set(transportUnit.id, (slotsByTransport.get(transportUnit.id) ?? 0) + slots);
-    const poolKey = `${transportUnit.id}:${eligibility.poolPosition}`;
+    const poolKey =
+      eligibility.poolKind === "alternative"
+        ? `${transportUnit.id}:alternative:${eligibility.poolPosition}`
+        : `${transportUnit.id}:${eligibility.poolPosition}`;
     poolSlotsByTransport.set(poolKey, (poolSlotsByTransport.get(poolKey) ?? 0) + slots);
   }
   const incompleteAttachments = new Set();
@@ -269,18 +297,41 @@ export function transportAssignmentReport(catalogue, armyList) {
       assignment.transportUnit.id,
       (slotsByTransport.get(assignment.transportUnit.id) ?? 0) + assignment.slots,
     );
-    const poolKey = `${assignment.transportUnit.id}:${assignment.poolPosition}`;
+    const poolKey =
+      assignment.poolKind === "alternative"
+        ? `${assignment.transportUnit.id}:alternative:${assignment.poolPosition}`
+        : `${assignment.transportUnit.id}:${assignment.poolPosition}`;
     poolSlotsByTransport.set(poolKey, (poolSlotsByTransport.get(poolKey) ?? 0) + assignment.slots);
   }
   const overCapacity = new Set();
+  const mixedModes = new Set();
+  const modesByTransport = new Map();
+  for (const assignment of completeAssignments) {
+    const mode =
+      assignment.poolKind === "alternative" ? `alternative:${assignment.poolPosition}` : "primary";
+    if (!modesByTransport.has(assignment.transportUnit.id)) {
+      modesByTransport.set(assignment.transportUnit.id, new Set());
+    }
+    modesByTransport.get(assignment.transportUnit.id).add(mode);
+  }
+  for (const [transportId, modes] of modesByTransport) {
+    if (modes.size <= 1) continue;
+    const transportUnit = savedUnits.get(transportId);
+    errors.push(`${transportUnit.name} mixes mutually exclusive Transport modes`);
+    mixedModes.add(transportId);
+  }
   for (const transportUnit of armyList?.units ?? []) {
     const transport = catalogueUnits.get(transportUnit.unitId);
     if (!transport?.transport) continue;
     for (const pool of transportCapacityPools(transport, transportUnit)) {
-      const used = poolSlotsByTransport.get(`${transportUnit.id}:${pool.position}`) ?? 0;
+      const poolKey =
+        pool.kind === "alternative"
+          ? `${transportUnit.id}:alternative:${pool.position}`
+          : `${transportUnit.id}:${pool.position}`;
+      const used = poolSlotsByTransport.get(poolKey) ?? 0;
       if (used > pool.capacity) {
         errors.push(
-          `${transportUnit.name} uses ${used} of ${pool.capacity} Transport spaces in its ${pool.label} pool`,
+          `${transportUnit.name} uses ${used} of ${pool.capacity} Transport spaces in its ${pool.label} ${pool.kind === "alternative" ? "mode" : "pool"}`,
         );
         overCapacity.add(transportUnit.id);
       }
@@ -288,7 +339,9 @@ export function transportAssignmentReport(catalogue, armyList) {
   }
   return {
     assignments: completeAssignments.filter(
-      (assignment) => !overCapacity.has(assignment.transportUnit.id),
+      (assignment) =>
+        !overCapacity.has(assignment.transportUnit.id) &&
+        !mixedModes.has(assignment.transportUnit.id),
     ),
     errors,
     slotsByTransport,

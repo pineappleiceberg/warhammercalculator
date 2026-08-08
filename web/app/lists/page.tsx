@@ -427,8 +427,12 @@ export default function ArmyLists() {
                           {assignment && (
                             <small>
                               {assignment.slots} Transport spaces ({assignment.modelCost} per model)
-                              {(assignment.transport.transport?.additionalPools.length ?? 0) > 0 &&
-                                ` · ${assignment.poolLabel} pool`}
+                              {((assignment.transport.transport?.additionalPools.length ?? 0) > 0 ||
+                                (assignment.transport.transport?.alternativePools.length ?? 0) >
+                                  0) &&
+                                ` · ${assignment.poolLabel} ${
+                                  assignment.poolKind === "alternative" ? "mode" : "pool"
+                                }`}
                             </small>
                           )}
                         </label>

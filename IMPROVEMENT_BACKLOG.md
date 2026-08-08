@@ -16,10 +16,10 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Normalize the remaining 19 compound Transport clauses: alternative
-   Infantry/Monster or Walker modes, reduced primary capacity while carrying a
-   Vehicle, nested transported Vehicles, variable Wounds-based Vehicle space,
-   and per-model costs in mixed-composition units. Add explicit model-composition
+1. Normalize the remaining 13 compound Transport clauses: reduced primary
+   capacity while carrying a Vehicle, nested transported Vehicles, variable
+   Wounds-based Vehicle space, and per-model costs in mixed-composition units.
+   Add explicit model-composition
    formation state where exact evaluation requires it, and normalize Leader
    eligibility so declared attachment links can be audited.
 2. Extend normalized defensive-equipment selection to Model vs Model and Play
@@ -27,6 +27,18 @@ priority over feature count.
    gear from becoming a homogeneous unit-wide defense.
 
 ## Completed cycles
+
+- 2026-08-08: Added exact mutually exclusive Transport modes and the Wounds-
+  based passenger cost required by them. SQLite schema 58 normalizes five
+  alternative pools across the Dreadclaw Drop Pod, Kharybdis Assault Claw, two
+  Tyrannocytes, and the Valkyrie Sky Talon; the shared “more than 1 Wound” cost
+  also makes the Hierophant exact. Exact Transport coverage increases from 159
+  to 165 of 178 datasheets. Army Lists and shared eligibility prevent primary
+  and alternative passengers from mixing, enforce each mode's capacity, apply
+  the Tyrannocyte's 12-Wound Monster ceiling, and identify modes in the UI and
+  API. Exact parser, schema/catalogue snapshots, current-profile Wounds-band
+  homogeneity, legal alternative assignments, mixed-mode rejection, capacity
+  overflow, Monster ceiling, and API regressions cover the change.
 
 - 2026-08-08: Added exact passenger-keyword exceptions to Transport exclusions.
   SQLite schema 57 normalizes the published Ynnari exceptions for the Falcon,

@@ -236,7 +236,11 @@ published Ynnari exclusions without rejecting the named Yvraine, Visarch, and
 Asuryani exceptions; Jump Pack exclusions remain independent. Independent
 capacity pools are tracked separately for Storm Eagles,
 Stormravens, the Ghost Ark, and the Harridan, so a Dreadnought or Character slot
-does not consume the Infantry or named-unit allowance. Army Lists also preserves which bodyguard unit a Character began the
+does not consume the Infantry or named-unit allowance. Mutually exclusive modes
+are tracked separately for Dreadclaws, Kharybdis Assault Claws, Tyrannocytes,
+and the Valkyrie Sky Talon; Army Lists rejects formations that mix their primary
+and alternative passengers. Tyrannocyte Monsters also enforce their published
+12-Wound ceiling. Army Lists preserves which bodyguard unit a Character began the
 battle attached to. Tacticus Characters can use the published Rhino, Razorback,
 and Terrax exception only when linked to a non-Tacticus unit, and both saved
 units must embark in the same transport. Conditional clauses that are not fully
@@ -669,7 +673,7 @@ that legally compatible passenger's eligible ranged weapons and slot cost.
 `GET /api/v1/transport?unit={transportId}&passenger={passengerId}&attached={attachedUnitId}&models={count}`
 returns the exact source clause, eligibility, per-model cost, total spaces, and
 whether the selection fits in its matched independent pool; the response lists
-every pool and its required keywords. `attached` is optional except when a published
+every pool or mode, its kind, Wounds ceiling, and required keywords. `attached` is optional except when a published
 attachment exception is required. `POST
 /api/v1/validate-firing-deck` validates one or more explicit passenger/model/
 weapon selections, the aggregate Firing Deck limit, phase eligibility, and

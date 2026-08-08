@@ -28,7 +28,10 @@ The main tables are:
   keyword exceptions. This preserves the exact Tacticus and Aeldari/Ynnari
   exceptions instead of weakening their exclusions globally.
   `unit_transport_additional_pools` and its keyword child table preserve
-  independent passenger allowances such as “12 Infantry and 1 Dreadnought”
+  independent passenger allowances such as “12 Infantry and 1 Dreadnought”.
+  `unit_transport_alternative_pools` and its keyword child table preserve
+  mutually exclusive passenger modes, their separate capacities, and optional
+  maximum-Wounds limits
 - `unit_combat_presets` and `unit_combat_preset_effects` for conservatively
   extracted Hit/Wound modifiers, re-roll modes, weapon-keyword grants, AP
   changes, Critical Hit/Wound thresholds, direct signed Attacks, Strength, and

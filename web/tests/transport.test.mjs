@@ -31,7 +31,9 @@ test("published Transport keywords and model-space costs gate passengers exactly
     reason: "",
     modelCost: 1,
     poolPosition: 0,
+    poolKind: "primary",
     poolCapacity: 12,
+    poolMaximumWounds: null,
     poolLabel: "primary",
   });
   assert.equal(transportPassengerEligibility(trukk, meganobz).modelCost, 2);
@@ -141,7 +143,9 @@ test("independent Transport pools do not consume each other's capacity", () => {
   assert.deepEqual(transportCapacityPools(stormraven), [
     {
       position: 0,
+      kind: "primary",
       capacity: 12,
+      maximumWounds: null,
       allowedKeywords: [["adeptus astartes", "infantry"]],
       label: "primary",
     },
@@ -149,6 +153,8 @@ test("independent Transport pools do not consume each other's capacity", () => {
       position: 1,
       capacity: 1,
       allowedKeywords: [["dreadnought"]],
+      kind: "additional",
+      maximumWounds: null,
       label: "dreadnought",
     },
   ]);
@@ -340,4 +346,114 @@ test("Aeldari Transports apply Ynnari exceptions only to the published exclusion
   assert.equal(transportPassengerEligibility(waveSerpent, visarch).eligible, true);
   assert.equal(transportPassengerEligibility(waveSerpent, ynnariKabalites).eligible, false);
   assert.equal(transportPassengerEligibility(waveSerpent, warpSpiders).eligible, false);
+});
+
+test("alternative Transport modes enforce passenger type, capacity, and Wounds caps", () => {
+  const dreadclaw = unit("Dreadclaw Drop Pod", "000001310");
+  const legionaries = unit("Legionaries", "000002570");
+  const helbrute = unit("Helbrute", "000000954");
+  assert.deepEqual(transportCapacityPools(dreadclaw), [
+    {
+      position: 0,
+      kind: "primary",
+      capacity: 12,
+      maximumWounds: null,
+      allowedKeywords: [["heretic astartes", "infantry"]],
+      label: "primary",
+    },
+    {
+      position: 1,
+      kind: "alternative",
+      capacity: 1,
+      maximumWounds: null,
+      allowedKeywords: [["helbrute"], ["dreadnought"]],
+      label: "helbrute or dreadnought",
+    },
+  ]);
+  assert.equal(transportPassengerEligibility(dreadclaw, legionaries).poolKind, "primary");
+  assert.equal(transportPassengerEligibility(dreadclaw, helbrute).poolKind, "alternative");
+
+  const transportUnit = {
+    id: "dreadclaw",
+    unitId: dreadclaw.id,
+    name: dreadclaw.name,
+    modelCount: 1,
+    weapons: [],
+  };
+  const mixed = transportAssignmentReport(catalogue, {
+    units: [
+      transportUnit,
+      {
+        id: "legionaries",
+        unitId: legionaries.id,
+        name: legionaries.name,
+        modelCount: 5,
+        weapons: [],
+        transportId: transportUnit.id,
+      },
+      {
+        id: "helbrute",
+        unitId: helbrute.id,
+        name: helbrute.name,
+        modelCount: 1,
+        weapons: [],
+        transportId: transportUnit.id,
+      },
+    ],
+  });
+  assert.ok(mixed.errors.some((error) => /mutually exclusive Transport modes/i.test(error)));
+  assert.deepEqual(mixed.assignments, []);
+
+  const legalAlternative = transportAssignmentReport(catalogue, {
+    units: [
+      transportUnit,
+      {
+        id: "helbrute",
+        unitId: helbrute.id,
+        name: helbrute.name,
+        modelCount: 1,
+        weapons: [],
+        transportId: transportUnit.id,
+      },
+    ],
+  });
+  assert.deepEqual(legalAlternative.errors, []);
+  assert.equal(legalAlternative.assignments.length, 1);
+  assert.equal(legalAlternative.poolSlotsByTransport.get("dreadclaw:alternative:1"), 1);
+
+  const overCapacity = transportAssignmentReport(catalogue, {
+    units: [
+      transportUnit,
+      {
+        id: "helbrutes",
+        unitId: helbrute.id,
+        name: helbrute.name,
+        modelCount: 2,
+        weapons: [],
+        transportId: transportUnit.id,
+      },
+    ],
+  });
+  assert.ok(overCapacity.errors.some((error) => /uses 2 of 1.*helbrute/i.test(error)));
+  assert.deepEqual(overCapacity.assignments, []);
+
+  const tyrannocyte = unit("Tyrannocyte", "000000489");
+  const termagants = unit("Termagants", "000000468");
+  const warriors = unit("Tyranid Warriors With Ranged Bio-weapons", "000002692");
+  const carnifexes = unit("Carnifexes", "000000490");
+  const norn = unit("Norn Emissary", "000002751");
+  assert.equal(transportPassengerEligibility(tyrannocyte, termagants).poolKind, "primary");
+  assert.equal(transportPassengerEligibility(tyrannocyte, warriors).modelCost, 3);
+  const carnifexMode = transportPassengerEligibility(tyrannocyte, carnifexes);
+  assert.equal(carnifexMode.eligible, true);
+  assert.equal(carnifexMode.poolKind, "alternative");
+  assert.equal(carnifexMode.poolMaximumWounds, 12);
+  assert.equal(transportPassengerEligibility(tyrannocyte, norn).eligible, false);
+  assert.match(transportPassengerEligibility(tyrannocyte, norn).reason, /12 Wounds limit/i);
+
+  const skyTalon = unit("Valkyrie Sky Talon", "000001237");
+  const tauros = unit("Tauros Assault Vehicle", "000000736");
+  const sentinels = unit("Armoured Sentinels", "000000691");
+  assert.equal(transportPassengerEligibility(skyTalon, tauros).poolCapacity, 1);
+  assert.equal(transportPassengerEligibility(skyTalon, sentinels).poolCapacity, 2);
 });

@@ -1003,14 +1003,18 @@ async function handleApi(request: Request, env: Env) {
           pool: eligibility.eligible
             ? {
                 position: eligibility.poolPosition,
+                kind: eligibility.poolKind,
                 label: eligibility.poolLabel,
                 capacity: eligibility.poolCapacity,
+                maximumWounds: eligibility.poolMaximumWounds,
               }
             : null,
           pools: transportCapacityPools(transport).map((pool) => ({
             position: pool.position,
+            kind: pool.kind,
             label: pool.label,
             capacity: pool.capacity,
+            maximumWounds: pool.maximumWounds,
             allowedKeywords: pool.allowedKeywords,
           })),
           eligible: eligibility.eligible,
