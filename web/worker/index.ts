@@ -35,7 +35,7 @@ import {
 } from "../lib/loadout.mjs";
 import type { CatalogueCombatPreset } from "../lib/catalogue";
 import { resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
-import { leaderAttachmentEligibility } from "../lib/attachments.mjs";
+import { leaderAttachmentEligibility, leaderFormationEligibility } from "../lib/attachments.mjs";
 import { transportCapacityPools, transportPassengerEligibility } from "../lib/transport.mjs";
 
 interface Env {
@@ -57,6 +57,13 @@ interface ExecutionContext {
 
 type Catalogue = {
   sourceUpdatedAt: string;
+  leaderFormationRules: {
+    maximumLeaders: number;
+    sourceUrl: string;
+    sourceSha256: string;
+    sourceVersion: string;
+    sourcePage: number;
+  };
   factions: Array<{ id: string; name: string }>;
   units: Array<{
     id: string;
@@ -140,6 +147,25 @@ type Catalogue = {
     } | null;
     transportKeywords: string[];
     leaderBodyguardIds: string[];
+    leaderFooter: string;
+    leaderAttachmentException: {
+      maximumLeaders: number;
+      mandatoryAttachment: boolean;
+      anyExistingLeader: boolean;
+      existingLeaderKeywords: string[];
+      forbidSameDatasheet: boolean;
+      forbiddenCompanionKeyword: string | null;
+      source: string;
+    } | null;
+    bodyguardLeaderRule: {
+      minimumLeaders: number;
+      minimumLeaderKeywords: string[];
+      maximumLeaders: number | null;
+      maximumRequiredStartingStrength: number | null;
+      maximumRequiredLeaderKeyword: string | null;
+      leadersMustBeDistinct: boolean;
+      source: string;
+    } | null;
   }>;
 };
 
@@ -814,6 +840,8 @@ async function handleApi(request: Request, env: Env) {
           weapons: "GET /api/v1/weapons?unit={datasheetId}",
           loadout: "GET /api/v1/loadout?unit={datasheetId}",
           leader: "GET /api/v1/leader?unit={leaderDatasheetId}&bodyguard={bodyguardDatasheetId}",
+          leaderFormation:
+            "GET /api/v1/leader-formation?bodyguard={bodyguardDatasheetId}&leader={leaderDatasheetId}&leader={leaderDatasheetId}&models={startingStrength}",
           validateLoadout: "POST /api/v1/validate-loadout",
           firingDeck:
             "GET /api/v1/firing-deck?unit={transportDatasheetId}&passenger={passengerDatasheetId}&attached={attachedDatasheetId}",
@@ -901,6 +929,8 @@ async function handleApi(request: Request, env: Env) {
           firingDeck: unit.firingDeck,
           transport: unit.transport,
           leaderBodyguardIds: unit.leaderBodyguardIds,
+          leaderAttachmentException: unit.leaderAttachmentException,
+          bodyguardLeaderRule: unit.bodyguardLeaderRule,
           suggestedModelCount: unit.suggestedModelCount,
           maximumModelCount: unit.maximumModelCount,
         }));
@@ -931,6 +961,9 @@ async function handleApi(request: Request, env: Env) {
           transport: unit.transport,
           transportKeywords: unit.transportKeywords,
           leaderBodyguardIds: unit.leaderBodyguardIds,
+          leaderFooter: unit.leaderFooter,
+          leaderAttachmentException: unit.leaderAttachmentException,
+          bodyguardLeaderRule: unit.bodyguardLeaderRule,
           suggestedModelCount: unit.suggestedModelCount,
           maximumModelCount: unit.maximumModelCount,
           weapons: unit.weapons,
@@ -963,6 +996,43 @@ async function handleApi(request: Request, env: Env) {
             const option = catalogue.units.find((entry) => entry.id === id);
             return { id, name: option?.name ?? id };
           }),
+          leaderAttachmentException: leader.leaderAttachmentException,
+          bodyguardLeaderRule: bodyguard?.bodyguardLeaderRule ?? null,
+        },
+        sourceUpdatedAt: catalogue.sourceUpdatedAt,
+      });
+    }
+
+    if (url.pathname === "/api/v1/leader-formation" && request.method === "GET") {
+      const bodyguardId = url.searchParams.get("bodyguard");
+      if (!bodyguardId) return apiError("Missing required bodyguard query parameter");
+      const catalogue = await loadCatalogue(request, env);
+      const bodyguard = catalogue.units.find((entry) => entry.id === bodyguardId);
+      if (!bodyguard) return apiError("Bodyguard unit not found", 404);
+      const leaderIds = url.searchParams.getAll("leader");
+      if (leaderIds.length > 10) return apiError("At most 10 leader parameters are allowed");
+      const leaders = leaderIds.map((id) => catalogue.units.find((entry) => entry.id === id));
+      if (leaders.some((leader) => !leader)) return apiError("Leader unit not found", 404);
+      const models = Number(url.searchParams.get("models") ?? bodyguard.suggestedModelCount ?? "1");
+      if (!Number.isSafeInteger(models) || models < 1 || models > 1000) {
+        return apiError("models must be an integer from 1 to 1000");
+      }
+      const eligibility = leaderFormationEligibility(bodyguard, leaders, models);
+      return json({
+        data: {
+          bodyguard: { id: bodyguard.id, name: bodyguard.name, models },
+          leaders: leaders.map((leader) => ({ id: leader.id, name: leader.name })),
+          eligible: eligibility.eligible,
+          reason: eligibility.reason,
+          maximumLeaders: eligibility.maximumLeaders,
+          bodyguardLeaderRule: bodyguard.bodyguardLeaderRule,
+          leaderAttachmentExceptions: leaders
+            .filter((leader) => leader.leaderAttachmentException)
+            .map((leader) => ({
+              leader: { id: leader.id, name: leader.name },
+              rule: leader.leaderAttachmentException,
+            })),
+          globalRule: catalogue.leaderFormationRules,
         },
         sourceUpdatedAt: catalogue.sourceUpdatedAt,
       });

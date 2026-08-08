@@ -94,9 +94,19 @@ async function checkProfiles(fetchImpl, baseUrl, timeoutMs) {
       }
       if (
         typeof body?.sourceUpdatedAt !== "string" ||
+        typeof body?.leaderFormationRules?.maximumLeaders !== "number" ||
+        typeof body?.leaderFormationRules?.sourceUrl !== "string" ||
+        typeof body?.leaderFormationRules?.sourceSha256 !== "string" ||
         !Array.isArray(body?.factions) ||
         !Array.isArray(body?.units) ||
-        !body.units.every((unit) => Array.isArray(unit?.leaderBodyguardIds))
+        !body.units.every(
+          (unit) =>
+            Array.isArray(unit?.leaderBodyguardIds) &&
+            typeof unit?.leaderFooter === "string" &&
+            (unit?.leaderAttachmentException === null ||
+              typeof unit?.leaderAttachmentException === "object") &&
+            (unit?.bodyguardLeaderRule === null || typeof unit?.bodyguardLeaderRule === "object"),
+        )
       ) {
         const error = new Error("Profile catalogue schema is incomplete");
         error.code = "INVALID_PROFILE_SCHEMA";

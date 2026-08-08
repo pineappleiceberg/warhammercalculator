@@ -208,6 +208,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.match(documented.endpoints.firingDeck, /GET \/api\/v1\/firing-deck/);
   assert.match(documented.endpoints.transport, /GET \/api\/v1\/transport/);
   assert.match(documented.endpoints.leader, /GET \/api\/v1\/leader/);
+  assert.match(documented.endpoints.leaderFormation, /GET \/api\/v1\/leader-formation/);
   assert.match(documented.endpoints.validateFiringDeck, /POST \/api\/v1\/validate-firing-deck/);
   assert.match(documented.endpoints.lists, /lists\/export/);
 
@@ -360,6 +361,8 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const leaderBody = await leader.json();
   assert.equal(leaderBody.data.eligible, true);
   assert.ok(leaderBody.data.options.some((option) => option.id === tacticalSquad.id));
+  assert.deepEqual(leaderBody.data.leaderAttachmentException, null);
+  assert.equal(leaderBody.data.bodyguardLeaderRule, null);
   const illegalLeader = await worker.fetch(
     new Request(
       `http://localhost/api/v1/leader?unit=${transportCaptain.id}&bodyguard=${warriors.id}`,
@@ -369,6 +372,28 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   );
   assert.equal(illegalLeader.status, 200);
   assert.equal((await illegalLeader.json()).data.eligible, false);
+  const formationWarboss = catalogue.units.find((unit) => unit.id === "000000001");
+  const formationBanner = catalogue.units.find((unit) => unit.id === "000000022");
+  const legalBoyzFormation = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/leader-formation?bodyguard=${boyz.id}&leader=${formationWarboss.id}&leader=${formationBanner.id}&models=20`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.equal(legalBoyzFormation.status, 200);
+  const legalBoyzFormationBody = await legalBoyzFormation.json();
+  assert.equal(legalBoyzFormationBody.data.eligible, true);
+  assert.equal(legalBoyzFormationBody.data.globalRule.maximumLeaders, 2);
+  assert.equal(legalBoyzFormationBody.data.globalRule.sourcePage, 16);
+  const smallBoyzFormation = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/leader-formation?bodyguard=${boyz.id}&leader=${formationWarboss.id}&leader=${formationBanner.id}&models=10`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.equal((await smallBoyzFormation.json()).data.eligible, false);
   const attachedTransport = await worker.fetch(
     new Request(
       `http://localhost/api/v1/transport?unit=${rhino.id}&passenger=${transportCaptain.id}&attached=${tacticalSquad.id}`,

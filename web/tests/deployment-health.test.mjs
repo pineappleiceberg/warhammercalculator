@@ -4,8 +4,24 @@ import { checkDeployment } from "../scripts/check-deployment.mjs";
 
 const profiles = {
   sourceUpdatedAt: "2026-06-13 12:02:41",
+  leaderFormationRules: {
+    maximumLeaders: 2,
+    sourceUrl: "https://example.com/commentary.pdf",
+    sourceSha256: "abc",
+    sourceVersion: "test",
+    sourcePage: 16,
+  },
   factions: [{ id: "NEC", name: "Necrons" }],
-  units: [{ id: "1", name: "Doomsday Ark", leaderBodyguardIds: [] }],
+  units: [
+    {
+      id: "1",
+      name: "Doomsday Ark",
+      leaderBodyguardIds: [],
+      leaderFooter: "",
+      leaderAttachmentException: null,
+      bodyguardLeaderRule: null,
+    },
+  ],
 };
 
 function healthyFetch(request) {

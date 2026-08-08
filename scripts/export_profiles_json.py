@@ -124,11 +124,14 @@ def export(database: Path, output: Path) -> None:
                 "transport": None,
                 "transportKeywords": [],
                 "leaderBodyguardIds": [],
+                "leaderFooter": row["leader_footer_text"],
+                "leaderAttachmentException": None,
+                "bodyguardLeaderRule": None,
                 "suggestedModelCount": None,
                 "maximumModelCount": None,
             }
             for row in connection.execute(
-                """SELECT id, faction_id, name, loadout_text
+                """SELECT id, faction_id, name, loadout_text, leader_footer_text
                    FROM datasheets ORDER BY name COLLATE NOCASE"""
             )
         }
@@ -143,6 +146,63 @@ def export(database: Path, output: Path) -> None:
             units[row["leader_datasheet_id"]]["leaderBodyguardIds"].append(
                 row["bodyguard_datasheet_id"]
             )
+        exception_keywords: dict[str, list[str]] = {}
+        for row in connection.execute(
+            """SELECT leader_datasheet_id, keyword
+               FROM leader_attachment_exception_existing_keywords
+               ORDER BY leader_datasheet_id, position"""
+        ):
+            exception_keywords.setdefault(row["leader_datasheet_id"], []).append(
+                row["keyword"]
+            )
+        for row in connection.execute(
+            """SELECT leader_datasheet_id, maximum_leaders, mandatory_attachment,
+                      any_existing_leader, forbid_same_datasheet,
+                      forbidden_companion_keyword, source_text
+               FROM leader_attachment_exceptions ORDER BY leader_datasheet_id"""
+        ):
+            units[row["leader_datasheet_id"]]["leaderAttachmentException"] = {
+                "maximumLeaders": row["maximum_leaders"],
+                "mandatoryAttachment": bool(row["mandatory_attachment"]),
+                "anyExistingLeader": bool(row["any_existing_leader"]),
+                "existingLeaderKeywords": exception_keywords.get(
+                    row["leader_datasheet_id"], []
+                ),
+                "forbidSameDatasheet": bool(row["forbid_same_datasheet"]),
+                "forbiddenCompanionKeyword": row["forbidden_companion_keyword"],
+                "source": row["source_text"],
+            }
+        minimum_keywords: dict[str, list[str]] = {}
+        for row in connection.execute(
+            """SELECT bodyguard_datasheet_id, keyword
+               FROM bodyguard_leader_rule_minimum_keywords
+               ORDER BY bodyguard_datasheet_id, position"""
+        ):
+            minimum_keywords.setdefault(row["bodyguard_datasheet_id"], []).append(
+                row["keyword"]
+            )
+        for row in connection.execute(
+            """SELECT bodyguard_datasheet_id, minimum_leaders, maximum_leaders,
+                      maximum_required_starting_strength,
+                      maximum_required_leader_keyword, leaders_must_be_distinct,
+                      source_text
+               FROM bodyguard_leader_rules ORDER BY bodyguard_datasheet_id"""
+        ):
+            units[row["bodyguard_datasheet_id"]]["bodyguardLeaderRule"] = {
+                "minimumLeaders": row["minimum_leaders"],
+                "minimumLeaderKeywords": minimum_keywords.get(
+                    row["bodyguard_datasheet_id"], []
+                ),
+                "maximumLeaders": row["maximum_leaders"],
+                "maximumRequiredStartingStrength": row[
+                    "maximum_required_starting_strength"
+                ],
+                "maximumRequiredLeaderKeyword": row[
+                    "maximum_required_leader_keyword"
+                ],
+                "leadersMustBeDistinct": bool(row["leaders_must_be_distinct"]),
+                "source": row["source_text"],
+            }
         for row in connection.execute(
             """SELECT datasheet_id, keyword
                FROM datasheet_keywords
@@ -1126,8 +1186,16 @@ def export(database: Path, output: Path) -> None:
         source_updated_at = connection.execute(
             "SELECT value FROM metadata WHERE key = 'source_updated_at'"
         ).fetchone()[0]
+        metadata = dict(connection.execute("SELECT key, value FROM metadata"))
         payload = {
             "sourceUpdatedAt": source_updated_at,
+            "leaderFormationRules": {
+                "maximumLeaders": int(metadata["leader_global_maximum"]),
+                "sourceUrl": metadata["leader_global_rule_source_url"],
+                "sourceSha256": metadata["leader_global_rule_source_sha256"],
+                "sourceVersion": metadata["leader_global_rule_source_version"],
+                "sourcePage": int(metadata["leader_global_rule_source_page"]),
+            },
             "structuredWargear": {
                 "constraintCount": connection.execute(
                     "SELECT count(*) FROM wargear_constraints"

@@ -256,10 +256,12 @@ and alternative passengers. Tyrannocyte Monsters also enforce their published
 battle attached to and limits that menu to the 1,902 published Leader-to-
 Bodyguard datasheet pairs. Imported or stale illegal links remain visible for
 editing but fail the roster rules check. Play Mode derives Attached-unit state
-from valid saved links while keeping its quick override editable. The structured
-Leader export does not identify exceptions to the normal Leader-count limit, so
-pair eligibility is exact while multi-Leader cardinality remains permissive
-until those exception clauses are normalized. Tacticus Characters can use the published Rhino, Razorback,
+from valid saved links while keeping its quick override editable. Leader
+formations enforce the global two-Character ceiling from the official Rules
+Commentary, 51 normalized Leader exception clauses, the Boyz and Kroot
+starting-strength conditions, the Company Heroes minimum-Leader rule, and five
+mandatory-attachment rules. The menu filters prospective combinations while
+preserving stale invalid links for repair. Tacticus Characters can use the published Rhino, Razorback,
 and Terrax exception only when linked to a non-Tacticus unit, and both saved
 units must embark in the same transport. Conditional clauses that are not fully
 normalized remain unavailable instead of being guessed. Melee and One Shot weapons are excluded, a passenger
@@ -692,6 +694,11 @@ that legally compatible passenger's eligible ranged weapons and slot cost.
 published Bodyguard options and, when `bodyguard` is supplied, returns exact
 pair eligibility and a readable reason. The same `leaderBodyguardIds` are
 included in catalogue and loadout discovery responses.
+`GET /api/v1/leader-formation?bodyguard={bodyguardId}&leader={leaderId}&leader={leaderId}&models={count}`
+checks a complete formation, including the global two-Leader ceiling,
+datasheet-specific exceptions, starting-strength conditions, minimum-Leader
+requirements, and duplicate restrictions. Its response includes the normalized
+rules and pinned official Rules Commentary source identity.
 `GET /api/v1/transport?unit={transportId}&passenger={passengerId}&attached={attachedUnitId}&models={count}`
 returns the exact source clause, eligibility, per-model cost, total spaces, and
 whether the selection fits in its matched independent pool; the response lists

@@ -282,6 +282,25 @@ export type CatalogueUnit = {
   } | null;
   transportKeywords: string[];
   leaderBodyguardIds: string[];
+  leaderFooter: string;
+  leaderAttachmentException: {
+    maximumLeaders: number;
+    mandatoryAttachment: boolean;
+    anyExistingLeader: boolean;
+    existingLeaderKeywords: string[];
+    forbidSameDatasheet: boolean;
+    forbiddenCompanionKeyword: string | null;
+    source: string;
+  } | null;
+  bodyguardLeaderRule: {
+    minimumLeaders: number;
+    minimumLeaderKeywords: string[];
+    maximumLeaders: number | null;
+    maximumRequiredStartingStrength: number | null;
+    maximumRequiredLeaderKeyword: string | null;
+    leadersMustBeDistinct: boolean;
+    source: string;
+  } | null;
   suggestedModelCount: number | null;
   maximumModelCount: number | null;
 };
@@ -362,6 +381,13 @@ type CombatPresetContext = {
 };
 export type Catalogue = {
   sourceUpdatedAt: string;
+  leaderFormationRules: {
+    maximumLeaders: number;
+    sourceUrl: string;
+    sourceSha256: string;
+    sourceVersion: string;
+    sourcePage: number;
+  };
   structuredWargear: {
     constraintCount: number;
     constrainedWeaponCount: number;

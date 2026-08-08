@@ -18,6 +18,11 @@ The main tables are:
   ability names, conditions, scope, and source ordering
 - `unit_leader_eligibility` for the published Leader-to-Bodyguard datasheet
   pairs, retaining the first source row when the upstream export repeats a pair
+- `leader_attachment_exceptions` and its existing-keyword child table for 51
+  source-backed exceptions to the normal Leader count, including mandatory
+  attachment, companion-keyword, uniqueness, and Pack Leader restrictions
+- `bodyguard_leader_rules` and its minimum-keyword child table for the Boyz,
+  Kroot Carnivores, and Company Heroes formation conditions
 - `unit_firing_deck` for the exact published Firing Deck model limit and its
   source ability, plus `unit_firing_deck_passenger_costs` for exact passenger
   exceptions whose models and weapons consume two Firing Deck slots
@@ -152,6 +157,12 @@ That command accepts only the exact source files recorded in
 `profile-source-lock.json`. This prevents a routine rebuild from silently
 publishing changed rules or profiles. Check the current upstream exports and
 write a machine-readable table/checksum report without modifying checked data:
+
+The global maximum of two attached Leaders is separately pinned in database
+metadata to the official Core Rules Updates / Rules Commentary PDF by URL,
+version, page, and SHA-256. Datasheet `leader_footer_html` and
+`leader_footer_text` retain the source wording behind normalized exception
+records.
 
 ```sh
 python3 scripts/profile_freshness.py --output build/profile-freshness-report.json

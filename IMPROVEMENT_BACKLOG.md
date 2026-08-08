@@ -16,14 +16,29 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Normalize Leader-formation cardinality and source-backed exceptions so the
-   roster audit can enforce the normal one-Leader limit without rejecting legal
-   multi-Leader combinations.
+1. Normalize the exceptional Warlock Conclave and Warlock Skyrunners Bodyguard-
+   join relationships plus the Captain's equipment-gated Bladeguard Veteran
+   Squad and Hellblaster Squad eligibility, making every actionable Leader
+   footer classification executable.
 2. Extend normalized defensive-equipment selection to Model vs Model and Play
    Mode while preserving model-by-model allocation and preventing bearer-only
    gear from becoming a homogeneous unit-wide defense.
 
 ## Completed cycles
+
+- 2026-08-08: Enforced source-backed Leader-formation cardinality. SQLite
+  schema 63 classifies all 55 Leader footers, normalizes 51 multi-Leader or
+  mandatory-attachment exceptions, and captures the Boyz, Kroot Carnivores,
+  and Company Heroes Bodyguard rules. The official Rules Commentary's global
+  two-Leader ceiling is pinned by URL, version, page, and SHA-256. Army Lists
+  filters prospective legal formations, preserves invalid imported links for
+  repair, and reports mandatory, starting-strength, required-keyword,
+  uniqueness, and global-cap failures. Play Mode only derives Attached state
+  from valid formations, and `/api/v1/leader-formation` exposes the same
+  decision with source rules. Parser, database, catalogue, roster, UI, and API
+  regressions cover legal and illegal exception combinations. Two custom
+  Warlock joins and one equipment-gated Captain footer remain explicitly
+  classified for the next cycle.
 
 - 2026-08-08: Added source-backed Leader-to-Bodyguard eligibility. SQLite
   schema 62 pins `Datasheets_leader.csv`, deduplicates its 1,918 source rows
@@ -33,9 +48,8 @@ priority over feature count.
   circular, non-Leader, and illegal cross-datasheet attachments. Play Mode
   derives Attached-unit state from valid saved formations, and the API exposes
   both discovery lists and direct pair checks. Database provenance, catalogue,
-  legal/illegal pair, permissive multi-Leader, Transport integration, UI build,
-  and API regressions cover the change. Multi-Leader cardinality remains
-  deliberately permissive until its published exceptions are normalized.
+  legal/illegal pair, Transport integration, UI build, and API regressions
+  cover the change.
 
 - 2026-08-08: Completed exact Transport coverage. SQLite schema 61 normalizes
   the Orion Assault Dropship's independent one-model allowance for its three

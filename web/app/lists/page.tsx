@@ -28,6 +28,7 @@ import {
   unitLoadoutWarnings,
 } from "../../lib/loadout.mjs";
 import { transportAssignmentReport, transportPassengerEligibility } from "../../lib/transport.mjs";
+import { leaderFormationEligibility } from "../../lib/attachments.mjs";
 
 const emptyList: ArmyListInput = { name: "", factionId: "", units: [] };
 const DRAFT_KEY = "warhammer-calculator:army-list-draft:v1";
@@ -358,11 +359,31 @@ export default function ArmyLists() {
                     const attachedUnit = catalogue?.units.find(
                       (entry) => entry.id === attachedSavedUnit?.unitId,
                     );
-                    const attachmentOptions = draft.units.filter(
-                      (candidate) =>
-                        candidate.id !== unit.id &&
-                        passenger?.leaderBodyguardIds.includes(candidate.unitId),
-                    );
+                    const attachmentOptions = draft.units.filter((candidate) => {
+                      if (
+                        candidate.id === unit.id ||
+                        !passenger?.leaderBodyguardIds.includes(candidate.unitId)
+                      ) {
+                        return false;
+                      }
+                      const bodyguard = catalogue?.units.find(
+                        (entry) => entry.id === candidate.unitId,
+                      );
+                      const otherLeaders = draft.units
+                        .filter(
+                          (entry) => entry.id !== unit.id && entry.attachedToId === candidate.id,
+                        )
+                        .map((entry) =>
+                          catalogue?.units.find((profile) => profile.id === entry.unitId),
+                        )
+                        .filter((entry) => entry !== undefined);
+                      return leaderFormationEligibility(
+                        bodyguard,
+                        [...otherLeaders, passenger],
+                        candidate.modelCount,
+                        { requireMinimum: false },
+                      ).eligible;
+                    });
                     const transports = draft.units.filter((candidate) => {
                       if (candidate.id === unit.id) return false;
                       const transport = catalogue?.units.find(

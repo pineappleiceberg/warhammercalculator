@@ -17,14 +17,24 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 try:
+    from scripts.leader_rules import classify_leader_footer, parse_bodyguard_leader_rule
     from scripts.wargear_constraints import CONSTRAINT_SCHEMA, populate_constraints
     from scripts.transport_rules import normalized_term, parse_transport_rule
 except ModuleNotFoundError:
+    from leader_rules import classify_leader_footer, parse_bodyguard_leader_rule
     from wargear_constraints import CONSTRAINT_SCHEMA, populate_constraints
     from transport_rules import normalized_term, parse_transport_rule
 
 
 BASE_URL = "https://wahapedia.ru/wh40k10ed"
+LEADER_GLOBAL_RULE_SOURCE_URL = (
+    "https://assets.warhammer-community.com/"
+    "warhammer40000_core%26key_corerulesupdate%26commentary_eng_24.09-lyrhcoyn9s.pdf"
+)
+LEADER_GLOBAL_RULE_SOURCE_SHA256 = (
+    "3162da97680eebfa888a80daec742767dc5a506c3c39eaef7127edf371cf008d"
+)
+LEADER_GLOBAL_RULE_SOURCE_VERSION = "Core Rules Updates 1.2 / Rules Commentary 1.4"
 FILES = (
     "Abilities.csv",
     "Last_update.csv",
@@ -72,6 +82,8 @@ CREATE TABLE datasheets (
     loadout_text TEXT NOT NULL DEFAULT '',
     transport_html TEXT NOT NULL DEFAULT '',
     transport_text TEXT NOT NULL DEFAULT '',
+    leader_footer_html TEXT NOT NULL DEFAULT '',
+    leader_footer_text TEXT NOT NULL DEFAULT '',
     is_virtual INTEGER NOT NULL DEFAULT 0 CHECK (is_virtual IN (0, 1)),
     source_url TEXT NOT NULL
 ) WITHOUT ROWID;
@@ -81,6 +93,46 @@ CREATE TABLE unit_leader_eligibility (
     bodyguard_datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
     source_line INTEGER NOT NULL CHECK (source_line >= 2),
     PRIMARY KEY (leader_datasheet_id, bodyguard_datasheet_id)
+) WITHOUT ROWID;
+
+CREATE TABLE leader_attachment_exceptions (
+    leader_datasheet_id TEXT PRIMARY KEY REFERENCES datasheets(id) ON DELETE CASCADE,
+    maximum_leaders INTEGER NOT NULL CHECK (maximum_leaders = 2),
+    mandatory_attachment INTEGER NOT NULL CHECK (mandatory_attachment IN (0, 1)),
+    any_existing_leader INTEGER NOT NULL CHECK (any_existing_leader IN (0, 1)),
+    forbid_same_datasheet INTEGER NOT NULL CHECK (forbid_same_datasheet IN (0, 1)),
+    forbidden_companion_keyword TEXT,
+    source_text TEXT NOT NULL
+) WITHOUT ROWID;
+
+CREATE TABLE leader_attachment_exception_existing_keywords (
+    leader_datasheet_id TEXT NOT NULL
+        REFERENCES leader_attachment_exceptions(leader_datasheet_id) ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 1),
+    keyword TEXT NOT NULL,
+    PRIMARY KEY (leader_datasheet_id, position)
+) WITHOUT ROWID;
+
+CREATE TABLE bodyguard_leader_rules (
+    bodyguard_datasheet_id TEXT PRIMARY KEY REFERENCES datasheets(id) ON DELETE CASCADE,
+    ability_position INTEGER NOT NULL,
+    minimum_leaders INTEGER NOT NULL CHECK (minimum_leaders >= 0),
+    maximum_leaders INTEGER CHECK (maximum_leaders >= 2),
+    maximum_required_starting_strength INTEGER
+        CHECK (maximum_required_starting_strength > 0),
+    maximum_required_leader_keyword TEXT,
+    leaders_must_be_distinct INTEGER NOT NULL CHECK (leaders_must_be_distinct IN (0, 1)),
+    source_text TEXT NOT NULL,
+    FOREIGN KEY (bodyguard_datasheet_id, ability_position)
+        REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE TABLE bodyguard_leader_rule_minimum_keywords (
+    bodyguard_datasheet_id TEXT NOT NULL
+        REFERENCES bodyguard_leader_rules(bodyguard_datasheet_id) ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 1),
+    keyword TEXT NOT NULL,
+    PRIMARY KEY (bodyguard_datasheet_id, position)
 ) WITHOUT ROWID;
 
 CREATE TABLE model_profiles (
@@ -3907,6 +3959,22 @@ def create_database(
             continue
         seen_leader_pairs.add(pair)
         leader_rows.append((*pair, source_line))
+    leader_footer_rules = []
+    leader_footer_kind_counts: dict[str, int] = {}
+    unknown_leader_footers = []
+    for row in rows["Datasheets.csv"]:
+        source = plain_text(row["leader_footer"])
+        classified = classify_leader_footer(source)
+        if not classified:
+            continue
+        kind = classified["kind"]
+        leader_footer_kind_counts[kind] = leader_footer_kind_counts.get(kind, 0) + 1
+        if kind == "unknown":
+            unknown_leader_footers.append((row["id"], row["name"], source))
+        elif kind == "attachment_exception":
+            leader_footer_rules.append((row["id"], classified))
+    if unknown_leader_footers:
+        raise RuntimeError(f"unclassified Leader footers: {unknown_leader_footers!r}")
     orphan_model_count = len(rows["Datasheets_models.csv"]) - len(model_rows)
     orphan_weapon_count = len(rows["Datasheets_wargear.csv"]) - len(linked_weapon_rows)
     placeholder_weapon_count = len(linked_weapon_rows) - len(weapon_rows)
@@ -3931,7 +3999,18 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "62"),
+                    ("schema_version", "63"),
+                    ("leader_global_maximum", "2"),
+                    ("leader_global_rule_source_url", LEADER_GLOBAL_RULE_SOURCE_URL),
+                    (
+                        "leader_global_rule_source_sha256",
+                        LEADER_GLOBAL_RULE_SOURCE_SHA256,
+                    ),
+                    (
+                        "leader_global_rule_source_version",
+                        LEADER_GLOBAL_RULE_SOURCE_VERSION,
+                    ),
+                    ("leader_global_rule_source_page", "16"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
@@ -3939,6 +4018,9 @@ def create_database(
                     ("skipped_orphan_option_rows", str(orphan_option_count)),
                     ("skipped_orphan_leader_rows", str(orphan_leader_count)),
                     ("skipped_duplicate_leader_rows", str(duplicate_leader_count)),
+                    ("leader_footer_rows", str(sum(leader_footer_kind_counts.values()))),
+                    ("leader_attachment_exception_rows", str(len(leader_footer_rules))),
+                    ("unclassified_leader_footer_rows", "0"),
                 ),
             )
             connection.executemany(
@@ -3964,8 +4046,9 @@ def create_database(
             connection.executemany(
                 """INSERT INTO datasheets
                    (id, faction_id, name, battlefield_role, loadout_html,
-                    loadout_text, transport_html, transport_text, is_virtual, source_url)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    loadout_text, transport_html, transport_text,
+                    leader_footer_html, leader_footer_text, is_virtual, source_url)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     (
                         row["id"],
@@ -3976,6 +4059,8 @@ def create_database(
                         plain_text(row["loadout"]),
                         row["transport"],
                         plain_text(row["transport"]),
+                        row["leader_footer"],
+                        plain_text(row["leader_footer"]),
                         boolean(row["virtual"]),
                         row["link"],
                     )
@@ -3988,6 +4073,33 @@ def create_database(
                    VALUES (?, ?, ?)""",
                 leader_rows,
             )
+            for leader_datasheet_id, rule in leader_footer_rules:
+                connection.execute(
+                    """INSERT INTO leader_attachment_exceptions
+                       (leader_datasheet_id, maximum_leaders, mandatory_attachment,
+                        any_existing_leader, forbid_same_datasheet,
+                        forbidden_companion_keyword, source_text)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        leader_datasheet_id,
+                        rule["maximumLeaders"],
+                        int(rule["mandatory"]),
+                        int(rule["anyExistingLeader"]),
+                        int(rule["forbidSameDatasheet"]),
+                        rule["forbiddenCompanionKeyword"],
+                        rule["source"],
+                    ),
+                )
+                connection.executemany(
+                    """INSERT INTO leader_attachment_exception_existing_keywords
+                       (leader_datasheet_id, position, keyword) VALUES (?, ?, ?)""",
+                    (
+                        (leader_datasheet_id, position, keyword)
+                        for position, keyword in enumerate(
+                            rule["existingLeaderKeywords"], start=1
+                        )
+                    ),
+                )
             connection.executemany(
                 """INSERT OR REPLACE INTO abilities
                    (id, faction_id, name, legend_text, description_text)
@@ -4011,6 +4123,7 @@ def create_database(
                 row["id"]: row["faction_id"] for row in rows["Datasheets.csv"]
             }
             ability_positions: dict[str, int] = {}
+            bodyguard_leader_rule_count = 0
             for row in ability_rows:
                 datasheet_id = row["datasheet_id"]
                 position = ability_positions.get(datasheet_id, 0) + 1
@@ -4052,6 +4165,45 @@ def create_database(
                         row["parameter"].strip() or None,
                     ),
                 )
+                bodyguard_rule = parse_bodyguard_leader_rule(description)
+                if bodyguard_rule:
+                    if bodyguard_rule.get("kind") == "unknown":
+                        raise RuntimeError(
+                            f"unclassified Bodyguard Leader rule for {datasheet_id}: {bodyguard_rule!r}"
+                        )
+                    connection.execute(
+                        """INSERT INTO bodyguard_leader_rules
+                           (bodyguard_datasheet_id, ability_position, minimum_leaders,
+                            maximum_leaders, maximum_required_starting_strength,
+                            maximum_required_leader_keyword, leaders_must_be_distinct,
+                            source_text)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            datasheet_id,
+                            position,
+                            bodyguard_rule["minimumLeaders"],
+                            bodyguard_rule["maximumLeaders"],
+                            bodyguard_rule["maximumRequiredStartingStrength"],
+                            bodyguard_rule["maximumRequiredLeaderKeyword"],
+                            int(bodyguard_rule["leadersMustBeDistinct"]),
+                            bodyguard_rule["source"],
+                        ),
+                    )
+                    connection.executemany(
+                        """INSERT INTO bodyguard_leader_rule_minimum_keywords
+                           (bodyguard_datasheet_id, position, keyword) VALUES (?, ?, ?)""",
+                        (
+                            (datasheet_id, keyword_position, keyword)
+                            for keyword_position, keyword in enumerate(
+                                bodyguard_rule["minimumLeaderKeywords"], start=1
+                            )
+                        ),
+                    )
+                    bodyguard_leader_rule_count += 1
+            connection.execute(
+                "INSERT INTO metadata(key, value) VALUES (?, ?)",
+                ("bodyguard_leader_rule_rows", str(bodyguard_leader_rule_count)),
+            )
             connection.executemany(
                 """INSERT INTO model_profiles
                    (datasheet_id, source_line, name, movement, movement_inches,
@@ -4216,6 +4368,10 @@ def create_database(
                 "factions",
                 "datasheets",
                 "unit_leader_eligibility",
+                "leader_attachment_exceptions",
+                "leader_attachment_exception_existing_keywords",
+                "bodyguard_leader_rules",
+                "bodyguard_leader_rule_minimum_keywords",
                 "model_profiles",
                 "datasheet_keywords",
                 "weapon_profiles",

@@ -17,6 +17,7 @@ from scripts.build_profiles_db import (
     source_manifest_differences,
 )
 from scripts.export_profiles_json import export, profile_group_names, unit_model_range
+from scripts.leader_rules import classify_leader_footer, parse_bodyguard_leader_rule
 from scripts.profile_freshness import (
     database_source_manifest,
     offline_report,
@@ -41,6 +42,32 @@ SOURCE_LOCK = ROOT / "data" / "profile-source-lock.json"
 
 
 class ProfileDataTests(unittest.TestCase):
+    def test_leader_rule_parser_classifies_cardinality_and_mandatory_constraints(self):
+        lieutenant = classify_leader_footer(
+            "You can attach this model to a unit it can lead even if one Captain or "
+            "Chapter Master model has already been attached to it."
+        )
+        self.assertEqual(lieutenant["kind"], "attachment_exception")
+        self.assertEqual(
+            lieutenant["existingLeaderKeywords"], ["captain", "chapter master"]
+        )
+        self.assertFalse(lieutenant["mandatory"])
+        datasmith = classify_leader_footer(
+            "You must attach this model to a Kastelan Robots unit, even if one or more "
+            "other Cybernetica Datasmith models have already been attached to it."
+        )
+        self.assertTrue(datasmith["mandatory"])
+        self.assertEqual(
+            datasmith["existingLeaderKeywords"], ["cybernetica datasmith"]
+        )
+        boyz = parse_bodyguard_leader_rule(
+            "If this unit has a Starting Strength of 20, you can attach up to two "
+            "Leader units to it instead of one (but only if one of those is a Warboss unit)."
+        )
+        self.assertEqual(boyz["maximumLeaders"], 2)
+        self.assertEqual(boyz["maximumRequiredStartingStrength"], 20)
+        self.assertEqual(boyz["maximumRequiredLeaderKeyword"], "warboss")
+
     def test_transport_parser_preserves_exact_keyword_cost_and_wounds_clauses(self):
         vocabulary = {
             normalized_term(value)
@@ -2023,7 +2050,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "62",
+                "63",
             )
             self.assertEqual(
                 connection.execute(
@@ -2050,6 +2077,36 @@ class ProfileDataTests(unittest.TestCase):
                     "SELECT value FROM metadata WHERE key = 'skipped_duplicate_leader_rows'"
                 ).fetchone()[0],
                 "16",
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM leader_attachment_exceptions"
+                ).fetchone()[0],
+                51,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM bodyguard_leader_rules"
+                ).fetchone()[0],
+                3,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT value FROM metadata WHERE key = 'unclassified_leader_footer_rows'"
+                ).fetchone()[0],
+                "0",
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT value FROM metadata WHERE key = 'leader_global_maximum'"
+                ).fetchone()[0],
+                "2",
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT value FROM metadata WHERE key = 'leader_global_rule_source_sha256'"
+                ).fetchone()[0],
+                "3162da97680eebfa888a80daec742767dc5a506c3c39eaef7127edf371cf008d",
             )
             self.assertEqual(
                 connection.execute("SELECT count(*) FROM unit_firing_deck").fetchone()[
@@ -4251,6 +4308,26 @@ class ProfileDataTests(unittest.TestCase):
         self.assertIn("000000070", captain["leaderBodyguardIds"])
         self.assertNotIn("000000534", captain["leaderBodyguardIds"])
         self.assertEqual(boyz["leaderBodyguardIds"], [])
+        lieutenant = next(
+            unit for unit in catalogue["units"] if unit["id"] == "000001346"
+        )
+        self.assertEqual(
+            lieutenant["leaderAttachmentException"]["existingLeaderKeywords"],
+            ["captain", "chapter master"],
+        )
+        self.assertEqual(boyz["bodyguardLeaderRule"]["maximumLeaders"], 2)
+        self.assertEqual(
+            boyz["bodyguardLeaderRule"]["maximumRequiredLeaderKeyword"], "warboss"
+        )
+        company_heroes = next(
+            unit for unit in catalogue["units"] if unit["id"] == "000002772"
+        )
+        self.assertEqual(
+            company_heroes["bodyguardLeaderRule"]["minimumLeaderKeywords"],
+            ["captain", "chapter master"],
+        )
+        self.assertEqual(catalogue["leaderFormationRules"]["maximumLeaders"], 2)
+        self.assertEqual(catalogue["leaderFormationRules"]["sourcePage"], 16)
         rhino = next(unit for unit in catalogue["units"] if unit["id"] == "000002723")
         self.assertTrue(rhino["transport"]["exactRules"])
         tacticus_exclusion = next(
