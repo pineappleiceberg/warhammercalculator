@@ -180,6 +180,7 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
     targetSupportUnitId: "unit-3",
     activeTargetSupportPresetIds: ["datasheet-4:ability:6"],
     supportUsesSpent: { "unit-2": { "datasheet-3:ability:5": 1 } },
+    targetDefensiveEquipmentCounts: { "unit-1::3::equipment-1": 1 },
     profile: {
       attacks: 2,
       hitOn: 3,
@@ -243,6 +244,9 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   assert.deepEqual(recovery.supportUsesSpent, {
     "unit-2": { "datasheet-3:ability:5": 1 },
   });
+  assert.deepEqual(recovery.targetDefensiveEquipmentCounts, {
+    "unit-1::3::equipment-1": 1,
+  });
   assert.equal(recovery.profile.targetDistance, 9);
   assert.equal(recovery.profile.attackerSourceTargetDistance, 18);
   assert.equal(recovery.profile.targetSourceAttackerDistance, 12);
@@ -286,12 +290,14 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   delete legacy.targetSupportUnitId;
   delete legacy.activeTargetSupportPresetIds;
   delete legacy.supportUsesSpent;
+  delete legacy.targetDefensiveEquipmentCounts;
   const migrated = parsePlayRecovery(legacy);
   assert.equal(migrated.supportUnitId, "");
   assert.deepEqual(migrated.activeSupportPresetIds, []);
   assert.equal(migrated.targetSupportUnitId, "");
   assert.deepEqual(migrated.activeTargetSupportPresetIds, []);
   assert.deepEqual(migrated.supportUsesSpent, {});
+  assert.deepEqual(migrated.targetDefensiveEquipmentCounts, {});
   const legacyProfile = JSON.parse(JSON.stringify(recovery));
   delete legacyProfile.profile.targetClosestEligible;
   delete legacyProfile.profile.attackerSourceTargetDistance;
@@ -326,6 +332,14 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   assert.throws(
     () => parsePlayRecovery({ ...recovery, supportUsesSpent: { "unit-2": { preset: -1 } } }),
     /use count/i,
+  );
+  assert.throws(
+    () =>
+      parsePlayRecovery({
+        ...recovery,
+        targetDefensiveEquipmentCounts: { "unit-1::3::equipment-1": -1 },
+      }),
+    /targetDefensiveEquipmentCounts/i,
   );
 });
 

@@ -16,11 +16,23 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Extend normalized defensive-equipment selection to Model vs Model and Play
-   Mode while preserving model-by-model allocation and preventing bearer-only
-   gear from becoming a homogeneous unit-wide defense.
+1. Split bearer-only defensive equipment into exact equipped and unequipped
+   target segments in Unit vs Unit instead of allowing one checkbox to protect
+   every model in a homogeneous segment.
+2. Persist defensive-equipment selections in Army Lists as editable Play Mode
+   defaults while retaining battle-local overrides and backup compatibility.
 
 ## Completed cycles
+
+- 2026-08-08: Extended normalized defensive equipment to Model vs Model and
+  Play Mode. Model matchups expose explicit equipment choices and preserve them
+  in shared URLs. Play Mode accepts whole-unit equipment independently from
+  per-profile bearer counts, splits equipped and unequipped models into exact
+  allocation segments, preserves those choices in battle recovery, and applies
+  attack-keyword restrictions such as Psychic-only Feel No Pain. Overlapping
+  bearer selections and ambiguous source compositions fail closed. Focused
+  profile, formation-allocation, keyword, and recovery regressions cover the
+  behavior.
 
 - 2026-08-08: Added source-backed joined Bodyguard formations to Unit vs Unit.
   Guardian Defenders, Storm Guardians, and Windriders now offer only their

@@ -9,6 +9,11 @@ import {
 } from "../lib/attachments.mjs";
 import { transportAssignmentReport } from "../lib/transport.mjs";
 import {
+  applyDefensiveEquipmentProfile,
+  applyDefensiveEquipmentTargets,
+  defensiveEquipmentSelectionKey,
+} from "../lib/defensive-equipment.mjs";
+import {
   bodyguardJoinerOptions,
   catalogueModelSegments,
   savedFormationForUnit,
@@ -448,4 +453,79 @@ test("saved formations expose one play unit with exact joined model profiles and
     ],
   );
   assert.notEqual(savedFormationTargetSequence(groups[0], farseerId).first.id, farseerId);
+});
+
+test("Play Mode splits bearer equipment from unequipped models and preserves unit effects", () => {
+  const bullgryn = namedUnit("Bullgryn Squad");
+  const bullgrynFormation = savedFormationGroups(catalogue, {
+    units: [
+      {
+        id: "bullgryn",
+        unitId: bullgryn.id,
+        name: bullgryn.name,
+        modelCount: 3,
+        weapons: [],
+      },
+    ],
+  })[0];
+  const shield = bullgryn.defensiveEquipment.find((option) => option.name === "Brute Shield");
+  assert.ok(shield);
+  const shieldKey = defensiveEquipmentSelectionKey("bullgryn", bullgryn.models[0].id, shield.id);
+  const split = savedFormationTargetSequence(bullgrynFormation, "", { [shieldKey]: 1 });
+  assert.deepEqual(
+    split.targets.map((target) => [target.modelCount, target.defensiveEquipmentIds]),
+    [
+      [1, [shield.id]],
+      [2, []],
+    ],
+  );
+  assert.deepEqual(
+    applyDefensiveEquipmentTargets(split.targets, bullgryn.defensiveEquipment).map(
+      (target) => target.invulnerable,
+    ),
+    [4, 0],
+  );
+
+  const hearthkyn = namedUnit("Hearthkyn Warriors");
+  const hearthkynFormation = savedFormationGroups(catalogue, {
+    units: [
+      {
+        id: "hearthkyn",
+        unitId: hearthkyn.id,
+        name: hearthkyn.name,
+        modelCount: 10,
+        weapons: [],
+      },
+    ],
+  })[0];
+  const crest = hearthkyn.defensiveEquipment.find((option) => option.name === "Weavefield Crest");
+  assert.ok(crest);
+  const crestKey = defensiveEquipmentSelectionKey("hearthkyn", null, crest.id);
+  const protectedUnit = savedFormationTargetSequence(hearthkynFormation, "", { [crestKey]: 1 });
+  assert.deepEqual(
+    applyDefensiveEquipmentTargets(protectedUnit.targets, hearthkyn.defensiveEquipment).map(
+      (target) => target.invulnerable,
+    ),
+    [5],
+  );
+});
+
+test("Model vs Model applies selected equipment only to matching attacks", () => {
+  const hounds = namedUnit("Flesh Hounds");
+  const collar = hounds.defensiveEquipment.find((option) => option.name === "Collar of Khorne");
+  assert.ok(collar);
+  const profile = { save: 7, invulnerable: 5, feelNoPain: 0, reduction: 0 };
+  assert.equal(
+    applyDefensiveEquipmentProfile(profile, hounds.defensiveEquipment, [collar.id], []).feelNoPain,
+    0,
+  );
+  assert.equal(
+    applyDefensiveEquipmentProfile(profile, hounds.defensiveEquipment, [collar.id], ["Psychic"])
+      .feelNoPain,
+    3,
+  );
+  assert.equal(
+    applyDefensiveEquipmentProfile(profile, hounds.defensiveEquipment, [], ["Psychic"]).feelNoPain,
+    0,
+  );
 });

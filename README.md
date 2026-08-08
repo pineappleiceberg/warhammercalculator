@@ -515,10 +515,14 @@ replacement, division, multiplication, addition/subtraction, rounding up, then
 the applicable minimum. Unit vs Unit applies those defenses to every ordered target segment and
 asks ranged and melee weapons to be resolved separately only when a scoped
 defense produces incompatible target values. Melee/ranged scope is respected
-per weapon. Optional bearer defenses are available only when structured unit
-composition proves the datasheet contains one model, and remain explicit
-checkboxes so unequipped wargear is never assumed. Multi-model bearer and
-subset-model rules, friendly-aura, affected-model,
+per weapon. Model vs Model exposes normalized defensive equipment as explicit
+choices and includes those choices in shared matchup URLs. Play Mode keeps
+whole-unit equipment separate from editable bearer counts; equipped and
+unequipped models become distinct ordered allocation profiles, so a shield on
+one model never protects the rest of its unit. Equipment choices recover with
+the current battle, and attack-keyword conditions are applied per weapon.
+Conflicting bearer assignments and ambiguous model compositions fail closed.
+Other subset-model rules, friendly-aura, affected-model,
 unrepresented attack-type conditions, conflicting, random, subset-model multiplicative,
 and other context-dependent replacement
 characteristic changes are omitted until they can be represented exactly.

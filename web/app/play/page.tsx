@@ -40,6 +40,10 @@ import {
   savedFormationModelSegments,
   savedFormationTargetSequence,
 } from "../../lib/formations.mjs";
+import {
+  applyDefensiveEquipmentTargets,
+  defensiveEquipmentSelectionKey,
+} from "../../lib/defensive-equipment.mjs";
 
 type LogEntry = {
   id: string;
@@ -89,6 +93,9 @@ export default function PlayMode() {
   const [firingDeckModels, setFiringDeckModels] = useState(1);
   const [firingDeckPassengerAlreadyShot, setFiringDeckPassengerAlreadyShot] = useState(false);
   const [targetModelId, setTargetModelId] = useState("");
+  const [targetDefensiveEquipmentCounts, setTargetDefensiveEquipmentCounts] = useState<
+    Record<string, number>
+  >({});
   const [activeAttackerPresetIds, setActiveAttackerPresetIds] = useState<string[]>([]);
   const [activeTargetPresetIds, setActiveTargetPresetIds] = useState<string[]>([]);
   const [supportUnitId, setSupportUnitId] = useState("");
@@ -143,6 +150,7 @@ export default function PlayMode() {
             targetSupportUnitId: string;
             activeTargetSupportPresetIds: string[];
             supportUsesSpent: Record<string, Record<string, number>>;
+            targetDefensiveEquipmentCounts: Record<string, number>;
           };
           setAttackerListId(saved.attackerListId);
           setTargetListId(saved.targetListId);
@@ -160,6 +168,7 @@ export default function PlayMode() {
           setTargetSupportUnitId(saved.targetSupportUnitId);
           setActiveTargetSupportPresetIds(saved.activeTargetSupportPresetIds);
           setSupportUsesSpent(saved.supportUsesSpent);
+          setTargetDefensiveEquipmentCounts(saved.targetDefensiveEquipmentCounts);
           setProfile(normalizeProfile(saved.profile));
           setHistory(saved.history);
           recovered.current = true;
@@ -199,6 +208,7 @@ export default function PlayMode() {
       targetSupportUnitId,
       activeTargetSupportPresetIds,
       supportUsesSpent,
+      targetDefensiveEquipmentCounts,
       profile,
       history,
     });
@@ -222,6 +232,7 @@ export default function PlayMode() {
     supportUnitId,
     targetSupportUnitId,
     supportUsesSpent,
+    targetDefensiveEquipmentCounts,
     weaponId,
   ]);
 
@@ -356,10 +367,23 @@ export default function PlayMode() {
   const weaponProfile =
     selectedWeaponGroup?.profiles.find((weapon) => String(weapon.id) === profileId) ??
     selectedWeaponGroup?.profiles[0];
-  const targetFormationModels = savedFormationTargetSequence(targetFormation, targetModelId);
+  const targetBaseModels = savedFormationModelSegments(targetFormation);
+  const targetFormationModels = savedFormationTargetSequence(
+    targetFormation,
+    targetModelId,
+    targetDefensiveEquipmentCounts,
+  );
   const targetProfiles = targetFormationModels.segments;
   const targetAllocationOptions = targetFormationModels.allocationOptions;
   const selectedTargetSegment = targetFormationModels.first;
+  const targetDefensiveEquipmentOptions =
+    targetFormation?.components.flatMap((component) =>
+      (component.catalogueUnit?.defensiveEquipment ?? []).map((option) => ({
+        ...option,
+        savedUnitId: component.unit.id,
+        unitName: component.unit.name,
+      })),
+    ) ?? [];
   const firingDeckPlayOptions =
     attackerCatalogueUnit?.firingDeck && catalogue
       ? (attackerList?.units ?? [])
@@ -1168,6 +1192,18 @@ export default function PlayMode() {
     refreshProfile(weaponId, id, profileId);
   };
 
+  const changeTargetDefensiveEquipment = (key: string, count: number) => {
+    const next = { ...targetDefensiveEquipmentCounts };
+    if (count > 0) next[key] = count;
+    else delete next[key];
+    const nextSequence = savedFormationTargetSequence(targetFormation, targetModelId, next);
+    const nextTargetModelId = nextSequence.first?.id ?? "";
+    setTargetDefensiveEquipmentCounts(next);
+    setTargetModelId(nextTargetModelId);
+    if (nextTargetModelId) refreshProfile(weaponId, nextTargetModelId, profileId);
+    setResult(null);
+  };
+
   const chooseTargetUnit = (id: string) => {
     const nextFormation =
       catalogue && targetList ? savedFormationForUnit(catalogue, targetList, id) : undefined;
@@ -1192,6 +1228,7 @@ export default function PlayMode() {
       ),
     ];
     setTargetUnitId(id);
+    setTargetDefensiveEquipmentCounts({});
     const nextTargetBattleShocked = false;
     const nextTargetAttached =
       nextFormation?.attached ?? targetTransportReport.attachedUnitIds.has(id);
@@ -1479,14 +1516,13 @@ export default function PlayMode() {
         profile.targetAttached,
         profile.targetWaaaghActive,
       );
-      const orderedTargets = applyTargetCombatPresets(
-        targetFormationModels.targets,
-        targetPresets,
-        [
+      const attackKeywords = attackKeywordsForWeapon(weaponProfile);
+      const orderedTargets = applyDefensiveEquipmentTargets(
+        applyTargetCombatPresets(targetFormationModels.targets, targetPresets, [
           {
             weaponType: weaponProfile.type,
             weaponName: weaponProfile.name,
-            attackKeywords: attackKeywordsForWeapon(weaponProfile),
+            attackKeywords,
             attackerKeywords: attackerFormationKeywords,
             targetDistance: profile.targetDistance,
             attackerCharged: profile.attackerCharged,
@@ -1513,10 +1549,12 @@ export default function PlayMode() {
             targetSourceAttackerDistance: profile.targetSourceAttackerDistance,
             targetSourceCanSeeAttacker: profile.targetSourceCanSeeAttacker,
           },
-        ],
+        ]),
+        targetDefensiveEquipmentOptions,
+        attackKeywords,
       );
       rolled =
-        orderedTargets.length > 1
+        orderedTargets.length > 1 || Object.keys(targetDefensiveEquipmentCounts).length > 0
           ? simulateOrderedVolley([profile], orderedTargets)
           : simulateAttack(profile);
     } catch (error) {
@@ -1883,6 +1921,7 @@ export default function PlayMode() {
                       setTargetListId(event.target.value);
                       setTargetUnitId("");
                       setTargetModelId("");
+                      setTargetDefensiveEquipmentCounts({});
                       setActiveTargetPresetIds([]);
                       setActiveSupportPresetIds([]);
                       setTargetSupportUnitId("");
@@ -1931,6 +1970,73 @@ export default function PlayMode() {
                     ))}
                   </select>
                 </label>
+                {targetDefensiveEquipmentOptions.length > 0 && (
+                  <details className="source-choice-pools" open>
+                    <summary>Defensive equipment</summary>
+                    <small>
+                      Whole-unit effects apply to every model. Bearer effects create separate
+                      allocation profiles for only the equipped models.
+                    </small>
+                    {targetDefensiveEquipmentOptions.map((option) => {
+                      if (option.scope === "unit") {
+                        const key = defensiveEquipmentSelectionKey(
+                          option.savedUnitId,
+                          null,
+                          option.id,
+                        );
+                        return (
+                          <label key={key} title={option.guidance ?? option.description}>
+                            <span>
+                              {option.unitName} · {option.name}
+                              <small>{option.description}</small>
+                            </span>
+                            <input
+                              aria-label={`${option.unitName} ${option.name} equipped`}
+                              type="checkbox"
+                              checked={(targetDefensiveEquipmentCounts[key] ?? 0) > 0}
+                              onChange={(event) =>
+                                changeTargetDefensiveEquipment(key, event.target.checked ? 1 : 0)
+                              }
+                            />
+                          </label>
+                        );
+                      }
+                      return targetBaseModels.segments
+                        .filter((segment) => segment.savedUnitId === option.savedUnitId)
+                        .map((segment) => {
+                          const key = defensiveEquipmentSelectionKey(
+                            option.savedUnitId,
+                            segment.model.id,
+                            option.id,
+                          );
+                          return (
+                            <label key={key} title={option.guidance ?? option.description}>
+                              <span>
+                                {option.unitName} · {segment.model.name} · {option.name}
+                                <small>{option.description}</small>
+                              </span>
+                              <input
+                                aria-label={`${option.unitName} ${segment.model.name} ${option.name} bearers`}
+                                type="number"
+                                min={0}
+                                max={segment.modelCount}
+                                value={targetDefensiveEquipmentCounts[key] ?? 0}
+                                onChange={(event) =>
+                                  changeTargetDefensiveEquipment(
+                                    key,
+                                    Math.min(
+                                      segment.modelCount,
+                                      Math.max(0, +event.target.value || 0),
+                                    ),
+                                  )
+                                }
+                              />
+                            </label>
+                          );
+                        });
+                    })}
+                  </details>
+                )}
                 <label>
                   <span>Allocate first</span>
                   <select

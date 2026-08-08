@@ -31,6 +31,7 @@ import {
   transportPassengerAttachmentOptions,
   transportPassengerCanEmbark,
 } from "../lib/transport.mjs";
+import { applyDefensiveEquipmentProfile } from "../lib/defensive-equipment.mjs";
 
 type Result = {
   minimum: number;
@@ -85,6 +86,7 @@ type CatalogueModel = {
   keywords: string[];
 };
 type CatalogueCombatPreset = import("../lib/catalogue").CatalogueCombatPreset;
+type CatalogueDefensiveEquipment = import("../lib/catalogue").CatalogueDefensiveEquipment;
 type CatalogueUnit = {
   id: string;
   factionId: string;
@@ -92,6 +94,7 @@ type CatalogueUnit = {
   models: CatalogueModel[];
   weapons: CatalogueWeapon[];
   combatPresets: CatalogueCombatPreset[];
+  defensiveEquipment: CatalogueDefensiveEquipment[];
   firingDeck: { capacity: number; abilityId: string | null } | null;
   firingDeckModelCost: number;
 };
@@ -117,6 +120,7 @@ type SharedMatchup = {
   supportPresetIds?: string[];
   targetSupportUnit?: string;
   targetSupportPresetIds?: string[];
+  targetEquipmentIds?: string[];
 };
 
 function encodeMatchup(matchup: SharedMatchup) {
@@ -144,6 +148,7 @@ function decodeMatchup(encoded: string): SharedMatchup {
   const targetSupportUnit =
     parsed.targetSupportUnit === undefined ? "" : selection("targetSupportUnit");
   const targetSupportPresetIds = parsed.targetSupportPresetIds ?? [];
+  const targetEquipmentIds = parsed.targetEquipmentIds ?? [];
   const firingDeckPassenger =
     parsed.firingDeckPassenger === undefined ? "" : selection("firingDeckPassenger");
   const firingDeckAttached =
@@ -170,6 +175,13 @@ function decodeMatchup(encoded: string): SharedMatchup {
   ) {
     throw new Error("Invalid targetSupportPresetIds");
   }
+  if (
+    !Array.isArray(targetEquipmentIds) ||
+    targetEquipmentIds.length > 100 ||
+    targetEquipmentIds.some((id) => typeof id !== "string" || !id || id.length > 200)
+  ) {
+    throw new Error("Invalid targetEquipmentIds");
+  }
   return {
     version: 1,
     profile: normalizeProfile(parsed.profile),
@@ -186,6 +198,7 @@ function decodeMatchup(encoded: string): SharedMatchup {
     supportPresetIds: [...new Set(supportPresetIds as string[])],
     targetSupportUnit,
     targetSupportPresetIds: [...new Set(targetSupportPresetIds as string[])],
+    targetEquipmentIds: [...new Set(targetEquipmentIds as string[])],
   };
 }
 
@@ -819,6 +832,7 @@ export default function Home() {
   const [activeSupportPresetIds, setActiveSupportPresetIds] = useState<string[]>([]);
   const [targetSupportUnitId, setTargetSupportUnitId] = useState("");
   const [activeTargetSupportPresetIds, setActiveTargetSupportPresetIds] = useState<string[]>([]);
+  const [activeTargetEquipmentIds, setActiveTargetEquipmentIds] = useState<string[]>([]);
   const [rollResult, setRollResult] = useState<RollResult | null>(null);
   const [rollError, setRollError] = useState("");
   const [shareStatus, setShareStatus] = useState("Share matchup");
@@ -849,6 +863,7 @@ export default function Home() {
         setActiveSupportPresetIds(shared.supportPresetIds ?? []);
         setTargetSupportUnitId(shared.targetSupportUnit ?? "");
         setActiveTargetSupportPresetIds(shared.targetSupportPresetIds ?? []);
+        setActiveTargetEquipmentIds(shared.targetEquipmentIds ?? []);
         setShareStatus("Matchup loaded");
       } catch {
         setShareStatus("Invalid matchup link");
@@ -1028,6 +1043,7 @@ export default function Home() {
     targetSupportUnit = selectedTargetSupportUnit,
     targetSupportIds = activeTargetSupportPresetIds,
     targetPresetUnit = selectedTargetUnit,
+    targetEquipmentIds = activeTargetEquipmentIds,
   ) => {
     const ability = (name: string) => weapon?.abilities.find((entry) => entry.name === name);
     const names = new Set(weapon?.abilities.map((entry) => entry.name) ?? []);
@@ -1093,7 +1109,7 @@ export default function Home() {
           lanceActive: false,
         }
       : current;
-    return applySelectedCombatPresets(
+    const resolved = applySelectedCombatPresets(
       baseProfile,
       [
         ...selectedPresets(
@@ -1279,6 +1295,12 @@ export default function Home() {
         targetSupportDistance: baseProfile.targetSupportDistance,
       },
     ) as Profile;
+    return applyDefensiveEquipmentProfile(
+      resolved,
+      targetPresetUnit?.defensiveEquipment ?? [],
+      targetEquipmentIds,
+      attackKeywordsForWeapon(weapon),
+    ) as Profile;
   };
 
   const applyWeapon = (weapon: CatalogueWeapon) => {
@@ -1368,6 +1390,7 @@ export default function Home() {
     targetSupportUnit = selectedTargetSupportUnit,
     targetSupportIds = activeTargetSupportPresetIds,
     targetPresetUnit = selectedTargetUnit,
+    targetEquipmentIds = activeTargetEquipmentIds,
   ) => {
     setProfile((current) =>
       withActivePresets(
@@ -1398,6 +1421,7 @@ export default function Home() {
         targetSupportUnit,
         targetSupportIds,
         targetPresetUnit,
+        targetEquipmentIds,
       ),
     );
   };
@@ -1465,6 +1489,7 @@ export default function Home() {
       supportPresetIds: activeSupportPresetIds,
       targetSupportUnit: targetSupportUnitId,
       targetSupportPresetIds: activeTargetSupportPresetIds,
+      targetEquipmentIds: activeTargetEquipmentIds,
     };
     const url = new URL(window.location.href);
     url.searchParams.set("matchup", encodeMatchup(matchup));
@@ -1505,6 +1530,7 @@ export default function Home() {
               setProfile(DEFAULT_PROFILE);
               setActiveAttackerPresetIds([]);
               setActiveTargetPresetIds([]);
+              setActiveTargetEquipmentIds([]);
               setSupportUnitId("");
               setActiveSupportPresetIds([]);
               setFiringDeckPassenger("");
@@ -1911,6 +1937,7 @@ export default function Home() {
                       setTargetUnit("");
                       setTargetModel("");
                       setActiveTargetPresetIds([]);
+                      setActiveTargetEquipmentIds([]);
                       setTargetSupportUnitId("");
                       setActiveTargetSupportPresetIds([]);
                       setProfile((current) =>
@@ -1967,6 +1994,7 @@ export default function Home() {
                       setTargetUnit(event.target.value);
                       setTargetModel("");
                       setActiveTargetPresetIds([]);
+                      setActiveTargetEquipmentIds([]);
                       setTargetSupportUnitId("");
                       setActiveTargetSupportPresetIds([]);
                       setProfile((current) =>
@@ -2021,6 +2049,7 @@ export default function Home() {
                           undefined,
                           [],
                           unit,
+                          [],
                         );
                       }
                     }}
@@ -2040,10 +2069,12 @@ export default function Home() {
                     disabled={!selectedTargetUnit}
                     onChange={(event) => {
                       setTargetModel(event.target.value);
+                      setActiveTargetEquipmentIds([]);
                       const model = selectedTargetUnit?.models.find(
                         (item) => String(item.id) === event.target.value,
                       );
-                      if (model) applyTarget(model);
+                      if (model)
+                        applyTarget(model, activeTargetPresetIds, {}, undefined, [], undefined, []);
                     }}
                   >
                     <option value="">Choose profile</option>
@@ -2061,6 +2092,40 @@ export default function Home() {
                   <span>Adjust wounds, models, and defensive rules as needed</span>
                 </p>
               )}
+              {selectedTargetUnit &&
+                selectedTargetModel &&
+                selectedTargetUnit.defensiveEquipment.length > 0 && (
+                  <fieldset className="preset-options">
+                    <legend>Defensive equipment on this model</legend>
+                    {selectedTargetUnit.defensiveEquipment.map((option) => (
+                      <label key={option.id} title={option.guidance ?? option.description}>
+                        <input
+                          type="checkbox"
+                          checked={activeTargetEquipmentIds.includes(option.id)}
+                          onChange={(event) => {
+                            const next = event.target.checked
+                              ? [...activeTargetEquipmentIds, option.id]
+                              : activeTargetEquipmentIds.filter((id) => id !== option.id);
+                            setActiveTargetEquipmentIds(next);
+                            applyTarget(
+                              selectedTargetModel,
+                              activeTargetPresetIds,
+                              {},
+                              selectedTargetSupportUnit,
+                              activeTargetSupportPresetIds,
+                              selectedTargetUnit,
+                              next,
+                            );
+                          }}
+                        />
+                        <span>
+                          {option.name} ({option.scope === "unit" ? "whole unit" : "this model"})
+                          <small>{option.description}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </fieldset>
+                )}
               {selectedTargetUnit && (
                 <CombatPresetSelector
                   presets={selectedTargetUnit.combatPresets.filter((preset) =>

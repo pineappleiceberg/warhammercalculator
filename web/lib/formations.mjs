@@ -1,4 +1,5 @@
 import { attachmentFormationReport } from "./attachments.mjs";
+import { defensiveEquipmentSelectionKey } from "./defensive-equipment.mjs";
 
 function uniqueCompositionCounts(unit, modelCount) {
   const composition = unit?.compositionModels ?? [];
@@ -154,16 +155,70 @@ export function savedFormationModelSegments(formation) {
   return { segments, ambiguousComponents };
 }
 
-export function savedFormationTargetSequence(formation, firstSegmentId = "") {
+export function savedFormationTargetSequence(
+  formation,
+  firstSegmentId = "",
+  defensiveEquipmentCounts = {},
+) {
   const composition = savedFormationModelSegments(formation);
-  const hasProtectedLeader = composition.segments.some((segment) => segment.role !== "leader");
-  const allocationOptions = composition.segments.filter(
+  const unitEquipmentIds = (formation?.components ?? []).flatMap((component) =>
+    (component.catalogueUnit?.defensiveEquipment ?? [])
+      .filter(
+        (option) =>
+          option.scope === "unit" &&
+          (defensiveEquipmentCounts[
+            defensiveEquipmentSelectionKey(component.unit.id, null, option.id)
+          ] ?? 0) > 0,
+      )
+      .map((option) => option.id),
+  );
+  const segments = [];
+  for (const segment of composition.segments) {
+    const component = (formation?.components ?? []).find(
+      (candidate) => candidate.unit.id === segment.savedUnitId,
+    );
+    const bearerSelections = (component?.catalogueUnit?.defensiveEquipment ?? [])
+      .filter((option) => option.scope === "bearer")
+      .map((option) => ({
+        option,
+        count:
+          defensiveEquipmentCounts[
+            defensiveEquipmentSelectionKey(segment.savedUnitId, segment.model.id, option.id)
+          ] ?? 0,
+      }))
+      .filter((selection) => selection.count > 0);
+    if (bearerSelections.length > 1) {
+      composition.ambiguousComponents.push(
+        `${segment.unitName} has overlapping bearer equipment selections`,
+      );
+    }
+    const bearer = bearerSelections[0];
+    const equippedCount = Math.min(segment.modelCount, bearer?.count ?? 0);
+    if (equippedCount > 0) {
+      segments.push({
+        ...segment,
+        id: `${segment.id}:equipment:${bearer.option.id}`,
+        modelCount: equippedCount,
+        defensiveEquipmentIds: [...unitEquipmentIds, bearer.option.id],
+      });
+    }
+    if (segment.modelCount > equippedCount) {
+      segments.push({
+        ...segment,
+        id: equippedCount > 0 ? `${segment.id}:unequipped` : segment.id,
+        modelCount: segment.modelCount - equippedCount,
+        defensiveEquipmentIds: [...unitEquipmentIds],
+      });
+    }
+  }
+  const hasProtectedLeader = segments.some((segment) => segment.role !== "leader");
+  const allocationOptions = segments.filter(
     (segment) => !hasProtectedLeader || segment.role !== "leader",
   );
   const first =
     allocationOptions.find((segment) => segment.id === firstSegmentId) ?? allocationOptions[0];
   const orderedSegments = first
-    ? [first, ...composition.segments.filter((segment) => segment.id !== first.id)]
+    ? [first, ...segments.filter((segment) => segment.id !== first.id)]
     : [];
   return {
     ...composition,
@@ -184,6 +239,7 @@ export function savedFormationTargetSequence(formation, firstSegmentId = "") {
       allocatedAttackDamageReplacementUses: 0,
       allocatedAttackDamageReplacementSkip: 0,
       modelCount: segment.modelCount,
+      defensiveEquipmentIds: segment.defensiveEquipmentIds,
     })),
   };
 }

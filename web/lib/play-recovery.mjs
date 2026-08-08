@@ -1,4 +1,5 @@
 import { normalizeSupportUses } from "./support-uses.mjs";
+import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
 export const PLAY_RECOVERY_KEY = "warhammer-calculator:play-state:v1";
 export const PLAY_RECOVERY_VERSION = 1;
@@ -70,6 +71,9 @@ export function createPlayRecovery(state, savedAt = Date.now()) {
     targetSourceCanSeeAttacker: profile.targetSourceCanSeeAttacker ?? false,
   };
   recovery.supportUsesSpent = normalizeSupportUses(value.supportUsesSpent ?? {});
+  recovery.targetDefensiveEquipmentCounts = normalizeDefensiveEquipmentCounts(
+    value.targetDefensiveEquipmentCounts ?? {},
+  );
   if (!Array.isArray(value.history) || value.history.length > 30) {
     throw new Error("history must contain at most 30 attacks");
   }
