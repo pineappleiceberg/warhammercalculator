@@ -230,6 +230,21 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const catalogue = await profiles.json();
   const warriors = catalogue.units.find((unit) => unit.name === "Necron Warriors");
   assert.ok(warriors);
+  const assault = catalogue.units.find((unit) => unit.name === "Assault Squad");
+  const assaultSourceModelId = assault.models[0].sourceModelId;
+  assert.deepEqual(
+    assault.models.map((model) => [model.name, model.sourceModelId]),
+    [
+      ["Assault Sergeant", assaultSourceModelId],
+      ["Assault Marines", assaultSourceModelId],
+    ],
+  );
+  assert.deepEqual(
+    assault.defensiveEquipment
+      .find((option) => option.name === "Astartes Shield")
+      .eligibleModelIds.map((id) => assault.models.find((model) => model.id === id).name),
+    ["Assault Sergeant"],
+  );
   const trukk = catalogue.units.find((unit) => unit.id === "000000026");
   const boyz = catalogue.units.find((unit) => unit.id === "000000016");
   const stormboyz = catalogue.units.find((unit) => unit.id === "000000027");

@@ -32,6 +32,7 @@ import {
   transportPassengerCanEmbark,
 } from "../lib/transport.mjs";
 import { applyDefensiveEquipmentProfile } from "../lib/defensive-equipment.mjs";
+import { catalogueModelCandidates } from "../lib/catalogue-models.mjs";
 
 type Result = {
   minimum: number;
@@ -76,6 +77,7 @@ type CatalogueWeapon = {
 type CatalogueModel = {
   id: number;
   name: string;
+  sourceModelId?: number;
   t: number | null;
   save: number | null;
   invuln: number | null;
@@ -961,9 +963,19 @@ export default function Home() {
   const selectedTargetSupportUnit = targetSupportUnits.find(
     (unit) => unit.id === targetSupportUnitId,
   );
-  const selectedTargetModel = selectedTargetUnit?.models.find(
-    (model) => String(model.id) === targetModel,
-  );
+  const targetModelCandidates = selectedTargetUnit
+    ? catalogueModelCandidates(selectedTargetUnit.models, targetModel)
+    : [];
+  const selectedTargetModel =
+    targetModelCandidates.find((model) =>
+      activeTargetEquipmentIds.every((optionId) => {
+        const option = selectedTargetUnit?.defensiveEquipment.find(
+          (candidate) => candidate.id === optionId,
+        );
+        return !option?.eligibleModelIds.length || option.eligibleModelIds.includes(model.id);
+      }),
+    ) ?? targetModelCandidates[0];
+  const selectedTargetModelId = selectedTargetModel ? String(selectedTargetModel.id) : targetModel;
   const selectedPresets = (
     unit: CatalogueUnit | undefined,
     ids: string[],
@@ -1489,7 +1501,7 @@ export default function Home() {
       firingDeckModels,
       targetFaction,
       targetUnit,
-      targetModel,
+      targetModel: selectedTargetModelId,
       supportUnit: supportUnitId,
       supportPresetIds: activeSupportPresetIds,
       targetSupportUnit: targetSupportUnitId,
@@ -2070,7 +2082,7 @@ export default function Home() {
                 <label>
                   <span>Model profile</span>
                   <select
-                    value={targetModel}
+                    value={selectedTargetModelId}
                     disabled={!selectedTargetUnit}
                     onChange={(event) => {
                       setTargetModel(event.target.value);

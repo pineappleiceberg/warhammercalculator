@@ -16,15 +16,32 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Continue source-backed composition splits for the 25 defensive-equipment
-   options across 22 datasheets whose published statlines still group eligible
-   and ineligible bearers; eliminate each remaining `eligibilityExact=false`
-   case without guessing identities or stats.
-2. Normalize replacement and mutual-exclusion links between defensive equipment
+1. Normalize optional specialist composition choices for Corsair Voidscarred
+   and Spectrus Kill Teams across four datasheets and six remaining
+   defensive-equipment bearer mappings.
+2. Split the remaining named grouped profiles for Aquila and Decimus Kill
+   Teams, Kill Team Cassius, and Wardens of Ultramar, resolving the final six
+   conservative bearer mappings without guessing stats or identities.
+3. Normalize replacement and mutual-exclusion links between defensive equipment
    and structured weapon choices so adding a shield can reconcile the weapon it
    replaces instead of validating those selections independently.
 
 ## Completed cycles
+
+- 2026-08-08: Expanded exact defensive-equipment bearer identity to 32 of 44
+  options in SQLite schema 68. Ten additional uniform source statlines now
+  produce 20 composition-derived catalogue profiles for Assault Squads,
+  Infiltrators, Corsair Voidreavers, Imperial Navy Breachers, Hearthkyn
+  Warriors, Einhyr Hearthguard, Veteran Bike Squad, and Hand of the Archon.
+  Thirteen equipment options now distinguish their published Sergeant,
+  Felarch, Hesyr, Theyn, Armsman, Infiltrator, Agent, or any-model bearer
+  exactly; Deathwatch and Mortifier rules need no split because every grouped
+  model is eligible. Legacy grouped model IDs remain valid in shared model
+  matchups, static agent URLs, saved equipment, and Play recovery, including
+  equipment-segment suffixes. Source drift assertions, schema/view provenance,
+  exact composition, defaults, API catalogue, agent alias, and recovery
+  regressions cover the change. Twelve specialist or named-group mappings
+  remain explicitly conservative.
 
 - 2026-08-08: Made every defensive-equipment count limit exact in SQLite schema
   67. Command Squad and Company Veterans on Bikes now expose six stable,

@@ -536,9 +536,16 @@ Uniform grouped statlines are split into source-composition-backed catalogue
 models when that distinction is required for an exact bearer limit. Command
 Squad shields therefore distinguish the Champion and Company Veterans from the
 Apothecary and Ancient, while Company Veterans on Bikes excludes its Sergeant.
+The same exact split covers Assault Sergeants, Voidreaver Felarchs, the Hesyr,
+the Theyn, Navis Armsmen, Infiltrators, Kabalite Agents, and the Veteran Biker
+Sergeant. Deathwatch shield and Mortifier sarcophagus eligibility is exact
+without a split because their source rules allow any model in the grouped
+profile.
 The derived models retain their original statline provenance, and saved counts
 using the former grouped model ID are distributed deterministically onto the
-new eligible segments.
+new eligible segments. Old model matchup links, static agent URLs, and Play
+Mode recovery IDs resolve through the same source-profile alias; uniform
+derived targets do not newly require an agent `model` parameter.
 Fixed, every-model, and per-unit-size source limits are checked before an Army
 List can be saved. Removing required equipment, exceeding a bearer limit, or
 retaining an unknown selection requires an explicit battlefield-casualty or

@@ -506,14 +506,20 @@ test("Play Mode splits bearer equipment from unequipped models and preserves uni
   })[0];
   const crest = hearthkyn.defensiveEquipment.find((option) => option.name === "Weavefield Crest");
   assert.ok(crest);
-  assert.ok(crest);
   const crestKey = defensiveEquipmentSelectionKey("hearthkyn", null, crest.id);
   const protectedUnit = savedFormationTargetSequence(hearthkynFormation, "", { [crestKey]: 1 });
+  assert.deepEqual(
+    protectedUnit.segments.map((segment) => [segment.model.name, segment.modelCount]),
+    [
+      ["Theyn", 1],
+      ["Hearthkyn Warriors", 9],
+    ],
+  );
   assert.deepEqual(
     applyDefensiveEquipmentTargets(protectedUnit.targets, hearthkyn.defensiveEquipment).map(
       (target) => target.invulnerable,
     ),
-    [5],
+    [5, 5],
   );
 });
 
@@ -850,6 +856,68 @@ test("grouped Veteran statlines expose exact composition-backed shield bearers",
       bikes,
     )[0].message,
     /maximum of 4 for 5 models/i,
+  );
+});
+
+test("simple source compositions expose exact bearer identities and recover grouped IDs", () => {
+  const assault = namedUnit("Assault Squad");
+  const segments = catalogueModelSegments(assault, 5);
+  assert.equal(segments.exact, true);
+  assert.deepEqual(
+    segments.segments.map(({ model, modelCount }) => [model.name, modelCount]),
+    [
+      ["Assault Sergeant", 1],
+      ["Assault Marines", 4],
+    ],
+  );
+  const shield = assault.defensiveEquipment.find((option) => option.name === "Astartes Shield");
+  const sergeant = assault.models.find((model) => model.name === "Assault Sergeant");
+  assert.ok(shield);
+  assert.equal(shield.eligibilityExact, true);
+  assert.deepEqual(shield.eligibleModelIds, [sergeant.id]);
+
+  const legacyKey = defensiveEquipmentSelectionKey("assault", sergeant.sourceModelId, shield.id);
+  const formation = savedFormationGroups(catalogue, {
+    units: [
+      {
+        id: "assault",
+        unitId: assault.id,
+        name: assault.name,
+        modelCount: 5,
+        defensiveEquipmentCounts: { [legacyKey]: 1 },
+      },
+    ],
+  })[0];
+  const legacySegmentId = `assault:${sergeant.sourceModelId}:equipment:${shield.id}`;
+  const recovered = savedFormationTargetSequence(formation, legacySegmentId, {
+    [legacyKey]: 1,
+  });
+  assert.equal(recovered.first.model.name, "Assault Sergeant");
+  assert.deepEqual(recovered.first.defensiveEquipmentIds, [shield.id]);
+  assert.equal(recovered.first.id, `assault:${sergeant.id}:equipment:${shield.id}`);
+
+  const breachers = namedUnit("Imperial Navy Breachers");
+  const endurant = breachers.defensiveEquipment.find((option) => option.name === "Endurant Shield");
+  assert.ok(endurant);
+  assert.equal(endurant.eligibilityExact, true);
+  assert.deepEqual(
+    breachers.models
+      .filter((model) => endurant.eligibleModelIds.includes(model.id))
+      .map((model) => model.name),
+    ["Navis Armsmen"],
+  );
+
+  const deathwatch = namedUnit("Deathwatch Veterans");
+  assert.equal(
+    deathwatch.defensiveEquipment.find((option) => option.name === "Astartes Shield")
+      .eligibilityExact,
+    true,
+  );
+  assert.equal(
+    namedUnit("Mortifiers").defensiveEquipment.find(
+      (option) => option.name === "Anchorite Sarcophagus",
+    ).eligibilityExact,
+    true,
   );
 });
 

@@ -1038,6 +1038,18 @@ test("catalogue agent query resolves stable IDs or unambiguous names", async () 
     catalogue,
   );
   assert.equal(ids.weapon.name, "Heavy death ray");
+  const assault = catalogue.units.find((unit) => unit.name === "Assault Squad");
+  const derivedDefault = resolveAgentCatalogueSelection(
+    "attacker=000000545&weapon=1531&target=000000061",
+    catalogue,
+  );
+  assert.equal(derivedDefault.model.name, "Assault Sergeant");
+  const legacyModel = resolveAgentCatalogueSelection(
+    `attacker=000000545&weapon=1531&target=000000061&model=${assault.models[0].sourceModelId}`,
+    catalogue,
+  );
+  assert.equal(legacyModel.model.name, "Assault Sergeant");
+  assert.equal(legacyModel.model.sourceModelId, assault.models[0].sourceModelId);
   const supported = resolveAgentCatalogueSelection(
     "attacker=Breacher%20Team&weapon=Pulse%20blaster&target=Brutalis%20Dreadnought&" +
       "support=Stealth%20Battlesuits&supportPreset=Forward%20Observers",

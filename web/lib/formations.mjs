@@ -277,12 +277,21 @@ export function savedFormationTargetSequence(
   defensiveEquipmentCounts = {},
 ) {
   const composition = savedFormationModelSegments(formation);
+  const effectiveEquipmentCounts = Object.assign(
+    {},
+    ...(formation?.components ?? []).map((component) =>
+      savedUnitDefensiveEquipmentDefaults(
+        { ...component.unit, defensiveEquipmentCounts },
+        component.catalogueUnit,
+      ),
+    ),
+  );
   const unitEquipmentIds = (formation?.components ?? []).flatMap((component) =>
     (component.catalogueUnit?.defensiveEquipment ?? [])
       .filter(
         (option) =>
           option.scope === "unit" &&
-          (defensiveEquipmentCounts[
+          (effectiveEquipmentCounts[
             defensiveEquipmentSelectionKey(component.unit.id, null, option.id)
           ] ?? 0) > 0,
       )
@@ -301,7 +310,7 @@ export function savedFormationTargetSequence(
       .map((option) => ({
         option,
         count:
-          defensiveEquipmentCounts[
+          effectiveEquipmentCounts[
             defensiveEquipmentSelectionKey(segment.savedUnitId, segment.model.id, option.id)
           ] ?? 0,
       }))
@@ -335,7 +344,17 @@ export function savedFormationTargetSequence(
     (segment) => !hasProtectedLeader || segment.role !== "leader",
   );
   const first =
-    allocationOptions.find((segment) => segment.id === firstSegmentId) ?? allocationOptions[0];
+    allocationOptions.find((segment) => segment.id === firstSegmentId) ??
+    allocationOptions.find((segment) => {
+      if (segment.model.sourceModelId === undefined) return false;
+      const legacyBase = `${segment.savedUnitId}:${segment.model.sourceModelId}`;
+      if (firstSegmentId === legacyBase) return true;
+      return (
+        firstSegmentId.startsWith(`${legacyBase}:`) &&
+        segment.id.endsWith(firstSegmentId.slice(legacyBase.length))
+      );
+    }) ??
+    allocationOptions[0];
   const orderedSegments = first
     ? [first, ...segments.filter((segment) => segment.id !== first.id)]
     : [];

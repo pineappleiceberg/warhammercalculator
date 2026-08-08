@@ -4,6 +4,7 @@ import {
   combatPresetSupportsRole,
 } from "./combat-presets.mjs";
 import { resolveFiringDeckSelection } from "./firing-deck.mjs";
+import { catalogueModelCandidates, catalogueModelsRequireSelection } from "./catalogue-models.mjs";
 
 export const AGENT_SCHEMA_VERSION = 1;
 
@@ -395,12 +396,26 @@ export function resolveAgentCatalogueSelection(input, catalogue) {
   const target = matchOne(catalogue.units, search.get("target"), "target");
   if (!target.models.length) throw new Error("The target has no model profile");
   const modelValue = search.get("model");
-  if (!modelValue && target.models.length > 1) {
+  if (!modelValue && catalogueModelsRequireSelection(target.models)) {
     throw new Error(
       `model is required; use one of these IDs: ${target.models.map((item) => item.id)}`,
     );
   }
-  const model = modelValue ? matchOne(target.models, modelValue, "model") : target.models[0];
+  const modelMatches = modelValue ? catalogueModelCandidates(target.models, modelValue) : [];
+  if (modelValue && !modelMatches.length) throw new Error(`model was not found: ${modelValue}`);
+  if (
+    modelMatches.length > 1 &&
+    !modelMatches.every(
+      (candidate) =>
+        candidate.sourceModelId !== undefined &&
+        candidate.sourceModelId === modelMatches[0].sourceModelId,
+    )
+  ) {
+    throw new Error(
+      `model is ambiguous; use one of these IDs: ${modelMatches.map((item) => item.id)}`,
+    );
+  }
+  const model = modelMatches[0] ?? target.models[0];
   const resolvePresets = (unit, name, relationship = "self") =>
     presetValues(search, name).map((value) => {
       const preset = matchOne(unit.combatPresets, value, name);

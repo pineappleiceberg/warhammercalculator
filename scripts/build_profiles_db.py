@@ -951,6 +951,18 @@ def defensive_equipment_option(name: str, description: str) -> dict[str, object]
 
 
 COMPOSITION_DERIVED_MODEL_PROFILES = {
+    "000000061": (
+        "Assault Squad",
+        ("Assault Sergeant", "Assault Marines"),
+    ),
+    "000000064": (
+        "Assault Squad With Jump Packs",
+        ("Assault Sergeant with Jump Pack", "Assault Marines with Jump Packs"),
+    ),
+    "000000128": (
+        "Infiltrator Squad",
+        ("Infiltrator Sergeant", "Infiltrators"),
+    ),
     "000001166": (
         "Company Veterans On Bikes",
         ("Veteran Biker Sergeant", "Veteran Bikers"),
@@ -958,6 +970,34 @@ COMPOSITION_DERIVED_MODEL_PROFILES = {
     "000002103": (
         "Command Squad",
         ("Apothecary", "Company Ancient", "Company Champion", "Company Veterans"),
+    ),
+    "000002531": (
+        "Corsair Voidreavers",
+        ("Voidreaver Felarch", "Corsair Voidreavers"),
+    ),
+    "000002587": (
+        "Imperial Navy Breachers",
+        ("Navis Sergeant-at-Arms", "Navis Armsmen"),
+    ),
+    "000002598": (
+        "Hearthkyn Warriors",
+        ("Theyn", "Hearthkyn Warriors"),
+    ),
+    "000002599": (
+        "Einhyr Hearthguard",
+        ("Hesyr", "Hearthguard"),
+    ),
+    "000003823": (
+        "Veteran Bike Squad",
+        ("Veteran Biker Sergeant", "Veteran Bikers"),
+    ),
+    "000004156": (
+        "Hand of the Archon",
+        ("Kabalite Archsybarite", "Kabalite Agents"),
+    ),
+    "000004168": (
+        "Corsair Voidreavers",
+        ("Voidreaver Felarch", "Corsair Voidreavers"),
     ),
 }
 
@@ -1052,6 +1092,17 @@ def populate_composition_derived_model_profiles(connection: sqlite3.Connection) 
 
 
 DEFENSIVE_EQUIPMENT_MODEL_OVERRIDES = {
+    ("000000061", 2): (("assault sergeant",), True),
+    ("000000064", 3): (("assault sergeant with jump pack",), True),
+    ("000000128", 4): (("infiltrators",), True),
+    ("000002067", 5): (("mortifiers",), True),
+    ("000002531", 4): (("voidreaver felarch",), True),
+    ("000002587", 5): (("navis armsmen",), True),
+    ("000002598", 5): (("theyn",), True),
+    ("000002599", 4): (("hesyr",), True),
+    ("000002783", 4): (("deathwatch veterans",), True),
+    ("000003816", 3): (("deathwatch veterans",), True),
+    ("000003823", 3): (("veteran biker sergeant",), True),
     ("000004174", 4): (("deathwatch veteran",), False),
     ("000004175", 4): (("deathwatch veteran",), False),
     ("000000593", 3): (("dire avenger exarch",), True),
@@ -1063,6 +1114,8 @@ DEFENSIVE_EQUIPMENT_MODEL_OVERRIDES = {
     ("000004188", 4): (("gaius silva",), False),
     ("000004188", 5): (("veteran sergeant metaurus",), False),
     ("000004131", 5): (("wolf guard headtakers",), True),
+    ("000004156", 7): (("kabalite agents",), True),
+    ("000004168", 4): (("voidreaver felarch",), True),
     ("000001166", 2): (("veteran bikers",), True),
     ("000002103", 2): (("company champion", "company veterans"), True),
 }
@@ -4451,7 +4504,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "67"),
+                    ("schema_version", "68"),
                     ("leader_global_maximum", "2"),
                     ("leader_global_rule_source_url", LEADER_GLOBAL_RULE_SOURCE_URL),
                     (

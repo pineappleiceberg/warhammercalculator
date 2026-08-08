@@ -2082,7 +2082,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "67",
+                "68",
             )
             self.assertEqual(
                 connection.execute(
@@ -3034,9 +3034,38 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     """SELECT count(*)
                        FROM unit_defensive_equipment_options
+                       WHERE eligibility_exact = 0"""
+                ).fetchone()[0],
+                12,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*)
+                       FROM unit_defensive_equipment_options
                        WHERE limit_exact = 0"""
                 ).fetchone()[0],
                 0,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM model_profiles
+                       WHERE source_model_profile_id IS NOT NULL"""
+                ).fetchone()[0],
+                26,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM model_profiles
+                       WHERE is_catalogue_model = 0"""
+                ).fetchone()[0],
+                12,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM model_profiles
+                       WHERE is_catalogue_model = 1"""
+                ).fetchone()[0],
+                connection.execute("SELECT count(*) FROM target_profiles").fetchone()[0],
             )
             self.assertEqual(
                 connection.execute(
@@ -3064,6 +3093,27 @@ class ProfileDataTests(unittest.TestCase):
                        ORDER BY target_profile_id"""
                 ).fetchall(),
                 [("Veteran Bikers",), ("Veteran Biker Sergeant",)],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT datasheets.name, options.name, model_profiles.name,
+                              options.eligibility_exact
+                       FROM unit_defensive_equipment_options AS options
+                       JOIN datasheets ON datasheets.id = options.datasheet_id
+                       JOIN unit_defensive_equipment_bearers AS bearers USING
+                           (datasheet_id, ability_position)
+                       JOIN model_profiles
+                         ON model_profiles.id = bearers.model_profile_id
+                       WHERE options.datasheet_id IN
+                           ('000000061', '000002587', '000002598', '000003823')
+                       ORDER BY options.datasheet_id"""
+                ).fetchall(),
+                [
+                    ("Assault Squad", "Astartes Shield", "Assault Sergeant", 1),
+                    ("Imperial Navy Breachers", "Endurant Shield", "Navis Armsmen", 1),
+                    ("Hearthkyn Warriors", "Weavefield Crest", "Theyn", 1),
+                    ("Veteran Bike Squad", "Astartes Shield", "Veteran Biker Sergeant", 1),
+                ],
             )
             self.assertEqual(
                 connection.execute(
