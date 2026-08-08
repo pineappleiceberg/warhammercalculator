@@ -8,6 +8,12 @@ import {
   leaderFormationEligibility,
 } from "../lib/attachments.mjs";
 import { transportAssignmentReport } from "../lib/transport.mjs";
+import {
+  savedFormationForUnit,
+  savedFormationGroups,
+  savedFormationModelSegments,
+  savedFormationTargetSequence,
+} from "../lib/formations.mjs";
 
 const catalogue = JSON.parse(
   await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
@@ -310,4 +316,100 @@ test("Warlock joins preserve Bodyguard membership, exclusivity, and Starting Str
     ],
   });
   assert.match(alreadyAttached.errors.at(-1), /while it is an Attached unit/i);
+});
+
+test("saved formations expose one play unit with exact joined model profiles and weapons", () => {
+  const farseer = unit("000000582");
+  const conclave = unit("000000584");
+  const guardians = unit("000000589");
+  const armyList = {
+    units: [
+      {
+        id: "farseer",
+        unitId: farseer.id,
+        name: farseer.name,
+        modelCount: 1,
+        weapons: [{ weaponId: farseer.weapons[0].id, name: farseer.weapons[0].name, count: 1 }],
+        attachedToId: "guardians",
+      },
+      {
+        id: "conclave",
+        unitId: conclave.id,
+        name: conclave.name,
+        modelCount: 2,
+        weapons: [{ weaponId: conclave.weapons[0].id, name: conclave.weapons[0].name, count: 2 }],
+        joinedToId: "guardians",
+      },
+      {
+        id: "guardians",
+        unitId: guardians.id,
+        name: guardians.name,
+        modelCount: 11,
+        weapons: [
+          { weaponId: guardians.weapons[0].id, name: guardians.weapons[0].name, count: 10 },
+        ],
+      },
+    ],
+  };
+
+  const groups = savedFormationGroups(catalogue, armyList);
+  assert.equal(groups.length, 1);
+  assert.equal(savedFormationForUnit(catalogue, armyList, "conclave")?.id, groups[0].id);
+  assert.equal(groups[0].id, "guardians");
+  assert.equal(groups[0].modelCount, 14);
+  assert.equal(groups[0].attached, true);
+  assert.deepEqual(
+    groups[0].components.map((component) => [component.unit.id, component.role]),
+    [
+      ["guardians", "bodyguard"],
+      ["conclave", "joined"],
+      ["farseer", "leader"],
+    ],
+  );
+  assert.deepEqual(
+    groups[0].components.flatMap((component) =>
+      component.unit.weapons.map((weapon) => weapon.name),
+    ),
+    [guardians.weapons[0].name, conclave.weapons[0].name, farseer.weapons[0].name],
+  );
+
+  const composition = savedFormationModelSegments(groups[0]);
+  assert.deepEqual(composition.ambiguousComponents, []);
+  assert.deepEqual(
+    composition.segments.map((segment) => [
+      segment.unitName,
+      segment.model.name,
+      segment.modelCount,
+      segment.role,
+    ]),
+    [
+      ["Guardian Defenders", "GUARDIAN DEFENDER", 10, "bodyguard"],
+      ["Guardian Defenders", "HEAVY WEAPON PLATFORM", 1, "bodyguard"],
+      ["Warlock Conclave", "Warlock Conclave", 2, "joined"],
+      ["Farseer", "Farseer", 1, "leader"],
+    ],
+  );
+
+  const conclaveId = composition.segments.find((segment) => segment.unitName === conclave.name).id;
+  const farseerId = composition.segments.find((segment) => segment.unitName === farseer.name).id;
+  const ordered = savedFormationTargetSequence(groups[0], conclaveId);
+  assert.deepEqual(
+    ordered.orderedSegments.map((segment) => segment.unitName),
+    ["Warlock Conclave", "Guardian Defenders", "Guardian Defenders", "Farseer"],
+  );
+  assert.deepEqual(
+    ordered.targets.map((target) => [
+      target.modelCount,
+      target.toughness,
+      target.save,
+      target.wounds,
+    ]),
+    [
+      [2, 3, 6, 2],
+      [10, 3, 4, 1],
+      [1, 3, 4, 2],
+      [1, 3, 6, 4],
+    ],
+  );
+  assert.notEqual(savedFormationTargetSequence(groups[0], farseerId).first.id, farseerId);
 });

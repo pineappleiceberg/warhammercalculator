@@ -266,7 +266,13 @@ Veteran and Hellblaster Squads require the saved relic shield or plasma pistol
 loadout respectively. Warlock Conclaves and Warlock Skyrunners use their
 separate published Bodyguard-join relationship: Army Lists enforces their
 targets, one-copy limit, unattached condition, increased Starting Strength,
-inherited Attached state, and complete-unit Transport movement. Tacticus Characters can use the published Rhino, Razorback,
+inherited Attached state, and complete-unit Transport movement. Play Mode groups
+each valid saved Bodyguard, joined Warlock unit, and attached Leader into one
+selection while retaining their separate Army List records. It exposes every
+component's saved weapons and abilities, derives exact source model counts,
+lets the target controller select the first legal allocation profile, carries
+damage through the remaining mixed profiles in roster order, and prevents
+Leader allocation while Bodyguard or joined models remain. Tacticus Characters can use the published Rhino, Razorback,
 and Terrax exception only when linked to a non-Tacticus unit, and both saved
 units must embark in the same transport. Conditional clauses that are not fully
 normalized remain unavailable instead of being guessed. Melee and One Shot weapons are excluded, a passenger

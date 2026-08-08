@@ -16,15 +16,28 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Resolve joined Warlock and Bodyguard components as one selectable unit in
-   Play Mode and unit simulation, including exact mixed-profile damage
-   allocation and access to every joined model's weapons while retaining
-   separate editable roster records.
+1. Extend joined Warlock and Bodyguard formation selection to Unit vs Unit,
+   including independent model counts and structured loadouts for every
+   component. Play Mode already resolves saved formations as one unit.
 2. Extend normalized defensive-equipment selection to Model vs Model and Play
    Mode while preserving model-by-model allocation and preventing bearer-only
    gear from becoming a homogeneous unit-wide defense.
 
 ## Completed cycles
+
+- 2026-08-08: Resolved valid saved formations as one Play Mode unit without
+  merging their editable Army List records. A shared formation resolver groups
+  published Leader attachments and exceptional Warlock joins, exposes every
+  component's saved weapons and abilities, derives uniquely provable model
+  composition from the source catalogue, and preserves the combined Starting
+  Strength for count-based rules. Target selection now chooses the first legal
+  allocation profile, carries damage through the remaining mixed profiles in
+  roster order, applies defensive abilities to every segment, and keeps Leader
+  models protected behind Bodyguard and joined models. Ambiguous source
+  compositions fail closed instead of becoming homogeneous. Formation,
+  composition, weapon-access, rendered Play UI, full web, Wasm, and ordered
+  allocation regressions cover the change. Unit vs Unit formation composition
+  remains the next explicit correctness item.
 
 - 2026-08-08: Made every actionable Leader footer classification executable.
   SQLite schema 64 normalizes the Captain's relic-shield and plasma-pistol

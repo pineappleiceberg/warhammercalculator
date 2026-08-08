@@ -9,7 +9,9 @@ import {
   DEFAULT_PROFILE,
   normalizeProfile,
   simulateAttack,
+  simulateOrderedVolley,
   type CombatProfile,
+  type OrderedVolleyRollResult,
   type RollResult,
 } from "../../lib/combat";
 import {
@@ -21,6 +23,7 @@ import {
 } from "../../lib/catalogue";
 import { groupWeaponProfiles } from "../../lib/loadout.mjs";
 import {
+  applyTargetCombatPresets,
   attackKeywordsForWeapon,
   selectedAndAutomaticCombatPresets,
 } from "../../lib/combat-presets.mjs";
@@ -31,6 +34,12 @@ import {
 } from "../../lib/play-recovery.mjs";
 import { firingDeckWeapons, resolveFiringDeckSelection } from "../../lib/firing-deck.mjs";
 import { transportAssignmentReport } from "../../lib/transport.mjs";
+import {
+  savedFormationForUnit,
+  savedFormationGroups,
+  savedFormationModelSegments,
+  savedFormationTargetSequence,
+} from "../../lib/formations.mjs";
 
 type LogEntry = {
   id: string;
@@ -59,6 +68,15 @@ function parseFiringDeckWeaponValue(value: string) {
   return match ? { passengerUnitId: match[1], weaponId: Number(match[2]) } : null;
 }
 
+function formationWeaponValue(savedUnitId: string, weaponId: number) {
+  return `fm:${savedUnitId}:${weaponId}`;
+}
+
+function parseFormationWeaponValue(value: string) {
+  const match = /^fm:([^:]+):(\d+)$/.exec(value);
+  return match ? { savedUnitId: match[1], weaponId: Number(match[2]) } : null;
+}
+
 export default function PlayMode() {
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
   const [lists, setLists] = useState<ArmyListRecord[]>([]);
@@ -81,7 +99,7 @@ export default function PlayMode() {
     {},
   );
   const [profile, setProfile] = useState<CombatProfile>(DEFAULT_PROFILE);
-  const [result, setResult] = useState<RollResult | null>(null);
+  const [result, setResult] = useState<RollResult | OrderedVolleyRollResult | null>(null);
   const [history, setHistory] = useState<LogEntry[]>([]);
   const [status, setStatus] = useState("Select two saved lists");
   const [recoveryReady, setRecoveryReady] = useState(false);
@@ -209,20 +227,76 @@ export default function PlayMode() {
 
   const attackerList = lists.find((list) => list.id === attackerListId);
   const targetList = lists.find((list) => list.id === targetListId);
-  const attackerUnit = attackerList?.units.find((unit) => unit.id === attackerUnitId);
-  const targetUnit = targetList?.units.find((unit) => unit.id === targetUnitId);
+  const attackerFormations =
+    catalogue && attackerList ? savedFormationGroups(catalogue, attackerList) : [];
+  const targetFormations =
+    catalogue && targetList ? savedFormationGroups(catalogue, targetList) : [];
+  const attackerFormation =
+    attackerFormations.find((formation) => formation.id === attackerUnitId) ??
+    (catalogue && attackerList
+      ? savedFormationForUnit(catalogue, attackerList, attackerUnitId)
+      : undefined);
+  const targetFormation =
+    targetFormations.find((formation) => formation.id === targetUnitId) ??
+    (catalogue && targetList
+      ? savedFormationForUnit(catalogue, targetList, targetUnitId)
+      : undefined);
+  const attackerUnit = attackerFormation?.root;
+  const targetUnit = targetFormation?.root;
+  const attackerSelectionId = attackerFormation?.id ?? attackerUnitId;
+  const targetSelectionId = targetFormation?.id ?? targetUnitId;
   const firingDeckChoice = parseFiringDeckWeaponValue(weaponId);
+  const formationWeaponChoice = parseFormationWeaponValue(weaponId);
   const firingDeckPassengerUnit = attackerList?.units.find(
     (unit) => unit.id === firingDeckChoice?.passengerUnitId,
   );
-  const selectedWeapon = (firingDeckPassengerUnit ?? attackerUnit)?.weapons.find(
-    (weapon) => String(weapon.weaponId) === String(firingDeckChoice?.weaponId ?? weaponId),
+  const formationWeaponUnit = attackerList?.units.find(
+    (unit) => unit.id === formationWeaponChoice?.savedUnitId,
+  );
+  const selectedWeapon = (
+    firingDeckPassengerUnit ??
+    formationWeaponUnit ??
+    attackerUnit
+  )?.weapons.find(
+    (weapon) =>
+      String(weapon.weaponId) ===
+      String(firingDeckChoice?.weaponId ?? formationWeaponChoice?.weaponId ?? weaponId),
   );
   const attackerCatalogueUnit = catalogue?.units.find((unit) => unit.id === attackerUnit?.unitId);
   const firingDeckPassengerCatalogueUnit = catalogue?.units.find(
     (unit) => unit.id === firingDeckPassengerUnit?.unitId,
   );
+  const formationWeaponCatalogueUnit = catalogue?.units.find(
+    (unit) => unit.id === formationWeaponUnit?.unitId,
+  );
   const targetCatalogueUnit = catalogue?.units.find((unit) => unit.id === targetUnit?.unitId);
+  const attackerFormationCatalogueUnit = attackerCatalogueUnit
+    ? {
+        ...attackerCatalogueUnit,
+        combatPresets:
+          attackerFormation?.components.flatMap(
+            (component) => component.catalogueUnit?.combatPresets ?? [],
+          ) ?? attackerCatalogueUnit.combatPresets,
+      }
+    : undefined;
+  const targetFormationCatalogueUnit = targetCatalogueUnit
+    ? {
+        ...targetCatalogueUnit,
+        combatPresets:
+          targetFormation?.components.flatMap(
+            (component) => component.catalogueUnit?.combatPresets ?? [],
+          ) ?? targetCatalogueUnit.combatPresets,
+      }
+    : undefined;
+  const attackerFormationKeywords = [
+    ...new Set(
+      attackerFormation?.components.flatMap(
+        (component) => component.catalogueUnit?.models.flatMap((model) => model.keywords) ?? [],
+      ) ??
+        attackerCatalogueUnit?.models[0]?.keywords ??
+        [],
+    ),
+  ];
   const attackerTransportReport =
     catalogue && attackerList
       ? transportAssignmentReport(catalogue, attackerList)
@@ -233,12 +307,14 @@ export default function PlayMode() {
       : { assignments: [], errors: [], attachedUnitIds: new Set<string>() };
   const validFiringDeckPassengerIds = new Set(
     attackerTransportReport.assignments
-      .filter((assignment) => assignment.transportUnit.id === attackerUnitId)
+      .filter((assignment) => assignment.transportUnit.id === attackerSelectionId)
       .map((assignment) => assignment.passengerUnit.id),
   );
   const playSupportUnits =
     attackerList?.units
-      .filter((unit) => unit.id !== attackerUnitId)
+      .filter(
+        (unit) => !attackerFormation?.components.some((component) => component.unit.id === unit.id),
+      )
       .map((unit) => ({
         id: unit.id,
         name: unit.name,
@@ -250,7 +326,9 @@ export default function PlayMode() {
   const supportCatalogueUnit = catalogue?.units.find((unit) => unit.id === supportArmyUnit?.unitId);
   const playTargetSupportUnits =
     targetList?.units
-      .filter((unit) => unit.id !== targetUnitId)
+      .filter(
+        (unit) => !targetFormation?.components.some((component) => component.unit.id === unit.id),
+      )
       .map((unit) => ({
         id: unit.id,
         name: unit.name,
@@ -263,7 +341,12 @@ export default function PlayMode() {
     (unit) => unit.id === targetSupportArmyUnit?.unitId,
   );
   const weaponGroups = groupWeaponProfiles(
-    (firingDeckChoice ? firingDeckPassengerCatalogueUnit : attackerCatalogueUnit)?.weapons ?? [],
+    (firingDeckChoice
+      ? firingDeckPassengerCatalogueUnit
+      : formationWeaponChoice
+        ? formationWeaponCatalogueUnit
+        : attackerCatalogueUnit
+    )?.weapons ?? [],
   );
   const selectedWeaponGroup = weaponGroups.find(
     (group) =>
@@ -273,7 +356,10 @@ export default function PlayMode() {
   const weaponProfile =
     selectedWeaponGroup?.profiles.find((weapon) => String(weapon.id) === profileId) ??
     selectedWeaponGroup?.profiles[0];
-  const targetProfiles = targetCatalogueUnit?.models ?? [];
+  const targetFormationModels = savedFormationTargetSequence(targetFormation, targetModelId);
+  const targetProfiles = targetFormationModels.segments;
+  const targetAllocationOptions = targetFormationModels.allocationOptions;
+  const selectedTargetSegment = targetFormationModels.first;
   const firingDeckPlayOptions =
     attackerCatalogueUnit?.firingDeck && catalogue
       ? (attackerList?.units ?? [])
@@ -298,8 +384,7 @@ export default function PlayMode() {
     ids: string[],
     unit: typeof attackerCatalogueUnit,
     weapon = weaponProfile,
-    targetKeywords = targetProfiles.find((entry) => String(entry.id) === targetModelId)?.keywords ??
-      [],
+    targetKeywords = selectedTargetSegment?.model.keywords ?? [],
     targetDistance = profile.targetDistance,
     attackerCharged = profile.attackerCharged,
     attackerBattleShocked = profile.attackerBattleShocked,
@@ -420,11 +505,18 @@ export default function PlayMode() {
       nextEmbarkedModels,
     );
     const nextFiringDeckChoice = parseFiringDeckWeaponValue(nextWeaponId);
+    const nextFormationWeaponChoice = parseFormationWeaponValue(nextWeaponId);
     const nextPassengerArmyUnit = attackerList?.units.find(
       (entry) => entry.id === nextFiringDeckChoice?.passengerUnitId,
     );
     const nextPassengerCatalogueUnit = catalogue?.units.find(
       (entry) => entry.id === nextPassengerArmyUnit?.unitId,
+    );
+    const nextFormationWeaponUnit = attackerList?.units.find(
+      (entry) => entry.id === nextFormationWeaponChoice?.savedUnitId,
+    );
+    const nextFormationWeaponCatalogueUnit = catalogue?.units.find(
+      (entry) => entry.id === nextFormationWeaponUnit?.unitId,
     );
     const nextAttachedArmyUnit = attackerList?.units.find(
       (entry) => entry.id === nextPassengerArmyUnit?.attachedToId,
@@ -432,12 +524,18 @@ export default function PlayMode() {
     const nextAttachedCatalogueUnit = catalogue?.units.find(
       (entry) => entry.id === nextAttachedArmyUnit?.unitId,
     );
-    const weaponSourceArmyUnit = nextPassengerArmyUnit ?? attackerUnit;
+    const weaponSourceArmyUnit = nextPassengerArmyUnit ?? nextFormationWeaponUnit ?? attackerUnit;
     const weaponSourceCatalogueUnit = nextFiringDeckChoice
       ? nextPassengerCatalogueUnit
-      : attackerCatalogueUnit;
+      : nextFormationWeaponChoice
+        ? nextFormationWeaponCatalogueUnit
+        : attackerCatalogueUnit;
     const listWeapon = weaponSourceArmyUnit?.weapons.find(
-      (entry) => String(entry.weaponId) === String(nextFiringDeckChoice?.weaponId ?? nextWeaponId),
+      (entry) =>
+        String(entry.weaponId) ===
+        String(
+          nextFiringDeckChoice?.weaponId ?? nextFormationWeaponChoice?.weaponId ?? nextWeaponId,
+        ),
     );
     const groups = groupWeaponProfiles(weaponSourceCatalogueUnit?.weapons ?? []);
     const group = groups.find(
@@ -447,8 +545,10 @@ export default function PlayMode() {
     );
     const weapon =
       group?.profiles.find((entry) => String(entry.id) === nextProfileId) ?? group?.profiles[0];
-    const model =
-      targetProfiles.find((entry) => String(entry.id) === nextTargetModelId) ?? targetProfiles[0];
+    const targetSegment =
+      targetAllocationOptions.find((entry) => entry.id === nextTargetModelId) ??
+      targetAllocationOptions[0];
+    const model = targetSegment?.model;
     if (!weapon || !model) return;
     let weaponCount = listWeapon?.count ?? 1;
     if (nextFiringDeckChoice && catalogue && attackerCatalogueUnit) {
@@ -483,7 +583,7 @@ export default function PlayMode() {
           {
             ...applyTargetProfile(DEFAULT_PROFILE, model),
             weaponCount,
-            targetModels: targetUnit?.modelCount ?? 1,
+            targetModels: targetFormation?.modelCount ?? targetUnit?.modelCount ?? 1,
             targetDistance: nextTargetDistance,
             attackerUnitModels: nextAttackerUnitModels,
             nearbyEnemyModels: nextNearbyEnemyModels,
@@ -528,7 +628,7 @@ export default function PlayMode() {
         [
           ...selectedCombatPresets(
             nextAttackerPresetIds,
-            attackerCatalogueUnit,
+            attackerFormationCatalogueUnit,
             weapon,
             model.keywords,
             nextTargetDistance,
@@ -557,7 +657,7 @@ export default function PlayMode() {
             nextTargetClosestEligible,
             nextAttackerSourceTargetDistance,
             nextAttackerSourceCanSeeTarget,
-            attackerCatalogueUnit?.models[0]?.keywords ?? [],
+            attackerFormationKeywords,
           ),
           ...selectedCombatPresets(
             nextSupportPresetIds,
@@ -585,18 +685,18 @@ export default function PlayMode() {
             nextTargetSpotted,
             nextTargetSpottedByMarkerlightObserver,
             "supporting_unit",
-            attackerCatalogueUnit?.models[0]?.keywords ?? [],
+            attackerFormationKeywords,
             nextSupportDistance,
             nextTargetClosestEligible,
             nextAttackerSourceTargetDistance,
             nextAttackerSourceCanSeeTarget,
-            attackerCatalogueUnit?.models[0]?.keywords ?? [],
+            attackerFormationKeywords,
           ),
         ],
         [
           ...selectedCombatPresets(
             nextTargetPresetIds,
-            targetCatalogueUnit,
+            targetFormationCatalogueUnit,
             weapon,
             model.keywords,
             nextTargetDistance,
@@ -626,7 +726,7 @@ export default function PlayMode() {
             nextTargetClosestEligible,
             nextTargetSourceAttackerDistance,
             nextTargetSourceCanSeeAttacker,
-            attackerCatalogueUnit?.models[0]?.keywords ?? [],
+            attackerFormationKeywords,
           ),
           ...selectedCombatPresets(
             nextTargetSupportPresetIds,
@@ -659,13 +759,13 @@ export default function PlayMode() {
             nextTargetClosestEligible,
             nextTargetSourceAttackerDistance,
             nextTargetSourceCanSeeAttacker,
-            attackerCatalogueUnit?.models[0]?.keywords ?? [],
+            attackerFormationKeywords,
           ),
         ],
         weapon.type,
         {
           targetKeywords: model.keywords,
-          attackerKeywords: attackerCatalogueUnit?.models[0]?.keywords ?? [],
+          attackerKeywords: attackerFormationKeywords,
           attackKeywords: attackKeywordsForWeapon(weapon),
           targetDistance: nextTargetDistance,
           attackerUnitModels: nextAttackerUnitModels,
@@ -703,7 +803,7 @@ export default function PlayMode() {
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
           supportDistance: nextSupportDistance,
-          supportedUnitKeywords: attackerCatalogueUnit?.models[0]?.keywords ?? [],
+          supportedUnitKeywords: attackerFormationKeywords,
           targetSupportDistance: nextTargetSupportDistance,
           targetSupportedUnitKeywords: model.keywords,
         },
@@ -714,17 +814,31 @@ export default function PlayMode() {
 
   const chooseWeapon = (id: string) => {
     const nextFiringDeckChoice = parseFiringDeckWeaponValue(id);
+    const nextFormationWeaponChoice = parseFormationWeaponValue(id);
     const passengerArmyUnit = attackerList?.units.find(
       (entry) => entry.id === nextFiringDeckChoice?.passengerUnitId,
     );
     const passengerCatalogueUnit = catalogue?.units.find(
       (entry) => entry.id === passengerArmyUnit?.unitId,
     );
-    const listWeapon = (passengerArmyUnit ?? attackerUnit)?.weapons.find(
-      (entry) => String(entry.weaponId) === String(nextFiringDeckChoice?.weaponId ?? id),
+    const formationArmyUnit = attackerList?.units.find(
+      (entry) => entry.id === nextFormationWeaponChoice?.savedUnitId,
+    );
+    const formationCatalogueUnit = catalogue?.units.find(
+      (entry) => entry.id === formationArmyUnit?.unitId,
+    );
+    const listWeapon = (passengerArmyUnit ?? formationArmyUnit ?? attackerUnit)?.weapons.find(
+      (entry) =>
+        String(entry.weaponId) ===
+        String(nextFiringDeckChoice?.weaponId ?? nextFormationWeaponChoice?.weaponId ?? id),
     );
     const groups = groupWeaponProfiles(
-      (nextFiringDeckChoice ? passengerCatalogueUnit : attackerCatalogueUnit)?.weapons ?? [],
+      (nextFiringDeckChoice
+        ? passengerCatalogueUnit
+        : nextFormationWeaponChoice
+          ? formationCatalogueUnit
+          : attackerCatalogueUnit
+      )?.weapons ?? [],
     );
     const group = groups.find(
       (entry) =>
@@ -1055,13 +1169,32 @@ export default function PlayMode() {
   };
 
   const chooseTargetUnit = (id: string) => {
-    const nextTarget = targetList?.units.find((unit) => unit.id === id);
+    const nextFormation =
+      catalogue && targetList ? savedFormationForUnit(catalogue, targetList, id) : undefined;
+    const nextTarget = nextFormation?.root ?? targetList?.units.find((unit) => unit.id === id);
     const nextTargetCatalogueUnit = catalogue?.units.find((unit) => unit.id === nextTarget?.unitId);
-    const model = nextTargetCatalogueUnit?.models[0];
-    const nextTargetPresetIds = nextTarget?.combatPresetIds ?? [];
+    const nextTargetPresetUnit = nextTargetCatalogueUnit
+      ? {
+          ...nextTargetCatalogueUnit,
+          combatPresets:
+            nextFormation?.components.flatMap(
+              (component) => component.catalogueUnit?.combatPresets ?? [],
+            ) ?? nextTargetCatalogueUnit.combatPresets,
+        }
+      : undefined;
+    const firstSegment = savedFormationModelSegments(nextFormation).segments[0];
+    const model = firstSegment?.model ?? nextTargetCatalogueUnit?.models[0];
+    const nextTargetPresetIds = [
+      ...new Set(
+        nextFormation?.components.flatMap((component) => component.unit.combatPresetIds ?? []) ??
+          nextTarget?.combatPresetIds ??
+          [],
+      ),
+    ];
     setTargetUnitId(id);
     const nextTargetBattleShocked = false;
-    const nextTargetAttached = targetTransportReport.attachedUnitIds.has(id);
+    const nextTargetAttached =
+      nextFormation?.attached ?? targetTransportReport.attachedUnitIds.has(id);
     const nextTargetWaaaghActive = false;
     const nextTargetOathOfMoment = false;
     const nextTargetOnObjective = false;
@@ -1078,7 +1211,7 @@ export default function PlayMode() {
     const nextAttackerSourceCanSeeTarget = false;
     const nextTargetSourceCanSeeAttacker = false;
     const nextTargetStrengthState = "full" as const;
-    setTargetModelId(model ? String(model.id) : "");
+    setTargetModelId(firstSegment?.id ?? (model ? `${nextTarget?.id}:${model.id}` : ""));
     setActiveTargetPresetIds(nextTargetPresetIds);
     setActiveSupportPresetIds([]);
     setTargetSupportUnitId("");
@@ -1115,7 +1248,7 @@ export default function PlayMode() {
           {
             ...applyTargetProfile(DEFAULT_PROFILE, model),
             weaponCount: selectedWeapon?.count ?? 1,
-            targetModels: nextTarget.modelCount,
+            targetModels: nextFormation?.modelCount ?? nextTarget.modelCount,
             targetDistance: profile.targetDistance,
             attackerUnitModels: profile.attackerUnitModels,
             nearbyEnemyModels: profile.nearbyEnemyModels,
@@ -1159,7 +1292,7 @@ export default function PlayMode() {
         [
           ...selectedCombatPresets(
             activeAttackerPresetIds,
-            attackerCatalogueUnit,
+            attackerFormationCatalogueUnit,
             weaponProfile,
             model.keywords,
             profile.targetDistance,
@@ -1188,7 +1321,7 @@ export default function PlayMode() {
             nextTargetClosestEligible,
             nextAttackerSourceTargetDistance,
             nextAttackerSourceCanSeeTarget,
-            attackerCatalogueUnit?.models[0]?.keywords ?? [],
+            attackerFormationKeywords,
           ),
           ...selectedCombatPresets(
             activeSupportPresetIds,
@@ -1216,17 +1349,17 @@ export default function PlayMode() {
             nextTargetSpotted,
             nextTargetSpottedByMarkerlightObserver,
             "supporting_unit",
-            attackerCatalogueUnit?.models[0]?.keywords ?? [],
+            attackerFormationKeywords,
             profile.supportDistance,
             nextTargetClosestEligible,
             nextAttackerSourceTargetDistance,
             nextAttackerSourceCanSeeTarget,
-            attackerCatalogueUnit?.models[0]?.keywords ?? [],
+            attackerFormationKeywords,
           ),
         ],
         selectedCombatPresets(
           nextTargetPresetIds,
-          nextTargetCatalogueUnit,
+          nextTargetPresetUnit,
           weaponProfile,
           model.keywords,
           profile.targetDistance,
@@ -1256,12 +1389,12 @@ export default function PlayMode() {
           nextTargetClosestEligible,
           nextTargetSourceAttackerDistance,
           nextTargetSourceCanSeeAttacker,
-          attackerCatalogueUnit?.models[0]?.keywords ?? [],
+          attackerFormationKeywords,
         ),
         weaponProfile.type,
         {
           targetKeywords: model.keywords,
-          attackerKeywords: attackerCatalogueUnit?.models[0]?.keywords ?? [],
+          attackerKeywords: attackerFormationKeywords,
           attackKeywords: attackKeywordsForWeapon(weaponProfile),
           targetDistance: profile.targetDistance,
           attackerUnitModels: profile.attackerUnitModels,
@@ -1299,7 +1432,7 @@ export default function PlayMode() {
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
           supportDistance: profile.supportDistance,
-          supportedUnitKeywords: attackerCatalogueUnit?.models[0]?.keywords ?? [],
+          supportedUnitKeywords: attackerFormationKeywords,
           targetSupportDistance: 0,
           targetSupportedUnitKeywords: model.keywords,
         },
@@ -1323,9 +1456,69 @@ export default function PlayMode() {
       setStatus("Firing Deck cannot use models from a unit that has already shot this phase");
       return;
     }
-    let rolled: RollResult;
+    let rolled: RollResult | OrderedVolleyRollResult;
     try {
-      rolled = simulateAttack(profile);
+      if (targetFormationModels.ambiguousComponents.length > 0) {
+        throw new Error(
+          `Set an exact model composition for ${targetFormationModels.ambiguousComponents.join(
+            ", ",
+          )} before resolving this formation`,
+        );
+      }
+      const targetPresets = selectedCombatPresets(
+        activeTargetPresetIds,
+        targetFormationCatalogueUnit,
+        weaponProfile,
+        selectedTargetSegment?.model.keywords ?? [],
+        profile.targetDistance,
+        profile.attackerCharged,
+        profile.attackerBattleShocked,
+        profile.targetBattleShocked,
+        profile.targetStrengthState,
+        profile.attackerRemainedStationary,
+        profile.targetAttached,
+        profile.targetWaaaghActive,
+      );
+      const orderedTargets = applyTargetCombatPresets(
+        targetFormationModels.targets,
+        targetPresets,
+        [
+          {
+            weaponType: weaponProfile.type,
+            weaponName: weaponProfile.name,
+            attackKeywords: attackKeywordsForWeapon(weaponProfile),
+            attackerKeywords: attackerFormationKeywords,
+            targetDistance: profile.targetDistance,
+            attackerCharged: profile.attackerCharged,
+            attackerBattleShocked: profile.attackerBattleShocked,
+            targetBattleShocked: profile.targetBattleShocked,
+            targetStrengthState: profile.targetStrengthState,
+            attackerRemainedStationary: profile.attackerRemainedStationary,
+            targetAttached: profile.targetAttached,
+            targetWaaaghActive: profile.targetWaaaghActive,
+            attackerUnitModels: profile.attackerUnitModels,
+            nearbyEnemyModels: profile.nearbyEnemyModels,
+            nearbyEnemyUnits: profile.nearbyEnemyUnits,
+            enemyCharacterModelsDestroyed: profile.enemyCharacterModelsDestroyed,
+            destructiveFightPhases: profile.destructiveFightPhases,
+            embarkedModels: profile.embarkedModels,
+            embarkedWracksModels: profile.embarkedWracksModels,
+            attackerOnObjective: profile.attackerOnObjective,
+            targetOnObjective: profile.targetOnObjective,
+            attackerObjectiveOwner: profile.attackerObjectiveOwner,
+            targetObjectiveOwner: profile.targetObjectiveOwner,
+            attackerOnTargetSelectedObjective: profile.attackerOnTargetSelectedObjective,
+            targetOnTargetSelectedObjective: profile.targetOnTargetSelectedObjective,
+            targetClosestEligible: profile.targetClosestEligible,
+            targetSourceAttackerDistance: profile.targetSourceAttackerDistance,
+            targetSourceCanSeeAttacker: profile.targetSourceCanSeeAttacker,
+          },
+        ],
+      );
+      rolled =
+        orderedTargets.length > 1
+          ? simulateOrderedVolley([profile], orderedTargets)
+          : simulateAttack(profile);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Attack could not be resolved");
       return;
@@ -1335,9 +1528,9 @@ export default function PlayMode() {
       [
         {
           id: crypto.randomUUID(),
-          attacker: attackerUnit.name,
+          attacker: attackerFormation?.name ?? attackerUnit.name,
           weapon: weaponProfile.name,
-          target: targetUnit.name,
+          target: targetFormation?.name ?? targetUnit.name,
           damage: rolled.appliedDamage,
           successful: rolled.successfulAttacks,
         },
@@ -1357,6 +1550,7 @@ export default function PlayMode() {
       selectedWeapon &&
       weaponProfile &&
       targetModelId &&
+      targetFormationModels.ambiguousComponents.length === 0 &&
       !(firingDeckChoice && !validFiringDeckPassengerIds.has(firingDeckChoice.passengerUnitId)) &&
       !(firingDeckChoice && firingDeckPassengerAlreadyShot),
   );
@@ -1376,7 +1570,13 @@ export default function PlayMode() {
                 ? "Choose a target unit"
                 : !targetModelId
                   ? "Choose a target profile"
-                  : `${attackerUnit.name} into ${targetUnit.name}`;
+                  : targetFormationModels.ambiguousComponents.length > 0
+                    ? `Exact composition unavailable for ${targetFormationModels.ambiguousComponents.join(
+                        ", ",
+                      )}`
+                    : `${attackerFormation?.name ?? attackerUnit.name} into ${
+                        targetFormation?.name ?? targetUnit.name
+                      }`;
 
   const resetBattle = () => {
     suppressRecoverySave.current = true;
@@ -1484,15 +1684,14 @@ export default function PlayMode() {
                 <label>
                   <span>Unit</span>
                   <select
-                    value={attackerUnitId}
+                    value={attackerSelectionId}
                     disabled={!attackerList}
                     onChange={(event) => {
-                      const nextUnit = attackerList?.units.find(
-                        (unit) => unit.id === event.target.value,
+                      const nextFormation = attackerFormations.find(
+                        (formation) => formation.id === event.target.value,
                       );
-                      const nextAttackerAttached = attackerTransportReport.attachedUnitIds.has(
-                        event.target.value,
-                      );
+                      const nextUnit = nextFormation?.root;
+                      const nextAttackerAttached = nextFormation?.attached ?? false;
                       const nextEmbarkedAssignments = attackerTransportReport.assignments.filter(
                         (assignment) => assignment.transportUnit.id === event.target.value,
                       );
@@ -1509,7 +1708,15 @@ export default function PlayMode() {
                           0,
                         );
                       setAttackerUnitId(event.target.value);
-                      setActiveAttackerPresetIds(nextUnit?.combatPresetIds ?? []);
+                      setActiveAttackerPresetIds([
+                        ...new Set(
+                          nextFormation?.components.flatMap(
+                            (component) => component.unit.combatPresetIds ?? [],
+                          ) ??
+                            nextUnit?.combatPresetIds ??
+                            [],
+                        ),
+                      ]);
                       setSupportUnitId("");
                       setActiveSupportPresetIds([]);
                       setWeaponId("");
@@ -1533,7 +1740,7 @@ export default function PlayMode() {
                         attackerGuidedAgainstTarget: false,
                         targetSpotted: false,
                         targetSpottedByMarkerlightObserver: false,
-                        attackerUnitModels: 0,
+                        attackerUnitModels: nextFormation?.modelCount ?? 0,
                         nearbyEnemyModels: 0,
                         nearbyEnemyUnits: 0,
                         enemyCharacterModelsDestroyed: 0,
@@ -1547,9 +1754,9 @@ export default function PlayMode() {
                     }}
                   >
                     <option value="">Choose unit</option>
-                    {attackerList?.units.map((unit) => (
-                      <option key={unit.id} value={unit.id}>
-                        {unit.name} ({unit.modelCount})
+                    {attackerFormations.map((formation) => (
+                      <option key={formation.id} value={formation.id}>
+                        {formation.name} ({formation.modelCount})
                       </option>
                     ))}
                   </select>
@@ -1568,6 +1775,22 @@ export default function PlayMode() {
                         <option key={weapon.weaponId} value={weapon.weaponId}>
                           {weapon.name} × {weapon.count}
                         </option>
+                      ))}
+                    {attackerFormation?.components
+                      .filter((component) => component.unit.id !== attackerUnit.id)
+                      .map((component) => (
+                        <optgroup key={component.unit.id} label={component.unit.name}>
+                          {component.unit.weapons
+                            .filter((weapon) => weapon.count > 0)
+                            .map((weapon) => (
+                              <option
+                                key={`${component.unit.id}:${weapon.weaponId}`}
+                                value={formationWeaponValue(component.unit.id, weapon.weaponId)}
+                              >
+                                {weapon.name} × {weapon.count}
+                              </option>
+                            ))}
+                        </optgroup>
                       ))}
                     {firingDeckPlayOptions.map(({ unit, weapons }) => (
                       <optgroup key={unit.id} label={`Firing Deck · ${unit.name}`}>
@@ -1696,32 +1919,37 @@ export default function PlayMode() {
                 <label>
                   <span>Unit</span>
                   <select
-                    value={targetUnitId}
+                    value={targetSelectionId}
                     disabled={!targetList}
                     onChange={(event) => chooseTargetUnit(event.target.value)}
                   >
                     <option value="">Choose unit</option>
-                    {targetList?.units.map((unit) => (
-                      <option key={unit.id} value={unit.id}>
-                        {unit.name} ({unit.modelCount})
+                    {targetFormations.map((formation) => (
+                      <option key={formation.id} value={formation.id}>
+                        {formation.name} ({formation.modelCount})
                       </option>
                     ))}
                   </select>
                 </label>
                 <label>
-                  <span>Profile</span>
+                  <span>Allocate first</span>
                   <select
                     value={targetModelId}
                     disabled={!targetUnit}
                     onChange={(event) => chooseTargetProfile(event.target.value)}
                   >
                     <option value="">Choose profile</option>
-                    {targetProfiles.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.name}
+                    {targetAllocationOptions.map((segment) => (
+                      <option key={segment.id} value={segment.id}>
+                        {segment.unitName} · {segment.model.name} × {segment.modelCount}
                       </option>
                     ))}
                   </select>
+                  {targetProfiles.length > 1 && (
+                    <small>
+                      The chosen profile resolves first; remaining profiles follow roster order.
+                    </small>
+                  )}
                 </label>
                 <label>
                   <span>Charge</span>
@@ -2462,9 +2690,9 @@ export default function PlayMode() {
               </fieldset>
             </div>
             <div className="play-ability-selectors">
-              {attackerCatalogueUnit && (
+              {attackerFormationCatalogueUnit && (
                 <CombatPresetSelector
-                  presets={attackerCatalogueUnit.combatPresets}
+                  presets={attackerFormationCatalogueUnit.combatPresets}
                   role="attacker"
                   selectedIds={activeAttackerPresetIds}
                   onChange={(ids) => {
@@ -2505,7 +2733,7 @@ export default function PlayMode() {
                   onSupportDistanceChange={(distance) =>
                     refreshSupportState(activeSupportPresetIds, supportUnitId, distance)
                   }
-                  supportedUnitKeywords={attackerCatalogueUnit.models[0]?.keywords ?? []}
+                  supportedUnitKeywords={attackerFormationKeywords}
                   attackerCharged={profile.attackerCharged}
                   attackerRemainedStationary={profile.attackerRemainedStationary}
                   attackerBattleShocked={profile.attackerBattleShocked}
@@ -2515,9 +2743,9 @@ export default function PlayMode() {
                   sourceTargetVisible={profile.attackerSourceCanSeeTarget}
                 />
               ) : null}
-              {targetCatalogueUnit && (
+              {targetFormationCatalogueUnit && (
                 <CombatPresetSelector
-                  presets={targetCatalogueUnit.combatPresets}
+                  presets={targetFormationCatalogueUnit.combatPresets}
                   role="target"
                   selectedIds={activeTargetPresetIds}
                   onChange={(ids) => {
@@ -2562,10 +2790,7 @@ export default function PlayMode() {
                       distance,
                     )
                   }
-                  supportedUnitKeywords={
-                    targetProfiles.find((entry) => String(entry.id) === targetModelId)?.keywords ??
-                    []
-                  }
+                  supportedUnitKeywords={selectedTargetSegment?.model.keywords ?? []}
                   attackerCharged={profile.attackerCharged}
                   attackerRemainedStationary={profile.attackerRemainedStationary}
                   attackerBattleShocked={profile.attackerBattleShocked}
