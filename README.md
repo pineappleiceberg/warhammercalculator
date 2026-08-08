@@ -239,7 +239,10 @@ all of its passengers a fixed 25 spaces; the Thunderhawk Transporter permits up
 to two non-Aircraft, non-Titanic Adeptus Astartes Vehicles in an independent
 allowance and does not
 double-count models embarked within them. Nested Transport assignments retain
-and validate each inner Transport's own capacity. The Falcon, Firestorm,
+and validate each inner Transport's own capacity. The Orion Assault Dropship
+allows one of its three named Contemptor Dreadnoughts in an independent pool
+and automatically reduces its Infantry capacity from 12 to 6 while that pool
+is occupied. The Falcon, Firestorm,
 Vampire Raider, and Wave Serpent apply their
 published Ynnari exclusions without rejecting the named Yvraine, Visarch, and
 Asuryani exceptions; Jump Pack exclusions remain independent. Independent
@@ -683,7 +686,8 @@ that legally compatible passenger's eligible ranged weapons and slot cost.
 returns the exact source clause, eligibility, per-model cost, total spaces, and
 whether the selection fits in its matched independent pool; the response lists
 every pool or mode, its kind, Wounds ceiling, and required keywords, plus all
-shared-capacity allowances and the matching allowance's model ceiling. `attached` is optional except when a published
+special allowances, whether they consume primary capacity, their model ceiling,
+and any conditional primary-capacity limit. `attached` is optional except when a published
 attachment exception is required. `POST
 /api/v1/validate-firing-deck` validates one or more explicit passenger/model/
 weapon selections, the aggregate Firing Deck limit, phase eligibility, and

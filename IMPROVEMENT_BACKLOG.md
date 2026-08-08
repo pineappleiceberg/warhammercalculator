@@ -16,15 +16,25 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Normalize the final inexact Transport clause: the Orion Assault Dropship's
-   primary Infantry capacity falls from 12 to 6 while it carries one of three
-   named Dreadnoughts. Then normalize Leader eligibility so declared attachment
-   links can be audited against published Leader lists.
+1. Normalize Leader eligibility so declared attachment links can be audited
+   against published Leader lists, including any source-backed attachment
+   exceptions and multi-Leader limits.
 2. Extend normalized defensive-equipment selection to Model vs Model and Play
    Mode while preserving model-by-model allocation and preventing bearer-only
    gear from becoming a homogeneous unit-wide defense.
 
 ## Completed cycles
+
+- 2026-08-08: Completed exact Transport coverage. SQLite schema 61 normalizes
+  the Orion Assault Dropship's independent one-model allowance for its three
+  named Contemptor Dreadnoughts and the resulting primary Infantry capacity
+  reduction from 12 to 6. All 178 Transport datasheets now have exact normalized
+  rules. Army Lists exposes the active conditional capacity and rejects the
+  seventh Infantry model or a second named Dreadnought only when appropriate;
+  the Transport API exposes the same allowance condition. Parser exactness and
+  altered-clause behavior, schema/catalogue snapshots, inactive and active
+  boundaries, overflow, model ceiling, saved-formation, and API regressions
+  cover the change.
 
 - 2026-08-08: Added exact nested-Transport capacity semantics. SQLite schema 60
   normalizes fixed shared-capacity costs, independent Vehicle allowances,

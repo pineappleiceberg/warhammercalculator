@@ -301,7 +301,7 @@ def export(database: Path, output: Path) -> None:
         for row in connection.execute(
             """SELECT datasheet_id, allowance_position, maximum_models,
                       cost_equals_wounds, fixed_model_cost, consumes_primary_capacity,
-                      nested_passenger_policy
+                      primary_capacity_while_used, nested_passenger_policy
                FROM unit_transport_shared_allowances
                ORDER BY datasheet_id, allowance_position"""
         ):
@@ -334,6 +334,7 @@ def export(database: Path, output: Path) -> None:
                     "costEqualsWounds": bool(row["cost_equals_wounds"]),
                     "fixedModelCost": row["fixed_model_cost"],
                     "consumesPrimaryCapacity": bool(row["consumes_primary_capacity"]),
+                    "primaryCapacityWhileUsed": row["primary_capacity_while_used"],
                     "nestedPassengerPolicy": row["nested_passenger_policy"],
                     "allowedKeywords": allowed_groups,
                     "excludedKeywords": excluded_groups,

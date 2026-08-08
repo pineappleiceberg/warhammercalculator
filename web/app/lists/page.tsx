@@ -100,7 +100,12 @@ export default function ArmyLists() {
     () =>
       catalogue
         ? transportAssignmentReport(catalogue, draft)
-        : { assignments: [], errors: [], slotsByTransport: new Map() },
+        : {
+            assignments: [],
+            errors: [],
+            slotsByTransport: new Map(),
+            effectivePrimaryCapacityByTransport: new Map(),
+          },
     [catalogue, draft],
   );
 
@@ -438,6 +443,17 @@ export default function ArmyLists() {
                                 }`}
                               {assignment.sharedAllowanceMaximumModels !== null &&
                                 ` · max ${assignment.sharedAllowanceMaximumModels} matching models`}
+                              {assignment.sharedAllowancePrimaryCapacityWhileUsed !== null &&
+                                ` · primary capacity becomes ${assignment.sharedAllowancePrimaryCapacityWhileUsed}`}
+                              {assignment.poolKind === "primary" &&
+                                (transportReport.effectivePrimaryCapacityByTransport.get(
+                                  assignment.transportUnit.id,
+                                ) ?? assignment.poolCapacity) < assignment.poolCapacity &&
+                                ` · conditional capacity ${
+                                  transportReport.effectivePrimaryCapacityByTransport.get(
+                                    assignment.transportUnit.id,
+                                  ) ?? assignment.poolCapacity
+                                }`}
                               {assignment.sharedAllowanceNestedPassengerPolicy ===
                                 "included_in_fixed_cost" && " · nested passengers included"}
                               {assignment.sharedAllowanceNestedPassengerPolicy ===

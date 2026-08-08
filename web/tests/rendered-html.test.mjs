@@ -446,6 +446,21 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   );
   assert.equal(excludedNestedTransport.status, 200);
   assert.equal((await excludedNestedTransport.json()).data.eligible, false);
+  const orion = catalogue.units.find((unit) => unit.id === "000001564");
+  const venerableContemptor = catalogue.units.find((unit) => unit.id === "000000883");
+  const conditionalCapacity = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/transport?unit=${orion.id}&passenger=${venerableContemptor.id}`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.equal(conditionalCapacity.status, 200);
+  const conditionalCapacityBody = await conditionalCapacity.json();
+  assert.equal(conditionalCapacityBody.data.pool.kind, "additional");
+  assert.equal(conditionalCapacityBody.data.capacity, 1);
+  assert.equal(conditionalCapacityBody.data.sharedAllowance.primaryCapacityWhileUsed, 6);
+  assert.equal(conditionalCapacityBody.data.fits, true);
   const dreadclaw = catalogue.units.find((unit) => unit.id === "000001310");
   const alternativeMode = await worker.fetch(
     new Request(`http://localhost/api/v1/transport?unit=${dreadclaw.id}&passenger=${helbrute.id}`),

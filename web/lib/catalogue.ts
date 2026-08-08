@@ -262,6 +262,7 @@ export type CatalogueUnit = {
       costEqualsWounds: boolean;
       fixedModelCost: number | null;
       consumesPrimaryCapacity: boolean;
+      primaryCapacityWhileUsed: number | null;
       nestedPassengerPolicy: "included_in_fixed_cost" | "excluded_from_capacity" | null;
       allowedKeywords: string[][];
       excludedKeywords: string[][];

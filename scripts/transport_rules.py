@@ -33,6 +33,7 @@ def keyword_partition(value: str, vocabulary: set[str]) -> tuple[str, ...] | Non
         "necron warrior": "necron warriors",
         "obliterator": "obliterators",
         "possessed": "possessed",
+        "contemptor galatus-dreadnought": "contemptor-galatus dreadnought",
         "visarch": "the visarch",
         "veteran heavy weapons team": "veteran heavy weapons team",
     }
@@ -393,6 +394,7 @@ def parse_transport_rule(source: str, vocabulary: set[str]) -> dict:
                 "costEqualsWounds": True,
                 "fixedModelCost": None,
                 "consumesPrimaryCapacity": True,
+                "primaryCapacityWhileUsed": None,
                 "nestedPassengerPolicy": None,
             }
         )
@@ -415,6 +417,7 @@ def parse_transport_rule(source: str, vocabulary: set[str]) -> dict:
                 "costEqualsWounds": False,
                 "fixedModelCost": int(allowance.group(3)),
                 "consumesPrimaryCapacity": True,
+                "primaryCapacityWhileUsed": None,
                 "nestedPassengerPolicy": "included_in_fixed_cost",
             }
         )
@@ -440,7 +443,41 @@ def parse_transport_rule(source: str, vocabulary: set[str]) -> dict:
                 "costEqualsWounds": False,
                 "fixedModelCost": 1,
                 "consumesPrimaryCapacity": False,
+                "primaryCapacityWhileUsed": None,
                 "nestedPassengerPolicy": "excluded_from_capacity",
+            }
+        )
+        recognized_also_sentences += 1
+    for allowance in re.finditer(
+        r"This model can also transport 1 (.+?), 1 (.+?) or 1 (.+?); while doing so, "
+        r"its transport capacity is reduced to (\d+) (.+?) models\.",
+        source,
+        re.IGNORECASE,
+    ):
+        allowance_allowed = []
+        for phrase in allowance.group(1, 2, 3):
+            groups = groups_from_phrase(phrase, vocabulary)
+            if groups is None:
+                result["exact"] = False
+                allowance_allowed = []
+                break
+            allowance_allowed.extend(groups)
+        reduced_allowed = groups_from_phrase(allowance.group(5), vocabulary)
+        if not allowance_allowed or reduced_allowed is None:
+            continue
+        if [list(group) for group in reduced_allowed] != result["allowed"]:
+            result["exact"] = False
+            continue
+        result["sharedAllowances"].append(
+            {
+                "maximumModels": 1,
+                "allowed": [list(group) for group in allowance_allowed],
+                "excluded": [],
+                "costEqualsWounds": False,
+                "fixedModelCost": 1,
+                "consumesPrimaryCapacity": False,
+                "primaryCapacityWhileUsed": int(allowance.group(4)),
+                "nestedPassengerPolicy": None,
             }
         )
         recognized_also_sentences += 1

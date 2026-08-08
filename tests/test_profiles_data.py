@@ -236,6 +236,7 @@ class ProfileDataTests(unittest.TestCase):
                     "costEqualsWounds": True,
                     "fixedModelCost": None,
                     "consumesPrimaryCapacity": True,
+                    "primaryCapacityWhileUsed": None,
                     "nestedPassengerPolicy": None,
                 }
             ],
@@ -260,6 +261,7 @@ class ProfileDataTests(unittest.TestCase):
                     "costEqualsWounds": False,
                     "fixedModelCost": 25,
                     "consumesPrimaryCapacity": True,
+                    "primaryCapacityWhileUsed": None,
                     "nestedPassengerPolicy": "included_in_fixed_cost",
                 }
             ],
@@ -290,6 +292,61 @@ class ProfileDataTests(unittest.TestCase):
             "excluded_from_capacity",
         )
         self.assertFalse(transporter["sharedAllowances"][0]["consumesPrimaryCapacity"])
+        orion = parse_transport_rule(
+            "This model has a transport capacity of 12 Adeptus Custodes Infantry "
+            "models. This model can also transport 1 Venerable Contemptor Dreadnought, "
+            "1 Contemptor-Achillus Dreadnought or 1 Contemptor Galatus-Dreadnought; "
+            "while doing so, its transport capacity is reduced to 6 Adeptus Custodes "
+            "Infantry models.",
+            {
+                normalized_term(value)
+                for value in (
+                    "Adeptus Custodes",
+                    "Infantry",
+                    "Venerable Contemptor Dreadnought",
+                    "Contemptor-Achillus Dreadnought",
+                    "Contemptor-Galatus Dreadnought",
+                )
+            },
+        )
+        self.assertTrue(orion["exact"])
+        self.assertEqual(
+            orion["sharedAllowances"],
+            [
+                {
+                    "maximumModels": 1,
+                    "allowed": [
+                        ["venerable contemptor dreadnought"],
+                        ["contemptor-achillus dreadnought"],
+                        ["contemptor-galatus dreadnought"],
+                    ],
+                    "excluded": [],
+                    "costEqualsWounds": False,
+                    "fixedModelCost": 1,
+                    "consumesPrimaryCapacity": False,
+                    "primaryCapacityWhileUsed": 6,
+                    "nestedPassengerPolicy": None,
+                }
+            ],
+        )
+        self.assertFalse(
+            parse_transport_rule(
+                "This model has a transport capacity of 12 Adeptus Custodes Infantry "
+                "models. This model can also transport 1 Venerable Contemptor "
+                "Dreadnought, 1 Contemptor-Achillus Dreadnought or 1 Contemptor "
+                "Galatus-Dreadnought; while doing so, halve its Infantry capacity.",
+                {
+                    normalized_term(value)
+                    for value in (
+                        "Adeptus Custodes",
+                        "Infantry",
+                        "Venerable Contemptor Dreadnought",
+                        "Contemptor-Achillus Dreadnought",
+                        "Contemptor-Galatus Dreadnought",
+                    )
+                },
+            )["exact"]
+        )
         self.assertFalse(
             parse_transport_rule(
                 "This model has a transport capacity of 45 Heretic Astartes Infantry "
@@ -1966,7 +2023,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "60",
+                "61",
             )
             self.assertEqual(
                 connection.execute("SELECT count(*) FROM unit_firing_deck").fetchone()[
@@ -2012,13 +2069,13 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT count(*) FROM unit_transport_shared_allowances"
                 ).fetchone()[0],
-                12,
+                13,
             )
             self.assertEqual(
                 connection.execute(
                     "SELECT count(*) FROM unit_transport_shared_allowance_keywords"
                 ).fetchone()[0],
-                18,
+                21,
             )
             self.assertEqual(
                 connection.execute(
@@ -2036,7 +2093,13 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT count(*) FROM unit_transport WHERE exact_rules = 1"
                 ).fetchone()[0],
-                177,
+                178,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM unit_transport WHERE exact_rules = 0"
+                ).fetchone()[0],
+                0,
             )
             self.assertEqual(
                 connection.execute(
@@ -2227,6 +2290,30 @@ class ProfileDataTests(unittest.TestCase):
                                 allowances.nested_passenger_policy"""
                 ).fetchone(),
                 (2, 1, "excluded_from_capacity", "aircraft|titanic"),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT allowances.maximum_models,
+                              allowances.consumes_primary_capacity,
+                              allowances.primary_capacity_while_used,
+                              group_concat(keywords.keyword, '|')
+                       FROM unit_transport_shared_allowances AS allowances
+                       JOIN unit_transport_shared_allowance_keywords AS keywords
+                         USING (datasheet_id, allowance_position)
+                       WHERE allowances.datasheet_id = '000001564'
+                       GROUP BY allowances.datasheet_id,
+                                allowances.allowance_position,
+                                allowances.maximum_models,
+                                allowances.consumes_primary_capacity,
+                                allowances.primary_capacity_while_used"""
+                ).fetchone(),
+                (
+                    1,
+                    0,
+                    6,
+                    "venerable contemptor dreadnought|contemptor-achillus dreadnought|"
+                    "contemptor-galatus dreadnought",
+                ),
             )
             self.assertEqual(
                 connection.execute(

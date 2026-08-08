@@ -37,6 +37,7 @@ test("published Transport keywords and model-space costs gate passengers exactly
     poolLabel: "primary",
     sharedAllowancePosition: null,
     sharedAllowanceMaximumModels: null,
+    sharedAllowancePrimaryCapacityWhileUsed: null,
     sharedAllowanceNestedPassengerPolicy: null,
   });
   assert.equal(transportPassengerEligibility(trukk, meganobz).modelCost, 2);
@@ -473,6 +474,7 @@ test("shared Transport allowances use passenger Wounds and enforce combined mode
       costEqualsWounds: true,
       fixedModelCost: null,
       consumesPrimaryCapacity: true,
+      primaryCapacityWhileUsed: null,
       nestedPassengerPolicy: null,
       allowedKeywords: [["dreadnought"], ["helbrute"]],
       excludedKeywords: [],
@@ -573,6 +575,7 @@ test("nested Transport allowances apply fixed costs without double-counting pass
       costEqualsWounds: false,
       fixedModelCost: 25,
       consumesPrimaryCapacity: true,
+      primaryCapacityWhileUsed: null,
       nestedPassengerPolicy: "included_in_fixed_cost",
       allowedKeywords: [["rhino"]],
       excludedKeywords: [],
@@ -682,4 +685,82 @@ test("nested Transport allowances apply fixed costs without double-counting pass
   assert.equal(independentVehicles.slotsByTransport.get("transporter"), 17);
   assert.equal(independentVehicles.poolSlotsByTransport.get("transporter:0"), 15);
   assert.equal(independentVehicles.poolSlotsByTransport.get("transporter:1"), 2);
+});
+
+test("Orion Dreadnought allowances conditionally reduce only primary capacity", () => {
+  const orion = unit("Orion Assault Dropship", "000001564");
+  const guard = unit("Custodian Guard", "000000882");
+  const venerable = unit("Venerable Contemptor Dreadnought", "000000883");
+  const achillus = unit("Contemptor-achillus Dreadnought", "000001458");
+  assert.equal(orion.transport.exactRules, true);
+  assert.deepEqual(orion.transport.sharedAllowances, [
+    {
+      position: 1,
+      maximumModels: 1,
+      costEqualsWounds: false,
+      fixedModelCost: 1,
+      consumesPrimaryCapacity: false,
+      primaryCapacityWhileUsed: 6,
+      nestedPassengerPolicy: null,
+      allowedKeywords: [
+        ["venerable contemptor dreadnought"],
+        ["contemptor-achillus dreadnought"],
+        ["contemptor-galatus dreadnought"],
+      ],
+      excludedKeywords: [],
+    },
+  ]);
+  const dreadnoughtEligibility = transportPassengerEligibility(orion, venerable);
+  assert.equal(dreadnoughtEligibility.eligible, true);
+  assert.equal(dreadnoughtEligibility.poolKind, "additional");
+  assert.equal(dreadnoughtEligibility.poolCapacity, 1);
+  assert.equal(dreadnoughtEligibility.sharedAllowancePrimaryCapacityWhileUsed, 6);
+
+  const orionUnit = {
+    id: "orion",
+    unitId: orion.id,
+    name: orion.name,
+    modelCount: 1,
+    weapons: [],
+  };
+  const formation = (infantry, dreadnoughts = []) => ({
+    units: [
+      orionUnit,
+      {
+        id: "guard",
+        unitId: guard.id,
+        name: guard.name,
+        modelCount: infantry,
+        weapons: [],
+        transportId: orionUnit.id,
+      },
+      ...dreadnoughts.map((profile, index) => ({
+        id: `dreadnought-${index}`,
+        unitId: profile.id,
+        name: profile.name,
+        modelCount: 1,
+        weapons: [],
+        transportId: orionUnit.id,
+      })),
+    ],
+  });
+  const twelveInfantry = transportAssignmentReport(catalogue, formation(12));
+  assert.deepEqual(twelveInfantry.errors, []);
+  assert.equal(twelveInfantry.effectivePrimaryCapacityByTransport.get("orion"), 12);
+
+  const legalReduced = transportAssignmentReport(catalogue, formation(6, [venerable]));
+  assert.deepEqual(legalReduced.errors, []);
+  assert.equal(legalReduced.effectivePrimaryCapacityByTransport.get("orion"), 6);
+  assert.equal(legalReduced.poolSlotsByTransport.get("orion:0"), 6);
+  assert.equal(legalReduced.poolSlotsByTransport.get("orion:1"), 1);
+
+  const overReduced = transportAssignmentReport(catalogue, formation(7, [venerable]));
+  assert.ok(overReduced.errors.some((error) => /uses 7 of 6/i.test(error)));
+  assert.deepEqual(overReduced.assignments, []);
+
+  const tooManyDreadnoughts = transportAssignmentReport(
+    catalogue,
+    formation(0, [venerable, achillus]),
+  );
+  assert.ok(tooManyDreadnoughts.errors.some((error) => /2 models.*limited to 1/i.test(error)));
 });

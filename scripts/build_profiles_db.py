@@ -405,11 +405,13 @@ CREATE TABLE unit_transport_shared_allowances (
     cost_equals_wounds INTEGER NOT NULL CHECK (cost_equals_wounds IN (0, 1)),
     fixed_model_cost INTEGER CHECK (fixed_model_cost > 0),
     consumes_primary_capacity INTEGER NOT NULL CHECK (consumes_primary_capacity IN (0, 1)),
+    primary_capacity_while_used INTEGER CHECK (primary_capacity_while_used > 0),
     nested_passenger_policy TEXT CHECK (
         nested_passenger_policy IN ('included_in_fixed_cost', 'excluded_from_capacity')
     ),
     CHECK (cost_equals_wounds = 1 OR fixed_model_cost IS NOT NULL),
     CHECK (cost_equals_wounds = 0 OR fixed_model_cost IS NULL),
+    CHECK (primary_capacity_while_used IS NULL OR consumes_primary_capacity = 0),
     PRIMARY KEY (datasheet_id, allowance_position)
 ) WITHOUT ROWID;
 
@@ -3638,8 +3640,9 @@ def populate_transports(connection: sqlite3.Connection) -> tuple[int, int]:
             connection.execute(
                 """INSERT INTO unit_transport_shared_allowances
                    (datasheet_id, allowance_position, maximum_models, cost_equals_wounds,
-                    fixed_model_cost, consumes_primary_capacity, nested_passenger_policy)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    fixed_model_cost, consumes_primary_capacity,
+                    primary_capacity_while_used, nested_passenger_policy)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     allowance_position,
@@ -3647,6 +3650,7 @@ def populate_transports(connection: sqlite3.Connection) -> tuple[int, int]:
                     int(allowance["costEqualsWounds"]),
                     allowance["fixedModelCost"],
                     int(allowance["consumesPrimaryCapacity"]),
+                    allowance["primaryCapacityWhileUsed"],
                     allowance["nestedPassengerPolicy"],
                 ),
             )
@@ -3903,7 +3907,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "60"),
+                    ("schema_version", "61"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

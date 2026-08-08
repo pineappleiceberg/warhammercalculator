@@ -187,6 +187,8 @@ export function transportPassengerEligibility(transport, passenger, context = {}
     poolLabel: matchingPool.label,
     sharedAllowancePosition: matchingSharedAllowance?.position ?? null,
     sharedAllowanceMaximumModels: matchingSharedAllowance?.maximumModels ?? null,
+    sharedAllowancePrimaryCapacityWhileUsed:
+      matchingSharedAllowance?.primaryCapacityWhileUsed ?? null,
     sharedAllowanceNestedPassengerPolicy: matchingSharedAllowance?.nestedPassengerPolicy ?? null,
   };
 }
@@ -216,6 +218,7 @@ export function transportAssignmentReport(catalogue, armyList) {
   const slotsByTransport = new Map();
   const poolSlotsByTransport = new Map();
   const allowanceModelsByTransport = new Map();
+  const effectivePrimaryCapacityByTransport = new Map();
   const invalidFormationUnits = new Set();
   for (const unit of armyList?.units ?? []) {
     if (!unit.attachedToId) continue;
@@ -299,6 +302,7 @@ export function transportAssignmentReport(catalogue, armyList) {
       poolLabel: eligibility.poolLabel,
       sharedAllowancePosition: eligibility.sharedAllowancePosition,
       sharedAllowanceMaximumModels: eligibility.sharedAllowanceMaximumModels,
+      sharedAllowancePrimaryCapacityWhileUsed: eligibility.sharedAllowancePrimaryCapacityWhileUsed,
       sharedAllowanceNestedPassengerPolicy: eligibility.sharedAllowanceNestedPassengerPolicy,
       slots,
     };
@@ -365,6 +369,17 @@ export function transportAssignmentReport(catalogue, armyList) {
   for (const transportUnit of armyList?.units ?? []) {
     const transport = catalogueUnits.get(transportUnit.unitId);
     if (!transport?.transport) continue;
+    const effectivePrimaryCapacity = (transport.transport.sharedAllowances ?? []).reduce(
+      (capacity, allowance) => {
+        const used =
+          allowanceModelsByTransport.get(`${transportUnit.id}:${allowance.position}`) ?? 0;
+        return used > 0 && allowance.primaryCapacityWhileUsed !== null
+          ? Math.min(capacity, allowance.primaryCapacityWhileUsed)
+          : capacity;
+      },
+      transportCapacity(transport, transportUnit),
+    );
+    effectivePrimaryCapacityByTransport.set(transportUnit.id, effectivePrimaryCapacity);
     for (const allowance of transport.transport.sharedAllowances ?? []) {
       const used = allowanceModelsByTransport.get(`${transportUnit.id}:${allowance.position}`) ?? 0;
       if (used > allowance.maximumModels) {
@@ -380,9 +395,10 @@ export function transportAssignmentReport(catalogue, armyList) {
           ? `${transportUnit.id}:alternative:${pool.position}`
           : `${transportUnit.id}:${pool.position}`;
       const used = poolSlotsByTransport.get(poolKey) ?? 0;
-      if (used > pool.capacity) {
+      const effectiveCapacity = pool.kind === "primary" ? effectivePrimaryCapacity : pool.capacity;
+      if (used > effectiveCapacity) {
         errors.push(
-          `${transportUnit.name} uses ${used} of ${pool.capacity} Transport spaces in its ${pool.label} ${pool.kind === "alternative" ? "mode" : "pool"}`,
+          `${transportUnit.name} uses ${used} of ${effectiveCapacity} Transport spaces in its ${pool.label} ${pool.kind === "alternative" ? "mode" : "pool"}`,
         );
         overCapacity.add(transportUnit.id);
       }
@@ -399,5 +415,6 @@ export function transportAssignmentReport(catalogue, armyList) {
     slotsByTransport,
     poolSlotsByTransport,
     allowanceModelsByTransport,
+    effectivePrimaryCapacityByTransport,
   };
 }

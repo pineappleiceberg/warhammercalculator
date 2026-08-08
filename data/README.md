@@ -35,7 +35,8 @@ The main tables are:
   `unit_transport_shared_allowances` and its keyword child table preserve
   exceptional passengers that consume the primary capacity, including an
   aggregate passenger-model ceiling, fixed or Wounds-based space costs, whether
-  the allowance consumes primary capacity, and the
+  the allowance consumes primary capacity, conditional primary-capacity
+  reductions, and the
   published treatment of passengers nested inside a transported Transport.
   Its exclusion-keyword child table limits special Vehicle allowances without
   weakening the primary passenger rules
