@@ -1983,6 +1983,8 @@ class ProfileDataTests(unittest.TestCase):
     def test_composition_parser_handles_export_markup_and_unicode_hyphens(self):
         self.assertEqual(composition_range("10-20 Necron Warriors"), (10, 20))
         self.assertEqual(composition_range("3‑10 Kill Team Infiltrators"), (3, 10))
+        self.assertEqual(composition_components("10 MODELS MAXIMUM"), [])
+        self.assertEqual(composition_range("10 MODELS MAXIMUM"), (None, None))
         self.assertEqual(
             composition_components(
                 "1 Master of Ordnance, 1 Officer of the Fleet and 1 Astropath."
@@ -2082,7 +2084,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "68",
+                "69",
             )
             self.assertEqual(
                 connection.execute(
@@ -3036,7 +3038,7 @@ class ProfileDataTests(unittest.TestCase):
                        FROM unit_defensive_equipment_options
                        WHERE eligibility_exact = 0"""
                 ).fetchone()[0],
-                12,
+                6,
             )
             self.assertEqual(
                 connection.execute(
@@ -3051,14 +3053,14 @@ class ProfileDataTests(unittest.TestCase):
                     """SELECT count(*) FROM model_profiles
                        WHERE source_model_profile_id IS NOT NULL"""
                 ).fetchone()[0],
-                26,
+                45,
             )
             self.assertEqual(
                 connection.execute(
                     """SELECT count(*) FROM model_profiles
                        WHERE is_catalogue_model = 0"""
                 ).fetchone()[0],
-                12,
+                16,
             )
             self.assertEqual(
                 connection.execute(
@@ -3084,6 +3086,60 @@ class ProfileDataTests(unittest.TestCase):
                     ("Company Ancient", "Command Squad", 2, 1),
                     ("Company Champion", "Command Squad", 3, 1),
                     ("Company Veterans", "Command Squad", 4, 1),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_composition_models
+                       WHERE upper(model_name) = 'MODELS MAXIMUM'"""
+                ).fetchone()[0],
+                0,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*)
+                       FROM unit_composition_model_loadout_subjects"""
+                ).fetchone()[0],
+                19,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT datasheets.name, options.name, model_profiles.name,
+                              options.eligibility_exact
+                       FROM unit_defensive_equipment_options AS options
+                       JOIN datasheets ON datasheets.id = options.datasheet_id
+                       JOIN unit_defensive_equipment_bearers AS bearers USING
+                           (datasheet_id, ability_position)
+                       JOIN model_profiles
+                         ON model_profiles.id = bearers.model_profile_id
+                       WHERE options.datasheet_id IN
+                           ('000002532', '000002779', '000003827', '000004169')
+                       ORDER BY options.datasheet_id, options.ability_position"""
+                ).fetchall(),
+                [
+                    ("Corsair Voidscarred", "Channeller Stones", "Soul Weaver", 1),
+                    ("Corsair Voidscarred", "Mistshield", "Voidscarred Felarch", 1),
+                    ("Spectrus Kill Team", "Helix Gauntlet", "Kill Team Infiltrators", 1),
+                    ("Spectrus Kill Team", "Helix Gauntlet", "Kill Team Infiltrators", 1),
+                    ("Corsair Voidscarred", "Channeller Stones", "Soul Weaver", 1),
+                    ("Corsair Voidscarred", "Mistshield", "Voidscarred Felarch", 1),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT datasheets.name, options.name
+                       FROM unit_defensive_equipment_options AS options
+                       JOIN datasheets ON datasheets.id = options.datasheet_id
+                       WHERE options.eligibility_exact = 0
+                       ORDER BY options.datasheet_id, options.ability_position"""
+                ).fetchall(),
+                [
+                    ("Kill Team Cassius", "Psychic Hood"),
+                    ("Kill Team Cassius", "Psychic Hood"),
+                    ("Aquila Kill Team", "Astartes Shield"),
+                    ("Decimus Kill Team", "Astartes Shield"),
+                    ("Wardens of Ultramar", "Refractor Field"),
+                    ("Wardens of Ultramar", "Storm Shield"),
                 ],
             )
             self.assertEqual(

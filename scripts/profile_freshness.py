@@ -52,6 +52,7 @@ SNAPSHOT_TABLES = (
     "unit_defensive_equipment_effects",
     "unit_composition",
     "unit_composition_models",
+    "unit_composition_model_loadout_subjects",
     "wargear_options",
     "wargear_constraints",
     "wargear_constraint_weapons",

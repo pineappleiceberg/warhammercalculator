@@ -47,6 +47,8 @@ export type CatalogueCompositionModel = {
   min: number;
   max: number;
   source: string;
+  loadoutSubjectId?: string;
+  controlsComposition?: boolean;
 };
 export type CatalogueWeaponLimitTerm = {
   fixed: number;

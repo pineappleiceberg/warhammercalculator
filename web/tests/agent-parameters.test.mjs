@@ -1050,6 +1050,16 @@ test("catalogue agent query resolves stable IDs or unambiguous names", async () 
   );
   assert.equal(legacyModel.model.name, "Assault Sergeant");
   assert.equal(legacyModel.model.sourceModelId, assault.models[0].sourceModelId);
+  const specialist = resolveAgentCatalogueSelection(
+    "attacker=000000545&weapon=1531&target=000002532&model=Soul%20Weaver",
+    catalogue,
+  );
+  assert.equal(specialist.model.name, "Soul Weaver");
+  const legacyVoidscarred = resolveAgentCatalogueSelection(
+    `attacker=000000545&weapon=1531&target=000002532&model=${specialist.model.sourceModelId}`,
+    catalogue,
+  );
+  assert.equal(legacyVoidscarred.model.name, "Voidscarred Felarch");
   const supported = resolveAgentCatalogueSelection(
     "attacker=Breacher%20Team&weapon=Pulse%20blaster&target=Brutalis%20Dreadnought&" +
       "support=Stealth%20Battlesuits&supportPreset=Forward%20Observers",

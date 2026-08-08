@@ -16,17 +16,31 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Normalize optional specialist composition choices for Corsair Voidscarred
-   and Spectrus Kill Teams across four datasheets and six remaining
-   defensive-equipment bearer mappings.
-2. Split the remaining named grouped profiles for Aquila and Decimus Kill
+1. Split the remaining named grouped profiles for Aquila and Decimus Kill
    Teams, Kill Team Cassius, and Wardens of Ultramar, resolving the final six
    conservative bearer mappings without guessing stats or identities.
-3. Normalize replacement and mutual-exclusion links between defensive equipment
+2. Normalize replacement and mutual-exclusion links between defensive equipment
    and structured weapon choices so adding a shield can reconcile the weapon it
    replaces instead of validating those selections independently.
 
 ## Completed cycles
+
+- 2026-08-08: Normalized optional specialist compositions and increased exact
+  defensive-equipment bearer identity to 38 of 44 options in SQLite schema 69.
+  Both Corsair Voidscarred datasheets now distinguish the Felarch, base
+  Voidscarred, Shade Runner, Soul Weaver, and Way Seeker, while both Spectrus
+  Kill Teams distinguish every published weapon-specialist category. Nineteen
+  normalized composition/loadout links make the existing model-composition
+  controls drive source weapon totals, exact target segments, saved lists, and
+  Play recovery together; derived base-model counts reconcile automatically
+  when specialists or unit size change, and impossible combinations fail
+  closed. Channeller Stones map only to the Soul Weaver, Mistshield only to the
+  Felarch, and Helix Gauntlet only to the marksman-carbine Infiltrators. The
+  composition parser also rejects eight source headings that previously
+  appeared as bogus `MODELS MAXIMUM` models. Source-drift guards, schema and
+  provenance assertions, exact/default/invalid composition tests, API
+  validation, agent aliases, saved formations, and rendered catalogue
+  regressions cover the change. Six named-model mappings remain conservative.
 
 - 2026-08-08: Expanded exact defensive-equipment bearer identity to 32 of 44
   options in SQLite schema 68. Ten additional uniform source statlines now

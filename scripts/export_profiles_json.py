@@ -1039,10 +1039,14 @@ def export(database: Path, output: Path) -> None:
             )
 
         for row in connection.execute(
-            """SELECT datasheet_id, model_name, min_models, max_models,
-                      description_text
-               FROM unit_composition_models
-               ORDER BY datasheet_id, composition_position, component_position"""
+            """SELECT model.datasheet_id, model.model_name, model.min_models,
+                      model.max_models, model.description_text,
+                      link.loadout_subject_position, link.controls_composition
+               FROM unit_composition_models AS model
+               LEFT JOIN unit_composition_model_loadout_subjects AS link
+                 USING (datasheet_id, composition_position, component_position)
+               ORDER BY model.datasheet_id, model.composition_position,
+                        model.component_position"""
         ):
             units[row["datasheet_id"]]["compositionModels"].append(
                 {
@@ -1050,6 +1054,15 @@ def export(database: Path, output: Path) -> None:
                     "min": row["min_models"],
                     "max": row["max_models"],
                     "source": row["description_text"],
+                    **(
+                        {
+                            "loadoutSubjectId":
+                                f"{row['datasheet_id']}:{row['loadout_subject_position']}",
+                            "controlsComposition": bool(row["controls_composition"]),
+                        }
+                        if row["loadout_subject_position"] is not None
+                        else {}
+                    ),
                 }
             )
 

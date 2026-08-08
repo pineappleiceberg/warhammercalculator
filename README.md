@@ -541,6 +541,12 @@ the Theyn, Navis Armsmen, Infiltrators, Kabalite Agents, and the Veteran Biker
 Sergeant. Deathwatch shield and Mortifier sarcophagus eligibility is exact
 without a split because their source rules allow any model in the grouped
 profile.
+Corsair Voidscarred and Spectrus Kill Team specialist counters also drive exact
+source-composition profiles: Channeller Stones belong only to the Soul Weaver,
+Mistshield only to the Voidscarred Felarch, and Helix Gauntlet only to a
+marksman-carbine Infiltrator. Changing a specialist count reconciles the
+remaining base models and their source weapon totals; an impossible mix is
+reported instead of being approximated.
 The derived models retain their original statline provenance, and saved counts
 using the former grouped model ID are distributed deterministically onto the
 new eligible segments. Old model matchup links, static agent URLs, and Play

@@ -689,6 +689,21 @@ CREATE TABLE unit_composition_models (
         REFERENCES unit_composition(datasheet_id, position) ON DELETE CASCADE
 ) WITHOUT ROWID;
 
+CREATE TABLE unit_composition_model_loadout_subjects (
+    datasheet_id TEXT NOT NULL,
+    composition_position INTEGER NOT NULL,
+    component_position INTEGER NOT NULL,
+    loadout_subject_position INTEGER NOT NULL,
+    controls_composition INTEGER NOT NULL CHECK (controls_composition IN (0, 1)),
+    PRIMARY KEY (datasheet_id, composition_position, component_position),
+    FOREIGN KEY (datasheet_id, composition_position, component_position)
+        REFERENCES unit_composition_models(
+            datasheet_id, composition_position, component_position
+        ) ON DELETE CASCADE,
+    FOREIGN KEY (datasheet_id, loadout_subject_position)
+        REFERENCES default_loadout_subjects(datasheet_id, position) ON DELETE CASCADE
+) WITHOUT ROWID;
+
 CREATE TABLE wargear_options (
     datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
     position INTEGER NOT NULL,
@@ -975,6 +990,16 @@ COMPOSITION_DERIVED_MODEL_PROFILES = {
         "Corsair Voidreavers",
         ("Voidreaver Felarch", "Corsair Voidreavers"),
     ),
+    "000002532": (
+        "Corsair Voidscarred",
+        (
+            "Voidscarred Felarch",
+            "Corsair Voidscarred",
+            "Shade Runner",
+            "Soul Weaver",
+            "Way Seeker",
+        ),
+    ),
     "000002587": (
         "Imperial Navy Breachers",
         ("Navis Sergeant-at-Arms", "Navis Armsmen"),
@@ -987,6 +1012,25 @@ COMPOSITION_DERIVED_MODEL_PROFILES = {
         "Einhyr Hearthguard",
         ("Hesyr", "Hearthguard"),
     ),
+    "000002779": (
+        "Spectrus Kill Team",
+        (
+            "Kill Team Infiltrators",
+            "Kill Team Infiltrators with bolt sniper rifles",
+            "Kill Team Infiltrators with Deathwatch occulus bolt carbines",
+            "Kill Team Infiltrators with combat knives",
+        ),
+    ),
+    "000003827": (
+        "Spectrus Kill Team",
+        (
+            "Kill Team Infiltrators",
+            "Kill Team Infiltrators with bolt sniper rifles",
+            "Kill Team Infiltrators with jump packs",
+            "Kill Team Infiltrators with occulus bolt carbines",
+            "Kill Team Infiltrators with combat knives",
+        ),
+    ),
     "000003823": (
         "Veteran Bike Squad",
         ("Veteran Biker Sergeant", "Veteran Bikers"),
@@ -998,6 +1042,16 @@ COMPOSITION_DERIVED_MODEL_PROFILES = {
     "000004168": (
         "Corsair Voidreavers",
         ("Voidreaver Felarch", "Corsair Voidreavers"),
+    ),
+    "000004169": (
+        "Corsair Voidscarred",
+        (
+            "Voidscarred Felarch",
+            "Corsair Voidscarred",
+            "Shade Runner",
+            "Soul Weaver",
+            "Way Seeker",
+        ),
     ),
 }
 
@@ -1097,12 +1151,16 @@ DEFENSIVE_EQUIPMENT_MODEL_OVERRIDES = {
     ("000000128", 4): (("infiltrators",), True),
     ("000002067", 5): (("mortifiers",), True),
     ("000002531", 4): (("voidreaver felarch",), True),
+    ("000002532", 4): (("soul weaver",), True),
+    ("000002532", 6): (("voidscarred felarch",), True),
     ("000002587", 5): (("navis armsmen",), True),
     ("000002598", 5): (("theyn",), True),
     ("000002599", 4): (("hesyr",), True),
     ("000002783", 4): (("deathwatch veterans",), True),
+    ("000002779", 6): (("=kill team infiltrators",), True),
     ("000003816", 3): (("deathwatch veterans",), True),
     ("000003823", 3): (("veteran biker sergeant",), True),
+    ("000003827", 6): (("=kill team infiltrators",), True),
     ("000004174", 4): (("deathwatch veteran",), False),
     ("000004175", 4): (("deathwatch veteran",), False),
     ("000000593", 3): (("dire avenger exarch",), True),
@@ -1116,9 +1174,176 @@ DEFENSIVE_EQUIPMENT_MODEL_OVERRIDES = {
     ("000004131", 5): (("wolf guard headtakers",), True),
     ("000004156", 7): (("kabalite agents",), True),
     ("000004168", 4): (("voidreaver felarch",), True),
+    ("000004169", 4): (("soul weaver",), True),
+    ("000004169", 6): (("voidscarred felarch",), True),
     ("000001166", 2): (("veteran bikers",), True),
     ("000002103", 2): (("company champion", "company veterans"), True),
 }
+
+COMPOSITION_LOADOUT_SUBJECT_OVERRIDES = {
+    "000002532": (
+        (
+            2,
+            1,
+            "Voidscarred Felarch",
+            1,
+            "Every Corsair Voidscarred and Voidscarred Felarch",
+            False,
+        ),
+        (
+            3,
+            1,
+            "Corsair Voidscarred",
+            1,
+            "Every Corsair Voidscarred and Voidscarred Felarch",
+            False,
+        ),
+        (4, 1, "Shade Runner", 2, "A Shade Runner", True),
+        (5, 1, "Soul Weaver", 3, "A Soul Weaver", True),
+        (6, 1, "Way Seeker", 4, "A Way Seeker", True),
+    ),
+    "000002779": (
+        (
+            2,
+            1,
+            "Kill Team Infiltrators",
+            1,
+            "Every Kill Team Infiltrator",
+            False,
+        ),
+        (
+            3,
+            1,
+            "Kill Team Infiltrators with bolt sniper rifles",
+            2,
+            "Every Kill Team Infiltrator with bolt sniper rifle",
+            True,
+        ),
+        (
+            4,
+            1,
+            "Kill Team Infiltrators with Deathwatch occulus bolt carbines",
+            3,
+            "Every Kill Team Infiltrator with Deathwatch occulus bolt carbine",
+            True,
+        ),
+        (
+            5,
+            1,
+            "Kill Team Infiltrators with combat knives",
+            4,
+            "Every Kill Team Infiltrator with combat knife",
+            True,
+        ),
+    ),
+    "000003827": (
+        (
+            2,
+            1,
+            "Kill Team Infiltrators",
+            1,
+            "Every Kill Team Infiltrator",
+            False,
+        ),
+        (
+            3,
+            1,
+            "Kill Team Infiltrators with bolt sniper rifles",
+            2,
+            "Every Kill Team Infiltrator with bolt sniper rifle",
+            True,
+        ),
+        (
+            4,
+            1,
+            "Kill Team Infiltrators with jump packs",
+            3,
+            "Every Kill Team Infiltrator with jump pack",
+            True,
+        ),
+        (
+            5,
+            1,
+            "Kill Team Infiltrators with occulus bolt carbines",
+            4,
+            "Every Kill Team Infiltrator with occulus bolt carbine",
+            True,
+        ),
+        (
+            6,
+            1,
+            "Kill Team Infiltrators with combat knives",
+            5,
+            "Every Kill Team Infiltrator with combat knife",
+            True,
+        ),
+    ),
+    "000004169": (
+        (
+            2,
+            1,
+            "Voidscarred Felarch",
+            1,
+            "Every Corsair Voidscarred and Voidscarred Felarch",
+            False,
+        ),
+        (
+            3,
+            1,
+            "Corsair Voidscarred",
+            1,
+            "Every Corsair Voidscarred and Voidscarred Felarch",
+            False,
+        ),
+        (4, 1, "Shade Runner", 2, "A Shade Runner", True),
+        (5, 1, "Soul Weaver", 3, "A Soul Weaver", True),
+        (6, 1, "Way Seeker", 4, "A Way Seeker", True),
+    ),
+}
+
+
+def populate_composition_loadout_subjects(connection: sqlite3.Connection) -> None:
+    for datasheet_id, mappings in COMPOSITION_LOADOUT_SUBJECT_OVERRIDES.items():
+        for (
+            composition_position,
+            component_position,
+            expected_model_name,
+            subject_position,
+            expected_subject_text,
+            controls_composition,
+        ) in mappings:
+            model_row = connection.execute(
+                """SELECT model_name FROM unit_composition_models
+                   WHERE datasheet_id = ? AND composition_position = ?
+                     AND component_position = ?""",
+                (datasheet_id, composition_position, component_position),
+            ).fetchone()
+            subject_row = connection.execute(
+                """SELECT subject_text FROM default_loadout_subjects
+                   WHERE datasheet_id = ? AND position = ? AND resolved = 0""",
+                (datasheet_id, subject_position),
+            ).fetchone()
+            if model_row != (expected_model_name,) or subject_row != (
+                expected_subject_text,
+            ):
+                raise RuntimeError(
+                    "Composition/loadout subject source changed: "
+                    f"{datasheet_id}:{composition_position}:{component_position} "
+                    f"{model_row!r} {subject_row!r}"
+                )
+            connection.execute(
+                """INSERT INTO unit_composition_model_loadout_subjects
+                   (datasheet_id, composition_position, component_position,
+                    loadout_subject_position, controls_composition)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (
+                    datasheet_id,
+                    composition_position,
+                    component_position,
+                    subject_position,
+                    int(controls_composition),
+                ),
+            )
 
 DEFENSIVE_EQUIPMENT_REMOVABLE_DEFAULTS = {
     ("000002599", 4),
@@ -1245,7 +1470,12 @@ def populate_defensive_equipment_metadata(connection: sqlite3.Connection) -> Non
             eligible = [
                 row
                 for row in model_rows
-                if any(normalized_phrase(token) in normalized_phrase(row[1]) for token in tokens)
+                if any(
+                    normalized_phrase(row[1]) == normalized_phrase(token[1:])
+                    if token.startswith("=")
+                    else normalized_phrase(token) in normalized_phrase(row[1])
+                    for token in tokens
+                )
             ]
         elif len(model_rows) == 1:
             eligible = model_rows
@@ -4337,6 +4567,8 @@ def populate_transports(connection: sqlite3.Connection) -> tuple[int, int]:
 
 def composition_components(value: str) -> list[tuple[str, int, int]]:
     normalized = plain_text(value).replace("‑", "-").replace("–", "-")
+    if re.fullmatch(r"\s*\d+\s+models?\s+maximum\s*", normalized, re.IGNORECASE):
+        return []
     if re.search(r"\bor\b", normalized, re.IGNORECASE):
         return []
     pattern = re.compile(
@@ -4504,7 +4736,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "68"),
+                    ("schema_version", "69"),
                     ("leader_global_maximum", "2"),
                     ("leader_global_rule_source_url", LEADER_GLOBAL_RULE_SOURCE_URL),
                     (
@@ -4897,6 +5129,7 @@ def create_database(
                     )
 
             populate_constraints(connection)
+            populate_composition_loadout_subjects(connection)
             rebuild_combat_presets(connection)
             populate_firing_deck(connection)
             populate_transports(connection)
@@ -5024,6 +5257,7 @@ def create_database(
                 "unit_transport_capacity_modifiers",
                 "unit_composition",
                 "unit_composition_models",
+                "unit_composition_model_loadout_subjects",
                 "wargear_options",
                 "wargear_constraints",
                 "wargear_constraint_weapons",

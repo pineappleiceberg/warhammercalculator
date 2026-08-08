@@ -1,3 +1,5 @@
+import { catalogueModelComposition } from "./catalogue-models.mjs";
+
 export function normalizeEquippedCount(value, maximum = 100) {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(maximum, Math.floor(value)));
@@ -87,10 +89,29 @@ export function choiceSelectionWeaponCounts(unit, choiceSelections = {}) {
   return counts;
 }
 
-export function defaultLoadoutSubjectCounts(unit) {
-  return Object.fromEntries(
+export function compositionLoadoutSubjectCounts(unit, modelCount, loadoutSubjectCounts = {}) {
+  const result = { ...loadoutSubjectCounts };
+  const composition = catalogueModelComposition(unit, modelCount, result);
+  if (!composition.exact) return result;
+  for (const subjectId of new Set(
+    (unit?.compositionModels ?? [])
+      .map((entry) => entry.loadoutSubjectId)
+      .filter((subjectId) => subjectId !== undefined),
+  )) {
+    result[subjectId] = (unit.compositionModels ?? []).reduce(
+      (total, entry, index) =>
+        total + (entry.loadoutSubjectId === subjectId ? composition.counts[index] : 0),
+      0,
+    );
+  }
+  return result;
+}
+
+export function defaultLoadoutSubjectCounts(unit, modelCount = unit?.suggestedModelCount ?? 0) {
+  const defaults = Object.fromEntries(
     (unit?.unresolvedLoadoutSubjects ?? []).map((subject) => [subject.id, 0]),
   );
+  return compositionLoadoutSubjectCounts(unit, modelCount, defaults);
 }
 
 export function loadoutSubjectWeaponCounts(unit, loadoutSubjectCounts = {}) {
@@ -106,6 +127,11 @@ export function loadoutSubjectWeaponCounts(unit, loadoutSubjectCounts = {}) {
 
 export function defaultWeaponCounts(unit, modelCount, loadoutSubjectCounts = {}) {
   const models = normalizeEquippedCount(modelCount, 1000);
+  const effectiveSubjectCounts = compositionLoadoutSubjectCounts(
+    unit,
+    models,
+    loadoutSubjectCounts,
+  );
   const counts = Object.fromEntries(
     (unit?.defaultWeapons ?? []).map((weapon) => [
       weapon.groupId,
@@ -123,7 +149,7 @@ export function defaultWeaponCounts(unit, modelCount, loadoutSubjectCounts = {})
     ]),
   );
   for (const [groupId, count] of Object.entries(
-    loadoutSubjectWeaponCounts(unit, loadoutSubjectCounts),
+    loadoutSubjectWeaponCounts(unit, effectiveSubjectCounts),
   )) {
     counts[groupId] = normalizeEquippedCount((counts[groupId] ?? 0) + count);
   }
@@ -196,6 +222,18 @@ export function applyLoadoutSubjectCountChange(equippedCounts, subject, previous
   return counts;
 }
 
+export function applyLoadoutSubjectCountsChange(equippedCounts, unit, previousCounts, nextCounts) {
+  const previous = loadoutSubjectWeaponCounts(unit, previousCounts);
+  const next = loadoutSubjectWeaponCounts(unit, nextCounts);
+  const counts = { ...equippedCounts };
+  for (const groupId of new Set([...Object.keys(previous), ...Object.keys(next)])) {
+    counts[groupId] = normalizeEquippedCount(
+      (counts[groupId] ?? 0) + (next[groupId] ?? 0) - (previous[groupId] ?? 0),
+    );
+  }
+  return counts;
+}
+
 export function applyModelCountChange(
   equippedCounts,
   unit,
@@ -203,8 +241,14 @@ export function applyModelCountChange(
   nextValue,
   loadoutSubjectCounts = {},
 ) {
-  const previous = defaultWeaponCounts(unit, previousValue, loadoutSubjectCounts);
-  const next = defaultWeaponCounts(unit, nextValue, loadoutSubjectCounts);
+  const previousSubjects = compositionLoadoutSubjectCounts(
+    unit,
+    previousValue,
+    loadoutSubjectCounts,
+  );
+  const nextSubjects = compositionLoadoutSubjectCounts(unit, nextValue, loadoutSubjectCounts);
+  const previous = defaultWeaponCounts(unit, previousValue, previousSubjects);
+  const next = defaultWeaponCounts(unit, nextValue, nextSubjects);
   const counts = { ...equippedCounts };
   for (const groupId of new Set([...Object.keys(previous), ...Object.keys(next)])) {
     counts[groupId] = normalizeEquippedCount(
@@ -223,6 +267,18 @@ export function loadoutSubjectWarnings(
   if (!unit) return [];
   const models = normalizeEquippedCount(modelCount, 1000);
   const warnings = [];
+  const composition = catalogueModelComposition(unit, models, loadoutSubjectCounts);
+  if (
+    (unit.compositionModels ?? []).some((model) => model.loadoutSubjectId) &&
+    !composition.exact
+  ) {
+    warnings.push(
+      `${unit.name}: published specialist counts do not form a legal ${models}-model composition`,
+    );
+  }
+  const effectiveSubjectCounts = composition.exact
+    ? compositionLoadoutSubjectCounts(unit, models, loadoutSubjectCounts)
+    : loadoutSubjectCounts;
   const known = new Set((unit.unresolvedLoadoutSubjects ?? []).map((subject) => subject.id));
   for (const subject of unit.unresolvedLoadoutSubjects ?? []) {
     const count = normalizeEquippedCount(loadoutSubjectCounts[subject.id] ?? 0, 1000);
@@ -238,7 +294,7 @@ export function loadoutSubjectWarnings(
     }
   }
   for (const [groupId, count] of Object.entries(
-    loadoutSubjectWeaponCounts(unit, loadoutSubjectCounts),
+    loadoutSubjectWeaponCounts(unit, effectiveSubjectCounts),
   )) {
     const equipped = normalizeEquippedCount(equippedCounts[groupId] ?? 0);
     if (count > equipped) {

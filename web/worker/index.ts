@@ -83,7 +83,14 @@ type Catalogue = {
       abilities: Array<{ name: string; value: string | null }>;
     }>;
     composition: Array<{ text: string; min: number | null; max: number | null }>;
-    compositionModels: Array<{ name: string; min: number; max: number; source: string }>;
+    compositionModels: Array<{
+      name: string;
+      min: number;
+      max: number;
+      source: string;
+      loadoutSubjectId?: string;
+      controlsComposition?: boolean;
+    }>;
     loadout: string;
     defaultWeapons: Array<{
       groupId: string;

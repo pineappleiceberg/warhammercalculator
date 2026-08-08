@@ -5,44 +5,10 @@ import {
   defensiveEquipmentEligibleForModel,
   defensiveEquipmentSelectionKey,
 } from "./defensive-equipment.mjs";
+import { catalogueModelComposition } from "./catalogue-models.mjs";
 
-function uniqueCompositionCounts(unit, modelCount) {
-  const composition = unit?.compositionModels ?? [];
-  const models = unit?.models ?? [];
-  if (models.length === 1) return { counts: [modelCount], exact: true };
-  if (composition.length !== models.length) return { counts: [modelCount], exact: false };
-
-  const solutions = [];
-  const current = new Array(composition.length).fill(0);
-  const visit = (index, remaining) => {
-    if (solutions.length > 1) return;
-    if (index === composition.length) {
-      if (remaining === 0) solutions.push([...current]);
-      return;
-    }
-    const entry = composition[index];
-    const laterMinimum = composition
-      .slice(index + 1)
-      .reduce((total, candidate) => total + candidate.min, 0);
-    const laterMaximum = composition
-      .slice(index + 1)
-      .reduce((total, candidate) => total + candidate.max, 0);
-    const minimum = Math.max(entry.min, remaining - laterMaximum);
-    const maximum = Math.min(entry.max, remaining - laterMinimum);
-    for (let count = minimum; count <= maximum; count += 1) {
-      current[index] = count;
-      visit(index + 1, remaining - count);
-      if (solutions.length > 1) return;
-    }
-  };
-  visit(0, modelCount);
-  return solutions.length === 1
-    ? { counts: solutions[0], exact: true }
-    : { counts: [modelCount, ...new Array(models.length - 1).fill(0)], exact: false };
-}
-
-export function catalogueModelSegments(unit, modelCount) {
-  const composition = uniqueCompositionCounts(unit, modelCount);
+export function catalogueModelSegments(unit, modelCount, loadoutSubjectCounts = {}) {
+  const composition = catalogueModelComposition(unit, modelCount, loadoutSubjectCounts);
   return {
     exact: composition.exact,
     segments: (unit?.models ?? [])
@@ -142,7 +108,11 @@ export function savedFormationModelSegments(formation) {
   const segments = [];
   const ambiguousComponents = [];
   for (const component of formation?.components ?? []) {
-    const models = catalogueModelSegments(component.catalogueUnit, component.unit.modelCount);
+    const models = catalogueModelSegments(
+      component.catalogueUnit,
+      component.unit.modelCount,
+      component.unit.loadoutSubjectCounts,
+    );
     if (models.segments.length === 0) continue;
     const composition = models;
     if (!composition.exact) ambiguousComponents.push(component.unit.name);
@@ -163,7 +133,11 @@ export function savedFormationModelSegments(formation) {
 export function savedUnitDefensiveEquipmentDefaults(savedUnit, catalogueUnit) {
   const stored = savedUnit?.defensiveEquipmentCounts;
   const defaults = {};
-  const modelSegments = catalogueModelSegments(catalogueUnit, savedUnit?.modelCount ?? 0).segments;
+  const modelSegments = catalogueModelSegments(
+    catalogueUnit,
+    savedUnit?.modelCount ?? 0,
+    savedUnit?.loadoutSubjectCounts,
+  ).segments;
   for (const option of catalogueUnit?.defensiveEquipment ?? []) {
     const sourceDefault = defensiveEquipmentDefaultCount(option, savedUnit);
     if (option.scope === "unit") {
@@ -199,7 +173,11 @@ export function savedUnitDefensiveEquipmentWarnings(savedUnit, catalogueUnit) {
     savedUnit.defensiveEquipmentCounts === undefined
       ? savedUnitDefensiveEquipmentDefaults(savedUnit, catalogueUnit)
       : savedUnit.defensiveEquipmentCounts;
-  const segments = catalogueModelSegments(catalogueUnit, savedUnit.modelCount).segments;
+  const segments = catalogueModelSegments(
+    catalogueUnit,
+    savedUnit.modelCount,
+    savedUnit.loadoutSubjectCounts,
+  ).segments;
   const knownKeys = new Set();
   const warnings = [];
   for (const option of catalogueUnit.defensiveEquipment ?? []) {

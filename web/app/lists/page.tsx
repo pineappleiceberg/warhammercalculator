@@ -17,10 +17,11 @@ import { normalizeArmyListInput } from "../../lib/army-list-codec.mjs";
 import { loadCatalogue, type Catalogue } from "../../lib/catalogue";
 import {
   applyChoiceSelectionChange,
-  applyLoadoutSubjectCountChange,
+  applyLoadoutSubjectCountsChange,
   applyModelCountChange,
   armyListWeaponsFromGroups,
   choicePoolMaximum,
+  compositionLoadoutSubjectCounts,
   defaultWeaponCounts,
   defaultLoadoutSubjectCounts,
   groupWeaponProfiles,
@@ -375,6 +376,13 @@ export default function ArmyLists() {
                               (entry) => entry.id === unit.unitId,
                             );
                             changeUnit(unit.id, (current) => {
+                              const nextSubjectCounts = sourceUnit
+                                ? compositionLoadoutSubjectCounts(
+                                    sourceUnit,
+                                    next,
+                                    current.loadoutSubjectCounts ?? {},
+                                  )
+                                : current.loadoutSubjectCounts;
                               const counts = Object.fromEntries(
                                 current.weapons.map((weapon) => [
                                   weapon.groupId ?? String(weapon.weaponId),
@@ -391,6 +399,7 @@ export default function ArmyLists() {
                               return {
                                 ...current,
                                 modelCount: next,
+                                loadoutSubjectCounts: nextSubjectCounts,
                                 weapons: current.weapons.map((weapon) => ({
                                   ...weapon,
                                   count: adjusted[weapon.groupId ?? String(weapon.weaponId)] ?? 0,
@@ -400,7 +409,11 @@ export default function ArmyLists() {
                                   current.defensiveEquipmentCounts === undefined
                                     ? current.defensiveEquipmentCounts
                                     : savedUnitDefensiveEquipmentDefaults(
-                                        { ...current, modelCount: next },
+                                        {
+                                          ...current,
+                                          modelCount: next,
+                                          loadoutSubjectCounts: nextSubjectCounts,
+                                        },
                                         sourceUnit,
                                       ),
                                 defensiveEquipmentOverrides: undefined,
@@ -677,18 +690,30 @@ export default function ArmyLists() {
                               onChange={(event) => {
                                 const next = normalizeEquippedCount(+event.target.value, 1000);
                                 changeUnit(unit.id, (current) => {
-                                  const previous = current.loadoutSubjectCounts?.[subject.id] ?? 0;
+                                  const sourceUnit = catalogue?.units.find(
+                                    (entry) => entry.id === current.unitId,
+                                  );
+                                  const previousCounts = compositionLoadoutSubjectCounts(
+                                    sourceUnit,
+                                    current.modelCount,
+                                    current.loadoutSubjectCounts ?? {},
+                                  );
+                                  const nextCounts = compositionLoadoutSubjectCounts(
+                                    sourceUnit,
+                                    current.modelCount,
+                                    { ...previousCounts, [subject.id]: next },
+                                  );
                                   const counts = Object.fromEntries(
                                     current.weapons.map((weapon) => [
                                       weapon.groupId ?? String(weapon.weaponId),
                                       weapon.count,
                                     ]),
                                   );
-                                  const adjusted = applyLoadoutSubjectCountChange(
+                                  const adjusted = applyLoadoutSubjectCountsChange(
                                     counts,
-                                    subject,
-                                    previous,
-                                    next,
+                                    sourceUnit,
+                                    previousCounts,
+                                    nextCounts,
                                   );
                                   return {
                                     ...current,
@@ -697,10 +722,7 @@ export default function ArmyLists() {
                                       count:
                                         adjusted[weapon.groupId ?? String(weapon.weaponId)] ?? 0,
                                     })),
-                                    loadoutSubjectCounts: {
-                                      ...(current.loadoutSubjectCounts ?? {}),
-                                      [subject.id]: next,
-                                    },
+                                    loadoutSubjectCounts: nextCounts,
                                     defensiveEquipmentOverrides: undefined,
                                   };
                                 });
@@ -860,7 +882,11 @@ export default function ArmyLists() {
                                   </label>
                                 );
                               }
-                              return catalogueModelSegments(sourceUnit, unit.modelCount)
+                              return catalogueModelSegments(
+                                sourceUnit,
+                                unit.modelCount,
+                                unit.loadoutSubjectCounts,
+                              )
                                 .segments.filter(
                                   (segment) =>
                                     !option.eligibleModelIds.length ||

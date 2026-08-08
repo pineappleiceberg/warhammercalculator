@@ -27,6 +27,11 @@ import {
   savedUnitDefensiveEquipmentDefaults,
   savedUnitDefensiveEquipmentWarnings,
 } from "../lib/formations.mjs";
+import {
+  compositionLoadoutSubjectCounts,
+  defaultLoadoutSubjectCounts,
+  loadoutSubjectWarnings,
+} from "../lib/loadout.mjs";
 
 const catalogue = JSON.parse(
   await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
@@ -919,6 +924,110 @@ test("simple source compositions expose exact bearer identities and recover grou
     ).eligibilityExact,
     true,
   );
+});
+
+test("optional specialists resolve exact Voidscarred and Spectrus compositions", () => {
+  for (const datasheetId of ["000002532", "000004169"]) {
+    const voidscarred = unit(datasheetId);
+    const sourceModelId = voidscarred.models[0].sourceModelId;
+    assert.equal(voidscarred.models.length, 5);
+    assert.ok(voidscarred.models.every((model) => model.sourceModelId === sourceModelId));
+    const compositionCounts = {
+      [`${datasheetId}:2`]: 1,
+      [`${datasheetId}:3`]: 1,
+      [`${datasheetId}:4`]: 1,
+    };
+    assert.deepEqual(defaultLoadoutSubjectCounts(voidscarred), {
+      [`${datasheetId}:1`]: 5,
+      [`${datasheetId}:2`]: 0,
+      [`${datasheetId}:3`]: 0,
+      [`${datasheetId}:4`]: 0,
+    });
+    assert.deepEqual(compositionLoadoutSubjectCounts(voidscarred, 10, compositionCounts), {
+      [`${datasheetId}:1`]: 7,
+      ...compositionCounts,
+    });
+    const composition = catalogueModelSegments(voidscarred, 10, compositionCounts);
+    assert.equal(composition.exact, true);
+    assert.deepEqual(
+      composition.segments.map(({ model, modelCount }) => [model.name, modelCount]),
+      [
+        ["Voidscarred Felarch", 1],
+        ["Corsair Voidscarred", 6],
+        ["Shade Runner", 1],
+        ["Soul Weaver", 1],
+        ["Way Seeker", 1],
+      ],
+    );
+    const stones = voidscarred.defensiveEquipment.find(
+      (option) => option.name === "Channeller Stones",
+    );
+    const mistshield = voidscarred.defensiveEquipment.find(
+      (option) => option.name === "Mistshield",
+    );
+    assert.equal(stones.eligibilityExact, true);
+    assert.equal(mistshield.eligibilityExact, true);
+    assert.deepEqual(
+      stones.eligibleModelIds.map((id) => voidscarred.models.find((model) => model.id === id).name),
+      ["Soul Weaver"],
+    );
+    assert.deepEqual(
+      mistshield.eligibleModelIds.map(
+        (id) => voidscarred.models.find((model) => model.id === id).name,
+      ),
+      ["Voidscarred Felarch"],
+    );
+    const saved = {
+      id: `voidscarred-${datasheetId}`,
+      unitId: datasheetId,
+      name: voidscarred.name,
+      modelCount: 10,
+      loadoutSubjectCounts: compositionCounts,
+    };
+    const formation = savedFormationGroups(catalogue, { units: [saved] })[0];
+    assert.deepEqual(
+      savedFormationModelSegments(formation).segments.map(({ model, modelCount }) => [
+        model.name,
+        modelCount,
+      ]),
+      composition.segments.map(({ model, modelCount }) => [model.name, modelCount]),
+    );
+    const stonesKey = defensiveEquipmentSelectionKey(saved.id, null, stones.id);
+    assert.deepEqual(savedUnitDefensiveEquipmentDefaults(saved, voidscarred), {
+      [stonesKey]: 1,
+    });
+    assert.match(
+      loadoutSubjectWarnings(
+        voidscarred,
+        10,
+        { ...compositionCounts, [`${datasheetId}:2`]: 2 },
+        {},
+      )[0],
+      /do not form a legal/i,
+    );
+  }
+
+  for (const datasheetId of ["000002779", "000003827"]) {
+    const spectrus = unit(datasheetId);
+    const optionalCounts = Object.fromEntries(
+      spectrus.compositionModels
+        .filter((model) => model.loadoutSubjectId)
+        .map((model, index) => [model.loadoutSubjectId, index === 0 ? 1 : 0]),
+    );
+    const composition = catalogueModelSegments(spectrus, 5, optionalCounts);
+    assert.equal(composition.exact, true);
+    assert.equal(composition.segments[0].model.name, "Kill Team Infiltrators");
+    assert.equal(
+      composition.segments.reduce((total, segment) => total + segment.modelCount, 0),
+      5,
+    );
+    const helix = spectrus.defensiveEquipment.find((option) => option.name === "Helix Gauntlet");
+    assert.equal(helix.eligibilityExact, true);
+    assert.deepEqual(
+      helix.eligibleModelIds.map((id) => spectrus.models.find((model) => model.id === id).name),
+      ["Kill Team Infiltrators"],
+    );
+  }
 });
 
 test("Model vs Model applies selected equipment only to matching attacks", () => {

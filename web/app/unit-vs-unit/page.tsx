@@ -27,10 +27,11 @@ import {
 } from "../../lib/combat";
 import {
   applyChoiceSelectionChange,
-  applyLoadoutSubjectCountChange,
+  applyLoadoutSubjectCountsChange,
   applyModelCountChange,
   choicePoolMaximum,
   choiceSelectionWeaponCounts,
+  compositionLoadoutSubjectCounts,
   defaultWeaponCounts,
   defaultLoadoutSubjectCounts,
   equippedWeaponLines,
@@ -1309,6 +1310,9 @@ export default function UnitVsUnit() {
                       loadoutSubjectCounts,
                     ),
                   );
+                  setLoadoutSubjectCounts((current) =>
+                    compositionLoadoutSubjectCounts(attackerUnit, next, current),
+                  );
                   setAttackerModels(next);
                   setAttackerUnitModels(next + (attackerJoiner ? attackerJoinerModels : 0));
                 }}
@@ -1351,6 +1355,9 @@ export default function UnitVsUnit() {
                         next,
                         loadoutSubjectCounts,
                       ),
+                    );
+                    setLoadoutSubjectCounts((current) =>
+                      compositionLoadoutSubjectCounts(attackerJoiner, next, current),
                     );
                     setAttackerJoinerModels(next);
                     setAttackerUnitModels(attackerModels + next);
@@ -1425,14 +1432,25 @@ export default function UnitVsUnit() {
                             value={loadoutSubjectCounts[subject.id] ?? 0}
                             onChange={(event) => {
                               const next = normalizeEquippedCount(+event.target.value, 1000);
-                              const previous = loadoutSubjectCounts[subject.id] ?? 0;
-                              setWeaponCounts((current) =>
-                                applyLoadoutSubjectCountChange(current, subject, previous, next),
+                              const previousCounts = compositionLoadoutSubjectCounts(
+                                unit,
+                                attackerComponentModelCount(unit.id),
+                                loadoutSubjectCounts,
                               );
-                              setLoadoutSubjectCounts((current) => ({
-                                ...current,
-                                [subject.id]: next,
-                              }));
+                              const nextCounts = compositionLoadoutSubjectCounts(
+                                unit,
+                                attackerComponentModelCount(unit.id),
+                                { ...previousCounts, [subject.id]: next },
+                              );
+                              setWeaponCounts((current) =>
+                                applyLoadoutSubjectCountsChange(
+                                  current,
+                                  unit,
+                                  previousCounts,
+                                  nextCounts,
+                                ),
+                              );
+                              setLoadoutSubjectCounts(nextCounts);
                             }}
                           />
                         </label>

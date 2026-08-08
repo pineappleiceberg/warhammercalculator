@@ -245,6 +245,28 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
       .eligibleModelIds.map((id) => assault.models.find((model) => model.id === id).name),
     ["Assault Sergeant"],
   );
+  const voidscarred = catalogue.units.find((unit) => unit.id === "000002532");
+  assert.deepEqual(
+    voidscarred.models.map((model) => model.name),
+    ["Voidscarred Felarch", "Corsair Voidscarred", "Shade Runner", "Soul Weaver", "Way Seeker"],
+  );
+  assert.deepEqual(
+    voidscarred.compositionModels
+      .filter((model) => model.controlsComposition)
+      .map((model) => [model.name, model.loadoutSubjectId]),
+    [
+      ["Shade Runner", "000002532:2"],
+      ["Soul Weaver", "000002532:3"],
+      ["Way Seeker", "000002532:4"],
+    ],
+  );
+  const spectrus = catalogue.units.find((unit) => unit.id === "000002779");
+  assert.deepEqual(
+    spectrus.defensiveEquipment
+      .find((option) => option.name === "Helix Gauntlet")
+      .eligibleModelIds.map((id) => spectrus.models.find((model) => model.id === id).name),
+    ["Kill Team Infiltrators"],
+  );
   const trukk = catalogue.units.find((unit) => unit.id === "000000026");
   const boyz = catalogue.units.find((unit) => unit.id === "000000016");
   const stormboyz = catalogue.units.find((unit) => unit.id === "000000027");
@@ -865,6 +887,24 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const impossibleCompositionData = (await impossibleComposition.json()).data;
   assert.equal(impossibleCompositionData.valid, false);
   assert.match(impossibleCompositionData.warnings[0], /exceeds the unit total/i);
+
+  const invalidSpecialists = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: voidscarred.id,
+        modelCount: 10,
+        weaponCounts: {},
+        loadoutSubjectCounts: { "000002532:2": 2 },
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  const invalidSpecialistsData = (await invalidSpecialists.json()).data;
+  assert.equal(invalidSpecialistsData.valid, false);
+  assert.match(invalidSpecialistsData.warnings[0], /do not form a legal/i);
 
   const achillus = catalogue.units.find((unit) => unit.name === "Contemptor-achillus Dreadnought");
   const achillusPool = achillus.wargearChoicePools[0];
