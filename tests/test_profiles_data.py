@@ -67,6 +67,38 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(boyz["maximumLeaders"], 2)
         self.assertEqual(boyz["maximumRequiredStartingStrength"], 20)
         self.assertEqual(boyz["maximumRequiredLeaderKeyword"], "warboss")
+        join = classify_leader_footer(
+            "At the start of the Declare Battle Formations step, if this unit is not an "
+            "Attached unit, this unit can join one Guardian Defenders or Storm Guardians "
+            "unit from your army (a unit cannot have more than one WARLOCK CONCLAVE unit "
+            "joined to it). If it does, that Bodyguard unit’s Starting Strength is "
+            "increased accordingly."
+        )
+        self.assertEqual(join["kind"], "bodyguard_join")
+        self.assertEqual(
+            join["bodyguardNames"], ["guardian defenders", "storm guardians"]
+        )
+        self.assertTrue(join["requiresUnattached"])
+        self.assertTrue(join["increasesStartingStrength"])
+        condition = classify_leader_footer(
+            "This model cannot be attached to a BLADEGUARD VETERAN SQUAD unless this "
+            "model is equipped with a relic shield, and cannot be attached to a "
+            "HELLBLASTER SQUAD unless this model is equipped with a plasma pistol."
+        )
+        self.assertEqual(condition["kind"], "attachment_condition")
+        self.assertEqual(
+            condition["conditions"],
+            [
+                {
+                    "bodyguardName": "bladeguard veteran squad",
+                    "requiredEquipment": "relic shield",
+                },
+                {
+                    "bodyguardName": "hellblaster squad",
+                    "requiredEquipment": "plasma pistol",
+                },
+            ],
+        )
 
     def test_transport_parser_preserves_exact_keyword_cost_and_wounds_clauses(self):
         vocabulary = {
@@ -2050,7 +2082,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "63",
+                "64",
             )
             self.assertEqual(
                 connection.execute(
@@ -2083,6 +2115,36 @@ class ProfileDataTests(unittest.TestCase):
                     "SELECT count(*) FROM leader_attachment_exceptions"
                 ).fetchone()[0],
                 51,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM leader_attachment_conditions"
+                ).fetchone()[0],
+                2,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM unit_bodyguard_joins"
+                ).fetchone()[0],
+                3,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT required_choice_alternative_id
+                       FROM leader_attachment_conditions
+                       WHERE leader_datasheet_id = '000000073'
+                         AND bodyguard_datasheet_id = '000000071'"""
+                ).fetchone()[0],
+                "000000073:1:7",
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT required_weapon_group_id
+                       FROM leader_attachment_conditions
+                       WHERE leader_datasheet_id = '000000073'
+                         AND bodyguard_datasheet_id = '000002098'"""
+                ).fetchone()[0],
+                "000000073:5",
             )
             self.assertEqual(
                 connection.execute(
@@ -4308,6 +4370,23 @@ class ProfileDataTests(unittest.TestCase):
         self.assertIn("000000070", captain["leaderBodyguardIds"])
         self.assertNotIn("000000534", captain["leaderBodyguardIds"])
         self.assertEqual(boyz["leaderBodyguardIds"], [])
+        self.assertEqual(
+            [condition["requiredEquipment"] for condition in captain["leaderAttachmentConditions"]],
+            ["relic shield", "plasma pistol"],
+        )
+        conclave = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Warlock Conclave"
+        )
+        self.assertEqual(
+            [option["bodyguardId"] for option in conclave["bodyguardJoinOptions"]],
+            ["000000589", "000000590"],
+        )
+        self.assertTrue(
+            all(
+                option["increasesStartingStrength"]
+                for option in conclave["bodyguardJoinOptions"]
+            )
+        )
         lieutenant = next(
             unit for unit in catalogue["units"] if unit["id"] == "000001346"
         )

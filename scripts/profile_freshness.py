@@ -38,6 +38,8 @@ SNAPSHOT_TABLES = (
     "abilities",
     "datasheet_abilities",
     "unit_leader_eligibility",
+    "leader_attachment_conditions",
+    "unit_bodyguard_joins",
     "leader_attachment_exceptions",
     "leader_attachment_exception_existing_keywords",
     "bodyguard_leader_rules",

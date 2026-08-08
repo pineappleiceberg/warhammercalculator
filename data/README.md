@@ -18,6 +18,12 @@ The main tables are:
   ability names, conditions, scope, and source ordering
 - `unit_leader_eligibility` for the published Leader-to-Bodyguard datasheet
   pairs, retaining the first source row when the upstream export repeats a pair
+- `leader_attachment_conditions` for the Captain's source-backed relic-shield
+  and plasma-pistol requirements, resolved to exact structured choice or weapon
+  group IDs
+- `unit_bodyguard_joins` for the three exceptional Warlock Conclave and Warlock
+  Skyrunners join pairs, including uniqueness, Attached-state, and Starting-
+  Strength semantics
 - `leader_attachment_exceptions` and its existing-keyword child table for 51
   source-backed exceptions to the normal Leader count, including mandatory
   attachment, companion-keyword, uniqueness, and Pack Leader restrictions

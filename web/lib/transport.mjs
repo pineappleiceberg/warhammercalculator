@@ -233,6 +233,16 @@ export function transportAssignmentReport(catalogue, armyList) {
       invalidFormationUnits.add(attachedUnit.id);
     }
   }
+  for (const { joinerUnit: unit, bodyguardUnit } of formation.joins) {
+    if (
+      unit.transportId !== bodyguardUnit.transportId &&
+      (unit.transportId || bodyguardUnit.transportId)
+    ) {
+      errors.push(`${unit.name} and ${bodyguardUnit.name} must embark in the same Transport`);
+      invalidFormationUnits.add(unit.id);
+      invalidFormationUnits.add(bodyguardUnit.id);
+    }
+  }
   for (const passengerUnit of armyList?.units ?? []) {
     if (!passengerUnit.transportId) continue;
     if (invalidFormationUnits.has(passengerUnit.id)) continue;
@@ -302,6 +312,14 @@ export function transportAssignmentReport(catalogue, armyList) {
       errors.push(`${unit.name}'s attached unit cannot embark as a complete unit`);
       incompleteAttachments.add(unit.id);
       incompleteAttachments.add(unit.attachedToId);
+    }
+  }
+  for (const { joinerUnit, bodyguardUnit } of formation.joins) {
+    if (!joinerUnit.transportId && !bodyguardUnit.transportId) continue;
+    if (!assignedUnitIds.has(joinerUnit.id) || !assignedUnitIds.has(bodyguardUnit.id)) {
+      errors.push(`${joinerUnit.name}'s joined Bodyguard cannot embark as a complete unit`);
+      incompleteAttachments.add(joinerUnit.id);
+      incompleteAttachments.add(bodyguardUnit.id);
     }
   }
   const completeAssignments = assignments.filter(
@@ -386,7 +404,10 @@ export function transportAssignmentReport(catalogue, armyList) {
   }
   return {
     attachments: formation.attachments,
+    joins: formation.joins,
     attachedUnitIds: formation.attachedUnitIds,
+    joinedUnitIds: formation.joinedUnitIds,
+    startingStrengthByBodyguard: formation.startingStrengthByBodyguard,
     assignments: completeAssignments.filter(
       (assignment) =>
         !overCapacity.has(assignment.transportUnit.id) &&

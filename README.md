@@ -261,7 +261,12 @@ formations enforce the global two-Character ceiling from the official Rules
 Commentary, 51 normalized Leader exception clauses, the Boyz and Kroot
 starting-strength conditions, the Company Heroes minimum-Leader rule, and five
 mandatory-attachment rules. The menu filters prospective combinations while
-preserving stale invalid links for repair. Tacticus Characters can use the published Rhino, Razorback,
+preserving stale invalid links for repair. Captain attachments to Bladeguard
+Veteran and Hellblaster Squads require the saved relic shield or plasma pistol
+loadout respectively. Warlock Conclaves and Warlock Skyrunners use their
+separate published Bodyguard-join relationship: Army Lists enforces their
+targets, one-copy limit, unattached condition, increased Starting Strength,
+inherited Attached state, and complete-unit Transport movement. Tacticus Characters can use the published Rhino, Razorback,
 and Terrax exception only when linked to a non-Tacticus unit, and both saved
 units must embark in the same transport. Conditional clauses that are not fully
 normalized remain unavailable instead of being guessed. Melee and One Shot weapons are excluded, a passenger
@@ -692,13 +697,18 @@ cache so a recovered dependency can be retried without restarting the service.
 that legally compatible passenger's eligible ranged weapons and slot cost.
 `GET /api/v1/leader?unit={leaderId}&bodyguard={bodyguardId}` lists the Leader's
 published Bodyguard options and, when `bodyguard` is supplied, returns exact
-pair eligibility and a readable reason. The same `leaderBodyguardIds` are
+pair eligibility and a readable reason. Optional repeated `leaderWeapon` and
+`leaderChoice` parameters resolve equipment-gated pairs. The same `leaderBodyguardIds` are
 included in catalogue and loadout discovery responses.
 `GET /api/v1/leader-formation?bodyguard={bodyguardId}&leader={leaderId}&leader={leaderId}&models={count}`
 checks a complete formation, including the global two-Leader ceiling,
 datasheet-specific exceptions, starting-strength conditions, minimum-Leader
 requirements, and duplicate restrictions. Its response includes the normalized
 rules and pinned official Rules Commentary source identity.
+`GET /api/v1/bodyguard-join?unit={joiningUnitId}&bodyguard={bodyguardId}&models={count}&bodyguardModels={count}&attached={true|false}&existingSameJoiners={count}`
+discovers exceptional non-Leader joins, checks the exact pair, and returns the
+combined Starting Strength and source rule. Optional formation-state parameters
+enforce the not-Attached and one-copy restrictions.
 `GET /api/v1/transport?unit={transportId}&passenger={passengerId}&attached={attachedUnitId}&models={count}`
 returns the exact source clause, eligibility, per-model cost, total spaces, and
 whether the selection fits in its matched independent pool; the response lists

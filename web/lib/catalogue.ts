@@ -282,6 +282,13 @@ export type CatalogueUnit = {
   } | null;
   transportKeywords: string[];
   leaderBodyguardIds: string[];
+  leaderAttachmentConditions: Array<{
+    bodyguardId: string;
+    requiredEquipment: string;
+    requiredWeaponGroupId: string | null;
+    requiredChoiceAlternativeId: string | null;
+    source: string;
+  }>;
   leaderFooter: string;
   leaderAttachmentException: {
     maximumLeaders: number;
@@ -301,6 +308,13 @@ export type CatalogueUnit = {
     leadersMustBeDistinct: boolean;
     source: string;
   } | null;
+  bodyguardJoinOptions: Array<{
+    bodyguardId: string;
+    maximumSameJoiner: number;
+    requiresUnattached: boolean;
+    increasesStartingStrength: boolean;
+    source: string;
+  }>;
   suggestedModelCount: number | null;
   maximumModelCount: number | null;
 };

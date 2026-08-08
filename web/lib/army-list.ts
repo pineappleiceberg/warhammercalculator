@@ -25,6 +25,7 @@ export type ArmyListUnit = {
   combatPresetIds?: string[];
   transportId?: string;
   attachedToId?: string;
+  joinedToId?: string;
 };
 
 export type ArmyListInput = {

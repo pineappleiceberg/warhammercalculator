@@ -17,9 +17,11 @@ const profiles = {
       id: "1",
       name: "Doomsday Ark",
       leaderBodyguardIds: [],
+      leaderAttachmentConditions: [],
       leaderFooter: "",
       leaderAttachmentException: null,
       bodyguardLeaderRule: null,
+      bodyguardJoinOptions: [],
     },
   ],
 };

@@ -102,10 +102,12 @@ async function checkProfiles(fetchImpl, baseUrl, timeoutMs) {
         !body.units.every(
           (unit) =>
             Array.isArray(unit?.leaderBodyguardIds) &&
+            Array.isArray(unit?.leaderAttachmentConditions) &&
             typeof unit?.leaderFooter === "string" &&
             (unit?.leaderAttachmentException === null ||
               typeof unit?.leaderAttachmentException === "object") &&
-            (unit?.bodyguardLeaderRule === null || typeof unit?.bodyguardLeaderRule === "object"),
+            (unit?.bodyguardLeaderRule === null || typeof unit?.bodyguardLeaderRule === "object") &&
+            Array.isArray(unit?.bodyguardJoinOptions),
         )
       ) {
         const error = new Error("Profile catalogue schema is incomplete");

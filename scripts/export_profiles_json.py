@@ -124,9 +124,11 @@ def export(database: Path, output: Path) -> None:
                 "transport": None,
                 "transportKeywords": [],
                 "leaderBodyguardIds": [],
+                "leaderAttachmentConditions": [],
                 "leaderFooter": row["leader_footer_text"],
                 "leaderAttachmentException": None,
                 "bodyguardLeaderRule": None,
+                "bodyguardJoinOptions": [],
                 "suggestedModelCount": None,
                 "maximumModelCount": None,
             }
@@ -145,6 +147,42 @@ def export(database: Path, output: Path) -> None:
         ):
             units[row["leader_datasheet_id"]]["leaderBodyguardIds"].append(
                 row["bodyguard_datasheet_id"]
+            )
+        for row in connection.execute(
+            """SELECT leader_datasheet_id, bodyguard_datasheet_id,
+                      required_equipment, required_weapon_group_id,
+                      required_choice_alternative_id, source_text
+               FROM leader_attachment_conditions
+               ORDER BY leader_datasheet_id, bodyguard_datasheet_id"""
+        ):
+            units[row["leader_datasheet_id"]]["leaderAttachmentConditions"].append(
+                {
+                    "bodyguardId": row["bodyguard_datasheet_id"],
+                    "requiredEquipment": row["required_equipment"],
+                    "requiredWeaponGroupId": row["required_weapon_group_id"],
+                    "requiredChoiceAlternativeId": row[
+                        "required_choice_alternative_id"
+                    ],
+                    "source": row["source_text"],
+                }
+            )
+        for row in connection.execute(
+            """SELECT joiner_datasheet_id, bodyguard_datasheet_id,
+                      maximum_same_joiner, requires_unattached,
+                      increases_starting_strength, source_text
+               FROM unit_bodyguard_joins
+               ORDER BY joiner_datasheet_id, bodyguard_datasheet_id"""
+        ):
+            units[row["joiner_datasheet_id"]]["bodyguardJoinOptions"].append(
+                {
+                    "bodyguardId": row["bodyguard_datasheet_id"],
+                    "maximumSameJoiner": row["maximum_same_joiner"],
+                    "requiresUnattached": bool(row["requires_unattached"]),
+                    "increasesStartingStrength": bool(
+                        row["increases_starting_strength"]
+                    ),
+                    "source": row["source_text"],
+                }
             )
         exception_keywords: dict[str, list[str]] = {}
         for row in connection.execute(

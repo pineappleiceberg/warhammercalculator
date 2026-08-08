@@ -17,11 +17,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 try:
-    from scripts.leader_rules import classify_leader_footer, parse_bodyguard_leader_rule
+    from scripts.leader_rules import (
+        classify_leader_footer,
+        normalized_phrase,
+        parse_bodyguard_leader_rule,
+    )
     from scripts.wargear_constraints import CONSTRAINT_SCHEMA, populate_constraints
     from scripts.transport_rules import normalized_term, parse_transport_rule
 except ModuleNotFoundError:
-    from leader_rules import classify_leader_footer, parse_bodyguard_leader_rule
+    from leader_rules import (
+        classify_leader_footer,
+        normalized_phrase,
+        parse_bodyguard_leader_rule,
+    )
     from wargear_constraints import CONSTRAINT_SCHEMA, populate_constraints
     from transport_rules import normalized_term, parse_transport_rule
 
@@ -93,6 +101,32 @@ CREATE TABLE unit_leader_eligibility (
     bodyguard_datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
     source_line INTEGER NOT NULL CHECK (source_line >= 2),
     PRIMARY KEY (leader_datasheet_id, bodyguard_datasheet_id)
+) WITHOUT ROWID;
+
+CREATE TABLE leader_attachment_conditions (
+    leader_datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    bodyguard_datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    required_equipment TEXT NOT NULL,
+    required_weapon_group_id TEXT,
+    required_choice_alternative_id TEXT,
+    source_text TEXT NOT NULL,
+    PRIMARY KEY (leader_datasheet_id, bodyguard_datasheet_id),
+    FOREIGN KEY (leader_datasheet_id, bodyguard_datasheet_id)
+        REFERENCES unit_leader_eligibility(leader_datasheet_id, bodyguard_datasheet_id)
+        ON DELETE CASCADE,
+    CHECK ((required_weapon_group_id IS NULL) !=
+           (required_choice_alternative_id IS NULL))
+) WITHOUT ROWID;
+
+CREATE TABLE unit_bodyguard_joins (
+    joiner_datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    bodyguard_datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    maximum_same_joiner INTEGER NOT NULL CHECK (maximum_same_joiner > 0),
+    requires_unattached INTEGER NOT NULL CHECK (requires_unattached IN (0, 1)),
+    increases_starting_strength INTEGER NOT NULL
+        CHECK (increases_starting_strength IN (0, 1)),
+    source_text TEXT NOT NULL,
+    PRIMARY KEY (joiner_datasheet_id, bodyguard_datasheet_id)
 ) WITHOUT ROWID;
 
 CREATE TABLE leader_attachment_exceptions (
@@ -600,6 +634,8 @@ CREATE TABLE wargear_options (
 CREATE INDEX idx_datasheets_faction_name ON datasheets(faction_id, name);
 CREATE INDEX idx_unit_leader_eligibility_bodyguard
     ON unit_leader_eligibility(bodyguard_datasheet_id, leader_datasheet_id);
+CREATE INDEX idx_unit_bodyguard_joins_bodyguard
+    ON unit_bodyguard_joins(bodyguard_datasheet_id, joiner_datasheet_id);
 CREATE INDEX idx_models_datasheet_name ON model_profiles(datasheet_id, name);
 CREATE INDEX idx_weapons_datasheet_name ON weapon_profiles(datasheet_id, name);
 CREATE INDEX idx_weapons_type ON weapon_profiles(weapon_type);
@@ -3960,6 +3996,8 @@ def create_database(
         seen_leader_pairs.add(pair)
         leader_rows.append((*pair, source_line))
     leader_footer_rules = []
+    bodyguard_join_rules = []
+    attachment_condition_rules = []
     leader_footer_kind_counts: dict[str, int] = {}
     unknown_leader_footers = []
     for row in rows["Datasheets.csv"]:
@@ -3973,6 +4011,10 @@ def create_database(
             unknown_leader_footers.append((row["id"], row["name"], source))
         elif kind == "attachment_exception":
             leader_footer_rules.append((row["id"], classified))
+        elif kind == "bodyguard_join":
+            bodyguard_join_rules.append((row["id"], classified))
+        elif kind == "attachment_condition":
+            attachment_condition_rules.append((row["id"], classified))
     if unknown_leader_footers:
         raise RuntimeError(f"unclassified Leader footers: {unknown_leader_footers!r}")
     orphan_model_count = len(rows["Datasheets_models.csv"]) - len(model_rows)
@@ -3999,7 +4041,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "63"),
+                    ("schema_version", "64"),
                     ("leader_global_maximum", "2"),
                     ("leader_global_rule_source_url", LEADER_GLOBAL_RULE_SOURCE_URL),
                     (
@@ -4020,6 +4062,14 @@ def create_database(
                     ("skipped_duplicate_leader_rows", str(duplicate_leader_count)),
                     ("leader_footer_rows", str(sum(leader_footer_kind_counts.values()))),
                     ("leader_attachment_exception_rows", str(len(leader_footer_rules))),
+                    (
+                        "leader_attachment_condition_rows",
+                        str(sum(len(rule["conditions"]) for _, rule in attachment_condition_rules)),
+                    ),
+                    (
+                        "unit_bodyguard_join_rows",
+                        str(sum(len(rule["bodyguardNames"]) for _, rule in bodyguard_join_rules)),
+                    ),
                     ("unclassified_leader_footer_rows", "0"),
                 ),
             )
@@ -4073,6 +4123,33 @@ def create_database(
                    VALUES (?, ?, ?)""",
                 leader_rows,
             )
+            datasheet_ids_by_name: dict[str, list[str]] = {}
+            for datasheet in rows["Datasheets.csv"]:
+                datasheet_ids_by_name.setdefault(
+                    normalized_phrase(datasheet["name"]), []
+                ).append(datasheet["id"])
+            for joiner_datasheet_id, rule in bodyguard_join_rules:
+                for bodyguard_name in rule["bodyguardNames"]:
+                    matching_ids = datasheet_ids_by_name.get(bodyguard_name, [])
+                    if len(matching_ids) != 1:
+                        raise RuntimeError(
+                            f"Bodyguard join target {bodyguard_name!r} resolved to {matching_ids!r}"
+                        )
+                    connection.execute(
+                        """INSERT INTO unit_bodyguard_joins
+                           (joiner_datasheet_id, bodyguard_datasheet_id,
+                            maximum_same_joiner, requires_unattached,
+                            increases_starting_strength, source_text)
+                           VALUES (?, ?, ?, ?, ?, ?)""",
+                        (
+                            joiner_datasheet_id,
+                            matching_ids[0],
+                            rule["maximumSameJoiner"],
+                            int(rule["requiresUnattached"]),
+                            int(rule["increasesStartingStrength"]),
+                            rule["source"],
+                        ),
+                    )
             for leader_datasheet_id, rule in leader_footer_rules:
                 connection.execute(
                     """INSERT INTO leader_attachment_exceptions
@@ -4358,6 +4435,83 @@ def create_database(
             populate_firing_deck(connection)
             populate_transports(connection)
             populate_constraints(connection)
+            for leader_datasheet_id, rule in attachment_condition_rules:
+                alternative_rows = list(
+                    connection.execute(
+                        """SELECT option_position, alternative_position, description_text
+                           FROM wargear_choice_alternatives
+                           WHERE datasheet_id = ?
+                           ORDER BY option_position, alternative_position""",
+                        (leader_datasheet_id,),
+                    )
+                )
+                weapon_rows_by_name: dict[str, set[str]] = {}
+                for group_id, group_name in connection.execute(
+                    """SELECT DISTINCT weapon_group_id, weapon_group_name
+                       FROM wargear_choice_alternative_weapons
+                       WHERE datasheet_id = ?""",
+                    (leader_datasheet_id,),
+                ):
+                    weapon_rows_by_name.setdefault(
+                        normalized_phrase(group_name), set()
+                    ).add(group_id)
+                for condition in rule["conditions"]:
+                    matching_ids = datasheet_ids_by_name.get(
+                        condition["bodyguardName"], []
+                    )
+                    if len(matching_ids) != 1:
+                        raise RuntimeError(
+                            "Leader attachment condition target "
+                            f"{condition['bodyguardName']!r} resolved to {matching_ids!r}"
+                        )
+                    bodyguard_datasheet_id = matching_ids[0]
+                    if (
+                        leader_datasheet_id,
+                        bodyguard_datasheet_id,
+                    ) not in seen_leader_pairs:
+                        raise RuntimeError(
+                            "Leader attachment condition does not match a published pair: "
+                            f"{leader_datasheet_id}, {bodyguard_datasheet_id}"
+                        )
+                    equipment = condition["requiredEquipment"]
+                    weapon_group_ids = weapon_rows_by_name.get(equipment, set())
+                    required_weapon_group_id = None
+                    required_choice_alternative_id = None
+                    if len(weapon_group_ids) == 1:
+                        required_weapon_group_id = next(iter(weapon_group_ids))
+                    elif len(weapon_group_ids) > 1:
+                        raise RuntimeError(
+                            f"Required equipment {equipment!r} maps to multiple weapon groups"
+                        )
+                    else:
+                        alternatives = [
+                            (option_position, alternative_position)
+                            for option_position, alternative_position, description in alternative_rows
+                            if equipment in normalized_phrase(description)
+                        ]
+                        if len(alternatives) != 1:
+                            raise RuntimeError(
+                                f"Required equipment {equipment!r} maps to {alternatives!r}"
+                            )
+                        option_position, alternative_position = alternatives[0]
+                        required_choice_alternative_id = (
+                            f"{leader_datasheet_id}:{option_position}:{alternative_position}"
+                        )
+                    connection.execute(
+                        """INSERT INTO leader_attachment_conditions
+                           (leader_datasheet_id, bodyguard_datasheet_id,
+                            required_equipment, required_weapon_group_id,
+                            required_choice_alternative_id, source_text)
+                           VALUES (?, ?, ?, ?, ?, ?)""",
+                        (
+                            leader_datasheet_id,
+                            bodyguard_datasheet_id,
+                            equipment,
+                            required_weapon_group_id,
+                            required_choice_alternative_id,
+                            rule["source"],
+                        ),
+                    )
 
         integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
         if integrity != "ok":
@@ -4368,6 +4522,8 @@ def create_database(
                 "factions",
                 "datasheets",
                 "unit_leader_eligibility",
+                "leader_attachment_conditions",
+                "unit_bodyguard_joins",
                 "leader_attachment_exceptions",
                 "leader_attachment_exception_existing_keywords",
                 "bodyguard_leader_rules",

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   attachmentFormationReport,
+  bodyguardJoinEligibility,
   leaderAttachmentEligibility,
   leaderFormationEligibility,
 } from "../lib/attachments.mjs";
@@ -152,4 +153,161 @@ test("same-Leader prohibitions and explicit Datasmith duplicates stay distinct",
     ],
   });
   assert.deepEqual(attached.errors, []);
+});
+
+test("Captain attachment conditions use exact saved equipment selections", () => {
+  const captain = unit("000000073");
+  const bladeguard = unit("000000071");
+  const hellblasters = unit("000002098");
+  assert.match(leaderAttachmentEligibility(captain, bladeguard).reason, /relic shield/i);
+  assert.equal(
+    leaderAttachmentEligibility(captain, bladeguard, {
+      choiceSelectionIds: ["000000073:1:7"],
+    }).eligible,
+    true,
+  );
+  assert.match(leaderAttachmentEligibility(captain, hellblasters).reason, /plasma pistol/i);
+  assert.equal(
+    leaderAttachmentEligibility(captain, hellblasters, {
+      equippedWeaponGroupIds: ["000000073:5"],
+    }).eligible,
+    true,
+  );
+  const invalid = attachmentFormationReport(catalogue, {
+    units: [
+      {
+        id: "captain",
+        unitId: captain.id,
+        name: captain.name,
+        modelCount: 1,
+        weapons: [],
+        attachedToId: "bladeguard",
+      },
+      {
+        id: "bladeguard",
+        unitId: bladeguard.id,
+        name: bladeguard.name,
+        modelCount: 3,
+      },
+    ],
+  });
+  assert.match(invalid.errors[0], /requires relic shield/i);
+  const valid = attachmentFormationReport(catalogue, {
+    units: [
+      {
+        id: "captain",
+        unitId: captain.id,
+        name: captain.name,
+        modelCount: 1,
+        weapons: [],
+        choiceSelections: { "000000073:1:7": 1 },
+        attachedToId: "bladeguard",
+      },
+      {
+        id: "bladeguard",
+        unitId: bladeguard.id,
+        name: bladeguard.name,
+        modelCount: 3,
+      },
+    ],
+  });
+  assert.deepEqual(valid.errors, []);
+});
+
+test("Warlock joins preserve Bodyguard membership, exclusivity, and Starting Strength", () => {
+  const conclave = unit("000000584");
+  const guardians = unit("000000589");
+  const windriders = unit("000000591");
+  const farseer = unit("000000582");
+  assert.equal(bodyguardJoinEligibility(conclave, guardians).eligible, true);
+  assert.match(bodyguardJoinEligibility(conclave, windriders).reason, /cannot join/i);
+  assert.match(
+    bodyguardJoinEligibility(conclave, guardians, { isAttached: true }).reason,
+    /Attached unit/i,
+  );
+  assert.match(
+    bodyguardJoinEligibility(conclave, guardians, { existingSameJoiners: 1 }).reason,
+    /more than 1/i,
+  );
+
+  const joined = attachmentFormationReport(catalogue, {
+    units: [
+      {
+        id: "farseer",
+        unitId: farseer.id,
+        name: farseer.name,
+        modelCount: 1,
+        attachedToId: "guardians",
+      },
+      {
+        id: "conclave",
+        unitId: conclave.id,
+        name: conclave.name,
+        modelCount: 2,
+        joinedToId: "guardians",
+      },
+      {
+        id: "guardians",
+        unitId: guardians.id,
+        name: guardians.name,
+        modelCount: 11,
+      },
+    ],
+  });
+  assert.deepEqual(joined.errors, []);
+  assert.equal(joined.startingStrengthByBodyguard.get("guardians"), 13);
+  assert.deepEqual([...joined.joinedUnitIds].sort(), ["conclave", "guardians"]);
+  assert.deepEqual([...joined.attachedUnitIds].sort(), ["conclave", "farseer", "guardians"]);
+
+  const duplicate = attachmentFormationReport(catalogue, {
+    units: [
+      {
+        id: "conclave-1",
+        unitId: conclave.id,
+        name: conclave.name,
+        modelCount: 2,
+        joinedToId: "guardians",
+      },
+      {
+        id: "conclave-2",
+        unitId: conclave.id,
+        name: conclave.name,
+        modelCount: 2,
+        joinedToId: "guardians",
+      },
+      {
+        id: "guardians",
+        unitId: guardians.id,
+        name: guardians.name,
+        modelCount: 11,
+      },
+    ],
+  });
+  assert.match(duplicate.errors[0], /cannot have more than 1/i);
+
+  const alreadyAttached = attachmentFormationReport(catalogue, {
+    units: [
+      {
+        id: "farseer",
+        unitId: farseer.id,
+        name: farseer.name,
+        modelCount: 1,
+        attachedToId: "conclave",
+      },
+      {
+        id: "conclave",
+        unitId: conclave.id,
+        name: conclave.name,
+        modelCount: 2,
+        joinedToId: "guardians",
+      },
+      {
+        id: "guardians",
+        unitId: guardians.id,
+        name: guardians.name,
+        modelCount: 11,
+      },
+    ],
+  });
+  assert.match(alreadyAttached.errors.at(-1), /while it is an Attached unit/i);
 });

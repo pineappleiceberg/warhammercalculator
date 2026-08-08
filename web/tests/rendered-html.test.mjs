@@ -209,6 +209,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.match(documented.endpoints.transport, /GET \/api\/v1\/transport/);
   assert.match(documented.endpoints.leader, /GET \/api\/v1\/leader/);
   assert.match(documented.endpoints.leaderFormation, /GET \/api\/v1\/leader-formation/);
+  assert.match(documented.endpoints.bodyguardJoin, /GET \/api\/v1\/bodyguard-join/);
   assert.match(documented.endpoints.validateFiringDeck, /POST \/api\/v1\/validate-firing-deck/);
   assert.match(documented.endpoints.lists, /lists\/export/);
 
@@ -372,6 +373,52 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   );
   assert.equal(illegalLeader.status, 200);
   assert.equal((await illegalLeader.json()).data.eligible, false);
+  const bladeguard = catalogue.units.find((unit) => unit.id === "000000071");
+  const unshieldedCaptain = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/leader?unit=${transportCaptain.id}&bodyguard=${bladeguard.id}`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.match((await unshieldedCaptain.json()).data.reason, /relic shield/i);
+  const shieldedCaptain = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/leader?unit=${transportCaptain.id}&bodyguard=${bladeguard.id}&leaderChoice=000000073:1:7`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.equal((await shieldedCaptain.json()).data.eligible, true);
+  const shieldedFormation = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/leader-formation?bodyguard=${bladeguard.id}&leader=${transportCaptain.id}&leaderChoice=000000073:1:7&models=3`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.equal((await shieldedFormation.json()).data.eligible, true);
+  const conclave = catalogue.units.find((unit) => unit.id === "000000584");
+  const guardians = catalogue.units.find((unit) => unit.id === "000000589");
+  const joinedBodyguard = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/bodyguard-join?unit=${conclave.id}&bodyguard=${guardians.id}&models=2&bodyguardModels=11`,
+    ),
+    testEnv,
+    context,
+  );
+  const joinedBodyguardData = (await joinedBodyguard.json()).data;
+  assert.equal(joinedBodyguardData.eligible, true);
+  assert.equal(joinedBodyguardData.startingStrength, 13);
+  assert.equal(joinedBodyguardData.rule.maximumSameJoiner, 1);
+  const attachedConclave = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/bodyguard-join?unit=${conclave.id}&bodyguard=${guardians.id}&attached=true`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.match((await attachedConclave.json()).data.reason, /Attached unit/i);
   const formationWarboss = catalogue.units.find((unit) => unit.id === "000000001");
   const formationBanner = catalogue.units.find((unit) => unit.id === "000000022");
   const legalBoyzFormation = await worker.fetch(

@@ -60,9 +60,43 @@ def classify_leader_footer(source: str) -> dict | None:
         return None
     lowered = text.casefold()
     if " can join one " in lowered:
-        return {"kind": "bodyguard_join", "source": text}
+        bodyguards = re.search(
+            r"this unit can join one (.+?) unit from your army", text, re.IGNORECASE
+        )
+        if not bodyguards:
+            return {"kind": "unknown", "source": text}
+        return {
+            "kind": "bodyguard_join",
+            "source": text,
+            "bodyguardNames": [
+                normalized_phrase(name)
+                for name in re.split(r"\s+or\s+", bodyguards.group(1))
+            ],
+            "maximumSameJoiner": 1,
+            "requiresUnattached": "if this unit is not an attached unit" in lowered,
+            "increasesStartingStrength": "starting strength is increased accordingly"
+            in lowered,
+        }
     if "cannot be attached to a bladeguard veteran squad" in lowered:
-        return {"kind": "attachment_condition", "source": text}
+        conditions = re.findall(
+            r"cannot be attached to a (.+?) unless this model is equipped with "
+            r"(?:a|an) (.+?)(?=,? and cannot|\.)",
+            text,
+            re.IGNORECASE,
+        )
+        if not conditions:
+            return {"kind": "unknown", "source": text}
+        return {
+            "kind": "attachment_condition",
+            "source": text,
+            "conditions": [
+                {
+                    "bodyguardName": normalized_phrase(bodyguard),
+                    "requiredEquipment": normalized_phrase(equipment),
+                }
+                for bodyguard, equipment in conditions
+            ],
+        }
     if "bodyguard unit is destroyed" in lowered and "even if" not in lowered:
         return {"kind": "separation_only", "source": text}
     if "even if" not in lowered:

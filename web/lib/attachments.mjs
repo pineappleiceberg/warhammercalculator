@@ -1,4 +1,23 @@
-export function leaderAttachmentEligibility(leader, bodyguard) {
+function valueSet(values) {
+  return values instanceof Set ? values : new Set(values ?? []);
+}
+
+export function savedUnitLoadout(savedUnit) {
+  return {
+    equippedWeaponGroupIds: new Set(
+      (savedUnit?.weapons ?? [])
+        .filter((weapon) => weapon.count > 0)
+        .map((weapon) => weapon.groupId ?? String(weapon.weaponId)),
+    ),
+    choiceSelectionIds: new Set(
+      Object.entries(savedUnit?.choiceSelections ?? {})
+        .filter(([, count]) => count > 0)
+        .map(([id]) => id),
+    ),
+  };
+}
+
+export function leaderAttachmentEligibility(leader, bodyguard, loadout = {}) {
   if (!leader) return { eligible: false, reason: "Leader profile not found" };
   if (!bodyguard) return { eligible: false, reason: "Bodyguard profile not found" };
   if (leader.id === bodyguard.id) {
@@ -13,7 +32,55 @@ export function leaderAttachmentEligibility(leader, bodyguard) {
   if (!leader.leaderBodyguardIds.includes(bodyguard.id)) {
     return { eligible: false, reason: `${leader.name} cannot lead ${bodyguard.name}` };
   }
+  const condition = (leader.leaderAttachmentConditions ?? []).find(
+    (entry) => entry.bodyguardId === bodyguard.id,
+  );
+  if (condition) {
+    const equippedWeaponGroupIds = valueSet(loadout.equippedWeaponGroupIds);
+    const choiceSelectionIds = valueSet(loadout.choiceSelectionIds);
+    const equipped = condition.requiredWeaponGroupId
+      ? equippedWeaponGroupIds.has(condition.requiredWeaponGroupId)
+      : choiceSelectionIds.has(condition.requiredChoiceAlternativeId);
+    if (!equipped) {
+      return {
+        eligible: false,
+        reason: `${leader.name} requires ${condition.requiredEquipment} to lead ${bodyguard.name}`,
+        condition,
+      };
+    }
+  }
   return { eligible: true, reason: "" };
+}
+
+export function bodyguardJoinEligibility(
+  joiner,
+  bodyguard,
+  { isAttached = false, existingSameJoiners = 0 } = {},
+) {
+  if (!joiner) return { eligible: false, reason: "Joining unit profile not found" };
+  if (!bodyguard) return { eligible: false, reason: "Bodyguard profile not found" };
+  if (joiner.id === bodyguard.id) {
+    return { eligible: false, reason: `${joiner.name} cannot join itself` };
+  }
+  const rule = (joiner.bodyguardJoinOptions ?? []).find(
+    (entry) => entry.bodyguardId === bodyguard.id,
+  );
+  if (!rule) return { eligible: false, reason: `${joiner.name} cannot join ${bodyguard.name}` };
+  if (rule.requiresUnattached && isAttached) {
+    return {
+      eligible: false,
+      reason: `${joiner.name} cannot join another unit while it is an Attached unit`,
+      rule,
+    };
+  }
+  if (existingSameJoiners >= rule.maximumSameJoiner) {
+    return {
+      eligible: false,
+      reason: `${bodyguard.name} cannot have more than ${rule.maximumSameJoiner} ${joiner.name} unit joined to it`,
+      rule,
+    };
+  }
+  return { eligible: true, reason: "", rule };
 }
 
 function keywordSet(unit) {
@@ -67,12 +134,12 @@ export function leaderFormationEligibility(
   bodyguard,
   leaders,
   modelCount = 1,
-  { requireMinimum = true } = {},
+  { requireMinimum = true, leaderLoadouts = [] } = {},
 ) {
   if (!bodyguard)
     return { eligible: false, reason: "Bodyguard profile not found", maximumLeaders: 0 };
-  for (const leader of leaders) {
-    const pair = leaderAttachmentEligibility(leader, bodyguard);
+  for (const [index, leader] of leaders.entries()) {
+    const pair = leaderAttachmentEligibility(leader, bodyguard, leaderLoadouts[index]);
     if (!pair.eligible) return { ...pair, maximumLeaders: 1 };
   }
   if (leaders.length > 2) {
@@ -127,6 +194,7 @@ export function attachmentFormationReport(catalogue, armyList) {
   const errors = [];
   const invalidUnitIds = new Set();
   const attachedUnitIds = new Set();
+  const joinedUnitIds = new Set();
   let attachments = [];
 
   for (const savedUnit of armyList?.units ?? []) {
@@ -169,7 +237,11 @@ export function attachmentFormationReport(catalogue, armyList) {
 
     const leader = catalogueUnits.get(leaderUnit.unitId);
     const bodyguard = catalogueUnits.get(bodyguardUnit.unitId);
-    const eligibility = leaderAttachmentEligibility(leader, bodyguard);
+    const eligibility = leaderAttachmentEligibility(
+      leader,
+      bodyguard,
+      savedUnitLoadout(leaderUnit),
+    );
     if (!eligibility.eligible) {
       errors.push(eligibility.reason);
       invalidUnitIds.add(leaderUnit.id);
@@ -193,6 +265,7 @@ export function attachmentFormationReport(catalogue, armyList) {
       bodyguard,
       group.map((attachment) => attachment.leader),
       bodyguardUnit.modelCount,
+      { leaderLoadouts: group.map((attachment) => savedUnitLoadout(attachment.leaderUnit)) },
     );
     if (!eligibility.eligible) {
       errors.push(eligibility.reason);
@@ -210,5 +283,90 @@ export function attachmentFormationReport(catalogue, armyList) {
     attachedUnitIds.add(attachment.bodyguardUnit.id);
   }
 
-  return { attachments, errors, invalidUnitIds, attachedUnitIds, attachmentsByBodyguard };
+  let joins = [];
+  for (const joinerUnit of armyList?.units ?? []) {
+    if (!joinerUnit.joinedToId) continue;
+    const bodyguardUnit = savedUnits.get(joinerUnit.joinedToId);
+    if (!bodyguardUnit) {
+      errors.push(`${joinerUnit.name} references a joined unit that is not in this list`);
+      invalidUnitIds.add(joinerUnit.id);
+      continue;
+    }
+    if (bodyguardUnit.id === joinerUnit.id) {
+      errors.push(`${joinerUnit.name} cannot join itself`);
+      invalidUnitIds.add(joinerUnit.id);
+      continue;
+    }
+    const seen = new Set([joinerUnit.id]);
+    let nextJoinedId = joinerUnit.joinedToId;
+    let cyclic = false;
+    while (nextJoinedId) {
+      if (seen.has(nextJoinedId)) {
+        errors.push(`${joinerUnit.name} is part of a circular Bodyguard join`);
+        invalidUnitIds.add(joinerUnit.id);
+        invalidUnitIds.add(bodyguardUnit.id);
+        cyclic = true;
+        break;
+      }
+      seen.add(nextJoinedId);
+      nextJoinedId = savedUnits.get(nextJoinedId)?.joinedToId;
+    }
+    if (cyclic) continue;
+    const joiner = catalogueUnits.get(joinerUnit.unitId);
+    const bodyguard = catalogueUnits.get(bodyguardUnit.unitId);
+    const eligibility = bodyguardJoinEligibility(joiner, bodyguard);
+    if (!eligibility.eligible) {
+      errors.push(eligibility.reason);
+      invalidUnitIds.add(joinerUnit.id);
+      continue;
+    }
+    if (eligibility.rule.requiresUnattached && attachedUnitIds.has(joinerUnit.id)) {
+      errors.push(`${joinerUnit.name} cannot join another unit while it is an Attached unit`);
+      invalidUnitIds.add(joinerUnit.id);
+      continue;
+    }
+    joins.push({ joinerUnit, joiner, bodyguardUnit, bodyguard, rule: eligibility.rule });
+  }
+  const joinsByBodyguardAndDatasheet = new Map();
+  for (const join of joins) {
+    const key = `${join.bodyguardUnit.id}:${join.joiner.id}`;
+    const values = joinsByBodyguardAndDatasheet.get(key) ?? [];
+    values.push(join);
+    joinsByBodyguardAndDatasheet.set(key, values);
+  }
+  for (const values of joinsByBodyguardAndDatasheet.values()) {
+    if (values.length <= values[0].rule.maximumSameJoiner) continue;
+    errors.push(
+      `${values[0].bodyguardUnit.name} cannot have more than ${values[0].rule.maximumSameJoiner} ${values[0].joiner.name} unit joined to it`,
+    );
+    invalidUnitIds.add(values[0].bodyguardUnit.id);
+    for (const join of values) invalidUnitIds.add(join.joinerUnit.id);
+  }
+  joins = joins.filter(
+    (join) => !invalidUnitIds.has(join.joinerUnit.id) && !invalidUnitIds.has(join.bodyguardUnit.id),
+  );
+  const startingStrengthByBodyguard = new Map();
+  for (const join of joins) {
+    joinedUnitIds.add(join.joinerUnit.id);
+    joinedUnitIds.add(join.bodyguardUnit.id);
+    if (join.rule.increasesStartingStrength) {
+      startingStrengthByBodyguard.set(
+        join.bodyguardUnit.id,
+        (startingStrengthByBodyguard.get(join.bodyguardUnit.id) ?? join.bodyguardUnit.modelCount) +
+          join.joinerUnit.modelCount,
+      );
+    }
+    if (attachedUnitIds.has(join.bodyguardUnit.id)) attachedUnitIds.add(join.joinerUnit.id);
+  }
+
+  return {
+    attachments,
+    joins,
+    errors,
+    invalidUnitIds,
+    attachedUnitIds,
+    joinedUnitIds,
+    attachmentsByBodyguard,
+    startingStrengthByBodyguard,
+  };
 }

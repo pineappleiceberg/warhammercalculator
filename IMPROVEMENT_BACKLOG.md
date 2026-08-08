@@ -16,15 +16,28 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Normalize the exceptional Warlock Conclave and Warlock Skyrunners Bodyguard-
-   join relationships plus the Captain's equipment-gated Bladeguard Veteran
-   Squad and Hellblaster Squad eligibility, making every actionable Leader
-   footer classification executable.
+1. Resolve joined Warlock and Bodyguard components as one selectable unit in
+   Play Mode and unit simulation, including exact mixed-profile damage
+   allocation and access to every joined model's weapons while retaining
+   separate editable roster records.
 2. Extend normalized defensive-equipment selection to Model vs Model and Play
    Mode while preserving model-by-model allocation and preventing bearer-only
    gear from becoming a homogeneous unit-wide defense.
 
 ## Completed cycles
+
+- 2026-08-08: Made every actionable Leader footer classification executable.
+  SQLite schema 64 normalizes the Captain's relic-shield and plasma-pistol
+  requirements to exact structured loadout IDs and preserves three exceptional
+  Warlock-to-Bodyguard join pairs separately from Leader attachments. Army
+  Lists filters equipment-gated Captain targets, retains stale invalid links,
+  offers legal Warlock joins, enforces the one-copy and not-already-Attached
+  restrictions, increases Starting Strength, propagates valid Attached state,
+  persists joins, and requires joined components to embark together. The API
+  exposes loadout-aware Leader checks and `/api/v1/bodyguard-join`. Parser,
+  database, catalogue, roster, persistence, Transport, UI, and API regressions
+  cover every new rule. Combined mixed-profile resolution in Play Mode remains
+  the next explicit correctness item.
 
 - 2026-08-08: Enforced source-backed Leader-formation cardinality. SQLite
   schema 63 classifies all 55 Leader footers, normalizes 51 multi-Leader or
@@ -36,9 +49,7 @@ priority over feature count.
   uniqueness, and global-cap failures. Play Mode only derives Attached state
   from valid formations, and `/api/v1/leader-formation` exposes the same
   decision with source rules. Parser, database, catalogue, roster, UI, and API
-  regressions cover legal and illegal exception combinations. Two custom
-  Warlock joins and one equipment-gated Captain footer remain explicitly
-  classified for the next cycle.
+  regressions cover legal and illegal exception combinations.
 
 - 2026-08-08: Added source-backed Leader-to-Bodyguard eligibility. SQLite
   schema 62 pins `Datasheets_leader.csv`, deduplicates its 1,918 source rows

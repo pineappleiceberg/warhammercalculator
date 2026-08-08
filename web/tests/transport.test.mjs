@@ -764,3 +764,38 @@ test("Orion Dreadnought allowances conditionally reduce only primary capacity", 
   );
   assert.ok(tooManyDreadnoughts.errors.some((error) => /2 models.*limited to 1/i.test(error)));
 });
+
+test("joined Bodyguard components embark as one complete formation", () => {
+  const waveSerpent = unit("Wave Serpent");
+  const guardians = unit("Guardian Defenders");
+  const conclave = unit("Warlock Conclave");
+  const report = transportAssignmentReport(catalogue, {
+    units: [
+      {
+        id: "serpent",
+        unitId: waveSerpent.id,
+        name: waveSerpent.name,
+        modelCount: 1,
+        weapons: [],
+      },
+      {
+        id: "guardians",
+        unitId: guardians.id,
+        name: guardians.name,
+        modelCount: 11,
+        weapons: [],
+        transportId: "serpent",
+      },
+      {
+        id: "conclave",
+        unitId: conclave.id,
+        name: conclave.name,
+        modelCount: 2,
+        weapons: [],
+        joinedToId: "guardians",
+      },
+    ],
+  });
+  assert.ok(report.errors.some((error) => /must embark in the same Transport/i.test(error)));
+  assert.deepEqual(report.assignments, []);
+});

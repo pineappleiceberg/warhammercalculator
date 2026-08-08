@@ -28,7 +28,11 @@ import {
   unitLoadoutWarnings,
 } from "../../lib/loadout.mjs";
 import { transportAssignmentReport, transportPassengerEligibility } from "../../lib/transport.mjs";
-import { leaderFormationEligibility } from "../../lib/attachments.mjs";
+import {
+  bodyguardJoinEligibility,
+  leaderFormationEligibility,
+  savedUnitLoadout,
+} from "../../lib/attachments.mjs";
 
 const emptyList: ArmyListInput = { name: "", factionId: "", units: [] };
 const DRAFT_KEY = "warhammer-calculator:army-list-draft:v1";
@@ -106,6 +110,7 @@ export default function ArmyLists() {
             errors: [],
             slotsByTransport: new Map(),
             effectivePrimaryCapacityByTransport: new Map(),
+            startingStrengthByBodyguard: new Map(),
           },
     [catalogue, draft],
   );
@@ -329,6 +334,12 @@ export default function ArmyLists() {
                           }}
                         />
                       </label>
+                      {transportReport.startingStrengthByBodyguard.get(unit.id) !== undefined && (
+                        <small>
+                          Formation Starting Strength:{" "}
+                          {transportReport.startingStrengthByBodyguard.get(unit.id)} models
+                        </small>
+                      )}
                     </div>
                     <button
                       type="button"
@@ -338,11 +349,16 @@ export default function ArmyLists() {
                           units: current.units
                             .filter((entry) => entry.id !== unit.id)
                             .map((entry) => {
-                              if (entry.transportId !== unit.id && entry.attachedToId !== unit.id)
+                              if (
+                                entry.transportId !== unit.id &&
+                                entry.attachedToId !== unit.id &&
+                                entry.joinedToId !== unit.id
+                              )
                                 return entry;
                               const next = { ...entry };
                               if (next.transportId === unit.id) delete next.transportId;
                               if (next.attachedToId === unit.id) delete next.attachedToId;
+                              if (next.joinedToId === unit.id) delete next.joinedToId;
                               return next;
                             }),
                         }))
@@ -359,9 +375,13 @@ export default function ArmyLists() {
                     const attachedUnit = catalogue?.units.find(
                       (entry) => entry.id === attachedSavedUnit?.unitId,
                     );
+                    const joinedSavedUnit = draft.units.find(
+                      (candidate) => candidate.id === unit.joinedToId,
+                    );
                     const attachmentOptions = draft.units.filter((candidate) => {
                       if (
                         candidate.id === unit.id ||
+                        candidate.joinedToId ||
                         !passenger?.leaderBodyguardIds.includes(candidate.unitId)
                       ) {
                         return false;
@@ -369,10 +389,10 @@ export default function ArmyLists() {
                       const bodyguard = catalogue?.units.find(
                         (entry) => entry.id === candidate.unitId,
                       );
-                      const otherLeaders = draft.units
-                        .filter(
-                          (entry) => entry.id !== unit.id && entry.attachedToId === candidate.id,
-                        )
+                      const otherLeaderUnits = draft.units.filter(
+                        (entry) => entry.id !== unit.id && entry.attachedToId === candidate.id,
+                      );
+                      const otherLeaders = otherLeaderUnits
                         .map((entry) =>
                           catalogue?.units.find((profile) => profile.id === entry.unitId),
                         )
@@ -381,9 +401,41 @@ export default function ArmyLists() {
                         bodyguard,
                         [...otherLeaders, passenger],
                         candidate.modelCount,
-                        { requireMinimum: false },
+                        {
+                          requireMinimum: false,
+                          leaderLoadouts: [
+                            ...otherLeaderUnits.map(savedUnitLoadout),
+                            savedUnitLoadout(unit),
+                          ],
+                        },
                       ).eligible;
                     });
+                    const displayedAttachmentOptions =
+                      attachedSavedUnit &&
+                      !attachmentOptions.some((candidate) => candidate.id === attachedSavedUnit.id)
+                        ? [...attachmentOptions, attachedSavedUnit]
+                        : attachmentOptions;
+                    const joinOptions = draft.units.filter((candidate) => {
+                      if (candidate.id === unit.id) return false;
+                      if (draft.units.some((entry) => entry.attachedToId === unit.id)) return false;
+                      const bodyguard = catalogue?.units.find(
+                        (entry) => entry.id === candidate.unitId,
+                      );
+                      const eligibility = bodyguardJoinEligibility(passenger, bodyguard);
+                      if (!eligibility.eligible) return false;
+                      const matchingJoins = draft.units.filter(
+                        (entry) =>
+                          entry.id !== unit.id &&
+                          entry.joinedToId === candidate.id &&
+                          entry.unitId === unit.unitId,
+                      ).length;
+                      return matchingJoins < eligibility.rule.maximumSameJoiner;
+                    });
+                    const displayedJoinOptions =
+                      joinedSavedUnit &&
+                      !joinOptions.some((candidate) => candidate.id === joinedSavedUnit.id)
+                        ? [...joinOptions, joinedSavedUnit]
+                        : joinOptions;
                     const transports = draft.units.filter((candidate) => {
                       if (candidate.id === unit.id) return false;
                       const transport = catalogue?.units.find(
@@ -398,7 +450,7 @@ export default function ArmyLists() {
                     );
                     return (
                       <>
-                        {(attachmentOptions.length > 0 || unit.attachedToId) && (
+                        {(displayedAttachmentOptions.length > 0 || unit.attachedToId) && (
                           <label>
                             <span>Attached to</span>
                             <select
@@ -414,7 +466,7 @@ export default function ArmyLists() {
                               }
                             >
                               <option value="">Not attached</option>
-                              {attachmentOptions.map((candidate) => (
+                              {displayedAttachmentOptions.map((candidate) => (
                                 <option key={candidate.id} value={candidate.id}>
                                   {candidate.name}
                                 </option>
@@ -429,6 +481,36 @@ export default function ArmyLists() {
                                 )}
                             </select>
                             <small>Choose from this Leader&apos;s published Bodyguard units.</small>
+                          </label>
+                        )}
+                        {(displayedJoinOptions.length > 0 || unit.joinedToId) && (
+                          <label>
+                            <span>Joined Bodyguard</span>
+                            <select
+                              aria-label={`${unit.name} joined Bodyguard`}
+                              value={unit.joinedToId ?? ""}
+                              onChange={(event) =>
+                                changeUnit(unit.id, (current) => {
+                                  const next = { ...current };
+                                  if (event.target.value) next.joinedToId = event.target.value;
+                                  else delete next.joinedToId;
+                                  return next;
+                                })
+                              }
+                            >
+                              <option value="">Not joined</option>
+                              {displayedJoinOptions.map((candidate) => (
+                                <option key={candidate.id} value={candidate.id}>
+                                  {candidate.name}
+                                </option>
+                              ))}
+                            </select>
+                            {unit.joinedToId && (
+                              <small>
+                                Counts as part of that Bodyguard unit and increases its Starting
+                                Strength.
+                              </small>
+                            )}
                           </label>
                         )}
                         <label>
