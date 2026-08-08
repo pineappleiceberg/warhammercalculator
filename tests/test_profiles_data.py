@@ -2106,7 +2106,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "71",
+                "72",
             )
             self.assertEqual(
                 connection.execute(
@@ -4101,6 +4101,123 @@ class ProfileDataTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def test_single_model_defensive_presets_follow_structured_equipment_choices(self):
+        connection = sqlite3.connect(DATABASE)
+        try:
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_combat_presets
+                       WHERE source_equipment_choice_exact = 1"""
+                ).fetchone()[0],
+                12,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_combat_presets
+                       WHERE source_equipment_default = 1"""
+                ).fetchone()[0],
+                5,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM unit_combat_preset_wargear_alternatives"
+                ).fetchone()[0],
+                51,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT source_equipment_default,
+                              source_equipment_choice_exact
+                       FROM unit_combat_presets
+                       WHERE datasheet_id = '000002568' AND name = 'Shield Dome'"""
+                ).fetchone(),
+                (0, 1),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT alternative_position, quantity_delta
+                       FROM unit_combat_preset_wargear_alternatives
+                       WHERE datasheet_id = '000002568'
+                         AND ability_position = 6 AND option_position = 3
+                       ORDER BY alternative_position"""
+                ).fetchall(),
+                [(1, 0), (2, 0), (3, 0), (4, 1)],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT source_equipment_default,
+                              source_equipment_choice_exact
+                       FROM unit_combat_presets
+                       WHERE datasheet_id = '000002595'
+                         AND name = 'Weavefield Crest'"""
+                ).fetchone(),
+                (1, 1),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT quantity_delta
+                       FROM unit_combat_preset_wargear_alternatives
+                       WHERE datasheet_id = '000002595'
+                         AND option_position = 2 AND alternative_position = 1"""
+                ).fetchone()[0],
+                -1,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT source_equipment_default,
+                              source_equipment_choice_exact
+                       FROM unit_combat_presets
+                       WHERE datasheet_id = '000000402'
+                         AND name = 'Shield Generator'"""
+                ).fetchone(),
+                (0, 0),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT quantity_delta
+                       FROM unit_combat_preset_wargear_alternatives
+                       WHERE datasheet_id = '000000402'
+                         AND option_position = 1 AND alternative_position = 8"""
+                ).fetchone()[0],
+                1,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT source_equipment_default,
+                              source_equipment_choice_exact
+                       FROM unit_combat_presets
+                       WHERE datasheet_id = '000004102'
+                         AND name = 'Collar of Khorne'"""
+                ).fetchone(),
+                (1, 1),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT source_equipment_default,
+                              source_equipment_choice_exact
+                       FROM unit_combat_presets
+                       WHERE datasheet_id = '000000928'
+                         AND name = 'Surgeon Acolyte'"""
+                ).fetchone(),
+                (0, 0),
+            )
+            plan = connection.execute(
+                """EXPLAIN QUERY PLAN
+                   SELECT quantity_delta
+                   FROM unit_combat_preset_wargear_alternatives
+                   WHERE datasheet_id = ? AND option_position = ?
+                     AND alternative_position = ?""",
+                ("000002568", 3, 4),
+            ).fetchall()
+            self.assertTrue(
+                any(
+                    "idx_unit_combat_preset_wargear_alternatives_choice" in row[3]
+                    for row in plan
+                )
+            )
+        finally:
+            connection.close()
+
     def test_checked_database_has_only_unambiguous_target_distance_presets(self):
         connection = sqlite3.connect(DATABASE)
         try:
@@ -4318,6 +4435,28 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(catalogue["structuredWargear"]["replacementWeaponCount"], 1562)
         self.assertEqual(
             catalogue["structuredWargear"]["defensiveEquipmentChoiceLinkCount"], 98
+        )
+        self.assertEqual(
+            catalogue["structuredWargear"]["combatPresetEquipmentChoiceLinkCount"],
+            51,
+        )
+        impulsor = next(unit for unit in catalogue["units"] if unit["id"] == "000002568")
+        shield_dome = next(
+            preset for preset in impulsor["combatPresets"] if preset["name"] == "Shield Dome"
+        )
+        self.assertTrue(shield_dome["sourceEquipmentChoiceExact"])
+        self.assertFalse(shield_dome.get("sourceEquipmentDefault", False))
+        self.assertEqual(
+            [
+                (link["alternativeId"], link["quantityDelta"])
+                for link in shield_dome["sourceEquipmentChoiceLinks"]
+            ],
+            [
+                ("000002568:3:1", 0),
+                ("000002568:3:2", 0),
+                ("000002568:3:3", 0),
+                ("000002568:3:4", 1),
+            ],
         )
         self.assertTrue(catalogue["structuredWargear"]["conservative"])
         warboss = next(unit for unit in catalogue["units"] if unit["name"] == "Warboss")

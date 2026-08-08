@@ -16,16 +16,31 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Link optional defensive wargear on single-model datasheets to its situational
-   combat preset, so selecting a Commander shield generator or Impulsor shield
-   dome activates the matching defense without a second manual choice.
-2. Normalize discrete legal starting-size alternatives separately from casualty
+1. Normalize discrete legal starting-size alternatives separately from casualty
    counts so datasheets published as, for example, exactly 5 or 10 models do not
    treat intermediate roster sizes as ordinary legal starting compositions.
-3. Structure duplicate-capable non-weapon equipment pools so Crisis Battlesuit
+2. Structure duplicate-capable non-weapon equipment pools so Crisis Battlesuit
    shield-generator counts can be derived across both published selection paths.
+3. Normalize the remaining unstructured single-model equipment lists and
+   replacement paths, including Keeper, Lokhust, Wolf Guard, and Wazbom options,
+   so every published defensive wargear preset can follow its source selection.
 
 ## Completed cycles
+
+- 2026-08-08: Linked single-model defensive wargear to situational combat
+  presets in SQLite schema 72. Fifty-one normalized alternative links cover 15
+  presets; 12 have complete source-equipment coverage, while all three T’au
+  Commanders expose their exact structured replacement-path grant and remain
+  conservative about the separate duplicate-capable pool. Impulsor shield
+  domes, Ogryn brute shields, Lieutenant and Dreadnought shields, and Commander
+  shield generators now activate from their source choices. Default
+  weavefield crests and scattershields deactivate when replaced, and Karanak’s
+  always-equipped Collar of Khorne initializes active. Army Lists derives
+  source-linked defaults, Play Mode initializes them while preserving local
+  overrides, Unit vs Unit reconciles target choices immediately, and the
+  loadout API returns the derived preset IDs. Database plans, exact/partial
+  coverage, false-positive exclusions, saved formations, default removal,
+  direct target selection, API, and full workflow regressions cover the change.
 
 - 2026-08-08: Linked defensive equipment to structured source choices in SQLite
   schema 71. Ninety-eight normalized alternative links cover 32 defensive

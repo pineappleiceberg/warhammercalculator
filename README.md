@@ -546,6 +546,18 @@ editable, but a divergent saved roster requires the existing casualty or
 narrative acknowledgement. The Crisis Battlesuit shield remains conservative
 because its second, duplicate-capable equipment pool is not yet fully
 structured.
+Single-model defensive presets now use the same source-choice relationship.
+Schema 72 links 51 published alternatives to 15 defensive presets: 12 have
+complete equipment-choice coverage and the three T’au Commander shield
+generators have a proven replacement-path link while their duplicate-capable
+pool remains conservative. Selecting an Impulsor shield dome, Ogryn brute
+shield, Lieutenant storm shield, or Commander shield generator activates its
+defense without a second ability toggle. Replacing a default weavefield crest
+or scattershield removes the defense, while always-equipped gear such as
+Karanak’s Collar of Khorne starts active. Army Lists carries the derived state
+into Play Mode, Unit vs Unit reconciles target source choices immediately, and
+the loadout API returns the resulting preset IDs. Battle-local ability controls
+remain editable after initialization.
 Uniform grouped statlines are split into source-composition-backed catalogue
 models when that distinction is required for an exact bearer limit. Command
 Squad shields therefore distinguish the Champion and Company Veterans from the

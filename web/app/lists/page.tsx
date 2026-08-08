@@ -36,6 +36,7 @@ import {
   savedUnitLoadout,
 } from "../../lib/attachments.mjs";
 import { defensiveEquipmentSelectionKey } from "../../lib/defensive-equipment.mjs";
+import { sourceEquipmentCombatPresetIds } from "../../lib/combat-presets.mjs";
 import {
   catalogueModelSegments,
   reconcileSavedUnitDefensiveEquipmentChoices,
@@ -831,19 +832,37 @@ export default function ArmyLists() {
                     return (
                       <>
                         {sourceUnit && (
-                          <CombatPresetSelector
-                            presets={sourceUnit.combatPresets}
-                            role="either"
-                            selectedIds={unit.combatPresetIds ?? []}
-                            onChange={(combatPresetIds) =>
-                              changeUnit(unit.id, (current) => ({
-                                ...current,
-                                combatPresetIds,
-                              }))
-                            }
-                            title="Play Mode ability defaults"
-                            hint="Save conditions that normally begin active; you can change them during play."
-                          />
+                          <>
+                            <CombatPresetSelector
+                              presets={sourceUnit.combatPresets.filter(
+                                (preset) => !preset.sourceEquipmentChoiceExact,
+                              )}
+                              role="either"
+                              selectedIds={unit.combatPresetIds ?? []}
+                              onChange={(combatPresetIds) =>
+                                changeUnit(unit.id, (current) => ({
+                                  ...current,
+                                  combatPresetIds,
+                                }))
+                              }
+                              title="Play Mode ability defaults"
+                              hint="Save conditions that normally begin active; you can change them during play."
+                            />
+                            {sourceUnit.combatPresets.some(
+                              (preset) =>
+                                preset.sourceEquipmentChoiceExact ||
+                                (preset.sourceEquipmentChoiceLinks?.length ?? 0) > 0,
+                            ) && (
+                              <small>
+                                Equipment abilities follow Source option choices automatically
+                                {sourceEquipmentCombatPresetIds(sourceUnit, unit.choiceSelections)
+                                  .length > 0
+                                  ? ": active"
+                                  : ": inactive"}
+                                .
+                              </small>
+                            )}
+                          </>
                         )}
                         {(sourceUnit?.defensiveEquipment.length ?? 0) > 0 && (
                           <details className="source-choice-pools roster-choice-pools" open>

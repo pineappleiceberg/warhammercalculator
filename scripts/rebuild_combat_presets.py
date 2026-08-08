@@ -17,6 +17,7 @@ DROP TABLE IF EXISTS unit_defensive_equipment_effects;
 DROP TABLE IF EXISTS unit_defensive_equipment_default_terms;
 DROP TABLE IF EXISTS unit_defensive_equipment_bearers;
 DROP TABLE IF EXISTS unit_defensive_equipment_options;
+DROP TABLE IF EXISTS unit_combat_preset_wargear_alternatives;
 DROP TABLE IF EXISTS unit_combat_preset_effects;
 DROP TABLE IF EXISTS unit_combat_preset_keyword_requirements;
 DROP TABLE IF EXISTS unit_combat_preset_supported_keywords;
@@ -29,6 +30,10 @@ CREATE TABLE unit_combat_presets (
     description_text TEXT NOT NULL,
     is_exclusive_choice INTEGER NOT NULL CHECK (is_exclusive_choice IN (0, 1)),
     activation TEXT NOT NULL CHECK (activation IN ('inherent', 'automatic', 'situational')),
+    source_equipment_default INTEGER NOT NULL DEFAULT 0
+        CHECK (source_equipment_default IN (0, 1)),
+    source_equipment_choice_exact INTEGER NOT NULL DEFAULT 0
+        CHECK (source_equipment_choice_exact IN (0, 1)),
     source_relationship TEXT NOT NULL DEFAULT 'self'
         CHECK (source_relationship IN ('self', 'supporting_unit', 'self_or_supporting_unit')),
     uses_per_battle INTEGER CHECK (uses_per_battle > 0),
@@ -168,6 +173,30 @@ CREATE TABLE unit_combat_preset_effects (
 ) WITHOUT ROWID;
 CREATE INDEX idx_unit_combat_preset_effects_datasheet
     ON unit_combat_preset_effects(datasheet_id);
+CREATE TABLE unit_combat_preset_wargear_alternatives (
+    datasheet_id TEXT NOT NULL,
+    ability_position INTEGER NOT NULL,
+    preset_position INTEGER NOT NULL,
+    option_position INTEGER NOT NULL,
+    alternative_position INTEGER NOT NULL,
+    quantity_delta INTEGER NOT NULL,
+    source_text TEXT NOT NULL,
+    PRIMARY KEY (
+        datasheet_id, ability_position, preset_position,
+        option_position, alternative_position
+    ),
+    FOREIGN KEY (datasheet_id, ability_position, preset_position)
+        REFERENCES unit_combat_presets(datasheet_id, ability_position, preset_position)
+        ON DELETE CASCADE,
+    FOREIGN KEY (datasheet_id, option_position, alternative_position)
+        REFERENCES wargear_choice_alternatives(
+            datasheet_id, option_position, alternative_position
+        ) ON DELETE CASCADE
+) WITHOUT ROWID;
+CREATE INDEX idx_unit_combat_preset_wargear_alternatives_choice
+    ON unit_combat_preset_wargear_alternatives(
+        datasheet_id, option_position, alternative_position
+    );
 CREATE TABLE unit_defensive_equipment_options (
     datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
     ability_position INTEGER NOT NULL,
@@ -282,7 +311,7 @@ def main() -> None:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
         connection.execute(
-            "UPDATE metadata SET value = '71' WHERE key = 'schema_version'"
+            "UPDATE metadata SET value = '72' WHERE key = 'schema_version'"
         )
         connection.execute("PRAGMA optimize")
         connection.commit()

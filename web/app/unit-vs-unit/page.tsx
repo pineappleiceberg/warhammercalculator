@@ -7,7 +7,9 @@ import { SupportPresetSelector } from "../../components/support-preset-selector"
 import {
   applyTargetCombatPresets,
   attackKeywordsForWeapon,
+  reconcileCombatPresetSourceChoices,
   selectedAndAutomaticCombatPresets,
+  sourceEquipmentCombatPresetIds,
 } from "../../lib/combat-presets.mjs";
 import {
   calculateOrderedVolley,
@@ -132,6 +134,7 @@ export default function UnitVsUnit() {
   const [weaponCounts, setWeaponCounts] = useState<Record<string, number>>({});
   const [optionCounts, setOptionCounts] = useState<Record<string, number>>({});
   const [choiceSelections, setChoiceSelections] = useState<Record<string, number>>({});
+  const [targetChoiceSelections, setTargetChoiceSelections] = useState<Record<string, number>>({});
   const [loadoutSubjectCounts, setLoadoutSubjectCounts] = useState<Record<string, number>>({});
   const [profileCounts, setProfileCounts] = useState<Record<number, number>>({});
   const [firingDeckSelections, setFiringDeckSelections] = useState<FiringDeckSelection[]>([]);
@@ -582,6 +585,11 @@ export default function UnitVsUnit() {
     setTargetBattleShocked(false);
     setTargetStrengthState("full");
     const unit = targetUnits.find((entry) => entry.id === unitId);
+    const sourceChoices = Object.fromEntries(
+      (unit?.wargearChoicePools ?? []).flatMap((pool) =>
+        pool.alternatives.map((alternative) => [alternative.id, 0]),
+      ),
+    );
     const models = unit?.suggestedModelCount ?? 1;
     const composition = catalogueModelSegments(unit, models);
     setTargetSegments(
@@ -590,7 +598,8 @@ export default function UnitVsUnit() {
       ),
     );
     setInitialWoundsLost(0);
-    setActiveTargetPresetIds([]);
+    setTargetChoiceSelections(sourceChoices);
+    setActiveTargetPresetIds(sourceEquipmentCombatPresetIds(unit, sourceChoices));
     setTargetSupportUnitId("");
     setActiveTargetSupportPresetIds([]);
     setTargetSupportDistance(0);
@@ -1886,6 +1895,8 @@ export default function UnitVsUnit() {
                   setTargetUnitId("");
                   setTargetJoinerId("");
                   setTargetJoinerModels(1);
+                  setTargetChoiceSelections({});
+                  setActiveTargetPresetIds([]);
                   setTargetBattleShocked(false);
                   setTargetStrengthState("full");
                   setTargetAttached(false);
@@ -1958,6 +1969,64 @@ export default function UnitVsUnit() {
                   }}
                 />
               </label>
+            )}
+            {targetUnit && targetUnit.wargearChoicePools.length > 0 && (
+              <details className="source-choice-pools" open>
+                <summary>Target source option choices</summary>
+                <p>
+                  Select the target’s published equipment. Linked defensive abilities activate
+                  automatically and remain editable below.
+                </p>
+                {targetUnit.wargearChoicePools.map((pool) => {
+                  const maximum = choicePoolMaximum(pool, targetUnit.suggestedModelCount ?? 1);
+                  const used = pool.alternatives.reduce(
+                    (sum, alternative) => sum + (targetChoiceSelections[alternative.id] ?? 0),
+                    0,
+                  );
+                  return (
+                    <fieldset key={pool.id}>
+                      <legend>
+                        {used}/{maximum} selections
+                      </legend>
+                      <small>{pool.source}</small>
+                      {pool.alternatives.map((alternative) => (
+                        <label key={alternative.id}>
+                          <span>{alternative.label}</span>
+                          <input
+                            aria-label={`${alternative.label} target source selections`}
+                            type="number"
+                            min={0}
+                            max={maximum}
+                            value={targetChoiceSelections[alternative.id] ?? 0}
+                            onChange={(event) => {
+                              const nextValue = normalizeEquippedCount(
+                                +event.target.value,
+                                maximum,
+                              );
+                              const nextChoices = {
+                                ...targetChoiceSelections,
+                                [alternative.id]: nextValue,
+                              };
+                              setActiveTargetPresetIds((current) =>
+                                reconcileCombatPresetSourceChoices(
+                                  targetUnit.combatPresets,
+                                  current,
+                                  targetChoiceSelections,
+                                  nextChoices,
+                                ),
+                              );
+                              setTargetChoiceSelections(nextChoices);
+                              setResults([]);
+                              setVolleySummary(null);
+                              setRollResult(null);
+                            }}
+                          />
+                        </label>
+                      ))}
+                    </fieldset>
+                  );
+                })}
+              </details>
             )}
             <label>
               <span>Charge state</span>

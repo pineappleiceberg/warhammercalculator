@@ -46,6 +46,7 @@ SNAPSHOT_TABLES = (
     "bodyguard_leader_rule_minimum_keywords",
     "unit_combat_presets",
     "unit_combat_preset_effects",
+    "unit_combat_preset_wargear_alternatives",
     "unit_defensive_equipment_options",
     "unit_defensive_equipment_wargear_alternatives",
     "unit_defensive_equipment_bearers",

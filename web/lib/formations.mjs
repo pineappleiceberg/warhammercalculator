@@ -6,6 +6,7 @@ import {
   defensiveEquipmentSelectionKey,
 } from "./defensive-equipment.mjs";
 import { catalogueModelComposition } from "./catalogue-models.mjs";
+import { sourceEquipmentCombatPresetIds } from "./combat-presets.mjs";
 
 export function catalogueModelSegments(unit, modelCount, loadoutSubjectCounts = {}) {
   const composition = catalogueModelComposition(unit, modelCount, loadoutSubjectCounts);
@@ -128,6 +129,28 @@ export function savedFormationModelSegments(formation) {
     }
   }
   return { segments, ambiguousComponents };
+}
+
+export function savedUnitCombatPresetIds(savedUnit, catalogueUnit) {
+  const sourceLinked = new Set(
+    (catalogueUnit?.combatPresets ?? [])
+      .filter((preset) => preset.sourceEquipmentChoiceExact)
+      .map((preset) => preset.id),
+  );
+  return [
+    ...(savedUnit?.combatPresetIds ?? []).filter((id) => !sourceLinked.has(id)),
+    ...sourceEquipmentCombatPresetIds(catalogueUnit, savedUnit?.choiceSelections),
+  ];
+}
+
+export function savedFormationCombatPresetIds(formation) {
+  return [
+    ...new Set(
+      (formation?.components ?? []).flatMap((component) =>
+        savedUnitCombatPresetIds(component.unit, component.catalogueUnit),
+      ),
+    ),
+  ];
 }
 
 export function savedUnitDefensiveEquipmentDefaults(savedUnit, catalogueUnit) {

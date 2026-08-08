@@ -290,6 +290,10 @@ CREATE TABLE unit_combat_presets (
     description_text TEXT NOT NULL,
     is_exclusive_choice INTEGER NOT NULL CHECK (is_exclusive_choice IN (0, 1)),
     activation TEXT NOT NULL CHECK (activation IN ('inherent', 'automatic', 'situational')),
+    source_equipment_default INTEGER NOT NULL DEFAULT 0
+        CHECK (source_equipment_default IN (0, 1)),
+    source_equipment_choice_exact INTEGER NOT NULL DEFAULT 0
+        CHECK (source_equipment_choice_exact IN (0, 1)),
     source_relationship TEXT NOT NULL DEFAULT 'self'
         CHECK (source_relationship IN ('self', 'supporting_unit', 'self_or_supporting_unit')),
     uses_per_battle INTEGER CHECK (uses_per_battle > 0),
@@ -428,6 +432,27 @@ CREATE TABLE unit_combat_preset_effects (
     FOREIGN KEY (datasheet_id, ability_position, preset_position)
         REFERENCES unit_combat_presets(datasheet_id, ability_position, preset_position)
         ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE TABLE unit_combat_preset_wargear_alternatives (
+    datasheet_id TEXT NOT NULL,
+    ability_position INTEGER NOT NULL,
+    preset_position INTEGER NOT NULL,
+    option_position INTEGER NOT NULL,
+    alternative_position INTEGER NOT NULL,
+    quantity_delta INTEGER NOT NULL,
+    source_text TEXT NOT NULL,
+    PRIMARY KEY (
+        datasheet_id, ability_position, preset_position,
+        option_position, alternative_position
+    ),
+    FOREIGN KEY (datasheet_id, ability_position, preset_position)
+        REFERENCES unit_combat_presets(datasheet_id, ability_position, preset_position)
+        ON DELETE CASCADE,
+    FOREIGN KEY (datasheet_id, option_position, alternative_position)
+        REFERENCES wargear_choice_alternatives(
+            datasheet_id, option_position, alternative_position
+        ) ON DELETE CASCADE
 ) WITHOUT ROWID;
 
 CREATE TABLE unit_defensive_equipment_options (
@@ -797,6 +822,10 @@ CREATE INDEX idx_datasheet_abilities_name ON datasheet_abilities(name);
 CREATE INDEX idx_unit_combat_presets_datasheet ON unit_combat_presets(datasheet_id);
 CREATE INDEX idx_unit_combat_preset_effects_datasheet
     ON unit_combat_preset_effects(datasheet_id);
+CREATE INDEX idx_unit_combat_preset_wargear_alternatives_choice
+    ON unit_combat_preset_wargear_alternatives(
+        datasheet_id, option_position, alternative_position
+    );
 CREATE INDEX idx_datasheet_keywords_keyword ON datasheet_keywords(keyword);
 CREATE INDEX idx_unit_composition_datasheet ON unit_composition(datasheet_id);
 CREATE INDEX idx_unit_composition_models_datasheet
@@ -2065,6 +2094,144 @@ def populate_defensive_equipment_metadata(connection: sqlite3.Connection) -> Non
                SET choice_coverage_exact = ?
                WHERE datasheet_id = ? AND ability_position = ?""",
             (int(coverage_exact), datasheet_id, ability_position),
+        )
+
+
+def populate_single_model_defensive_preset_metadata(
+    connection: sqlite3.Connection,
+) -> None:
+    defensive_effect_types = {
+        "save_target",
+        "invulnerable_save",
+        "feel_no_pain",
+        "damage_reduction",
+        "damage_divisor",
+        "first_failed_save_damage_replacement",
+        "allocated_attack_damage_replacement",
+    }
+    presets = connection.execute(
+        """SELECT presets.datasheet_id, presets.ability_position,
+                  presets.preset_position, presets.name,
+                  presets.description_text, datasheets.loadout_text
+           FROM unit_combat_presets AS presets
+           JOIN datasheets ON datasheets.id = presets.datasheet_id
+           WHERE presets.activation = 'situational'
+           ORDER BY presets.datasheet_id, presets.ability_position,
+                    presets.preset_position"""
+    ).fetchall()
+    for (
+        datasheet_id,
+        ability_position,
+        preset_position,
+        name,
+        description_text,
+        loadout_text,
+    ) in presets:
+        if not re.search(r"\bthe bearer\b", description_text, re.IGNORECASE):
+            continue
+        effects = connection.execute(
+            """SELECT effect_type, application_role, subject
+               FROM unit_combat_preset_effects
+               WHERE datasheet_id = ? AND ability_position = ?
+                 AND preset_position = ?
+               ORDER BY effect_position""",
+            (datasheet_id, ability_position, preset_position),
+        ).fetchall()
+        if not effects or any(
+            effect_type not in defensive_effect_types
+            or role != "target"
+            or subject != "self"
+            for effect_type, role, subject in effects
+        ):
+            continue
+
+        source_options = [
+            row
+            for row in connection.execute(
+                """SELECT position, description_html, description_text
+                   FROM wargear_options
+                   WHERE datasheet_id = ? ORDER BY position""",
+                (datasheet_id,),
+            )
+            if equipment_name_in_text(name, row[2])
+        ]
+        source_default = named_equipment_quantity(loadout_text, name) > 0
+        if not source_default and not source_options:
+            continue
+
+        relevant_positions = {
+            position
+            for position, _description_html, description_text in source_options
+            if " can " in f" {normalized_wargear_name(description_text)} "
+        }
+        linked_positions = set()
+        has_grant = False
+        for option_position, description_html, description_text in source_options:
+            alternatives = list(
+                connection.execute(
+                    """SELECT alternative_position, description_text
+                       FROM wargear_choice_alternatives
+                       WHERE datasheet_id = ? AND option_position = ?
+                       ORDER BY alternative_position""",
+                    (datasheet_id, option_position),
+                )
+            )
+            if not alternatives:
+                continue
+            choices = option_choices(description_html, description_text)
+            choice_text = {
+                position: re.sub(
+                    r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", value))
+                ).strip()
+                for position, value in enumerate(choices, start=1)
+            }
+            preamble = option_preamble(description_html, description_text)
+            common_removed = named_equipment_quantity(
+                replacement_items_text(preamble), name
+            )
+            for alternative_position, alternative_text in alternatives:
+                source_choice = choice_text.get(alternative_position, alternative_text)
+                granted = named_equipment_quantity(source_choice, name)
+                specifically_removed = named_equipment_quantity(
+                    replacement_items_text(source_choice), name
+                )
+                delta = granted - common_removed - specifically_removed
+                has_grant = has_grant or delta > 0
+                connection.execute(
+                    """INSERT INTO unit_combat_preset_wargear_alternatives
+                       (datasheet_id, ability_position, preset_position,
+                        option_position, alternative_position, quantity_delta,
+                        source_text)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        datasheet_id,
+                        ability_position,
+                        preset_position,
+                        option_position,
+                        alternative_position,
+                        delta,
+                        description_text,
+                    ),
+                )
+            linked_positions.add(option_position)
+
+        coverage_exact = (
+            (source_default or has_grant)
+            and relevant_positions == linked_positions
+        )
+        connection.execute(
+            """UPDATE unit_combat_presets
+               SET source_equipment_default = ?,
+                   source_equipment_choice_exact = ?
+               WHERE datasheet_id = ? AND ability_position = ?
+                 AND preset_position = ?""",
+            (
+                int(source_default),
+                int(coverage_exact),
+                datasheet_id,
+                ability_position,
+                preset_position,
+            ),
         )
 
 
@@ -4515,6 +4682,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
     connection.execute("DELETE FROM unit_defensive_equipment_bearers")
     connection.execute("DELETE FROM unit_defensive_equipment_effects")
     connection.execute("DELETE FROM unit_defensive_equipment_options")
+    connection.execute("DELETE FROM unit_combat_preset_wargear_alternatives")
     connection.execute("DELETE FROM unit_combat_preset_effects")
     connection.execute("DELETE FROM unit_combat_presets")
     inserted = 0
@@ -4798,6 +4966,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                 )
             inserted += 1
     populate_defensive_equipment_metadata(connection)
+    populate_single_model_defensive_preset_metadata(connection)
     return inserted
 
 
@@ -5240,7 +5409,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "71"),
+                    ("schema_version", "72"),
                     ("leader_global_maximum", "2"),
                     ("leader_global_rule_source_url", LEADER_GLOBAL_RULE_SOURCE_URL),
                     (
@@ -5749,6 +5918,7 @@ def create_database(
                 "datasheet_abilities",
                 "unit_combat_presets",
                 "unit_combat_preset_effects",
+                "unit_combat_preset_wargear_alternatives",
                 "unit_defensive_equipment_options",
                 "unit_defensive_equipment_wargear_alternatives",
                 "unit_defensive_equipment_bearers",

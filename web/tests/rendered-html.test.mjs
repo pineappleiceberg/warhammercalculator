@@ -230,6 +230,22 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const catalogue = await profiles.json();
   const warriors = catalogue.units.find((unit) => unit.name === "Necron Warriors");
   assert.ok(warriors);
+  const impulsor = catalogue.units.find((unit) => unit.id === "000002568");
+  const shieldDome = impulsor.combatPresets.find((preset) => preset.name === "Shield Dome");
+  const shieldDomeChoice = impulsor.wargearChoicePools
+    .flatMap((pool) => pool.alternatives)
+    .find((alternative) => /shield dome/i.test(alternative.label));
+  assert.ok(shieldDome && shieldDomeChoice);
+  assert.equal(shieldDome.sourceEquipmentChoiceExact, true);
+  assert.deepEqual(
+    shieldDome.sourceEquipmentChoiceLinks.map((link) => [link.alternativeId, link.quantityDelta]),
+    [
+      ["000002568:3:1", 0],
+      ["000002568:3:2", 0],
+      ["000002568:3:3", 0],
+      ["000002568:3:4", 1],
+    ],
+  );
   const assault = catalogue.units.find((unit) => unit.name === "Assault Squad");
   const assaultSourceModelId = assault.models[0].sourceModelId;
   assert.deepEqual(
@@ -1024,6 +1040,24 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const aquilaShieldData = (await aquilaShieldLoadout.json()).data;
   assert.equal(aquilaShieldData.suggestedEquippedCounts[aquilaShieldPool.replaces[0].groupId], 0);
   assert.equal(aquilaShieldData.suggestedEquippedCounts[aquilaPowerWeapon.groupId], 2);
+
+  const impulsorShieldLoadout = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: impulsor.id,
+        modelCount: 1,
+        weaponCounts: {},
+        choiceSelections: { [shieldDomeChoice.id]: 1 },
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.deepEqual((await impulsorShieldLoadout.json()).data.sourceCombatPresetIds, [
+    shieldDome.id,
+  ]);
 
   const assaultWithChoices = catalogue.units.find((unit) => unit.id === "000000061");
   const assaultChoicePool = assaultWithChoices.wargearChoicePools.find(

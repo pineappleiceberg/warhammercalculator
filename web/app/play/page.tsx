@@ -37,10 +37,12 @@ import { transportAssignmentReport } from "../../lib/transport.mjs";
 import {
   savedFormationForUnit,
   savedFormationDefensiveEquipmentDefaults,
+  savedFormationCombatPresetIds,
   savedFormationGroups,
   savedFormationModelSegments,
   savedFormationTargetSequence,
   savedUnitDefensiveEquipmentWarnings,
+  savedUnitCombatPresetIds,
 } from "../../lib/formations.mjs";
 import {
   applyDefensiveEquipmentTargets,
@@ -1241,13 +1243,9 @@ export default function PlayMode() {
     );
     const firstSegment = nextTargetSequence.first;
     const model = firstSegment?.model ?? nextTargetCatalogueUnit?.models[0];
-    const nextTargetPresetIds = [
-      ...new Set(
-        nextFormation?.components.flatMap((component) => component.unit.combatPresetIds ?? []) ??
-          nextTarget?.combatPresetIds ??
-          [],
-      ),
-    ];
+    const nextTargetPresetIds = nextFormation
+      ? savedFormationCombatPresetIds(nextFormation)
+      : savedUnitCombatPresetIds(nextTarget, nextTargetCatalogueUnit);
     setTargetUnitId(id);
     setTargetDefensiveEquipmentCounts(nextTargetDefensiveEquipmentCounts);
     const nextTargetBattleShocked = false;
@@ -1767,15 +1765,14 @@ export default function PlayMode() {
                           0,
                         );
                       setAttackerUnitId(event.target.value);
-                      setActiveAttackerPresetIds([
-                        ...new Set(
-                          nextFormation?.components.flatMap(
-                            (component) => component.unit.combatPresetIds ?? [],
-                          ) ??
-                            nextUnit?.combatPresetIds ??
-                            [],
-                        ),
-                      ]);
+                      setActiveAttackerPresetIds(
+                        nextFormation
+                          ? savedFormationCombatPresetIds(nextFormation)
+                          : savedUnitCombatPresetIds(
+                              nextUnit,
+                              catalogue?.units.find((unit) => unit.id === nextUnit?.unitId),
+                            ),
+                      );
                       setSupportUnitId("");
                       setActiveSupportPresetIds([]);
                       setWeaponId("");

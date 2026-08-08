@@ -8,6 +8,47 @@ function legacyModifierRole(value) {
   return null;
 }
 
+export function combatPresetSourceEquipmentActive(preset, choiceSelections = {}) {
+  if (!preset) return false;
+  const quantity =
+    (preset.sourceEquipmentChoiceExact && preset.sourceEquipmentDefault ? 1 : 0) +
+    (preset.sourceEquipmentChoiceLinks ?? []).reduce(
+      (total, link) =>
+        total +
+        Math.max(0, Math.floor(choiceSelections?.[link.alternativeId] ?? 0)) * link.quantityDelta,
+      0,
+    );
+  return quantity > 0;
+}
+
+export function sourceEquipmentCombatPresetIds(unit, choiceSelections = {}) {
+  return (unit?.combatPresets ?? [])
+    .filter((preset) => combatPresetSourceEquipmentActive(preset, choiceSelections))
+    .map((preset) => preset.id);
+}
+
+export function reconcileCombatPresetSourceChoices(
+  presets,
+  selectedIds,
+  previousChoiceSelections,
+  nextChoiceSelections,
+) {
+  const selected = new Set(selectedIds ?? []);
+  for (const preset of presets ?? []) {
+    if (!(preset.sourceEquipmentChoiceLinks ?? []).length && !preset.sourceEquipmentChoiceExact) {
+      continue;
+    }
+    const wasSourceActive = combatPresetSourceEquipmentActive(preset, previousChoiceSelections);
+    const isSourceActive = combatPresetSourceEquipmentActive(preset, nextChoiceSelections);
+    if (wasSourceActive === isSourceActive || selected.has(preset.id) !== wasSourceActive) {
+      continue;
+    }
+    if (isSourceActive) selected.add(preset.id);
+    else selected.delete(preset.id);
+  }
+  return [...selected];
+}
+
 function modifierRole(preset, field) {
   return preset[`${field}Role`] ?? legacyModifierRole(preset[field]);
 }

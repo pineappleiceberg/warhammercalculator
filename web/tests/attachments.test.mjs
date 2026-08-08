@@ -17,16 +17,23 @@ import {
   setBearerEquipmentCount,
 } from "../lib/defensive-equipment.mjs";
 import {
+  combatPresetSourceEquipmentActive,
+  reconcileCombatPresetSourceChoices,
+  sourceEquipmentCombatPresetIds,
+} from "../lib/combat-presets.mjs";
+import {
   bodyguardJoinerOptions,
   catalogueModelSegments,
   reconcileSavedUnitDefensiveEquipmentChoices,
   savedFormationForUnit,
+  savedFormationCombatPresetIds,
   savedFormationDefensiveEquipmentDefaults,
   savedFormationGroups,
   savedFormationModelSegments,
   savedFormationTargetSequence,
   savedUnitDefensiveEquipmentDefaults,
   savedUnitDefensiveEquipmentWarnings,
+  savedUnitCombatPresetIds,
 } from "../lib/formations.mjs";
 import {
   compositionLoadoutSubjectCounts,
@@ -799,6 +806,100 @@ test("source choices reconcile replaced weapons and linked defensive equipment",
       0,
     ),
     1,
+  );
+});
+
+test("single-model defensive presets follow source equipment choices", () => {
+  const impulsor = unit("000002568");
+  const shieldDome = impulsor.combatPresets.find((preset) => preset.name === "Shield Dome");
+  const shieldChoice = impulsor.wargearChoicePools
+    .flatMap((pool) => pool.alternatives)
+    .find((alternative) => /shield dome/i.test(alternative.label));
+  const orbitalChoice = impulsor.wargearChoicePools
+    .flatMap((pool) => pool.alternatives)
+    .find((alternative) => /orbital comms array/i.test(alternative.label));
+  assert.ok(shieldDome && shieldChoice && orbitalChoice);
+  assert.equal(shieldDome.sourceEquipmentChoiceExact, true);
+  assert.equal(combatPresetSourceEquipmentActive(shieldDome, {}), false);
+  assert.equal(combatPresetSourceEquipmentActive(shieldDome, { [shieldChoice.id]: 1 }), true);
+  assert.equal(combatPresetSourceEquipmentActive(shieldDome, { [orbitalChoice.id]: 1 }), false);
+  assert.deepEqual(sourceEquipmentCombatPresetIds(impulsor, { [shieldChoice.id]: 1 }), [
+    shieldDome.id,
+  ]);
+  assert.deepEqual(
+    reconcileCombatPresetSourceChoices(impulsor.combatPresets, [], {}, { [shieldChoice.id]: 1 }),
+    [shieldDome.id],
+  );
+  assert.deepEqual(
+    reconcileCombatPresetSourceChoices(
+      impulsor.combatPresets,
+      [shieldDome.id],
+      { [shieldChoice.id]: 1 },
+      { [shieldChoice.id]: 0 },
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reconcileCombatPresetSourceChoices(
+      impulsor.combatPresets,
+      [],
+      { [shieldChoice.id]: 1 },
+      { [shieldChoice.id]: 0 },
+    ),
+    [],
+  );
+
+  const champion = unit("000002595");
+  const weavefield = champion.combatPresets.find((preset) => preset.name === "Weavefield Crest");
+  const teleport = champion.wargearChoicePools
+    .flatMap((pool) => pool.alternatives)
+    .find((alternative) => /teleport crest/i.test(alternative.label));
+  assert.ok(weavefield && teleport);
+  assert.equal(weavefield.sourceEquipmentDefault, true);
+  assert.equal(combatPresetSourceEquipmentActive(weavefield, {}), true);
+  assert.equal(combatPresetSourceEquipmentActive(weavefield, { [teleport.id]: 1 }), false);
+
+  const karanak = unit("000004102");
+  const collar = karanak.combatPresets.find((preset) => preset.name === "Collar of Khorne");
+  assert.ok(collar);
+  assert.equal(combatPresetSourceEquipmentActive(collar, {}), true);
+
+  const coldstar = unit("000000402");
+  const generator = coldstar.combatPresets.find((preset) => preset.name === "Shield Generator");
+  const generatorChoice = coldstar.wargearChoicePools
+    .flatMap((pool) => pool.alternatives)
+    .find((alternative) => /shield generator/i.test(alternative.label));
+  assert.ok(generator && generatorChoice);
+  assert.equal(generator.sourceEquipmentChoiceExact, undefined);
+  assert.equal(combatPresetSourceEquipmentActive(generator, {}), false);
+  assert.equal(combatPresetSourceEquipmentActive(generator, { [generatorChoice.id]: 1 }), true);
+
+  const savedImpulsor = {
+    id: "impulsor",
+    unitId: impulsor.id,
+    name: impulsor.name,
+    modelCount: 1,
+    combatPresetIds: [shieldDome.id],
+    choiceSelections: {},
+  };
+  assert.deepEqual(savedUnitCombatPresetIds(savedImpulsor, impulsor), []);
+  assert.deepEqual(
+    savedUnitCombatPresetIds(
+      { ...savedImpulsor, choiceSelections: { [shieldChoice.id]: 1 } },
+      impulsor,
+    ),
+    [shieldDome.id],
+  );
+  assert.deepEqual(
+    savedFormationCombatPresetIds({
+      components: [
+        {
+          unit: { ...savedImpulsor, choiceSelections: { [shieldChoice.id]: 1 } },
+          catalogueUnit: impulsor,
+        },
+      ],
+    }),
+    [shieldDome.id],
   );
 });
 

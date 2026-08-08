@@ -111,6 +111,13 @@ export type CatalogueCombatPreset = {
   id: string;
   choiceGroup: string | null;
   activation: "inherent" | "automatic" | "situational";
+  sourceEquipmentDefault?: boolean;
+  sourceEquipmentChoiceExact?: boolean;
+  sourceEquipmentChoiceLinks?: Array<{
+    alternativeId: string;
+    quantityDelta: number;
+    source: string;
+  }>;
   sourceRelationship: "self" | "supporting_unit" | "self_or_supporting_unit";
   usesPerBattle?: number;
   name: string;
@@ -453,6 +460,7 @@ export type Catalogue = {
     loadoutSubjectWeaponCount: number;
     replacementWeaponCount: number;
     defensiveEquipmentChoiceLinkCount: number;
+    combatPresetEquipmentChoiceLinkCount: number;
     compoundAlternativeCount: number;
     optionCount: number;
     conservative: boolean;

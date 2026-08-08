@@ -42,6 +42,7 @@ import {
 } from "../lib/attachments.mjs";
 import { transportCapacityPools, transportPassengerEligibility } from "../lib/transport.mjs";
 import { savedUnitDefensiveEquipmentWarnings } from "../lib/formations.mjs";
+import { sourceEquipmentCombatPresetIds } from "../lib/combat-presets.mjs";
 
 interface Env {
   ASSETS: Fetcher;
@@ -1427,6 +1428,7 @@ async function handleApi(request: Request, env: Env) {
             choiceSelections,
             loadoutSubjectCounts,
           ),
+          sourceCombatPresetIds: sourceEquipmentCombatPresetIds(unit, choiceSelections),
         },
         sourceUpdatedAt: catalogue.sourceUpdatedAt,
       });

@@ -648,7 +648,8 @@ def export(database: Path, output: Path) -> None:
 
         for row in connection.execute(
             """SELECT datasheet_id, ability_position, preset_position, name, description_text,
-                      is_exclusive_choice, activation, source_relationship, uses_per_battle,
+                      is_exclusive_choice, activation, source_equipment_default,
+                      source_equipment_choice_exact, source_relationship, uses_per_battle,
                       weapon_scope,
                       maximum_target_distance, maximum_source_target_distance,
                       maximum_support_distance,
@@ -688,6 +689,16 @@ def export(database: Path, output: Path) -> None:
                 else f"{base_id}:{row['preset_position']}",
                 "choiceGroup": base_id if row["is_exclusive_choice"] else None,
                 "activation": row["activation"],
+                **(
+                    {"sourceEquipmentDefault": True}
+                    if row["source_equipment_default"]
+                    else {}
+                ),
+                **(
+                    {"sourceEquipmentChoiceExact": True}
+                    if row["source_equipment_choice_exact"]
+                    else {}
+                ),
                 "sourceRelationship": row["source_relationship"],
                 **(
                     {"usesPerBattle": row["uses_per_battle"]}
@@ -921,6 +932,31 @@ def export(database: Path, output: Path) -> None:
                     ),
                     "role": row["application_role"],
                     "subject": row["subject"],
+                }
+            )
+
+        for row in connection.execute(
+            """SELECT datasheet_id, ability_position, preset_position,
+                      option_position, alternative_position, quantity_delta,
+                      source_text
+               FROM unit_combat_preset_wargear_alternatives
+               ORDER BY datasheet_id, ability_position, preset_position,
+                        option_position, alternative_position"""
+        ):
+            preset_lookup[
+                (
+                    row["datasheet_id"],
+                    row["ability_position"],
+                    row["preset_position"],
+                )
+            ].setdefault("sourceEquipmentChoiceLinks", []).append(
+                {
+                    "alternativeId": (
+                        f"{row['datasheet_id']}:{row['option_position']}:"
+                        f"{row['alternative_position']}"
+                    ),
+                    "quantityDelta": row["quantity_delta"],
+                    "source": row["source_text"],
                 }
             )
 
@@ -1451,9 +1487,12 @@ def export(database: Path, output: Path) -> None:
                            (SELECT count(*)
                             FROM wargear_choice_alternative_replaced_weapons)"""
                 ).fetchone()[0],
-                "defensiveEquipmentChoiceLinkCount": connection.execute(
-                    "SELECT count(*) FROM unit_defensive_equipment_wargear_alternatives"
-                ).fetchone()[0],
+            "defensiveEquipmentChoiceLinkCount": connection.execute(
+                "SELECT count(*) FROM unit_defensive_equipment_wargear_alternatives"
+            ).fetchone()[0],
+            "combatPresetEquipmentChoiceLinkCount": connection.execute(
+                "SELECT count(*) FROM unit_combat_preset_wargear_alternatives"
+            ).fetchone()[0],
                 "compoundAlternativeCount": sum(
                     1
                     for alternative in alternatives.values()
