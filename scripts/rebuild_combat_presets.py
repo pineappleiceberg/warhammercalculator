@@ -147,6 +147,7 @@ CREATE TABLE unit_combat_preset_effects (
     models_per_increment INTEGER CHECK (models_per_increment > 0),
     model_count_source TEXT CHECK (model_count_source IN
         ('source_unit', 'nearby_enemy', 'nearby_enemy_units',
+         'embarked_models', 'embarked_wracks_models',
          'enemy_character_models_destroyed', 'destructive_fight_phases')),
     maximum_modifier INTEGER CHECK (maximum_modifier > 0),
     weapon_name TEXT,
@@ -205,7 +206,7 @@ def main() -> None:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
         connection.execute(
-            "UPDATE metadata SET value = '51' WHERE key = 'schema_version'"
+            "UPDATE metadata SET value = '52' WHERE key = 'schema_version'"
         )
         connection.execute("PRAGMA optimize")
         connection.commit()

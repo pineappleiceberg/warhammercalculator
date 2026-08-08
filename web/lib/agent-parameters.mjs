@@ -64,6 +64,8 @@ const integerParameters = [
   ["nearbyEnemyUnits", ["nearbyEnemyUnits"]],
   ["enemyCharacterModelsDestroyed", ["enemyCharacterModelsDestroyed", "characterKills"]],
   ["destructiveFightPhases", ["destructiveFightPhases", "soulEaterStacks"]],
+  ["embarkedModels", ["embarkedModels", "passengers"]],
+  ["embarkedWracksModels", ["embarkedWracksModels", "wrackPassengers"]],
 ];
 
 const booleanParameters = [
@@ -314,6 +316,9 @@ export function parseAgentProfile(input, baseProfile, requireDirectParameters = 
   }
   setReroll(profile, search, "rerollHits", "rerollHits", "rerollHitOnes");
   setReroll(profile, search, "rerollWounds", "rerollWounds", "rerollWoundOnes");
+  if (profile.embarkedWracksModels > profile.embarkedModels) {
+    throw new Error("embarkedWracksModels cannot exceed embarkedModels");
+  }
   return profile;
 }
 
@@ -506,6 +511,8 @@ export function canonicalAgentParameters(profile) {
   search.set("nearbyEnemyUnits", String(profile.nearbyEnemyUnits ?? 0));
   search.set("enemyCharacterModelsDestroyed", String(profile.enemyCharacterModelsDestroyed ?? 0));
   search.set("destructiveFightPhases", String(profile.destructiveFightPhases ?? 0));
+  search.set("embarkedModels", String(profile.embarkedModels ?? 0));
+  search.set("embarkedWracksModels", String(profile.embarkedWracksModels ?? 0));
   for (const [field, aliases] of booleanParameters) {
     search.set(aliases[0], profile[field] ? "true" : "false");
   }

@@ -160,6 +160,8 @@ export default function UnitVsUnit() {
   const [nearbyEnemyUnits, setNearbyEnemyUnits] = useState(0);
   const [enemyCharacterModelsDestroyed, setEnemyCharacterModelsDestroyed] = useState(0);
   const [destructiveFightPhases, setDestructiveFightPhases] = useState(0);
+  const [embarkedModels, setEmbarkedModels] = useState(0);
+  const [embarkedWracksModels, setEmbarkedWracksModels] = useState(0);
   const [attackerCharged, setAttackerCharged] = useState(false);
   const [attackerRemainedStationary, setAttackerRemainedStationary] = useState(false);
   const [attackerAttached, setAttackerAttached] = useState(false);
@@ -263,6 +265,8 @@ export default function UnitVsUnit() {
     nearbyEnemyUnits,
     enemyCharacterModelsDestroyed,
     destructiveFightPhases,
+    embarkedModels,
+    embarkedWracksModels,
     attackerCharged,
     attackerRemainedStationary,
     attackerAttached,
@@ -329,6 +333,8 @@ export default function UnitVsUnit() {
     setNearbyEnemyUnits(0);
     setEnemyCharacterModelsDestroyed(0);
     setDestructiveFightPhases(0);
+    setEmbarkedModels(0);
+    setEmbarkedWracksModels(0);
     setAttackerBattleShocked(false);
     const unit = attackerUnits.find((entry) => entry.id === unitId);
     const groups = groupWeaponProfiles(unit?.weapons ?? []);
@@ -444,6 +450,8 @@ export default function UnitVsUnit() {
             nearbyEnemyUnits,
             enemyCharacterModelsDestroyed,
             destructiveFightPhases,
+            embarkedModels,
+            embarkedWracksModels,
             attackerCharged,
             attackerRemainedStationary,
             attackerAttached,
@@ -630,6 +638,8 @@ export default function UnitVsUnit() {
           nearbyEnemyUnits,
           enemyCharacterModelsDestroyed,
           destructiveFightPhases,
+          embarkedModels,
+          embarkedWracksModels,
           attackerCharged,
           attackerBattleShocked,
           targetBattleShocked,
@@ -779,6 +789,8 @@ export default function UnitVsUnit() {
         nearbyEnemyUnits,
         enemyCharacterModelsDestroyed,
         destructiveFightPhases,
+        embarkedModels,
+        embarkedWracksModels,
         attackerCharged,
         attackerBattleShocked,
         targetBattleShocked,
@@ -945,6 +957,8 @@ export default function UnitVsUnit() {
                   setNearbyEnemyUnits(0);
                   setEnemyCharacterModelsDestroyed(0);
                   setDestructiveFightPhases(0);
+                  setEmbarkedModels(0);
+                  setEmbarkedWracksModels(0);
                   setAttackerBattleShocked(false);
                   setSupportUnitId("");
                   setActiveSupportPresetIds([]);
@@ -1692,6 +1706,37 @@ export default function UnitVsUnit() {
                   setDestructiveFightPhases(Math.min(1000, Math.max(0, +event.target.value || 0)))
                 }
               />
+            </label>
+            <label>
+              <span>Models embarked in attacker transport</span>
+              <input
+                aria-label="Models embarked in the attacker transport"
+                type="number"
+                min={0}
+                max={1000}
+                value={embarkedModels}
+                onChange={(event) => {
+                  const value = Math.min(1000, Math.max(0, +event.target.value || 0));
+                  setEmbarkedModels(value);
+                  setEmbarkedWracksModels((current) => Math.min(current, value));
+                }}
+              />
+            </label>
+            <label>
+              <span>Embarked Wracks models</span>
+              <input
+                aria-label="Wracks models embarked in the attacker transport"
+                type="number"
+                min={0}
+                max={embarkedModels}
+                value={embarkedWracksModels}
+                onChange={(event) =>
+                  setEmbarkedWracksModels(
+                    Math.min(embarkedModels, Math.max(0, +event.target.value || 0)),
+                  )
+                }
+              />
+              <small>Must be part of the embarked model count</small>
             </label>
             <label>
               <span>Target unit strength</span>

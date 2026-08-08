@@ -1150,6 +1150,50 @@ class ProfileDataTests(unittest.TestCase):
             nearby_units["additional_effects"][0]["model_count_source"],
             "nearby_enemy_units",
         )
+        hunta_rig = combat_preset(
+            "For each model embarked within this TRANSPORT, add 1 to the Attacks "
+            "characteristic of this model’s butcha boyz weapon (to a maximum of +6). "
+            "The Attacks characteristic of that weapon can be modified even though it "
+            "is an Extra Attacks weapon."
+        )
+        self.assertEqual(
+            hunta_rig["additional_effects"],
+            [
+                {
+                    "type": "attacks_modifier",
+                    "value": 1,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "models_per_increment": 1,
+                    "model_count_source": "embarked_models",
+                    "maximum_modifier": 6,
+                    "weapon_name": "butcha boyz",
+                    "role": "attacker",
+                    "subject": "self",
+                }
+            ],
+        )
+        raider = combat_preset(
+            "While one or more Wracks units are embarked within this model, for each "
+            "WRACKS model embarked within this model, add 1 to the Attacks "
+            "characteristic of this model’s bladevanes and chainsnares."
+        )
+        self.assertEqual(
+            raider["additional_effects"][0]["model_count_source"],
+            "embarked_wracks_models",
+        )
+        self.assertIsNone(
+            combat_preset(
+                "For each model embarked within this TRANSPORT, add 1 to the Attacks "
+                "characteristic of this model’s weapon."
+            )
+        )
+        self.assertIsNone(
+            combat_preset(
+                "While one or more units are embarked within this model, add 1 to the "
+                "Attacks characteristic of this model’s bladevanes and chainsnares."
+            )
+        )
         self.assertIsNone(
             combat_preset(
                 "Each time this model destroys an enemy model, add 1 to the Attacks "
@@ -1564,7 +1608,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "51",
+                "52",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1793,7 +1837,7 @@ class ProfileDataTests(unittest.TestCase):
                        GROUP BY effect_type ORDER BY effect_type"""
                 ).fetchall(),
                 [
-                    ("attacks_modifier", 114),
+                    ("attacks_modifier", 116),
                     ("damage_modifier", 5),
                     ("strength_modifier", 179),
                 ],
@@ -1846,14 +1890,14 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 1118), ("inherent", 32), ("situational", 833)],
+                [("automatic", 1120), ("inherent", 32), ("situational", 833)],
             )
             self.assertEqual(
                 connection.execute(
                     "SELECT weapon_scope, count(*) FROM unit_combat_presets "
                     "GROUP BY weapon_scope ORDER BY weapon_scope"
                 ).fetchall(),
-                [("Any", 1190), ("Melee", 403), ("Ranged", 390)],
+                [("Any", 1192), ("Melee", 403), ("Ranged", 390)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1893,6 +1937,17 @@ class ProfileDataTests(unittest.TestCase):
                         "Blood Reaver",
                     ),
                     (
+                        "Hunta Rig",
+                        "On Da Hunt",
+                        "automatic",
+                        0,
+                        1,
+                        1,
+                        "embarked_models",
+                        6,
+                        "butcha boyz",
+                    ),
+                    (
                         "Judiciar",
                         "Silent Fury",
                         "automatic",
@@ -1913,6 +1968,17 @@ class ProfileDataTests(unittest.TestCase):
                         "nearby_enemy_units",
                         3,
                         "master-crafted power weapon",
+                    ),
+                    (
+                        "Raider",
+                        "Visions of Butchery",
+                        "automatic",
+                        0,
+                        1,
+                        1,
+                        "embarked_wracks_models",
+                        None,
+                        "bladevanes and chainsnares",
                     ),
                     (
                         "Venomcrawler",
@@ -2162,7 +2228,7 @@ class ProfileDataTests(unittest.TestCase):
                        GROUP BY source_relationship ORDER BY source_relationship"""
                 ).fetchall(),
                 [
-                    ("self", 1946),
+                    ("self", 1948),
                     ("self_or_supporting_unit", 18),
                     ("supporting_unit", 19),
                 ],
@@ -3212,6 +3278,22 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(
             soul_eater["effects"][0]["modelCountSource"],
             "destructive_fight_phases",
+        )
+        hunta_rig = next(unit for unit in catalogue["units"] if unit["name"] == "Hunta Rig")
+        on_da_hunt = next(
+            preset for preset in hunta_rig["combatPresets"] if preset["name"] == "On Da Hunt"
+        )
+        self.assertEqual(on_da_hunt["activation"], "automatic")
+        self.assertEqual(on_da_hunt["effects"][0]["modelCountSource"], "embarked_models")
+        self.assertEqual(on_da_hunt["effects"][0]["maximumModifier"], 6)
+        raider = next(unit for unit in catalogue["units"] if unit["name"] == "Raider")
+        visions = next(
+            preset
+            for preset in raider["combatPresets"]
+            if preset["name"] == "Visions of Butchery"
+        )
+        self.assertEqual(
+            visions["effects"][0]["modelCountSource"], "embarked_wracks_models"
         )
         boyz = next(unit for unit in catalogue["units"] if unit["name"] == "Boyz")
         waaagh = [

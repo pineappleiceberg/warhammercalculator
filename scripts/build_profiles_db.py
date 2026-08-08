@@ -279,6 +279,7 @@ CREATE TABLE unit_combat_preset_effects (
     models_per_increment INTEGER CHECK (models_per_increment > 0),
     model_count_source TEXT CHECK (model_count_source IN
         ('source_unit', 'nearby_enemy', 'nearby_enemy_units',
+         'embarked_models', 'embarked_wracks_models',
          'enemy_character_models_destroyed', 'destructive_fight_phases')),
     maximum_modifier INTEGER CHECK (maximum_modifier > 0),
     weapon_name TEXT,
@@ -1758,6 +1759,42 @@ def combat_additional_effects(
                 "model_count_source": count_source,
                 "maximum_modifier": maximum_modifier,
                 "weapon_name": weapon_name,
+                "role": "attacker",
+                "subject": "self",
+            }
+        )
+
+    embarked_models = re.fullmatch(
+        r"For each model embarked within this TRANSPORT\s*, add (\d+) to the Attacks "
+        r"characteristic of this model[’'�]s (.+?) weapon \(to a maximum of \+(\d+)\)\. "
+        r"The Attacks characteristic of that weapon can be modified even though it is an "
+        r"Extra Attacks weapon\.",
+        plain_text(text).strip(),
+        re.IGNORECASE,
+    )
+    embarked_wracks = re.fullmatch(
+        r"While one or more Wracks units are embarked within this model, for each WRACKS "
+        r"model embarked within this model, add (\d+) to the Attacks characteristic of "
+        r"this model[’']s (.+?)\.",
+        plain_text(text).strip(),
+        re.IGNORECASE,
+    )
+    embarked_scaling = embarked_models or embarked_wracks
+    if embarked_scaling:
+        effects.append(
+            {
+                "type": "attacks_modifier",
+                "value": int(embarked_scaling.group(1)),
+                "dice_count": 0,
+                "dice_sides": 0,
+                "models_per_increment": 1,
+                "model_count_source": (
+                    "embarked_models" if embarked_models else "embarked_wracks_models"
+                ),
+                "maximum_modifier": (
+                    int(embarked_models.group(3)) if embarked_models else None
+                ),
+                "weapon_name": embarked_scaling.group(2).strip(),
                 "role": "attacker",
                 "subject": "self",
             }
@@ -3397,7 +3434,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "51"),
+                    ("schema_version", "52"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

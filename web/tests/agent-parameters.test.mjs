@@ -71,6 +71,8 @@ const defaults = {
   nearbyEnemyUnits: 0,
   enemyCharacterModelsDestroyed: 0,
   destructiveFightPhases: 0,
+  embarkedModels: 0,
+  embarkedWracksModels: 0,
   attackerCharged: false,
   attackerRemainedStationary: false,
   attackerAttached: false,
@@ -211,6 +213,8 @@ test("canonical agent parameters round-trip every supported profile field", () =
     nearbyEnemyUnits: 3,
     enemyCharacterModelsDestroyed: 2,
     destructiveFightPhases: 4,
+    embarkedModels: 10,
+    embarkedWracksModels: 6,
     attackerCharged: true,
     attackerRemainedStationary: true,
     attackerAttached: true,
@@ -353,6 +357,15 @@ test("catalogue agent Attached-unit state selects exact automatic leader rules",
     2,
   );
   assert.equal(parseAgentProfile("soulEaterStacks=4", defaults, false).destructiveFightPhases, 4);
+  assert.equal(parseAgentProfile("passengers=10", defaults, false).embarkedModels, 10);
+  assert.equal(
+    parseAgentProfile("passengers=10&wrackPassengers=6", defaults, false).embarkedWracksModels,
+    6,
+  );
+  assert.throws(
+    () => parseAgentProfile("passengers=5&wrackPassengers=6", defaults, false),
+    /cannot exceed/,
+  );
 });
 
 test("catalogue agent Waaagh state selects exact universal and direct rules", async () => {
@@ -684,6 +697,52 @@ test("catalogue agent model counts compose exact automatic Attacks scaling", asy
     { nearbyEnemyModels: requested.nearbyEnemyModels },
   );
   assert.equal(profile.attacksModifier, 2);
+
+  const huntaRig = catalogue.units.find((unit) => unit.name === "Hunta Rig");
+  const butchaBoyz = huntaRig.weapons.find((entry) => entry.name === "Butcha boyz");
+  const huntaRequested = parseAgentProfile("passengers=10", defaults, false);
+  const huntaPresets = selectedAndAutomaticCombatPresets(
+    huntaRig.combatPresets,
+    [],
+    butchaBoyz.type,
+    butchaBoyz.name,
+    [],
+    attackKeywordsForWeapon(butchaBoyz),
+  );
+  assert.equal(
+    applyCombatPresets(
+      { ...huntaRequested, weaponName: butchaBoyz.name },
+      huntaPresets,
+      [],
+      butchaBoyz.type,
+    ).attacksModifier,
+    6,
+  );
+
+  const raider = catalogue.units.find((unit) => unit.name === "Raider");
+  const bladevanes = raider.weapons.find((entry) => entry.name === "Bladevanes and chainsnares");
+  const raiderRequested = parseAgentProfile(
+    "embarkedModels=10&embarkedWracksModels=4",
+    defaults,
+    false,
+  );
+  const raiderPresets = selectedAndAutomaticCombatPresets(
+    raider.combatPresets,
+    [],
+    bladevanes.type,
+    bladevanes.name,
+    [],
+    attackKeywordsForWeapon(bladevanes),
+  );
+  assert.equal(
+    applyCombatPresets(
+      { ...raiderRequested, weaponName: bladevanes.name },
+      raiderPresets,
+      [],
+      bladevanes.type,
+    ).attacksModifier,
+    4,
+  );
 
   const marshal = catalogue.units.find((unit) => unit.name === "Marshal");
   const marshalWeapon = marshal.weapons.find(

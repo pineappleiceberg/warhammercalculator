@@ -2788,7 +2788,62 @@ test("count-scaled Attacks use exact model, unit, casualty, and phase state", as
       .attacksModifier,
     3,
   );
+  const huntaRig = catalogue.units.find((unit) => unit.name === "Hunta Rig");
+  const onDaHunt = huntaRig.combatPresets.find((preset) => preset.name === "On Da Hunt");
+  const huntaBase = { weaponName: "Butcha boyz", attacksModifier: 0 };
+  assert.equal(
+    applyCombatPresets({ ...huntaBase, embarkedModels: 5 }, [onDaHunt], [], "Melee")
+      .attacksModifier,
+    5,
+  );
+  const fullHuntaRig = applyCombatPresets(
+    { ...huntaBase, embarkedModels: 10 },
+    [onDaHunt],
+    [],
+    "Melee",
+  );
+  assert.equal(fullHuntaRig.attacksModifier, 6);
+  assert.equal(
+    applyCombatPresets(
+      { ...huntaBase, weaponName: "Saw blades", embarkedModels: 10 },
+      [onDaHunt],
+      [],
+      "Melee",
+    ).attacksModifier,
+    0,
+  );
+  const raider = catalogue.units.find((unit) => unit.name === "Raider");
+  const visions = raider.combatPresets.find((preset) => preset.name === "Visions of Butchery");
+  const raiderBase = { weaponName: "Bladevanes and chainsnares", attacksModifier: 0 };
+  const fourWracks = applyCombatPresets(
+    { ...raiderBase, embarkedModels: 10, embarkedWracksModels: 4 },
+    [visions],
+    [],
+    "Melee",
+  );
+  assert.equal(fourWracks.attacksModifier, 4);
+  assert.equal(
+    applyCombatPresets(
+      { ...raiderBase, embarkedModels: 10, embarkedWracksModels: 0 },
+      [visions],
+      [],
+      "Melee",
+    ).attacksModifier,
+    0,
+  );
   assert.ok(lessThanOrEqual(exactMean({ attacks: 4 }), exactMean({ attacks: 7 })));
+  assert.ok(
+    lessThanOrEqual(
+      exactMean({ attacks: 4, attacksModifier: 0 }),
+      exactMean({ attacks: 4, attacksModifier: fullHuntaRig.attacksModifier }),
+    ),
+  );
+  assert.ok(
+    lessThanOrEqual(
+      exactMean({ attacks: 4, attacksModifier: 0 }),
+      exactMean({ attacks: 4, attacksModifier: fourWracks.attacksModifier }),
+    ),
+  );
 });
 
 test("Waaagh benefit state composes universal and direct Orks rules into C/Wasm", async () => {

@@ -72,6 +72,8 @@ export type CombatProfile = {
   nearbyEnemyUnits: number;
   enemyCharacterModelsDestroyed: number;
   destructiveFightPhases: number;
+  embarkedModels: number;
+  embarkedWracksModels: number;
   attackerCharged: boolean;
   attackerRemainedStationary: boolean;
   attackerAttached: boolean;
@@ -279,6 +281,8 @@ export const DEFAULT_PROFILE: CombatProfile = {
   nearbyEnemyUnits: 0,
   enemyCharacterModelsDestroyed: 0,
   destructiveFightPhases: 0,
+  embarkedModels: 0,
+  embarkedWracksModels: 0,
   attackerCharged: false,
   attackerRemainedStationary: false,
   attackerAttached: false,
@@ -467,6 +471,8 @@ export function normalizeProfile(input: unknown): CombatProfile {
     nearbyEnemyUnits: numberValue("nearbyEnemyUnits", 0, 1000),
     enemyCharacterModelsDestroyed: numberValue("enemyCharacterModelsDestroyed", 0, 1000),
     destructiveFightPhases: numberValue("destructiveFightPhases", 0, 1000),
+    embarkedModels: numberValue("embarkedModels", 0, 1000),
+    embarkedWracksModels: numberValue("embarkedWracksModels", 0, 1000),
     attackerCharged: booleanValue("attackerCharged"),
     attackerRemainedStationary: booleanValue("attackerRemainedStationary"),
     attackerAttached: booleanValue("attackerAttached"),
@@ -529,6 +535,9 @@ export function normalizeProfile(input: unknown): CombatProfile {
   }
   if (profile.rapidFireDice > 0 && profile.rapidFireSides < 2) {
     throw new Error("rapidFireSides must be at least 2 when rapidFireDice is non-zero");
+  }
+  if (profile.embarkedWracksModels > profile.embarkedModels) {
+    throw new Error("embarkedWracksModels cannot exceed embarkedModels");
   }
   const hasCharacteristicModifier =
     profile.characteristicModifierAttacks ||

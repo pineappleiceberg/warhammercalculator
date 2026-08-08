@@ -52,9 +52,11 @@ The main tables are:
   dual-phase and end-of-turn effects remain unrestricted
 - exact count-scaled Attacks modifiers store the count source, count per
   increment, optional cap, and affected named weapon. Source-unit models,
-  nearby enemy models or units, enemy Character models destroyed, and prior
-  Fight phases that triggered a cumulative bonus are explicit browser and API
-  state; zero is conservative unknown state and never invents a bonus
+  nearby enemy models or units, enemy Character models destroyed, prior Fight
+  phases that triggered a cumulative bonus, all embarked models, and embarked
+  Wracks models are explicit browser and API state; zero is conservative
+  unknown state and never invents a bonus. The Wracks subset cannot exceed the
+  total transport contents
 - the universal Orks Waaagh! ability is stored as separate automatic melee
   offense and unrestricted defense presets so +1 Strength/Attacks cannot leak
   onto ranged weapons and its 5+ invulnerable save cannot be limited to melee

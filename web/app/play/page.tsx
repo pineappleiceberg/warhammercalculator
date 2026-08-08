@@ -41,7 +41,11 @@ type LogEntry = {
 
 type AttackCountContext = Pick<
   CombatProfile,
-  "nearbyEnemyUnits" | "enemyCharacterModelsDestroyed" | "destructiveFightPhases"
+  | "nearbyEnemyUnits"
+  | "enemyCharacterModelsDestroyed"
+  | "destructiveFightPhases"
+  | "embarkedModels"
+  | "embarkedWracksModels"
 >;
 
 export default function PlayMode() {
@@ -348,6 +352,11 @@ export default function PlayMode() {
       countOverrides.enemyCharacterModelsDestroyed ?? profile.enemyCharacterModelsDestroyed;
     const nextDestructiveFightPhases =
       countOverrides.destructiveFightPhases ?? profile.destructiveFightPhases;
+    const nextEmbarkedModels = countOverrides.embarkedModels ?? profile.embarkedModels;
+    const nextEmbarkedWracksModels = Math.min(
+      countOverrides.embarkedWracksModels ?? profile.embarkedWracksModels,
+      nextEmbarkedModels,
+    );
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
     );
@@ -375,6 +384,8 @@ export default function PlayMode() {
             nearbyEnemyUnits: nextNearbyEnemyUnits,
             enemyCharacterModelsDestroyed: nextEnemyCharacterModelsDestroyed,
             destructiveFightPhases: nextDestructiveFightPhases,
+            embarkedModels: nextEmbarkedModels,
+            embarkedWracksModels: nextEmbarkedWracksModels,
             attackerCharged: nextAttackerCharged,
             attackerRemainedStationary: nextAttackerRemainedStationary,
             attackerAttached: nextAttackerAttached,
@@ -556,6 +567,8 @@ export default function PlayMode() {
           nearbyEnemyUnits: nextNearbyEnemyUnits,
           enemyCharacterModelsDestroyed: nextEnemyCharacterModelsDestroyed,
           destructiveFightPhases: nextDestructiveFightPhases,
+          embarkedModels: nextEmbarkedModels,
+          embarkedWracksModels: nextEmbarkedWracksModels,
           attackerCharged: nextAttackerCharged,
           attackerRemainedStationary: nextAttackerRemainedStationary,
           attackerAttached: nextAttackerAttached,
@@ -975,6 +988,8 @@ export default function PlayMode() {
             nearbyEnemyUnits: profile.nearbyEnemyUnits,
             enemyCharacterModelsDestroyed: profile.enemyCharacterModelsDestroyed,
             destructiveFightPhases: profile.destructiveFightPhases,
+            embarkedModels: profile.embarkedModels,
+            embarkedWracksModels: profile.embarkedWracksModels,
             attackerCharged: profile.attackerCharged,
             attackerRemainedStationary: profile.attackerRemainedStationary,
             attackerBattleShocked: profile.attackerBattleShocked,
@@ -1120,6 +1135,8 @@ export default function PlayMode() {
           nearbyEnemyUnits: profile.nearbyEnemyUnits,
           enemyCharacterModelsDestroyed: profile.enemyCharacterModelsDestroyed,
           destructiveFightPhases: profile.destructiveFightPhases,
+          embarkedModels: profile.embarkedModels,
+          embarkedWracksModels: profile.embarkedWracksModels,
           attackerCharged: profile.attackerCharged,
           attackerRemainedStationary: profile.attackerRemainedStationary,
           attackerAttached: profile.attackerAttached,
@@ -1292,6 +1309,8 @@ export default function PlayMode() {
                         nearbyEnemyUnits: 0,
                         enemyCharacterModelsDestroyed: 0,
                         destructiveFightPhases: 0,
+                        embarkedModels: 0,
+                        embarkedWracksModels: 0,
                         attackerBattleShocked: false,
                         supportDistance: 0,
                       }));
@@ -1343,6 +1362,8 @@ export default function PlayMode() {
                         nearbyEnemyUnits: 0,
                         enemyCharacterModelsDestroyed: 0,
                         destructiveFightPhases: 0,
+                        embarkedModels: 0,
+                        embarkedWracksModels: 0,
                         attackerBattleShocked: false,
                         supportDistance: 0,
                       }));
@@ -1693,6 +1714,40 @@ export default function PlayMode() {
                       })
                     }
                   />
+                </label>
+                <label>
+                  <span>Models embarked in attacker transport</span>
+                  <input
+                    aria-label="Models embarked in the attacker transport"
+                    type="number"
+                    min={0}
+                    max={1000}
+                    value={profile.embarkedModels}
+                    onChange={(event) =>
+                      refreshProfile({
+                        embarkedModels: Math.min(1000, Math.max(0, +event.target.value || 0)),
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Embarked Wracks models</span>
+                  <input
+                    aria-label="Wracks models embarked in the attacker transport"
+                    type="number"
+                    min={0}
+                    max={profile.embarkedModels}
+                    value={profile.embarkedWracksModels}
+                    onChange={(event) =>
+                      refreshProfile({
+                        embarkedWracksModels: Math.min(
+                          profile.embarkedModels,
+                          Math.max(0, +event.target.value || 0),
+                        ),
+                      })
+                    }
+                  />
+                  <small>Must be part of the embarked model count</small>
                 </label>
                 <label>
                   <span>Oath of Moment</span>

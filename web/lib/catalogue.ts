@@ -193,7 +193,9 @@ export type CatalogueCombatPresetEffect = {
     | "nearby_enemy"
     | "nearby_enemy_units"
     | "enemy_character_models_destroyed"
-    | "destructive_fight_phases";
+    | "destructive_fight_phases"
+    | "embarked_models"
+    | "embarked_wracks_models";
   maximumModifier?: number;
   uses?: number;
   role: CombatPresetRole;
@@ -310,6 +312,8 @@ type CombatPresetContext = {
   nearbyEnemyUnits?: number;
   enemyCharacterModelsDestroyed?: number;
   destructiveFightPhases?: number;
+  embarkedModels?: number;
+  embarkedWracksModels?: number;
 };
 export type Catalogue = {
   sourceUpdatedAt: string;

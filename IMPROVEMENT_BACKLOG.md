@@ -16,11 +16,25 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Represent embarked-model-count-scaled Attacks for Hunta Rig and Raider with
-   explicit transport contents and the Hunta Rig's published +6 cap, without
-   treating every embarked model as a Wrack.
+1. Represent Firing Deck weapon selection from explicit embarked units and
+   models, including its model limit, one ranged non-One Shot weapon per
+   selected passenger, and the transport becoming the weapon bearer for the
+   attack sequence.
+2. Extend normalized defensive-equipment selection to Model vs Model and Play
+   Mode while preserving model-by-model allocation and preventing bearer-only
+   gear from becoming a homogeneous unit-wide defense.
 
 ## Completed cycles
+
+- 2026-08-08: Added exact embarked-model-scaled Attacks. SQLite schema 52
+  imports Hunta Rig's On Da Hunt for butcha boyz with the published +6 cap and
+  Raider's Visions of Butchery for bladevanes and chainsnares. Model vs Model,
+  Unit vs Unit, Play Mode recovery, normalized API profiles, and static agent
+  URLs preserve both total embarked models and the embarked Wracks subset;
+  impossible subset counts are rejected. Exact source-text negatives, database
+  and catalogue snapshots, named-weapon and cap boundaries, URL and recovery
+  round trips, API validation, and C/WebAssembly damage monotonicity cover the
+  change.
 
 - 2026-08-07: Added normalized defensive equipment for multi-model target
   units. SQLite schema 51 classifies exact bearer- and unit-scoped Save,

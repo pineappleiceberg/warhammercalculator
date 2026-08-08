@@ -218,6 +218,11 @@ specific ability's stated range. A value of `0` means unknown and contributes
 no count-based bonus. The current source snapshot applies this exactly to
 Wurrboy's Eyez of Mork and Gabriel Seth's Blood Reaver, including their
 five-model rounding boundaries and weapon scope.
+`embarkedModels` records all models inside an attacking transport, while
+`embarkedWracksModels` records only the Wracks subset and cannot exceed the
+total. These inputs resolve On Da Hunt for the Hunta Rig with its +6 cap and
+Visions of Butchery for the Raider without treating non-Wracks passengers as
+Wracks.
 
 Direct attack clauses that require a Battle-shocked target, or require the
 attacker not to be Battle-shocked, use the editable `targetBattleShocked` and
@@ -517,7 +522,8 @@ A direct profile supplies `attacks`, `hit`, `strength`, `ap`, `damage`,
 expression such as `D6+2`. Optional parameters include `weaponCount`, `model`,
 `models`, `invuln`, `fnp`, `reduction`, `criticalHits`, `criticalWounds`,
 `melta`, `distance` (in inches; `0` means unknown), `charged`, `stationary`,
-`unitModels`, `nearbyEnemyModels`,
+`unitModels`, `nearbyEnemyModels`, `embarkedModels` (alias `passengers`),
+`embarkedWracksModels` (alias `wrackPassengers`),
 `attackerAttached`, `targetAttached`,
 `waaaghActive` (alias for `attackerWaaaghActive`), `targetWaaaghActive`,
 `oathTarget` (alias for `targetOathOfMoment`),
@@ -566,8 +572,10 @@ Play Mode spends and recovers limited supporting-unit uses per saved unit
 instance; keep an activated support ability on while resolving each weapon it
 supports. Agent URLs are stateless and do not spend uses, but their result
 source reports `usesPerBattle` for selected limited support presets.
-`unitModels` and `nearbyEnemyModels` activate exact model-count-scaled Attacks
-bonuses at their published rounding boundaries; `0` means unknown.
+`unitModels`, `nearbyEnemyModels`, `embarkedModels`, and
+`embarkedWracksModels` activate exact model-count-scaled Attacks bonuses at
+their published rounding boundaries; `0` means unknown. Embarked Wracks must
+be a subset of all embarked models.
 `stationary=true` likewise activates exact stationary rules and the Heavy bonus
 for compatible catalogue weapons.
 `attackerAttached=true` and `targetAttached=true` likewise activate compatible,

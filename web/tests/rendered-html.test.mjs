@@ -335,6 +335,23 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     ]),
     [["nearby_enemy_units", 1, 3, "master-crafted power weapon"]],
   );
+  const huntaRig = catalogue.units.find((unit) => unit.name === "Hunta Rig");
+  const onDaHunt = huntaRig.combatPresets.find((preset) => preset.name === "On Da Hunt");
+  assert.deepEqual(
+    onDaHunt.effects.map((effect) => [
+      effect.modelCountSource,
+      effect.modelsPerIncrement,
+      effect.maximumModifier,
+      effect.weaponName,
+    ]),
+    [["embarked_models", 1, 6, "butcha boyz"]],
+  );
+  const raider = catalogue.units.find((unit) => unit.name === "Raider");
+  const visions = raider.combatPresets.find((preset) => preset.name === "Visions of Butchery");
+  assert.deepEqual(
+    visions.effects.map((effect) => [effect.modelCountSource, effect.weaponName]),
+    [["embarked_wracks_models", "bladevanes and chainsnares"]],
+  );
   const captain = catalogue.units.find((unit) => unit.id === "000000073");
   const finestHour = captain.combatPresets.find((preset) => preset.name === "Finest Hour");
   assert.equal(finestHour.weaponScope, "Melee");
@@ -1720,6 +1737,8 @@ test("generated API profiles preserve combat invariants and reject malformed fie
     "nearbyEnemyUnits",
     "enemyCharacterModelsDestroyed",
     "destructiveFightPhases",
+    "embarkedModels",
+    "embarkedWracksModels",
     "attackerSourceTargetDistance",
     "targetSourceAttackerDistance",
   ];
@@ -1797,6 +1816,20 @@ test("generated API profiles preserve combat invariants and reject malformed fie
     assert.equal(response.status, 400);
     assert.match(result.error.message, /unknown, attacker, target, or uncontrolled/i);
   }
+  const impossiblePassengers = await worker.fetch(
+    new Request("http://localhost/api/v1/calculate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ profile: { embarkedModels: 5, embarkedWracksModels: 6 } }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(impossiblePassengers.status, 400);
+  assert.match(
+    (await impossiblePassengers.json()).error.message,
+    /embarkedWracksModels cannot exceed embarkedModels/,
+  );
 });
 
 test("creates, updates, lists, and deletes durable army lists", async () => {

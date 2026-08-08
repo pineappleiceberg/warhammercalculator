@@ -327,6 +327,8 @@ export function combatPresetEffects(
   nearbyEnemyUnits = 0,
   enemyCharacterModelsDestroyed = 0,
   destructiveFightPhases = 0,
+  embarkedModels = 0,
+  embarkedWracksModels = 0,
   sourceUnitOnObjective = false,
   targetUnitOnObjective = false,
   sourceUnitControlsObjective = false,
@@ -532,6 +534,8 @@ export function combatPresetEffects(
           nearby_enemy_units: nearbyEnemyUnits,
           enemy_character_models_destroyed: enemyCharacterModelsDestroyed,
           destructive_fight_phases: destructiveFightPhases,
+          embarked_models: embarkedModels,
+          embarked_wracks_models: embarkedWracksModels,
         };
         const count = counts[effect.modelCountSource] ?? 0;
         const modifier = effect.value * Math.floor(count / effect.modelsPerIncrement);
@@ -661,6 +665,8 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
       context.nearbyEnemyUnits ?? 0,
       context.enemyCharacterModelsDestroyed ?? 0,
       context.destructiveFightPhases ?? 0,
+      context.embarkedModels ?? 0,
+      context.embarkedWracksModels ?? 0,
       context.targetOnObjective ?? false,
       context.attackerOnObjective ?? false,
       controlsObjective(
@@ -763,6 +769,8 @@ export function applyCombatPresets(
     context.nearbyEnemyUnits ?? profile.nearbyEnemyUnits ?? 0,
     context.enemyCharacterModelsDestroyed ?? profile.enemyCharacterModelsDestroyed ?? 0,
     context.destructiveFightPhases ?? profile.destructiveFightPhases ?? 0,
+    context.embarkedModels ?? profile.embarkedModels ?? 0,
+    context.embarkedWracksModels ?? profile.embarkedWracksModels ?? 0,
     context.attackerOnObjective ?? profile.attackerOnObjective ?? false,
     context.targetOnObjective ?? profile.targetOnObjective ?? false,
     controlsObjective(
@@ -814,6 +822,8 @@ export function applyCombatPresets(
     context.nearbyEnemyUnits ?? profile.nearbyEnemyUnits ?? 0,
     context.enemyCharacterModelsDestroyed ?? profile.enemyCharacterModelsDestroyed ?? 0,
     context.destructiveFightPhases ?? profile.destructiveFightPhases ?? 0,
+    context.embarkedModels ?? profile.embarkedModels ?? 0,
+    context.embarkedWracksModels ?? profile.embarkedWracksModels ?? 0,
     context.targetOnObjective ?? profile.targetOnObjective ?? false,
     context.attackerOnObjective ?? profile.attackerOnObjective ?? false,
     controlsObjective(

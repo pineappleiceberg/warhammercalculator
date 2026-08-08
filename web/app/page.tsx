@@ -1198,6 +1198,8 @@ export default function Home() {
         nearbyEnemyUnits: baseProfile.nearbyEnemyUnits,
         enemyCharacterModelsDestroyed: baseProfile.enemyCharacterModelsDestroyed,
         destructiveFightPhases: baseProfile.destructiveFightPhases,
+        embarkedModels: baseProfile.embarkedModels,
+        embarkedWracksModels: baseProfile.embarkedWracksModels,
         attackerCharged: baseProfile.attackerCharged,
         attackerBattleShocked: baseProfile.attackerBattleShocked,
         targetBattleShocked: baseProfile.targetBattleShocked,
@@ -1502,6 +1504,8 @@ export default function Home() {
                             nearbyEnemyUnits: 0,
                             enemyCharacterModelsDestroyed: 0,
                             destructiveFightPhases: 0,
+                            embarkedModels: 0,
+                            embarkedWracksModels: 0,
                             attackerBattleShocked: false,
                           },
                           selectedWeapon,
@@ -1554,6 +1558,8 @@ export default function Home() {
                             nearbyEnemyUnits: 0,
                             enemyCharacterModelsDestroyed: 0,
                             destructiveFightPhases: 0,
+                            embarkedModels: 0,
+                            embarkedWracksModels: 0,
                             attackerBattleShocked: false,
                           },
                           selectedWeapon,
@@ -2381,6 +2387,33 @@ export default function Home() {
                 onChange={(value) =>
                   setProfile((current) =>
                     withActivePresets({ ...current, destructiveFightPhases: value }),
+                  )
+                }
+              />
+              <NumberField
+                label="Models embarked in attacker transport"
+                value={profile.embarkedModels}
+                max={1000}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({
+                      ...current,
+                      embarkedModels: value,
+                      embarkedWracksModels: Math.min(current.embarkedWracksModels, value),
+                    }),
+                  )
+                }
+              />
+              <NumberField
+                label="Embarked Wracks models"
+                value={profile.embarkedWracksModels}
+                max={profile.embarkedModels}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({
+                      ...current,
+                      embarkedWracksModels: Math.min(value, current.embarkedModels),
+                    }),
                   )
                 }
               />
