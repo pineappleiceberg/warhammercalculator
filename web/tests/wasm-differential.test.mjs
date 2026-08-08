@@ -2417,6 +2417,86 @@ test("targeted vehicle support reaches C/Wasm only for the selected eligible nea
   assert.ok(lessThanOrEqual(exactMean({ hitOn: 4 }), exactMean({ hitOn: 4, hitModifier: 1 })));
 });
 
+test("Mechanical Augmentation independently protects a supported Necrons Battleline target", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const illuminor = catalogue.units.find((unit) => unit.name === "Illuminor Szeras");
+  const warriors = catalogue.units.find((unit) => unit.name === "Necron Warriors");
+  const augmentation = illuminor.combatPresets.find(
+    (preset) => preset.name === "Mechanical Augmentation (Aura)",
+  );
+  const weapon = catalogue.units
+    .find((unit) => unit.name === "Doom Scythe")
+    .weapons.find((entry) => entry.name === "Heavy death ray");
+  const select = (keywords, distance) =>
+    selectedAndAutomaticCombatPresets(
+      illuminor.combatPresets,
+      [augmentation.id],
+      weapon.type,
+      weapon.name,
+      keywords,
+      attackKeywordsForWeapon(weapon),
+      0,
+      false,
+      false,
+      false,
+      "full",
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      "supporting_unit",
+      keywords,
+      distance,
+    );
+  assert.equal(augmentation.sourceRelationship, "supporting_unit");
+  assert.deepEqual(augmentation.requiredSupportedKeywords, ["necrons", "battleline"]);
+  assert.deepEqual(select(warriors.models[0].keywords, 0), []);
+  assert.deepEqual(select(warriors.models[0].keywords, 4), []);
+  assert.deepEqual(select(["necrons", "infantry"], 3), []);
+  const selected = select(warriors.models[0].keywords, 3);
+  assert.deepEqual(
+    selected.map((preset) => preset.name),
+    ["Mechanical Augmentation (Aura)"],
+  );
+  const baseline = {
+    weaponName: weapon.name,
+    attacks: 3,
+    hitOn: 3,
+    strength: 12,
+    ap: 4,
+    damage: 4,
+    toughness: 4,
+    save: 4,
+    invulnerable: 0,
+  };
+  const defended = applyCombatPresets(baseline, [], selected, weapon.type, {
+    targetSupportedUnitKeywords: warriors.models[0].keywords,
+    targetSupportDistance: 3,
+  });
+  assert.equal(defended.ap, 3);
+  assert.ok(lessThanOrEqual(exactMean(defended), exactMean(baseline)));
+  assert.equal(
+    applyCombatPresets(baseline, [], selected, weapon.type, {
+      targetSupportedUnitKeywords: warriors.models[0].keywords,
+      targetSupportDistance: 4,
+    }).ap,
+    4,
+  );
+});
+
 test("source-backed charge rules require the explicit attacker charge state", async () => {
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),

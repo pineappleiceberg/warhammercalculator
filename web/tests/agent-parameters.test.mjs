@@ -195,6 +195,7 @@ test("canonical agent parameters round-trip every supported profile field", () =
     rapidFire: 2,
     targetDistance: 9,
     supportDistance: 8,
+    targetSupportDistance: 5,
     attackerUnitModels: 11,
     nearbyEnemyModels: 7,
     attackerCharged: true,
@@ -844,6 +845,35 @@ test("catalogue agent query resolves stable IDs or unambiguous names", async () 
     "adeptus astartes",
     "vehicle",
   ]);
+  const targetSupported = resolveAgentCatalogueSelection(
+    "attacker=Doom%20Scythe&weapon=Heavy%20death%20ray&target=Necron%20Warriors&" +
+      "targetSupport=Illuminor%20Szeras&targetSupportPreset=Mechanical%20Augmentation%20%28Aura%29&" +
+      "targetSupportDistance=3",
+    catalogue,
+  );
+  assert.equal(targetSupported.targetSupport.name, "Illuminor Szeras");
+  assert.deepEqual(
+    targetSupported.targetSupportPresets.map((preset) => preset.name),
+    ["Mechanical Augmentation (Aura)"],
+  );
+  assert.throws(
+    () =>
+      resolveAgentCatalogueSelection(
+        "attacker=Doom%20Scythe&weapon=Heavy%20death%20ray&target=Necron%20Warriors&" +
+          "targetSupport=Techmarine",
+        catalogue,
+      ),
+    /target's faction/i,
+  );
+  assert.throws(
+    () =>
+      resolveAgentCatalogueSelection(
+        "attacker=Doom%20Scythe&weapon=Heavy%20death%20ray&target=Necron%20Warriors&" +
+          "targetSupportPreset=Mechanical%20Augmentation%20%28Aura%29",
+        catalogue,
+      ),
+    /targetSupport is required/i,
+  );
   assert.throws(
     () =>
       resolveAgentCatalogueSelection(

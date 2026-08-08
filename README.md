@@ -546,12 +546,15 @@ pass `charged=true` to activate every compatible, unambiguous charge-triggered
 source rule without an `attackerPreset` parameter and activate Lance for
 compatible catalogue weapons.
 
-Cross-unit abilities use `support=<unit>` with one or more
-`supportPreset=<ability>` values. The support unit must share the attacker's
-faction, and only abilities classified as supporting-unit effects can be used
-there. Observer effects additionally require `guided=true&spotted=true`, which
-prevents an Observer ability from being treated as the Observer's own attack
-bonus.
+Attacker-side cross-unit abilities use `support=<unit>`, one or more
+`supportPreset=<ability>` values, and `supportDistance=<inches>`. Defender-side
+support independently uses `targetSupport=<unit>`, `targetSupportPreset=<ability>`,
+and `targetSupportDistance=<inches>`. Each support unit must share the supported
+unit's faction, and only abilities classified as supporting-unit effects for
+that side can be used there. Observer effects additionally require
+`guided=true&spotted=true`, which prevents an Observer ability from being
+treated as the Observer's own attack bonus. A support distance of `0` is unknown
+and leaves range-gated rules inactive.
 Play Mode spends and recovers limited supporting-unit uses per saved unit
 instance; keep an activated support ability on while resolving each weapon it
 supports. Agent URLs are stateless and do not spend uses, but their result

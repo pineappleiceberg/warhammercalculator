@@ -53,6 +53,8 @@ export default function PlayMode() {
   const [activeTargetPresetIds, setActiveTargetPresetIds] = useState<string[]>([]);
   const [supportUnitId, setSupportUnitId] = useState("");
   const [activeSupportPresetIds, setActiveSupportPresetIds] = useState<string[]>([]);
+  const [targetSupportUnitId, setTargetSupportUnitId] = useState("");
+  const [activeTargetSupportPresetIds, setActiveTargetSupportPresetIds] = useState<string[]>([]);
   const [supportUsesSpent, setSupportUsesSpent] = useState<Record<string, Record<string, number>>>(
     {},
   );
@@ -96,6 +98,8 @@ export default function PlayMode() {
             activeTargetPresetIds: string[];
             supportUnitId: string;
             activeSupportPresetIds: string[];
+            targetSupportUnitId: string;
+            activeTargetSupportPresetIds: string[];
             supportUsesSpent: Record<string, Record<string, number>>;
           };
           setAttackerListId(saved.attackerListId);
@@ -109,6 +113,8 @@ export default function PlayMode() {
           setActiveTargetPresetIds(saved.activeTargetPresetIds);
           setSupportUnitId(saved.supportUnitId);
           setActiveSupportPresetIds(saved.activeSupportPresetIds);
+          setTargetSupportUnitId(saved.targetSupportUnitId);
+          setActiveTargetSupportPresetIds(saved.activeTargetSupportPresetIds);
           setSupportUsesSpent(saved.supportUsesSpent);
           setProfile(normalizeProfile(saved.profile));
           setHistory(saved.history);
@@ -144,6 +150,8 @@ export default function PlayMode() {
       activeTargetPresetIds,
       supportUnitId,
       activeSupportPresetIds,
+      targetSupportUnitId,
+      activeTargetSupportPresetIds,
       supportUsesSpent,
       profile,
       history,
@@ -154,6 +162,7 @@ export default function PlayMode() {
     activeAttackerPresetIds,
     activeTargetPresetIds,
     activeSupportPresetIds,
+    activeTargetSupportPresetIds,
     attackerUnitId,
     history,
     profile,
@@ -163,6 +172,7 @@ export default function PlayMode() {
     targetModelId,
     targetUnitId,
     supportUnitId,
+    targetSupportUnitId,
     supportUsesSpent,
     weaponId,
   ]);
@@ -188,6 +198,20 @@ export default function PlayMode() {
       })) ?? [];
   const supportArmyUnit = attackerList?.units.find((unit) => unit.id === supportUnitId);
   const supportCatalogueUnit = catalogue?.units.find((unit) => unit.id === supportArmyUnit?.unitId);
+  const playTargetSupportUnits =
+    targetList?.units
+      .filter((unit) => unit.id !== targetUnitId)
+      .map((unit) => ({
+        id: unit.id,
+        name: unit.name,
+        combatPresets:
+          catalogue?.units.find((catalogueUnit) => catalogueUnit.id === unit.unitId)
+            ?.combatPresets ?? [],
+      })) ?? [];
+  const targetSupportArmyUnit = targetList?.units.find((unit) => unit.id === targetSupportUnitId);
+  const targetSupportCatalogueUnit = catalogue?.units.find(
+    (unit) => unit.id === targetSupportArmyUnit?.unitId,
+  );
   const weaponGroups = groupWeaponProfiles(attackerCatalogueUnit?.weapons ?? []);
   const selectedWeaponGroup = weaponGroups.find(
     (group) =>
@@ -295,6 +319,9 @@ export default function PlayMode() {
     nextSupportPresetIds = activeSupportPresetIds,
     nextSupportCatalogueUnit = supportCatalogueUnit,
     nextSupportDistance = profile.supportDistance,
+    nextTargetSupportPresetIds = activeTargetSupportPresetIds,
+    nextTargetSupportCatalogueUnit = targetSupportCatalogueUnit,
+    nextTargetSupportDistance = profile.targetSupportDistance,
   ) => {
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
@@ -343,6 +370,7 @@ export default function PlayMode() {
             targetBattleShocked: nextTargetBattleShocked,
             targetStrengthState: nextTargetStrengthState,
             supportDistance: nextSupportDistance,
+            targetSupportDistance: nextTargetSupportDistance,
           },
           weapon,
           model.keywords,
@@ -404,33 +432,64 @@ export default function PlayMode() {
             nextSupportDistance,
           ),
         ],
-        selectedCombatPresets(
-          nextTargetPresetIds,
-          targetCatalogueUnit,
-          weapon,
-          model.keywords,
-          nextTargetDistance,
-          nextAttackerCharged,
-          nextAttackerBattleShocked,
-          nextTargetBattleShocked,
-          nextTargetStrengthState,
-          nextAttackerRemainedStationary,
-          nextTargetAttached,
-          nextTargetWaaaghActive,
-          false,
-          false,
-          nextTargetOnObjective,
-          nextAttackerOnObjective,
-          nextTargetOnObjective && nextTargetObjectiveOwner === "target",
-          nextAttackerOnObjective &&
-            ["attacker", "uncontrolled"].includes(nextAttackerObjectiveOwner),
-          nextTargetOnTargetSelectedObjective,
-          nextAttackerOnTargetSelectedObjective,
-          nextTargetBattleShocked,
-          false,
-          nextTargetSpotted,
-          nextTargetSpottedByMarkerlightObserver,
-        ),
+        [
+          ...selectedCombatPresets(
+            nextTargetPresetIds,
+            targetCatalogueUnit,
+            weapon,
+            model.keywords,
+            nextTargetDistance,
+            nextAttackerCharged,
+            nextAttackerBattleShocked,
+            nextTargetBattleShocked,
+            nextTargetStrengthState,
+            nextAttackerRemainedStationary,
+            nextTargetAttached,
+            nextTargetWaaaghActive,
+            false,
+            false,
+            nextTargetOnObjective,
+            nextAttackerOnObjective,
+            nextTargetOnObjective && nextTargetObjectiveOwner === "target",
+            nextAttackerOnObjective &&
+              ["attacker", "uncontrolled"].includes(nextAttackerObjectiveOwner),
+            nextTargetOnTargetSelectedObjective,
+            nextAttackerOnTargetSelectedObjective,
+            nextTargetBattleShocked,
+            false,
+            nextTargetSpotted,
+            nextTargetSpottedByMarkerlightObserver,
+          ),
+          ...selectedCombatPresets(
+            nextTargetSupportPresetIds,
+            nextTargetSupportCatalogueUnit,
+            weapon,
+            model.keywords,
+            nextTargetDistance,
+            nextAttackerCharged,
+            nextAttackerBattleShocked,
+            nextTargetBattleShocked,
+            nextTargetStrengthState,
+            nextAttackerRemainedStationary,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            nextTargetSpotted,
+            nextTargetSpottedByMarkerlightObserver,
+            "supporting_unit",
+            model.keywords,
+            nextTargetSupportDistance,
+          ),
+        ],
         weapon.type,
         {
           targetKeywords: model.keywords,
@@ -462,6 +521,8 @@ export default function PlayMode() {
           targetStrengthState: nextTargetStrengthState,
           supportDistance: nextSupportDistance,
           supportedUnitKeywords: attackerCatalogueUnit?.models[0]?.keywords ?? [],
+          targetSupportDistance: nextTargetSupportDistance,
+          targetSupportedUnitKeywords: model.keywords,
         },
       ),
     );
@@ -639,6 +700,53 @@ export default function PlayMode() {
     );
   };
 
+  const refreshTargetSupportState = (
+    ids: string[],
+    unitId = targetSupportUnitId,
+    distance = profile.targetSupportDistance,
+  ) => {
+    const armyUnit = targetList?.units.find((unit) => unit.id === unitId);
+    const catalogueUnit = catalogue?.units.find((unit) => unit.id === armyUnit?.unitId);
+    refreshProfile(
+      weaponId,
+      targetModelId,
+      profileId,
+      activeAttackerPresetIds,
+      activeTargetPresetIds,
+      profile.targetDistance,
+      profile.attackerCharged,
+      profile.attackerBattleShocked,
+      profile.targetBattleShocked,
+      profile.targetStrengthState,
+      profile.attackerRemainedStationary,
+      profile.attackerAttached,
+      profile.targetAttached,
+      profile.attackerWaaaghActive,
+      profile.targetWaaaghActive,
+      profile.targetOathOfMoment,
+      profile.attackerOathWoundBonusEligible,
+      profile.attackerUnitModels,
+      profile.nearbyEnemyModels,
+      profile.attackerOnObjective,
+      profile.targetOnObjective,
+      profile.attackerObjectiveOwner,
+      profile.targetObjectiveOwner,
+      profile.attackerOnAttackerSelectedObjective,
+      profile.targetOnAttackerSelectedObjective,
+      profile.attackerOnTargetSelectedObjective,
+      profile.targetOnTargetSelectedObjective,
+      profile.attackerGuidedAgainstTarget,
+      profile.targetSpotted,
+      profile.targetSpottedByMarkerlightObserver,
+      activeSupportPresetIds,
+      supportCatalogueUnit,
+      profile.supportDistance,
+      ids,
+      catalogueUnit,
+      distance,
+    );
+  };
+
   const chooseTargetProfile = (id: string) => {
     setTargetModelId(id);
     refreshProfile(weaponId, id, profileId);
@@ -666,6 +774,8 @@ export default function PlayMode() {
     setTargetModelId(model ? String(model.id) : "");
     setActiveTargetPresetIds(nextTargetPresetIds);
     setActiveSupportPresetIds([]);
+    setTargetSupportUnitId("");
+    setActiveTargetSupportPresetIds([]);
     if (!weaponProfile || !model || !nextTarget) {
       setProfile((current) => ({
         ...current,
@@ -682,6 +792,7 @@ export default function PlayMode() {
         targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
         targetBattleShocked: nextTargetBattleShocked,
         targetStrengthState: nextTargetStrengthState,
+        targetSupportDistance: 0,
       }));
       setResult(null);
       return;
@@ -718,6 +829,7 @@ export default function PlayMode() {
             targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
             targetStrengthState: nextTargetStrengthState,
             supportDistance: profile.supportDistance,
+            targetSupportDistance: 0,
           },
           weaponProfile,
           model.keywords,
@@ -837,6 +949,8 @@ export default function PlayMode() {
           targetStrengthState: nextTargetStrengthState,
           supportDistance: profile.supportDistance,
           supportedUnitKeywords: attackerCatalogueUnit?.models[0]?.keywords ?? [],
+          targetSupportDistance: 0,
+          targetSupportedUnitKeywords: model.keywords,
         },
       ),
     );
@@ -908,6 +1022,8 @@ export default function PlayMode() {
     setActiveTargetPresetIds([]);
     setSupportUnitId("");
     setActiveSupportPresetIds([]);
+    setTargetSupportUnitId("");
+    setActiveTargetSupportPresetIds([]);
     setSupportUsesSpent({});
     setProfile(DEFAULT_PROFILE);
     setResult(null);
@@ -1080,6 +1196,8 @@ export default function PlayMode() {
                       setTargetModelId("");
                       setActiveTargetPresetIds([]);
                       setActiveSupportPresetIds([]);
+                      setTargetSupportUnitId("");
+                      setActiveTargetSupportPresetIds([]);
                       setProfile((current) => ({
                         ...current,
                         targetAttached: false,
@@ -1096,6 +1214,7 @@ export default function PlayMode() {
                         targetSpottedByMarkerlightObserver: false,
                         targetBattleShocked: false,
                         targetStrengthState: "full",
+                        targetSupportDistance: 0,
                       }));
                       setResult(null);
                     }}
@@ -1780,6 +1899,42 @@ export default function PlayMode() {
                   targetStrengthState={profile.targetStrengthState}
                 />
               )}
+              {targetCatalogueUnit ? (
+                <SupportPresetSelector
+                  units={playTargetSupportUnits}
+                  role="target"
+                  selectedUnitId={targetSupportUnitId}
+                  selectedIds={activeTargetSupportPresetIds}
+                  supportUsesSpent={supportUsesSpent}
+                  onSupportUsesChange={setSupportUsesSpent}
+                  onUnitChange={(unitId) => {
+                    setTargetSupportUnitId(unitId);
+                    setActiveTargetSupportPresetIds([]);
+                    refreshTargetSupportState([], unitId, 0);
+                  }}
+                  onPresetChange={(ids) => {
+                    setActiveTargetSupportPresetIds(ids);
+                    refreshTargetSupportState(ids);
+                  }}
+                  supportDistance={profile.targetSupportDistance}
+                  onSupportDistanceChange={(distance) =>
+                    refreshTargetSupportState(
+                      activeTargetSupportPresetIds,
+                      targetSupportUnitId,
+                      distance,
+                    )
+                  }
+                  supportedUnitKeywords={
+                    targetProfiles.find((entry) => String(entry.id) === targetModelId)?.keywords ??
+                    []
+                  }
+                  attackerCharged={profile.attackerCharged}
+                  attackerRemainedStationary={profile.attackerRemainedStationary}
+                  attackerBattleShocked={profile.attackerBattleShocked}
+                  targetBattleShocked={profile.targetBattleShocked}
+                  targetStrengthState={profile.targetStrengthState}
+                />
+              ) : null}
             </div>
             <details className="override-strip">
               <summary>

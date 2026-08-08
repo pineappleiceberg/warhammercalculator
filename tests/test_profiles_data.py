@@ -77,6 +77,34 @@ class ProfileDataTests(unittest.TestCase):
             [],
         )
 
+    def test_combat_guidance_classifies_mechanical_augmentation_for_both_sides(self):
+        description = (
+            'While a friendly Necrons Battleline unit is within 3" of this model, each time a '
+            "model in that unit makes an attack, improve the Armour Penetration characteristic "
+            "of that attack by 1, and each time an attack targets that unit, worsen the Armour "
+            "Penetration characteristic of that attack by 1."
+        )
+        preset = combat_guidance_presets("Mechanical Augmentation (Aura)", description)[0]
+        self.assertEqual(preset["source_relationship"], "supporting_unit")
+        self.assertEqual(preset["maximum_support_distance"], 3)
+        self.assertEqual(preset["required_supported_keywords"], ["necrons", "battleline"])
+        self.assertEqual(
+            [
+                (effect["type"], effect["value"], effect["role"], effect["subject"])
+                for effect in preset["additional_effects"]
+            ],
+            [
+                ("ap_modifier", 1, "attacker", "friendly_unit"),
+                ("ap_modifier", -1, "target", "friendly_unit"),
+            ],
+        )
+        self.assertEqual(
+            combat_guidance_presets(
+                "Mechanical Augmentation (Aura)", description.replace('within 3"', 'within 6"')
+            ),
+            [],
+        )
+
     def test_combat_preset_parser_preserves_scope_and_first_reroll_tier(self):
         self.assertEqual(
             combat_preset(
@@ -1364,7 +1392,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "45",
+                "46",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1822,7 +1850,7 @@ class ProfileDataTests(unittest.TestCase):
                        FROM unit_combat_presets
                        GROUP BY source_relationship ORDER BY source_relationship"""
                 ).fetchall(),
-                [("self", 1971), ("supporting_unit", 18)],
+                [("self", 1970), ("supporting_unit", 19)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1848,6 +1876,42 @@ class ProfileDataTests(unittest.TestCase):
                     ("Trojan Support Vehicle", "Support Vehicle", "self", None),
                     ("Trojan Support Vehicle", "Support Vehicle", "self", None),
                     ("Warpsmith", "Master of Mechanisms", "supporting_unit", 3),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT datasheets.name, unit_combat_presets.source_relationship,
+                              unit_combat_presets.maximum_support_distance,
+                              unit_combat_preset_supported_keywords.keyword
+                       FROM unit_combat_presets
+                       JOIN datasheets ON datasheets.id = unit_combat_presets.datasheet_id
+                       JOIN unit_combat_preset_supported_keywords
+                         ON unit_combat_preset_supported_keywords.datasheet_id =
+                            unit_combat_presets.datasheet_id
+                        AND unit_combat_preset_supported_keywords.ability_position =
+                            unit_combat_presets.ability_position
+                        AND unit_combat_preset_supported_keywords.preset_position =
+                            unit_combat_presets.preset_position
+                       WHERE unit_combat_presets.name = 'Mechanical Augmentation (Aura)'
+                       ORDER BY unit_combat_preset_supported_keywords.keyword_position"""
+                ).fetchall(),
+                [
+                    ("Illuminor Szeras", "supporting_unit", 3, "necrons"),
+                    ("Illuminor Szeras", "supporting_unit", 3, "battleline"),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT effect_type, value, application_role, subject
+                       FROM unit_combat_preset_effects
+                       JOIN unit_combat_presets USING
+                            (datasheet_id, ability_position, preset_position)
+                       WHERE unit_combat_presets.name = 'Mechanical Augmentation (Aura)'
+                       ORDER BY effect_position"""
+                ).fetchall(),
+                [
+                    ("ap_modifier", 1, "attacker", "friendly_unit"),
+                    ("ap_modifier", -1, "target", "friendly_unit"),
                 ],
             )
             oath_rows = connection.execute(
@@ -2305,7 +2369,7 @@ class ProfileDataTests(unittest.TestCase):
             for preset in unit["combatPresets"]
             if preset["sourceRelationship"] == "supporting_unit"
         ]
-        self.assertEqual(len(support_presets), 18)
+        self.assertEqual(len(support_presets), 19)
         self.assertEqual(
             {
                 preset["name"]: preset.get("usesPerBattle")
@@ -2335,6 +2399,19 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(blessing["maximumSupportDistance"], 3)
         self.assertEqual(
             blessing["requiredSupportedKeywords"], ["adeptus astartes", "vehicle"]
+        )
+        illuminor = next(unit for unit in catalogue["units"] if unit["name"] == "Illuminor Szeras")
+        augmentation = next(
+            preset
+            for preset in illuminor["combatPresets"]
+            if preset["name"] == "Mechanical Augmentation (Aura)"
+        )
+        self.assertEqual(augmentation["sourceRelationship"], "supporting_unit")
+        self.assertEqual(augmentation["maximumSupportDistance"], 3)
+        self.assertEqual(augmentation["requiredSupportedKeywords"], ["necrons", "battleline"])
+        self.assertEqual(
+            [(effect["type"], effect["value"], effect["role"]) for effect in augmentation["effects"]],
+            [("ap_modifier", 1, "attacker"), ("ap_modifier", -1, "target")],
         )
         meka_dread = next(unit for unit in catalogue["units"] if unit["name"] == "Meka-dread")
         mekaniak = next(

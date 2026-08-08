@@ -100,6 +100,9 @@ export default function UnitVsUnit() {
   const [supportUnitId, setSupportUnitId] = useState("");
   const [activeSupportPresetIds, setActiveSupportPresetIds] = useState<string[]>([]);
   const [supportDistance, setSupportDistance] = useState(0);
+  const [targetSupportUnitId, setTargetSupportUnitId] = useState("");
+  const [activeTargetSupportPresetIds, setActiveTargetSupportPresetIds] = useState<string[]>([]);
+  const [targetSupportDistance, setTargetSupportDistance] = useState(0);
   const [weaponOrder, setWeaponOrder] = useState<number[]>([]);
   const [targetSegments, setTargetSegments] = useState<TargetSegment[]>([]);
   const [initialWoundsLost, setInitialWoundsLost] = useState(0);
@@ -166,6 +169,9 @@ export default function UnitVsUnit() {
   const supportUnits = catalogue?.units.filter((unit) => unit.factionId === attackerFaction) ?? [];
   const supportUnit = supportUnits.find((unit) => unit.id === supportUnitId);
   const targetUnit = targetUnits.find((unit) => unit.id === targetUnitId);
+  const targetSupportUnits =
+    catalogue?.units.filter((unit) => unit.factionId === targetFaction) ?? [];
+  const targetSupportUnit = targetSupportUnits.find((unit) => unit.id === targetSupportUnitId);
   const weaponGroups = groupWeaponProfiles(attackerUnit?.weapons ?? []);
   const structuredGroupIds = new Set(
     attackerUnit?.wargearChoicePools.flatMap((pool) =>
@@ -227,6 +233,9 @@ export default function UnitVsUnit() {
     supportUnitId,
     activeSupportPresetIds,
     supportDistance,
+    targetSupportUnitId,
+    activeTargetSupportPresetIds,
+    targetSupportDistance,
   });
   const resultsAreCurrent = resultKey === inputKey;
   const rollIsCurrent = rollKey === inputKey;
@@ -306,6 +315,9 @@ export default function UnitVsUnit() {
     setTargetSegments(model ? [targetSegment(model, unit?.suggestedModelCount ?? 1)] : []);
     setInitialWoundsLost(0);
     setActiveTargetPresetIds([]);
+    setTargetSupportUnitId("");
+    setActiveTargetSupportPresetIds([]);
+    setTargetSupportDistance(0);
     setResults([]);
     setVolleySummary(null);
     setRollResult(null);
@@ -375,6 +387,7 @@ export default function UnitVsUnit() {
             targetBattleShocked,
             targetStrengthState,
             supportDistance,
+            targetSupportDistance,
           },
           line.weapon,
           targetSegments[0]?.keywords ?? [],
@@ -440,34 +453,67 @@ export default function UnitVsUnit() {
             supportDistance,
           ),
         ],
-        selectedAndAutomaticCombatPresets(
-          targetUnit?.combatPresets ?? [],
-          activeTargetPresetIds,
-          line.weapon.type,
-          line.weapon.name,
-          targetSegments[0]?.keywords ?? [],
-          attackKeywordsForWeapon(line.weapon),
-          targetDistance,
-          attackerCharged,
-          attackerBattleShocked,
-          targetBattleShocked,
-          targetStrengthState,
-          attackerRemainedStationary,
-          targetAttached,
-          targetWaaaghActive,
-          false,
-          false,
-          targetOnObjective,
-          attackerOnObjective,
-          targetOnObjective && targetObjectiveOwner === "target",
-          attackerOnObjective && ["attacker", "uncontrolled"].includes(attackerObjectiveOwner),
-          targetOnTargetSelectedObjective,
-          attackerOnTargetSelectedObjective,
-          targetBattleShocked,
-          false,
-          targetSpotted,
-          targetSpottedByMarkerlightObserver,
-        ),
+        [
+          ...selectedAndAutomaticCombatPresets(
+            targetUnit?.combatPresets ?? [],
+            activeTargetPresetIds,
+            line.weapon.type,
+            line.weapon.name,
+            targetSegments[0]?.keywords ?? [],
+            attackKeywordsForWeapon(line.weapon),
+            targetDistance,
+            attackerCharged,
+            attackerBattleShocked,
+            targetBattleShocked,
+            targetStrengthState,
+            attackerRemainedStationary,
+            targetAttached,
+            targetWaaaghActive,
+            false,
+            false,
+            targetOnObjective,
+            attackerOnObjective,
+            targetOnObjective && targetObjectiveOwner === "target",
+            attackerOnObjective && ["attacker", "uncontrolled"].includes(attackerObjectiveOwner),
+            targetOnTargetSelectedObjective,
+            attackerOnTargetSelectedObjective,
+            targetBattleShocked,
+            false,
+            targetSpotted,
+            targetSpottedByMarkerlightObserver,
+          ),
+          ...selectedAndAutomaticCombatPresets(
+            targetSupportUnit?.combatPresets ?? [],
+            activeTargetSupportPresetIds,
+            line.weapon.type,
+            line.weapon.name,
+            targetSegments[0]?.keywords ?? [],
+            attackKeywordsForWeapon(line.weapon),
+            targetDistance,
+            attackerCharged,
+            attackerBattleShocked,
+            targetBattleShocked,
+            targetStrengthState,
+            attackerRemainedStationary,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            targetSpotted,
+            targetSpottedByMarkerlightObserver,
+            "supporting_unit",
+            targetSegments[0]?.keywords ?? [],
+            targetSupportDistance,
+          ),
+        ],
         line.weapon.type,
         {
           targetKeywords: targetSegments[0]?.keywords ?? [],
@@ -499,6 +545,8 @@ export default function UnitVsUnit() {
           targetSpottedByMarkerlightObserver,
           supportDistance,
           supportedUnitKeywords: attackerUnit?.models[0]?.keywords ?? [],
+          targetSupportDistance,
+          targetSupportedUnitKeywords: targetSegments[0]?.keywords ?? [],
         },
       ),
     );
@@ -508,8 +556,8 @@ export default function UnitVsUnit() {
     const targetPresets = [
       ...new Map(
         orderedLines
-          .flatMap((line) =>
-            selectedAndAutomaticCombatPresets(
+          .flatMap((line) => [
+            ...selectedAndAutomaticCombatPresets(
               targetUnit?.combatPresets ?? [],
               activeTargetPresetIds,
               line.weapon.type,
@@ -537,7 +585,38 @@ export default function UnitVsUnit() {
               targetSpotted,
               targetSpottedByMarkerlightObserver,
             ),
-          )
+            ...selectedAndAutomaticCombatPresets(
+              targetSupportUnit?.combatPresets ?? [],
+              activeTargetSupportPresetIds,
+              line.weapon.type,
+              line.weapon.name,
+              targetSegments[0]?.keywords ?? [],
+              attackKeywordsForWeapon(line.weapon),
+              targetDistance,
+              attackerCharged,
+              attackerBattleShocked,
+              targetBattleShocked,
+              targetStrengthState,
+              attackerRemainedStationary,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              targetSpotted,
+              targetSpottedByMarkerlightObserver,
+              "supporting_unit",
+              targetSegments[0]?.keywords ?? [],
+              targetSupportDistance,
+            ),
+          ])
           .map((preset) => [preset.id, preset]),
       ).values(),
     ];
@@ -569,6 +648,8 @@ export default function UnitVsUnit() {
         attackerGuidedAgainstTarget,
         targetSpotted,
         targetSpottedByMarkerlightObserver,
+        targetSupportDistance,
+        targetSupportedUnitKeywords: targetSegments[0]?.keywords ?? [],
       })),
     );
   };
@@ -1041,6 +1122,9 @@ export default function UnitVsUnit() {
                   setTargetOathOfMoment(false);
                   setTargetOnObjective(false);
                   setTargetObjectiveOwner("unknown");
+                  setTargetSupportUnitId("");
+                  setActiveTargetSupportPresetIds([]);
+                  setTargetSupportDistance(0);
                 }}
               >
                 <option value="">Choose faction</option>
@@ -1374,6 +1458,26 @@ export default function UnitVsUnit() {
                   attackerRemainedStationary={attackerRemainedStationary}
                   sourceUnitAttached={targetAttached}
                   sourceUnitWaaaghActive={targetWaaaghActive}
+                  attackerBattleShocked={attackerBattleShocked}
+                  targetBattleShocked={targetBattleShocked}
+                  targetStrengthState={targetStrengthState}
+                />
+                <SupportPresetSelector
+                  units={targetSupportUnits}
+                  role="target"
+                  selectedUnitId={targetSupportUnitId}
+                  selectedIds={activeTargetSupportPresetIds}
+                  onUnitChange={(unitId) => {
+                    setTargetSupportUnitId(unitId);
+                    setActiveTargetSupportPresetIds([]);
+                    setTargetSupportDistance(0);
+                  }}
+                  onPresetChange={setActiveTargetSupportPresetIds}
+                  supportDistance={targetSupportDistance}
+                  onSupportDistanceChange={setTargetSupportDistance}
+                  supportedUnitKeywords={targetSegments[0]?.keywords ?? []}
+                  attackerCharged={attackerCharged}
+                  attackerRemainedStationary={attackerRemainedStationary}
                   attackerBattleShocked={attackerBattleShocked}
                   targetBattleShocked={targetBattleShocked}
                   targetStrengthState={targetStrengthState}

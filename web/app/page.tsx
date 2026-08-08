@@ -105,6 +105,8 @@ type SharedMatchup = {
   targetModel: string;
   supportUnit?: string;
   supportPresetIds?: string[];
+  targetSupportUnit?: string;
+  targetSupportPresetIds?: string[];
 };
 
 function encodeMatchup(matchup: SharedMatchup) {
@@ -129,12 +131,22 @@ function decodeMatchup(encoded: string): SharedMatchup {
   };
   const supportUnit = parsed.supportUnit === undefined ? "" : selection("supportUnit");
   const supportPresetIds = parsed.supportPresetIds ?? [];
+  const targetSupportUnit =
+    parsed.targetSupportUnit === undefined ? "" : selection("targetSupportUnit");
+  const targetSupportPresetIds = parsed.targetSupportPresetIds ?? [];
   if (
     !Array.isArray(supportPresetIds) ||
     supportPresetIds.length > 100 ||
     supportPresetIds.some((id) => typeof id !== "string" || !id || id.length > 200)
   ) {
     throw new Error("Invalid supportPresetIds");
+  }
+  if (
+    !Array.isArray(targetSupportPresetIds) ||
+    targetSupportPresetIds.length > 100 ||
+    targetSupportPresetIds.some((id) => typeof id !== "string" || !id || id.length > 200)
+  ) {
+    throw new Error("Invalid targetSupportPresetIds");
   }
   return {
     version: 1,
@@ -147,6 +159,8 @@ function decodeMatchup(encoded: string): SharedMatchup {
     targetModel: selection("targetModel"),
     supportUnit,
     supportPresetIds: [...new Set(supportPresetIds as string[])],
+    targetSupportUnit,
+    targetSupportPresetIds: [...new Set(targetSupportPresetIds as string[])],
   };
 }
 
@@ -774,6 +788,8 @@ export default function Home() {
   const [activeTargetPresetIds, setActiveTargetPresetIds] = useState<string[]>([]);
   const [supportUnitId, setSupportUnitId] = useState("");
   const [activeSupportPresetIds, setActiveSupportPresetIds] = useState<string[]>([]);
+  const [targetSupportUnitId, setTargetSupportUnitId] = useState("");
+  const [activeTargetSupportPresetIds, setActiveTargetSupportPresetIds] = useState<string[]>([]);
   const [rollResult, setRollResult] = useState<RollResult | null>(null);
   const [rollError, setRollError] = useState("");
   const [shareStatus, setShareStatus] = useState("Share matchup");
@@ -799,6 +815,8 @@ export default function Home() {
         setTargetModel(shared.targetModel);
         setSupportUnitId(shared.supportUnit ?? "");
         setActiveSupportPresetIds(shared.supportPresetIds ?? []);
+        setTargetSupportUnitId(shared.targetSupportUnit ?? "");
+        setActiveTargetSupportPresetIds(shared.targetSupportPresetIds ?? []);
         setShareStatus("Matchup loaded");
       } catch {
         setShareStatus("Invalid matchup link");
@@ -874,6 +892,13 @@ export default function Home() {
     [catalogue, targetFaction],
   );
   const selectedTargetUnit = targetUnits.find((unit) => unit.id === targetUnit);
+  const targetSupportUnits = useMemo(
+    () => catalogue?.units.filter((unit) => unit.factionId === targetFaction) ?? [],
+    [catalogue, targetFaction],
+  );
+  const selectedTargetSupportUnit = targetSupportUnits.find(
+    (unit) => unit.id === targetSupportUnitId,
+  );
   const selectedTargetModel = selectedTargetUnit?.models.find(
     (model) => String(model.id) === targetModel,
   );
@@ -945,6 +970,9 @@ export default function Home() {
     targetKeywords = selectedTargetModel?.keywords ?? [],
     supportUnit = selectedSupportUnit,
     supportIds = activeSupportPresetIds,
+    targetSupportUnit = selectedTargetSupportUnit,
+    targetSupportIds = activeTargetSupportPresetIds,
+    targetPresetUnit = selectedTargetUnit,
   ) => {
     const ability = (name: string) => weapon?.abilities.find((entry) => entry.name === name);
     const names = new Set(weapon?.abilities.map((entry) => entry.name) ?? []);
@@ -1070,33 +1098,64 @@ export default function Home() {
           baseProfile.supportDistance,
         ),
       ],
-      selectedPresets(
-        selectedTargetUnit,
-        targetIds,
-        weapon,
-        targetKeywords,
-        baseProfile.targetDistance,
-        baseProfile.attackerCharged,
-        baseProfile.attackerBattleShocked,
-        baseProfile.targetBattleShocked,
-        baseProfile.targetStrengthState,
-        baseProfile.attackerRemainedStationary,
-        baseProfile.targetAttached,
-        baseProfile.targetWaaaghActive,
-        false,
-        false,
-        baseProfile.targetOnObjective,
-        baseProfile.attackerOnObjective,
-        baseProfile.targetOnObjective && baseProfile.targetObjectiveOwner === "target",
-        baseProfile.attackerOnObjective &&
-          ["attacker", "uncontrolled"].includes(baseProfile.attackerObjectiveOwner),
-        baseProfile.targetOnTargetSelectedObjective,
-        baseProfile.attackerOnTargetSelectedObjective,
-        baseProfile.targetBattleShocked,
-        false,
-        baseProfile.targetSpotted,
-        baseProfile.targetSpottedByMarkerlightObserver,
-      ),
+      [
+        ...selectedPresets(
+          targetPresetUnit,
+          targetIds,
+          weapon,
+          targetKeywords,
+          baseProfile.targetDistance,
+          baseProfile.attackerCharged,
+          baseProfile.attackerBattleShocked,
+          baseProfile.targetBattleShocked,
+          baseProfile.targetStrengthState,
+          baseProfile.attackerRemainedStationary,
+          baseProfile.targetAttached,
+          baseProfile.targetWaaaghActive,
+          false,
+          false,
+          baseProfile.targetOnObjective,
+          baseProfile.attackerOnObjective,
+          baseProfile.targetOnObjective && baseProfile.targetObjectiveOwner === "target",
+          baseProfile.attackerOnObjective &&
+            ["attacker", "uncontrolled"].includes(baseProfile.attackerObjectiveOwner),
+          baseProfile.targetOnTargetSelectedObjective,
+          baseProfile.attackerOnTargetSelectedObjective,
+          baseProfile.targetBattleShocked,
+          false,
+          baseProfile.targetSpotted,
+          baseProfile.targetSpottedByMarkerlightObserver,
+        ),
+        ...selectedPresets(
+          targetSupportUnit,
+          targetSupportIds,
+          weapon,
+          targetKeywords,
+          baseProfile.targetDistance,
+          baseProfile.attackerCharged,
+          baseProfile.attackerBattleShocked,
+          baseProfile.targetBattleShocked,
+          baseProfile.targetStrengthState,
+          baseProfile.attackerRemainedStationary,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          baseProfile.targetSpotted,
+          baseProfile.targetSpottedByMarkerlightObserver,
+          "supporting_unit",
+          selectedTargetModel?.keywords ?? [],
+          baseProfile.targetSupportDistance,
+        ),
+      ],
       weapon?.type ?? "Ranged",
       {
         targetKeywords,
@@ -1128,6 +1187,8 @@ export default function Home() {
         targetSpottedByMarkerlightObserver: baseProfile.targetSpottedByMarkerlightObserver,
         supportedUnitKeywords: selectedAttackerUnit?.models[0]?.keywords ?? [],
         supportDistance: baseProfile.supportDistance,
+        targetSupportedUnitKeywords: selectedTargetModel?.keywords ?? [],
+        targetSupportDistance: baseProfile.targetSupportDistance,
       },
     ) as Profile;
   };
@@ -1206,6 +1267,9 @@ export default function Home() {
     model: CatalogueModel,
     targetIds = activeTargetPresetIds,
     profileOverrides: Partial<Profile> = {},
+    targetSupportUnit = selectedTargetSupportUnit,
+    targetSupportIds = activeTargetSupportPresetIds,
+    targetPresetUnit = selectedTargetUnit,
   ) => {
     setProfile((current) =>
       withActivePresets(
@@ -1231,6 +1295,11 @@ export default function Home() {
         activeAttackerPresetIds,
         targetIds,
         model.keywords,
+        selectedSupportUnit,
+        activeSupportPresetIds,
+        targetSupportUnit,
+        targetSupportIds,
+        targetPresetUnit,
       ),
     );
   };
@@ -1264,6 +1333,23 @@ export default function Home() {
     );
   };
 
+  const chooseTargetSupportPresets = (ids: string[]) => {
+    setActiveTargetSupportPresetIds(ids);
+    setProfile((current) =>
+      withActivePresets(
+        current,
+        selectedWeapon,
+        activeAttackerPresetIds,
+        activeTargetPresetIds,
+        selectedTargetModel?.keywords ?? [],
+        selectedSupportUnit,
+        activeSupportPresetIds,
+        selectedTargetSupportUnit,
+        ids,
+      ),
+    );
+  };
+
   const shareMatchup = async () => {
     const matchup: SharedMatchup = {
       version: 1,
@@ -1276,6 +1362,8 @@ export default function Home() {
       targetModel,
       supportUnit: supportUnitId,
       supportPresetIds: activeSupportPresetIds,
+      targetSupportUnit: targetSupportUnitId,
+      targetSupportPresetIds: activeTargetSupportPresetIds,
     };
     const url = new URL(window.location.href);
     url.searchParams.set("matchup", encodeMatchup(matchup));
@@ -1613,6 +1701,8 @@ export default function Home() {
                       setTargetUnit("");
                       setTargetModel("");
                       setActiveTargetPresetIds([]);
+                      setTargetSupportUnitId("");
+                      setActiveTargetSupportPresetIds([]);
                       setProfile((current) =>
                         withActivePresets(
                           {
@@ -1631,9 +1721,15 @@ export default function Home() {
                             targetSpotted: false,
                             targetSpottedByMarkerlightObserver: false,
                             targetStrengthState: "full",
+                            targetSupportDistance: 0,
                           },
                           selectedWeapon,
                           activeAttackerPresetIds,
+                          [],
+                          [],
+                          selectedSupportUnit,
+                          activeSupportPresetIds,
+                          undefined,
                           [],
                         ),
                       );
@@ -1656,6 +1752,8 @@ export default function Home() {
                       setTargetUnit(event.target.value);
                       setTargetModel("");
                       setActiveTargetPresetIds([]);
+                      setTargetSupportUnitId("");
+                      setActiveTargetSupportPresetIds([]);
                       setProfile((current) =>
                         withActivePresets(
                           {
@@ -1674,16 +1772,29 @@ export default function Home() {
                             targetSpotted: false,
                             targetSpottedByMarkerlightObserver: false,
                             targetStrengthState: "full",
+                            targetSupportDistance: 0,
                           },
                           selectedWeapon,
                           activeAttackerPresetIds,
+                          [],
+                          [],
+                          selectedSupportUnit,
+                          activeSupportPresetIds,
+                          undefined,
                           [],
                         ),
                       );
                       const unit = targetUnits.find((item) => item.id === event.target.value);
                       if (unit?.models.length === 1) {
                         setTargetModel(String(unit.models[0].id));
-                        applyTarget(unit.models[0], []);
+                        applyTarget(
+                          unit.models[0],
+                          [],
+                          { targetSupportDistance: 0 },
+                          undefined,
+                          [],
+                          unit,
+                        );
                       }
                     }}
                   >
@@ -1742,6 +1853,44 @@ export default function Home() {
                   targetStrengthState={profile.targetStrengthState}
                 />
               )}
+              {selectedTargetUnit && selectedTargetModel ? (
+                <SupportPresetSelector
+                  units={targetSupportUnits}
+                  role="target"
+                  selectedUnitId={targetSupportUnitId}
+                  selectedIds={activeTargetSupportPresetIds}
+                  onUnitChange={(unitId) => {
+                    setTargetSupportUnitId(unitId);
+                    setActiveTargetSupportPresetIds([]);
+                    setProfile((current) =>
+                      withActivePresets(
+                        { ...current, targetSupportDistance: 0 },
+                        selectedWeapon,
+                        activeAttackerPresetIds,
+                        activeTargetPresetIds,
+                        selectedTargetModel.keywords,
+                        selectedSupportUnit,
+                        activeSupportPresetIds,
+                        targetSupportUnits.find((unit) => unit.id === unitId),
+                        [],
+                      ),
+                    );
+                  }}
+                  onPresetChange={chooseTargetSupportPresets}
+                  supportDistance={profile.targetSupportDistance}
+                  onSupportDistanceChange={(distance) =>
+                    setProfile((current) =>
+                      withActivePresets({ ...current, targetSupportDistance: distance }),
+                    )
+                  }
+                  supportedUnitKeywords={selectedTargetModel.keywords}
+                  attackerCharged={profile.attackerCharged}
+                  attackerRemainedStationary={profile.attackerRemainedStationary}
+                  attackerBattleShocked={profile.attackerBattleShocked}
+                  targetBattleShocked={profile.targetBattleShocked}
+                  targetStrengthState={profile.targetStrengthState}
+                />
+              ) : null}
               <div className="field-grid three">
                 <NumberField
                   label="Toughness"

@@ -1,4 +1,5 @@
 import { parseDice } from "./dice.mjs";
+import { combatPresetSupportsRole } from "./combat-presets.mjs";
 
 export const AGENT_SCHEMA_VERSION = 1;
 
@@ -11,9 +12,12 @@ const catalogueParameters = new Set([
   "targetPreset",
   "support",
   "supportPreset",
+  "targetSupport",
+  "targetSupportPreset",
   "format",
   "distance",
   "supportDistance",
+  "targetSupportDistance",
 ]);
 
 const integerParameters = [
@@ -49,6 +53,7 @@ const integerParameters = [
   ["melta", ["melta"]],
   ["targetDistance", ["targetDistance", "distance"]],
   ["supportDistance", ["supportDistance"]],
+  ["targetSupportDistance", ["targetSupportDistance"]],
   ["attackerUnitModels", ["attackerUnitModels", "unitModels"]],
   ["nearbyEnemyModels", ["nearbyEnemyModels"]],
 ];
@@ -358,6 +363,17 @@ export function resolveAgentCatalogueSelection(input, catalogue) {
   if (support && support.factionId !== attacker.factionId) {
     throw new Error("support must belong to the attacker's faction");
   }
+  const targetSupportValue = singleValue(search, ["targetSupport"]);
+  const requestedTargetSupportPresets = presetValues(search, "targetSupportPreset");
+  if (!targetSupportValue && requestedTargetSupportPresets.length) {
+    throw new Error("targetSupport is required when targetSupportPreset is supplied");
+  }
+  const targetSupport = targetSupportValue
+    ? matchOne(catalogue.units, targetSupportValue, "targetSupport")
+    : null;
+  if (targetSupport && targetSupport.factionId !== target.factionId) {
+    throw new Error("targetSupport must belong to the target's faction");
+  }
   return {
     attacker,
     weapon,
@@ -371,6 +387,22 @@ export function resolveAgentCatalogueSelection(input, catalogue) {
           const preset = matchOne(support.combatPresets, value, "supportPreset");
           if ((preset.sourceRelationship ?? "self") !== "supporting_unit") {
             throw new Error("supportPreset must identify a supporting-unit ability");
+          }
+          if (!combatPresetSupportsRole(preset, "attacker")) {
+            throw new Error("supportPreset must affect the attacker");
+          }
+          return preset;
+        })
+      : [],
+    targetSupport,
+    targetSupportPresets: targetSupport
+      ? requestedTargetSupportPresets.map((value) => {
+          const preset = matchOne(targetSupport.combatPresets, value, "targetSupportPreset");
+          if ((preset.sourceRelationship ?? "self") !== "supporting_unit") {
+            throw new Error("targetSupportPreset must identify a supporting-unit ability");
+          }
+          if (!combatPresetSupportsRole(preset, "target")) {
+            throw new Error("targetSupportPreset must affect the target");
           }
           return preset;
         })
@@ -455,6 +487,7 @@ export function canonicalAgentParameters(profile) {
   search.set("melta", String(profile.melta));
   search.set("distance", String(profile.targetDistance ?? 0));
   search.set("supportDistance", String(profile.supportDistance ?? 0));
+  search.set("targetSupportDistance", String(profile.targetSupportDistance ?? 0));
   search.set("attackerUnitModels", String(profile.attackerUnitModels ?? 0));
   search.set("nearbyEnemyModels", String(profile.nearbyEnemyModels ?? 0));
   for (const [field, aliases] of booleanParameters) {

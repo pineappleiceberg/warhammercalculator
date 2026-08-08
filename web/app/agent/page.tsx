@@ -98,6 +98,7 @@ export default function AgentCalculator() {
           const requestedContext = parseAgentProfile(search, DEFAULT_PROFILE, false);
           const requestedDistance = requestedContext.targetDistance;
           const supportDistance = requestedContext.supportDistance;
+          const targetSupportDistance = requestedContext.targetSupportDistance;
           const attackerUnitModels = requestedContext.attackerUnitModels;
           const nearbyEnemyModels = requestedContext.nearbyEnemyModels;
           const attackerCharged = requestedContext.attackerCharged;
@@ -156,6 +157,7 @@ export default function AgentCalculator() {
             targetBattleShocked,
             targetStrengthState,
             supportDistance,
+            targetSupportDistance,
           };
           const attackerPresets = [
             ...selectedAndAutomaticCombatPresets(
@@ -218,34 +220,67 @@ export default function AgentCalculator() {
               supportDistance,
             ),
           ];
-          const targetPresets = selectedAndAutomaticCombatPresets(
-            selection.target.combatPresets,
-            selection.targetPresets.map((preset) => preset.id),
-            selection.weapon.type,
-            selection.weapon.name,
-            selection.model.keywords,
-            attackKeywordsForWeapon(selection.weapon),
-            requestedDistance,
-            attackerCharged,
-            attackerBattleShocked,
-            targetBattleShocked,
-            targetStrengthState,
-            attackerRemainedStationary,
-            targetAttached,
-            targetWaaaghActive,
-            false,
-            false,
-            targetOnObjective,
-            attackerOnObjective,
-            targetOnObjective && targetObjectiveOwner === "target",
-            attackerOnObjective && ["attacker", "uncontrolled"].includes(attackerObjectiveOwner),
-            targetOnTargetSelectedObjective,
-            attackerOnTargetSelectedObjective,
-            targetBattleShocked,
-            false,
-            targetSpotted,
-            targetSpottedByMarkerlightObserver,
-          );
+          const targetPresets = [
+            ...selectedAndAutomaticCombatPresets(
+              selection.target.combatPresets,
+              selection.targetPresets.map((preset) => preset.id),
+              selection.weapon.type,
+              selection.weapon.name,
+              selection.model.keywords,
+              attackKeywordsForWeapon(selection.weapon),
+              requestedDistance,
+              attackerCharged,
+              attackerBattleShocked,
+              targetBattleShocked,
+              targetStrengthState,
+              attackerRemainedStationary,
+              targetAttached,
+              targetWaaaghActive,
+              false,
+              false,
+              targetOnObjective,
+              attackerOnObjective,
+              targetOnObjective && targetObjectiveOwner === "target",
+              attackerOnObjective && ["attacker", "uncontrolled"].includes(attackerObjectiveOwner),
+              targetOnTargetSelectedObjective,
+              attackerOnTargetSelectedObjective,
+              targetBattleShocked,
+              false,
+              targetSpotted,
+              targetSpottedByMarkerlightObserver,
+            ),
+            ...selectedAndAutomaticCombatPresets(
+              selection.targetSupport?.combatPresets ?? [],
+              selection.targetSupportPresets.map((preset) => preset.id),
+              selection.weapon.type,
+              selection.weapon.name,
+              selection.model.keywords,
+              attackKeywordsForWeapon(selection.weapon),
+              requestedDistance,
+              attackerCharged,
+              attackerBattleShocked,
+              targetBattleShocked,
+              targetStrengthState,
+              attackerRemainedStationary,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              false,
+              targetSpotted,
+              targetSpottedByMarkerlightObserver,
+              "supporting_unit",
+              selection.model.keywords,
+              targetSupportDistance,
+            ),
+          ];
           profile = applyCombatPresets(
             profile,
             attackerPresets,
@@ -281,6 +316,8 @@ export default function AgentCalculator() {
               targetStrengthState,
               supportDistance,
               supportedUnitKeywords: selection.attacker.models[0]?.keywords ?? [],
+              targetSupportDistance,
+              targetSupportedUnitKeywords: selection.model.keywords,
             },
           );
           candidate = parseAgentProfile(search, profile, false);
@@ -295,6 +332,16 @@ export default function AgentCalculator() {
               ? { id: selection.support.id, name: selection.support.name }
               : null,
             supportPresets: selection.supportPresets.map((preset) => ({
+              id: preset.id,
+              name: preset.name,
+              usesPerBattle: preset.usesPerBattle ?? null,
+              maximumSupportDistance: preset.maximumSupportDistance ?? null,
+              requiredSupportedKeywords: preset.requiredSupportedKeywords ?? [],
+            })),
+            targetSupport: selection.targetSupport
+              ? { id: selection.targetSupport.id, name: selection.targetSupport.name }
+              : null,
+            targetSupportPresets: selection.targetSupportPresets.map((preset) => ({
               id: preset.id,
               name: preset.name,
               usesPerBattle: preset.usesPerBattle ?? null,
@@ -426,10 +473,11 @@ export default function AgentCalculator() {
               targetBattleShocked, attackerOnAttackerSelectedObjective,
               targetOnAttackerSelectedObjective, attackerOnTargetSelectedObjective,
               targetOnTargetSelectedObjective, guided, spotted, markerlightSpotted, targetStrength,
-              attackerPreset, targetPreset, support, supportPreset, supportDistance, and rules. A
-              supportPreset is resolved only from the named same-faction supporting unit and cannot
-              be applied as the attacker&apos;s own ability. Limited-use metadata is returned in the
-              result; this stateless URL does not spend battle uses.
+              attackerPreset, targetPreset, support, supportPreset, supportDistance, targetSupport,
+              targetSupportPreset, targetSupportDistance, and rules. Support presets are resolved
+              only from the named same-faction supporting unit and cannot be applied as the
+              supported unit&apos;s own ability. Limited-use metadata is returned in the result;
+              this stateless URL does not spend battle uses.
             </p>
             <p>
               <code>rules</code> accepts comma-separated values such as{" "}

@@ -243,6 +243,8 @@ type CombatPresetContext = {
   targetDistance?: number;
   supportDistance?: number;
   supportedUnitKeywords?: string[];
+  targetSupportDistance?: number;
+  targetSupportedUnitKeywords?: string[];
   attackerCharged?: boolean;
   attackerRemainedStationary?: boolean;
   attackerAttached?: boolean;

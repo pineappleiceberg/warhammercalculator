@@ -16,20 +16,32 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Add defensive target-side support selection, then classify exact defensive
-   auras such as Mechanical Augmentation without applying their protection to
-   the supporting model or unrelated targets.
-2. Add reproducible closest-target and line-of-sight relationship state for the
+1. Add reproducible closest-target and line-of-sight relationship state for the
    remaining compound attack conditions that still require manual
    interpretation.
-3. Represent casualty- and nearby-unit-count-scaled Attacks modifiers as
+2. Represent casualty- and nearby-unit-count-scaled Attacks modifiers as
    explicit reproducible state instead of requiring manual arithmetic; direct
    source-unit and nearby-enemy model counts are now covered.
-4. Extend bearer and subset-model defenses beyond composition-proven
+3. Extend bearer and subset-model defenses beyond composition-proven
    single-model datasheets with per-target-segment equipment selection, so a
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added independent target-side support. Model vs Model, Unit vs
+  Unit, Play Mode, recovery, shared matchup links, normalized profiles, and
+  static agent URLs now preserve a separate defending support unit, selected
+  abilities, affected-unit keywords, and source distance without reusing the
+  attacker-side relationship. SQLite schema 46 classifies Illuminor Szeras's
+  exact Mechanical Augmentation aura as support for a Necrons Battleline unit
+  within 3 inches and exports both clauses: +1 AP when that supported unit
+  attacks and -1 incoming AP when it is targeted. Illuminor is not Battleline,
+  so the rule cannot protect its source; unknown range, out-of-range targets,
+  missing keywords, unrelated factions, and self-relationship selection remain
+  inactive. Exact-text parser negatives, database/catalogue snapshots, legacy
+  recovery, agent resolution, independent composition boundaries, native and
+  WebAssembly damage monotonicity, 330/330 proofs, zero Eva alarms, E-ACSL, and
+  the 2,000-input sanitizer campaign cover the change.
 
 - 2026-08-07: Added exact targeted Vehicle support. SQLite schema 45
   classifies eight Techmarine, Warpsmith, and Mek source rows that select a

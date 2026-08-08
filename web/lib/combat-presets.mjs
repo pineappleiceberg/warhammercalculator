@@ -592,6 +592,8 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
       false,
       false,
       false,
+      context.targetSupportedUnitKeywords ?? [],
+      context.targetSupportDistance ?? 0,
     ),
   );
   const candidates = effects.map((effect) =>
@@ -731,8 +733,8 @@ export function applyCombatPresets(
     context.targetSpottedByMarkerlightObserver ??
       profile.targetSpottedByMarkerlightObserver ??
       false,
-    [],
-    0,
+    context.targetSupportedUnitKeywords ?? [],
+    context.targetSupportDistance ?? profile.targetSupportDistance ?? 0,
   );
   const attacksReplacements = [attacker.attacksReplacement, target.attacksReplacement].filter(
     (value) => value > 0,

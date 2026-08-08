@@ -128,7 +128,9 @@ export function SupportPresetSelector({
             hint={
               tracked && limitedPresets.length
                 ? "Turning on a limited ability spends one use. Leave it on while resolving every weapon it supports."
-                : "Select an ability only when this unit is providing it to the attacker against this target."
+                : `Select an ability only when this unit is providing it to the ${
+                    role === "target" ? "target" : "attacker"
+                  } in this matchup.`
             }
             sourceRelationship="supporting_unit"
             supportDistance={supportDistance}

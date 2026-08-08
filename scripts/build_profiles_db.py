@@ -2101,6 +2101,40 @@ def combat_guidance_presets(
     if not effects:
         return []
 
+    mechanical_augmentation = (
+        "While a friendly Necrons Battleline unit is within 3\" of this model, each time a "
+        "model in that unit makes an attack, improve the Armour Penetration characteristic "
+        "of that attack by 1, and each time an attack targets that unit, worsen the Armour "
+        "Penetration characteristic of that attack by 1."
+    )
+    if (
+        name == "Mechanical Augmentation (Aura)"
+        and text.casefold() == mechanical_augmentation.casefold()
+    ):
+        return [
+            {
+                "name": name,
+                "description": text,
+                "is_exclusive_choice": 0,
+                "activation": "situational",
+                "source_relationship": "supporting_unit",
+                "maximum_support_distance": 3,
+                "required_supported_keywords": ["necrons", "battleline"],
+                **effects,
+                "additional_effects": [
+                    *effects["additional_effects"],
+                    {
+                        "type": "ap_modifier",
+                        "value": -1,
+                        "dice_count": 0,
+                        "dice_sides": 0,
+                        "role": "target",
+                        "subject": "friendly_unit",
+                    },
+                ],
+            }
+        ]
+
     support_rules = (
         (
             "Brood Progenitor (Aura, Psychic)",
@@ -2873,7 +2907,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "45"),
+                    ("schema_version", "46"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
