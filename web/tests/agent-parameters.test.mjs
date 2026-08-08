@@ -1060,6 +1060,28 @@ test("catalogue agent query resolves stable IDs or unambiguous names", async () 
     catalogue,
   );
   assert.equal(legacyVoidscarred.model.name, "Voidscarred Felarch");
+  const aquilaShieldBearer = resolveAgentCatalogueSelection(
+    "attacker=000000545&weapon=1531&target=000004174&" +
+      "model=Deathwatch%20Veteran%20with%20heavy%20thunder%20hammer",
+    catalogue,
+  );
+  assert.equal(aquilaShieldBearer.model.name, "Deathwatch Veteran with heavy thunder hammer");
+  const aquila = catalogue.units.find((unit) => unit.id === "000004174");
+  const legacyAquila = resolveAgentCatalogueSelection(
+    `attacker=000000545&weapon=1531&target=000004174&model=${aquila.models[0].sourceModelId}`,
+    catalogue,
+  );
+  assert.equal(legacyAquila.model.name, "Kill Team Sergeant");
+  const natorian = resolveAgentCatalogueSelection(
+    "attacker=000000545&weapon=1531&target=000003821&model=Jensus%20Natorian",
+    catalogue,
+  );
+  assert.equal(natorian.model.name, "Jensus Natorian");
+  const silva = resolveAgentCatalogueSelection(
+    "attacker=000000545&weapon=1531&target=000004188&model=Gaius%20Silva",
+    catalogue,
+  );
+  assert.equal(silva.model.name, "Gaius Silva");
   const supported = resolveAgentCatalogueSelection(
     "attacker=Breacher%20Team&weapon=Pulse%20blaster&target=Brutalis%20Dreadnought&" +
       "support=Stealth%20Battlesuits&supportPreset=Forward%20Observers",

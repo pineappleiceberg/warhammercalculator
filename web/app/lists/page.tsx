@@ -26,6 +26,7 @@ import {
   defaultLoadoutSubjectCounts,
   groupWeaponProfiles,
   normalizeEquippedCount,
+  rebaseCompositionLoadoutSubjectCounts,
   unitLoadoutWarnings,
 } from "../../lib/loadout.mjs";
 import { transportAssignmentReport, transportPassengerEligibility } from "../../lib/transport.mjs";
@@ -377,8 +378,9 @@ export default function ArmyLists() {
                             );
                             changeUnit(unit.id, (current) => {
                               const nextSubjectCounts = sourceUnit
-                                ? compositionLoadoutSubjectCounts(
+                                ? rebaseCompositionLoadoutSubjectCounts(
                                     sourceUnit,
+                                    current.modelCount,
                                     next,
                                     current.loadoutSubjectCounts ?? {},
                                   )

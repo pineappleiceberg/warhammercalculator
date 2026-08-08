@@ -43,12 +43,19 @@ export type CatalogueComposition = {
   max: number | null;
 };
 export type CatalogueCompositionModel = {
+  modelId?: number;
   name: string;
   min: number;
   max: number;
   source: string;
   loadoutSubjectId?: string;
   controlsComposition?: boolean;
+  countFormula?: {
+    fixed: number;
+    perModel: number;
+    perIncrement: number;
+    modelsPerIncrement: number;
+  };
 };
 export type CatalogueWeaponLimitTerm = {
   fixed: number;

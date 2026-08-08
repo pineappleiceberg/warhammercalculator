@@ -16,14 +16,30 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Split the remaining named grouped profiles for Aquila and Decimus Kill
-   Teams, Kill Team Cassius, and Wardens of Ultramar, resolving the final six
-   conservative bearer mappings without guessing stats or identities.
-2. Normalize replacement and mutual-exclusion links between defensive equipment
+1. Normalize replacement and mutual-exclusion links between defensive equipment
    and structured weapon choices so adding a shield can reconcile the weapon it
    replaces instead of validating those selections independently.
+2. Normalize discrete legal starting-size alternatives separately from casualty
+   counts so datasheets published as, for example, exactly 5 or 10 models do not
+   treat intermediate roster sizes as ordinary legal starting compositions.
 
 ## Completed cycles
+
+- 2026-08-08: Resolved the final six conservative defensive-equipment bearer
+  mappings in SQLite schema 70, making all 44 options exact. Forty normalized
+  catalogue-composition terms split both Kill Team Cassius datasheets into all
+  eleven named models, Aquila and Decimus Kill Teams into their Sergeant,
+  Gravis, and four Deathwatch Veteran loadouts, and Wardens of Ultramar into all
+  six named models while retaining the grouped source statline as provenance.
+  Psychic Hood now maps only to Jensus Natorian, Astartes Shield only to the
+  heavy thunder hammer Veteran, Refractor Field only to Gaius Silva, and Storm
+  Shield only to Veteran Sergeant Metaurus. Five- and ten-model Kill Team
+  formulas also correct an older mixed-unit error that multiplied Gravis
+  weapons by the total unit size; every named loadout now contributes weapons
+  from its actual model count. Source-drift guards, database invariants, exact
+  composition and saved-formation tests, defensive defaults, API rejection of
+  illegal intermediate compositions, and static agent aliases cover the
+  change.
 
 - 2026-08-08: Normalized optional specialist compositions and increased exact
   defensive-equipment bearer identity to 38 of 44 options in SQLite schema 69.

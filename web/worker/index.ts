@@ -84,12 +84,19 @@ type Catalogue = {
     }>;
     composition: Array<{ text: string; min: number | null; max: number | null }>;
     compositionModels: Array<{
+      modelId?: number;
       name: string;
       min: number;
       max: number;
       source: string;
       loadoutSubjectId?: string;
       controlsComposition?: boolean;
+      countFormula?: {
+        fixed: number;
+        perModel: number;
+        perIncrement: number;
+        modelsPerIncrement: number;
+      };
     }>;
     loadout: string;
     defaultWeapons: Array<{

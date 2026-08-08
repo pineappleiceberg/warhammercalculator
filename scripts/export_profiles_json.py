@@ -251,15 +251,21 @@ def export(database: Path, output: Path) -> None:
                 values.append(row["keyword"])
 
         for row in connection.execute(
-            """SELECT id, datasheet_id, name, toughness, save_target,
-                      invulnerable_save_target, wounds, source_model_profile_id,
-                      composition_position, composition_component_position
-               FROM model_profiles
-               WHERE is_catalogue_model = 1
-               ORDER BY datasheet_id,
-                        coalesce(composition_position, source_line),
-                        coalesce(composition_component_position, 1),
-                        name COLLATE NOCASE"""
+            """SELECT model.id, model.datasheet_id, model.name, model.toughness,
+                      model.save_target, model.invulnerable_save_target,
+                      model.wounds, model.source_model_profile_id,
+                      model.composition_position,
+                      model.composition_component_position
+               FROM model_profiles AS model
+               LEFT JOIN catalogue_model_composition_terms AS term
+                 ON term.datasheet_id = model.datasheet_id
+                AND term.model_profile_id = model.id
+               WHERE model.is_catalogue_model = 1
+               ORDER BY model.datasheet_id,
+                        coalesce(term.position, model.composition_position,
+                                 model.source_line),
+                        coalesce(model.composition_component_position, 1),
+                        model.name COLLATE NOCASE"""
         ):
             units[row["datasheet_id"]]["models"].append(
                 {
@@ -276,10 +282,16 @@ def export(database: Path, output: Path) -> None:
                     **(
                         {
                             "sourceModelId": row["source_model_profile_id"],
-                            "compositionPosition": row["composition_position"],
-                            "compositionComponentPosition": row[
-                                "composition_component_position"
-                            ],
+                            **(
+                                {
+                                    "compositionPosition": row["composition_position"],
+                                    "compositionComponentPosition": row[
+                                        "composition_component_position"
+                                    ],
+                                }
+                                if row["composition_position"] is not None
+                                else {}
+                            ),
                         }
                         if row["source_model_profile_id"] is not None
                         else {}
@@ -1045,6 +1057,10 @@ def export(database: Path, output: Path) -> None:
                FROM unit_composition_models AS model
                LEFT JOIN unit_composition_model_loadout_subjects AS link
                  USING (datasheet_id, composition_position, component_position)
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM catalogue_model_composition_terms AS term
+                   WHERE term.datasheet_id = model.datasheet_id
+               )
                ORDER BY model.datasheet_id, model.composition_position,
                         model.component_position"""
         ):
@@ -1067,6 +1083,40 @@ def export(database: Path, output: Path) -> None:
             )
 
         for row in connection.execute(
+            """SELECT term.datasheet_id, term.model_profile_id, model.name,
+                      term.fixed_quantity, term.quantity_per_model,
+                      term.quantity_per_increment, term.models_per_increment,
+                      term.loadout_subject_position, term.source_text
+               FROM catalogue_model_composition_terms AS term
+               JOIN model_profiles AS model ON model.id = term.model_profile_id
+               ORDER BY term.datasheet_id, term.position"""
+        ):
+            units[row["datasheet_id"]]["compositionModels"].append(
+                {
+                    "modelId": row["model_profile_id"],
+                    "name": row["name"],
+                    "min": 0,
+                    "max": 1000,
+                    "source": row["source_text"],
+                    "countFormula": {
+                        "fixed": row["fixed_quantity"],
+                        "perModel": row["quantity_per_model"],
+                        "perIncrement": row["quantity_per_increment"],
+                        "modelsPerIncrement": row["models_per_increment"],
+                    },
+                    **(
+                        {
+                            "loadoutSubjectId":
+                                f"{row['datasheet_id']}:{row['loadout_subject_position']}",
+                            "controlsComposition": True,
+                        }
+                        if row["loadout_subject_position"] is not None
+                        else {}
+                    ),
+                }
+            )
+
+        for row in connection.execute(
             """SELECT datasheet_id, description_text
                FROM wargear_options
                ORDER BY datasheet_id, position"""
@@ -1075,12 +1125,19 @@ def export(database: Path, output: Path) -> None:
 
         defaults: dict[tuple[str, str], dict] = {}
         for row in connection.execute(
-            """SELECT datasheet_id, subject_position, weapon_group_id,
+            """SELECT loadout.datasheet_id, loadout.subject_position,
+                      loadout.weapon_group_id,
                       weapon_group_name, quantity, fixed_quantity,
                       quantity_per_model, quantity_per_increment,
                       models_per_increment, description_text
-               FROM default_weapon_loadout
-               ORDER BY datasheet_id, weapon_group_id, subject_position"""
+               FROM default_weapon_loadout AS loadout
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM catalogue_model_composition_terms AS term
+                   WHERE term.datasheet_id = loadout.datasheet_id
+                     AND term.loadout_subject_position = loadout.subject_position
+               )
+               ORDER BY loadout.datasheet_id, loadout.weapon_group_id,
+                        loadout.subject_position"""
         ):
             key = (row["datasheet_id"], row["weapon_group_id"])
             default = defaults.setdefault(
@@ -1113,7 +1170,11 @@ def export(database: Path, output: Path) -> None:
                LEFT JOIN default_loadout_subject_weapons AS weapon
                  ON weapon.datasheet_id = subject.datasheet_id
                 AND weapon.subject_position = subject.position
-               WHERE subject.resolved = 0
+               WHERE subject.resolved = 0 OR EXISTS (
+                   SELECT 1 FROM catalogue_model_composition_terms AS term
+                   WHERE term.datasheet_id = subject.datasheet_id
+                     AND term.loadout_subject_position = subject.position
+               )
                ORDER BY subject.datasheet_id, subject.position, weapon.weapon_group_id"""
         ):
             key = (row["datasheet_id"], row["position"])

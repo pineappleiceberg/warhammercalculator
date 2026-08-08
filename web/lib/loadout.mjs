@@ -108,10 +108,40 @@ export function compositionLoadoutSubjectCounts(unit, modelCount, loadoutSubject
 }
 
 export function defaultLoadoutSubjectCounts(unit, modelCount = unit?.suggestedModelCount ?? 0) {
-  const defaults = Object.fromEntries(
-    (unit?.unresolvedLoadoutSubjects ?? []).map((subject) => [subject.id, 0]),
+  const composed = compositionLoadoutSubjectCounts(unit, modelCount, {});
+  return Object.fromEntries(
+    (unit?.unresolvedLoadoutSubjects ?? []).map((subject) => [
+      subject.id,
+      composed[subject.id] ?? 0,
+    ]),
   );
-  return compositionLoadoutSubjectCounts(unit, modelCount, defaults);
+}
+
+export function rebaseCompositionLoadoutSubjectCounts(
+  unit,
+  previousModelCount,
+  nextModelCount,
+  loadoutSubjectCounts = {},
+) {
+  const formulaSubjectIds = new Set(
+    (unit?.compositionModels ?? [])
+      .filter((entry) => entry.countFormula && entry.loadoutSubjectId && entry.controlsComposition)
+      .map((entry) => entry.loadoutSubjectId),
+  );
+  if (formulaSubjectIds.size === 0) {
+    return compositionLoadoutSubjectCounts(unit, nextModelCount, loadoutSubjectCounts);
+  }
+  const previousDefaults = defaultLoadoutSubjectCounts(unit, previousModelCount);
+  const hasFormulaOverride = [...formulaSubjectIds].some(
+    (subjectId) =>
+      normalizeEquippedCount(loadoutSubjectCounts[subjectId] ?? 0, 1000) !==
+      normalizeEquippedCount(previousDefaults[subjectId] ?? 0, 1000),
+  );
+  return compositionLoadoutSubjectCounts(
+    unit,
+    nextModelCount,
+    hasFormulaOverride ? loadoutSubjectCounts : {},
+  );
 }
 
 export function loadoutSubjectWeaponCounts(unit, loadoutSubjectCounts = {}) {
@@ -246,7 +276,12 @@ export function applyModelCountChange(
     previousValue,
     loadoutSubjectCounts,
   );
-  const nextSubjects = compositionLoadoutSubjectCounts(unit, nextValue, loadoutSubjectCounts);
+  const nextSubjects = rebaseCompositionLoadoutSubjectCounts(
+    unit,
+    previousValue,
+    nextValue,
+    loadoutSubjectCounts,
+  );
   const previous = defaultWeaponCounts(unit, previousValue, previousSubjects);
   const next = defaultWeaponCounts(unit, nextValue, nextSubjects);
   const counts = { ...equippedCounts };

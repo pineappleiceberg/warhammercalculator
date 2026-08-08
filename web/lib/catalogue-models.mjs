@@ -11,6 +11,38 @@ export function catalogueModelComposition(unit, modelCount, loadoutSubjectCounts
   if (models.length === 1) return { counts: [modelCount], exact: true };
   if (composition.length !== models.length) return { counts: [modelCount], exact: false };
 
+  if (composition.every((entry) => entry.countFormula)) {
+    if (
+      composition.some(
+        (entry, index) =>
+          entry.modelId !== undefined && String(entry.modelId) !== String(models[index]?.id),
+      )
+    ) {
+      return { counts: [modelCount, ...new Array(models.length - 1).fill(0)], exact: false };
+    }
+    const counts = composition.map((entry) => {
+      if (
+        entry.loadoutSubjectId &&
+        entry.controlsComposition &&
+        Object.hasOwn(loadoutSubjectCounts, entry.loadoutSubjectId)
+      ) {
+        return Math.max(0, Math.floor(loadoutSubjectCounts[entry.loadoutSubjectId] ?? 0));
+      }
+      const { countFormula } = entry;
+      return Math.max(
+        0,
+        Math.floor(
+          countFormula.fixed +
+            countFormula.perModel * modelCount +
+            Math.floor(modelCount / countFormula.modelsPerIncrement) * countFormula.perIncrement,
+        ),
+      );
+    });
+    return counts.reduce((total, count) => total + count, 0) === modelCount
+      ? { counts, exact: true }
+      : { counts: [modelCount, ...new Array(models.length - 1).fill(0)], exact: false };
+  }
+
   const controlledSubjects = new Map();
   for (const entry of composition) {
     if (!entry.loadoutSubjectId || !entry.controlsComposition) continue;

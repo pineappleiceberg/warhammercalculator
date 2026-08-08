@@ -2084,7 +2084,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "69",
+                "70",
             )
             self.assertEqual(
                 connection.execute(
@@ -3038,7 +3038,7 @@ class ProfileDataTests(unittest.TestCase):
                        FROM unit_defensive_equipment_options
                        WHERE eligibility_exact = 0"""
                 ).fetchone()[0],
-                6,
+                0,
             )
             self.assertEqual(
                 connection.execute(
@@ -3053,14 +3053,14 @@ class ProfileDataTests(unittest.TestCase):
                     """SELECT count(*) FROM model_profiles
                        WHERE source_model_profile_id IS NOT NULL"""
                 ).fetchone()[0],
-                45,
+                85,
             )
             self.assertEqual(
                 connection.execute(
                     """SELECT count(*) FROM model_profiles
                        WHERE is_catalogue_model = 0"""
                 ).fetchone()[0],
-                16,
+                30,
             )
             self.assertEqual(
                 connection.execute(
@@ -3104,6 +3104,26 @@ class ProfileDataTests(unittest.TestCase):
             )
             self.assertEqual(
                 connection.execute(
+                    "SELECT count(*) FROM catalogue_model_composition_terms"
+                ).fetchone()[0],
+                40,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT datasheet_id, count(*)
+                       FROM catalogue_model_composition_terms
+                       GROUP BY datasheet_id ORDER BY datasheet_id"""
+                ).fetchall(),
+                [
+                    ("000003821", 11),
+                    ("000003875", 11),
+                    ("000004174", 6),
+                    ("000004175", 6),
+                    ("000004188", 6),
+                ],
+            )
+            self.assertEqual(
+                connection.execute(
                     """SELECT datasheets.name, options.name, model_profiles.name,
                               options.eligibility_exact
                        FROM unit_defensive_equipment_options AS options
@@ -3127,19 +3147,41 @@ class ProfileDataTests(unittest.TestCase):
             )
             self.assertEqual(
                 connection.execute(
-                    """SELECT datasheets.name, options.name
+                    """SELECT datasheets.name, options.name, model_profiles.name,
+                              options.eligibility_exact
                        FROM unit_defensive_equipment_options AS options
                        JOIN datasheets ON datasheets.id = options.datasheet_id
-                       WHERE options.eligibility_exact = 0
+                       JOIN unit_defensive_equipment_bearers AS bearers USING
+                           (datasheet_id, ability_position)
+                       JOIN model_profiles
+                         ON model_profiles.id = bearers.model_profile_id
+                       WHERE options.datasheet_id IN
+                           ('000003821', '000003875', '000004174',
+                            '000004175', '000004188')
                        ORDER BY options.datasheet_id, options.ability_position"""
                 ).fetchall(),
                 [
-                    ("Kill Team Cassius", "Psychic Hood"),
-                    ("Kill Team Cassius", "Psychic Hood"),
-                    ("Aquila Kill Team", "Astartes Shield"),
-                    ("Decimus Kill Team", "Astartes Shield"),
-                    ("Wardens of Ultramar", "Refractor Field"),
-                    ("Wardens of Ultramar", "Storm Shield"),
+                    ("Kill Team Cassius", "Psychic Hood", "Jensus Natorian", 1),
+                    ("Kill Team Cassius", "Psychic Hood", "Jensus Natorian", 1),
+                    (
+                        "Aquila Kill Team",
+                        "Astartes Shield",
+                        "Deathwatch Veteran with heavy thunder hammer",
+                        1,
+                    ),
+                    (
+                        "Decimus Kill Team",
+                        "Astartes Shield",
+                        "Deathwatch Veteran with heavy thunder hammer",
+                        1,
+                    ),
+                    ("Wardens of Ultramar", "Refractor Field", "Gaius Silva", 1),
+                    (
+                        "Wardens of Ultramar",
+                        "Storm Shield",
+                        "Veteran Sergeant Metaurus",
+                        1,
+                    ),
                 ],
             )
             self.assertEqual(
@@ -4155,7 +4197,7 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(
             catalogue["structuredWargear"]["compoundAlternativeCount"], 241
         )
-        self.assertEqual(catalogue["structuredWargear"]["defaultWeaponCount"], 4349)
+        self.assertEqual(catalogue["structuredWargear"]["defaultWeaponCount"], 4339)
         self.assertEqual(catalogue["structuredWargear"]["defaultWeaponTermCount"], 4494)
         self.assertEqual(catalogue["structuredWargear"]["loadoutSubjectCount"], 1972)
         self.assertEqual(

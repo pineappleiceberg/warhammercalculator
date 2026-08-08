@@ -267,6 +267,72 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
       .eligibleModelIds.map((id) => spectrus.models.find((model) => model.id === id).name),
     ["Kill Team Infiltrators"],
   );
+  const aquila = catalogue.units.find((unit) => unit.id === "000004174");
+  assert.deepEqual(
+    aquila.compositionModels.map((model) => [
+      model.name,
+      model.countFormula,
+      model.loadoutSubjectId ?? null,
+    ]),
+    [
+      [
+        "Kill Team Sergeant",
+        { fixed: 1, perModel: 0, perIncrement: 0, modelsPerIncrement: 1 },
+        "000004174:1",
+      ],
+      [
+        "Gravis Veteran",
+        { fixed: 0, perModel: 0, perIncrement: 1, modelsPerIncrement: 5 },
+        "000004174:2",
+      ],
+      [
+        "Deathwatch Veteran with stalker bolt rifle",
+        { fixed: 0, perModel: 0, perIncrement: 1, modelsPerIncrement: 5 },
+        "000004174:3",
+      ],
+      [
+        "Deathwatch Veteran with heavy thunder hammer",
+        { fixed: 0, perModel: 0, perIncrement: 1, modelsPerIncrement: 5 },
+        "000004174:4",
+      ],
+      [
+        "Deathwatch Veteran with marksman bolt carbine",
+        { fixed: 0, perModel: 0, perIncrement: 1, modelsPerIncrement: 5 },
+        "000004174:5",
+      ],
+      [
+        "Deathwatch Veteran with xenophase blade",
+        { fixed: 0, perModel: 0, perIncrement: 1, modelsPerIncrement: 10 },
+        "000004174:6",
+      ],
+    ],
+  );
+  assert.deepEqual(
+    aquila.defensiveEquipment
+      .find((option) => option.name === "Astartes Shield")
+      .eligibleModelIds.map((id) => aquila.models.find((model) => model.id === id).name),
+    ["Deathwatch Veteran with heavy thunder hammer"],
+  );
+  const cassius = catalogue.units.find((unit) => unit.id === "000003821");
+  assert.equal(cassius.models.length, 11);
+  assert.deepEqual(
+    cassius.defensiveEquipment
+      .find((option) => option.name === "Psychic Hood")
+      .eligibleModelIds.map((id) => cassius.models.find((model) => model.id === id).name),
+    ["Jensus Natorian"],
+  );
+  const wardens = catalogue.units.find((unit) => unit.id === "000004188");
+  assert.equal(wardens.models.length, 6);
+  assert.deepEqual(
+    wardens.defensiveEquipment.map((option) => [
+      option.name,
+      option.eligibleModelIds.map((id) => wardens.models.find((model) => model.id === id).name),
+    ]),
+    [
+      ["Refractor Field", ["Gaius Silva"]],
+      ["Storm Shield", ["Veteran Sergeant Metaurus"]],
+    ],
+  );
   const trukk = catalogue.units.find((unit) => unit.id === "000000026");
   const boyz = catalogue.units.find((unit) => unit.id === "000000016");
   const stormboyz = catalogue.units.find((unit) => unit.id === "000000027");
@@ -905,6 +971,23 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const invalidSpecialistsData = (await invalidSpecialists.json()).data;
   assert.equal(invalidSpecialistsData.valid, false);
   assert.match(invalidSpecialistsData.warnings[0], /do not form a legal/i);
+
+  const invalidAquilaComposition = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: aquila.id,
+        modelCount: 6,
+        weaponCounts: {},
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  const invalidAquilaData = (await invalidAquilaComposition.json()).data;
+  assert.equal(invalidAquilaData.valid, false);
+  assert.ok(invalidAquilaData.warnings.some((warning) => /do not form a legal/i.test(warning)));
 
   const achillus = catalogue.units.find((unit) => unit.name === "Contemptor-achillus Dreadnought");
   const achillusPool = achillus.wargearChoicePools[0];

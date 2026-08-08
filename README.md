@@ -547,6 +547,19 @@ Mistshield only to the Voidscarred Felarch, and Helix Gauntlet only to a
 marksman-carbine Infiltrator. Changing a specialist count reconciles the
 remaining base models and their source weapon totals; an impossible mix is
 reported instead of being approximated.
+The remaining named grouped statlines use source-backed catalogue count
+formulas. Both Kill Team Cassius datasheets expose all eleven named models and
+map Psychic Hood only to Jensus Natorian. Aquila and Decimus Kill Teams expose
+their Sergeant, Gravis Veterans, and four Deathwatch Veteran loadouts at the
+published five- and ten-model sizes; Astartes Shield applies only to the heavy
+thunder hammer Veteran. Wardens of Ultramar exposes all six named models, with
+Refractor Field only on Gaius Silva and Storm Shield only on Veteran Sergeant
+Metaurus. This also makes Gravis and specialist weapon defaults scale from
+their actual model counts instead of the whole Kill Team size. All 44 imported
+defensive-equipment options now have exact bearer identity and exact count
+limits.
+Published named counts initialize automatically but remain editable together;
+weapon totals remain independently editable for casualties and custom rules.
 The derived models retain their original statline provenance, and saved counts
 using the former grouped model ID are distributed deterministically onto the
 new eligible segments. Old model matchup links, static agent URLs, and Play

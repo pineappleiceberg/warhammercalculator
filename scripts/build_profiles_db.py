@@ -196,8 +196,13 @@ CREATE TABLE model_profiles (
          AND composition_component_position IS NULL)
         OR
         (source_model_profile_id IS NOT NULL
-         AND composition_position IS NOT NULL
-         AND composition_component_position IS NOT NULL)
+         AND (
+             (composition_position IS NULL
+              AND composition_component_position IS NULL)
+             OR
+             (composition_position IS NOT NULL
+              AND composition_component_position IS NOT NULL)
+         ))
     ),
     FOREIGN KEY (datasheet_id, composition_position, composition_component_position)
         REFERENCES unit_composition_models(
@@ -704,6 +709,24 @@ CREATE TABLE unit_composition_model_loadout_subjects (
         REFERENCES default_loadout_subjects(datasheet_id, position) ON DELETE CASCADE
 ) WITHOUT ROWID;
 
+CREATE TABLE catalogue_model_composition_terms (
+    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    model_profile_id INTEGER NOT NULL,
+    position INTEGER NOT NULL CHECK (position >= 1),
+    fixed_quantity INTEGER NOT NULL CHECK (fixed_quantity >= 0),
+    quantity_per_model INTEGER NOT NULL CHECK (quantity_per_model >= 0),
+    quantity_per_increment INTEGER NOT NULL CHECK (quantity_per_increment >= 0),
+    models_per_increment INTEGER NOT NULL CHECK (models_per_increment >= 1),
+    loadout_subject_position INTEGER,
+    source_text TEXT NOT NULL,
+    PRIMARY KEY (datasheet_id, model_profile_id),
+    UNIQUE (datasheet_id, position),
+    FOREIGN KEY (datasheet_id, model_profile_id)
+        REFERENCES model_profiles(datasheet_id, id) ON DELETE CASCADE,
+    FOREIGN KEY (datasheet_id, loadout_subject_position)
+        REFERENCES default_loadout_subjects(datasheet_id, position) ON DELETE CASCADE
+) WITHOUT ROWID;
+
 CREATE TABLE wargear_options (
     datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
     position INTEGER NOT NULL,
@@ -720,6 +743,7 @@ CREATE INDEX idx_unit_leader_eligibility_bodyguard
 CREATE INDEX idx_unit_bodyguard_joins_bodyguard
     ON unit_bodyguard_joins(bodyguard_datasheet_id, joiner_datasheet_id);
 CREATE INDEX idx_models_datasheet_name ON model_profiles(datasheet_id, name);
+CREATE UNIQUE INDEX idx_models_datasheet_id ON model_profiles(datasheet_id, id);
 CREATE UNIQUE INDEX idx_models_source_line
     ON model_profiles(datasheet_id, source_line)
     WHERE source_model_profile_id IS NULL;
@@ -1056,6 +1080,224 @@ COMPOSITION_DERIVED_MODEL_PROFILES = {
 }
 
 
+EXPLICIT_NAMED_MODEL_PROFILES = {
+    "000003821": (
+        ("KILL TEAM VETERAN", (
+            "Vael Donatus", "Zameon Gydrael", "Rodricus Grytt", "Antor Delassio",
+            "Edryc Setorax", "Jensus Natorian", "Drenn Redblade", "Ennox Sorrlock",
+        )),
+        ("KILL TEAM BIKER", ("Jetek Suberei",)),
+        ("CHAPLAIN CASSIUS", ("Chaplain Cassius",)),
+        ("KILL TEAM TERMINATOR", ("Garran Branatar",)),
+    ),
+    "000003875": (
+        ("KILL TEAM VETERAN", (
+            "Vael Donatus", "Zameon Gydrael", "Rodricus Grytt", "Antor Delassio",
+            "Edryc Setorax", "Jensus Natorian", "Drenn Redblade", "Ennox Sorrlock",
+        )),
+        ("KILL TEAM BIKER", ("Jetek Suberei",)),
+        ("CHAPLAIN CASSIUS", ("Chaplain Cassius",)),
+        ("KILL TEAM TERMINATOR", ("Garran Branatar",)),
+    ),
+    "000004174": (
+        ("KILL TEAM SERGEANT, DEATHWATCH VETERAN", (
+            "Kill Team Sergeant",
+            "Deathwatch Veteran with stalker bolt rifle",
+            "Deathwatch Veteran with heavy thunder hammer",
+            "Deathwatch Veteran with marksman bolt carbine",
+            "Deathwatch Veteran with xenophase blade",
+        )),
+        ("GRAVIS VETERAN", ("Gravis Veteran",)),
+    ),
+    "000004175": (
+        ("KILL TEAM SERGEANT, DEATHWATCH VETERAN", (
+            "Kill Team Sergeant",
+            "Deathwatch Veteran with stalker bolt rifle",
+            "Deathwatch Veteran with heavy thunder hammer",
+            "Deathwatch Veteran with marksman bolt carbine",
+            "Deathwatch Veteran with xenophase blade",
+        )),
+        ("GRAVIS VETERAN", ("Gravis Veteran",)),
+    ),
+    "000004188": (
+        ("Ancient Gadriel, Veteran Sergeant Metaurus", (
+            "Ancient Gadriel", "Veteran Sergeant Metaurus",
+        )),
+        ("Gaius Silva, Aemelia Minervas, Dainal Kornelius, Lucia Vestha", (
+            "Gaius Silva", "Aemelia Minervas", "Dainal Kornelius", "Lucia Vestha",
+        )),
+    ),
+}
+
+
+KILL_TEAM_CASSIUS_VETERAN_SOURCE = (
+    "8 Kill Team Veterans: Vael Donatus; Zameon Gydrael; Rodricus Grytt; "
+    "Antor Delassio; Edryc Setorax; Jensus Natorian; Drenn Redblade; "
+    "Ennox Sorrlock"
+)
+KILL_TEAM_CASSIUS_COMPOSITION_TERMS = (
+    (1, "Chaplain Cassius", 1, 0, 0, 1, None, "1 Chaplain Cassius — EPIC HERO"),
+    (2, "Vael Donatus", 1, 0, 0, 1, None, KILL_TEAM_CASSIUS_VETERAN_SOURCE),
+    (3, "Zameon Gydrael", 1, 0, 0, 1, None, KILL_TEAM_CASSIUS_VETERAN_SOURCE),
+    (4, "Rodricus Grytt", 1, 0, 0, 1, None, KILL_TEAM_CASSIUS_VETERAN_SOURCE),
+    (5, "Antor Delassio", 1, 0, 0, 1, None, KILL_TEAM_CASSIUS_VETERAN_SOURCE),
+    (6, "Edryc Setorax", 1, 0, 0, 1, None, KILL_TEAM_CASSIUS_VETERAN_SOURCE),
+    (7, "Jensus Natorian", 1, 0, 0, 1, None, KILL_TEAM_CASSIUS_VETERAN_SOURCE),
+    (8, "Drenn Redblade", 1, 0, 0, 1, None, KILL_TEAM_CASSIUS_VETERAN_SOURCE),
+    (9, "Ennox Sorrlock", 1, 0, 0, 1, None, KILL_TEAM_CASSIUS_VETERAN_SOURCE),
+    (
+        10,
+        "Garran Branatar",
+        1,
+        0,
+        0,
+        1,
+        None,
+        "1 Kill Team Terminator (Garran Branatar)",
+    ),
+    (
+        11,
+        "Jetek Suberei",
+        1,
+        0,
+        0,
+        1,
+        None,
+        "1 Kill Team Biker (Jetek Suberei)",
+    ),
+)
+AQUILA_KILL_TEAM_SOURCE_MODELS = (
+    ("Kill Team Sergeant", 1, 1),
+    ("Gravis Veteran", 1, 1),
+    ("Deathwatch Veterans", 3, 3),
+    ("Kill Team Sergeant", 1, 1),
+    ("Gravis Veterans", 2, 2),
+    ("Deathwatch Veterans", 7, 7),
+)
+AQUILA_KILL_TEAM_COMPOSITION_TERMS = (
+    (
+        1,
+        "Kill Team Sergeant",
+        1,
+        0,
+        0,
+        1,
+        (1, "The Kill Team Sergeant", 1),
+        "1 Kill Team Sergeant",
+    ),
+    (
+        2,
+        "Gravis Veteran",
+        0,
+        0,
+        1,
+        5,
+        (2, "Each Gravis Veteran", 1),
+        "1 Gravis Veteran; OR; 2 Gravis Veterans",
+    ),
+    (
+        3,
+        "Deathwatch Veteran with stalker bolt rifle",
+        0,
+        0,
+        1,
+        5,
+        (3, "For every 5 models in the unit, 1 Deathwatch Veteran", 0),
+        "For every 5 models in the unit, 1 Deathwatch Veteran is equipped with: "
+        "stalker bolt rifle; bolt pistol; close combat weapon.",
+    ),
+    (
+        4,
+        "Deathwatch Veteran with heavy thunder hammer",
+        0,
+        0,
+        1,
+        5,
+        (4, "For every 5 models in the unit, 1 Deathwatch Veteran", 0),
+        "For every 5 models in the unit, 1 Deathwatch Veteran is equipped with: "
+        "bolt pistol; heavy thunder hammer.",
+    ),
+    (
+        5,
+        "Deathwatch Veteran with marksman bolt carbine",
+        0,
+        0,
+        1,
+        5,
+        (5, "For every 5 models in the unit, 1 Deathwatch Veteran", 0),
+        "For every 5 models in the unit, 1 Deathwatch Veteran is equipped with: "
+        "Deathwatch marksman bolt carbine; special-issue bolt pistol; close "
+        "combat weapon.",
+    ),
+    (
+        6,
+        "Deathwatch Veteran with xenophase blade",
+        0,
+        0,
+        1,
+        10,
+        (6, "If the unit contains 10 models, 1 Deathwatch Veteran", 0),
+        "If the unit contains 10 models, 1 Deathwatch Veteran is equipped with: "
+        "special-issue bolt pistol; xenophase blade.",
+    ),
+)
+KILL_TEAM_CASSIUS_SOURCE_MODELS = (
+    ("Chaplain Cassius", 1, 1),
+    (
+        "Kill Team Veterans: Vael Donatus Zameon Gydrael Rodricus Grytt Antor "
+        "Delassio Edryc Setorax Jensus Natorian Drenn Redblade Ennox Sorrlock",
+        8,
+        8,
+    ),
+    ("Kill Team Terminator (Garran Branatar)", 1, 1),
+    ("Kill Team Biker (Jetek Suberei)", 1, 1),
+)
+WARDENS_OF_ULTRAMAR_NAMES = (
+    "Ancient Gadriel",
+    "Veteran Sergeant Metaurus",
+    "Gaius Silva",
+    "Aemelia Minervas",
+    "Dainal Kornelius",
+    "Lucia Vestha",
+)
+
+
+EXPLICIT_CATALOGUE_COMPOSITIONS = {
+    "000003821": {
+        "source_models": KILL_TEAM_CASSIUS_SOURCE_MODELS,
+        "legal_counts": (11,),
+        "terms": KILL_TEAM_CASSIUS_COMPOSITION_TERMS,
+    },
+    "000003875": {
+        "source_models": KILL_TEAM_CASSIUS_SOURCE_MODELS,
+        "legal_counts": (11,),
+        "terms": KILL_TEAM_CASSIUS_COMPOSITION_TERMS,
+    },
+    "000004174": {
+        "source_models": AQUILA_KILL_TEAM_SOURCE_MODELS,
+        "legal_counts": (5, 10),
+        "terms": AQUILA_KILL_TEAM_COMPOSITION_TERMS,
+    },
+    "000004175": {
+        "source_models": AQUILA_KILL_TEAM_SOURCE_MODELS,
+        "legal_counts": (5, 10),
+        "terms": AQUILA_KILL_TEAM_COMPOSITION_TERMS,
+    },
+    "000004188": {
+        "source_models": (
+            ("Ancient Gadriel", 1, 1), ("Veteran Sergeant Metaurus", 1, 1),
+            ("Gaius Silva", 1, 1), ("Aemelia Minervas", 1, 1),
+            ("Dainal Kornelius", 1, 1), ("Lucia Vestha", 1, 1),
+        ),
+        "legal_counts": (6,),
+        "terms": tuple(
+            (position, name, 1, 0, 0, 1, None, f"1 {name} — EPIC HERO")
+            for position, name in enumerate(WARDENS_OF_ULTRAMAR_NAMES, start=1)
+        ),
+    },
+}
+
+
 def populate_composition_derived_model_profiles(connection: sqlite3.Connection) -> None:
     for datasheet_id, (source_name, expected_names) in (
         COMPOSITION_DERIVED_MODEL_PROFILES.items()
@@ -1145,6 +1387,153 @@ def populate_composition_derived_model_profiles(connection: sqlite3.Connection) 
         )
 
 
+def populate_explicit_named_model_profiles(connection: sqlite3.Connection) -> None:
+    for datasheet_id, source_groups in EXPLICIT_NAMED_MODEL_PROFILES.items():
+        derived_position = 0
+        expected_names: list[str] = []
+        for source_name, derived_names in source_groups:
+            source_rows = connection.execute(
+                """SELECT id, source_line, movement, movement_inches, toughness,
+                          save_target, invulnerable_save_target,
+                          invulnerable_save_note, wounds, leadership_target,
+                          objective_control, base_size, base_size_note
+                   FROM model_profiles
+                   WHERE datasheet_id = ? AND name = ?
+                     AND source_model_profile_id IS NULL""",
+                (datasheet_id, source_name),
+            ).fetchall()
+            if len(source_rows) != 1:
+                raise RuntimeError(
+                    "Named model profile needs exactly one source statline: "
+                    f"{datasheet_id} {source_name!r}"
+                )
+            source = source_rows[0]
+            for derived_name in derived_names:
+                derived_position += 1
+                expected_names.append(derived_name)
+                derived_id = -(int(datasheet_id) * 10000 + derived_position)
+                connection.execute(
+                    """INSERT INTO model_profiles
+                       (id, datasheet_id, source_line, source_model_profile_id,
+                        is_catalogue_model, name, movement, movement_inches,
+                        toughness, save_target, invulnerable_save_target,
+                        invulnerable_save_note, wounds, leadership_target,
+                        objective_control, base_size, base_size_note)
+                       VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        derived_id,
+                        datasheet_id,
+                        source[1],
+                        source[0],
+                        derived_name,
+                        *source[2:],
+                    ),
+                )
+            connection.execute(
+                "UPDATE model_profiles SET is_catalogue_model = 0 WHERE id = ?",
+                (source[0],),
+            )
+        if len(expected_names) != len(set(expected_names)):
+            raise RuntimeError(
+                f"Named model profile names are not unique for {datasheet_id}"
+            )
+
+
+def populate_explicit_catalogue_compositions(connection: sqlite3.Connection) -> None:
+    for datasheet_id, specification in EXPLICIT_CATALOGUE_COMPOSITIONS.items():
+        source_models = tuple(
+            connection.execute(
+                """SELECT model_name, min_models, max_models
+                   FROM unit_composition_models
+                   WHERE datasheet_id = ?
+                   ORDER BY composition_position, component_position""",
+                (datasheet_id,),
+            ).fetchall()
+        )
+        if source_models != specification["source_models"]:
+            raise RuntimeError(
+                "Explicit catalogue composition source changed: "
+                f"{datasheet_id} {source_models!r}"
+            )
+        expected_names = tuple(term[1] for term in specification["terms"])
+        model_rows = connection.execute(
+            """SELECT id, name FROM model_profiles
+               WHERE datasheet_id = ? AND is_catalogue_model = 1""",
+            (datasheet_id,),
+        ).fetchall()
+        models_by_name = {name: model_id for model_id, name in model_rows}
+        if len(models_by_name) != len(model_rows) or set(models_by_name) != set(
+            expected_names
+        ):
+            raise RuntimeError(
+                "Explicit catalogue composition profiles changed: "
+                f"{datasheet_id} {tuple(sorted(models_by_name))!r}"
+            )
+        for (
+            position,
+            model_name,
+            fixed,
+            per_model,
+            per_increment,
+            models_per_increment,
+            loadout_subject,
+            source_text,
+        ) in specification["terms"]:
+            subject_position = None
+            if loadout_subject is not None:
+                subject_position, expected_subject, expected_resolved = loadout_subject
+                subject_row = connection.execute(
+                    """SELECT subject_text, resolved
+                       FROM default_loadout_subjects
+                       WHERE datasheet_id = ? AND position = ?""",
+                    (datasheet_id, subject_position),
+                ).fetchone()
+                if subject_row != (expected_subject, expected_resolved):
+                    raise RuntimeError(
+                        "Explicit catalogue composition loadout source changed: "
+                        f"{datasheet_id}:{subject_position} {subject_row!r}"
+                    )
+            connection.execute(
+                """INSERT INTO catalogue_model_composition_terms
+                   (datasheet_id, model_profile_id, position, fixed_quantity,
+                    quantity_per_model, quantity_per_increment,
+                    models_per_increment, loadout_subject_position, source_text)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    datasheet_id,
+                    models_by_name[model_name],
+                    position,
+                    fixed,
+                    per_model,
+                    per_increment,
+                    models_per_increment,
+                    subject_position,
+                    source_text,
+                ),
+            )
+        for model_count in specification["legal_counts"]:
+            total = sum(
+                fixed
+                + per_model * model_count
+                + (model_count // models_per_increment) * per_increment
+                for (
+                    _position,
+                    _model_name,
+                    fixed,
+                    per_model,
+                    per_increment,
+                    models_per_increment,
+                    _loadout_subject,
+                    _source_text,
+                ) in specification["terms"]
+            )
+            if total != model_count:
+                raise RuntimeError(
+                    "Explicit catalogue composition formula is not exact: "
+                    f"{datasheet_id} {model_count} -> {total}"
+                )
+
+
 DEFENSIVE_EQUIPMENT_MODEL_OVERRIDES = {
     ("000000061", 2): (("assault sergeant",), True),
     ("000000064", 3): (("assault sergeant with jump pack",), True),
@@ -1161,16 +1550,16 @@ DEFENSIVE_EQUIPMENT_MODEL_OVERRIDES = {
     ("000003816", 3): (("deathwatch veterans",), True),
     ("000003823", 3): (("veteran biker sergeant",), True),
     ("000003827", 6): (("=kill team infiltrators",), True),
-    ("000004174", 4): (("deathwatch veteran",), False),
-    ("000004175", 4): (("deathwatch veteran",), False),
+    ("000004174", 4): (("=deathwatch veteran with heavy thunder hammer",), True),
+    ("000004175", 4): (("=deathwatch veteran with heavy thunder hammer",), True),
     ("000000593", 3): (("dire avenger exarch",), True),
     ("000000602", 3): (("shining spear exarch",), True),
     ("000000590", 4): (("serpent’s scale platform",), True),
-    ("000003821", 7): (("kill team veteran",), False),
-    ("000003875", 7): (("kill team veteran",), False),
+    ("000003821", 7): (("=jensus natorian",), True),
+    ("000003875", 7): (("=jensus natorian",), True),
     ("000003824", 4): (("kill team veterans",), True),
-    ("000004188", 4): (("gaius silva",), False),
-    ("000004188", 5): (("veteran sergeant metaurus",), False),
+    ("000004188", 4): (("=gaius silva",), True),
+    ("000004188", 5): (("=veteran sergeant metaurus",), True),
     ("000004131", 5): (("wolf guard headtakers",), True),
     ("000004156", 7): (("kabalite agents",), True),
     ("000004168", 4): (("voidreaver felarch",), True),
@@ -4736,7 +5125,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "69"),
+                    ("schema_version", "70"),
                     ("leader_global_maximum", "2"),
                     ("leader_global_rule_source_url", LEADER_GLOBAL_RULE_SOURCE_URL),
                     (
@@ -5065,6 +5454,7 @@ def create_database(
                     )
 
             populate_composition_derived_model_profiles(connection)
+            populate_explicit_named_model_profiles(connection)
 
             option_positions: dict[str, int] = {}
             for row in option_rows:
@@ -5129,6 +5519,7 @@ def create_database(
                     )
 
             populate_constraints(connection)
+            populate_explicit_catalogue_compositions(connection)
             populate_composition_loadout_subjects(connection)
             rebuild_combat_presets(connection)
             populate_firing_deck(connection)
@@ -5258,6 +5649,7 @@ def create_database(
                 "unit_composition",
                 "unit_composition_models",
                 "unit_composition_model_loadout_subjects",
+                "catalogue_model_composition_terms",
                 "wargear_options",
                 "wargear_constraints",
                 "wargear_constraint_weapons",

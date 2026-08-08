@@ -30,7 +30,9 @@ import {
 import {
   compositionLoadoutSubjectCounts,
   defaultLoadoutSubjectCounts,
+  defaultWeaponCounts,
   loadoutSubjectWarnings,
+  rebaseCompositionLoadoutSubjectCounts,
 } from "../lib/loadout.mjs";
 
 const catalogue = JSON.parse(
@@ -1026,6 +1028,160 @@ test("optional specialists resolve exact Voidscarred and Spectrus compositions",
     assert.deepEqual(
       helix.eligibleModelIds.map((id) => spectrus.models.find((model) => model.id === id).name),
       ["Kill Team Infiltrators"],
+    );
+  }
+});
+
+test("named Kill Team and Wardens profiles resolve exact equipment bearers", () => {
+  for (const datasheetId of ["000004174", "000004175"]) {
+    const killTeam = unit(datasheetId);
+    assert.deepEqual(
+      killTeam.models.map((model) => model.name),
+      [
+        "Kill Team Sergeant",
+        "Gravis Veteran",
+        "Deathwatch Veteran with stalker bolt rifle",
+        "Deathwatch Veteran with heavy thunder hammer",
+        "Deathwatch Veteran with marksman bolt carbine",
+        "Deathwatch Veteran with xenophase blade",
+      ],
+    );
+    assert.deepEqual(
+      catalogueModelSegments(killTeam, 5).segments.map(({ model, modelCount }) => [
+        model.name,
+        modelCount,
+      ]),
+      [
+        ["Kill Team Sergeant", 1],
+        ["Gravis Veteran", 1],
+        ["Deathwatch Veteran with stalker bolt rifle", 1],
+        ["Deathwatch Veteran with heavy thunder hammer", 1],
+        ["Deathwatch Veteran with marksman bolt carbine", 1],
+      ],
+    );
+    assert.deepEqual(defaultLoadoutSubjectCounts(killTeam), {
+      [`${datasheetId}:1`]: 1,
+      [`${datasheetId}:2`]: 1,
+      [`${datasheetId}:3`]: 1,
+      [`${datasheetId}:4`]: 1,
+      [`${datasheetId}:5`]: 1,
+      [`${datasheetId}:6`]: 0,
+    });
+    assert.deepEqual(compositionLoadoutSubjectCounts(killTeam, 10), {
+      [`${datasheetId}:1`]: 1,
+      [`${datasheetId}:2`]: 2,
+      [`${datasheetId}:3`]: 2,
+      [`${datasheetId}:4`]: 2,
+      [`${datasheetId}:5`]: 2,
+      [`${datasheetId}:6`]: 1,
+    });
+    const customCounts = {
+      [`${datasheetId}:1`]: 1,
+      [`${datasheetId}:2`]: 1,
+      [`${datasheetId}:3`]: 0,
+      [`${datasheetId}:4`]: 1,
+      [`${datasheetId}:5`]: 2,
+      [`${datasheetId}:6`]: 0,
+    };
+    assert.deepEqual(compositionLoadoutSubjectCounts(killTeam, 5, customCounts), customCounts);
+    assert.deepEqual(
+      rebaseCompositionLoadoutSubjectCounts(killTeam, 5, 10, defaultLoadoutSubjectCounts(killTeam)),
+      compositionLoadoutSubjectCounts(killTeam, 10),
+    );
+    assert.deepEqual(
+      rebaseCompositionLoadoutSubjectCounts(killTeam, 5, 10, customCounts),
+      customCounts,
+    );
+    const counts = defaultWeaponCounts(killTeam, 5, defaultLoadoutSubjectCounts(killTeam));
+    const weaponCount = (name) =>
+      counts[killTeam.weapons.find((weapon) => weapon.groupName === name).groupId];
+    assert.equal(weaponCount("Infernus heavy bolter"), 1);
+    assert.equal(weaponCount("Heavy thunder hammer"), 1);
+    assert.equal(weaponCount("Xenophase blade"), 0);
+    assert.equal(catalogueModelSegments(killTeam, 6).exact, false);
+    const shield = killTeam.defensiveEquipment.find((option) => option.name === "Astartes Shield");
+    assert.equal(shield.eligibilityExact, true);
+    assert.deepEqual(
+      shield.eligibleModelIds.map((id) => killTeam.models.find((model) => model.id === id).name),
+      ["Deathwatch Veteran with heavy thunder hammer"],
+    );
+    const shieldBearer = killTeam.models.find(
+      (model) => model.name === "Deathwatch Veteran with heavy thunder hammer",
+    );
+    const legacySavedId = `legacy-${datasheetId}`;
+    const legacyShieldKey = defensiveEquipmentSelectionKey(
+      legacySavedId,
+      shieldBearer.sourceModelId,
+      shield.id,
+    );
+    assert.deepEqual(
+      savedUnitDefensiveEquipmentDefaults(
+        {
+          id: legacySavedId,
+          modelCount: 5,
+          loadoutSubjectCounts: defaultLoadoutSubjectCounts(killTeam),
+          defensiveEquipmentCounts: { [legacyShieldKey]: 1 },
+        },
+        killTeam,
+      ),
+      {
+        [defensiveEquipmentSelectionKey(legacySavedId, shieldBearer.id, shield.id)]: 1,
+      },
+    );
+    const saved = {
+      id: `kill-team-${datasheetId}`,
+      unitId: datasheetId,
+      name: killTeam.name,
+      modelCount: 5,
+      loadoutSubjectCounts: defaultLoadoutSubjectCounts(killTeam),
+    };
+    const formation = savedFormationGroups(catalogue, { units: [saved] })[0];
+    assert.deepEqual(savedFormationModelSegments(formation).ambiguousComponents, []);
+  }
+
+  for (const datasheetId of ["000003821", "000003875"]) {
+    const cassius = unit(datasheetId);
+    const composition = catalogueModelSegments(cassius, 11);
+    assert.equal(composition.exact, true);
+    assert.ok(composition.segments.every(({ modelCount }) => modelCount === 1));
+    const hood = cassius.defensiveEquipment.find((option) => option.name === "Psychic Hood");
+    assert.equal(hood.eligibilityExact, true);
+    assert.deepEqual(
+      hood.eligibleModelIds.map((id) => cassius.models.find((model) => model.id === id).name),
+      ["Jensus Natorian"],
+    );
+    assert.deepEqual(
+      savedUnitDefensiveEquipmentDefaults(
+        { id: `cassius-${datasheetId}`, modelCount: 11 },
+        cassius,
+      ),
+      {
+        [defensiveEquipmentSelectionKey(`cassius-${datasheetId}`, null, hood.id)]: 1,
+      },
+    );
+  }
+
+  const wardens = unit("000004188");
+  const wardensComposition = catalogueModelSegments(wardens, 6);
+  assert.equal(wardensComposition.exact, true);
+  assert.ok(wardensComposition.segments.every(({ modelCount }) => modelCount === 1));
+  assert.deepEqual(
+    wardens.defensiveEquipment.map((option) => [
+      option.name,
+      option.eligibleModelIds.map((id) => wardens.models.find((model) => model.id === id).name),
+    ]),
+    [
+      ["Refractor Field", ["Gaius Silva"]],
+      ["Storm Shield", ["Veteran Sergeant Metaurus"]],
+    ],
+  );
+  const savedWardens = { id: "wardens", modelCount: 6 };
+  const wardensDefaults = savedUnitDefensiveEquipmentDefaults(savedWardens, wardens);
+  for (const option of wardens.defensiveEquipment) {
+    const modelId = option.eligibleModelIds[0];
+    assert.equal(
+      wardensDefaults[defensiveEquipmentSelectionKey(savedWardens.id, modelId, option.id)],
+      1,
     );
   }
 });

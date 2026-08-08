@@ -37,6 +37,7 @@ import {
   equippedWeaponLines,
   groupWeaponProfiles,
   normalizeEquippedCount,
+  rebaseCompositionLoadoutSubjectCounts,
   unitLoadoutWarnings,
   weaponAllocationErrors,
   weaponLimitMaximum,
@@ -1311,7 +1312,12 @@ export default function UnitVsUnit() {
                     ),
                   );
                   setLoadoutSubjectCounts((current) =>
-                    compositionLoadoutSubjectCounts(attackerUnit, next, current),
+                    rebaseCompositionLoadoutSubjectCounts(
+                      attackerUnit,
+                      attackerModels,
+                      next,
+                      current,
+                    ),
                   );
                   setAttackerModels(next);
                   setAttackerUnitModels(next + (attackerJoiner ? attackerJoinerModels : 0));
@@ -1357,7 +1363,12 @@ export default function UnitVsUnit() {
                       ),
                     );
                     setLoadoutSubjectCounts((current) =>
-                      compositionLoadoutSubjectCounts(attackerJoiner, next, current),
+                      rebaseCompositionLoadoutSubjectCounts(
+                        attackerJoiner,
+                        attackerJoinerModels,
+                        next,
+                        current,
+                      ),
                     );
                     setAttackerJoinerModels(next);
                     setAttackerUnitModels(attackerModels + next);
