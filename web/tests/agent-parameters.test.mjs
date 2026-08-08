@@ -666,10 +666,18 @@ test("catalogue agent applies Guided, Spotted, and Markerlight rules at exact bo
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
   );
-  const select = (unit, weapon, guided, spotted, markerlight) =>
+  const select = (
+    unit,
+    weapon,
+    guided,
+    spotted,
+    markerlight,
+    selectedIds = [],
+    sourceRelationship = "self",
+  ) =>
     selectedAndAutomaticCombatPresets(
       unit.combatPresets,
-      [],
+      selectedIds,
       weapon.type,
       weapon.name,
       [],
@@ -694,6 +702,7 @@ test("catalogue agent applies Guided, Spotted, and Markerlight rules at exact bo
       guided,
       spotted,
       markerlight,
+      sourceRelationship,
     );
 
   const breachers = catalogue.units.find((unit) => unit.name === "Breacher Team");
@@ -746,6 +755,40 @@ test("catalogue agent applies Guided, Spotted, and Markerlight rules at exact bo
   assert.equal(uploadedProfile.hitOn, 3);
   assert.equal(uploadedProfile.ignoresCover, true);
 
+  const stealth = catalogue.units.find((unit) => unit.name === "Stealth Battlesuits");
+  const forwardObservers = stealth.combatPresets.find(
+    (preset) => preset.name === "Forward Observers",
+  );
+  assert.equal(
+    select(stealth, blaster, true, true, false, [forwardObservers.id]).some(
+      (preset) => preset.name === "Forward Observers",
+    ),
+    false,
+    "A supporting-unit ability must not apply as the source unit's own preset",
+  );
+  const supported = select(
+    stealth,
+    blaster,
+    true,
+    true,
+    false,
+    [forwardObservers.id],
+    "supporting_unit",
+  );
+  assert.deepEqual(
+    supported.map((preset) => preset.name),
+    ["Forward Observers"],
+  );
+  const supportedProfile = applyCombatPresets(
+    { ...defaults, weaponName: blaster.name },
+    supported,
+    [],
+    "Ranged",
+    { attackerGuidedAgainstTarget: true, targetSpotted: true },
+  );
+  assert.equal(supportedProfile.rerollHitOnes, true);
+  assert.equal(supportedProfile.rerollWoundOnes, true);
+
   const parsed = parseAgentProfile(
     "guided=true&spotted=true&markerlightSpotted=true",
     defaults,
@@ -773,6 +816,52 @@ test("catalogue agent query resolves stable IDs or unambiguous names", async () 
     catalogue,
   );
   assert.equal(ids.weapon.name, "Heavy death ray");
+  const supported = resolveAgentCatalogueSelection(
+    "attacker=Breacher%20Team&weapon=Pulse%20blaster&target=Brutalis%20Dreadnought&" +
+      "support=Stealth%20Battlesuits&supportPreset=Forward%20Observers",
+    catalogue,
+  );
+  assert.equal(supported.support.name, "Stealth Battlesuits");
+  assert.deepEqual(
+    supported.supportPresets.map((preset) => preset.name),
+    ["Forward Observers"],
+  );
+  assert.throws(
+    () =>
+      resolveAgentCatalogueSelection(
+        "attacker=Breacher%20Team&weapon=Pulse%20blaster&target=Brutalis%20Dreadnought&" +
+          "attackerPreset=Forward%20Observers",
+        catalogue,
+      ),
+    /not found|self ability/i,
+  );
+  assert.throws(
+    () =>
+      resolveAgentCatalogueSelection(
+        "attacker=Breacher%20Team&weapon=Pulse%20blaster&target=Brutalis%20Dreadnought&" +
+          "supportPreset=Forward%20Observers",
+        catalogue,
+      ),
+    /support is required/i,
+  );
+  assert.throws(
+    () =>
+      resolveAgentCatalogueSelection(
+        "attacker=Breacher%20Team&weapon=Pulse%20blaster&target=Brutalis%20Dreadnought&" +
+          "support=Necron%20Warriors",
+        catalogue,
+      ),
+    /attacker's faction/i,
+  );
+  assert.throws(
+    () =>
+      resolveAgentCatalogueSelection(
+        "attacker=Breacher%20Team&weapon=Pulse%20blaster&target=Brutalis%20Dreadnought&" +
+          "support=Breacher%20Team&supportPreset=For%20the%20Greater%20Good%20%E2%80%94%20Guided%20Ballistic%20Skill",
+        catalogue,
+      ),
+    /supporting-unit ability/i,
+  );
   const nativeDefense = resolveAgentCatalogueSelection(
     "attacker=000000545&weapon=1531&target=Redemptor%20Dreadnought",
     catalogue,

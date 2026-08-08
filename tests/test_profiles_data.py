@@ -140,6 +140,40 @@ class ProfileDataTests(unittest.TestCase):
             [effect["type"] for effect in uploaded["additional_effects"]],
             ["skill_modifier", "ignores_cover"],
         )
+
+        support_cases = {
+            "Blacklight Marker Drones": (
+                "Twice per battle, when this unit is an Observer unit, until the end of the "
+                "phase, each time a ranged attack is made by a model in their Guided unit "
+                "that targets their Spotted unit, re-roll a Wound roll of 1. Designer’s Note: "
+                "Place two Blacklight Marker Drone tokens next to this model, removing one "
+                "each time this ability has been used."
+            ),
+            "Forward Observers": (
+                "Each time this unit is an Observer unit, until the end of the phase, each "
+                "time a ranged attack is made by a model in a Guided unit that targets their "
+                "Spotted unit, re-roll a Hit roll of 1 and re-roll a Wound roll of 1."
+            ),
+            "High-intensity Markerlights": (
+                "Each time this unit is an Observer unit, until the end of the phase, each "
+                "time a model in its Guided unit makes an attack that targets their Spotted "
+                "unit, you can re-roll the Hit roll."
+            ),
+        }
+        for name, description in support_cases.items():
+            with self.subTest(name=name):
+                support = combat_presets(name, description)[0]
+                self.assertEqual(support["source_relationship"], "supporting_unit")
+                self.assertEqual(support["activation"], "situational")
+                self.assertEqual(support["weapon_scope"], "Ranged")
+                self.assertTrue(support["requires_source_guided_against_target"])
+                self.assertTrue(support["requires_target_spotted"])
+
+        unsupported = combat_presets(
+            "Forward Observers",
+            support_cases["Forward Observers"].replace("their Spotted unit", "any enemy unit"),
+        )[0]
+        self.assertNotIn("source_relationship", unsupported)
         self.assertTrue(uploaded["requires_target_spotted"])
 
         changed = greater_good.replace("Markerlight keyword", "Marker Beacon keyword")
@@ -1279,7 +1313,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "41",
+                "42",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1571,7 +1605,7 @@ class ProfileDataTests(unittest.TestCase):
                     "SELECT weapon_scope, count(*) FROM unit_combat_presets "
                     "GROUP BY weapon_scope ORDER BY weapon_scope"
                 ).fetchall(),
-                [("Any", 1199), ("Melee", 402), ("Ranged", 388)],
+                [("Any", 1198), ("Melee", 402), ("Ranged", 389)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1692,7 +1726,7 @@ class ProfileDataTests(unittest.TestCase):
                               sum(requires_target_spotted_by_markerlight_observer)
                        FROM unit_combat_presets"""
                 ).fetchone(),
-                (85, 2, 42),
+                (88, 5, 42),
             )
             self.assertEqual(
                 connection.execute(
@@ -1717,17 +1751,27 @@ class ProfileDataTests(unittest.TestCase):
             )
             self.assertEqual(
                 connection.execute(
-                    """SELECT name, activation
+                    """SELECT name, activation, source_relationship, weapon_scope,
+                              requires_source_guided_against_target,
+                              requires_target_spotted
                        FROM unit_combat_presets
                        WHERE name IN ('Blacklight Marker Drones', 'Forward Observers',
                                       'High-intensity Markerlights')
                        ORDER BY name"""
                 ).fetchall(),
                 [
-                    ("Blacklight Marker Drones", "situational"),
-                    ("Forward Observers", "situational"),
-                    ("High-intensity Markerlights", "situational"),
+                    ("Blacklight Marker Drones", "situational", "supporting_unit", "Ranged", 1, 1),
+                    ("Forward Observers", "situational", "supporting_unit", "Ranged", 1, 1),
+                    ("High-intensity Markerlights", "situational", "supporting_unit", "Ranged", 1, 1),
                 ],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT source_relationship, count(*)
+                       FROM unit_combat_presets
+                       GROUP BY source_relationship ORDER BY source_relationship"""
+                ).fetchall(),
+                [("self", 1986), ("supporting_unit", 3)],
             )
             oath_rows = connection.execute(
                 """SELECT preset.name, preset.requires_oath_wound_bonus,

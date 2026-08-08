@@ -156,6 +156,8 @@ CREATE TABLE unit_combat_presets (
     description_text TEXT NOT NULL,
     is_exclusive_choice INTEGER NOT NULL CHECK (is_exclusive_choice IN (0, 1)),
     activation TEXT NOT NULL CHECK (activation IN ('inherent', 'automatic', 'situational')),
+    source_relationship TEXT NOT NULL DEFAULT 'self'
+        CHECK (source_relationship IN ('self', 'supporting_unit')),
     weapon_scope TEXT NOT NULL CHECK (weapon_scope IN ('Any', 'Ranged', 'Melee')),
     maximum_target_distance INTEGER CHECK (maximum_target_distance > 0),
     requires_attacker_charge INTEGER NOT NULL DEFAULT 0
@@ -2126,6 +2128,43 @@ def combat_guidance_presets(
             },
         ]
 
+    support_ability_text = {
+        "Blacklight Marker Drones": (
+            "Twice per battle, when this unit is an Observer unit, until the end of the "
+            "phase, each time a ranged attack is made by a model in their Guided unit "
+            "that targets their Spotted unit, re-roll a Wound roll of 1. Designer’s Note: "
+            "Place two Blacklight Marker Drone tokens next to this model, removing one "
+            "each time this ability has been used."
+        ),
+        "Forward Observers": (
+            "Each time this unit is an Observer unit, until the end of the phase, each "
+            "time a ranged attack is made by a model in a Guided unit that targets their "
+            "Spotted unit, re-roll a Hit roll of 1 and re-roll a Wound roll of 1."
+        ),
+        "High-intensity Markerlights": (
+            "Each time this unit is an Observer unit, until the end of the phase, each "
+            "time a model in its Guided unit makes an attack that targets their Spotted "
+            "unit, you can re-roll the Hit roll."
+        ),
+    }
+    expected_support_text = support_ability_text.get(name)
+    if expected_support_text and text.casefold() == expected_support_text.casefold():
+        if name == "High-intensity Markerlights":
+            effects["weapon_scope"] = "Ranged"
+            effects["hit_reroll_subject"] = "friendly_unit"
+        return [
+            {
+                "name": name,
+                "description": text,
+                "is_exclusive_choice": 0,
+                "activation": "situational",
+                "source_relationship": "supporting_unit",
+                **effects,
+                "requires_source_guided_against_target": True,
+                "requires_target_spotted": True,
+            }
+        ]
+
     exact_requirements = {
         "Coordinated Strike": (
             r"While this model is a Guided unit, each time it makes an attack that targets "
@@ -2428,7 +2467,8 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
             connection.execute(
                 """INSERT INTO unit_combat_presets
                    (datasheet_id, ability_position, preset_position, name, description_text,
-                    is_exclusive_choice, activation, weapon_scope, maximum_target_distance,
+                    is_exclusive_choice, activation, source_relationship, weapon_scope,
+                    maximum_target_distance,
                     requires_attacker_charge, requires_attacker_stationary,
                     requires_attached_unit,
                     requires_waaagh_active,
@@ -2450,7 +2490,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                     hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
                     wound_reroll_subject)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     ability_position,
@@ -2459,6 +2499,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     preset["description"],
                     preset["is_exclusive_choice"],
                     preset["activation"],
+                    preset.get("source_relationship", "self"),
                     preset["weapon_scope"],
                     preset["maximum_target_distance"],
                     int(preset["requires_attacker_charge"]),
@@ -2661,7 +2702,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "41"),
+                    ("schema_version", "42"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

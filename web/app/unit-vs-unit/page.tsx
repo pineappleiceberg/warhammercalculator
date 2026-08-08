@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { WorkflowNav } from "../../components/workflow-nav";
 import { CombatPresetSelector } from "../../components/combat-preset-selector";
+import { SupportPresetSelector } from "../../components/support-preset-selector";
 import {
   applyTargetCombatPresets,
   attackKeywordsForWeapon,
@@ -96,6 +97,8 @@ export default function UnitVsUnit() {
   const [profileCounts, setProfileCounts] = useState<Record<number, number>>({});
   const [activeAttackerPresetIds, setActiveAttackerPresetIds] = useState<string[]>([]);
   const [activeTargetPresetIds, setActiveTargetPresetIds] = useState<string[]>([]);
+  const [supportUnitId, setSupportUnitId] = useState("");
+  const [activeSupportPresetIds, setActiveSupportPresetIds] = useState<string[]>([]);
   const [weaponOrder, setWeaponOrder] = useState<number[]>([]);
   const [targetSegments, setTargetSegments] = useState<TargetSegment[]>([]);
   const [initialWoundsLost, setInitialWoundsLost] = useState(0);
@@ -159,6 +162,8 @@ export default function UnitVsUnit() {
     [catalogue, targetFaction],
   );
   const attackerUnit = attackerUnits.find((unit) => unit.id === attackerUnitId);
+  const supportUnits = catalogue?.units.filter((unit) => unit.factionId === attackerFaction) ?? [];
+  const supportUnit = supportUnits.find((unit) => unit.id === supportUnitId);
   const targetUnit = targetUnits.find((unit) => unit.id === targetUnitId);
   const weaponGroups = groupWeaponProfiles(attackerUnit?.weapons ?? []);
   const structuredGroupIds = new Set(
@@ -218,6 +223,8 @@ export default function UnitVsUnit() {
     targetSegments,
     activeAttackerPresetIds,
     activeTargetPresetIds,
+    supportUnitId,
+    activeSupportPresetIds,
   });
   const resultsAreCurrent = resultKey === inputKey;
   const rollIsCurrent = rollKey === inputKey;
@@ -267,6 +274,8 @@ export default function UnitVsUnit() {
     );
     setWeaponOrder(groups.flatMap((group) => group.profiles.map((profile) => profile.id)));
     setActiveAttackerPresetIds([]);
+    setSupportUnitId("");
+    setActiveSupportPresetIds([]);
     setResults([]);
     setVolleySummary(null);
     setRollResult(null);
@@ -366,34 +375,65 @@ export default function UnitVsUnit() {
           line.weapon,
           targetSegments[0]?.keywords ?? [],
         ),
-        selectedAndAutomaticCombatPresets(
-          attackerUnit?.combatPresets ?? [],
-          activeAttackerPresetIds,
-          line.weapon.type,
-          line.weapon.name,
-          targetSegments[0]?.keywords ?? [],
-          attackKeywordsForWeapon(line.weapon),
-          targetDistance,
-          attackerCharged,
-          attackerBattleShocked,
-          targetBattleShocked,
-          targetStrengthState,
-          attackerRemainedStationary,
-          attackerAttached,
-          attackerWaaaghActive,
-          targetOathOfMoment,
-          attackerOathWoundBonusEligible,
-          attackerOnObjective,
-          targetOnObjective,
-          attackerOnObjective && attackerObjectiveOwner === "attacker",
-          targetOnObjective && ["target", "uncontrolled"].includes(targetObjectiveOwner),
-          attackerOnAttackerSelectedObjective,
-          targetOnAttackerSelectedObjective,
-          attackerBattleShocked,
-          attackerGuidedAgainstTarget,
-          targetSpotted,
-          targetSpottedByMarkerlightObserver,
-        ),
+        [
+          ...selectedAndAutomaticCombatPresets(
+            attackerUnit?.combatPresets ?? [],
+            activeAttackerPresetIds,
+            line.weapon.type,
+            line.weapon.name,
+            targetSegments[0]?.keywords ?? [],
+            attackKeywordsForWeapon(line.weapon),
+            targetDistance,
+            attackerCharged,
+            attackerBattleShocked,
+            targetBattleShocked,
+            targetStrengthState,
+            attackerRemainedStationary,
+            attackerAttached,
+            attackerWaaaghActive,
+            targetOathOfMoment,
+            attackerOathWoundBonusEligible,
+            attackerOnObjective,
+            targetOnObjective,
+            attackerOnObjective && attackerObjectiveOwner === "attacker",
+            targetOnObjective && ["target", "uncontrolled"].includes(targetObjectiveOwner),
+            attackerOnAttackerSelectedObjective,
+            targetOnAttackerSelectedObjective,
+            attackerBattleShocked,
+            attackerGuidedAgainstTarget,
+            targetSpotted,
+            targetSpottedByMarkerlightObserver,
+          ),
+          ...selectedAndAutomaticCombatPresets(
+            supportUnit?.combatPresets ?? [],
+            activeSupportPresetIds,
+            line.weapon.type,
+            line.weapon.name,
+            targetSegments[0]?.keywords ?? [],
+            attackKeywordsForWeapon(line.weapon),
+            targetDistance,
+            attackerCharged,
+            attackerBattleShocked,
+            targetBattleShocked,
+            targetStrengthState,
+            attackerRemainedStationary,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            attackerGuidedAgainstTarget,
+            targetSpotted,
+            targetSpottedByMarkerlightObserver,
+            "supporting_unit",
+          ),
+        ],
         selectedAndAutomaticCombatPresets(
           targetUnit?.combatPresets ?? [],
           activeTargetPresetIds,
@@ -721,6 +761,22 @@ export default function UnitVsUnit() {
                   attackerRemainedStationary={attackerRemainedStationary}
                   sourceUnitAttached={attackerAttached}
                   sourceUnitWaaaghActive={attackerWaaaghActive}
+                  attackerBattleShocked={attackerBattleShocked}
+                  targetBattleShocked={targetBattleShocked}
+                  targetStrengthState={targetStrengthState}
+                />
+                <SupportPresetSelector
+                  units={supportUnits}
+                  role="attacker"
+                  selectedUnitId={supportUnitId}
+                  selectedIds={activeSupportPresetIds}
+                  onUnitChange={(unitId) => {
+                    setSupportUnitId(unitId);
+                    setActiveSupportPresetIds([]);
+                  }}
+                  onPresetChange={setActiveSupportPresetIds}
+                  attackerCharged={attackerCharged}
+                  attackerRemainedStationary={attackerRemainedStationary}
                   attackerBattleShocked={attackerBattleShocked}
                   targetBattleShocked={targetBattleShocked}
                   targetStrengthState={targetStrengthState}

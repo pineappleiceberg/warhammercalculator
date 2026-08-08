@@ -9,6 +9,8 @@ const catalogueParameters = new Set([
   "model",
   "attackerPreset",
   "targetPreset",
+  "support",
+  "supportPreset",
   "format",
   "distance",
 ]);
@@ -210,7 +212,16 @@ function setReroll(profile, search, name, allField, onesField) {
 
 export function isCatalogueAgentQuery(input) {
   const search = parameters(input);
-  return ["attacker", "weapon", "target", "model"].some((name) => search.has(name));
+  return [
+    "attacker",
+    "weapon",
+    "target",
+    "model",
+    "attackerPreset",
+    "targetPreset",
+    "support",
+    "supportPreset",
+  ].some((name) => search.has(name));
 }
 
 export function parseAgentProfile(input, baseProfile, requireDirectParameters = true) {
@@ -326,8 +337,25 @@ export function resolveAgentCatalogueSelection(input, catalogue) {
     );
   }
   const model = modelValue ? matchOne(target.models, modelValue, "model") : target.models[0];
-  const resolvePresets = (unit, name) =>
-    presetValues(search, name).map((value) => matchOne(unit.combatPresets, value, name));
+  const resolvePresets = (unit, name, relationship = "self") =>
+    presetValues(search, name).map((value) => {
+      const preset = matchOne(unit.combatPresets, value, name);
+      if ((preset.sourceRelationship ?? "self") !== relationship) {
+        throw new Error(
+          `${name} must identify a ${relationship === "supporting_unit" ? "supporting-unit" : "self"} ability`,
+        );
+      }
+      return preset;
+    });
+  const supportValue = singleValue(search, ["support"]);
+  const requestedSupportPresets = presetValues(search, "supportPreset");
+  if (!supportValue && requestedSupportPresets.length) {
+    throw new Error("support is required when supportPreset is supplied");
+  }
+  const support = supportValue ? matchOne(catalogue.units, supportValue, "support") : null;
+  if (support && support.factionId !== attacker.factionId) {
+    throw new Error("support must belong to the attacker's faction");
+  }
   return {
     attacker,
     weapon,
@@ -335,6 +363,16 @@ export function resolveAgentCatalogueSelection(input, catalogue) {
     model,
     attackerPresets: resolvePresets(attacker, "attackerPreset"),
     targetPresets: resolvePresets(target, "targetPreset"),
+    support,
+    supportPresets: support
+      ? requestedSupportPresets.map((value) => {
+          const preset = matchOne(support.combatPresets, value, "supportPreset");
+          if ((preset.sourceRelationship ?? "self") !== "supporting_unit") {
+            throw new Error("supportPreset must identify a supporting-unit ability");
+          }
+          return preset;
+        })
+      : [],
   };
 }
 

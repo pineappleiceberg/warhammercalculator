@@ -16,10 +16,11 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Add explicit cross-unit support relationships so Observer-source buffs such
-   as Forward Observers, Blacklight Marker Drones, and High-intensity
-   Markerlights—and then other aura-source abilities—can be selected from the
-   supporting unit without being misapplied to that unit's own attacks.
+1. Extend the new supporting-unit relationship to conservative friendly-unit
+   aura and targeted-support abilities, with explicit source distance and
+   eligibility where their published conditions require it. Add Play Mode
+   per-battle use tracking for limited support abilities such as the two uses
+   of Blacklight Marker Drones.
 2. Add reproducible closest-target and line-of-sight relationship state for the
    remaining compound attack conditions that still require manual
    interpretation.
@@ -31,6 +32,20 @@ priority over feature count.
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added explicit cross-unit support sources. SQLite schema 42 gives
+  every combat preset a source relationship and classifies Forward Observers,
+  Blacklight Marker Drones, and High-intensity Markerlights as effects supplied
+  by a separate Observer unit, never as that unit's own attack bonus. All three
+  require the affected attacker to be Guided against the current Spotted target
+  and are ranged-only; High-intensity Markerlights no longer leaks into melee.
+  Model vs Model and Unit vs Unit select a same-faction supporting profile,
+  while Play Mode selects a different supporting unit instance from the saved
+  army list and recovers that choice after reload. Static agent URLs accept
+  `support` plus `supportPreset`, reject cross-faction and self-preset misuse,
+  and expose the resolved source. Exact parser negatives, generated database
+  snapshots, legacy recovery, agent resolution, self-versus-support boundaries,
+  and C/WebAssembly re-roll monotonicity cover the change.
 
 - 2026-08-07: Added exact T’au Guided, Spotted, and Markerlight relationships.
   SQLite schema 41 separates Ballistic Skill characteristic improvement from

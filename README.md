@@ -545,6 +545,13 @@ position states. A catalogue agent request can
 pass `charged=true` to activate every compatible, unambiguous charge-triggered
 source rule without an `attackerPreset` parameter and activate Lance for
 compatible catalogue weapons.
+
+Cross-unit abilities use `support=<unit>` with one or more
+`supportPreset=<ability>` values. The support unit must share the attacker's
+faction, and only abilities classified as supporting-unit effects can be used
+there. Observer effects additionally require `guided=true&spotted=true`, which
+prevents an Observer ability from being treated as the Observer's own attack
+bonus.
 `unitModels` and `nearbyEnemyModels` activate exact model-count-scaled Attacks
 bonuses at their published rounding boundaries; `0` means unknown.
 `stationary=true` likewise activates exact stationary rules and the Heavy bonus

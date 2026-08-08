@@ -9,6 +9,7 @@ const selectorKeys = [
   "weaponId",
   "profileId",
   "targetModelId",
+  "supportUnitId",
 ];
 
 function object(value, message) {
@@ -21,12 +22,17 @@ export function createPlayRecovery(state, savedAt = Date.now()) {
   const recovery = { version: PLAY_RECOVERY_VERSION, savedAt };
   if (!Number.isSafeInteger(savedAt) || savedAt < 0) throw new Error("savedAt is invalid");
   for (const key of selectorKeys) {
-    if (typeof value[key] !== "string" || value[key].length > 100) {
+    const selected = key === "supportUnitId" ? (value[key] ?? "") : value[key];
+    if (typeof selected !== "string" || selected.length > 100) {
       throw new Error(`${key} must be a string of at most 100 characters`);
     }
-    recovery[key] = value[key];
+    recovery[key] = selected;
   }
-  for (const key of ["activeAttackerPresetIds", "activeTargetPresetIds"]) {
+  for (const key of [
+    "activeAttackerPresetIds",
+    "activeTargetPresetIds",
+    "activeSupportPresetIds",
+  ]) {
     const ids = value[key] ?? [];
     if (
       !Array.isArray(ids) ||

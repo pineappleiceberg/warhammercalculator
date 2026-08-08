@@ -121,6 +121,8 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
     targetModelId: "3",
     activeAttackerPresetIds: ["datasheet-1:ability:2"],
     activeTargetPresetIds: ["datasheet-2:ability:4"],
+    supportUnitId: "unit-2",
+    activeSupportPresetIds: ["datasheet-3:ability:5"],
     profile: {
       attacks: 2,
       hitOn: 3,
@@ -163,6 +165,8 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   };
   const recovery = createPlayRecovery(state, 1_700_000_000_000);
   assert.deepEqual(recovery.activeAttackerPresetIds, ["datasheet-1:ability:2"]);
+  assert.equal(recovery.supportUnitId, "unit-2");
+  assert.deepEqual(recovery.activeSupportPresetIds, ["datasheet-3:ability:5"]);
   assert.equal(recovery.profile.targetDistance, 9);
   assert.equal(recovery.profile.attackerUnitModels, 11);
   assert.equal(recovery.profile.nearbyEnemyModels, 7);
@@ -188,6 +192,12 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   assert.equal(recovery.profile.targetBattleShocked, true);
   assert.equal(recovery.profile.targetStrengthState, "below_half");
   assert.deepEqual(parsePlayRecovery(JSON.parse(JSON.stringify(recovery))), recovery);
+  const legacy = { ...recovery };
+  delete legacy.supportUnitId;
+  delete legacy.activeSupportPresetIds;
+  const migrated = parsePlayRecovery(legacy);
+  assert.equal(migrated.supportUnitId, "");
+  assert.deepEqual(migrated.activeSupportPresetIds, []);
   assert.throws(
     () => parsePlayRecovery({ ...recovery, history: [{ ...recovery.history[0], damage: -1 }] }),
     /damage/i,
@@ -199,5 +209,9 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   assert.throws(
     () => parsePlayRecovery({ ...recovery, activeTargetPresetIds: [42] }),
     /activeTargetPresetIds/,
+  );
+  assert.throws(
+    () => parsePlayRecovery({ ...recovery, activeSupportPresetIds: [42] }),
+    /activeSupportPresetIds/,
   );
 });

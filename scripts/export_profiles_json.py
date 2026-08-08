@@ -165,7 +165,8 @@ def export(database: Path, output: Path) -> None:
 
         for row in connection.execute(
             """SELECT datasheet_id, ability_position, preset_position, name, description_text,
-                      is_exclusive_choice, activation, weapon_scope, maximum_target_distance,
+                      is_exclusive_choice, activation, source_relationship, weapon_scope,
+                      maximum_target_distance,
                       requires_attacker_charge, requires_attacker_stationary,
                       requires_attached_unit,
                       requires_waaagh_active,
@@ -194,6 +195,7 @@ def export(database: Path, output: Path) -> None:
                     "id": base_id if row["preset_position"] == 1 else f"{base_id}:{row['preset_position']}",
                     "choiceGroup": base_id if row["is_exclusive_choice"] else None,
                     "activation": row["activation"],
+                    "sourceRelationship": row["source_relationship"],
                     "name": row["name"],
                     "description": row["description_text"],
                     "weaponScope": row["weapon_scope"],

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { WorkflowNav } from "../../components/workflow-nav";
 import { CombatPresetSelector } from "../../components/combat-preset-selector";
+import { SupportPresetSelector } from "../../components/support-preset-selector";
 import { fetchArmyLists, type ArmyListRecord } from "../../lib/army-list";
 import {
   DEFAULT_PROFILE,
@@ -50,6 +51,8 @@ export default function PlayMode() {
   const [targetModelId, setTargetModelId] = useState("");
   const [activeAttackerPresetIds, setActiveAttackerPresetIds] = useState<string[]>([]);
   const [activeTargetPresetIds, setActiveTargetPresetIds] = useState<string[]>([]);
+  const [supportUnitId, setSupportUnitId] = useState("");
+  const [activeSupportPresetIds, setActiveSupportPresetIds] = useState<string[]>([]);
   const [profile, setProfile] = useState<CombatProfile>(DEFAULT_PROFILE);
   const [result, setResult] = useState<RollResult | null>(null);
   const [history, setHistory] = useState<LogEntry[]>([]);
@@ -88,6 +91,8 @@ export default function PlayMode() {
             history: LogEntry[];
             activeAttackerPresetIds: string[];
             activeTargetPresetIds: string[];
+            supportUnitId: string;
+            activeSupportPresetIds: string[];
           };
           setAttackerListId(saved.attackerListId);
           setTargetListId(saved.targetListId);
@@ -98,6 +103,8 @@ export default function PlayMode() {
           setTargetModelId(saved.targetModelId);
           setActiveAttackerPresetIds(saved.activeAttackerPresetIds);
           setActiveTargetPresetIds(saved.activeTargetPresetIds);
+          setSupportUnitId(saved.supportUnitId);
+          setActiveSupportPresetIds(saved.activeSupportPresetIds);
           setProfile(normalizeProfile(saved.profile));
           setHistory(saved.history);
           recovered.current = true;
@@ -130,6 +137,8 @@ export default function PlayMode() {
       targetModelId,
       activeAttackerPresetIds,
       activeTargetPresetIds,
+      supportUnitId,
+      activeSupportPresetIds,
       profile,
       history,
     });
@@ -138,6 +147,7 @@ export default function PlayMode() {
     attackerListId,
     activeAttackerPresetIds,
     activeTargetPresetIds,
+    activeSupportPresetIds,
     attackerUnitId,
     history,
     profile,
@@ -146,6 +156,7 @@ export default function PlayMode() {
     targetListId,
     targetModelId,
     targetUnitId,
+    supportUnitId,
     weaponId,
   ]);
 
@@ -158,6 +169,18 @@ export default function PlayMode() {
   );
   const attackerCatalogueUnit = catalogue?.units.find((unit) => unit.id === attackerUnit?.unitId);
   const targetCatalogueUnit = catalogue?.units.find((unit) => unit.id === targetUnit?.unitId);
+  const playSupportUnits =
+    attackerList?.units
+      .filter((unit) => unit.id !== attackerUnitId)
+      .map((unit) => ({
+        id: unit.id,
+        name: unit.name,
+        combatPresets:
+          catalogue?.units.find((catalogueUnit) => catalogueUnit.id === unit.unitId)
+            ?.combatPresets ?? [],
+      })) ?? [];
+  const supportArmyUnit = attackerList?.units.find((unit) => unit.id === supportUnitId);
+  const supportCatalogueUnit = catalogue?.units.find((unit) => unit.id === supportArmyUnit?.unitId);
   const weaponGroups = groupWeaponProfiles(attackerCatalogueUnit?.weapons ?? []);
   const selectedWeaponGroup = weaponGroups.find(
     (group) =>
@@ -195,6 +218,7 @@ export default function PlayMode() {
     sourceUnitGuidedAgainstTarget = false,
     targetUnitSpotted = false,
     targetUnitSpottedByMarkerlightObserver = false,
+    sourceRelationship: "self" | "supporting_unit" = "self",
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -223,6 +247,7 @@ export default function PlayMode() {
       sourceUnitGuidedAgainstTarget,
       targetUnitSpotted,
       targetUnitSpottedByMarkerlightObserver,
+      sourceRelationship,
     );
 
   const refreshProfile = (
@@ -256,6 +281,8 @@ export default function PlayMode() {
     nextAttackerGuidedAgainstTarget = profile.attackerGuidedAgainstTarget,
     nextTargetSpotted = profile.targetSpotted,
     nextTargetSpottedByMarkerlightObserver = profile.targetSpottedByMarkerlightObserver,
+    nextSupportPresetIds = activeSupportPresetIds,
+    nextSupportCatalogueUnit = supportCatalogueUnit,
   ) => {
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
@@ -307,32 +334,61 @@ export default function PlayMode() {
           weapon,
           model.keywords,
         ),
-        selectedCombatPresets(
-          nextAttackerPresetIds,
-          attackerCatalogueUnit,
-          weapon,
-          model.keywords,
-          nextTargetDistance,
-          nextAttackerCharged,
-          nextAttackerBattleShocked,
-          nextTargetBattleShocked,
-          nextTargetStrengthState,
-          nextAttackerRemainedStationary,
-          nextAttackerAttached,
-          nextAttackerWaaaghActive,
-          nextTargetOathOfMoment,
-          nextAttackerOathWoundBonusEligible,
-          nextAttackerOnObjective,
-          nextTargetOnObjective,
-          nextAttackerOnObjective && nextAttackerObjectiveOwner === "attacker",
-          nextTargetOnObjective && ["target", "uncontrolled"].includes(nextTargetObjectiveOwner),
-          nextAttackerOnAttackerSelectedObjective,
-          nextTargetOnAttackerSelectedObjective,
-          nextAttackerBattleShocked,
-          nextAttackerGuidedAgainstTarget,
-          nextTargetSpotted,
-          nextTargetSpottedByMarkerlightObserver,
-        ),
+        [
+          ...selectedCombatPresets(
+            nextAttackerPresetIds,
+            attackerCatalogueUnit,
+            weapon,
+            model.keywords,
+            nextTargetDistance,
+            nextAttackerCharged,
+            nextAttackerBattleShocked,
+            nextTargetBattleShocked,
+            nextTargetStrengthState,
+            nextAttackerRemainedStationary,
+            nextAttackerAttached,
+            nextAttackerWaaaghActive,
+            nextTargetOathOfMoment,
+            nextAttackerOathWoundBonusEligible,
+            nextAttackerOnObjective,
+            nextTargetOnObjective,
+            nextAttackerOnObjective && nextAttackerObjectiveOwner === "attacker",
+            nextTargetOnObjective && ["target", "uncontrolled"].includes(nextTargetObjectiveOwner),
+            nextAttackerOnAttackerSelectedObjective,
+            nextTargetOnAttackerSelectedObjective,
+            nextAttackerBattleShocked,
+            nextAttackerGuidedAgainstTarget,
+            nextTargetSpotted,
+            nextTargetSpottedByMarkerlightObserver,
+          ),
+          ...selectedCombatPresets(
+            nextSupportPresetIds,
+            nextSupportCatalogueUnit,
+            weapon,
+            model.keywords,
+            nextTargetDistance,
+            nextAttackerCharged,
+            nextAttackerBattleShocked,
+            nextTargetBattleShocked,
+            nextTargetStrengthState,
+            nextAttackerRemainedStationary,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            nextAttackerGuidedAgainstTarget,
+            nextTargetSpotted,
+            nextTargetSpottedByMarkerlightObserver,
+            "supporting_unit",
+          ),
+        ],
         selectedCombatPresets(
           nextTargetPresetIds,
           targetCatalogueUnit,
@@ -521,6 +577,45 @@ export default function PlayMode() {
       targetSpotted,
       targetSpottedByMarkerlightObserver,
     );
+
+  const refreshSupportState = (ids: string[], unitId = supportUnitId) => {
+    const armyUnit = attackerList?.units.find((unit) => unit.id === unitId);
+    const catalogueUnit = catalogue?.units.find((unit) => unit.id === armyUnit?.unitId);
+    refreshProfile(
+      weaponId,
+      targetModelId,
+      profileId,
+      activeAttackerPresetIds,
+      activeTargetPresetIds,
+      profile.targetDistance,
+      profile.attackerCharged,
+      profile.attackerBattleShocked,
+      profile.targetBattleShocked,
+      profile.targetStrengthState,
+      profile.attackerRemainedStationary,
+      profile.attackerAttached,
+      profile.targetAttached,
+      profile.attackerWaaaghActive,
+      profile.targetWaaaghActive,
+      profile.targetOathOfMoment,
+      profile.attackerOathWoundBonusEligible,
+      profile.attackerUnitModels,
+      profile.nearbyEnemyModels,
+      profile.attackerOnObjective,
+      profile.targetOnObjective,
+      profile.attackerObjectiveOwner,
+      profile.targetObjectiveOwner,
+      profile.attackerOnAttackerSelectedObjective,
+      profile.targetOnAttackerSelectedObjective,
+      profile.attackerOnTargetSelectedObjective,
+      profile.targetOnTargetSelectedObjective,
+      profile.attackerGuidedAgainstTarget,
+      profile.targetSpotted,
+      profile.targetSpottedByMarkerlightObserver,
+      ids,
+      catalogueUnit,
+    );
+  };
 
   const chooseTargetProfile = (id: string) => {
     setTargetModelId(id);
@@ -754,6 +849,8 @@ export default function PlayMode() {
     setTargetModelId("");
     setActiveAttackerPresetIds([]);
     setActiveTargetPresetIds([]);
+    setSupportUnitId("");
+    setActiveSupportPresetIds([]);
     setProfile(DEFAULT_PROFILE);
     setResult(null);
     setHistory([]);
@@ -797,6 +894,8 @@ export default function PlayMode() {
                       setWeaponId("");
                       setProfileId("");
                       setActiveAttackerPresetIds([]);
+                      setSupportUnitId("");
+                      setActiveSupportPresetIds([]);
                       setProfile((current) => ({
                         ...current,
                         attackerCharged: false,
@@ -840,6 +939,8 @@ export default function PlayMode() {
                       );
                       setAttackerUnitId(event.target.value);
                       setActiveAttackerPresetIds(nextUnit?.combatPresetIds ?? []);
+                      setSupportUnitId("");
+                      setActiveSupportPresetIds([]);
                       setWeaponId("");
                       setProfileId("");
                       setProfile((current) => ({
@@ -1569,6 +1670,28 @@ export default function PlayMode() {
                   targetStrengthState={profile.targetStrengthState}
                 />
               )}
+              {attackerCatalogueUnit ? (
+                <SupportPresetSelector
+                  units={playSupportUnits}
+                  role="attacker"
+                  selectedUnitId={supportUnitId}
+                  selectedIds={activeSupportPresetIds}
+                  onUnitChange={(unitId) => {
+                    setSupportUnitId(unitId);
+                    setActiveSupportPresetIds([]);
+                    refreshSupportState([], unitId);
+                  }}
+                  onPresetChange={(ids) => {
+                    setActiveSupportPresetIds(ids);
+                    refreshSupportState(ids);
+                  }}
+                  attackerCharged={profile.attackerCharged}
+                  attackerRemainedStationary={profile.attackerRemainedStationary}
+                  attackerBattleShocked={profile.attackerBattleShocked}
+                  targetBattleShocked={profile.targetBattleShocked}
+                  targetStrengthState={profile.targetStrengthState}
+                />
+              ) : null}
               {targetCatalogueUnit && (
                 <CombatPresetSelector
                   presets={targetCatalogueUnit.combatPresets}

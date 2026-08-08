@@ -179,10 +179,12 @@ export function selectedAndAutomaticCombatPresets(
   sourceUnitGuidedAgainstTarget = false,
   targetUnitSpotted = false,
   targetUnitSpottedByMarkerlightObserver = false,
+  sourceRelationship = "self",
 ) {
   const selected = new Set(selectedIds);
   return presets.filter(
     (preset) =>
+      (preset.sourceRelationship ?? "self") === sourceRelationship &&
       (selected.has(preset.id) || preset.activation === "automatic") &&
       combatPresetSupportsWeapon(preset, weaponType, weaponName) &&
       combatPresetMeetsEligibility(

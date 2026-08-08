@@ -2241,6 +2241,59 @@ test("source-backed Guided and Markerlight state composes exact C/Wasm hit and c
       exactMean({ hitOn: 3, ap: 1, save: 3, flags: 1024 | 2048 }),
     ),
   );
+
+  const stealth = catalogue.units.find((unit) => unit.name === "Stealth Battlesuits");
+  const forwardObservers = stealth.combatPresets.find(
+    (preset) => preset.name === "Forward Observers",
+  );
+  const supported = (isGuided, isSpotted, relationship = "supporting_unit") =>
+    selectedAndAutomaticCombatPresets(
+      stealth.combatPresets,
+      [forwardObservers.id],
+      weapon.type,
+      weapon.name,
+      [],
+      attackKeywordsForWeapon(weapon),
+      0,
+      false,
+      false,
+      false,
+      "full",
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      isGuided,
+      isSpotted,
+      false,
+      relationship,
+    );
+  assert.equal(
+    supported(true, true, "self").some((preset) => preset.name === "Forward Observers"),
+    false,
+  );
+  assert.deepEqual(supported(false, true), []);
+  assert.deepEqual(supported(true, false), []);
+  const observerEffects = supported(true, true);
+  assert.deepEqual(
+    observerEffects.map((preset) => preset.name),
+    ["Forward Observers"],
+  );
+  const observerProfile = applyCombatPresets(base, observerEffects, [], "Ranged", {
+    attackerGuidedAgainstTarget: true,
+    targetSpotted: true,
+  });
+  assert.equal(observerProfile.rerollHitOnes, true);
+  assert.equal(observerProfile.rerollWoundOnes, true);
+  assert.ok(lessThanOrEqual(exactMean({ hitOn: 4 }), exactMean({ hitOn: 4, flags: 8192 | 32768 })));
 });
 
 test("source-backed target distance changes preset composition at its exact boundary", async () => {

@@ -23,6 +23,7 @@ type Props = {
   attackerBattleShocked?: boolean;
   targetBattleShocked?: boolean;
   targetStrengthState?: "full" | "below_starting" | "below_half";
+  sourceRelationship?: "self" | "supporting_unit";
 };
 
 export function CombatPresetSelector({
@@ -40,9 +41,13 @@ export function CombatPresetSelector({
   attackerBattleShocked = false,
   targetBattleShocked = false,
   targetStrengthState = "full",
+  sourceRelationship = "self",
 }: Props) {
   const available = presets.filter(
-    (preset) => combatPresetRequiresActivation(preset) && combatPresetSupportsRole(preset, role),
+    (preset) =>
+      (preset.sourceRelationship ?? "self") === sourceRelationship &&
+      combatPresetRequiresActivation(preset) &&
+      combatPresetSupportsRole(preset, role),
   );
   if (!available.length) return null;
   const selected = new Set(selectedIds);
