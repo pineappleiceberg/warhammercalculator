@@ -37,6 +37,7 @@ import { defensiveEquipmentSelectionKey } from "../../lib/defensive-equipment.mj
 import {
   catalogueModelSegments,
   savedUnitDefensiveEquipmentDefaults,
+  savedUnitDefensiveEquipmentWarnings,
 } from "../../lib/formations.mjs";
 
 const emptyList: ArmyListInput = { name: "", factionId: "", units: [] };
@@ -119,6 +120,32 @@ export default function ArmyLists() {
           },
     [catalogue, draft],
   );
+  const defensiveWarningsByUnit = useMemo(
+    () =>
+      new Map(
+        draft.units.map((unit) => {
+          const sourceUnit = catalogue?.units.find((entry) => entry.id === unit.unitId);
+          return [unit.id, sourceUnit ? savedUnitDefensiveEquipmentWarnings(unit, sourceUnit) : []];
+        }),
+      ),
+    [catalogue, draft.units],
+  );
+  const unacknowledgedDefensiveWarnings = [...defensiveWarningsByUnit.values()]
+    .flat()
+    .filter((warning) => warning.reason === null);
+  const savedDefensiveWarningsByList = useMemo(
+    () =>
+      new Map(
+        lists.map((list) => [
+          list.id,
+          list.units.flatMap((unit) => {
+            const sourceUnit = catalogue?.units.find((entry) => entry.id === unit.unitId);
+            return sourceUnit ? savedUnitDefensiveEquipmentWarnings(unit, sourceUnit) : [];
+          }),
+        ]),
+      ),
+    [catalogue, lists],
+  );
 
   const addUnit = () => {
     const unit = units.find((entry) => entry.id === unitId);
@@ -154,6 +181,7 @@ export default function ArmyLists() {
   const changeUnitDefensiveEquipment = (
     unitId: string,
     key: string,
+    optionId: string,
     count: number,
     sourceUnit: Catalogue["units"][number] | undefined,
   ) =>
@@ -163,11 +191,29 @@ export default function ArmyLists() {
         : { ...(unit.defensiveEquipmentCounts ?? {}) };
       if (count > 0) defensiveEquipmentCounts[key] = count;
       else delete defensiveEquipmentCounts[key];
-      return { ...unit, defensiveEquipmentCounts };
+      const defensiveEquipmentOverrides = { ...(unit.defensiveEquipmentOverrides ?? {}) };
+      delete defensiveEquipmentOverrides[optionId];
+      return { ...unit, defensiveEquipmentCounts, defensiveEquipmentOverrides };
+    });
+
+  const changeDefensiveEquipmentOverride = (
+    unitId: string,
+    warningKey: string,
+    reason: "" | "casualties" | "narrative",
+  ) =>
+    changeUnit(unitId, (unit) => {
+      const defensiveEquipmentOverrides = { ...(unit.defensiveEquipmentOverrides ?? {}) };
+      if (reason) defensiveEquipmentOverrides[warningKey] = reason;
+      else delete defensiveEquipmentOverrides[warningKey];
+      return { ...unit, defensiveEquipmentOverrides };
     });
 
   const save = async () => {
     if (!draft.name.trim() || !draft.factionId) return;
+    if (unacknowledgedDefensiveWarnings.length > 0) {
+      setStatus("Acknowledge each defensive-equipment override before saving");
+      return;
+    }
     setStatus("Saving…");
     try {
       const saved = await saveArmyList(draft, editingId);
@@ -357,6 +403,7 @@ export default function ArmyLists() {
                                         { ...current, modelCount: next },
                                         sourceUnit,
                                       ),
+                                defensiveEquipmentOverrides: undefined,
                               };
                             });
                           }}
@@ -654,6 +701,7 @@ export default function ArmyLists() {
                                       ...(current.loadoutSubjectCounts ?? {}),
                                       [subject.id]: next,
                                     },
+                                    defensiveEquipmentOverrides: undefined,
                                   };
                                 });
                               }}
@@ -791,6 +839,9 @@ export default function ArmyLists() {
                                     <span>
                                       {option.name}
                                       <small>{option.description}</small>
+                                      {!option.limitExact && (
+                                        <small>Source bearer limit is conservative.</small>
+                                      )}
                                     </span>
                                     <input
                                       aria-label={`${unit.name} ${option.name} default equipped`}
@@ -800,6 +851,7 @@ export default function ArmyLists() {
                                         changeUnitDefensiveEquipment(
                                           unit.id,
                                           key,
+                                          option.id,
                                           event.target.checked ? 1 : 0,
                                           sourceUnit,
                                         )
@@ -825,6 +877,9 @@ export default function ArmyLists() {
                                       <span>
                                         {segment.model.name} · {option.name}
                                         <small>{option.description}</small>
+                                        {!option.limitExact && (
+                                          <small>Source bearer limit is conservative.</small>
+                                        )}
                                       </span>
                                       <input
                                         aria-label={`${unit.name} ${segment.model.name} ${option.name} default bearers`}
@@ -839,6 +894,7 @@ export default function ArmyLists() {
                                           changeUnitDefensiveEquipment(
                                             unit.id,
                                             key,
+                                            option.id,
                                             Math.min(
                                               segment.modelCount,
                                               Math.max(0, +event.target.value || 0),
@@ -852,6 +908,41 @@ export default function ArmyLists() {
                                 });
                             })}
                           </details>
+                        )}
+                        {(defensiveWarningsByUnit.get(unit.id)?.length ?? 0) > 0 && (
+                          <div className="loadout-warnings" role="status">
+                            <strong>Defensive equipment source check</strong>
+                            <ul>
+                              {defensiveWarningsByUnit.get(unit.id)?.map((warning) => (
+                                <li key={warning.key}>
+                                  <span>{warning.message}</span>
+                                  {warning.source && <small>{warning.source}</small>}
+                                  <label>
+                                    Intentional override
+                                    <select
+                                      aria-label={`${unit.name} ${warning.key} override reason`}
+                                      value={warning.reason ?? ""}
+                                      onChange={(event) =>
+                                        changeDefensiveEquipmentOverride(
+                                          unit.id,
+                                          warning.key,
+                                          event.target.value as "" | "casualties" | "narrative",
+                                        )
+                                      }
+                                    >
+                                      <option value="">Choose a reason</option>
+                                      <option value="casualties">Battlefield casualties</option>
+                                      <option value="narrative">Narrative or house rule</option>
+                                    </select>
+                                  </label>
+                                </li>
+                              ))}
+                            </ul>
+                            <small>
+                              Source-illegal equipment must be acknowledged before this list can be
+                              saved.
+                            </small>
+                          </div>
                         )}
                         {(sourceUnit?.wargearChoicePools.length ?? 0) > 0 && (
                           <details className="source-choice-pools roster-choice-pools">
@@ -946,7 +1037,11 @@ export default function ArmyLists() {
               <button
                 className="primary-action"
                 type="button"
-                disabled={!draft.name.trim() || !draft.factionId}
+                disabled={
+                  !draft.name.trim() ||
+                  !draft.factionId ||
+                  unacknowledgedDefensiveWarnings.length > 0
+                }
                 onClick={save}
               >
                 {editingId ? "Update list" : "Save list"}
@@ -1009,6 +1104,17 @@ export default function ArmyLists() {
                   {list.units.length} units ·{" "}
                   {list.units.reduce((sum, unit) => sum + unit.modelCount, 0)} models
                 </p>
+                {(savedDefensiveWarningsByList.get(list.id)?.length ?? 0) > 0 && (
+                  <small className="saved-roster-warning">
+                    {savedDefensiveWarningsByList.get(list.id)?.length} defensive-equipment source
+                    {savedDefensiveWarningsByList.get(list.id)?.length === 1
+                      ? " warning"
+                      : " warnings"}
+                    {savedDefensiveWarningsByList
+                      .get(list.id)
+                      ?.some((warning) => warning.reason === null) && " · acknowledgement needed"}
+                  </small>
+                )}
               </div>
               <div>
                 <button type="button" onClick={() => edit(list)}>

@@ -2227,6 +2227,9 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
         defensiveEquipmentCounts: {
           "unit-1::3::datasheet-1:equipment:1": 1,
         },
+        defensiveEquipmentOverrides: {
+          "datasheet-1:equipment:1": "narrative",
+        },
       },
     ],
   };
@@ -2248,6 +2251,72 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
   assert.deepEqual(created.units[0].defensiveEquipmentCounts, {
     "unit-1::3::datasheet-1:equipment:1": 1,
   });
+  assert.deepEqual(created.units[0].defensiveEquipmentOverrides, {
+    "datasheet-1:equipment:1": "narrative",
+  });
+
+  const sourceCatalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const veterans = sourceCatalogue.units.find((unit) => unit.name === "Deathwatch Veterans");
+  const shield = veterans.defensiveEquipment.find((option) => option.name === "Astartes Shield");
+  const shieldKey = `api-veterans::${veterans.models[0].id}::${shield.id}`;
+  const invalidEquipmentRoster = {
+    name: "Invalid shields",
+    factionId: veterans.factionId,
+    units: [
+      {
+        id: "api-veterans",
+        unitId: veterans.id,
+        name: veterans.name,
+        modelCount: 5,
+        weapons: [],
+        defensiveEquipmentCounts: { [shieldKey]: 3 },
+      },
+    ],
+  };
+  const rejectedEquipment = await worker.fetch(
+    new Request("http://localhost/api/v1/lists", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(invalidEquipmentRoster),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(rejectedEquipment.status, 400);
+  assert.match((await rejectedEquipment.json()).error.message, /casualty or narrative/i);
+  const acknowledgedEquipment = await worker.fetch(
+    new Request("http://localhost/api/v1/lists", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...invalidEquipmentRoster,
+        units: [
+          {
+            ...invalidEquipmentRoster.units[0],
+            defensiveEquipmentOverrides: { [shield.id]: "narrative" },
+          },
+        ],
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(acknowledgedEquipment.status, 201);
+  const acknowledgedRecord = (await acknowledgedEquipment.json()).data;
+  assert.equal(
+    (
+      await worker.fetch(
+        new Request(`http://localhost/api/v1/lists/${acknowledgedRecord.id}`, {
+          method: "DELETE",
+        }),
+        testEnv,
+        context,
+      )
+    ).status,
+    200,
+  );
 
   const listed = await worker.fetch(new Request("http://localhost/api/v1/lists"), testEnv, context);
   assert.equal((await listed.json()).data.length, 1);
@@ -2265,6 +2334,10 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
   assert.deepEqual(
     backup.lists[0].units[0].defensiveEquipmentCounts,
     created.units[0].defensiveEquipmentCounts,
+  );
+  assert.deepEqual(
+    backup.lists[0].units[0].defensiveEquipmentOverrides,
+    created.units[0].defensiveEquipmentOverrides,
   );
 
   const updated = await worker.fetch(
@@ -2301,6 +2374,10 @@ test("creates, updates, lists, and deletes durable army lists", async () => {
   assert.deepEqual(
     importedBody.data[0].units[0].defensiveEquipmentCounts,
     created.units[0].defensiveEquipmentCounts,
+  );
+  assert.deepEqual(
+    importedBody.data[0].units[0].defensiveEquipmentOverrides,
+    created.units[0].defensiveEquipmentOverrides,
   );
 
   const incompatible = await worker.fetch(

@@ -900,7 +900,10 @@ def export(database: Path, output: Path) -> None:
         for row in connection.execute(
             """SELECT datasheet_id, ability_position, name, description_text,
                       effect_scope, guidance_text, selection_kind,
-                      eligibility_exact, selection_source_text
+                      eligibility_exact, selection_source_text, minimum_kind,
+                      maximum_kind, maximum_value,
+                      maximum_models_per_increment, limit_exact,
+                      limit_source_text
                FROM unit_defensive_equipment_options
                ORDER BY datasheet_id, ability_position"""
         ):
@@ -911,6 +914,12 @@ def export(database: Path, output: Path) -> None:
                 "scope": row["effect_scope"],
                 "selectionKind": row["selection_kind"],
                 "eligibilityExact": bool(row["eligibility_exact"]),
+                "minimumKind": row["minimum_kind"],
+                "maximumKind": row["maximum_kind"],
+                "maximumValue": row["maximum_value"],
+                "maximumModelsPerIncrement": row["maximum_models_per_increment"],
+                "limitExact": bool(row["limit_exact"]),
+                "limitSource": row["limit_source_text"],
                 "eligibleModelIds": [],
                 "defaultTerms": [],
                 **({"guidance": row["guidance_text"]} if row["guidance_text"] else {}),

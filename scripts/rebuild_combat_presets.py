@@ -178,6 +178,15 @@ CREATE TABLE unit_defensive_equipment_options (
         (selection_kind IN ('default', 'optional', 'mixed', 'conditional', 'unknown')),
     eligibility_exact INTEGER NOT NULL DEFAULT 0 CHECK (eligibility_exact IN (0, 1)),
     selection_source_text TEXT,
+    minimum_kind TEXT NOT NULL DEFAULT 'none' CHECK
+        (minimum_kind IN ('none', 'default')),
+    maximum_kind TEXT NOT NULL DEFAULT 'one' CHECK
+        (maximum_kind IN ('one', 'default', 'per_model', 'per_increment')),
+    maximum_value INTEGER NOT NULL DEFAULT 1 CHECK (maximum_value >= 1),
+    maximum_models_per_increment INTEGER NOT NULL DEFAULT 1 CHECK
+        (maximum_models_per_increment >= 1),
+    limit_exact INTEGER NOT NULL DEFAULT 0 CHECK (limit_exact IN (0, 1)),
+    limit_source_text TEXT,
     PRIMARY KEY (datasheet_id, ability_position),
     FOREIGN KEY (datasheet_id, ability_position)
         REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
@@ -248,7 +257,7 @@ def main() -> None:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
         connection.execute(
-            "UPDATE metadata SET value = '52' WHERE key = 'schema_version'"
+            "UPDATE metadata SET value = '66' WHERE key = 'schema_version'"
         )
         connection.execute("PRAGMA optimize")
         connection.commit()

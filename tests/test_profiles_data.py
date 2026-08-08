@@ -2082,7 +2082,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "65",
+                "66",
             )
             self.assertEqual(
                 connection.execute(
@@ -3002,6 +3002,41 @@ class ProfileDataTests(unittest.TestCase):
                     "SELECT count(*) FROM unit_defensive_equipment_default_terms"
                 ).fetchone()[0],
                 16,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_defensive_equipment_options
+                       WHERE limit_source_text IS NULL OR limit_exact NOT IN (0, 1)"""
+                ).fetchone()[0],
+                0,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT maximum_kind, maximum_value,
+                              maximum_models_per_increment, limit_exact
+                       FROM unit_defensive_equipment_options
+                       WHERE datasheet_id = '000002783'
+                         AND name = 'Astartes Shield'"""
+                ).fetchone(),
+                ("per_increment", 2, 5, 1),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT minimum_kind, maximum_kind, limit_exact
+                       FROM unit_defensive_equipment_options
+                       WHERE datasheet_id = '000002103'
+                         AND name = 'Astartes Shield'"""
+                ).fetchone(),
+                ("default", "per_model", 0),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT minimum_kind, maximum_kind
+                       FROM unit_defensive_equipment_options
+                       WHERE datasheet_id = '000002599'
+                         AND name = 'Weavefield Crest'"""
+                ).fetchone(),
+                ("none", "one"),
             )
             self.assertEqual(
                 connection.execute(

@@ -25,6 +25,28 @@ export function defensiveEquipmentDefaultCount(option, savedUnit) {
   return Math.min(modelCount, Math.max(0, count));
 }
 
+export function defensiveEquipmentBounds(option, savedUnit, eligibleModelCount) {
+  const modelCount = Math.max(0, Math.floor(savedUnit?.modelCount ?? 0));
+  const eligible = Math.max(0, Math.floor(eligibleModelCount ?? modelCount));
+  const sourceDefault = defensiveEquipmentDefaultCount(option, savedUnit);
+  const minimum = option?.minimumKind === "default" ? sourceDefault : 0;
+  let maximum;
+  switch (option?.maximumKind) {
+    case "default":
+      maximum = sourceDefault;
+      break;
+    case "per_model":
+      maximum = eligible * option.maximumValue;
+      break;
+    case "per_increment":
+      maximum = Math.floor(modelCount / option.maximumModelsPerIncrement) * option.maximumValue;
+      break;
+    default:
+      maximum = option?.maximumValue ?? 1;
+  }
+  return { minimum, maximum: Math.max(minimum, maximum) };
+}
+
 export function normalizeDefensiveEquipmentCounts(
   value,
   fieldName = "targetDefensiveEquipmentCounts",

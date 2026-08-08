@@ -1,5 +1,6 @@
 import { attachmentFormationReport } from "./attachments.mjs";
 import {
+  defensiveEquipmentBounds,
   defensiveEquipmentDefaultCount,
   defensiveEquipmentEligibleForModel,
   defensiveEquipmentSelectionKey,
@@ -183,6 +184,65 @@ export function savedUnitDefensiveEquipmentDefaults(savedUnit, catalogueUnit) {
     }
   }
   return defaults;
+}
+
+export function savedUnitDefensiveEquipmentWarnings(savedUnit, catalogueUnit) {
+  if (!savedUnit || !catalogueUnit) return [];
+  const effective =
+    savedUnit.defensiveEquipmentCounts === undefined
+      ? savedUnitDefensiveEquipmentDefaults(savedUnit, catalogueUnit)
+      : savedUnit.defensiveEquipmentCounts;
+  const segments = catalogueModelSegments(catalogueUnit, savedUnit.modelCount).segments;
+  const knownKeys = new Set();
+  const warnings = [];
+  for (const option of catalogueUnit.defensiveEquipment ?? []) {
+    let count = 0;
+    let eligibleModelCount = 0;
+    if (option.scope === "unit") {
+      const key = defensiveEquipmentSelectionKey(savedUnit.id, null, option.id);
+      knownKeys.add(key);
+      count = effective[key] ?? 0;
+      eligibleModelCount = savedUnit.modelCount;
+    } else {
+      for (const segment of segments) {
+        if (!defensiveEquipmentEligibleForModel(option, segment.model.id)) continue;
+        const key = defensiveEquipmentSelectionKey(savedUnit.id, segment.model.id, option.id);
+        knownKeys.add(key);
+        count += effective[key] ?? 0;
+        eligibleModelCount += segment.modelCount;
+      }
+    }
+    const { minimum, maximum } = defensiveEquipmentBounds(option, savedUnit, eligibleModelCount);
+    let message = null;
+    if (count < minimum) {
+      message = `${option.name}: ${count} equipped is below the required source minimum of ${minimum}`;
+    } else if (count > maximum) {
+      message = `${option.name}: ${count} equipped exceeds the source maximum of ${maximum} for ${savedUnit.modelCount} models`;
+    }
+    if (message) {
+      warnings.push({
+        key: option.id,
+        optionId: option.id,
+        message,
+        source: option.limitSource,
+        exact: option.limitExact,
+        reason: savedUnit.defensiveEquipmentOverrides?.[option.id] ?? null,
+      });
+    }
+  }
+  for (const [key, value] of Object.entries(savedUnit.defensiveEquipmentCounts ?? {})) {
+    if (!key.startsWith(`${savedUnit.id}::`) || value <= 0 || knownKeys.has(key)) continue;
+    const warningKey = `unknown:${key}`;
+    warnings.push({
+      key: warningKey,
+      optionId: null,
+      message: `Unknown or ineligible defensive-equipment selection: ${key}`,
+      source: null,
+      exact: true,
+      reason: savedUnit.defensiveEquipmentOverrides?.[warningKey] ?? null,
+    });
+  }
+  return warnings;
 }
 
 export function savedFormationDefensiveEquipmentDefaults(formation) {

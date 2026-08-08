@@ -16,14 +16,26 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Cross-check saved defensive-equipment counts against normalized source
-   choice limits and surface explicit warnings for casualty or narrative
-   overrides instead of silently accepting impossible rosters.
-2. Split grouped model profiles where source composition combines eligible and
+1. Split grouped model profiles where source composition combines eligible and
    ineligible defensive-equipment bearers, eliminating the remaining
    conservative `eligibilityExact=false` cases without guessing.
+2. Normalize replacement and mutual-exclusion links between defensive equipment
+   and structured weapon choices so adding a shield can reconcile the weapon it
+   replaces instead of validating those selections independently.
 
 ## Completed cycles
+
+- 2026-08-08: Added source-backed defensive-equipment count validation in
+  SQLite schema 66. All 44 equipment options now publish legal minimum and
+  maximum formulas, including fixed bearer limits, every-model allowances, and
+  per-five-model Deathwatch limits; 42 are exact and the two grouped Veteran
+  profiles remain explicitly conservative. Army Lists warns when required gear
+  is removed, too many bearers are selected, or a stale/ineligible selection is
+  imported, and requires a persisted battlefield-casualty or narrative reason
+  before saving. Changing the relevant composition or equipment clears the old
+  acknowledgement. Play Mode surfaces the same source check while preserving
+  fast battle-local edits. Database, bounds, formation, backup, cloud API, and
+  malformed-input regressions cover the workflow.
 
 - 2026-08-08: Normalized defensive-equipment selection provenance and bearer
   eligibility in SQLite schema 65. All 44 equipment options now retain their

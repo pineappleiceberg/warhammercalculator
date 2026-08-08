@@ -405,6 +405,15 @@ CREATE TABLE unit_defensive_equipment_options (
         (selection_kind IN ('default', 'optional', 'mixed', 'conditional', 'unknown')),
     eligibility_exact INTEGER NOT NULL DEFAULT 0 CHECK (eligibility_exact IN (0, 1)),
     selection_source_text TEXT,
+    minimum_kind TEXT NOT NULL DEFAULT 'none' CHECK
+        (minimum_kind IN ('none', 'default')),
+    maximum_kind TEXT NOT NULL DEFAULT 'one' CHECK
+        (maximum_kind IN ('one', 'default', 'per_model', 'per_increment')),
+    maximum_value INTEGER NOT NULL DEFAULT 1 CHECK (maximum_value >= 1),
+    maximum_models_per_increment INTEGER NOT NULL DEFAULT 1 CHECK
+        (maximum_models_per_increment >= 1),
+    limit_exact INTEGER NOT NULL DEFAULT 0 CHECK (limit_exact IN (0, 1)),
+    limit_source_text TEXT,
     PRIMARY KEY (datasheet_id, ability_position),
     FOREIGN KEY (datasheet_id, ability_position)
         REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
@@ -930,9 +939,53 @@ DEFENSIVE_EQUIPMENT_MODEL_OVERRIDES = {
     ("000004131", 5): (("wolf guard headtakers",), True),
 }
 
+DEFENSIVE_EQUIPMENT_REMOVABLE_DEFAULTS = {
+    ("000002599", 4),
+    ("000004131", 5),
+}
+
 
 def equipment_name_in_text(name: str, text: str) -> bool:
     return normalized_phrase(name) in normalized_phrase(text)
+
+
+def defensive_equipment_limits(
+    key: tuple[str, int],
+    scope: str,
+    guidance: str,
+    subject_rows: list[tuple],
+    eligibility_exact: bool,
+) -> tuple[str, str, int, int, bool]:
+    minimum_kind = (
+        "default"
+        if subject_rows and key not in DEFENSIVE_EQUIPMENT_REMOVABLE_DEFAULTS
+        else "none"
+    )
+    if scope == "unit":
+        return minimum_kind, "one", 1, 1, True
+    incremental = re.search(
+        r"for every\s+(\d+)\s+models?\s+in\s+(?:the|this)\s+unit,\s*"
+        r"up to\s+(\d+)\s+models?",
+        guidance,
+        re.IGNORECASE,
+    )
+    if incremental:
+        return (
+            minimum_kind,
+            "per_increment",
+            int(incremental.group(2)),
+            int(incremental.group(1)),
+            True,
+        )
+    if re.search(
+        r"\bany number of\b|\ball (?:of the )?models?\b",
+        guidance,
+        re.IGNORECASE,
+    ):
+        return minimum_kind, "per_model", 1, 1, bool(eligibility_exact)
+    if subject_rows and not guidance:
+        return minimum_kind, "default", 1, 1, True
+    return minimum_kind, "one", 1, 1, True
 
 
 def populate_defensive_equipment_metadata(connection: sqlite3.Connection) -> None:
@@ -942,7 +995,7 @@ def populate_defensive_equipment_metadata(connection: sqlite3.Connection) -> Non
            FROM unit_defensive_equipment_options
            ORDER BY datasheet_id, ability_position"""
     ).fetchall()
-    for datasheet_id, ability_position, name, _scope, guidance in options:
+    for datasheet_id, ability_position, name, scope, guidance in options:
         subject_rows = [
             row
             for row in connection.execute(
@@ -1068,14 +1121,32 @@ def populate_defensive_equipment_metadata(connection: sqlite3.Connection) -> Non
             *(f"{row[1]} is equipped with: {row[2]}" for row in subject_rows),
             *([guidance_text] if guidance_text else []),
         ]
+        minimum_kind, maximum_kind, maximum_value, maximum_increment, limit_exact = (
+            defensive_equipment_limits(
+                (datasheet_id, ability_position),
+                scope,
+                guidance_text,
+                subject_rows,
+                eligibility_exact,
+            )
+        )
         connection.execute(
             """UPDATE unit_defensive_equipment_options
-               SET selection_kind = ?, eligibility_exact = ?, selection_source_text = ?
+               SET selection_kind = ?, eligibility_exact = ?, selection_source_text = ?,
+                   minimum_kind = ?, maximum_kind = ?, maximum_value = ?,
+                   maximum_models_per_increment = ?, limit_exact = ?,
+                   limit_source_text = ?
                WHERE datasheet_id = ? AND ability_position = ?""",
             (
                 selection_kind,
                 int(eligibility_exact),
                 "\n".join(dict.fromkeys(sources)) or None,
+                minimum_kind,
+                maximum_kind,
+                maximum_value,
+                maximum_increment,
+                int(limit_exact),
+                guidance_text or "\n".join(dict.fromkeys(sources)) or None,
                 datasheet_id,
                 ability_position,
             ),
@@ -4252,7 +4323,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "65"),
+                    ("schema_version", "66"),
                     ("leader_global_maximum", "2"),
                     ("leader_global_rule_source_url", LEADER_GLOBAL_RULE_SOURCE_URL),
                     (

@@ -211,6 +211,12 @@ export type CatalogueDefensiveEquipment = {
   scope: "bearer" | "unit";
   selectionKind: "default" | "optional" | "mixed" | "conditional" | "unknown";
   eligibilityExact: boolean;
+  minimumKind: "none" | "default";
+  maximumKind: "one" | "default" | "per_model" | "per_increment";
+  maximumValue: number;
+  maximumModelsPerIncrement: number;
+  limitExact: boolean;
+  limitSource: string;
   eligibleModelIds: number[];
   selectionSource?: string;
   defaultTerms: Array<

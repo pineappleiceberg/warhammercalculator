@@ -532,6 +532,12 @@ and bearer controls are limited to eligible model profiles. Optional and
 conditional choices remain off until selected or their structured loadout
 subject is present; users can still save explicit overrides for casualties and
 narrative rules.
+Fixed, every-model, and per-unit-size source limits are checked before an Army
+List can be saved. Removing required equipment, exceeding a bearer limit, or
+retaining an unknown selection requires an explicit battlefield-casualty or
+narrative/house-rule acknowledgement, which is preserved in device backups and
+the hosted list API. Play Mode shows the same source warning without blocking
+battle-local adjustments.
 Conflicting bearer assignments and ambiguous model compositions fail closed.
 Other subset-model rules, friendly-aura, affected-model,
 unrepresented attack-type conditions, conflicting, random, subset-model multiplicative,

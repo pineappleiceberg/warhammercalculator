@@ -25,6 +25,7 @@ import {
   savedFormationModelSegments,
   savedFormationTargetSequence,
   savedUnitDefensiveEquipmentDefaults,
+  savedUnitDefensiveEquipmentWarnings,
 } from "../lib/formations.mjs";
 
 const catalogue = JSON.parse(
@@ -648,6 +649,89 @@ test("source-backed defensive defaults prefill only eligible proven equipment", 
       direAvengers,
     ),
     {},
+  );
+});
+
+test("defensive equipment source bounds require explicit saved-list overrides", () => {
+  const veterans = namedUnit("Deathwatch Veterans");
+  const shield = veterans.defensiveEquipment.find((option) => option.name === "Astartes Shield");
+  assert.ok(shield);
+  assert.equal(shield.maximumKind, "per_increment");
+  assert.equal(shield.maximumValue, 2);
+  assert.equal(shield.maximumModelsPerIncrement, 5);
+  const shieldKey = defensiveEquipmentSelectionKey("veterans", veterans.models[0].id, shield.id);
+  const invalidVeterans = {
+    id: "veterans",
+    unitId: veterans.id,
+    name: veterans.name,
+    modelCount: 5,
+    defensiveEquipmentCounts: { [shieldKey]: 3, "other-unit::7::other-option": 1 },
+  };
+  assert.deepEqual(
+    savedUnitDefensiveEquipmentWarnings(invalidVeterans, veterans).map((warning) => [
+      warning.key,
+      warning.reason,
+    ]),
+    [[shield.id, null]],
+  );
+  assert.match(
+    savedUnitDefensiveEquipmentWarnings(invalidVeterans, veterans)[0].message,
+    /maximum of 2 for 5 models/i,
+  );
+  assert.equal(
+    savedUnitDefensiveEquipmentWarnings(
+      {
+        ...invalidVeterans,
+        defensiveEquipmentOverrides: { [shield.id]: "narrative" },
+      },
+      veterans,
+    )[0].reason,
+    "narrative",
+  );
+  assert.match(
+    savedUnitDefensiveEquipmentWarnings(
+      {
+        ...invalidVeterans,
+        defensiveEquipmentCounts: {
+          [shieldKey]: 2,
+          "veterans::999999::retired-equipment": 1,
+        },
+      },
+      veterans,
+    )[0].message,
+    /unknown or ineligible/i,
+  );
+
+  const hounds = namedUnit("Flesh Hounds");
+  const collar = hounds.defensiveEquipment.find((option) => option.name === "Collar of Khorne");
+  assert.ok(collar);
+  const collarKey = defensiveEquipmentSelectionKey("hounds", hounds.models[0].id, collar.id);
+  const missingCollars = savedUnitDefensiveEquipmentWarnings(
+    {
+      id: "hounds",
+      unitId: hounds.id,
+      name: hounds.name,
+      modelCount: 5,
+      defensiveEquipmentCounts: { [collarKey]: 4 },
+    },
+    hounds,
+  );
+  assert.equal(collar.minimumKind, "default");
+  assert.match(missingCollars[0].message, /required source minimum of 5/i);
+
+  const hearthguard = namedUnit("Einhyr Hearthguard");
+  assert.deepEqual(
+    savedUnitDefensiveEquipmentWarnings(
+      {
+        id: "hearthguard",
+        unitId: hearthguard.id,
+        name: hearthguard.name,
+        modelCount: 5,
+        defensiveEquipmentCounts: {},
+      },
+      hearthguard,
+    ),
+    [],
   );
 });
 

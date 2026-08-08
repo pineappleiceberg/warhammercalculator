@@ -1188,6 +1188,24 @@ select:focus {
   color: var(--muted);
 }
 
+.loadout-warnings li > small {
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.loadout-warnings li > label {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.55rem;
+  max-width: 22rem;
+  color: var(--ink);
+}
+
+.saved-roster-warning {
+  color: var(--gold);
+  font-weight: 700;
+}
+
 .option-count {
   margin: 0.4rem 0 0 1rem;
   padding-left: 0.65rem;

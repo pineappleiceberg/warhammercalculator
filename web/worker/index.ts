@@ -33,7 +33,7 @@ import {
   sourceEquippedWeaponCounts,
   unitLoadoutWarnings,
 } from "../lib/loadout.mjs";
-import type { CatalogueCombatPreset } from "../lib/catalogue";
+import type { Catalogue, CatalogueCombatPreset } from "../lib/catalogue";
 import { resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
 import {
   bodyguardJoinEligibility,
@@ -41,6 +41,7 @@ import {
   leaderFormationEligibility,
 } from "../lib/attachments.mjs";
 import { transportCapacityPools, transportPassengerEligibility } from "../lib/transport.mjs";
+import { savedUnitDefensiveEquipmentWarnings } from "../lib/formations.mjs";
 
 interface Env {
   ASSETS: Fetcher;
@@ -837,8 +838,27 @@ function orderedTargets(value: unknown): OrderedTargetSegment[] {
   return targets;
 }
 
-async function requestArmyList(request: Request): Promise<ArmyListInput> {
-  return normalizeArmyListInput(await request.json()) as ArmyListInput;
+function assertDefensiveEquipmentOverrides(input: ArmyListInput, catalogue: Catalogue) {
+  for (const unit of input.units) {
+    const sourceUnit = catalogue.units.find((entry) => entry.id === unit.unitId);
+    if (!sourceUnit) continue;
+    const warning = savedUnitDefensiveEquipmentWarnings(unit, sourceUnit).find(
+      (entry) => entry.reason === null,
+    );
+    if (warning) {
+      throw new Error(
+        `${unit.name}: ${warning.message}; add a casualty or narrative defensive-equipment override reason`,
+      );
+    }
+  }
+}
+
+async function requestArmyList(request: Request, env: Env): Promise<ArmyListInput> {
+  const input = normalizeArmyListInput(await request.json()) as ArmyListInput;
+  if (input.units.some((unit) => unit.defensiveEquipmentCounts !== undefined)) {
+    assertDefensiveEquipmentOverrides(input, await loadCatalogue(request, env));
+  }
+  return input;
 }
 
 async function handleApi(request: Request, env: Env) {
@@ -1551,7 +1571,7 @@ async function handleApi(request: Request, env: Env) {
       if ((await withStorage(() => listArmyLists(env.ARMY_DB))).length >= 100) {
         throw new Error("Cloud storage supports at most 100 army lists");
       }
-      const input = await requestArmyList(request);
+      const input = await requestArmyList(request, env);
       return json({ data: await withStorage(() => createArmyList(env.ARMY_DB, input)) }, 201);
     }
 
@@ -1584,7 +1604,7 @@ async function handleApi(request: Request, env: Env) {
 
     const listMatch = /^\/api\/v1\/lists\/([0-9a-f-]+)$/i.exec(url.pathname);
     if (listMatch && request.method === "PUT") {
-      const input = await requestArmyList(request);
+      const input = await requestArmyList(request, env);
       const updated = await withStorage(() => updateArmyList(env.ARMY_DB, listMatch[1], input));
       return updated ? json({ data: updated }) : apiError("Army list not found", 404);
     }

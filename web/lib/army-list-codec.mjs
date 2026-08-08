@@ -97,6 +97,23 @@ export function normalizeArmyListInput(value) {
         "defensiveEquipmentCounts",
       );
     }
+    let defensiveEquipmentOverrides;
+    if (unit.defensiveEquipmentOverrides !== undefined) {
+      const overrides = object(
+        unit.defensiveEquipmentOverrides,
+        "defensiveEquipmentOverrides must be an object",
+      );
+      if (
+        Object.keys(overrides).length > 100 ||
+        Object.entries(overrides).some(
+          ([key, reason]) =>
+            !key || key.length > 300 || (reason !== "casualties" && reason !== "narrative"),
+        )
+      ) {
+        throw new Error("defensiveEquipmentOverrides must contain casualty or narrative reasons");
+      }
+      defensiveEquipmentOverrides = { ...overrides };
+    }
     let transportId;
     if (unit.transportId !== undefined) {
       if (
@@ -176,6 +193,9 @@ export function normalizeArmyListInput(value) {
     if (combatPresetIds !== undefined) normalized.combatPresetIds = combatPresetIds;
     if (defensiveEquipmentCounts !== undefined) {
       normalized.defensiveEquipmentCounts = defensiveEquipmentCounts;
+    }
+    if (defensiveEquipmentOverrides !== undefined) {
+      normalized.defensiveEquipmentOverrides = defensiveEquipmentOverrides;
     }
     if (transportId !== undefined) normalized.transportId = transportId;
     if (attachedToId !== undefined) normalized.attachedToId = attachedToId;

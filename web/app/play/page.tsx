@@ -40,6 +40,7 @@ import {
   savedFormationGroups,
   savedFormationModelSegments,
   savedFormationTargetSequence,
+  savedUnitDefensiveEquipmentWarnings,
 } from "../../lib/formations.mjs";
 import {
   applyDefensiveEquipmentTargets,
@@ -384,6 +385,18 @@ export default function PlayMode() {
         savedUnitId: component.unit.id,
         unitName: component.unit.name,
       })),
+    ) ?? [];
+  const targetDefensiveEquipmentWarnings =
+    targetFormation?.components.flatMap((component) =>
+      component.catalogueUnit
+        ? savedUnitDefensiveEquipmentWarnings(
+            {
+              ...component.unit,
+              defensiveEquipmentCounts: targetDefensiveEquipmentCounts,
+            },
+            component.catalogueUnit,
+          ).map((warning) => ({ ...warning, unitName: component.unit.name }))
+        : [],
     ) ?? [];
   const firingDeckPlayOptions =
     attackerCatalogueUnit?.firingDeck && catalogue
@@ -1997,6 +2010,9 @@ export default function PlayMode() {
                             <span>
                               {option.unitName} · {option.name}
                               <small>{option.description}</small>
+                              {!option.limitExact && (
+                                <small>Source bearer limit is conservative.</small>
+                              )}
                             </span>
                             <input
                               aria-label={`${option.unitName} ${option.name} equipped`}
@@ -2027,6 +2043,9 @@ export default function PlayMode() {
                               <span>
                                 {option.unitName} · {segment.model.name} · {option.name}
                                 <small>{option.description}</small>
+                                {!option.limitExact && (
+                                  <small>Source bearer limit is conservative.</small>
+                                )}
                               </span>
                               <input
                                 aria-label={`${option.unitName} ${segment.model.name} ${option.name} bearers`}
@@ -2049,6 +2068,27 @@ export default function PlayMode() {
                         });
                     })}
                   </details>
+                )}
+                {targetDefensiveEquipmentWarnings.length > 0 && (
+                  <div className="loadout-warnings" role="status">
+                    <strong>Defensive equipment source check</strong>
+                    <ul>
+                      {targetDefensiveEquipmentWarnings.map((warning) => (
+                        <li key={`${warning.unitName}:${warning.key}`}>
+                          {warning.unitName} · {warning.message}
+                          {warning.reason && (
+                            <small>
+                              Saved override:{" "}
+                              {warning.reason === "casualties"
+                                ? "battlefield casualties"
+                                : "narrative or house rule"}
+                            </small>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                    <small>Play Mode edits are battle-local and remain editable.</small>
+                  </div>
                 )}
                 <label>
                   <span>Allocate first</span>
