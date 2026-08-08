@@ -46,7 +46,6 @@ import {
   loadCatalogue,
   type Catalogue,
   type CatalogueModel,
-  type CatalogueDefensiveEquipment,
   type CatalogueWeapon,
 } from "../../lib/catalogue";
 import {
@@ -59,6 +58,12 @@ import {
   transportPassengerCanEmbark,
 } from "../../lib/transport.mjs";
 import { bodyguardJoinerOptions, catalogueModelSegments } from "../../lib/formations.mjs";
+import {
+  applyDefensiveEquipmentTargets,
+  bearerEquipmentAvailableCount,
+  bearerEquipmentCount,
+  setBearerEquipmentCount,
+} from "../../lib/defensive-equipment.mjs";
 
 type TargetSegment = OrderedTargetSegment & {
   id: string;
@@ -109,47 +114,6 @@ function targetSegment(model: CatalogueModel, modelCount: number, unitId = ""): 
     allocatedAttackDamageReplacementSkip: 0,
     modelCount,
   };
-}
-
-function applyDefensiveEquipment(
-  segments: TargetSegment[],
-  options: CatalogueDefensiveEquipment[],
-  attackKeywords: string[],
-) {
-  const selected = new Set(segments.flatMap((segment) => segment.defensiveEquipmentIds));
-  return segments.map((segment) => {
-    const result = { ...segment };
-    for (const option of options) {
-      if (
-        (option.scope === "unit" && !selected.has(option.id)) ||
-        (option.scope === "bearer" && !segment.defensiveEquipmentIds.includes(option.id))
-      )
-        continue;
-      for (const effect of option.effects) {
-        if (
-          effect.requiredAttackKeyword &&
-          !attackKeywords.some(
-            (keyword) => keyword.toLowerCase() === effect.requiredAttackKeyword?.toLowerCase(),
-          )
-        )
-          continue;
-        if (effect.type === "save_target") result.save = Math.min(result.save, effect.value);
-        if (effect.type === "invulnerable_save")
-          result.invulnerable = result.invulnerable
-            ? Math.min(result.invulnerable, effect.value)
-            : effect.value;
-        if (effect.type === "feel_no_pain")
-          result.feelNoPain = result.feelNoPain
-            ? Math.min(result.feelNoPain, effect.value)
-            : effect.value;
-        if (effect.type === "damage_reduction")
-          result.reduction = Math.max(result.reduction, effect.value);
-        if (effect.type === "first_failed_save_damage_replacement")
-          result.firstFailedSaveDamageReplacement = effect.value;
-      }
-    }
-    return result;
-  });
 }
 
 export default function UnitVsUnit() {
@@ -299,6 +263,31 @@ export default function UnitVsUnit() {
   const targetModelOptions = targetFormationUnits.flatMap((unit) =>
     unit.models.map((model) => ({ unit, model })),
   );
+  const bearerEquipmentIds = new Set(
+    targetEquipmentOptions.filter((option) => option.scope === "bearer").map((option) => option.id),
+  );
+  const targetBearerEquipmentControls = [
+    ...new Map(
+      targetEquipmentOptions
+        .filter((option) => option.scope === "bearer")
+        .flatMap((option) =>
+          targetSegments
+            .filter((segment) => segment.unitId === option.sourceUnitId)
+            .map(
+              (segment) =>
+                [
+                  `${option.id}:${segment.modelId}`,
+                  {
+                    option,
+                    unitId: segment.unitId,
+                    modelId: segment.modelId,
+                    modelName: segment.name,
+                  },
+                ] as const,
+            ),
+        ),
+    ).values(),
+  ];
   const firingDeckPassengerUnits =
     catalogue?.units.filter(
       (unit) =>
@@ -662,6 +651,48 @@ export default function UnitVsUnit() {
     setRollResult(null);
   };
 
+  const changeUnitEquipment = (optionId: string, equipped: boolean) => {
+    setTargetSegments((current) =>
+      current.map((segment) => ({
+        ...segment,
+        defensiveEquipmentIds: equipped
+          ? [...new Set([...segment.defensiveEquipmentIds, optionId])]
+          : segment.defensiveEquipmentIds.filter((id) => id !== optionId),
+      })),
+    );
+    setResults([]);
+    setVolleySummary(null);
+    setRollResult(null);
+  };
+
+  const changeBearerEquipment = (
+    unitId: string,
+    modelId: number,
+    optionId: string,
+    count: number,
+  ) => {
+    try {
+      const next = setBearerEquipmentCount(
+        targetSegments,
+        unitId,
+        modelId,
+        optionId,
+        bearerEquipmentIds,
+        count,
+      );
+      setTargetSegments(next);
+      setInitialWoundsLost(0);
+      setResults([]);
+      setVolleySummary(null);
+      setRollResult(null);
+      setStatus("Defensive equipment allocation updated");
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "Equipment allocation could not be changed",
+      );
+    }
+  };
+
   const currentProfiles = () => {
     const targetModels = targetSegments.reduce((sum, segment) => sum + segment.modelCount, 0);
     return orderedLines.map((line) =>
@@ -985,7 +1016,7 @@ export default function UnitVsUnit() {
       ).values(),
     ];
     const equipmentCandidates = orderedLines.map((line) =>
-      applyDefensiveEquipment(
+      applyDefensiveEquipmentTargets(
         targetSegments,
         targetEquipmentOptions,
         attackKeywordsForWeapon(line.weapon),
@@ -2367,6 +2398,75 @@ export default function UnitVsUnit() {
                   sourceTargetDistance={targetSourceAttackerDistance}
                   sourceTargetVisible={targetSourceCanSeeAttacker}
                 />
+                {targetEquipmentOptions.length > 0 && (
+                  <fieldset className="preset-options">
+                    <legend>Defensive equipment allocation</legend>
+                    <small>
+                      Whole-unit effects protect every profile. Bearer counts create separate,
+                      reorderable equipped and unequipped target segments.
+                    </small>
+                    {targetEquipmentOptions
+                      .filter((option) => option.scope === "unit")
+                      .map((option) => (
+                        <label key={option.id} title={option.guidance ?? option.description}>
+                          <input
+                            type="checkbox"
+                            checked={targetSegments.some((segment) =>
+                              segment.defensiveEquipmentIds.includes(option.id),
+                            )}
+                            onChange={(event) =>
+                              changeUnitEquipment(option.id, event.target.checked)
+                            }
+                          />
+                          <span>
+                            {option.sourceUnitName} · {option.name} (whole unit)
+                            <small>{option.description}</small>
+                          </span>
+                        </label>
+                      ))}
+                    {targetBearerEquipmentControls.map(({ option, unitId, modelId, modelName }) => {
+                      const count = bearerEquipmentCount(
+                        targetSegments,
+                        unitId,
+                        modelId,
+                        option.id,
+                      );
+                      const maximum = bearerEquipmentAvailableCount(
+                        targetSegments,
+                        unitId,
+                        modelId,
+                        option.id,
+                        bearerEquipmentIds,
+                      );
+                      return (
+                        <label
+                          key={`${option.id}:${modelId}`}
+                          title={option.guidance ?? option.description}
+                        >
+                          <span>
+                            {option.sourceUnitName} · {modelName} · {option.name}
+                            <small>{option.description}</small>
+                          </span>
+                          <input
+                            aria-label={`${option.sourceUnitName} ${modelName} ${option.name} bearers`}
+                            type="number"
+                            min={0}
+                            max={maximum}
+                            value={count}
+                            onChange={(event) =>
+                              changeBearerEquipment(
+                                unitId,
+                                modelId,
+                                option.id,
+                                Math.min(maximum, Math.max(0, +event.target.value || 0)),
+                              )
+                            }
+                          />
+                        </label>
+                      );
+                    })}
+                  </fieldset>
+                )}
                 <div className="sequence-heading">
                   <div>
                     <h3>Damage allocation order</h3>
@@ -2456,42 +2556,16 @@ export default function UnitVsUnit() {
                         </button>
                       </div>
                     </div>
-                    {targetEquipmentOptions.some(
-                      (option) => option.sourceUnitId === segment.unitId,
-                    ) && (
-                      <fieldset className="preset-options">
-                        <legend>Defensive equipment</legend>
-                        {targetEquipmentOptions
-                          .filter((option) => option.sourceUnitId === segment.unitId)
-                          .map((option) => (
-                            <label key={option.id} title={option.guidance ?? option.description}>
-                              <input
-                                type="checkbox"
-                                checked={segment.defensiveEquipmentIds.includes(option.id)}
-                                onChange={(event) =>
-                                  setTargetSegments((current) =>
-                                    current.map((entry) =>
-                                      entry.id === segment.id
-                                        ? {
-                                            ...entry,
-                                            defensiveEquipmentIds: event.target.checked
-                                              ? [...entry.defensiveEquipmentIds, option.id]
-                                              : entry.defensiveEquipmentIds.filter(
-                                                  (id) => id !== option.id,
-                                                ),
-                                          }
-                                        : entry,
-                                    ),
-                                  )
-                                }
-                              />
-                              <span>
-                                {option.name} ({option.scope === "unit" ? "whole unit" : "bearer"})
-                                <small>{option.description}</small>
-                              </span>
-                            </label>
-                          ))}
-                      </fieldset>
+                    {segment.defensiveEquipmentIds.length > 0 && (
+                      <small>
+                        Equipped:{" "}
+                        {segment.defensiveEquipmentIds
+                          .map(
+                            (id) =>
+                              targetEquipmentOptions.find((option) => option.id === id)?.name ?? id,
+                          )
+                          .join(", ")}
+                      </small>
                     )}
                     <div className="stat-row target-stats">
                       {(

@@ -16,13 +16,21 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Split bearer-only defensive equipment into exact equipped and unequipped
-   target segments in Unit vs Unit instead of allowing one checkbox to protect
-   every model in a homogeneous segment.
-2. Persist defensive-equipment selections in Army Lists as editable Play Mode
+1. Persist defensive-equipment selections in Army Lists as editable Play Mode
    defaults while retaining battle-local overrides and backup compatibility.
+2. Normalize bearer model eligibility and default-versus-optional equipment
+   provenance from datasheet composition and loadout text so Army Lists can
+   prefill only equipment that is provable without guessing.
 
 ## Completed cycles
+
+- 2026-08-08: Split Unit vs Unit bearer-only defensive equipment into exact
+  equipped and unequipped target segments. The allocation count is bounded by
+  eligible models, mutually exclusive bearer choices remain disjoint, and both
+  segments retain independent ordering for damage allocation. Unit-scoped
+  equipment applies across the full target formation, and the existing
+  16-segment safety limit fails closed. Regression coverage exercises splits,
+  count changes, reordering, conflicting bearer choices, and the segment cap.
 
 - 2026-08-08: Extended normalized defensive equipment to Model vs Model and
   Play Mode. Model matchups expose explicit equipment choices and preserve them

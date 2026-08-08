@@ -516,7 +516,10 @@ the applicable minimum. Unit vs Unit applies those defenses to every ordered tar
 asks ranged and melee weapons to be resolved separately only when a scoped
 defense produces incompatible target values. Melee/ranged scope is respected
 per weapon. Model vs Model exposes normalized defensive equipment as explicit
-choices and includes those choices in shared matchup URLs. Play Mode keeps
+choices and includes those choices in shared matchup URLs. Unit vs Unit uses
+exact bearer counts to split equipped and unequipped models into independently
+reorderable target segments while applying unit-scoped equipment across the
+whole formation. Play Mode keeps
 whole-unit equipment separate from editable bearer counts; equipped and
 unequipped models become distinct ordered allocation profiles, so a shield on
 one model never protects the rest of its unit. Equipment choices recover with

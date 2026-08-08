@@ -11,7 +11,10 @@ import { transportAssignmentReport } from "../lib/transport.mjs";
 import {
   applyDefensiveEquipmentProfile,
   applyDefensiveEquipmentTargets,
+  bearerEquipmentAvailableCount,
+  bearerEquipmentCount,
   defensiveEquipmentSelectionKey,
+  setBearerEquipmentCount,
 } from "../lib/defensive-equipment.mjs";
 import {
   bodyguardJoinerOptions,
@@ -527,5 +530,97 @@ test("Model vs Model applies selected equipment only to matching attacks", () =>
   assert.equal(
     applyDefensiveEquipmentProfile(profile, hounds.defensiveEquipment, [], ["Psychic"]).feelNoPain,
     0,
+  );
+});
+
+test("Unit vs Unit creates reorderable bearer-only allocation segments", () => {
+  const base = {
+    id: "bullgryn-base",
+    unitId: "bullgryn",
+    modelId: 475,
+    modelCount: 3,
+    defensiveEquipmentIds: ["unit-effect"],
+  };
+  const other = {
+    id: "other",
+    unitId: "other",
+    modelId: 1,
+    modelCount: 1,
+    defensiveEquipmentIds: [],
+  };
+  const bearerIds = new Set(["brute-shield", "other-shield"]);
+  const split = setBearerEquipmentCount(
+    [base, other],
+    "bullgryn",
+    475,
+    "brute-shield",
+    bearerIds,
+    1,
+    16,
+    () => "bullgryn-equipped",
+  );
+  assert.deepEqual(
+    split.map((segment) => [segment.id, segment.modelCount, segment.defensiveEquipmentIds]),
+    [
+      ["bullgryn-equipped", 1, ["unit-effect", "brute-shield"]],
+      ["bullgryn-base", 2, ["unit-effect"]],
+      ["other", 1, []],
+    ],
+  );
+  assert.equal(bearerEquipmentCount(split, "bullgryn", 475, "brute-shield"), 1);
+  assert.equal(bearerEquipmentAvailableCount(split, "bullgryn", 475, "brute-shield", bearerIds), 3);
+
+  const reordered = [split[1], other, split[0]];
+  const adjusted = setBearerEquipmentCount(
+    reordered,
+    "bullgryn",
+    475,
+    "brute-shield",
+    bearerIds,
+    2,
+  );
+  assert.deepEqual(
+    adjusted.map((segment) => [segment.id, segment.modelCount]),
+    [
+      ["bullgryn-base", 1],
+      ["other", 1],
+      ["bullgryn-equipped", 2],
+    ],
+  );
+
+  const otherShield = {
+    ...base,
+    id: "other-shield-model",
+    modelCount: 1,
+    defensiveEquipmentIds: ["other-shield"],
+  };
+  assert.equal(
+    bearerEquipmentAvailableCount(
+      [otherShield, ...split],
+      "bullgryn",
+      475,
+      "brute-shield",
+      bearerIds,
+    ),
+    3,
+  );
+  assert.throws(
+    () =>
+      setBearerEquipmentCount(
+        [
+          ...Array.from({ length: 15 }, (_, index) => ({
+            ...other,
+            id: `other-${index}`,
+            modelId: index + 10,
+          })),
+          base,
+        ],
+        "bullgryn",
+        475,
+        "brute-shield",
+        bearerIds,
+        1,
+      ),
+    /at most 16/i,
   );
 });

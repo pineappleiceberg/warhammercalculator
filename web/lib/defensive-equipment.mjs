@@ -55,12 +55,130 @@ export function applyDefensiveEquipmentProfile(profile, options, selectedIds, at
 }
 
 export function applyDefensiveEquipmentTargets(targets, options, attackKeywords = []) {
+  const selectedUnitIds = new Set(
+    options
+      .filter(
+        (option) =>
+          option.scope === "unit" &&
+          targets.some((target) => (target.defensiveEquipmentIds ?? []).includes(option.id)),
+      )
+      .map((option) => option.id),
+  );
   return targets.map((target) =>
     applyDefensiveEquipmentProfile(
       target,
       options,
-      target.defensiveEquipmentIds ?? [],
+      [...new Set([...(target.defensiveEquipmentIds ?? []), ...selectedUnitIds])],
       attackKeywords,
     ),
   );
+}
+
+export function bearerEquipmentCount(segments, unitId, modelId, optionId) {
+  return segments
+    .filter(
+      (segment) =>
+        segment.unitId === unitId &&
+        segment.modelId === modelId &&
+        segment.defensiveEquipmentIds.includes(optionId),
+    )
+    .reduce((total, segment) => total + segment.modelCount, 0);
+}
+
+export function bearerEquipmentAvailableCount(
+  segments,
+  unitId,
+  modelId,
+  optionId,
+  bearerOptionIds,
+) {
+  return segments
+    .filter(
+      (segment) =>
+        segment.unitId === unitId &&
+        segment.modelId === modelId &&
+        (segment.defensiveEquipmentIds.includes(optionId) ||
+          !segment.defensiveEquipmentIds.some((id) => bearerOptionIds.has(id))),
+    )
+    .reduce((total, segment) => total + segment.modelCount, 0);
+}
+
+export function setBearerEquipmentCount(
+  segments,
+  unitId,
+  modelId,
+  optionId,
+  bearerOptionIds,
+  requestedCount,
+  maximumSegments = 16,
+  createId = () => crypto.randomUUID(),
+) {
+  const candidateIndices = [];
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    if (
+      segment.unitId === unitId &&
+      segment.modelId === modelId &&
+      (segment.defensiveEquipmentIds.includes(optionId) ||
+        !segment.defensiveEquipmentIds.some((id) => bearerOptionIds.has(id)))
+    ) {
+      candidateIndices.push(index);
+    }
+  }
+  if (candidateIndices.length === 0) return segments;
+  const candidates = candidateIndices.map((index) => segments[index]);
+  const total = candidates.reduce((sum, segment) => sum + segment.modelCount, 0);
+  const equippedCount = Math.min(total, Math.max(0, Math.floor(requestedCount)));
+  const unequippedCount = total - equippedCount;
+  const equippedTemplate = candidates.find((segment) =>
+    segment.defensiveEquipmentIds.includes(optionId),
+  );
+  const unequippedTemplate = candidates.find(
+    (segment) => !segment.defensiveEquipmentIds.includes(optionId),
+  );
+  const baseTemplate = equippedTemplate ?? unequippedTemplate ?? candidates[0];
+  const makeSegment = (template, modelCount, equipped) => ({
+    ...baseTemplate,
+    ...template,
+    id: template ? template.id : createId(),
+    modelCount,
+    defensiveEquipmentIds: equipped
+      ? [...new Set([...baseTemplate.defensiveEquipmentIds, optionId])]
+      : baseTemplate.defensiveEquipmentIds.filter((id) => id !== optionId),
+  });
+  const equipped = equippedCount > 0 ? makeSegment(equippedTemplate, equippedCount, true) : null;
+  const unequipped =
+    unequippedCount > 0 ? makeSegment(unequippedTemplate, unequippedCount, false) : null;
+  const candidateSet = new Set(candidateIndices);
+  const next = [];
+  let placedEquipped = false;
+  let placedUnequipped = false;
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    if (!candidateSet.has(index)) {
+      next.push(segment);
+      continue;
+    }
+    if (segment.defensiveEquipmentIds.includes(optionId)) {
+      if (equipped && !placedEquipped) {
+        next.push(equipped);
+        placedEquipped = true;
+      }
+    } else if (unequipped && !placedUnequipped) {
+      next.push(unequipped);
+      placedUnequipped = true;
+    }
+  }
+  if (equipped && !placedEquipped) {
+    const unequippedIndex = next.indexOf(unequipped);
+    next.splice(unequippedIndex < 0 ? candidateIndices[0] : unequippedIndex, 0, equipped);
+  }
+  if (unequipped && !placedUnequipped) {
+    const equippedIndex = next.indexOf(equipped);
+    next.splice(equippedIndex < 0 ? candidateIndices[0] : equippedIndex + 1, 0, unequipped);
+  }
+  if (next.length > maximumSegments) {
+    throw new Error(`Damage allocation supports at most ${maximumSegments} target segments`);
+  }
+  return next;
 }
