@@ -16,17 +16,27 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Normalize the remaining 7 compound Transport clauses: the Orion's reduced
-   primary capacity while carrying a Vehicle, five Sokar-pattern Stormbirds'
-   nested transported Rhinos, and the Thunderhawk Transporter's nested
-   Vehicles. Add explicit model-composition formation state where exact
-   evaluation requires it, and normalize Leader eligibility so declared
-   attachment links can be audited.
+1. Normalize the final inexact Transport clause: the Orion Assault Dropship's
+   primary Infantry capacity falls from 12 to 6 while it carries one of three
+   named Dreadnoughts. Then normalize Leader eligibility so declared attachment
+   links can be audited against published Leader lists.
 2. Extend normalized defensive-equipment selection to Model vs Model and Play
    Mode while preserving model-by-model allocation and preventing bearer-only
    gear from becoming a homogeneous unit-wide defense.
 
 ## Completed cycles
+
+- 2026-08-08: Added exact nested-Transport capacity semantics. SQLite schema 60
+  normalizes fixed shared-capacity costs, independent Vehicle allowances,
+  allowance-specific exclusions, and nested-passenger policies for five
+  Sokar-pattern Stormbirds and the
+  Thunderhawk Transporter, increasing exact Transport coverage from 171 to 177
+  of 178 datasheets. Army Lists charges a Rhino and its contents 25 Stormbird
+  spaces, excludes those contents from Thunderhawk capacity, still validates
+  each inner Transport independently, enforces one- or two-Vehicle ceilings,
+  and rejects Aircraft and Titanic Vehicles. Parser, schema/catalogue, nested
+  boundary, double-counting, exclusion, ceiling, UI, and API regressions cover
+  the change.
 
 - 2026-08-08: Added exact shared-capacity Transport allowances with dynamic
   Wounds-based space costs and aggregate model ceilings. SQLite schema 59

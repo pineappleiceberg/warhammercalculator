@@ -429,12 +429,19 @@ export default function ArmyLists() {
                               {assignment.slots} Transport spaces ({assignment.modelCost} per model)
                               {((assignment.transport.transport?.additionalPools.length ?? 0) > 0 ||
                                 (assignment.transport.transport?.alternativePools.length ?? 0) >
-                                  0) &&
+                                  0 ||
+                                assignment.transport.transport?.sharedAllowances.some(
+                                  (allowance) => !allowance.consumesPrimaryCapacity,
+                                )) &&
                                 ` · ${assignment.poolLabel} ${
                                   assignment.poolKind === "alternative" ? "mode" : "pool"
                                 }`}
                               {assignment.sharedAllowanceMaximumModels !== null &&
                                 ` · max ${assignment.sharedAllowanceMaximumModels} matching models`}
+                              {assignment.sharedAllowanceNestedPassengerPolicy ===
+                                "included_in_fixed_cost" && " · nested passengers included"}
+                              {assignment.sharedAllowanceNestedPassengerPolicy ===
+                                "excluded_from_capacity" && " · nested passengers do not count"}
                             </small>
                           )}
                         </label>

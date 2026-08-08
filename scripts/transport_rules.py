@@ -389,7 +389,58 @@ def parse_transport_rule(source: str, vocabulary: set[str]) -> dict:
             {
                 "maximumModels": int(allowance.group(1)),
                 "allowed": [list(group) for group in allowance_allowed],
+                "excluded": [],
                 "costEqualsWounds": True,
+                "fixedModelCost": None,
+                "consumesPrimaryCapacity": True,
+                "nestedPassengerPolicy": None,
+            }
+        )
+        recognized_also_sentences += 1
+    for allowance in re.finditer(
+        r"This model can also transport up to (\d+) (.+?) models? "
+        r"\([^)]*?any models embarked within it[^)]*?take up the space of (\d+) models\)",
+        source,
+        re.IGNORECASE,
+    ):
+        allowance_allowed = groups_from_phrase(allowance.group(2), vocabulary)
+        if allowance_allowed is None:
+            result["exact"] = False
+            continue
+        result["sharedAllowances"].append(
+            {
+                "maximumModels": int(allowance.group(1)),
+                "allowed": [list(group) for group in allowance_allowed],
+                "excluded": [],
+                "costEqualsWounds": False,
+                "fixedModelCost": int(allowance.group(3)),
+                "consumesPrimaryCapacity": True,
+                "nestedPassengerPolicy": "included_in_fixed_cost",
+            }
+        )
+        recognized_also_sentences += 1
+    for allowance in re.finditer(
+        r"This model can also transport up to (\d+) (.+?) models? "
+        r"\(excluding (.+?) models\)\. Models embarked within TRANSPORT VEHICLES "
+        r"that are themselves being transported by this model do not count towards "
+        r"the transport capacity of this model\.",
+        source,
+        re.IGNORECASE,
+    ):
+        allowance_allowed = groups_from_phrase(allowance.group(2), vocabulary)
+        allowance_excluded = groups_from_phrase(allowance.group(3), vocabulary)
+        if allowance_allowed is None or allowance_excluded is None:
+            result["exact"] = False
+            continue
+        result["sharedAllowances"].append(
+            {
+                "maximumModels": int(allowance.group(1)),
+                "allowed": [list(group) for group in allowance_allowed],
+                "excluded": [list(group) for group in allowance_excluded],
+                "costEqualsWounds": False,
+                "fixedModelCost": 1,
+                "consumesPrimaryCapacity": False,
+                "nestedPassengerPolicy": "excluded_from_capacity",
             }
         )
         recognized_also_sentences += 1

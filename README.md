@@ -234,7 +234,13 @@ capacity, Wounds-based shared-capacity costs, special passenger model ceilings,
 and equipped killkannon/kannon/supa-kannon capacity changes are validated. The
 five Mastodons and the Orca Dropship charge Dreadnought, Helbrute, or Battlesuit
 passengers space equal to their Wounds while enforcing their aggregate two- or
-six-model allowance. The Falcon, Firestorm, Vampire Raider, and Wave Serpent apply their
+six-model allowance. Sokar-pattern Stormbirds charge a transported Rhino and
+all of its passengers a fixed 25 spaces; the Thunderhawk Transporter permits up
+to two non-Aircraft, non-Titanic Adeptus Astartes Vehicles in an independent
+allowance and does not
+double-count models embarked within them. Nested Transport assignments retain
+and validate each inner Transport's own capacity. The Falcon, Firestorm,
+Vampire Raider, and Wave Serpent apply their
 published Ynnari exclusions without rejecting the named Yvraine, Visarch, and
 Asuryani exceptions; Jump Pack exclusions remain independent. Independent
 capacity pools are tracked separately for Storm Eagles,

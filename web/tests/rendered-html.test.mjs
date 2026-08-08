@@ -406,6 +406,46 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.equal(mastodonAllowanceBody.data.slots, 24);
   assert.equal(mastodonAllowanceBody.data.sharedAllowance.maximumModels, 2);
   assert.equal(mastodonAllowanceBody.data.fits, false);
+  const stormbird = catalogue.units.find((unit) => unit.id === "000001179");
+  const rhinoPassenger = catalogue.units.find((unit) => unit.id === "000002723");
+  const nestedTransport = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/transport?unit=${stormbird.id}&passenger=${rhinoPassenger.id}`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.equal(nestedTransport.status, 200);
+  const nestedTransportBody = await nestedTransport.json();
+  assert.equal(nestedTransportBody.data.modelCost, 25);
+  assert.equal(nestedTransportBody.data.slots, 25);
+  assert.equal(
+    nestedTransportBody.data.sharedAllowance.nestedPassengerPolicy,
+    "included_in_fixed_cost",
+  );
+  const thunderhawkTransporter = catalogue.units.find((unit) => unit.id === "000002724");
+  const stormravenPassenger = catalogue.units.find((unit) => unit.id === "000001191");
+  const independentVehiclePool = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/transport?unit=${thunderhawkTransporter.id}&passenger=${rhinoPassenger.id}&models=2`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.equal(independentVehiclePool.status, 200);
+  const independentVehiclePoolBody = await independentVehiclePool.json();
+  assert.equal(independentVehiclePoolBody.data.pool.kind, "additional");
+  assert.equal(independentVehiclePoolBody.data.capacity, 2);
+  assert.equal(independentVehiclePoolBody.data.fits, true);
+  const excludedNestedTransport = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/transport?unit=${thunderhawkTransporter.id}&passenger=${stormravenPassenger.id}`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.equal(excludedNestedTransport.status, 200);
+  assert.equal((await excludedNestedTransport.json()).data.eligible, false);
   const dreadclaw = catalogue.units.find((unit) => unit.id === "000001310");
   const alternativeMode = await worker.fetch(
     new Request(`http://localhost/api/v1/transport?unit=${dreadclaw.id}&passenger=${helbrute.id}`),

@@ -232,10 +232,64 @@ class ProfileDataTests(unittest.TestCase):
                 {
                     "maximumModels": 2,
                     "allowed": [["dreadnought"], ["helbrute"]],
+                    "excluded": [],
                     "costEqualsWounds": True,
+                    "fixedModelCost": None,
+                    "consumesPrimaryCapacity": True,
+                    "nestedPassengerPolicy": None,
                 }
             ],
         )
+        stormbird = parse_transport_rule(
+            "This model has a transport capacity of 55 Adeptus Astartes Infantry "
+            "models. This model can also transport up to 1 Rhino model (this model "
+            "- and any models embarked within it - take up the space of 25 models).",
+            {
+                normalized_term(value)
+                for value in ("Adeptus Astartes", "Infantry", "Rhino")
+            },
+        )
+        self.assertTrue(stormbird["exact"])
+        self.assertEqual(
+            stormbird["sharedAllowances"],
+            [
+                {
+                    "maximumModels": 1,
+                    "allowed": [["rhino"]],
+                    "excluded": [],
+                    "costEqualsWounds": False,
+                    "fixedModelCost": 25,
+                    "consumesPrimaryCapacity": True,
+                    "nestedPassengerPolicy": "included_in_fixed_cost",
+                }
+            ],
+        )
+        transporter = parse_transport_rule(
+            "This model has a transport capacity of 15 Adeptus Astartes Infantry "
+            "models. This model can also transport up to 2 Adeptus Astartes Vehicle "
+            "models (excluding Aircraft and Titanic models). Models embarked within "
+            "Transport Vehicles that are themselves being transported by this model "
+            "do not count towards the transport capacity of this model.",
+            {
+                normalized_term(value)
+                for value in (
+                    "Adeptus Astartes",
+                    "Infantry",
+                    "Vehicle",
+                    "Aircraft",
+                    "Titanic",
+                )
+            },
+        )
+        self.assertTrue(transporter["exact"])
+        self.assertEqual(
+            transporter["sharedAllowances"][0]["excluded"], [["aircraft"], ["titanic"]]
+        )
+        self.assertEqual(
+            transporter["sharedAllowances"][0]["nestedPassengerPolicy"],
+            "excluded_from_capacity",
+        )
+        self.assertFalse(transporter["sharedAllowances"][0]["consumesPrimaryCapacity"])
         self.assertFalse(
             parse_transport_rule(
                 "This model has a transport capacity of 45 Heretic Astartes Infantry "
@@ -1912,7 +1966,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "59",
+                "60",
             )
             self.assertEqual(
                 connection.execute("SELECT count(*) FROM unit_firing_deck").fetchone()[
@@ -1958,13 +2012,19 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT count(*) FROM unit_transport_shared_allowances"
                 ).fetchone()[0],
-                6,
+                12,
             )
             self.assertEqual(
                 connection.execute(
                     "SELECT count(*) FROM unit_transport_shared_allowance_keywords"
                 ).fetchone()[0],
-                11,
+                18,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM unit_transport_shared_allowance_exclusion_keywords"
+                ).fetchone()[0],
+                2,
             )
             self.assertEqual(
                 connection.execute(
@@ -1976,7 +2036,18 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT count(*) FROM unit_transport WHERE exact_rules = 1"
                 ).fetchone()[0],
-                171,
+                177,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*)
+                       FROM unit_transport AS transport
+                       JOIN datasheets ON datasheets.id = transport.datasheet_id
+                       WHERE (datasheets.name = 'Sokar-pattern Stormbird'
+                              OR datasheets.name = 'Thunderhawk Transporter')
+                         AND transport.exact_rules = 1"""
+                ).fetchone()[0],
+                6,
             )
             self.assertEqual(
                 connection.execute(
@@ -2120,6 +2191,42 @@ class ProfileDataTests(unittest.TestCase):
                                 allowances.maximum_models"""
                 ).fetchone(),
                 (6, "battlesuit"),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT allowances.maximum_models,
+                              allowances.fixed_model_cost,
+                              allowances.nested_passenger_policy,
+                              group_concat(keywords.keyword, '|')
+                       FROM unit_transport_shared_allowances AS allowances
+                       JOIN unit_transport_shared_allowance_keywords AS keywords
+                         USING (datasheet_id, allowance_position)
+                       WHERE allowances.datasheet_id = '000001179'
+                       GROUP BY allowances.datasheet_id,
+                                allowances.allowance_position,
+                                allowances.maximum_models,
+                                allowances.fixed_model_cost,
+                                allowances.nested_passenger_policy"""
+                ).fetchone(),
+                (1, 25, "included_in_fixed_cost", "rhino"),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT allowances.maximum_models,
+                              allowances.fixed_model_cost,
+                              allowances.nested_passenger_policy,
+                              group_concat(exclusions.keyword, '|')
+                       FROM unit_transport_shared_allowances AS allowances
+                       JOIN unit_transport_shared_allowance_exclusion_keywords AS exclusions
+                         USING (datasheet_id, allowance_position)
+                       WHERE allowances.datasheet_id = '000002724'
+                       GROUP BY allowances.datasheet_id,
+                                allowances.allowance_position,
+                                allowances.maximum_models,
+                                allowances.fixed_model_cost,
+                                allowances.nested_passenger_policy"""
+                ).fetchone(),
+                (2, 1, "excluded_from_capacity", "aircraft|titanic"),
             )
             self.assertEqual(
                 connection.execute(

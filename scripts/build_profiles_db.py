@@ -403,7 +403,26 @@ CREATE TABLE unit_transport_shared_allowances (
     allowance_position INTEGER NOT NULL CHECK (allowance_position >= 1),
     maximum_models INTEGER NOT NULL CHECK (maximum_models > 0),
     cost_equals_wounds INTEGER NOT NULL CHECK (cost_equals_wounds IN (0, 1)),
+    fixed_model_cost INTEGER CHECK (fixed_model_cost > 0),
+    consumes_primary_capacity INTEGER NOT NULL CHECK (consumes_primary_capacity IN (0, 1)),
+    nested_passenger_policy TEXT CHECK (
+        nested_passenger_policy IN ('included_in_fixed_cost', 'excluded_from_capacity')
+    ),
+    CHECK (cost_equals_wounds = 1 OR fixed_model_cost IS NOT NULL),
+    CHECK (cost_equals_wounds = 0 OR fixed_model_cost IS NULL),
     PRIMARY KEY (datasheet_id, allowance_position)
+) WITHOUT ROWID;
+
+CREATE TABLE unit_transport_shared_allowance_exclusion_keywords (
+    datasheet_id TEXT NOT NULL,
+    allowance_position INTEGER NOT NULL,
+    group_position INTEGER NOT NULL CHECK (group_position >= 1),
+    keyword_position INTEGER NOT NULL CHECK (keyword_position >= 1),
+    keyword TEXT NOT NULL,
+    PRIMARY KEY (datasheet_id, allowance_position, group_position, keyword_position),
+    FOREIGN KEY (datasheet_id, allowance_position)
+        REFERENCES unit_transport_shared_allowances(datasheet_id, allowance_position)
+        ON DELETE CASCADE
 ) WITHOUT ROWID;
 
 CREATE TABLE unit_transport_shared_allowance_keywords (
@@ -3618,18 +3637,39 @@ def populate_transports(connection: sqlite3.Connection) -> tuple[int, int]:
         ):
             connection.execute(
                 """INSERT INTO unit_transport_shared_allowances
-                   (datasheet_id, allowance_position, maximum_models, cost_equals_wounds)
-                   VALUES (?, ?, ?, ?)""",
+                   (datasheet_id, allowance_position, maximum_models, cost_equals_wounds,
+                    fixed_model_cost, consumes_primary_capacity, nested_passenger_policy)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     allowance_position,
                     allowance["maximumModels"],
                     int(allowance["costEqualsWounds"]),
+                    allowance["fixedModelCost"],
+                    int(allowance["consumesPrimaryCapacity"]),
+                    allowance["nestedPassengerPolicy"],
                 ),
             )
             for group_position, keywords in enumerate(allowance["allowed"], start=1):
                 connection.executemany(
                     """INSERT INTO unit_transport_shared_allowance_keywords
+                       (datasheet_id, allowance_position, group_position,
+                        keyword_position, keyword)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (
+                        (
+                            datasheet_id,
+                            allowance_position,
+                            group_position,
+                            keyword_position,
+                            keyword,
+                        )
+                        for keyword_position, keyword in enumerate(keywords, start=1)
+                    ),
+                )
+            for group_position, keywords in enumerate(allowance["excluded"], start=1):
+                connection.executemany(
+                    """INSERT INTO unit_transport_shared_allowance_exclusion_keywords
                        (datasheet_id, allowance_position, group_position,
                         keyword_position, keyword)
                        VALUES (?, ?, ?, ?, ?)""",
@@ -3863,7 +3903,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "59"),
+                    ("schema_version", "60"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
@@ -4157,6 +4197,7 @@ def create_database(
                 "unit_transport_alternative_pool_keywords",
                 "unit_transport_shared_allowances",
                 "unit_transport_shared_allowance_keywords",
+                "unit_transport_shared_allowance_exclusion_keywords",
                 "unit_transport_exclusion_groups",
                 "unit_transport_exclusion_keywords",
                 "unit_transport_exclusion_exception_keywords",

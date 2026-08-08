@@ -50,8 +50,8 @@ export function transportCapacityPools(transport, armyUnit) {
       maximumWounds: null,
       allowedKeywords: [
         ...transport.transport.allowedKeywords,
-        ...(transport.transport.sharedAllowances ?? []).flatMap(
-          (allowance) => allowance.allowedKeywords,
+        ...(transport.transport.sharedAllowances ?? []).flatMap((allowance) =>
+          allowance.consumesPrimaryCapacity ? allowance.allowedKeywords : [],
         ),
       ],
       label: "primary",
@@ -62,6 +62,16 @@ export function transportCapacityPools(transport, armyUnit) {
       maximumWounds: null,
       label: pool.allowedKeywords.map((group) => group.join(" + ")).join(" or "),
     })),
+    ...(transport.transport.sharedAllowances ?? [])
+      .filter((allowance) => !allowance.consumesPrimaryCapacity)
+      .map((allowance) => ({
+        position: (transport.transport.additionalPools?.length ?? 0) + allowance.position,
+        kind: "additional",
+        capacity: allowance.maximumModels,
+        maximumWounds: null,
+        allowedKeywords: allowance.allowedKeywords,
+        label: allowance.allowedKeywords.map((group) => group.join(" + ")).join(" or "),
+      })),
     ...(transport.transport.alternativePools ?? []).map((pool) => ({
       ...pool,
       kind: "alternative",
@@ -95,6 +105,12 @@ export function transportPassengerEligibility(transport, passenger, context = {}
   const matchingSharedAllowance = (transport.transport.sharedAllowances ?? []).find((allowance) =>
     allowance.allowedKeywords.some((group) => matchesKeywords(keywords, group)),
   );
+  if (matchingSharedAllowance?.excludedKeywords.some((group) => matchesKeywords(keywords, group))) {
+    return {
+      eligible: false,
+      reason: `${passenger.name} matches a published shared-allowance exclusion for ${transport.name}`,
+    };
+  }
   const pools = transportCapacityPools(transport);
   const keywordPool = pools.find(
     (pool) =>
@@ -158,6 +174,7 @@ export function transportPassengerEligibility(transport, passenger, context = {}
       )
       .map((rule) => Number(rule.cost) || 1),
     matchingSharedAllowance?.costEqualsWounds ? wounds : 1,
+    Number(matchingSharedAllowance?.fixedModelCost) || 1,
   );
   return {
     eligible: true,
@@ -170,6 +187,7 @@ export function transportPassengerEligibility(transport, passenger, context = {}
     poolLabel: matchingPool.label,
     sharedAllowancePosition: matchingSharedAllowance?.position ?? null,
     sharedAllowanceMaximumModels: matchingSharedAllowance?.maximumModels ?? null,
+    sharedAllowanceNestedPassengerPolicy: matchingSharedAllowance?.nestedPassengerPolicy ?? null,
   };
 }
 
@@ -281,6 +299,7 @@ export function transportAssignmentReport(catalogue, armyList) {
       poolLabel: eligibility.poolLabel,
       sharedAllowancePosition: eligibility.sharedAllowancePosition,
       sharedAllowanceMaximumModels: eligibility.sharedAllowanceMaximumModels,
+      sharedAllowanceNestedPassengerPolicy: eligibility.sharedAllowanceNestedPassengerPolicy,
       slots,
     };
     assignments.push(assignment);

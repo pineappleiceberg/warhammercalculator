@@ -260,7 +260,11 @@ export type CatalogueUnit = {
       position: number;
       maximumModels: number;
       costEqualsWounds: boolean;
+      fixedModelCost: number | null;
+      consumesPrimaryCapacity: boolean;
+      nestedPassengerPolicy: "included_in_fixed_cost" | "excluded_from_capacity" | null;
       allowedKeywords: string[][];
+      excludedKeywords: string[][];
     }>;
     excluded: Array<{
       keywords: string[];

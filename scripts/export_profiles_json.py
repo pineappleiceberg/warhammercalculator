@@ -283,10 +283,25 @@ def export(database: Path, output: Path) -> None:
                 ),
                 [],
             ).append(row["keyword"])
+        shared_allowance_exclusions: dict[tuple[str, int, int], list[str]] = {}
+        for row in connection.execute(
+            """SELECT datasheet_id, allowance_position, group_position, keyword
+               FROM unit_transport_shared_allowance_exclusion_keywords
+               ORDER BY datasheet_id, allowance_position, group_position, keyword_position"""
+        ):
+            shared_allowance_exclusions.setdefault(
+                (
+                    row["datasheet_id"],
+                    row["allowance_position"],
+                    row["group_position"],
+                ),
+                [],
+            ).append(row["keyword"])
         shared_allowances: dict[str, list[dict]] = {}
         for row in connection.execute(
             """SELECT datasheet_id, allowance_position, maximum_models,
-                      cost_equals_wounds
+                      cost_equals_wounds, fixed_model_cost, consumes_primary_capacity,
+                      nested_passenger_policy
                FROM unit_transport_shared_allowances
                ORDER BY datasheet_id, allowance_position"""
         ):
@@ -302,12 +317,26 @@ def export(database: Path, output: Path) -> None:
                 if candidate_id == datasheet_id
                 and candidate_allowance == allowance_position
             ]
+            excluded_groups = [
+                keywords
+                for (
+                    candidate_id,
+                    candidate_allowance,
+                    _,
+                ), keywords in shared_allowance_exclusions.items()
+                if candidate_id == datasheet_id
+                and candidate_allowance == allowance_position
+            ]
             shared_allowances.setdefault(datasheet_id, []).append(
                 {
                     "position": allowance_position,
                     "maximumModels": row["maximum_models"],
                     "costEqualsWounds": bool(row["cost_equals_wounds"]),
+                    "fixedModelCost": row["fixed_model_cost"],
+                    "consumesPrimaryCapacity": bool(row["consumes_primary_capacity"]),
+                    "nestedPassengerPolicy": row["nested_passenger_policy"],
                     "allowedKeywords": allowed_groups,
+                    "excludedKeywords": excluded_groups,
                 }
             )
         transport_excluded: dict[tuple[str, int], list[str]] = {}

@@ -37,6 +37,7 @@ test("published Transport keywords and model-space costs gate passengers exactly
     poolLabel: "primary",
     sharedAllowancePosition: null,
     sharedAllowanceMaximumModels: null,
+    sharedAllowanceNestedPassengerPolicy: null,
   });
   assert.equal(transportPassengerEligibility(trukk, meganobz).modelCost, 2);
   const meganobWeapon = meganobz.weapons.find((weapon) => weapon.type === "Ranged");
@@ -470,7 +471,11 @@ test("shared Transport allowances use passenger Wounds and enforce combined mode
       position: 1,
       maximumModels: 2,
       costEqualsWounds: true,
+      fixedModelCost: null,
+      consumesPrimaryCapacity: true,
+      nestedPassengerPolicy: null,
       allowedKeywords: [["dreadnought"], ["helbrute"]],
+      excludedKeywords: [],
     },
   ]);
   assert.equal(transportPassengerEligibility(mastodon, legionaries).modelCost, 1);
@@ -555,4 +560,126 @@ test("shared Transport allowances use passenger Wounds and enforce combined mode
   const crisis = unit("Crisis Fireknife Battlesuits", "000003700");
   assert.equal(transportPassengerEligibility(orca, crisis).modelCost, 4);
   assert.equal(transportPassengerEligibility(orca, crisis).sharedAllowanceMaximumModels, 6);
+});
+
+test("nested Transport allowances apply fixed costs without double-counting passengers", () => {
+  const stormbird = unit("Sokar-pattern Stormbird", "000001179");
+  const rhino = unit("Rhino", "000002723");
+  const tacticalSquad = unit("Tactical Squad", "000000070");
+  assert.deepEqual(stormbird.transport.sharedAllowances, [
+    {
+      position: 1,
+      maximumModels: 1,
+      costEqualsWounds: false,
+      fixedModelCost: 25,
+      consumesPrimaryCapacity: true,
+      nestedPassengerPolicy: "included_in_fixed_cost",
+      allowedKeywords: [["rhino"]],
+      excludedKeywords: [],
+    },
+  ]);
+  assert.equal(transportPassengerEligibility(stormbird, rhino).modelCost, 25);
+  const nested = transportAssignmentReport(catalogue, {
+    units: [
+      {
+        id: "stormbird",
+        unitId: stormbird.id,
+        name: stormbird.name,
+        modelCount: 1,
+        weapons: [],
+      },
+      {
+        id: "rhino",
+        unitId: rhino.id,
+        name: rhino.name,
+        modelCount: 1,
+        weapons: [],
+        transportId: "stormbird",
+      },
+      {
+        id: "nested-squad",
+        unitId: tacticalSquad.id,
+        name: tacticalSquad.name,
+        modelCount: 10,
+        weapons: [],
+        transportId: "rhino",
+      },
+      {
+        id: "direct-squad",
+        unitId: tacticalSquad.id,
+        name: tacticalSquad.name,
+        modelCount: 30,
+        weapons: [],
+        transportId: "stormbird",
+      },
+    ],
+  });
+  assert.deepEqual(nested.errors, []);
+  assert.equal(nested.slotsByTransport.get("stormbird"), 55);
+  assert.equal(nested.slotsByTransport.get("rhino"), 10);
+
+  const twoRhinos = transportAssignmentReport(catalogue, {
+    units: [
+      {
+        id: "stormbird",
+        unitId: stormbird.id,
+        name: stormbird.name,
+        modelCount: 1,
+        weapons: [],
+      },
+      ...[1, 2].map((number) => ({
+        id: `rhino-${number}`,
+        unitId: rhino.id,
+        name: rhino.name,
+        modelCount: 1,
+        weapons: [],
+        transportId: "stormbird",
+      })),
+    ],
+  });
+  assert.ok(twoRhinos.errors.some((error) => /2 models.*limited to 1/i.test(error)));
+
+  const transporter = unit("Thunderhawk Transporter", "000002724");
+  const stormraven = unit("Stormraven Gunship", "000001191");
+  const rhinoEligibility = transportPassengerEligibility(transporter, rhino);
+  assert.equal(rhinoEligibility.modelCost, 1);
+  assert.equal(rhinoEligibility.poolKind, "additional");
+  assert.equal(rhinoEligibility.poolCapacity, 2);
+  assert.equal(rhinoEligibility.sharedAllowanceMaximumModels, 2);
+  assert.equal(rhinoEligibility.sharedAllowanceNestedPassengerPolicy, "excluded_from_capacity");
+  const aircraftEligibility = transportPassengerEligibility(transporter, stormraven);
+  assert.equal(aircraftEligibility.eligible, false);
+  assert.match(aircraftEligibility.reason, /shared-allowance exclusion/i);
+
+  const independentVehicles = transportAssignmentReport(catalogue, {
+    units: [
+      {
+        id: "transporter",
+        unitId: transporter.id,
+        name: transporter.name,
+        modelCount: 1,
+        weapons: [],
+      },
+      {
+        id: "direct-squad",
+        unitId: tacticalSquad.id,
+        name: tacticalSquad.name,
+        modelCount: 15,
+        weapons: [],
+        transportId: "transporter",
+      },
+      ...[1, 2].map((number) => ({
+        id: `transported-rhino-${number}`,
+        unitId: rhino.id,
+        name: rhino.name,
+        modelCount: 1,
+        weapons: [],
+        transportId: "transporter",
+      })),
+    ],
+  });
+  assert.deepEqual(independentVehicles.errors, []);
+  assert.equal(independentVehicles.slotsByTransport.get("transporter"), 17);
+  assert.equal(independentVehicles.poolSlotsByTransport.get("transporter:0"), 15);
+  assert.equal(independentVehicles.poolSlotsByTransport.get("transporter:1"), 2);
 });

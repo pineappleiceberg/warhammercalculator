@@ -34,7 +34,11 @@ The main tables are:
   maximum-Wounds limits
   `unit_transport_shared_allowances` and its keyword child table preserve
   exceptional passengers that consume the primary capacity, including an
-  aggregate passenger-model ceiling and space equal to each model's Wounds
+  aggregate passenger-model ceiling, fixed or Wounds-based space costs, whether
+  the allowance consumes primary capacity, and the
+  published treatment of passengers nested inside a transported Transport.
+  Its exclusion-keyword child table limits special Vehicle allowances without
+  weakening the primary passenger rules
 - `unit_combat_presets` and `unit_combat_preset_effects` for conservatively
   extracted Hit/Wound modifiers, re-roll modes, weapon-keyword grants, AP
   changes, Critical Hit/Wound thresholds, direct signed Attacks, Strength, and
