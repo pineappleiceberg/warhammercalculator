@@ -205,6 +205,8 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.match(documented.endpoints.calculate, /POST \/api\/v1\/calculate/);
   assert.match(documented.endpoints.volleyComplexity, /POST \/api\/v1\/volley\/complexity/);
   assert.match(documented.endpoints.volleySimulate, /POST \/api\/v1\/volley\/simulate/);
+  assert.match(documented.endpoints.firingDeck, /GET \/api\/v1\/firing-deck/);
+  assert.match(documented.endpoints.validateFiringDeck, /POST \/api\/v1\/validate-firing-deck/);
   assert.match(documented.endpoints.lists, /lists\/export/);
 
   const factions = await worker.fetch(
@@ -223,6 +225,66 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const catalogue = await profiles.json();
   const warriors = catalogue.units.find((unit) => unit.name === "Necron Warriors");
   assert.ok(warriors);
+  const trukk = catalogue.units.find((unit) => unit.id === "000000026");
+  const boyz = catalogue.units.find((unit) => unit.id === "000000016");
+  assert.deepEqual(trukk.firingDeck, { capacity: 12, abilityId: "000008334" });
+  const firingDeck = await worker.fetch(
+    new Request(`http://localhost/api/v1/firing-deck?unit=${trukk.id}&passenger=${boyz.id}`),
+    testEnv,
+    context,
+  );
+  assert.equal(firingDeck.status, 200);
+  const firingDeckBody = await firingDeck.json();
+  assert.equal(firingDeckBody.data.capacity, 12);
+  assert.equal(
+    firingDeckBody.data.passenger.weapons.some((weapon) => weapon.name === "Choppa"),
+    false,
+  );
+  const validatedDeck = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-firing-deck", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        transportId: trukk.id,
+        selections: [
+          { passengerUnitId: boyz.id, weaponId: 59, modelCount: 12, unitAlreadyShot: false },
+        ],
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(validatedDeck.status, 200);
+  assert.deepEqual((await validatedDeck.json()).data, {
+    capacity: 12,
+    slotsUsed: 12,
+    selections: [
+      {
+        passengerUnitId: boyz.id,
+        passengerUnitName: "Boyz",
+        weaponId: 59,
+        weaponName: "Shoota",
+        modelCount: 12,
+        modelCost: 1,
+        slots: 12,
+        bearerUnitId: trukk.id,
+      },
+    ],
+  });
+  const invalidDeck = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-firing-deck", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        transportId: trukk.id,
+        selections: [{ passengerUnitId: boyz.id, weaponId: 59, modelCount: 13 }],
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(invalidDeck.status, 400);
+  assert.match((await invalidDeck.text()).toLowerCase(), /allows 12/);
   const warboss = catalogue.units.find((unit) => unit.name === "Warboss");
   const mightIsRight = warboss.combatPresets.find((preset) => preset.name === "Might is Right");
   assert.equal(mightIsRight.hitModifierRole, "attacker");

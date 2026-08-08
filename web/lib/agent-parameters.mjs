@@ -3,12 +3,16 @@ import {
   combatPresetMatchesSourceRelationship,
   combatPresetSupportsRole,
 } from "./combat-presets.mjs";
+import { resolveFiringDeckSelection } from "./firing-deck.mjs";
 
 export const AGENT_SCHEMA_VERSION = 1;
 
 const catalogueParameters = new Set([
   "attacker",
   "weapon",
+  "passenger",
+  "firingDeckModels",
+  "passengerAlreadyShot",
   "target",
   "model",
   "attackerPreset",
@@ -350,7 +354,37 @@ export function resolveAgentCatalogueSelection(input, catalogue) {
   const required = ["attacker", "weapon", "target"].filter((name) => !search.has(name));
   if (required.length) throw new Error(`Missing catalogue parameters: ${required.join(", ")}`);
   const attacker = matchOne(catalogue.units, search.get("attacker"), "attacker");
-  const weapon = matchOne(attacker.weapons, search.get("weapon"), "weapon");
+  const passengerValue = singleValue(search, ["passenger"]);
+  const firingDeckModelsValue = singleValue(search, ["firingDeckModels"]);
+  const passengerAlreadyShotValue = singleValue(search, ["passengerAlreadyShot"]);
+  if (!passengerValue && (firingDeckModelsValue !== null || passengerAlreadyShotValue !== null)) {
+    throw new Error("passenger is required with Firing Deck parameters");
+  }
+  const passenger = passengerValue ? matchOne(catalogue.units, passengerValue, "passenger") : null;
+  const weaponSource = passenger ?? attacker;
+  const weapon = matchOne(weaponSource.weapons, search.get("weapon"), "weapon");
+  const firingDeck = passenger
+    ? resolveFiringDeckSelection(catalogue, attacker, {
+        passengerUnitId: passenger.id,
+        weaponId: weapon.id,
+        modelCount:
+          firingDeckModelsValue === null
+            ? 1
+            : integerValue(firingDeckModelsValue, "firingDeckModels"),
+        unitAlreadyShot:
+          passengerAlreadyShotValue === null
+            ? false
+            : booleanValue(passengerAlreadyShotValue, "passengerAlreadyShot"),
+      })
+    : null;
+  const requestedWeaponCount = singleValue(search, ["weaponCount"]);
+  if (
+    firingDeck &&
+    requestedWeaponCount !== null &&
+    integerValue(requestedWeaponCount, "weaponCount") !== firingDeck.modelCount
+  ) {
+    throw new Error("weaponCount must match firingDeckModels for a Firing Deck request");
+  }
   const target = matchOne(catalogue.units, search.get("target"), "target");
   if (!target.models.length) throw new Error("The target has no model profile");
   const modelValue = search.get("model");
@@ -393,6 +427,8 @@ export function resolveAgentCatalogueSelection(input, catalogue) {
   return {
     attacker,
     weapon,
+    passenger,
+    firingDeck,
     target,
     model,
     attackerPresets: resolvePresets(attacker, "attackerPreset"),

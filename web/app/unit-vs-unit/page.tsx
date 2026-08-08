@@ -49,6 +49,11 @@ import {
   type CatalogueDefensiveEquipment,
   type CatalogueWeapon,
 } from "../../lib/catalogue";
+import {
+  firingDeckWeaponLines,
+  firingDeckWeapons,
+  resolveFiringDeckSelections,
+} from "../../lib/firing-deck.mjs";
 
 type TargetSegment = OrderedTargetSegment & {
   id: string;
@@ -60,8 +65,20 @@ type TargetSegment = OrderedTargetSegment & {
 type WeaponLine = {
   weapon: CatalogueWeapon;
   count: number;
+  firingDeck?: {
+    passengerUnitId: string;
+    passengerUnitName: string;
+    modelCost: number;
+  };
   incrementalMean?: number;
   cumulativeMean?: number;
+};
+type FiringDeckSelection = {
+  id: string;
+  passengerUnitId: string;
+  weaponId: number | null;
+  modelCount: number;
+  unitAlreadyShot: boolean;
 };
 
 function targetSegment(model: CatalogueModel, modelCount: number): TargetSegment {
@@ -139,6 +156,7 @@ export default function UnitVsUnit() {
   const [choiceSelections, setChoiceSelections] = useState<Record<string, number>>({});
   const [loadoutSubjectCounts, setLoadoutSubjectCounts] = useState<Record<string, number>>({});
   const [profileCounts, setProfileCounts] = useState<Record<number, number>>({});
+  const [firingDeckSelections, setFiringDeckSelections] = useState<FiringDeckSelection[]>([]);
   const [activeAttackerPresetIds, setActiveAttackerPresetIds] = useState<string[]>([]);
   const [activeTargetPresetIds, setActiveTargetPresetIds] = useState<string[]>([]);
   const [supportUnitId, setSupportUnitId] = useState("");
@@ -227,6 +245,10 @@ export default function UnitVsUnit() {
     catalogue?.units.filter((unit) => unit.factionId === targetFaction) ?? [];
   const targetSupportUnit = targetSupportUnits.find((unit) => unit.id === targetSupportUnitId);
   const weaponGroups = groupWeaponProfiles(attackerUnit?.weapons ?? []);
+  const firingDeckPassengerUnits =
+    catalogue?.units.filter(
+      (unit) => unit.id !== attackerUnit?.id && firingDeckWeapons(unit).length > 0,
+    ) ?? [];
   const structuredGroupIds = new Set(
     attackerUnit?.wargearChoicePools.flatMap((pool) =>
       pool.replaces
@@ -248,7 +270,33 @@ export default function UnitVsUnit() {
     loadoutSubjectCounts,
   );
   const orderIndex = new Map(weaponOrder.map((weaponId, index) => [weaponId, index]));
-  const orderedLines = equippedWeaponLines(weaponGroups, weaponCounts, profileCounts).sort(
+  const completeFiringDeckSelections = firingDeckSelections.filter(
+    (selection) => selection.passengerUnitId && selection.weaponId !== null,
+  );
+  let firingDeckError = "";
+  let firingDeckLines: WeaponLine[] = [];
+  let firingDeckSlots = 0;
+  if (catalogue && attackerUnit?.firingDeck) {
+    try {
+      const resolved = resolveFiringDeckSelections(
+        catalogue,
+        attackerUnit,
+        completeFiringDeckSelections,
+      );
+      firingDeckSlots = resolved.slots;
+      firingDeckLines = firingDeckWeaponLines(
+        catalogue,
+        attackerUnit,
+        completeFiringDeckSelections,
+      );
+    } catch (error) {
+      firingDeckError = error instanceof Error ? error.message : "Invalid Firing Deck selection";
+    }
+  }
+  const orderedLines = [
+    ...equippedWeaponLines(weaponGroups, weaponCounts, profileCounts),
+    ...firingDeckLines,
+  ].sort(
     (left, right) =>
       (orderIndex.get(left.weapon.id) ?? Number.MAX_SAFE_INTEGER) -
       (orderIndex.get(right.weapon.id) ?? Number.MAX_SAFE_INTEGER),
@@ -267,6 +315,7 @@ export default function UnitVsUnit() {
     destructiveFightPhases,
     embarkedModels,
     embarkedWracksModels,
+    firingDeckSelections,
     attackerCharged,
     attackerRemainedStationary,
     attackerAttached,
@@ -335,6 +384,7 @@ export default function UnitVsUnit() {
     setDestructiveFightPhases(0);
     setEmbarkedModels(0);
     setEmbarkedWracksModels(0);
+    setFiringDeckSelections([]);
     setAttackerBattleShocked(false);
     const unit = attackerUnits.find((entry) => entry.id === unitId);
     const groups = groupWeaponProfiles(unit?.weapons ?? []);
@@ -472,8 +522,6 @@ export default function UnitVsUnit() {
             targetSpotted,
             targetSpottedByMarkerlightObserver,
             targetClosestEligible,
-            attackerSourceTargetDistance,
-            attackerSourceCanSeeTarget,
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
@@ -821,6 +869,18 @@ export default function UnitVsUnit() {
   const calculateUnit = async (forceExact = false) => {
     if (!attackerUnit || !targetUnit) return;
     setStatus("Calculating unit volley…");
+    if (
+      firingDeckSelections.some(
+        (selection) => !selection.passengerUnitId || selection.weaponId === null,
+      )
+    ) {
+      setStatus("Complete or remove every Firing Deck selection");
+      return;
+    }
+    if (firingDeckError) {
+      setStatus(firingDeckError);
+      return;
+    }
     const allocationErrors = weaponAllocationErrors(weaponGroups, weaponCounts, profileCounts);
     if (allocationErrors.length) {
       setStatus(allocationErrors[0]);
@@ -864,6 +924,18 @@ export default function UnitVsUnit() {
 
   const rollUnit = () => {
     if (!attackerUnit || !targetUnit) return;
+    if (
+      firingDeckSelections.some(
+        (selection) => !selection.passengerUnitId || selection.weaponId === null,
+      )
+    ) {
+      setStatus("Complete or remove every Firing Deck selection");
+      return;
+    }
+    if (firingDeckError) {
+      setStatus(firingDeckError);
+      return;
+    }
     const allocationErrors = weaponAllocationErrors(weaponGroups, weaponCounts, profileCounts);
     if (allocationErrors.length) {
       setStatus(allocationErrors[0]);
@@ -885,6 +957,18 @@ export default function UnitVsUnit() {
 
   const runPhaseSimulation = async () => {
     if (!attackerUnit || !targetUnit) return;
+    if (
+      firingDeckSelections.some(
+        (selection) => !selection.passengerUnitId || selection.weaponId === null,
+      )
+    ) {
+      setStatus("Complete or remove every Firing Deck selection");
+      return;
+    }
+    if (firingDeckError) {
+      setStatus(firingDeckError);
+      return;
+    }
     const allocationErrors = weaponAllocationErrors(weaponGroups, weaponCounts, profileCounts);
     if (allocationErrors.length) {
       setStatus(allocationErrors[0]);
@@ -959,6 +1043,7 @@ export default function UnitVsUnit() {
                   setDestructiveFightPhases(0);
                   setEmbarkedModels(0);
                   setEmbarkedWracksModels(0);
+                  setFiringDeckSelections([]);
                   setAttackerBattleShocked(false);
                   setSupportUnitId("");
                   setActiveSupportPresetIds([]);
@@ -1176,6 +1261,158 @@ export default function UnitVsUnit() {
                     )}
                   </div>
                 ))}
+                {attackerUnit.firingDeck && (
+                  <details className="source-choice-pools" open>
+                    <summary>
+                      Firing Deck {attackerUnit.firingDeck.capacity} ({firingDeckSlots}/
+                      {attackerUnit.firingDeck.capacity} model slots)
+                    </summary>
+                    <small>
+                      Select one ranged, non-One Shot weapon from each embarked model. These weapons
+                      are resolved as equipped by {attackerUnit.name}; passenger abilities do not
+                      transfer.
+                    </small>
+                    {firingDeckSelections.map((selection) => {
+                      const passenger = firingDeckPassengerUnits.find(
+                        (unit) => unit.id === selection.passengerUnitId,
+                      );
+                      return (
+                        <fieldset key={selection.id}>
+                          <legend>Embarked models</legend>
+                          <label>
+                            <span>Passenger unit</span>
+                            <select
+                              aria-label="Firing Deck passenger unit"
+                              value={selection.passengerUnitId}
+                              onChange={(event) =>
+                                setFiringDeckSelections((current) =>
+                                  current.map((entry) =>
+                                    entry.id === selection.id
+                                      ? {
+                                          ...entry,
+                                          passengerUnitId: event.target.value,
+                                          weaponId: null,
+                                        }
+                                      : entry,
+                                  ),
+                                )
+                              }
+                            >
+                              <option value="">Choose embarked unit</option>
+                              {firingDeckPassengerUnits.map((unit) => (
+                                <option key={unit.id} value={unit.id}>
+                                  {unit.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            <span>One weapon per selected model</span>
+                            <select
+                              aria-label="Firing Deck passenger weapon"
+                              value={selection.weaponId ?? ""}
+                              disabled={!passenger}
+                              onChange={(event) =>
+                                setFiringDeckSelections((current) =>
+                                  current.map((entry) =>
+                                    entry.id === selection.id
+                                      ? { ...entry, weaponId: Number(event.target.value) || null }
+                                      : entry,
+                                  ),
+                                )
+                              }
+                            >
+                              <option value="">Choose ranged weapon</option>
+                              {passenger &&
+                                firingDeckWeapons(passenger).map((weapon) => (
+                                  <option key={weapon.id} value={weapon.id}>
+                                    {weapon.name}
+                                  </option>
+                                ))}
+                            </select>
+                          </label>
+                          <label>
+                            <span>
+                              Models using this weapon
+                              {passenger && passenger.firingDeckModelCost > 1 && (
+                                <small>{passenger.firingDeckModelCost} slots per model</small>
+                              )}
+                            </span>
+                            <input
+                              aria-label="Firing Deck selected passenger models"
+                              type="number"
+                              min={1}
+                              max={attackerUnit.firingDeck?.capacity ?? 1}
+                              value={selection.modelCount}
+                              onChange={(event) =>
+                                setFiringDeckSelections((current) =>
+                                  current.map((entry) =>
+                                    entry.id === selection.id
+                                      ? {
+                                          ...entry,
+                                          modelCount:
+                                            normalizeEquippedCount(
+                                              +event.target.value,
+                                              attackerUnit.firingDeck!.capacity,
+                                            ) || 1,
+                                        }
+                                      : entry,
+                                  ),
+                                )
+                              }
+                            />
+                          </label>
+                          <label className="inline-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={selection.unitAlreadyShot}
+                              onChange={(event) =>
+                                setFiringDeckSelections((current) =>
+                                  current.map((entry) =>
+                                    entry.id === selection.id
+                                      ? { ...entry, unitAlreadyShot: event.target.checked }
+                                      : entry,
+                                  ),
+                                )
+                              }
+                            />
+                            Passenger unit has already shot this phase
+                          </label>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() =>
+                              setFiringDeckSelections((current) =>
+                                current.filter((entry) => entry.id !== selection.id),
+                              )
+                            }
+                          >
+                            Remove passenger weapon
+                          </button>
+                        </fieldset>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() =>
+                        setFiringDeckSelections((current) => [
+                          ...current,
+                          {
+                            id: crypto.randomUUID(),
+                            passengerUnitId: "",
+                            weaponId: null,
+                            modelCount: 1,
+                            unitAlreadyShot: false,
+                          },
+                        ])
+                      }
+                    >
+                      Add embarked weapon
+                    </button>
+                    {firingDeckError && <div className="field-error">{firingDeckError}</div>}
+                  </details>
+                )}
                 {attackerUnit.wargearChoicePools.length > 0 && (
                   <details className="source-choice-pools">
                     <summary>
@@ -2114,6 +2351,9 @@ export default function UnitVsUnit() {
               <div key={line.weapon.id}>
                 <span>
                   {index + 1}. {line.count} × {line.weapon.name}
+                  {line.firingDeck
+                    ? ` · Firing Deck from ${line.firingDeck.passengerUnitName}`
+                    : ""}
                 </span>
                 <div className="order-actions">
                   <button
@@ -2264,6 +2504,9 @@ export default function UnitVsUnit() {
               <div key={line.weapon.id}>
                 <span>
                   {index + 1}. {line.count} × {line.weapon.name}
+                  {line.firingDeck
+                    ? ` · Firing Deck from ${line.firingDeck.passengerUnitName}`
+                    : ""}
                 </span>
                 <b>{line.incrementalMean?.toFixed(2)} expected damage added</b>
                 <small>{line.cumulativeMean?.toFixed(2)} cumulative after this profile</small>

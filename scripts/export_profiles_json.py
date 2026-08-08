@@ -43,7 +43,11 @@ def profile_group_names(names: list[str]) -> tuple[str, list[str | None]]:
 
 
 def unit_model_range(composition: list[dict]) -> tuple[int | None, int | None]:
-    separators = {index for index, row in enumerate(composition) if row["text"].strip().lower() in {"or", "or:"}}
+    separators = {
+        index
+        for index, row in enumerate(composition)
+        if row["text"].strip().lower() in {"or", "or:"}
+    }
     if separators:
         groups = []
         current = []
@@ -63,7 +67,9 @@ def unit_model_range(composition: list[dict]) -> tuple[int | None, int | None]:
                 max(sum(row["max"] for row in group) for group in groups),
             )
 
-    numeric = [row for row in composition if row["min"] is not None and row["max"] is not None]
+    numeric = [
+        row for row in composition if row["min"] is not None and row["max"] is not None
+    ]
     unknown = [row["text"] for row in composition if row not in numeric]
     if any("one of the following" in text.lower() for text in unknown) and numeric:
         return min(row["min"] for row in numeric), max(row["max"] for row in numeric)
@@ -113,6 +119,8 @@ def export(database: Path, output: Path) -> None:
                 "wargearChoicePools": [],
                 "combatPresets": [],
                 "defensiveEquipment": [],
+                "firingDeck": None,
+                "firingDeckModelCost": 1,
                 "suggestedModelCount": None,
                 "maximumModelCount": None,
             }
@@ -154,6 +162,25 @@ def export(database: Path, output: Path) -> None:
                 }
             )
 
+        for row in connection.execute(
+            """SELECT deck.datasheet_id, deck.capacity, abilities.ability_id
+               FROM unit_firing_deck AS deck
+               JOIN datasheet_abilities AS abilities
+                 ON abilities.datasheet_id = deck.datasheet_id
+                AND abilities.position = deck.ability_position
+               ORDER BY deck.datasheet_id"""
+        ):
+            units[row["datasheet_id"]]["firingDeck"] = {
+                "capacity": row["capacity"],
+                "abilityId": row["ability_id"],
+            }
+
+        for row in connection.execute(
+            """SELECT datasheet_id, model_cost
+               FROM unit_firing_deck_passenger_costs ORDER BY datasheet_id"""
+        ):
+            units[row["datasheet_id"]]["firingDeckModelCost"] = row["model_cost"]
+
         abilities: dict[int, list[dict[str, str | None]]] = {}
         for row in connection.execute(
             """SELECT weapon_profile_id, name, value
@@ -171,7 +198,8 @@ def export(database: Path, output: Path) -> None:
                ORDER BY datasheet_id, ability_position, preset_position, keyword_position"""
         ):
             supported_keywords.setdefault(
-                (row["datasheet_id"], row["ability_position"], row["preset_position"]), []
+                (row["datasheet_id"], row["ability_position"], row["preset_position"]),
+                [],
             ).append(row["keyword"])
 
         keyword_requirements: dict[tuple[str, int, int, str], list[str]] = {}
@@ -223,190 +251,202 @@ def export(database: Path, output: Path) -> None:
                ORDER BY datasheet_id, ability_position, preset_position"""
         ):
             base_id = f"{row['datasheet_id']}:{row['ability_position']}"
-            preset_key = (row["datasheet_id"], row["ability_position"], row["preset_position"])
+            preset_key = (
+                row["datasheet_id"],
+                row["ability_position"],
+                row["preset_position"],
+            )
             exported_preset = {
-                    "id": base_id if row["preset_position"] == 1 else f"{base_id}:{row['preset_position']}",
-                    "choiceGroup": base_id if row["is_exclusive_choice"] else None,
-                    "activation": row["activation"],
-                    "sourceRelationship": row["source_relationship"],
-                    **(
-                        {"usesPerBattle": row["uses_per_battle"]}
-                        if row["uses_per_battle"]
-                        else {}
-                    ),
-                    "name": row["name"],
-                    "description": row["description_text"],
-                    "weaponScope": row["weapon_scope"],
-                    **(
-                        {"maximumTargetDistance": row["maximum_target_distance"]}
-                        if row["maximum_target_distance"]
-                        else {}
-                    ),
-                    **(
-                        {"maximumSourceTargetDistance": row["maximum_source_target_distance"]}
-                        if row["maximum_source_target_distance"]
-                        else {}
-                    ),
-                    **(
-                        {"maximumSupportDistance": row["maximum_support_distance"]}
-                        if row["maximum_support_distance"]
-                        else {}
-                    ),
-                    **(
-                        {"requiredSupportedKeywords": supported_keywords[preset_key]}
-                        if preset_key in supported_keywords
-                        else {}
-                    ),
-                    **(
-                        {
-                            "requiredAttackerKeywords": keyword_requirements[
-                                (*preset_key, "attacker_all")
-                            ]
-                        }
-                        if (*preset_key, "attacker_all") in keyword_requirements
-                        else {}
-                    ),
-                    **(
-                        {
-                            "requiredTargetKeywords": keyword_requirements[
-                                (*preset_key, "target_all")
-                            ]
-                        }
-                        if (*preset_key, "target_all") in keyword_requirements
-                        else {}
-                    ),
-                    **(
-                        {
-                            "requiredAttackKeywordsAny": keyword_requirements[
-                                (*preset_key, "attack_any")
-                            ]
-                        }
-                        if (*preset_key, "attack_any") in keyword_requirements
-                        else {}
-                    ),
-                    **(
-                        {"requiresAttackerCharge": True}
-                        if row["requires_attacker_charge"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresAttackerStationary": True}
-                        if row["requires_attacker_stationary"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresAttachedUnit": True}
-                        if row["requires_attached_unit"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresWaaaghActive": True}
-                        if row["requires_waaagh_active"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresOathTarget": True}
-                        if row["requires_oath_target"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresOathWoundBonusEligible": True}
-                        if row["requires_oath_wound_bonus"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresSourceOnObjective": True}
-                        if row["requires_source_on_objective"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresTargetOnObjective": True}
-                        if row["requires_target_on_objective"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresSourceControlsObjective": True}
-                        if row["requires_source_controls_objective"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresTargetOnObjectiveNotControlledBySource": True}
-                        if row["requires_target_on_objective_not_controlled_by_source"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresSourceOnSelectedObjective": True}
-                        if row["requires_source_on_selected_objective"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresTargetOnSourceSelectedObjective": True}
-                        if row["requires_target_on_source_selected_objective"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresTargetBattleShocked": True}
-                        if row["requires_target_battle_shocked"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresAttackerNotBattleShocked": True}
-                        if row["requires_attacker_not_battle_shocked"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresSourceNotBattleShocked": True}
-                        if row["requires_source_not_battle_shocked"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresSourceGuidedAgainstTarget": True}
-                        if row["requires_source_guided_against_target"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresTargetSpotted": True}
-                        if row["requires_target_spotted"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresTargetSpottedByMarkerlightObserver": True}
-                        if row["requires_target_spotted_by_markerlight_observer"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresTargetClosestEligible": True}
-                        if row["requires_target_closest_eligible"]
-                        else {}
-                    ),
-                    **(
-                        {"requiresSourceTargetVisible": True}
-                        if row["requires_source_target_visible"]
-                        else {}
-                    ),
-                    **(
-                        {"requiredTargetStrengthState": row["required_target_strength_state"]}
-                        if row["required_target_strength_state"]
-                        else {}
-                    ),
-                    "hitModifier": row["hit_modifier"],
-                    "hitModifierRole": row["hit_modifier_role"],
-                    "hitModifierSubject": row["hit_modifier_subject"],
-                    "woundModifier": row["wound_modifier"],
-                    "woundModifierRole": row["wound_modifier_role"],
-                    "woundModifierSubject": row["wound_modifier_subject"],
-                    "rerollHits": bool(row["reroll_hits"]),
-                    "rerollHitOnes": bool(row["reroll_hit_ones"]),
-                    "hitRerollRole": row["hit_reroll_role"],
-                    "hitRerollSubject": row["hit_reroll_subject"],
-                    "rerollWounds": bool(row["reroll_wounds"]),
-                    "rerollWoundOnes": bool(row["reroll_wound_ones"]),
-                    "woundRerollRole": row["wound_reroll_role"],
-                    "woundRerollSubject": row["wound_reroll_subject"],
-                    "effects": [],
-                }
+                "id": base_id
+                if row["preset_position"] == 1
+                else f"{base_id}:{row['preset_position']}",
+                "choiceGroup": base_id if row["is_exclusive_choice"] else None,
+                "activation": row["activation"],
+                "sourceRelationship": row["source_relationship"],
+                **(
+                    {"usesPerBattle": row["uses_per_battle"]}
+                    if row["uses_per_battle"]
+                    else {}
+                ),
+                "name": row["name"],
+                "description": row["description_text"],
+                "weaponScope": row["weapon_scope"],
+                **(
+                    {"maximumTargetDistance": row["maximum_target_distance"]}
+                    if row["maximum_target_distance"]
+                    else {}
+                ),
+                **(
+                    {
+                        "maximumSourceTargetDistance": row[
+                            "maximum_source_target_distance"
+                        ]
+                    }
+                    if row["maximum_source_target_distance"]
+                    else {}
+                ),
+                **(
+                    {"maximumSupportDistance": row["maximum_support_distance"]}
+                    if row["maximum_support_distance"]
+                    else {}
+                ),
+                **(
+                    {"requiredSupportedKeywords": supported_keywords[preset_key]}
+                    if preset_key in supported_keywords
+                    else {}
+                ),
+                **(
+                    {
+                        "requiredAttackerKeywords": keyword_requirements[
+                            (*preset_key, "attacker_all")
+                        ]
+                    }
+                    if (*preset_key, "attacker_all") in keyword_requirements
+                    else {}
+                ),
+                **(
+                    {
+                        "requiredTargetKeywords": keyword_requirements[
+                            (*preset_key, "target_all")
+                        ]
+                    }
+                    if (*preset_key, "target_all") in keyword_requirements
+                    else {}
+                ),
+                **(
+                    {
+                        "requiredAttackKeywordsAny": keyword_requirements[
+                            (*preset_key, "attack_any")
+                        ]
+                    }
+                    if (*preset_key, "attack_any") in keyword_requirements
+                    else {}
+                ),
+                **(
+                    {"requiresAttackerCharge": True}
+                    if row["requires_attacker_charge"]
+                    else {}
+                ),
+                **(
+                    {"requiresAttackerStationary": True}
+                    if row["requires_attacker_stationary"]
+                    else {}
+                ),
+                **(
+                    {"requiresAttachedUnit": True}
+                    if row["requires_attached_unit"]
+                    else {}
+                ),
+                **(
+                    {"requiresWaaaghActive": True}
+                    if row["requires_waaagh_active"]
+                    else {}
+                ),
+                **({"requiresOathTarget": True} if row["requires_oath_target"] else {}),
+                **(
+                    {"requiresOathWoundBonusEligible": True}
+                    if row["requires_oath_wound_bonus"]
+                    else {}
+                ),
+                **(
+                    {"requiresSourceOnObjective": True}
+                    if row["requires_source_on_objective"]
+                    else {}
+                ),
+                **(
+                    {"requiresTargetOnObjective": True}
+                    if row["requires_target_on_objective"]
+                    else {}
+                ),
+                **(
+                    {"requiresSourceControlsObjective": True}
+                    if row["requires_source_controls_objective"]
+                    else {}
+                ),
+                **(
+                    {"requiresTargetOnObjectiveNotControlledBySource": True}
+                    if row["requires_target_on_objective_not_controlled_by_source"]
+                    else {}
+                ),
+                **(
+                    {"requiresSourceOnSelectedObjective": True}
+                    if row["requires_source_on_selected_objective"]
+                    else {}
+                ),
+                **(
+                    {"requiresTargetOnSourceSelectedObjective": True}
+                    if row["requires_target_on_source_selected_objective"]
+                    else {}
+                ),
+                **(
+                    {"requiresTargetBattleShocked": True}
+                    if row["requires_target_battle_shocked"]
+                    else {}
+                ),
+                **(
+                    {"requiresAttackerNotBattleShocked": True}
+                    if row["requires_attacker_not_battle_shocked"]
+                    else {}
+                ),
+                **(
+                    {"requiresSourceNotBattleShocked": True}
+                    if row["requires_source_not_battle_shocked"]
+                    else {}
+                ),
+                **(
+                    {"requiresSourceGuidedAgainstTarget": True}
+                    if row["requires_source_guided_against_target"]
+                    else {}
+                ),
+                **(
+                    {"requiresTargetSpotted": True}
+                    if row["requires_target_spotted"]
+                    else {}
+                ),
+                **(
+                    {"requiresTargetSpottedByMarkerlightObserver": True}
+                    if row["requires_target_spotted_by_markerlight_observer"]
+                    else {}
+                ),
+                **(
+                    {"requiresTargetClosestEligible": True}
+                    if row["requires_target_closest_eligible"]
+                    else {}
+                ),
+                **(
+                    {"requiresSourceTargetVisible": True}
+                    if row["requires_source_target_visible"]
+                    else {}
+                ),
+                **(
+                    {
+                        "requiredTargetStrengthState": row[
+                            "required_target_strength_state"
+                        ]
+                    }
+                    if row["required_target_strength_state"]
+                    else {}
+                ),
+                "hitModifier": row["hit_modifier"],
+                "hitModifierRole": row["hit_modifier_role"],
+                "hitModifierSubject": row["hit_modifier_subject"],
+                "woundModifier": row["wound_modifier"],
+                "woundModifierRole": row["wound_modifier_role"],
+                "woundModifierSubject": row["wound_modifier_subject"],
+                "rerollHits": bool(row["reroll_hits"]),
+                "rerollHitOnes": bool(row["reroll_hit_ones"]),
+                "hitRerollRole": row["hit_reroll_role"],
+                "hitRerollSubject": row["hit_reroll_subject"],
+                "rerollWounds": bool(row["reroll_wounds"]),
+                "rerollWoundOnes": bool(row["reroll_wound_ones"]),
+                "woundRerollRole": row["wound_reroll_role"],
+                "woundRerollSubject": row["wound_reroll_subject"],
+                "effects": [],
+            }
             units[row["datasheet_id"]]["combatPresets"].append(exported_preset)
-            preset_lookup[(row["datasheet_id"], row["ability_position"], row["preset_position"])] = exported_preset
+            preset_lookup[
+                (row["datasheet_id"], row["ability_position"], row["preset_position"])
+            ] = exported_preset
 
         for row in connection.execute(
             """SELECT datasheet_id, ability_position, preset_position, effect_type,
@@ -440,7 +480,9 @@ def export(database: Path, output: Path) -> None:
                         if row["maximum_modifier"]
                         else {}
                     ),
-                    **({"weaponName": row["weapon_name"]} if row["weapon_name"] else {}),
+                    **(
+                        {"weaponName": row["weapon_name"]} if row["weapon_name"] else {}
+                    ),
                     **(
                         {"requiredTargetKeyword": row["required_target_keyword"]}
                         if row["required_target_keyword"]
@@ -480,7 +522,9 @@ def export(database: Path, output: Path) -> None:
                FROM unit_defensive_equipment_effects
                ORDER BY datasheet_id, ability_position, effect_position"""
         ):
-            equipment_lookup[(row["datasheet_id"], row["ability_position"])]["effects"].append(
+            equipment_lookup[(row["datasheet_id"], row["ability_position"])][
+                "effects"
+            ].append(
                 {
                     "type": row["effect_type"],
                     "value": row["value"],
@@ -547,9 +591,7 @@ def export(database: Path, output: Path) -> None:
                FROM wargear_options
                ORDER BY datasheet_id, position"""
         ):
-            units[row["datasheet_id"]]["wargearOptions"].append(
-                row["description_text"]
-            )
+            units[row["datasheet_id"]]["wargearOptions"].append(row["description_text"])
 
         defaults: dict[tuple[str, str], dict] = {}
         for row in connection.execute(
@@ -733,7 +775,11 @@ def export(database: Path, output: Path) -> None:
 
         group_metadata: dict[int, tuple[str, str, str | None, int, int]] = {}
         for (datasheet_id, _base_name), rows_in_group in weapon_groups.items():
-            source_lines = [row["source_line"] for row in rows_in_group if row["source_line"] is not None]
+            source_lines = [
+                row["source_line"]
+                for row in rows_in_group
+                if row["source_line"] is not None
+            ]
             group_id = (
                 f"{datasheet_id}:{min(source_lines)}"
                 if source_lines

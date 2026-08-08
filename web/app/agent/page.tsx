@@ -141,6 +141,7 @@ export default function AgentCalculator() {
           profile = applyWeaponProfile(profile, selection.weapon, selection.model.keywords);
           profile = {
             ...profile,
+            weaponCount: selection.firingDeck?.modelCount ?? profile.weaponCount,
             targetDistance: requestedDistance,
             attackerUnitModels,
             nearbyEnemyModels,
@@ -374,11 +375,31 @@ export default function AgentCalculator() {
             },
           );
           candidate = parseAgentProfile(search, profile, false);
+          if (
+            selection.firingDeck &&
+            (candidate as CombatProfile).weaponCount !== selection.firingDeck.modelCount
+          ) {
+            throw new Error(
+              "weaponCount must match firingDeckModels for a Firing Deck catalogue request",
+            );
+          }
           source = {
             mode: "catalogue",
             profileSourceUpdatedAt: catalogue.sourceUpdatedAt,
             attacker: { id: selection.attacker.id, name: selection.attacker.name },
             weapon: { id: selection.weapon.id, name: selection.weapon.name },
+            firingDeck: selection.firingDeck
+              ? {
+                  capacity: selection.attacker.firingDeck?.capacity,
+                  selectedModels: selection.firingDeck.modelCount,
+                  slotsUsed: selection.firingDeck.slots,
+                  passenger: {
+                    id: selection.passenger?.id,
+                    name: selection.passenger?.name,
+                  },
+                  bearer: { id: selection.attacker.id, name: selection.attacker.name },
+                }
+              : null,
             target: { id: selection.target.id, name: selection.target.name },
             model: { id: selection.model.id, name: selection.model.name },
             support: selection.support

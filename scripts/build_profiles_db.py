@@ -324,6 +324,22 @@ CREATE TABLE unit_defensive_equipment_effects (
         ON DELETE CASCADE
 ) WITHOUT ROWID;
 
+CREATE TABLE unit_firing_deck (
+    datasheet_id TEXT PRIMARY KEY REFERENCES datasheets(id) ON DELETE CASCADE,
+    ability_position INTEGER NOT NULL,
+    capacity INTEGER NOT NULL CHECK (capacity > 0),
+    FOREIGN KEY (datasheet_id, ability_position)
+        REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE TABLE unit_firing_deck_passenger_costs (
+    datasheet_id TEXT PRIMARY KEY REFERENCES datasheets(id) ON DELETE CASCADE,
+    ability_position INTEGER NOT NULL,
+    model_cost INTEGER NOT NULL CHECK (model_cost > 1),
+    FOREIGN KEY (datasheet_id, ability_position)
+        REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
+) WITHOUT ROWID;
+
 CREATE TABLE unit_composition (
     datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
     position INTEGER NOT NULL,
@@ -531,7 +547,9 @@ def defensive_equipment_option(name: str, description: str) -> dict[str, object]
                 text,
                 re.IGNORECASE,
             ),
-            "psychic" if re.search(r"against Psychic Attacks", text, re.IGNORECASE) else None,
+            "psychic"
+            if re.search(r"against Psychic Attacks", text, re.IGNORECASE)
+            else None,
         ),
     )
     for scope, effect_type, match, attack_keyword in patterns:
@@ -624,9 +642,7 @@ def combat_weapon_scope(text: str) -> str:
     return "Any"
 
 
-def combat_maximum_target_distance(
-    text: str, effects: dict[str, object]
-) -> int | None:
+def combat_maximum_target_distance(text: str, effects: dict[str, object]) -> int | None:
     modeled_effects = len(effects["additional_effects"])
     modeled_effects += sum(
         bool(effects[field])
@@ -643,8 +659,8 @@ def combat_maximum_target_distance(
         return None
     matches = list(
         re.finditer(
-            r'\battacks?\b[^.;]{0,180}?\btargets?\s+'
-            r'(?:an?\s+|the\s+)?(?:enemy\s+)?(?:model|unit)\s+'
+            r"\battacks?\b[^.;]{0,180}?\btargets?\s+"
+            r"(?:an?\s+|the\s+)?(?:enemy\s+)?(?:model|unit)\s+"
             r'within\s+(\d+)\s*["”](?!\s+of\b)',
             text,
             re.IGNORECASE,
@@ -668,10 +684,16 @@ def combat_selected_enemy_target_requirements(text: str) -> tuple[int | None, bo
             re.IGNORECASE,
         )
     )
-    visible = [selection for selection in selections if "visible" in selection.group(0).casefold()]
+    visible = [
+        selection
+        for selection in selections
+        if "visible" in selection.group(0).casefold()
+    ]
     if len(visible) != 1:
         return None, False
-    distances = re.findall(r'\bwithin\s+(\d+)\s*["”]', visible[0].group(0), re.IGNORECASE)
+    distances = re.findall(
+        r'\bwithin\s+(\d+)\s*["”]', visible[0].group(0), re.IGNORECASE
+    )
     if len(set(distances)) > 1:
         return None, False
     return (int(distances[0]) if distances else None), True
@@ -776,7 +798,9 @@ def combat_requires_waaagh_active(text: str) -> bool:
         r"While the Waaagh! is active for your army, this model[’']s [’']uge choppa "
         r"has a Damage characteristic of 3\.",
     )
-    return any(re.fullmatch(pattern, normalized, re.IGNORECASE) for pattern in direct_patterns)
+    return any(
+        re.fullmatch(pattern, normalized, re.IGNORECASE) for pattern in direct_patterns
+    )
 
 
 def combat_is_oath_of_moment(text: str) -> bool:
@@ -810,7 +834,9 @@ def combat_direct_objective_presets(
         normalized,
         re.IGNORECASE,
     ):
-        effects = combat_preset(normalized.split(". ", 1)[0] + ".", allow_bearer_defenses)
+        effects = combat_preset(
+            normalized.split(". ", 1)[0] + ".", allow_bearer_defenses
+        )
         if effects:
             return [
                 {
@@ -868,9 +894,7 @@ def combat_direct_objective_presets(
         ownership_pattern[0], normalized, re.IGNORECASE
     ):
         roll = ownership_pattern[1]
-        base_text = re.split(
-            r"(?: and, if|\. If|\. While)", normalized, maxsplit=1
-        )[0]
+        base_text = re.split(r"(?: and, if|\. If|\. While)", normalized, maxsplit=1)[0]
         if not base_text.endswith("."):
             base_text += "."
         baseline = combat_preset(base_text, allow_bearer_defenses)
@@ -881,9 +905,7 @@ def combat_direct_objective_presets(
                 f"reroll_{roll}s": 1,
             }
             if ownership_pattern[2] == "target_not_controlled":
-                upgrade[
-                    "requires_target_on_objective_not_controlled_by_source"
-                ] = True
+                upgrade["requires_target_on_objective_not_controlled_by_source"] = True
             else:
                 upgrade["requires_source_controls_objective"] = True
             return [
@@ -947,7 +969,9 @@ def combat_direct_objective_presets(
         ),
     }
     selected_pattern = selected_objective_patterns.get(name)
-    if selected_pattern and re.fullmatch(selected_pattern[0], normalized, re.IGNORECASE):
+    if selected_pattern and re.fullmatch(
+        selected_pattern[0], normalized, re.IGNORECASE
+    ):
         effects = combat_preset(normalized, allow_bearer_defenses)
         if effects:
             effects[
@@ -988,8 +1012,13 @@ def combat_direct_objective_presets(
             sentences[1],
             re.IGNORECASE,
         )
-        if baseline_roll and objective_upgrade and (
-            baseline_roll.group(1).casefold() == objective_upgrade.group(1).casefold()
+        if (
+            baseline_roll
+            and objective_upgrade
+            and (
+                baseline_roll.group(1).casefold()
+                == objective_upgrade.group(1).casefold()
+            )
         ):
             baseline = combat_preset(sentences[0], allow_bearer_defenses)
             if not baseline or baseline["maximum_target_distance"]:
@@ -1735,7 +1764,9 @@ def combat_additional_effects(
         plain_text(text).strip(),
         re.IGNORECASE,
     )
-    counted_scaling = destroyed_character or destructive_fight_phases or nearby_enemy_units
+    counted_scaling = (
+        destroyed_character or destructive_fight_phases or nearby_enemy_units
+    )
     if counted_scaling:
         if destroyed_character:
             count_source = "enemy_character_models_destroyed"
@@ -2371,31 +2402,31 @@ def combat_selected_target_classification(
     text = plain_text(description).strip()
     rules: dict[str, tuple[str, dict[str, object]]] = {
         "Mind in the Machine": (
-            "At the start of your opponent’s Shooting phase, select one enemy VEHICLE unit within 12\" of and visible to this model. That unit must take a Leadership test. If that test is passed, until the end of the phase, each time a model in that unit makes an attack, subtract 1 from the Hit roll; if that test is failed, that unit is not eligible to shoot this phase.",
+            'At the start of your opponent’s Shooting phase, select one enemy VEHICLE unit within 12" of and visible to this model. That unit must take a Leadership test. If that test is passed, until the end of the phase, each time a model in that unit makes an attack, subtract 1 from the Hit roll; if that test is failed, that unit is not eligible to shoot this phase.',
             {"required_attacker_keywords": ["vehicle"]},
         ),
         "Horrible Fascination(Psychic)": (
-            "At the start of your opponent’s Shooting phase, one Psyker model from your army with this ability can use it. If it does, select one enemy unit within 12\" of and visible to that PSYKER model and roll one D6: on a 1, that PSYKER model suffers D3 mortal wounds; on a 2-5, until the end of the phase, each time a model in that enemy unit makes an attack, subtract 1 from the Hit roll; on a 6, that enemy unit is not eligible to shoot this phase.",
+            'At the start of your opponent’s Shooting phase, one Psyker model from your army with this ability can use it. If it does, select one enemy unit within 12" of and visible to that PSYKER model and roll one D6: on a 1, that PSYKER model suffers D3 mortal wounds; on a 2-5, until the end of the phase, each time a model in that enemy unit makes an attack, subtract 1 from the Hit roll; on a 6, that enemy unit is not eligible to shoot this phase.',
             {},
         ),
         "Doom (Psychic)": (
-            "At the end of your Movement phase, select one enemy unit within 18\" of and visible to this model. Until the start of your next Command phase, each time a friendly AELDARI model makes an attack that targets that enemy unit, add 1 to the Wound roll.",
+            'At the end of your Movement phase, select one enemy unit within 18" of and visible to this model. Until the start of your next Command phase, each time a friendly AELDARI model makes an attack that targets that enemy unit, add 1 to the Wound roll.',
             {"required_attacker_keywords": ["aeldari"]},
         ),
         "Guide (Psychic)": (
-            "At the end of your Movement phase, select one enemy unit within 18\" of and visible to this model. Until the start of your next Command phase, each time a friendly AELDARI model makes an attack that targets that enemy unit, add 1 to the Hit roll. Each unit can only be selected for this ability once per turn.",
+            'At the end of your Movement phase, select one enemy unit within 18" of and visible to this model. Until the start of your next Command phase, each time a friendly AELDARI model makes an attack that targets that enemy unit, add 1 to the Hit roll. Each unit can only be selected for this ability once per turn.',
             {"required_attacker_keywords": ["aeldari"]},
         ),
         "Misfortune (Psychic)": (
-            "At the end of your Movement phase, select one enemy unit within 18\" of and visible to this model. Until the start of your next Command phase, each time a model in that unit makes an attack, subtract 1 from the Wound roll. Each unit can only be selected for this ability once per turn.",
+            'At the end of your Movement phase, select one enemy unit within 18" of and visible to this model. Until the start of your next Command phase, each time a model in that unit makes an attack, subtract 1 from the Wound roll. Each unit can only be selected for this ability once per turn.',
             {},
         ),
         "Dominate Will (Psychic)": (
-            "At the start of your opponent’s Shooting phase, select one enemy INFANTRY unit that is within 12\" of and visible to this model and roll one D6: on a 1, this model suffers D3 mortal wounds; on a 2-5, until the end of the phase, each time a model in that unit makes an attack, subtract 1 from the Hit roll; on a 6, until the end of the phase, that unit is not eligible to shoot.",
+            'At the start of your opponent’s Shooting phase, select one enemy INFANTRY unit that is within 12" of and visible to this model and roll one D6: on a 1, this model suffers D3 mortal wounds; on a 2-5, until the end of the phase, each time a model in that unit makes an attack, subtract 1 from the Hit roll; on a 6, until the end of the phase, that unit is not eligible to shoot.',
             {"required_attacker_keywords": ["infantry"]},
         ),
         "Judged for Execution": (
-            "At the end of your Movement phase, you can select one enemy unit within 18\" of and visible to this model. Until the start of your next Command phase, each time a friendly ADEPTA SORORITAS model makes an attack that targets that enemy unit, that attack has the [LETHAL HITS] ability.",
+            'At the end of your Movement phase, you can select one enemy unit within 18" of and visible to this model. Until the start of your next Command phase, each time a friendly ADEPTA SORORITAS model makes an attack that targets that enemy unit, that attack has the [LETHAL HITS] ability.',
             {"required_attacker_keywords": ["adepta sororitas"]},
         ),
         "Target Sighted": (
@@ -2413,33 +2444,33 @@ def combat_selected_target_classification(
             },
         ),
         "Blight Bombardment": (
-            "At the start of your Shooting phase, select one enemy unit within 30\" of and visible to this model. Until the end of the phase, each time a friendly Death Guard model makes a ranged attack that targets that unit, re-roll a Hit roll of 1 (if that attack is made with a Blast weapon, you can re-roll the Hit roll instead).",
+            'At the start of your Shooting phase, select one enemy unit within 30" of and visible to this model. Until the end of the phase, each time a friendly Death Guard model makes a ranged attack that targets that unit, re-roll a Hit roll of 1 (if that attack is made with a Blast weapon, you can re-roll the Hit roll instead).',
             {
                 "required_attacker_keywords": ["death guard"],
                 "blast_full_hit_reroll": True,
             },
         ),
         "Aeronautica Commander": (
-            "At the start of your Shooting phase, select one enemy unit within 30\" of and visible to this unit’s Officer of the Fleet model. Until the end of the phase, each time a friendly Astra Militarum Aircraft model makes a ranged attack that targets that unit, add 1 to the Hit roll.",
+            'At the start of your Shooting phase, select one enemy unit within 30" of and visible to this unit’s Officer of the Fleet model. Until the end of the phase, each time a friendly Astra Militarum Aircraft model makes a ranged attack that targets that unit, add 1 to the Hit roll.',
             {"required_attacker_keywords": ["astra militarum", "aircraft"]},
         ),
         "Daring Recon": (
-            "At the start of your Shooting phase, select one enemy unit within 18\" of and visible to this unit. Until the end of the phase, each time a friendly ASTRA MILITARUM model makes an attack that targets that unit, re-roll a Hit roll of 1.",
+            'At the start of your Shooting phase, select one enemy unit within 18" of and visible to this unit. Until the end of the phase, each time a friendly ASTRA MILITARUM model makes an attack that targets that unit, re-roll a Hit roll of 1.',
             {"required_attacker_keywords": ["astra militarum"]},
         ),
         "Mischief and Confusion": (
-            "At the start of your opponent’s Shooting phase, select one enemy unit within 12\" of and visible to this model and roll one D6: on a 2-5, until the end of the phase, each time a model in that enemy unit makes an attack, subtract 1 from the Hit roll; on a 6, that enemy unit is not eligible to shoot this phase.",
+            'At the start of your opponent’s Shooting phase, select one enemy unit within 12" of and visible to this model and roll one D6: on a 2-5, until the end of the phase, each time a model in that enemy unit makes an attack, subtract 1 from the Hit roll; on a 6, that enemy unit is not eligible to shoot this phase.',
             {},
         ),
         "Forgefather": (
-            "In your Shooting phase, select one enemy unit within 24\" of and visible to this model. Until the end of the phase, each time a friendly ADEPTUS ASTARTES model makes a ranged attack with a Torrent or Melta weapon that targets that enemy unit, you can re-roll the Wound roll.",
+            'In your Shooting phase, select one enemy unit within 24" of and visible to this model. Until the end of the phase, each time a friendly ADEPTUS ASTARTES model makes a ranged attack with a Torrent or Melta weapon that targets that enemy unit, you can re-roll the Wound roll.',
             {
                 "required_attacker_keywords": ["adeptus astartes"],
                 "required_attack_keywords_any": ["torrent", "melta"],
             },
         ),
         "Paroxysm (Psychic)": (
-            "At the start of the Fight phase, you can select one enemy unit within 12\" of and visible to this model and roll one D6: on a 1, this PSYKER suffers D3 mortal wounds; on a 2+, until the end of the phase, subtract 1 from the Attacks characteristic of weapons equipped by models in that unit.",
+            'At the start of the Fight phase, you can select one enemy unit within 12" of and visible to this model and roll one D6: on a 1, this PSYKER suffers D3 mortal wounds; on a 2+, until the end of the phase, subtract 1 from the Attacks characteristic of weapons equipped by models in that unit.',
             {},
         ),
     }
@@ -2458,7 +2489,7 @@ def combat_guidance_presets(
         return []
 
     mechanical_augmentation = (
-        "While a friendly Necrons Battleline unit is within 3\" of this model, each time a "
+        'While a friendly Necrons Battleline unit is within 3" of this model, each time a '
         "model in that unit makes an attack, improve the Armour Penetration characteristic "
         "of that attack by 1, and each time an attack targets that unit, worsen the Armour "
         "Penetration characteristic of that attack by 1."
@@ -2494,42 +2525,42 @@ def combat_guidance_presets(
     support_rules = (
         (
             "Brood Progenitor (Aura, Psychic)",
-            "While a friendly Termagants unit is within 6\" of this model, ranged weapons "
+            'While a friendly Termagants unit is within 6" of this model, ranged weapons '
             "equipped by models in that unit have the [LETHAL HITS] ability.",
             6,
             ["termagants"],
         ),
         (
             "Drone Commander (Aura)",
-            "While a friendly Spindle Drones unit is within 6\" of this model, each time a "
+            'While a friendly Spindle Drones unit is within 6" of this model, each time a '
             "model in that unit makes an attack, add 1 to the Hit roll.",
             6,
             ["spindle drones"],
         ),
         (
             "Taskmaster (Aura)",
-            "While a friendly War Dog model is within 9\" of this model, each time that WAR "
+            'While a friendly War Dog model is within 9" of this model, each time that WAR '
             "DOG model makes a ranged attack, re-roll a Hit roll of 1.",
             9,
             ["war dog"],
         ),
         (
             "Unholy Mechanisms (Aura)",
-            "While a friendly Daemon Vehicle unit is within 6\" of this model, add 2 to the "
+            'While a friendly Daemon Vehicle unit is within 6" of this model, add 2 to the '
             "Strength characteristic of weapons equipped by models in that unit.",
             6,
             ["daemon", "vehicle"],
         ),
         (
             "Wisdom of the Ancients (Aura)",
-            "While a friendly Adeptus Astartes Infantry unit is within 6\" of this model, each "
+            'While a friendly Adeptus Astartes Infantry unit is within 6" of this model, each '
             "time a model in that unit makes an attack, re-roll a Hit roll of 1.",
             6,
             ["adeptus astartes", "infantry"],
         ),
         (
             "Wisdom of the Ancients (Aura)",
-            "While a friendly Grey Knights Infantry unit is within 6\" of this model, each time "
+            'While a friendly Grey Knights Infantry unit is within 6" of this model, each time '
             "a model in that unit makes an attack, re-roll a Hit roll of 1 and re-roll a Wound "
             "roll of 1.",
             6,
@@ -2538,7 +2569,7 @@ def combat_guidance_presets(
         (
             "Blessing of the Omnissiah",
             "In your Command phase, you can select one friendly Adeptus Astartes Vehicle model "
-            "within 3\" of this model. That model regains up to D3 lost wounds and, until the "
+            'within 3" of this model. That model regains up to D3 lost wounds and, until the '
             "start of your next Command phase, each time that VEHICLE model makes an attack, add "
             "1 to the Hit roll. Each model can only be selected for this ability once per turn.",
             3,
@@ -2547,7 +2578,7 @@ def combat_guidance_presets(
         (
             "Blessing of the Omnissiah",
             "In your Command phase, you can select one friendly Adeptus Astartes Vehicle model "
-            "within 3\" of this model. That model regains up to D3 lost wounds and, until the "
+            'within 3" of this model. That model regains up to D3 lost wounds and, until the '
             "start of your next Command phase, each time that Vehicle model makes an attack, add "
             "1 to the Hit roll. Each model can only be selected for this ability once per turn.",
             3,
@@ -2556,7 +2587,7 @@ def combat_guidance_presets(
         (
             "Blessing of the Omnissiah",
             "In your Command phase, you can select one friendly Grey Knights Vehicle model within "
-            "3\" of this model. That model regains up to D3 lost wounds and, until the start of "
+            '3" of this model. That model regains up to D3 lost wounds and, until the start of '
             "your next Command phase, each time that VEHICLE model makes an attack, add 1 to the "
             "Hit roll. Each model can only be selected for this ability once per turn.",
             3,
@@ -2564,7 +2595,7 @@ def combat_guidance_presets(
         ),
         (
             "Master of Mechanisms",
-            "In your Command phase, select one friendly Heretic Astartes Vehicle model within 3\" "
+            'In your Command phase, select one friendly Heretic Astartes Vehicle model within 3" '
             "of this model. That VEHICLE model regains up to D3 lost wounds and, until the start "
             "of your next Command phase, each time that VEHICLE makes an attack, add 1 to the Hit "
             "roll. Each model can only be selected for this ability once per Command phase.",
@@ -2573,7 +2604,7 @@ def combat_guidance_presets(
         ),
         (
             "Master of the Forge",
-            "In your Command phase, select one friendly ADEPTUS ASTARTES VEHICLE model within 3\" "
+            'In your Command phase, select one friendly ADEPTUS ASTARTES VEHICLE model within 3" '
             "of this model. That model regains up to 3 lost wounds and, until the start of your "
             "next Command phase, each time that VEHICLE model makes an attack, add 1 to the Hit "
             "roll. You cannot select a unit for this ability that has already been selected for "
@@ -2584,7 +2615,7 @@ def combat_guidance_presets(
         (
             "Mekaniak",
             "At the end of your Movement phase, you can select one friendly Orks Vehicle model "
-            "within 3\" of this model. That VEHICLE model regains up to D3 lost wounds, and, until "
+            'within 3" of this model. That VEHICLE model regains up to D3 lost wounds, and, until '
             "the start of your next Movement phase, each time that VEHICLE model makes an attack, "
             "add 1 to the Hit roll. Each model can only be selected for this ability once per turn.",
             3,
@@ -2592,7 +2623,7 @@ def combat_guidance_presets(
         ),
         (
             "Support Vehicle",
-            "In your Command phase, select one friendly Astra Militarum Vehicle model within 3\" "
+            'In your Command phase, select one friendly Astra Militarum Vehicle model within 3" '
             "of this model. That VEHICLE model regains up to D3 lost wounds and, until the start "
             "of your next Command phase, each time that VEHICLE model makes an attack, re-roll a "
             "Hit roll of 1. The same VEHICLE model cannot be selected for both this ability and "
@@ -2739,7 +2770,7 @@ def combat_closest_target_presets(
         "Heavy Assault Infantry": "Each time a model in this unit makes a ranged attack that targets the closest eligible target, re-roll a Wound roll of 1.",
         "Decisive Destruction": "Each time a model in this unit makes a ranged attack that targets the closest eligible target, re-roll a Hit roll of 1.",
         "Gun-crazy Show-offs": "Each time a model in this unit targets the closest eligible target with its snazzgun, until the end of the phase, that weapon has an Attacks characteristic of 4.",
-        "Furious Onslaught": "Each time this model makes a ranged attack that targets the closest eligible target within 18\", you can re-roll the Hit roll.",
+        "Furious Onslaught": 'Each time this model makes a ranged attack that targets the closest eligible target within 18", you can re-roll the Hit roll.',
         "Aggressive Assault": "Each time this model makes a ranged attack that targets the closest eligible target, add 1 to the Hit roll.",
         "Seasoned Noble": "Each time this model makes a ranged attack that targets the closest eligible target, improve the Armour Penetration characteristic of that attack by 1.",
         "Point-blank Barrage": "Each time a model in this unit makes a ranged attack that targets the closest eligible target, improve the Armour Penetration characteristic of that attack by 1.",
@@ -3147,11 +3178,18 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                         (datasheet_id,),
                     )
                 }
-                if all(keyword.casefold() in source_keywords for keyword in required_supported_keywords):
+                if all(
+                    keyword.casefold() in source_keywords
+                    for keyword in required_supported_keywords
+                ):
                     preset = {
                         key: value
                         for key, value in preset.items()
-                        if key not in {"maximum_support_distance", "required_supported_keywords"}
+                        if key
+                        not in {
+                            "maximum_support_distance",
+                            "required_supported_keywords",
+                        }
                     }
                     preset["source_relationship"] = "self"
                     required_supported_keywords = []
@@ -3208,7 +3246,9 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     int(preset["requires_source_on_objective"]),
                     int(preset["requires_target_on_objective"]),
                     int(preset["requires_source_controls_objective"]),
-                    int(preset["requires_target_on_objective_not_controlled_by_source"]),
+                    int(
+                        preset["requires_target_on_objective_not_controlled_by_source"]
+                    ),
                     int(preset["requires_source_on_selected_objective"]),
                     int(preset["requires_target_on_source_selected_objective"]),
                     int(preset["requires_target_battle_shocked"]),
@@ -3242,7 +3282,9 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                    VALUES (?, ?, ?, ?, ?)""",
                 (
                     (datasheet_id, ability_position, preset_position, position, keyword)
-                    for position, keyword in enumerate(required_supported_keywords, start=1)
+                    for position, keyword in enumerate(
+                        required_supported_keywords, start=1
+                    )
                 ),
             )
             requirement_groups = (
@@ -3299,6 +3341,51 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                 )
             inserted += 1
     return inserted
+
+
+FIRING_DECK_PASSENGER_COST_TEXT = (
+    "While embarked within a Transport, each model takes up the space of 2 models, "
+    "and each weapon equipped by these models is considered to be 2 models’ weapons "
+    "for the purposes of the Firing Deck ability."
+)
+
+
+def populate_firing_deck(connection: sqlite3.Connection) -> tuple[int, int]:
+    firing_decks = 0
+    passenger_costs = 0
+    for datasheet_id, position, name, description, parameter in connection.execute(
+        """SELECT datasheet_id, position, name, description_text, parameter
+           FROM datasheet_abilities ORDER BY datasheet_id, position"""
+    ):
+        if name.casefold() == "firing deck":
+            if not parameter or not parameter.isdigit() or int(parameter) <= 0:
+                raise ValueError(
+                    f"invalid Firing Deck capacity for {datasheet_id}: {parameter!r}"
+                )
+            if (
+                "select one weapon" not in description.casefold()
+                or "[one shot]" not in description.casefold()
+            ):
+                raise ValueError(
+                    f"unrecognized Firing Deck rule text for {datasheet_id}"
+                )
+            connection.execute(
+                """INSERT INTO unit_firing_deck
+                   (datasheet_id, ability_position, capacity) VALUES (?, ?, ?)""",
+                (datasheet_id, position, int(parameter)),
+            )
+            firing_decks += 1
+        if (
+            name.casefold() == "embarking"
+            and description == FIRING_DECK_PASSENGER_COST_TEXT
+        ):
+            connection.execute(
+                """INSERT INTO unit_firing_deck_passenger_costs
+                   (datasheet_id, ability_position, model_cost) VALUES (?, ?, 2)""",
+                (datasheet_id, position),
+            )
+            passenger_costs += 1
+    return firing_decks, passenger_costs
 
 
 def composition_components(value: str) -> list[tuple[str, int, int]]:
@@ -3434,7 +3521,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "52"),
+                    ("schema_version", "53"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
@@ -3696,6 +3783,7 @@ def create_database(
                     )
 
             rebuild_combat_presets(connection)
+            populate_firing_deck(connection)
             populate_constraints(connection)
 
         integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
@@ -3714,6 +3802,8 @@ def create_database(
                 "datasheet_abilities",
                 "unit_combat_presets",
                 "unit_combat_preset_effects",
+                "unit_firing_deck",
+                "unit_firing_deck_passenger_costs",
                 "unit_composition",
                 "unit_composition_models",
                 "wargear_options",

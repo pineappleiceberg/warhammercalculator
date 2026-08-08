@@ -16,15 +16,27 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Represent Firing Deck weapon selection from explicit embarked units and
-   models, including its model limit, one ranged non-One Shot weapon per
-   selected passenger, and the transport becoming the weapon bearer for the
-   attack sequence.
+1. Import exact Transport capacity keyword restrictions and per-model space
+   costs, then assign saved unit instances to transports in lists and Play Mode
+   so Firing Deck cannot select a passenger that was never legally embarked.
 2. Extend normalized defensive-equipment selection to Model vs Model and Play
    Mode while preserving model-by-model allocation and preventing bearer-only
    gear from becoming a homogeneous unit-wide defense.
 
 ## Completed cycles
+
+- 2026-08-08: Added explicit Firing Deck weapon selection. SQLite schema 53
+  records the published Firing Deck limit for 61 transports and exact two-slot
+  passenger exceptions for four Heavy Weapons Squad datasheets. Model vs Model,
+  Unit vs Unit, Play Mode recovery, the hosted API, and static agent URLs select
+  a passenger datasheet or saved unit, one ranged non-One Shot weapon per model,
+  and an editable model count within the aggregate slot limit. Units that have
+  already shot are rejected. Passenger weapon profiles and inherent weapon
+  abilities are retained while the transport is the attack's bearer, so
+  passenger unit abilities do not transfer. Exact source/database/catalogue
+  snapshots, capacity and two-slot boundaries, melee and One Shot negatives,
+  phase-state and URL override rejection, recovery, API discovery/validation,
+  and C/WebAssembly count monotonicity cover the change.
 
 - 2026-08-08: Added exact embarked-model-scaled Attacks. SQLite schema 52
   imports Hunta Rig's On Da Hunt for butcha boyz with the published +6 cap and

@@ -74,7 +74,8 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(blessing["hit_modifier"], 1)
         self.assertEqual(
             combat_guidance_presets(
-                "Blessing of the Omnissiah", description.replace('within 3"', 'within 6"')
+                "Blessing of the Omnissiah",
+                description.replace('within 3"', 'within 6"'),
             ),
             [],
         )
@@ -86,10 +87,14 @@ class ProfileDataTests(unittest.TestCase):
             "of that attack by 1, and each time an attack targets that unit, worsen the Armour "
             "Penetration characteristic of that attack by 1."
         )
-        preset = combat_guidance_presets("Mechanical Augmentation (Aura)", description)[0]
+        preset = combat_guidance_presets("Mechanical Augmentation (Aura)", description)[
+            0
+        ]
         self.assertEqual(preset["source_relationship"], "supporting_unit")
         self.assertEqual(preset["maximum_support_distance"], 3)
-        self.assertEqual(preset["required_supported_keywords"], ["necrons", "battleline"])
+        self.assertEqual(
+            preset["required_supported_keywords"], ["necrons", "battleline"]
+        )
         self.assertEqual(
             [
                 (effect["type"], effect["value"], effect["role"], effect["subject"])
@@ -102,7 +107,8 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(
             combat_guidance_presets(
-                "Mechanical Augmentation (Aura)", description.replace('within 3"', 'within 6"')
+                "Mechanical Augmentation (Aura)",
+                description.replace('within 3"', 'within 6"'),
             ),
             [],
         )
@@ -183,11 +189,16 @@ class ProfileDataTests(unittest.TestCase):
             ],
         )
         self.assertTrue(all(preset["activation"] == "automatic" for preset in presets))
-        self.assertTrue(all(preset["requires_source_guided_against_target"] for preset in presets))
+        self.assertTrue(
+            all(preset["requires_source_guided_against_target"] for preset in presets)
+        )
         self.assertFalse(presets[0]["requires_target_spotted_by_markerlight_observer"])
         self.assertTrue(presets[1]["requires_target_spotted_by_markerlight_observer"])
         self.assertEqual(
-            [[effect["type"] for effect in preset["additional_effects"]] for preset in presets],
+            [
+                [effect["type"] for effect in preset["additional_effects"]]
+                for preset in presets
+            ],
             [["skill_modifier"], ["ignores_cover"]],
         )
 
@@ -249,12 +260,16 @@ class ProfileDataTests(unittest.TestCase):
 
         unsupported = combat_presets(
             "Forward Observers",
-            support_cases["Forward Observers"].replace("their Spotted unit", "any enemy unit"),
+            support_cases["Forward Observers"].replace(
+                "their Spotted unit", "any enemy unit"
+            ),
         )[0]
         self.assertNotIn("source_relationship", unsupported)
         changed_limit = combat_presets(
             "Blacklight Marker Drones",
-            support_cases["Blacklight Marker Drones"].replace("Twice per battle", "Three times per battle"),
+            support_cases["Blacklight Marker Drones"].replace(
+                "Twice per battle", "Three times per battle"
+            ),
         )[0]
         self.assertNotIn("source_relationship", changed_limit)
         self.assertIsNone(changed_limit["uses_per_battle"])
@@ -288,11 +303,17 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertTrue(all(preset["requires_waaagh_active"] for preset in presets))
         self.assertEqual(
-            [(effect["type"], effect["value"]) for effect in presets[0]["additional_effects"]],
+            [
+                (effect["type"], effect["value"])
+                for effect in presets[0]["additional_effects"]
+            ],
             [("attacks_modifier", 1), ("strength_modifier", 1)],
         )
         self.assertEqual(
-            [(effect["type"], effect["value"]) for effect in presets[1]["additional_effects"]],
+            [
+                (effect["type"], effect["value"])
+                for effect in presets[1]["additional_effects"]
+            ],
             [("invulnerable_save", 5)],
         )
         self.assertTrue(
@@ -303,7 +324,7 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertFalse(
             combat_preset(
-                "While a friendly ORKS unit is within 12\" of Makari, if the Waaagh! is "
+                'While a friendly ORKS unit is within 12" of Makari, if the Waaagh! is '
                 "active for your army, melee weapons equipped by models in that unit have "
                 "the [LETHAL HITS] ability."
             )["requires_waaagh_active"]
@@ -340,9 +361,13 @@ class ProfileDataTests(unittest.TestCase):
             (presets[1]["reroll_hits"], presets[1]["wound_modifier"]),
             (0, 1),
         )
-        changed = description.replace("add 1 to the Wound roll as well", "re-roll the Wound roll")
+        changed = description.replace(
+            "add 1 to the Wound roll as well", "re-roll the Wound roll"
+        )
         self.assertEqual(len(combat_presets("Oath of Moment", changed)), 1)
-        self.assertFalse(combat_presets("Oath of Moment", changed)[0]["requires_oath_target"])
+        self.assertFalse(
+            combat_presets("Oath of Moment", changed)[0]["requires_oath_target"]
+        )
 
     def test_combat_preset_parser_splits_direct_objective_rerolls(self):
         description = (
@@ -355,13 +380,18 @@ class ProfileDataTests(unittest.TestCase):
             [preset["name"] for preset in presets],
             ["Breaching Team — Base re-roll", "Breaching Team — Objective re-roll"],
         )
-        self.assertEqual([preset["activation"] for preset in presets], ["automatic", "automatic"])
+        self.assertEqual(
+            [preset["activation"] for preset in presets], ["automatic", "automatic"]
+        )
         self.assertEqual(
             [preset["requires_target_on_objective"] for preset in presets],
             [False, True],
         )
         self.assertEqual(
-            [(preset["reroll_wounds"], preset["reroll_wound_ones"]) for preset in presets],
+            [
+                (preset["reroll_wounds"], preset["reroll_wound_ones"])
+                for preset in presets
+            ],
             [(0, 1), (1, 0)],
         )
 
@@ -370,14 +400,18 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(len(combat_presets("Breaching Team", controlled)), 1)
         self.assertFalse(
-            combat_presets("Breaching Team", controlled)[0]["requires_target_on_objective"]
+            combat_presets("Breaching Team", controlled)[0][
+                "requires_target_on_objective"
+            ]
         )
         compound = description.replace(
             "If the target is", "If the target is the closest eligible target and is"
         )
         self.assertEqual(len(combat_presets("Breaching Team", compound)), 1)
         self.assertFalse(
-            combat_presets("Breaching Team", compound)[0]["requires_target_on_objective"]
+            combat_presets("Breaching Team", compound)[0][
+                "requires_target_on_objective"
+            ]
         )
 
         vanguard = combat_presets(
@@ -386,7 +420,9 @@ class ProfileDataTests(unittest.TestCase):
             "If the target is within range of one or more objective markers, re-roll a "
             "Wound roll of 1 as well.",
         )
-        self.assertEqual([preset["activation"] for preset in vanguard], ["automatic", "automatic"])
+        self.assertEqual(
+            [preset["activation"] for preset in vanguard], ["automatic", "automatic"]
+        )
         self.assertEqual(
             [
                 (preset["reroll_hit_ones"], preset["reroll_wound_ones"])
@@ -407,7 +443,7 @@ class ProfileDataTests(unittest.TestCase):
 
         forgefiend = combat_presets(
             "Furious Onslaught",
-            'Each time this model makes a ranged attack that targets the closest eligible target '
+            "Each time this model makes a ranged attack that targets the closest eligible target "
             'within 18", you can re-roll the Hit roll.',
         )[0]
         self.assertEqual(forgefiend["maximum_target_distance"], 18)
@@ -421,13 +457,19 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(
             [
-                (preset["reroll_hits"], preset["reroll_hit_ones"], preset["requires_target_closest_eligible"])
+                (
+                    preset["reroll_hits"],
+                    preset["reroll_hit_ones"],
+                    preset["requires_target_closest_eligible"],
+                )
                 for preset in windriders
             ],
             [(0, 1, False), (1, 0, True)],
         )
 
-        altered = close_quarters.replace("closest eligible target", "closest visible target")
+        altered = close_quarters.replace(
+            "closest eligible target", "closest visible target"
+        )
         fallback = combat_presets("Close-quarters Firepower", altered)[0]
         self.assertEqual(fallback["activation"], "situational")
         self.assertFalse(fallback["requires_target_closest_eligible"])
@@ -463,7 +505,9 @@ class ProfileDataTests(unittest.TestCase):
             "Select one enemy unit that is visible to both your Observer unit and your "
             "Guided unit. That enemy unit is then your Guided unit’s Spotted unit."
         )
-        self.assertEqual(combat_selected_enemy_target_requirements(greater_good), (None, False))
+        self.assertEqual(
+            combat_selected_enemy_target_requirements(greater_good), (None, False)
+        )
         self.assertEqual(
             combat_selected_enemy_target_requirements(
                 greater_good.replace("Observer unit", "spotter unit")
@@ -515,7 +559,9 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertIsNone(combat_selected_target_classification("Unknown Rule", blight))
 
-    def test_combat_preset_parser_projects_combat_effects_from_objective_control_text(self):
+    def test_combat_preset_parser_projects_combat_effects_from_objective_control_text(
+        self,
+    ):
         black_rage = (
             "Each time this model makes a melee attack, you can re-roll the Hit roll. "
             'While this model’s unit is not within 6" of one or more friendly Blood Angels '
@@ -590,7 +636,10 @@ class ProfileDataTests(unittest.TestCase):
         self.assertTrue(archon["requires_source_on_selected_objective"])
         self.assertTrue(archon["requires_source_not_battle_shocked"])
         self.assertEqual(
-            [(effect["type"], effect["value"]) for effect in archon["additional_effects"]],
+            [
+                (effect["type"], effect["value"])
+                for effect in archon["additional_effects"]
+            ],
             [("invulnerable_save", 5)],
         )
 
@@ -605,9 +654,13 @@ class ProfileDataTests(unittest.TestCase):
         )[0]
         self.assertEqual(priority["activation"], "automatic")
         self.assertTrue(priority["requires_target_on_source_selected_objective"])
-        self.assertEqual((priority["reroll_wounds"], priority["reroll_wound_ones"]), (0, 1))
+        self.assertEqual(
+            (priority["reroll_wounds"], priority["reroll_wound_ones"]), (0, 1)
+        )
 
-        changed = priority["description"].replace("one objective marker", "two objective markers")
+        changed = priority["description"].replace(
+            "one objective marker", "two objective markers"
+        )
         conservative = combat_presets("Priority Objective Identified", changed)[0]
         self.assertEqual(conservative["activation"], "situational")
         self.assertFalse(conservative["requires_target_on_source_selected_objective"])
@@ -1048,9 +1101,7 @@ class ProfileDataTests(unittest.TestCase):
             "Battle-shocked unit, add 1 to the Hit roll."
         )
         self.assertTrue(target_battle_shocked["requires_target_battle_shocked"])
-        self.assertFalse(
-            target_battle_shocked["requires_attacker_not_battle_shocked"]
-        )
+        self.assertFalse(target_battle_shocked["requires_attacker_not_battle_shocked"])
         attacker_not_battle_shocked = combat_preset(
             "Each time this model makes a melee attack, unless this model’s unit is "
             "Battle-shocked, you can re-roll the Hit roll."
@@ -1060,7 +1111,7 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertFalse(
             combat_preset(
-                "While an enemy unit is within 12\" of this model, if that unit is "
+                'While an enemy unit is within 12" of this model, if that unit is '
                 "Battle-shocked: each time a friendly model makes an attack that targets "
                 "that unit, add 1 to the Wound roll."
             )["requires_target_battle_shocked"]
@@ -1336,7 +1387,9 @@ class ProfileDataTests(unittest.TestCase):
             "Twice per battle, after an attack has been allocated to this model, you can change "
             "the Damage characteristic of that attack to 0."
         )
-        self.assertEqual(twice_allocated_replacement["additional_effects"][0]["uses"], 2)
+        self.assertEqual(
+            twice_allocated_replacement["additional_effects"][0]["uses"], 2
+        )
         failed_save_timing = combat_preset(
             "Once per phase, when an attack is allocated to this model and the saving throw is "
             "failed, you can change the Damage characteristic of that attack to 0."
@@ -1608,7 +1661,39 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "52",
+                "53",
+            )
+            self.assertEqual(
+                connection.execute("SELECT count(*) FROM unit_firing_deck").fetchone()[
+                    0
+                ],
+                61,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM unit_firing_deck_passenger_costs"
+                ).fetchone()[0],
+                4,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT deck.capacity, abilities.name, abilities.parameter
+                       FROM unit_firing_deck AS deck
+                       JOIN datasheets ON datasheets.id = deck.datasheet_id
+                       JOIN datasheet_abilities AS abilities
+                         ON abilities.datasheet_id = deck.datasheet_id
+                        AND abilities.position = deck.ability_position
+                       WHERE datasheets.id = '000000026'"""
+                ).fetchone(),
+                (12, "Firing Deck", "12"),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT costs.model_cost
+                       FROM unit_firing_deck_passenger_costs AS costs
+                       WHERE costs.datasheet_id = '000000686'"""
+                ).fetchone(),
+                (2,),
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -2014,9 +2099,15 @@ class ProfileDataTests(unittest.TestCase):
             self.assertEqual(len(charge_rows), 17)
             self.assertIn(("Beastboss", "Beastly Rage"), charge_rows)
             self.assertIn(("Captain With Jump Pack", "Angel’s Wrath"), charge_rows)
-            self.assertIn(("‘Iron Hand’ Straken", "Been There, Seen it, Killed it"), charge_rows)
-            self.assertNotIn(("Catachan Jungle Fighters", "Jungle Fighters"), charge_rows)
-            self.assertNotIn(("Indomitor Kill Team", "Indomitor Doctrines"), charge_rows)
+            self.assertIn(
+                ("‘Iron Hand’ Straken", "Been There, Seen it, Killed it"), charge_rows
+            )
+            self.assertNotIn(
+                ("Catachan Jungle Fighters", "Jungle Fighters"), charge_rows
+            )
+            self.assertNotIn(
+                ("Indomitor Kill Team", "Indomitor Doctrines"), charge_rows
+            )
             self.assertNotIn(("Zephyrim Squad", "Embodied Prophecy"), charge_rows)
             self.assertEqual(
                 connection.execute(
@@ -2096,7 +2187,12 @@ class ProfileDataTests(unittest.TestCase):
                 [("reroll_hits", "blast", "attacker", "friendly_unit")],
             )
             self.assertIn(
-                ("Sorcerer In Terminator Armour", "Marked by Fate (Psychic)", None, "situational"),
+                (
+                    "Sorcerer In Terminator Armour",
+                    "Marked by Fate (Psychic)",
+                    None,
+                    "situational",
+                ),
                 visible_target_rows,
             )
             closest_rows = connection.execute(
@@ -2216,9 +2312,33 @@ class ProfileDataTests(unittest.TestCase):
                        ORDER BY name"""
                 ).fetchall(),
                 [
-                    ("Blacklight Marker Drones", "situational", "supporting_unit", 2, "Ranged", 1, 1),
-                    ("Forward Observers", "situational", "supporting_unit", None, "Ranged", 1, 1),
-                    ("High-intensity Markerlights", "situational", "supporting_unit", None, "Ranged", 1, 1),
+                    (
+                        "Blacklight Marker Drones",
+                        "situational",
+                        "supporting_unit",
+                        2,
+                        "Ranged",
+                        1,
+                        1,
+                    ),
+                    (
+                        "Forward Observers",
+                        "situational",
+                        "supporting_unit",
+                        None,
+                        "Ranged",
+                        1,
+                        1,
+                    ),
+                    (
+                        "High-intensity Markerlights",
+                        "situational",
+                        "supporting_unit",
+                        None,
+                        "Ranged",
+                        1,
+                        1,
+                    ),
                 ],
             )
             self.assertEqual(
@@ -2247,13 +2367,33 @@ class ProfileDataTests(unittest.TestCase):
                 ).fetchall(),
                 [
                     ("Big Mek On Warbike", "Mekaniak", "supporting_unit", 3),
-                    ("Brotherhood Techmarine", "Blessing of the Omnissiah", "supporting_unit", 3),
-                    ("Iron Father Feirros", "Master of the Forge", "supporting_unit", 3),
-                    ("Iron Priest On Thunderwolf", "Blessing of the Omnissiah", "supporting_unit", 3),
+                    (
+                        "Brotherhood Techmarine",
+                        "Blessing of the Omnissiah",
+                        "supporting_unit",
+                        3,
+                    ),
+                    (
+                        "Iron Father Feirros",
+                        "Master of the Forge",
+                        "supporting_unit",
+                        3,
+                    ),
+                    (
+                        "Iron Priest On Thunderwolf",
+                        "Blessing of the Omnissiah",
+                        "supporting_unit",
+                        3,
+                    ),
                     ("Mek", "Mekaniak", "supporting_unit", 3),
                     ("Meka-dread", "Mekaniak", "self", None),
                     ("Techmarine", "Blessing of the Omnissiah", "supporting_unit", 3),
-                    ("Techmarine on Bike", "Blessing of the Omnissiah", "supporting_unit", 3),
+                    (
+                        "Techmarine on Bike",
+                        "Blessing of the Omnissiah",
+                        "supporting_unit",
+                        3,
+                    ),
                     ("Trojan Support Vehicle", "Support Vehicle", "self", None),
                     ("Trojan Support Vehicle", "Support Vehicle", "self", None),
                     ("Warpsmith", "Master of Mechanisms", "supporting_unit", 3),
@@ -2338,8 +2478,13 @@ class ProfileDataTests(unittest.TestCase):
             ).fetchall()
             self.assertIn(("Aggressor Guardian — Defence", 1, 0, 1), objective_rows)
             self.assertIn(("Breach and Clear", 0, 1, 1), objective_rows)
-            self.assertIn(("Reavers of the Void — Objective re-roll", 0, 1, 2), objective_rows)
-            self.assertIn(("Veterans of the Long War — Objective re-roll", 0, 1, 2), objective_rows)
+            self.assertIn(
+                ("Reavers of the Void — Objective re-roll", 0, 1, 2), objective_rows
+            )
+            self.assertIn(
+                ("Veterans of the Long War — Objective re-roll", 0, 1, 2),
+                objective_rows,
+            )
             self.assertEqual(
                 connection.execute(
                     """SELECT count(*) FROM unit_combat_presets
@@ -2406,8 +2551,12 @@ class ProfileDataTests(unittest.TestCase):
             self.assertIn(("Imagifier", "Stanchion of Holy Martyrs"), attached_rows)
             self.assertIn(("Wurrboy", "Unstable Oracle"), attached_rows)
             self.assertNotIn(("Aleya", "Tenacious Spirit"), attached_rows)
-            self.assertNotIn(("Commander Farsight", "Way of the Short Blade"), attached_rows)
-            self.assertNotIn(("Ghazghkull Thraka", "Prophet of Da Great Waaagh!"), attached_rows)
+            self.assertNotIn(
+                ("Commander Farsight", "Way of the Short Blade"), attached_rows
+            )
+            self.assertNotIn(
+                ("Ghazghkull Thraka", "Prophet of Da Great Waaagh!"), attached_rows
+            )
             self.assertEqual(
                 connection.execute(
                     """SELECT count(*) FROM unit_combat_presets
@@ -2463,9 +2612,7 @@ class ProfileDataTests(unittest.TestCase):
                 ("Ballistus Dreadnought", "Ballistus Strike", "not_below_half"),
                 strength_rows,
             )
-            self.assertEqual(
-                sum(row[2] == "below_half" for row in strength_rows), 6
-            )
+            self.assertEqual(sum(row[2] == "below_half" for row in strength_rows), 6)
             self.assertEqual(
                 sum(row[2] == "not_below_half" for row in strength_rows), 9
             )
@@ -2755,7 +2902,8 @@ class ProfileDataTests(unittest.TestCase):
             {
                 preset["name"]: preset.get("usesPerBattle")
                 for preset in support_presets
-                if preset["name"] in {
+                if preset["name"]
+                in {
                     "Blacklight Marker Drones",
                     "Forward Observers",
                     "High-intensity Markerlights",
@@ -2767,10 +2915,16 @@ class ProfileDataTests(unittest.TestCase):
                 "High-intensity Markerlights": None,
             },
         )
-        taskmaster = next(preset for preset in support_presets if preset["name"] == "Taskmaster (Aura)")
+        taskmaster = next(
+            preset
+            for preset in support_presets
+            if preset["name"] == "Taskmaster (Aura)"
+        )
         self.assertEqual(taskmaster["maximumSupportDistance"], 9)
         self.assertEqual(taskmaster["requiredSupportedKeywords"], ["war dog"])
-        techmarine = next(unit for unit in catalogue["units"] if unit["name"] == "Techmarine")
+        techmarine = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Techmarine"
+        )
         blessing = next(
             preset
             for preset in techmarine["combatPresets"]
@@ -2781,7 +2935,9 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(
             blessing["requiredSupportedKeywords"], ["adeptus astartes", "vehicle"]
         )
-        illuminor = next(unit for unit in catalogue["units"] if unit["name"] == "Illuminor Szeras")
+        illuminor = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Illuminor Szeras"
+        )
         augmentation = next(
             preset
             for preset in illuminor["combatPresets"]
@@ -2789,14 +2945,23 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(augmentation["sourceRelationship"], "supporting_unit")
         self.assertEqual(augmentation["maximumSupportDistance"], 3)
-        self.assertEqual(augmentation["requiredSupportedKeywords"], ["necrons", "battleline"])
         self.assertEqual(
-            [(effect["type"], effect["value"], effect["role"]) for effect in augmentation["effects"]],
+            augmentation["requiredSupportedKeywords"], ["necrons", "battleline"]
+        )
+        self.assertEqual(
+            [
+                (effect["type"], effect["value"], effect["role"])
+                for effect in augmentation["effects"]
+            ],
             [("ap_modifier", 1, "attacker"), ("ap_modifier", -1, "target")],
         )
-        meka_dread = next(unit for unit in catalogue["units"] if unit["name"] == "Meka-dread")
+        meka_dread = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Meka-dread"
+        )
         mekaniak = next(
-            preset for preset in meka_dread["combatPresets"] if preset["name"] == "Mekaniak"
+            preset
+            for preset in meka_dread["combatPresets"]
+            if preset["name"] == "Mekaniak"
         )
         self.assertEqual(mekaniak["sourceRelationship"], "self")
         self.assertNotIn("maximumSupportDistance", mekaniak)
@@ -3037,7 +3202,9 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(distraction_grot["weaponScope"], "Ranged")
 
         ridgerunners = next(
-            unit for unit in catalogue["units"] if unit["name"] == "Achilles Ridgerunners"
+            unit
+            for unit in catalogue["units"]
+            if unit["name"] == "Achilles Ridgerunners"
         )
         crossfire = next(
             preset
@@ -3221,9 +3388,13 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(martyrs["activation"], "automatic")
         self.assertTrue(martyrs["requiresAttachedUnit"])
-        gabriel = next(unit for unit in catalogue["units"] if unit["name"] == "Gabriel Seth")
+        gabriel = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Gabriel Seth"
+        )
         whirlwind = next(
-            preset for preset in gabriel["combatPresets"] if preset["name"] == "Whirlwind of Gore"
+            preset
+            for preset in gabriel["combatPresets"]
+            if preset["name"] == "Whirlwind of Gore"
         )
         self.assertEqual(whirlwind["activation"], "automatic")
         self.assertEqual(
@@ -3244,13 +3415,17 @@ class ProfileDataTests(unittest.TestCase):
         )
         wurrboy = next(unit for unit in catalogue["units"] if unit["name"] == "Wurrboy")
         unstable = next(
-            preset for preset in wurrboy["combatPresets"] if preset["name"] == "Unstable Oracle"
+            preset
+            for preset in wurrboy["combatPresets"]
+            if preset["name"] == "Unstable Oracle"
         )
         self.assertTrue(unstable["requiresAttachedUnit"])
         self.assertEqual(unstable["effects"][0]["modelCountSource"], "source_unit")
         marshal = next(unit for unit in catalogue["units"] if unit["name"] == "Marshal")
         pious_fervour = next(
-            preset for preset in marshal["combatPresets"] if preset["name"] == "Pious Fervour"
+            preset
+            for preset in marshal["combatPresets"]
+            if preset["name"] == "Pious Fervour"
         )
         self.assertEqual(
             pious_fervour["effects"][0],
@@ -3279,12 +3454,21 @@ class ProfileDataTests(unittest.TestCase):
             soul_eater["effects"][0]["modelCountSource"],
             "destructive_fight_phases",
         )
-        hunta_rig = next(unit for unit in catalogue["units"] if unit["name"] == "Hunta Rig")
+        hunta_rig = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Hunta Rig"
+        )
+        self.assertEqual(
+            hunta_rig["firingDeck"], {"capacity": 11, "abilityId": "000008334"}
+        )
         on_da_hunt = next(
-            preset for preset in hunta_rig["combatPresets"] if preset["name"] == "On Da Hunt"
+            preset
+            for preset in hunta_rig["combatPresets"]
+            if preset["name"] == "On Da Hunt"
         )
         self.assertEqual(on_da_hunt["activation"], "automatic")
-        self.assertEqual(on_da_hunt["effects"][0]["modelCountSource"], "embarked_models")
+        self.assertEqual(
+            on_da_hunt["effects"][0]["modelCountSource"], "embarked_models"
+        )
         self.assertEqual(on_da_hunt["effects"][0]["maximumModifier"], 6)
         raider = next(unit for unit in catalogue["units"] if unit["name"] == "Raider")
         visions = next(
@@ -3295,9 +3479,15 @@ class ProfileDataTests(unittest.TestCase):
         self.assertEqual(
             visions["effects"][0]["modelCountSource"], "embarked_wracks_models"
         )
+        heavy_weapons = next(
+            unit for unit in catalogue["units"] if unit["id"] == "000000686"
+        )
+        self.assertEqual(heavy_weapons["firingDeckModelCost"], 2)
         boyz = next(unit for unit in catalogue["units"] if unit["name"] == "Boyz")
         waaagh = [
-            preset for preset in boyz["combatPresets"] if preset["name"].startswith("Waaagh! —")
+            preset
+            for preset in boyz["combatPresets"]
+            if preset["name"].startswith("Waaagh! —")
         ]
         self.assertEqual(len(waaagh), 2)
         self.assertTrue(all(preset["activation"] == "automatic" for preset in waaagh))
@@ -3310,10 +3500,14 @@ class ProfileDataTests(unittest.TestCase):
             ],
         )
         mega_warboss = next(
-            unit for unit in catalogue["units"] if unit["name"] == "Warboss In Mega Armour"
+            unit
+            for unit in catalogue["units"]
+            if unit["name"] == "Warboss In Mega Armour"
         )
         dead_brutal = next(
-            preset for preset in mega_warboss["combatPresets"] if preset["name"] == "Dead Brutal"
+            preset
+            for preset in mega_warboss["combatPresets"]
+            if preset["name"] == "Dead Brutal"
         )
         self.assertTrue(dead_brutal["requiresWaaaghActive"])
         self.assertEqual(dead_brutal["effects"][0]["weaponName"], "’uge choppa")
@@ -3335,22 +3529,33 @@ class ProfileDataTests(unittest.TestCase):
             [(preset["rerollHits"], preset["woundModifier"]) for preset in oath],
             [(True, 0), (False, 1)],
         )
-        breachers = next(unit for unit in catalogue["units"] if unit["name"] == "Breacher Team")
+        breachers = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Breacher Team"
+        )
         breach = next(
-            preset for preset in breachers["combatPresets"] if preset["name"] == "Breach and Clear"
+            preset
+            for preset in breachers["combatPresets"]
+            if preset["name"] == "Breach and Clear"
         )
         self.assertTrue(breach["requiresTargetOnObjective"])
         self.assertTrue(breach["rerollWounds"])
         self.assertEqual(breach["activation"], "automatic")
         sentinel = next(
-            unit for unit in catalogue["units"] if unit["name"] == "Canoptek Tomb Sentinel"
+            unit
+            for unit in catalogue["units"]
+            if unit["name"] == "Canoptek Tomb Sentinel"
         )
         guardian = {
-            preset["name"]: preset for preset in sentinel["combatPresets"]
+            preset["name"]: preset
+            for preset in sentinel["combatPresets"]
             if preset["name"].startswith("Aggressor Guardian —")
         }
-        self.assertTrue(guardian["Aggressor Guardian — Defence"]["requiresSourceOnObjective"])
-        self.assertTrue(guardian["Aggressor Guardian — Offence"]["requiresTargetOnObjective"])
+        self.assertTrue(
+            guardian["Aggressor Guardian — Defence"]["requiresSourceOnObjective"]
+        )
+        self.assertTrue(
+            guardian["Aggressor Guardian — Offence"]["requiresTargetOnObjective"]
+        )
         closest_presets = [
             (unit["name"], preset)
             for unit in catalogue["units"]
@@ -3362,7 +3567,9 @@ class ProfileDataTests(unittest.TestCase):
             preset for unit, preset in closest_presets if unit == "Forgefiend"
         )
         self.assertEqual(forgefiend_closest["maximumTargetDistance"], 18)
-        self.assertTrue(all(preset["activation"] == "automatic" for _, preset in closest_presets))
+        self.assertTrue(
+            all(preset["activation"] == "automatic" for _, preset in closest_presets)
+        )
         visible_target_presets = [
             (unit["name"], preset)
             for unit in catalogue["units"]
@@ -3371,7 +3578,10 @@ class ProfileDataTests(unittest.TestCase):
         ]
         self.assertEqual(len(visible_target_presets), 20)
         self.assertTrue(
-            all(preset["activation"] == "situational" for _, preset in visible_target_presets)
+            all(
+                preset["activation"] == "situational"
+                for _, preset in visible_target_presets
+            )
         )
         self.assertEqual(
             next(
@@ -3408,7 +3618,9 @@ class ProfileDataTests(unittest.TestCase):
             [("reroll_hits", "blast")],
         )
         brigand = next(
-            unit for unit in catalogue["units"] if unit["name"] == "Leman Russ Battle Tank"
+            unit
+            for unit in catalogue["units"]
+            if unit["name"] == "Leman Russ Battle Tank"
         )
         spearhead = {
             preset["name"]: preset

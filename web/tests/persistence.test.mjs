@@ -126,6 +126,8 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
     weaponId: "7",
     profileId: "7",
     targetModelId: "3",
+    firingDeckModels: 6,
+    firingDeckPassengerAlreadyShot: true,
     activeAttackerPresetIds: ["datasheet-1:ability:2"],
     activeTargetPresetIds: ["datasheet-2:ability:4"],
     supportUnitId: "unit-2",
@@ -187,6 +189,8 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   };
   const recovery = createPlayRecovery(state, 1_700_000_000_000);
   assert.deepEqual(recovery.activeAttackerPresetIds, ["datasheet-1:ability:2"]);
+  assert.equal(recovery.firingDeckModels, 6);
+  assert.equal(recovery.firingDeckPassengerAlreadyShot, true);
   assert.equal(recovery.supportUnitId, "unit-2");
   assert.deepEqual(recovery.activeSupportPresetIds, ["datasheet-3:ability:5"]);
   assert.equal(recovery.targetSupportUnitId, "unit-3");

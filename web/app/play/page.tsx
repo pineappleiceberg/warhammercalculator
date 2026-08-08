@@ -29,6 +29,7 @@ import {
   parsePlayRecovery,
   PLAY_RECOVERY_KEY,
 } from "../../lib/play-recovery.mjs";
+import { firingDeckWeapons, resolveFiringDeckSelection } from "../../lib/firing-deck.mjs";
 
 type LogEntry = {
   id: string;
@@ -48,6 +49,15 @@ type AttackCountContext = Pick<
   | "embarkedWracksModels"
 >;
 
+function firingDeckWeaponValue(passengerUnitId: string, weaponId: number) {
+  return `fd:${passengerUnitId}:${weaponId}`;
+}
+
+function parseFiringDeckWeaponValue(value: string) {
+  const match = /^fd:([^:]+):(\d+)$/.exec(value);
+  return match ? { passengerUnitId: match[1], weaponId: Number(match[2]) } : null;
+}
+
 export default function PlayMode() {
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
   const [lists, setLists] = useState<ArmyListRecord[]>([]);
@@ -57,6 +67,8 @@ export default function PlayMode() {
   const [targetUnitId, setTargetUnitId] = useState("");
   const [weaponId, setWeaponId] = useState("");
   const [profileId, setProfileId] = useState("");
+  const [firingDeckModels, setFiringDeckModels] = useState(1);
+  const [firingDeckPassengerAlreadyShot, setFiringDeckPassengerAlreadyShot] = useState(false);
   const [targetModelId, setTargetModelId] = useState("");
   const [activeAttackerPresetIds, setActiveAttackerPresetIds] = useState<string[]>([]);
   const [activeTargetPresetIds, setActiveTargetPresetIds] = useState<string[]>([]);
@@ -101,6 +113,8 @@ export default function PlayMode() {
             weaponId: string;
             profileId: string;
             targetModelId: string;
+            firingDeckModels: number;
+            firingDeckPassengerAlreadyShot: boolean;
             profile: unknown;
             history: LogEntry[];
             activeAttackerPresetIds: string[];
@@ -118,6 +132,8 @@ export default function PlayMode() {
           setWeaponId(saved.weaponId);
           setProfileId(saved.profileId);
           setTargetModelId(saved.targetModelId);
+          setFiringDeckModels(saved.firingDeckModels);
+          setFiringDeckPassengerAlreadyShot(saved.firingDeckPassengerAlreadyShot);
           setActiveAttackerPresetIds(saved.activeAttackerPresetIds);
           setActiveTargetPresetIds(saved.activeTargetPresetIds);
           setSupportUnitId(saved.supportUnitId);
@@ -155,6 +171,8 @@ export default function PlayMode() {
       weaponId,
       profileId,
       targetModelId,
+      firingDeckModels,
+      firingDeckPassengerAlreadyShot,
       activeAttackerPresetIds,
       activeTargetPresetIds,
       supportUnitId,
@@ -179,6 +197,8 @@ export default function PlayMode() {
     recoveryReady,
     targetListId,
     targetModelId,
+    firingDeckModels,
+    firingDeckPassengerAlreadyShot,
     targetUnitId,
     supportUnitId,
     targetSupportUnitId,
@@ -190,10 +210,17 @@ export default function PlayMode() {
   const targetList = lists.find((list) => list.id === targetListId);
   const attackerUnit = attackerList?.units.find((unit) => unit.id === attackerUnitId);
   const targetUnit = targetList?.units.find((unit) => unit.id === targetUnitId);
-  const selectedWeapon = attackerUnit?.weapons.find(
-    (weapon) => String(weapon.weaponId) === weaponId,
+  const firingDeckChoice = parseFiringDeckWeaponValue(weaponId);
+  const firingDeckPassengerUnit = attackerList?.units.find(
+    (unit) => unit.id === firingDeckChoice?.passengerUnitId,
+  );
+  const selectedWeapon = (firingDeckPassengerUnit ?? attackerUnit)?.weapons.find(
+    (weapon) => String(weapon.weaponId) === String(firingDeckChoice?.weaponId ?? weaponId),
   );
   const attackerCatalogueUnit = catalogue?.units.find((unit) => unit.id === attackerUnit?.unitId);
+  const firingDeckPassengerCatalogueUnit = catalogue?.units.find(
+    (unit) => unit.id === firingDeckPassengerUnit?.unitId,
+  );
   const targetCatalogueUnit = catalogue?.units.find((unit) => unit.id === targetUnit?.unitId);
   const playSupportUnits =
     attackerList?.units
@@ -221,7 +248,9 @@ export default function PlayMode() {
   const targetSupportCatalogueUnit = catalogue?.units.find(
     (unit) => unit.id === targetSupportArmyUnit?.unitId,
   );
-  const weaponGroups = groupWeaponProfiles(attackerCatalogueUnit?.weapons ?? []);
+  const weaponGroups = groupWeaponProfiles(
+    (firingDeckChoice ? firingDeckPassengerCatalogueUnit : attackerCatalogueUnit)?.weapons ?? [],
+  );
   const selectedWeaponGroup = weaponGroups.find(
     (group) =>
       group.id === selectedWeapon?.groupId ||
@@ -231,6 +260,25 @@ export default function PlayMode() {
     selectedWeaponGroup?.profiles.find((weapon) => String(weapon.id) === profileId) ??
     selectedWeaponGroup?.profiles[0];
   const targetProfiles = targetCatalogueUnit?.models ?? [];
+  const firingDeckPlayOptions =
+    attackerCatalogueUnit?.firingDeck && catalogue
+      ? (attackerList?.units ?? [])
+          .filter((unit) => unit.id !== attackerUnitId)
+          .map((unit) => {
+            const source = catalogue.units.find((entry) => entry.id === unit.unitId);
+            const eligibleIds = new Set(
+              firingDeckWeapons(source ?? { weapons: [] }).map((entry) => entry.id),
+            );
+            return {
+              unit,
+              source,
+              weapons: unit.weapons.filter(
+                (weapon) => weapon.count > 0 && eligibleIds.has(weapon.weaponId),
+              ),
+            };
+          })
+          .filter((entry) => entry.weapons.length > 0)
+      : [];
 
   const selectedCombatPresets = (
     ids: string[],
@@ -357,10 +405,21 @@ export default function PlayMode() {
       countOverrides.embarkedWracksModels ?? profile.embarkedWracksModels,
       nextEmbarkedModels,
     );
-    const listWeapon = attackerUnit?.weapons.find(
-      (entry) => String(entry.weaponId) === nextWeaponId,
+    const nextFiringDeckChoice = parseFiringDeckWeaponValue(nextWeaponId);
+    const nextPassengerArmyUnit = attackerList?.units.find(
+      (entry) => entry.id === nextFiringDeckChoice?.passengerUnitId,
     );
-    const groups = groupWeaponProfiles(attackerCatalogueUnit?.weapons ?? []);
+    const nextPassengerCatalogueUnit = catalogue?.units.find(
+      (entry) => entry.id === nextPassengerArmyUnit?.unitId,
+    );
+    const weaponSourceArmyUnit = nextPassengerArmyUnit ?? attackerUnit;
+    const weaponSourceCatalogueUnit = nextFiringDeckChoice
+      ? nextPassengerCatalogueUnit
+      : attackerCatalogueUnit;
+    const listWeapon = weaponSourceArmyUnit?.weapons.find(
+      (entry) => String(entry.weaponId) === String(nextFiringDeckChoice?.weaponId ?? nextWeaponId),
+    );
+    const groups = groupWeaponProfiles(weaponSourceCatalogueUnit?.weapons ?? []);
     const group = groups.find(
       (entry) =>
         entry.id === listWeapon?.groupId ||
@@ -371,12 +430,34 @@ export default function PlayMode() {
     const model =
       targetProfiles.find((entry) => String(entry.id) === nextTargetModelId) ?? targetProfiles[0];
     if (!weapon || !model) return;
+    let weaponCount = listWeapon?.count ?? 1;
+    if (nextFiringDeckChoice && catalogue && attackerCatalogueUnit) {
+      const maximumModels = Math.max(
+        1,
+        Math.min(
+          nextPassengerArmyUnit?.modelCount ?? 1,
+          listWeapon?.count ?? 1,
+          Math.floor(
+            (attackerCatalogueUnit.firingDeck?.capacity ?? 0) /
+              (nextPassengerCatalogueUnit?.firingDeckModelCost ?? 1),
+          ),
+        ),
+      );
+      const selectedModels = nextWeaponId === weaponId ? firingDeckModels : maximumModels;
+      resolveFiringDeckSelection(catalogue, attackerCatalogueUnit, {
+        passengerUnitId: nextPassengerCatalogueUnit?.id,
+        weaponId: weapon.id,
+        modelCount: selectedModels,
+        unitAlreadyShot: false,
+      });
+      weaponCount = selectedModels;
+    }
     setProfile(
       applyCombatPresets(
         applyWeaponProfile(
           {
             ...applyTargetProfile(DEFAULT_PROFILE, model),
-            weaponCount: listWeapon?.count ?? 1,
+            weaponCount,
             targetModels: targetUnit?.modelCount ?? 1,
             targetDistance: nextTargetDistance,
             attackerUnitModels: nextAttackerUnitModels,
@@ -607,8 +688,20 @@ export default function PlayMode() {
   };
 
   const chooseWeapon = (id: string) => {
-    const listWeapon = attackerUnit?.weapons.find((entry) => String(entry.weaponId) === id);
-    const group = weaponGroups.find(
+    const nextFiringDeckChoice = parseFiringDeckWeaponValue(id);
+    const passengerArmyUnit = attackerList?.units.find(
+      (entry) => entry.id === nextFiringDeckChoice?.passengerUnitId,
+    );
+    const passengerCatalogueUnit = catalogue?.units.find(
+      (entry) => entry.id === passengerArmyUnit?.unitId,
+    );
+    const listWeapon = (passengerArmyUnit ?? attackerUnit)?.weapons.find(
+      (entry) => String(entry.weaponId) === String(nextFiringDeckChoice?.weaponId ?? id),
+    );
+    const groups = groupWeaponProfiles(
+      (nextFiringDeckChoice ? passengerCatalogueUnit : attackerCatalogueUnit)?.weapons ?? [],
+    );
+    const group = groups.find(
       (entry) =>
         entry.id === listWeapon?.groupId ||
         entry.profiles.some((profile) => profile.id === listWeapon?.weaponId),
@@ -617,6 +710,22 @@ export default function PlayMode() {
       ? group?.profiles[0]
       : group?.profiles.find((profile) => profile.id === listWeapon?.weaponId);
     const firstProfileId = initialProfile ? String(initialProfile.id) : "";
+    if (nextFiringDeckChoice) {
+      setFiringDeckModels(
+        Math.max(
+          1,
+          Math.min(
+            passengerArmyUnit?.modelCount ?? 1,
+            listWeapon?.count ?? 1,
+            Math.floor(
+              (attackerCatalogueUnit?.firingDeck?.capacity ?? 0) /
+                (passengerCatalogueUnit?.firingDeckModelCost ?? 1),
+            ),
+          ),
+        ),
+      );
+      setFiringDeckPassengerAlreadyShot(false);
+    }
     setWeaponId(id);
     setProfileId(firstProfileId);
     refreshProfile(id, targetModelId, firstProfileId);
@@ -1181,6 +1290,10 @@ export default function PlayMode() {
 
   const roll = () => {
     if (!attackerUnit || !targetUnit || !selectedWeapon || !weaponProfile) return;
+    if (firingDeckChoice && firingDeckPassengerAlreadyShot) {
+      setStatus("Firing Deck cannot use models from a unit that has already shot this phase");
+      return;
+    }
     let rolled: RollResult;
     try {
       rolled = simulateAttack(profile);
@@ -1210,21 +1323,28 @@ export default function PlayMode() {
     setProfile((current) => ({ ...current, [key]: value }));
 
   const ready = Boolean(
-    attackerUnit && targetUnit && selectedWeapon && weaponProfile && targetModelId,
+    attackerUnit &&
+      targetUnit &&
+      selectedWeapon &&
+      weaponProfile &&
+      targetModelId &&
+      !(firingDeckChoice && firingDeckPassengerAlreadyShot),
   );
   const readyLabel = !attackerList
     ? "Choose an attacking list"
     : !attackerUnit
       ? "Choose an attacking unit"
-      : !selectedWeapon
-        ? "Choose a weapon"
-        : !targetList
-          ? "Choose a target list"
-          : !targetUnit
-            ? "Choose a target unit"
-            : !targetModelId
-              ? "Choose a target profile"
-              : `${attackerUnit.name} into ${targetUnit.name}`;
+      : firingDeckChoice && firingDeckPassengerAlreadyShot
+        ? "Passenger unit has already shot"
+        : !selectedWeapon
+          ? "Choose a weapon"
+          : !targetList
+            ? "Choose a target list"
+            : !targetUnit
+              ? "Choose a target unit"
+              : !targetModelId
+                ? "Choose a target profile"
+                : `${attackerUnit.name} into ${targetUnit.name}`;
 
   const resetBattle = () => {
     suppressRecoverySave.current = true;
@@ -1233,6 +1353,8 @@ export default function PlayMode() {
     setAttackerUnitId("");
     setTargetUnitId("");
     setWeaponId("");
+    setFiringDeckModels(1);
+    setFiringDeckPassengerAlreadyShot(false);
     setProfileId("");
     setTargetModelId("");
     setActiveAttackerPresetIds([]);
@@ -1283,6 +1405,8 @@ export default function PlayMode() {
                       setAttackerListId(event.target.value);
                       setAttackerUnitId("");
                       setWeaponId("");
+                      setFiringDeckModels(1);
+                      setFiringDeckPassengerAlreadyShot(false);
                       setProfileId("");
                       setActiveAttackerPresetIds([]);
                       setSupportUnitId("");
@@ -1339,6 +1463,8 @@ export default function PlayMode() {
                       setSupportUnitId("");
                       setActiveSupportPresetIds([]);
                       setWeaponId("");
+                      setFiringDeckModels(1);
+                      setFiringDeckPassengerAlreadyShot(false);
                       setProfileId("");
                       setProfile((current) => ({
                         ...current,
@@ -1393,8 +1519,71 @@ export default function PlayMode() {
                           {weapon.name} × {weapon.count}
                         </option>
                       ))}
+                    {firingDeckPlayOptions.map(({ unit, weapons }) => (
+                      <optgroup key={unit.id} label={`Firing Deck · ${unit.name}`}>
+                        {weapons.map((weapon) => (
+                          <option
+                            key={`${unit.id}:${weapon.weaponId}`}
+                            value={firingDeckWeaponValue(unit.id, weapon.weaponId)}
+                          >
+                            {weapon.name} · up to {weapon.count} models
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
                   </select>
                 </label>
+                {firingDeckChoice && attackerCatalogueUnit?.firingDeck && (
+                  <>
+                    <label>
+                      <span>Firing Deck models</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={Math.floor(
+                          Math.min(
+                            attackerCatalogueUnit.firingDeck.capacity /
+                              (firingDeckPassengerCatalogueUnit?.firingDeckModelCost ?? 1),
+                            firingDeckPassengerUnit?.modelCount ?? 1,
+                            selectedWeapon?.count ?? 1,
+                          ),
+                        )}
+                        value={firingDeckModels}
+                        onChange={(event) => {
+                          const maximum = Math.floor(
+                            Math.min(
+                              attackerCatalogueUnit.firingDeck!.capacity /
+                                (firingDeckPassengerCatalogueUnit?.firingDeckModelCost ?? 1),
+                              firingDeckPassengerUnit?.modelCount ?? 1,
+                              selectedWeapon?.count ?? 1,
+                            ),
+                          );
+                          const value = Math.min(maximum, Math.max(1, +event.target.value || 1));
+                          setFiringDeckModels(value);
+                          setProfile((current) => ({ ...current, weaponCount: value }));
+                          setResult(null);
+                        }}
+                      />
+                      <small>
+                        {firingDeckModels *
+                          (firingDeckPassengerCatalogueUnit?.firingDeckModelCost ?? 1)}
+                        /{attackerCatalogueUnit.firingDeck.capacity} model slots · transport is the
+                        weapon bearer
+                      </small>
+                    </label>
+                    <label className="inline-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={firingDeckPassengerAlreadyShot}
+                        onChange={(event) => {
+                          setFiringDeckPassengerAlreadyShot(event.target.checked);
+                          setResult(null);
+                        }}
+                      />
+                      Passenger unit has already shot this phase
+                    </label>
+                  </>
+                )}
                 {selectedWeaponGroup && selectedWeaponGroup.profiles.length > 1 && (
                   <label>
                     <span>Weapon profile</span>

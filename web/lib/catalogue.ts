@@ -238,6 +238,8 @@ export type CatalogueUnit = {
   wargearChoicePools: CatalogueWargearChoicePool[];
   combatPresets: CatalogueCombatPreset[];
   defensiveEquipment: CatalogueDefensiveEquipment[];
+  firingDeck: { capacity: number; abilityId: string | null } | null;
+  firingDeckModelCost: number;
   suggestedModelCount: number | null;
   maximumModelCount: number | null;
 };
@@ -275,6 +277,7 @@ export function applyCombatPresets(
 type CombatPresetContext = {
   targetKeywords?: string[];
   attackKeywords?: string[];
+  attackerKeywords?: string[];
   targetDistance?: number;
   attackerSourceTargetDistance?: number;
   targetSourceAttackerDistance?: number;

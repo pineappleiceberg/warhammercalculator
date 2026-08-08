@@ -16,6 +16,9 @@ The main tables are:
   `lethal hits`, `sustained hits`, `rapid fire`, `melta`, and `anti-*`
 - `abilities` and `datasheet_abilities` for resolved shared and unit-specific
   ability names, conditions, scope, and source ordering
+- `unit_firing_deck` for the exact published Firing Deck model limit and its
+  source ability, plus `unit_firing_deck_passenger_costs` for exact passenger
+  exceptions whose models and weapons consume two Firing Deck slots
 - `unit_combat_presets` and `unit_combat_preset_effects` for conservatively
   extracted Hit/Wound modifiers, re-roll modes, weapon-keyword grants, AP
   changes, Critical Hit/Wound thresholds, direct signed Attacks, Strength, and

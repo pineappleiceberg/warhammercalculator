@@ -26,6 +26,7 @@ import {
   combatPresetSupportsWeapon,
   selectedAndAutomaticCombatPresets,
 } from "../lib/combat-presets.mjs";
+import { firingDeckWeapons, resolveFiringDeckSelection } from "../lib/firing-deck.mjs";
 
 type Result = {
   minimum: number;
@@ -87,6 +88,8 @@ type CatalogueUnit = {
   models: CatalogueModel[];
   weapons: CatalogueWeapon[];
   combatPresets: CatalogueCombatPreset[];
+  firingDeck: { capacity: number; abilityId: string | null } | null;
+  firingDeckModelCost: number;
 };
 type Catalogue = {
   sourceUpdatedAt: string;
@@ -100,6 +103,8 @@ type SharedMatchup = {
   attackerFaction: string;
   attackerUnit: string;
   attackerWeapon: string;
+  firingDeckPassenger?: string;
+  firingDeckModels?: number;
   targetFaction: string;
   targetUnit: string;
   targetModel: string;
@@ -134,6 +139,16 @@ function decodeMatchup(encoded: string): SharedMatchup {
   const targetSupportUnit =
     parsed.targetSupportUnit === undefined ? "" : selection("targetSupportUnit");
   const targetSupportPresetIds = parsed.targetSupportPresetIds ?? [];
+  const firingDeckPassenger =
+    parsed.firingDeckPassenger === undefined ? "" : selection("firingDeckPassenger");
+  const firingDeckModels = parsed.firingDeckModels ?? 1;
+  if (
+    !Number.isSafeInteger(firingDeckModels) ||
+    Number(firingDeckModels) < 1 ||
+    Number(firingDeckModels) > 1000
+  ) {
+    throw new Error("Invalid firingDeckModels");
+  }
   if (
     !Array.isArray(supportPresetIds) ||
     supportPresetIds.length > 100 ||
@@ -154,6 +169,8 @@ function decodeMatchup(encoded: string): SharedMatchup {
     attackerFaction: selection("attackerFaction"),
     attackerUnit: selection("attackerUnit"),
     attackerWeapon: selection("attackerWeapon"),
+    firingDeckPassenger,
+    firingDeckModels: Number(firingDeckModels),
     targetFaction: selection("targetFaction"),
     targetUnit: selection("targetUnit"),
     targetModel: selection("targetModel"),
@@ -782,6 +799,8 @@ export default function Home() {
   const [attackerFaction, setAttackerFaction] = useState("");
   const [attackerUnit, setAttackerUnit] = useState("");
   const [attackerWeapon, setAttackerWeapon] = useState("");
+  const [firingDeckPassenger, setFiringDeckPassenger] = useState("");
+  const [firingDeckModels, setFiringDeckModels] = useState(1);
   const [targetFaction, setTargetFaction] = useState("");
   const [targetUnit, setTargetUnit] = useState("");
   const [targetModel, setTargetModel] = useState("");
@@ -811,6 +830,8 @@ export default function Home() {
         setAttackerFaction(shared.attackerFaction);
         setAttackerUnit(shared.attackerUnit);
         setAttackerWeapon(shared.attackerWeapon);
+        setFiringDeckPassenger(shared.firingDeckPassenger ?? "");
+        setFiringDeckModels(shared.firingDeckModels ?? 1);
         setTargetFaction(shared.targetFaction);
         setTargetUnit(shared.targetUnit);
         setTargetModel(shared.targetModel);
@@ -877,12 +898,19 @@ export default function Home() {
     [catalogue, attackerFaction],
   );
   const selectedAttackerUnit = attackerUnits.find((unit) => unit.id === attackerUnit);
+  const firingDeckPassengerUnits =
+    catalogue?.units.filter(
+      (unit) => unit.id !== selectedAttackerUnit?.id && firingDeckWeapons(unit).length > 0,
+    ) ?? [];
+  const selectedFiringDeckPassenger = firingDeckPassengerUnits.find(
+    (unit) => unit.id === firingDeckPassenger,
+  );
   const supportUnits = useMemo(
     () => catalogue?.units.filter((unit) => unit.factionId === attackerFaction) ?? [],
     [catalogue, attackerFaction],
   );
   const selectedSupportUnit = supportUnits.find((unit) => unit.id === supportUnitId);
-  const selectedWeapon = selectedAttackerUnit?.weapons.find(
+  const selectedWeapon = (selectedFiringDeckPassenger ?? selectedAttackerUnit)?.weapons.find(
     (weapon) => String(weapon.id) === attackerWeapon,
   );
   const targetUnits = useMemo(
@@ -1236,6 +1264,14 @@ export default function Home() {
   };
 
   const applyWeapon = (weapon: CatalogueWeapon) => {
+    if (selectedFiringDeckPassenger && selectedAttackerUnit && catalogue) {
+      resolveFiringDeckSelection(catalogue, selectedAttackerUnit, {
+        passengerUnitId: selectedFiringDeckPassenger.id,
+        weaponId: weapon.id,
+        modelCount: firingDeckModels,
+        unitAlreadyShot: false,
+      });
+    }
     const attacks = parseDice(weapon.attacks);
     const damage = parseDice(weapon.damage);
     const names = new Set(weapon.abilities.map((ability) => ability.name));
@@ -1248,6 +1284,7 @@ export default function Home() {
         {
           ...current,
           weaponName: weapon.name,
+          weaponCount: selectedFiringDeckPassenger ? firingDeckModels : current.weaponCount,
           ...(attacks
             ? {
                 attackDice: attacks.count,
@@ -1399,6 +1436,8 @@ export default function Home() {
       attackerFaction,
       attackerUnit,
       attackerWeapon,
+      firingDeckPassenger,
+      firingDeckModels,
       targetFaction,
       targetUnit,
       targetModel,
@@ -1448,6 +1487,8 @@ export default function Home() {
               setActiveTargetPresetIds([]);
               setSupportUnitId("");
               setActiveSupportPresetIds([]);
+              setFiringDeckPassenger("");
+              setFiringDeckModels(1);
             }}
           >
             Reset profile
@@ -1477,6 +1518,8 @@ export default function Home() {
                       setAttackerFaction(event.target.value);
                       setAttackerUnit("");
                       setAttackerWeapon("");
+                      setFiringDeckPassenger("");
+                      setFiringDeckModels(1);
                       setActiveAttackerPresetIds([]);
                       setSupportUnitId("");
                       setActiveSupportPresetIds([]);
@@ -1531,6 +1574,8 @@ export default function Home() {
                     onChange={(event) => {
                       setAttackerUnit(event.target.value);
                       setAttackerWeapon("");
+                      setFiringDeckPassenger("");
+                      setFiringDeckModels(1);
                       setActiveAttackerPresetIds([]);
                       setSupportUnitId("");
                       setActiveSupportPresetIds([]);
@@ -1577,6 +1622,55 @@ export default function Home() {
                     ))}
                   </select>
                 </label>
+                {selectedAttackerUnit?.firingDeck && (
+                  <label>
+                    <span>Weapon bearer</span>
+                    <select
+                      aria-label="Firing Deck passenger unit"
+                      value={firingDeckPassenger}
+                      onChange={(event) => {
+                        setFiringDeckPassenger(event.target.value);
+                        setFiringDeckModels(1);
+                        setAttackerWeapon("");
+                      }}
+                    >
+                      <option value="">{selectedAttackerUnit.name}</option>
+                      {firingDeckPassengerUnits.map((unit) => (
+                        <option key={unit.id} value={unit.id}>
+                          Firing Deck · {unit.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {selectedFiringDeckPassenger && selectedAttackerUnit?.firingDeck && (
+                  <label>
+                    <span>Embarked models using this weapon</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={Math.floor(
+                        selectedAttackerUnit.firingDeck.capacity /
+                          selectedFiringDeckPassenger.firingDeckModelCost,
+                      )}
+                      value={firingDeckModels}
+                      onChange={(event) => {
+                        const maximum = Math.floor(
+                          selectedAttackerUnit.firingDeck!.capacity /
+                            selectedFiringDeckPassenger.firingDeckModelCost,
+                        );
+                        const value = Math.min(maximum, Math.max(1, +event.target.value || 1));
+                        setFiringDeckModels(value);
+                        setProfile((current) => ({ ...current, weaponCount: value }));
+                      }}
+                    />
+                    <small>
+                      {firingDeckModels * selectedFiringDeckPassenger.firingDeckModelCost}/
+                      {selectedAttackerUnit.firingDeck.capacity} Firing Deck slots · transport is
+                      the bearer
+                    </small>
+                  </label>
+                )}
                 <label>
                   <span>Weapon</span>
                   <select
@@ -1584,14 +1678,17 @@ export default function Home() {
                     disabled={!selectedAttackerUnit}
                     onChange={(event) => {
                       setAttackerWeapon(event.target.value);
-                      const weapon = selectedAttackerUnit?.weapons.find(
-                        (item) => String(item.id) === event.target.value,
-                      );
+                      const weapon = (
+                        selectedFiringDeckPassenger ?? selectedAttackerUnit
+                      )?.weapons.find((item) => String(item.id) === event.target.value);
                       if (weapon) applyWeapon(weapon);
                     }}
                   >
                     <option value="">Choose weapon</option>
-                    {selectedAttackerUnit?.weapons.map((weapon) => (
+                    {(selectedFiringDeckPassenger
+                      ? firingDeckWeapons(selectedFiringDeckPassenger)
+                      : (selectedAttackerUnit?.weapons ?? [])
+                    ).map((weapon) => (
                       <option value={weapon.id} key={weapon.id}>
                         {weapon.name} · {weapon.type}
                       </option>
@@ -1730,8 +1827,18 @@ export default function Home() {
                   label="Weapons"
                   value={profile.weaponCount}
                   min={1}
-                  max={100}
-                  onChange={(value) => set("weaponCount", value)}
+                  max={
+                    selectedFiringDeckPassenger && selectedAttackerUnit?.firingDeck
+                      ? Math.floor(
+                          selectedAttackerUnit.firingDeck.capacity /
+                            selectedFiringDeckPassenger.firingDeckModelCost,
+                        )
+                      : 100
+                  }
+                  onChange={(value) => {
+                    if (selectedFiringDeckPassenger) setFiringDeckModels(value);
+                    set("weaponCount", value);
+                  }}
                 />
               </div>
             </div>

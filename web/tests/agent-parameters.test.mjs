@@ -15,6 +15,7 @@ import {
   combatPresetMatchesSourceRelationship,
   selectedAndAutomaticCombatPresets,
 } from "../lib/combat-presets.mjs";
+import { firingDeckWeapons, resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
 
 const defaults = {
   attackDice: 0,
@@ -411,6 +412,97 @@ test("catalogue agent Waaagh state selects exact universal and direct rules", as
   );
   assert.equal(composed.attacksModifier, 1);
   assert.equal(composed.strengthModifier, 1);
+});
+
+test("Firing Deck catalogue requests enforce selection limits and transport bearer semantics", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const trukk = catalogue.units.find((unit) => unit.id === "000000026");
+  const boyz = catalogue.units.find((unit) => unit.id === "000000016");
+  const heavyWeapons = catalogue.units.find((unit) => unit.id === "000000686");
+  const target = catalogue.units.find((unit) => unit.name === "Brutalis Dreadnought");
+  assert.equal(trukk.firingDeck.capacity, 12);
+  assert.equal(heavyWeapons.firingDeckModelCost, 2);
+  assert.equal(
+    firingDeckWeapons(boyz).some((weapon) => weapon.type !== "Ranged"),
+    false,
+  );
+
+  const selection = resolveAgentCatalogueSelection(
+    `attacker=${trukk.id}&passenger=${boyz.id}&weapon=59&firingDeckModels=12&target=${target.id}`,
+    catalogue,
+  );
+  assert.equal(selection.attacker.id, trukk.id);
+  assert.equal(selection.passenger.id, boyz.id);
+  assert.equal(selection.weapon.id, 59);
+  assert.equal(selection.firingDeck.modelCount, 12);
+  assert.equal(selection.firingDeck.slots, 12);
+
+  const heavySelection = resolveFiringDeckSelections(catalogue, trukk, [
+    {
+      passengerUnitId: heavyWeapons.id,
+      weaponId: heavyWeapons.weapons.find((weapon) => weapon.name === "Lascannon").id,
+      modelCount: 6,
+      unitAlreadyShot: false,
+    },
+  ]);
+  assert.equal(heavySelection.slots, 12);
+  assert.throws(
+    () =>
+      resolveAgentCatalogueSelection(
+        `attacker=${trukk.id}&passenger=${boyz.id}&weapon=59&firingDeckModels=13&target=${target.id}`,
+        catalogue,
+      ),
+    /allows 12/,
+  );
+  assert.throws(
+    () =>
+      resolveAgentCatalogueSelection(
+        `attacker=${trukk.id}&passenger=${boyz.id}&weapon=61&target=${target.id}`,
+        catalogue,
+      ),
+    /only ranged weapons/,
+  );
+  assert.throws(
+    () =>
+      resolveAgentCatalogueSelection(
+        `attacker=${trukk.id}&passenger=${boyz.id}&weapon=59&passengerAlreadyShot=true&target=${target.id}`,
+        catalogue,
+      ),
+    /already shot/,
+  );
+  assert.throws(
+    () =>
+      resolveAgentCatalogueSelection(
+        `attacker=${trukk.id}&passenger=${boyz.id}&weapon=59&firingDeckModels=2&weaponCount=3&target=${target.id}`,
+        catalogue,
+      ),
+    /must match firingDeckModels/,
+  );
+  const oneShotPassenger = catalogue.units.find((unit) =>
+    unit.weapons.some(
+      (weapon) =>
+        weapon.type === "Ranged" &&
+        weapon.abilities.some((ability) => ability.name.toLowerCase() === "one shot"),
+    ),
+  );
+  const oneShotWeapon = oneShotPassenger.weapons.find(
+    (weapon) =>
+      weapon.type === "Ranged" &&
+      weapon.abilities.some((ability) => ability.name.toLowerCase() === "one shot"),
+  );
+  assert.throws(
+    () =>
+      resolveFiringDeckSelections(catalogue, trukk, [
+        {
+          passengerUnitId: oneShotPassenger.id,
+          weaponId: oneShotWeapon.id,
+          modelCount: 1,
+        },
+      ]),
+    /One Shot/,
+  );
 });
 
 test("catalogue agent Oath state separates the Hit re-roll from the Codex Wound bonus", async () => {

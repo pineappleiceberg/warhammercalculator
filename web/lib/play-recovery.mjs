@@ -48,6 +48,18 @@ export function createPlayRecovery(state, savedAt = Date.now()) {
     }
     recovery[key] = [...new Set(ids)];
   }
+  const firingDeckModels = value.firingDeckModels ?? 1;
+  if (!Number.isSafeInteger(firingDeckModels) || firingDeckModels < 1 || firingDeckModels > 1000) {
+    throw new Error("firingDeckModels must be an integer from 1 to 1000");
+  }
+  if (
+    value.firingDeckPassengerAlreadyShot !== undefined &&
+    typeof value.firingDeckPassengerAlreadyShot !== "boolean"
+  ) {
+    throw new Error("firingDeckPassengerAlreadyShot must be true or false");
+  }
+  recovery.firingDeckModels = firingDeckModels;
+  recovery.firingDeckPassengerAlreadyShot = value.firingDeckPassengerAlreadyShot ?? false;
   const profile = object(value.profile, "profile must be an object");
   recovery.profile = {
     ...profile,

@@ -34,6 +34,7 @@ import {
   unitLoadoutWarnings,
 } from "../lib/loadout.mjs";
 import type { CatalogueCombatPreset } from "../lib/catalogue";
+import { resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
 
 interface Env {
   ASSETS: Fetcher;
@@ -60,7 +61,13 @@ type Catalogue = {
     factionId: string;
     name: string;
     models: unknown[];
-    weapons: Array<{ groupId: string }>;
+    weapons: Array<{
+      id: number;
+      name: string;
+      type: "Ranged" | "Melee";
+      groupId: string;
+      abilities: Array<{ name: string; value: string | null }>;
+    }>;
     composition: Array<{ text: string; min: number | null; max: number | null }>;
     compositionModels: Array<{ name: string; min: number; max: number; source: string }>;
     loadout: string;
@@ -114,6 +121,8 @@ type Catalogue = {
     suggestedModelCount: number | null;
     maximumModelCount: number | null;
     combatPresets: CatalogueCombatPreset[];
+    firingDeck: { capacity: number; abilityId: string | null } | null;
+    firingDeckModelCost: number;
   }>;
 };
 
@@ -788,6 +797,9 @@ async function handleApi(request: Request, env: Env) {
           weapons: "GET /api/v1/weapons?unit={datasheetId}",
           loadout: "GET /api/v1/loadout?unit={datasheetId}",
           validateLoadout: "POST /api/v1/validate-loadout",
+          firingDeck:
+            "GET /api/v1/firing-deck?unit={transportDatasheetId}&passenger={passengerDatasheetId}",
+          validateFiringDeck: "POST /api/v1/validate-firing-deck",
           targets: "GET /api/v1/targets?unit={datasheetId}",
           profiles: "GET /api/v1/profiles",
           calculate: "POST /api/v1/calculate",
@@ -866,6 +878,7 @@ async function handleApi(request: Request, env: Env) {
           modelProfileCount: unit.models.length,
           weaponProfileCount: unit.weapons.length,
           weaponGroupCount: new Set(unit.weapons.map((weapon) => weapon.groupId)).size,
+          firingDeck: unit.firingDeck,
           suggestedModelCount: unit.suggestedModelCount,
           maximumModelCount: unit.maximumModelCount,
         }));
@@ -891,9 +904,71 @@ async function handleApi(request: Request, env: Env) {
           wargearOptions: unit.wargearOptions,
           weaponLimits: unit.weaponLimits,
           wargearChoicePools: unit.wargearChoicePools,
+          firingDeck: unit.firingDeck,
+          firingDeckModelCost: unit.firingDeckModelCost,
           suggestedModelCount: unit.suggestedModelCount,
           maximumModelCount: unit.maximumModelCount,
           weapons: unit.weapons,
+        },
+        sourceUpdatedAt: catalogue.sourceUpdatedAt,
+      });
+    }
+
+    if (url.pathname === "/api/v1/firing-deck" && request.method === "GET") {
+      const unitId = url.searchParams.get("unit");
+      const passengerId = url.searchParams.get("passenger");
+      if (!unitId || !passengerId) {
+        return apiError("Missing required unit or passenger query parameter");
+      }
+      const catalogue = await loadCatalogue(request, env);
+      const transport = catalogue.units.find((entry) => entry.id === unitId);
+      if (!transport) return apiError("Transport not found", 404);
+      if (!transport.firingDeck) return apiError("Unit has no Firing Deck", 409);
+      const passenger = catalogue.units.find((entry) => entry.id === passengerId);
+      if (!passenger) return apiError("Passenger unit not found", 404);
+      if (passenger.id === transport.id) return apiError("A transport cannot be its own passenger");
+      return json({
+        data: {
+          transport: { id: transport.id, name: transport.name },
+          capacity: transport.firingDeck.capacity,
+          passenger: {
+            id: passenger.id,
+            name: passenger.name,
+            modelCost: passenger.firingDeckModelCost,
+            weapons: passenger.weapons.filter(
+              (weapon) =>
+                weapon.type === "Ranged" &&
+                !weapon.abilities.some((ability) => ability.name.toLowerCase() === "one shot"),
+            ),
+          },
+        },
+        sourceUpdatedAt: catalogue.sourceUpdatedAt,
+      });
+    }
+
+    if (url.pathname === "/api/v1/validate-firing-deck" && request.method === "POST") {
+      const body = (await request.json()) as { transportId?: unknown; selections?: unknown };
+      if (typeof body?.transportId !== "string" || !Array.isArray(body.selections)) {
+        return apiError("transportId and selections are required");
+      }
+      const catalogue = await loadCatalogue(request, env);
+      const transport = catalogue.units.find((entry) => entry.id === body.transportId);
+      if (!transport) return apiError("Transport not found", 404);
+      const result = resolveFiringDeckSelections(catalogue, transport, body.selections);
+      return json({
+        data: {
+          capacity: result.capacity,
+          slotsUsed: result.slots,
+          selections: result.selections.map((selection) => ({
+            passengerUnitId: selection.passengerUnitId,
+            passengerUnitName: selection.passengerUnitName,
+            weaponId: selection.weaponId,
+            weaponName: selection.weaponName,
+            modelCount: selection.modelCount,
+            modelCost: selection.modelCost,
+            slots: selection.slots,
+            bearerUnitId: transport.id,
+          })),
         },
         sourceUpdatedAt: catalogue.sourceUpdatedAt,
       });

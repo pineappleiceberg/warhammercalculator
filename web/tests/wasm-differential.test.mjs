@@ -50,6 +50,7 @@ import {
   weaponAllocationErrors,
   weaponLimitMaximum,
 } from "../lib/loadout.mjs";
+import { resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
 
 globalThis.require = createRequire(import.meta.url);
 globalThis.__dirname = dirname(fileURLToPath(import.meta.url));
@@ -71,6 +72,28 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._probability_distribution_is_normalized, "function");
   assert.equal(typeof calculator._attack_plan_is_valid, "function");
   assert.equal(typeof calculator._whc_estimate_ordered_volley_complexity, "function");
+});
+
+test("Firing Deck model selection scales the exact C/WebAssembly attack count", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const trukk = catalogue.units.find((unit) => unit.id === "000000026");
+  const boyz = catalogue.units.find((unit) => unit.id === "000000016");
+  const shoota = boyz.weapons.find((weapon) => weapon.name === "Shoota");
+  const oneModel = resolveFiringDeckSelections(catalogue, trukk, [
+    { passengerUnitId: boyz.id, weaponId: shoota.id, modelCount: 1 },
+  ]);
+  const twelveModels = resolveFiringDeckSelections(catalogue, trukk, [
+    { passengerUnitId: boyz.id, weaponId: shoota.id, modelCount: 12 },
+  ]);
+  assert.equal(oneModel.selections[0].weapon.id, twelveModels.selections[0].weapon.id);
+  assert.ok(
+    lessThanOrEqual(
+      exactMean({ attacks: 2, weaponCount: oneModel.selections[0].modelCount }),
+      exactMean({ attacks: 2, weaponCount: twelveModels.selections[0].modelCount }),
+    ),
+  );
 });
 
 test("signed characteristic modifiers use per-weapon floors in C/Wasm", () => {

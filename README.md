@@ -224,6 +224,16 @@ total. These inputs resolve On Da Hunt for the Hunta Rig with its +6 cap and
 Visions of Butchery for the Raider without treating non-Wracks passengers as
 Wracks.
 
+Firing Deck transports expose their published model limit. Model vs Model and
+Unit vs Unit can select an explicit passenger datasheet, one ranged weapon, and
+the number of embarked models using it; Play Mode selects the passenger from
+the attacking saved list. Melee and One Shot weapons are excluded, a passenger
+unit that has already shot is rejected, and Heavy Weapons Squad-style weapons
+consume two Firing Deck model slots. The selected weapon keeps its own profile
+and weapon abilities, but the transport is the bearer: transport combat rules
+apply and passenger unit rules do not transfer. Counts remain editable within
+the published Firing Deck limit.
+
 Direct attack clauses that require a Battle-shocked target, or require the
 attacker not to be Battle-shocked, use the editable `targetBattleShocked` and
 `attackerBattleShocked` states. The source-backed rule activates only in the
@@ -524,6 +534,7 @@ expression such as `D6+2`. Optional parameters include `weaponCount`, `model`,
 `melta`, `distance` (in inches; `0` means unknown), `charged`, `stationary`,
 `unitModels`, `nearbyEnemyModels`, `embarkedModels` (alias `passengers`),
 `embarkedWracksModels` (alias `wrackPassengers`),
+`passenger`, `firingDeckModels`, and `passengerAlreadyShot`,
 `attackerAttached`, `targetAttached`,
 `waaaghActive` (alias for `attackerWaaaghActive`), `targetWaaaghActive`,
 `oathTarget` (alias for `targetOathOfMoment`),
@@ -576,6 +587,17 @@ source reports `usesPerBattle` for selected limited support presets.
 `embarkedWracksModels` activate exact model-count-scaled Attacks bonuses at
 their published rounding boundaries; `0` means unknown. Embarked Wracks must
 be a subset of all embarked models.
+For a catalogue Firing Deck request, keep `attacker` set to the transport, set
+`passenger` to the embarked datasheet, and select that passenger's weapon. For
+example:
+
+```text
+/agent/?attacker=Trukk&passenger=Boyz&weapon=Shoota&firingDeckModels=6&target=Intercessor%20Squad
+```
+
+The result identifies the transport as bearer and reports the slots consumed.
+`weaponCount`, when supplied, must equal `firingDeckModels` so a structural
+limit cannot be bypassed through a profile override.
 `stationary=true` likewise activates exact stationary rules and the Heavy bonus
 for compatible catalogue weapons.
 `attackerAttached=true` and `targetAttached=true` likewise activate compatible,
@@ -625,6 +647,13 @@ storage. A healthy response is HTTP 200 with `status: "ok"`; a dependency
 failure is HTTP 503 with `status: "degraded"` and a stable failure code for each
 failed check. Failed catalogue and calculator loads are evicted from the worker
 cache so a recovered dependency can be retried without restarting the service.
+
+`GET /api/v1/firing-deck?unit={transportId}&passenger={passengerId}` discovers
+that passenger's eligible ranged weapons and slot cost. `POST
+/api/v1/validate-firing-deck` validates one or more explicit passenger/model/
+weapon selections, the aggregate Firing Deck limit, phase eligibility, and
+returns the transport bearer ID before clients build exact or simulated volley
+profiles.
 
 API errors include a stable `code`, `retryable` flag, and `X-Request-ID` response
 header. In particular, list-database failures return 503

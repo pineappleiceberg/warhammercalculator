@@ -146,7 +146,10 @@ if(WHC_BUILD_FUZZER)
         add_test(NAME warhammercalculator_fuzz_smoke
             COMMAND warhammercalculator_fuzz -runs=2000 -max_len=128 -timeout=20 -seed=1
         )
-        set_tests_properties(warhammercalculator_fuzz_smoke PROPERTIES TIMEOUT 300)
+        set_tests_properties(warhammercalculator_fuzz_smoke PROPERTIES
+            TIMEOUT 300
+            ENVIRONMENT "ASAN_OPTIONS=abort_on_error=1"
+        )
     endif()
 endif()
 
