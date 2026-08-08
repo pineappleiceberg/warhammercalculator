@@ -213,7 +213,8 @@ def export(database: Path, output: Path) -> None:
         exclusions: dict[str, list[dict]] = {}
         for row in connection.execute(
             """SELECT datasheet_id, group_position, minimum_wounds,
-                      requires_non_character
+                      requires_non_character, exception_required_passenger_keyword,
+                      exception_forbidden_attached_keyword
                FROM unit_transport_exclusion_groups
                ORDER BY datasheet_id, group_position"""
         ):
@@ -224,6 +225,18 @@ def export(database: Path, output: Path) -> None:
                     ),
                     "minimumWounds": row["minimum_wounds"],
                     "nonCharacter": bool(row["requires_non_character"]),
+                    "attachmentException": (
+                        {
+                            "requiredPassengerKeyword": row[
+                                "exception_required_passenger_keyword"
+                            ],
+                            "forbiddenAttachedKeyword": row[
+                                "exception_forbidden_attached_keyword"
+                            ],
+                        }
+                        if row["exception_required_passenger_keyword"] is not None
+                        else None
+                    ),
                 }
             )
         model_costs: dict[str, list[dict]] = {}

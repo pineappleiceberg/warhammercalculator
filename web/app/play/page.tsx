@@ -422,6 +422,12 @@ export default function PlayMode() {
     const nextPassengerCatalogueUnit = catalogue?.units.find(
       (entry) => entry.id === nextPassengerArmyUnit?.unitId,
     );
+    const nextAttachedArmyUnit = attackerList?.units.find(
+      (entry) => entry.id === nextPassengerArmyUnit?.attachedToId,
+    );
+    const nextAttachedCatalogueUnit = catalogue?.units.find(
+      (entry) => entry.id === nextAttachedArmyUnit?.unitId,
+    );
     const weaponSourceArmyUnit = nextPassengerArmyUnit ?? attackerUnit;
     const weaponSourceCatalogueUnit = nextFiringDeckChoice
       ? nextPassengerCatalogueUnit
@@ -460,6 +466,7 @@ export default function PlayMode() {
       const selectedModels = nextWeaponId === weaponId ? firingDeckModels : maximumModels;
       resolveFiringDeckSelection(catalogue, attackerCatalogueUnit, {
         passengerUnitId: nextPassengerCatalogueUnit?.id,
+        attachedUnitId: nextAttachedCatalogueUnit?.id,
         weaponId: weapon.id,
         modelCount: selectedModels,
         unitAlreadyShot: false,

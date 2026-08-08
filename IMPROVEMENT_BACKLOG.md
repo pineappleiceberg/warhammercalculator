@@ -16,16 +16,29 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Normalize the remaining compound Transport clauses: attached Tacticus
-   Character exceptions, mixed Infantry/Vehicle capacity pools, variable
-   Wounds-based Vehicle space, and per-model costs in mixed-composition units.
-   Add explicit attachment and model-composition formation state where exact
-   evaluation requires it.
+1. Normalize the remaining compound Transport clauses: mixed Infantry/Vehicle
+   capacity pools, nested transported Vehicles, variable Wounds-based Vehicle
+   space, and per-model costs in mixed-composition units. Add explicit
+   model-composition formation state where exact evaluation requires it, and
+   normalize Leader eligibility so declared attachment links can be audited.
 2. Extend normalized defensive-equipment selection to Model vs Model and Play
    Mode while preserving model-by-model allocation and preventing bearer-only
    gear from becoming a homogeneous unit-wide defense.
 
 ## Completed cycles
+
+- 2026-08-08: Added exact attached-Tacticus Transport exceptions. SQLite schema
+  55 normalizes the published Character/non-Tacticus attachment condition for
+  nine Rhino, Razorback, and Terrax datasheets, increasing exact Transport
+  coverage from 137 to 146 rows and from 60 to all 61 Firing Deck transports.
+  Army Lists persists an explicit Character-to-bodyguard link, rejects missing
+  and circular links, and requires both parts of an Attached unit to embark in
+  the same transport and remain collectively legal. Model vs Model, Unit vs
+  Unit, Play Mode, static agent URLs, and both Transport APIs accept the same
+  attachment context; no-context and Tacticus-bodyguard cases remain excluded.
+  Exact parser, database/catalogue snapshots, legal and illegal bodyguard
+  boundaries, Firing Deck resolution, aggregate assignment, persistence, URL,
+  API, and rendered workflow tests cover the change.
 
 - 2026-08-08: Added source-backed Transport assignments and legal Firing Deck
   passengers. SQLite schema 54 retains the exact Transport paragraph for 178

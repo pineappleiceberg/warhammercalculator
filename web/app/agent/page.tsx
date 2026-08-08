@@ -397,6 +397,9 @@ export default function AgentCalculator() {
                     id: selection.passenger?.id,
                     name: selection.passenger?.name,
                   },
+                  attached: selection.attached
+                    ? { id: selection.attached.id, name: selection.attached.name }
+                    : null,
                   bearer: { id: selection.attacker.id, name: selection.attacker.name },
                 }
               : null,

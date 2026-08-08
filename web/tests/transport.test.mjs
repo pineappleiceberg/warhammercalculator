@@ -129,3 +129,109 @@ test("equipped capacity modifiers and circular assignments are deterministic", (
   });
   assert.ok(report.errors.every((error) => /circular/i.test(error)));
 });
+
+test("Tacticus Characters use the published non-Tacticus attachment exception", () => {
+  const rhino = unit("Rhino", "000002723");
+  const captain = unit("Captain", "000000073");
+  const tacticalSquad = unit("Tactical Squad", "000000070");
+  const intercessors = unit("Intercessor Squad", "000001157");
+  assert.equal(rhino.transport.exactRules, true);
+  assert.equal(transportPassengerEligibility(rhino, captain).eligible, false);
+  assert.equal(
+    transportPassengerEligibility(rhino, captain, { attachedUnit: tacticalSquad }).eligible,
+    true,
+  );
+  assert.equal(
+    transportPassengerEligibility(rhino, captain, { attachedUnit: intercessors }).eligible,
+    false,
+  );
+  assert.match(
+    transportPassengerEligibility(rhino, captain, { attachedUnit: captain }).reason,
+    /itself/i,
+  );
+  assert.match(
+    transportPassengerEligibility(rhino, captain, { attachedUnit: unit("Boyz") }).reason,
+    /same faction/i,
+  );
+
+  const rangedWeapon = captain.weapons.find((weapon) => weapon.type === "Ranged");
+  const firingDeck = resolveFiringDeckSelection(catalogue, rhino, {
+    passengerUnitId: captain.id,
+    attachedUnitId: tacticalSquad.id,
+    weaponId: rangedWeapon.id,
+    modelCount: 1,
+  });
+  assert.equal(firingDeck.attachedUnitId, tacticalSquad.id);
+
+  const formation = {
+    units: [
+      { id: "rhino", unitId: rhino.id, name: rhino.name, modelCount: 1, weapons: [] },
+      {
+        id: "captain",
+        unitId: captain.id,
+        name: captain.name,
+        modelCount: 1,
+        weapons: [],
+        attachedToId: "tactical",
+        transportId: "rhino",
+      },
+      {
+        id: "tactical",
+        unitId: tacticalSquad.id,
+        name: tacticalSquad.name,
+        modelCount: 10,
+        weapons: [],
+        transportId: "rhino",
+      },
+    ],
+  };
+  const legal = transportAssignmentReport(catalogue, formation);
+  assert.deepEqual(legal.errors, []);
+  assert.equal(legal.assignments.length, 2);
+  assert.equal(legal.slotsByTransport.get("rhino"), 11);
+
+  const splitFormation = transportAssignmentReport(catalogue, {
+    ...formation,
+    units: formation.units.map((entry) =>
+      entry.id === "tactical" ? { ...entry, transportId: undefined } : entry,
+    ),
+  });
+  assert.match(splitFormation.errors[0], /must embark in the same Transport/i);
+  assert.deepEqual(splitFormation.assignments, []);
+
+  const missingAttachment = transportAssignmentReport(catalogue, {
+    units: [
+      {
+        id: "captain",
+        unitId: captain.id,
+        name: captain.name,
+        modelCount: 1,
+        weapons: [],
+        attachedToId: "missing",
+      },
+    ],
+  });
+  assert.match(missingAttachment.errors[0], /not in this list/i);
+
+  const circularAttachment = transportAssignmentReport(catalogue, {
+    units: [
+      {
+        id: "captain",
+        unitId: captain.id,
+        name: captain.name,
+        modelCount: 1,
+        weapons: [],
+        attachedToId: "tactical",
+      },
+      {
+        id: "tactical",
+        unitId: tacticalSquad.id,
+        name: tacticalSquad.name,
+        modelCount: 10,
+        weapons: [],
+        attachedToId: "captain",
+      },
+    ],
+  });
+  assert.ok(circularAttachment.errors.every((error) => /circular attachment/i.test(error)));
+});

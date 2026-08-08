@@ -27,7 +27,10 @@ import {
   selectedAndAutomaticCombatPresets,
 } from "../lib/combat-presets.mjs";
 import { firingDeckWeapons, resolveFiringDeckSelection } from "../lib/firing-deck.mjs";
-import { transportPassengerEligibility } from "../lib/transport.mjs";
+import {
+  transportPassengerAttachmentOptions,
+  transportPassengerCanEmbark,
+} from "../lib/transport.mjs";
 
 type Result = {
   minimum: number;
@@ -105,6 +108,7 @@ type SharedMatchup = {
   attackerUnit: string;
   attackerWeapon: string;
   firingDeckPassenger?: string;
+  firingDeckAttached?: string;
   firingDeckModels?: number;
   targetFaction: string;
   targetUnit: string;
@@ -142,6 +146,8 @@ function decodeMatchup(encoded: string): SharedMatchup {
   const targetSupportPresetIds = parsed.targetSupportPresetIds ?? [];
   const firingDeckPassenger =
     parsed.firingDeckPassenger === undefined ? "" : selection("firingDeckPassenger");
+  const firingDeckAttached =
+    parsed.firingDeckAttached === undefined ? "" : selection("firingDeckAttached");
   const firingDeckModels = parsed.firingDeckModels ?? 1;
   if (
     !Number.isSafeInteger(firingDeckModels) ||
@@ -171,6 +177,7 @@ function decodeMatchup(encoded: string): SharedMatchup {
     attackerUnit: selection("attackerUnit"),
     attackerWeapon: selection("attackerWeapon"),
     firingDeckPassenger,
+    firingDeckAttached,
     firingDeckModels: Number(firingDeckModels),
     targetFaction: selection("targetFaction"),
     targetUnit: selection("targetUnit"),
@@ -801,6 +808,7 @@ export default function Home() {
   const [attackerUnit, setAttackerUnit] = useState("");
   const [attackerWeapon, setAttackerWeapon] = useState("");
   const [firingDeckPassenger, setFiringDeckPassenger] = useState("");
+  const [firingDeckAttached, setFiringDeckAttached] = useState("");
   const [firingDeckModels, setFiringDeckModels] = useState(1);
   const [targetFaction, setTargetFaction] = useState("");
   const [targetUnit, setTargetUnit] = useState("");
@@ -832,6 +840,7 @@ export default function Home() {
         setAttackerUnit(shared.attackerUnit);
         setAttackerWeapon(shared.attackerWeapon);
         setFiringDeckPassenger(shared.firingDeckPassenger ?? "");
+        setFiringDeckAttached(shared.firingDeckAttached ?? "");
         setFiringDeckModels(shared.firingDeckModels ?? 1);
         setTargetFaction(shared.targetFaction);
         setTargetUnit(shared.targetUnit);
@@ -904,10 +913,15 @@ export default function Home() {
       (unit) =>
         unit.id !== selectedAttackerUnit?.id &&
         firingDeckWeapons(unit).length > 0 &&
-        transportPassengerEligibility(selectedAttackerUnit, unit).eligible,
+        transportPassengerCanEmbark(catalogue, selectedAttackerUnit, unit),
     ) ?? [];
   const selectedFiringDeckPassenger = firingDeckPassengerUnits.find(
     (unit) => unit.id === firingDeckPassenger,
+  );
+  const firingDeckAttachmentOptions = transportPassengerAttachmentOptions(
+    catalogue,
+    selectedAttackerUnit,
+    selectedFiringDeckPassenger,
   );
   const supportUnits = useMemo(
     () => catalogue?.units.filter((unit) => unit.factionId === attackerFaction) ?? [],
@@ -1271,6 +1285,7 @@ export default function Home() {
     if (selectedFiringDeckPassenger && selectedAttackerUnit && catalogue) {
       resolveFiringDeckSelection(catalogue, selectedAttackerUnit, {
         passengerUnitId: selectedFiringDeckPassenger.id,
+        attachedUnitId: firingDeckAttached || undefined,
         weaponId: weapon.id,
         modelCount: firingDeckModels,
         unitAlreadyShot: false,
@@ -1441,6 +1456,7 @@ export default function Home() {
       attackerUnit,
       attackerWeapon,
       firingDeckPassenger,
+      firingDeckAttached,
       firingDeckModels,
       targetFaction,
       targetUnit,
@@ -1492,6 +1508,7 @@ export default function Home() {
               setSupportUnitId("");
               setActiveSupportPresetIds([]);
               setFiringDeckPassenger("");
+              setFiringDeckAttached("");
               setFiringDeckModels(1);
             }}
           >
@@ -1523,6 +1540,7 @@ export default function Home() {
                       setAttackerUnit("");
                       setAttackerWeapon("");
                       setFiringDeckPassenger("");
+                      setFiringDeckAttached("");
                       setFiringDeckModels(1);
                       setActiveAttackerPresetIds([]);
                       setSupportUnitId("");
@@ -1579,6 +1597,7 @@ export default function Home() {
                       setAttackerUnit(event.target.value);
                       setAttackerWeapon("");
                       setFiringDeckPassenger("");
+                      setFiringDeckAttached("");
                       setFiringDeckModels(1);
                       setActiveAttackerPresetIds([]);
                       setSupportUnitId("");
@@ -1634,6 +1653,7 @@ export default function Home() {
                       value={firingDeckPassenger}
                       onChange={(event) => {
                         setFiringDeckPassenger(event.target.value);
+                        setFiringDeckAttached("");
                         setFiringDeckModels(1);
                         setAttackerWeapon("");
                       }}
@@ -1642,6 +1662,26 @@ export default function Home() {
                       {firingDeckPassengerUnits.map((unit) => (
                         <option key={unit.id} value={unit.id}>
                           Firing Deck · {unit.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {selectedFiringDeckPassenger && firingDeckAttachmentOptions.length > 0 && (
+                  <label>
+                    <span>Passenger attached to</span>
+                    <select
+                      aria-label="Firing Deck attached unit"
+                      value={firingDeckAttached}
+                      onChange={(event) => {
+                        setFiringDeckAttached(event.target.value);
+                        setAttackerWeapon("");
+                      }}
+                    >
+                      <option value="">Choose attached unit</option>
+                      {firingDeckAttachmentOptions.map((unit) => (
+                        <option key={unit.id} value={unit.id}>
+                          {unit.name}
                         </option>
                       ))}
                     </select>
@@ -1679,7 +1719,10 @@ export default function Home() {
                   <span>Weapon</span>
                   <select
                     value={attackerWeapon}
-                    disabled={!selectedAttackerUnit}
+                    disabled={
+                      !selectedAttackerUnit ||
+                      (firingDeckAttachmentOptions.length > 0 && !firingDeckAttached)
+                    }
                     onChange={(event) => {
                       setAttackerWeapon(event.target.value);
                       const weapon = (

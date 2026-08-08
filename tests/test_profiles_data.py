@@ -86,6 +86,33 @@ class ProfileDataTests(unittest.TestCase):
                 vocabulary,
             )["exact"]
         )
+        tacticus = parse_transport_rule(
+            "This model has a transport capacity of 12 Adeptus Astartes Infantry models. "
+            "It cannot transport Jump Pack, Terminator or Tacticus models (excluding "
+            "Tacticus Character models that began the battle attached to a non- Tacticus unit).",
+            {
+                normalized_term(value)
+                for value in (
+                    "Adeptus Astartes",
+                    "Infantry",
+                    "Jump Pack",
+                    "Terminator",
+                    "Tacticus",
+                    "Character",
+                )
+            },
+        )
+        self.assertTrue(tacticus["exact"])
+        exception = next(
+            group for group in tacticus["excluded"] if group["keywords"] == ["tacticus"]
+        )["attachmentException"]
+        self.assertEqual(
+            exception,
+            {
+                "requiredPassengerKeyword": "character",
+                "forbiddenAttachedKeyword": "tacticus",
+            },
+        )
 
     def test_combat_guidance_classifies_exact_non_self_support_auras(self):
         taskmaster = combat_guidance_presets(
@@ -1708,7 +1735,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "54",
+                "55",
             )
             self.assertEqual(
                 connection.execute("SELECT count(*) FROM unit_firing_deck").fetchone()[
@@ -1730,7 +1757,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT count(*) FROM unit_transport WHERE exact_rules = 1"
                 ).fetchone()[0],
-                137,
+                146,
             )
             self.assertEqual(
                 connection.execute(
@@ -1739,7 +1766,7 @@ class ProfileDataTests(unittest.TestCase):
                        JOIN unit_firing_deck AS deck USING (datasheet_id)
                        WHERE transport.exact_rules = 1"""
                 ).fetchone()[0],
-                60,
+                61,
             )
             self.assertEqual(
                 connection.execute(
@@ -1769,6 +1796,22 @@ class ProfileDataTests(unittest.TestCase):
                        WHERE datasheet_id = '000000026'"""
                 ).fetchall(),
                 [(2,)],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT transport.exact_rules,
+                              exclusions.exception_required_passenger_keyword,
+                              exclusions.exception_forbidden_attached_keyword
+                       FROM unit_transport AS transport
+                       JOIN unit_transport_exclusion_groups AS exclusions
+                         ON exclusions.datasheet_id = transport.datasheet_id
+                       JOIN unit_transport_exclusion_keywords AS keywords
+                         ON keywords.datasheet_id = exclusions.datasheet_id
+                        AND keywords.group_position = exclusions.group_position
+                       WHERE transport.datasheet_id = '000002723'
+                         AND keywords.keyword = 'tacticus'"""
+                ).fetchone(),
+                (1, "character", "tacticus"),
             )
             self.assertEqual(
                 connection.execute(
@@ -3586,6 +3629,20 @@ class ProfileDataTests(unittest.TestCase):
         self.assertIn("mega armour", trukk["transport"]["modelCosts"][0]["keywords"])
         boyz = next(unit for unit in catalogue["units"] if unit["name"] == "Boyz")
         self.assertIn("boss nob", boyz["transportKeywords"])
+        rhino = next(unit for unit in catalogue["units"] if unit["id"] == "000002723")
+        self.assertTrue(rhino["transport"]["exactRules"])
+        tacticus_exclusion = next(
+            exclusion
+            for exclusion in rhino["transport"]["excluded"]
+            if exclusion["keywords"] == ["tacticus"]
+        )
+        self.assertEqual(
+            tacticus_exclusion["attachmentException"],
+            {
+                "requiredPassengerKeyword": "character",
+                "forbiddenAttachedKeyword": "tacticus",
+            },
+        )
         waaagh = [
             preset
             for preset in boyz["combatPresets"]

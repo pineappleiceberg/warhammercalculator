@@ -24,6 +24,7 @@ export type ArmyListUnit = {
   loadoutSubjectCounts?: Record<string, number>;
   combatPresetIds?: string[];
   transportId?: string;
+  attachedToId?: string;
 };
 
 export type ArmyListInput = {

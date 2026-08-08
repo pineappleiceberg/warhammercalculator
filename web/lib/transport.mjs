@@ -40,7 +40,7 @@ export function transportCapacity(transport, armyUnit) {
   );
 }
 
-export function transportPassengerEligibility(transport, passenger) {
+export function transportPassengerEligibility(transport, passenger, context = {}) {
   if (!transport?.transport) {
     return { eligible: false, reason: `${transport?.name ?? "Selected unit"} is not a Transport` };
   }
@@ -51,6 +51,12 @@ export function transportPassengerEligibility(transport, passenger) {
     };
   }
   if (!passenger) return { eligible: false, reason: "Passenger profile was not found" };
+  if (context.attachedUnit?.id === passenger.id) {
+    return { eligible: false, reason: "A passenger cannot be attached to itself" };
+  }
+  if (context.attachedUnit && context.attachedUnit.factionId !== passenger.factionId) {
+    return { eligible: false, reason: "Passenger and attached unit must have the same faction" };
+  }
   if (transport.id === passenger.id) {
     return { eligible: false, reason: "A Transport cannot embark itself" };
   }
@@ -68,7 +74,14 @@ export function transportPassengerEligibility(transport, passenger) {
     const woundsMatch =
       exclusion.minimumWounds === null || wounds >= Number(exclusion.minimumWounds);
     const characterMatch = !exclusion.nonCharacter || !keywords.has("character");
-    if (keywordMatch && woundsMatch && characterMatch) {
+    const exception = exclusion.attachmentException;
+    const attachedKeywords = context.attachedUnit ? keywordSet(context.attachedUnit) : null;
+    const attachmentExceptionSatisfied =
+      exception &&
+      attachedKeywords &&
+      keywords.has(normalized(exception.requiredPassengerKeyword)) &&
+      !attachedKeywords.has(normalized(exception.forbiddenAttachedKeyword));
+    if (keywordMatch && woundsMatch && characterMatch && !attachmentExceptionSatisfied) {
       return {
         eligible: false,
         reason: `${passenger.name} matches a published exclusion for ${transport.name}`,
@@ -89,14 +102,66 @@ export function transportPassengerEligibility(transport, passenger) {
   return { eligible: true, reason: "", modelCost };
 }
 
+export function transportPassengerAttachmentOptions(catalogue, transport, passenger) {
+  if (transportPassengerEligibility(transport, passenger).eligible) return [];
+  return (catalogue?.units ?? []).filter(
+    (attachedUnit) =>
+      attachedUnit.id !== passenger?.id &&
+      attachedUnit.factionId === passenger?.factionId &&
+      transportPassengerEligibility(transport, passenger, { attachedUnit }).eligible,
+  );
+}
+
+export function transportPassengerCanEmbark(catalogue, transport, passenger) {
+  return (
+    transportPassengerEligibility(transport, passenger).eligible ||
+    transportPassengerAttachmentOptions(catalogue, transport, passenger).length > 0
+  );
+}
+
 export function transportAssignmentReport(catalogue, armyList) {
   const catalogueUnits = new Map((catalogue?.units ?? []).map((unit) => [unit.id, unit]));
   const savedUnits = new Map((armyList?.units ?? []).map((unit) => [unit.id, unit]));
   const assignments = [];
   const errors = [];
   const slotsByTransport = new Map();
+  const invalidFormationUnits = new Set();
+  for (const unit of armyList?.units ?? []) {
+    if (!unit.attachedToId) continue;
+    const attachedUnit = savedUnits.get(unit.attachedToId);
+    if (!attachedUnit) {
+      errors.push(`${unit.name} references an attached unit that is not in this list`);
+      invalidFormationUnits.add(unit.id);
+      continue;
+    }
+    if (attachedUnit.id === unit.id) {
+      errors.push(`${unit.name} cannot be attached to itself`);
+      invalidFormationUnits.add(unit.id);
+      continue;
+    }
+    const seen = new Set([unit.id]);
+    let nextAttachedId = unit.attachedToId;
+    while (nextAttachedId) {
+      if (seen.has(nextAttachedId)) {
+        errors.push(`${unit.name} is part of a circular attachment`);
+        invalidFormationUnits.add(unit.id);
+        break;
+      }
+      seen.add(nextAttachedId);
+      nextAttachedId = savedUnits.get(nextAttachedId)?.attachedToId;
+    }
+    if (
+      unit.transportId !== attachedUnit.transportId &&
+      (unit.transportId || attachedUnit.transportId)
+    ) {
+      errors.push(`${unit.name} and ${attachedUnit.name} must embark in the same Transport`);
+      invalidFormationUnits.add(unit.id);
+      invalidFormationUnits.add(attachedUnit.id);
+    }
+  }
   for (const passengerUnit of armyList?.units ?? []) {
     if (!passengerUnit.transportId) continue;
+    if (invalidFormationUnits.has(passengerUnit.id)) continue;
     const seen = new Set([passengerUnit.id]);
     let nextTransportId = passengerUnit.transportId;
     let cyclic = false;
@@ -121,7 +186,11 @@ export function transportAssignmentReport(catalogue, armyList) {
     }
     const transport = catalogueUnits.get(transportUnit.unitId);
     const passenger = catalogueUnits.get(passengerUnit.unitId);
-    const eligibility = transportPassengerEligibility(transport, passenger);
+    const attachedUnit = savedUnits.get(passengerUnit.attachedToId);
+    const attached = catalogueUnits.get(attachedUnit?.unitId);
+    const eligibility = transportPassengerEligibility(transport, passenger, {
+      attachedUnit: attached,
+    });
     if (!eligibility.eligible) {
       errors.push(eligibility.reason);
       continue;
@@ -138,6 +207,26 @@ export function transportAssignmentReport(catalogue, armyList) {
     assignments.push(assignment);
     slotsByTransport.set(transportUnit.id, (slotsByTransport.get(transportUnit.id) ?? 0) + slots);
   }
+  const incompleteAttachments = new Set();
+  const assignedUnitIds = new Set(assignments.map((assignment) => assignment.passengerUnit.id));
+  for (const unit of armyList?.units ?? []) {
+    if (!unit.attachedToId || !unit.transportId) continue;
+    if (!assignedUnitIds.has(unit.id) || !assignedUnitIds.has(unit.attachedToId)) {
+      errors.push(`${unit.name}'s attached unit cannot embark as a complete unit`);
+      incompleteAttachments.add(unit.id);
+      incompleteAttachments.add(unit.attachedToId);
+    }
+  }
+  const completeAssignments = assignments.filter(
+    (assignment) => !incompleteAttachments.has(assignment.passengerUnit.id),
+  );
+  slotsByTransport.clear();
+  for (const assignment of completeAssignments) {
+    slotsByTransport.set(
+      assignment.transportUnit.id,
+      (slotsByTransport.get(assignment.transportUnit.id) ?? 0) + assignment.slots,
+    );
+  }
   const overCapacity = new Set();
   for (const transportUnit of armyList?.units ?? []) {
     const transport = catalogueUnits.get(transportUnit.unitId);
@@ -150,7 +239,9 @@ export function transportAssignmentReport(catalogue, armyList) {
     }
   }
   return {
-    assignments: assignments.filter((assignment) => !overCapacity.has(assignment.transportUnit.id)),
+    assignments: completeAssignments.filter(
+      (assignment) => !overCapacity.has(assignment.transportUnit.id),
+    ),
     errors,
     slotsByTransport,
   };

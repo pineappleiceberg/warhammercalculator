@@ -364,6 +364,10 @@ CREATE TABLE unit_transport_exclusion_groups (
     group_position INTEGER NOT NULL CHECK (group_position >= 1),
     minimum_wounds INTEGER CHECK (minimum_wounds > 0),
     requires_non_character INTEGER NOT NULL CHECK (requires_non_character IN (0, 1)),
+    exception_required_passenger_keyword TEXT,
+    exception_forbidden_attached_keyword TEXT,
+    CHECK ((exception_required_passenger_keyword IS NULL) =
+           (exception_forbidden_attached_keyword IS NULL)),
     PRIMARY KEY (datasheet_id, group_position)
 ) WITHOUT ROWID;
 
@@ -3492,13 +3496,21 @@ def populate_transports(connection: sqlite3.Connection) -> tuple[int, int]:
         for group_position, group in enumerate(rules["excluded"], start=1):
             connection.execute(
                 """INSERT INTO unit_transport_exclusion_groups
-                   (datasheet_id, group_position, minimum_wounds, requires_non_character)
-                   VALUES (?, ?, ?, ?)""",
+                   (datasheet_id, group_position, minimum_wounds, requires_non_character,
+                    exception_required_passenger_keyword,
+                    exception_forbidden_attached_keyword)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     group_position,
                     group["minimumWounds"],
                     int(group["nonCharacter"]),
+                    (group.get("attachmentException") or {}).get(
+                        "requiredPassengerKeyword"
+                    ),
+                    (group.get("attachmentException") or {}).get(
+                        "forbiddenAttachedKeyword"
+                    ),
                 ),
             )
             connection.executemany(
@@ -3681,7 +3693,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "54"),
+                    ("schema_version", "55"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

@@ -440,6 +440,25 @@ test("Firing Deck catalogue requests enforce selection limits and transport bear
   assert.equal(selection.firingDeck.modelCount, 12);
   assert.equal(selection.firingDeck.slots, 12);
 
+  const rhino = catalogue.units.find((unit) => unit.id === "000002723");
+  const captain = catalogue.units.find((unit) => unit.id === "000000073");
+  const tacticalSquad = catalogue.units.find((unit) => unit.id === "000000070");
+  const captainWeapon = captain.weapons.find((weapon) => weapon.type === "Ranged");
+  assert.throws(
+    () =>
+      resolveAgentCatalogueSelection(
+        `attacker=${rhino.id}&passenger=${captain.id}&weapon=${captainWeapon.id}&target=${target.id}`,
+        catalogue,
+      ),
+    /exclusion/i,
+  );
+  const attachedSelection = resolveAgentCatalogueSelection(
+    `attacker=${rhino.id}&passenger=${captain.id}&attached=${tacticalSquad.id}&weapon=${captainWeapon.id}&target=${target.id}`,
+    catalogue,
+  );
+  assert.equal(attachedSelection.attached.id, tacticalSquad.id);
+  assert.equal(attachedSelection.firingDeck.attachedUnitId, tacticalSquad.id);
+
   const heavySelection = resolveFiringDeckSelections(catalogue, stormlord, [
     {
       passengerUnitId: heavyWeapons.id,

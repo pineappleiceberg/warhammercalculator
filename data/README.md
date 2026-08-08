@@ -23,7 +23,9 @@ The main tables are:
   coverage state; its allowed-keyword, exclusion, model-cost, and conditional-
   capacity child tables retain normalized OR/AND groups, Wounds thresholds,
   non-Character exclusions, fixed space costs, and equipped-wargear capacity
-  changes
+  changes. Exclusion rows can additionally require a Character passenger to be
+  attached to a unit without a named keyword, preserving the exact Tacticus
+  exception instead of weakening the exclusion globally
 - `unit_combat_presets` and `unit_combat_preset_effects` for conservatively
   extracted Hit/Wound modifiers, re-roll modes, weapon-keyword grants, AP
   changes, Critical Hit/Wound thresholds, direct signed Attacks, Strength, and

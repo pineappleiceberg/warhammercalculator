@@ -28,7 +28,18 @@ export function resolveFiringDeckSelection(catalogue, transport, candidate) {
   }
   const passenger = itemById(catalogue.units, candidate.passengerUnitId, "Passenger unit");
   if (passenger.id === transport.id) throw new Error("A transport cannot be its own passenger");
-  const transportEligibility = transportPassengerEligibility(transport, passenger);
+  const attachedUnit = candidate.attachedUnitId
+    ? itemById(catalogue.units, candidate.attachedUnitId, "Attached unit")
+    : null;
+  if (attachedUnit?.id === passenger.id) {
+    throw new Error("A passenger cannot be attached to itself");
+  }
+  if (attachedUnit && attachedUnit.factionId !== passenger.factionId) {
+    throw new Error("Passenger and attached unit must have the same faction");
+  }
+  const transportEligibility = transportPassengerEligibility(transport, passenger, {
+    attachedUnit,
+  });
   if (!transportEligibility.eligible) throw new Error(transportEligibility.reason);
   const weapon = itemById(passenger.weapons, candidate.weaponId, "Passenger weapon");
   if (weapon.type !== "Ranged") throw new Error("Firing Deck can select only ranged weapons");
@@ -52,6 +63,8 @@ export function resolveFiringDeckSelection(catalogue, transport, candidate) {
   return {
     passengerUnitId: passenger.id,
     passengerUnitName: passenger.name,
+    attachedUnitId: attachedUnit?.id ?? null,
+    attachedUnitName: attachedUnit?.name ?? null,
     weaponId: weapon.id,
     weaponName: weapon.name,
     modelCount,
@@ -87,6 +100,8 @@ export function firingDeckWeaponLines(catalogue, transport, candidates) {
       firingDeck: {
         passengerUnitId: selection.passengerUnitId,
         passengerUnitName: selection.passengerUnitName,
+        attachedUnitId: selection.attachedUnitId,
+        attachedUnitName: selection.attachedUnitName,
         modelCost: selection.modelCost,
       },
     }),

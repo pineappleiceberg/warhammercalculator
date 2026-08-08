@@ -11,6 +11,7 @@ const catalogueParameters = new Set([
   "attacker",
   "weapon",
   "passenger",
+  "attached",
   "firingDeckModels",
   "passengerAlreadyShot",
   "target",
@@ -355,17 +356,23 @@ export function resolveAgentCatalogueSelection(input, catalogue) {
   if (required.length) throw new Error(`Missing catalogue parameters: ${required.join(", ")}`);
   const attacker = matchOne(catalogue.units, search.get("attacker"), "attacker");
   const passengerValue = singleValue(search, ["passenger"]);
+  const attachedValue = singleValue(search, ["attached"]);
   const firingDeckModelsValue = singleValue(search, ["firingDeckModels"]);
   const passengerAlreadyShotValue = singleValue(search, ["passengerAlreadyShot"]);
-  if (!passengerValue && (firingDeckModelsValue !== null || passengerAlreadyShotValue !== null)) {
+  if (
+    !passengerValue &&
+    (attachedValue !== null || firingDeckModelsValue !== null || passengerAlreadyShotValue !== null)
+  ) {
     throw new Error("passenger is required with Firing Deck parameters");
   }
   const passenger = passengerValue ? matchOne(catalogue.units, passengerValue, "passenger") : null;
+  const attached = attachedValue ? matchOne(catalogue.units, attachedValue, "attached") : null;
   const weaponSource = passenger ?? attacker;
   const weapon = matchOne(weaponSource.weapons, search.get("weapon"), "weapon");
   const firingDeck = passenger
     ? resolveFiringDeckSelection(catalogue, attacker, {
         passengerUnitId: passenger.id,
+        attachedUnitId: attached?.id,
         weaponId: weapon.id,
         modelCount:
           firingDeckModelsValue === null
@@ -428,6 +435,7 @@ export function resolveAgentCatalogueSelection(input, catalogue) {
     attacker,
     weapon,
     passenger,
+    attached,
     firingDeck,
     target,
     model,

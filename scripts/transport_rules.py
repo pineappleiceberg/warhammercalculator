@@ -155,17 +155,34 @@ def parse_transport_rule(source: str, vocabulary: set[str]) -> dict:
                 {"keywords": ["fly"], "minimumWounds": None, "nonCharacter": False}
             )
             continue
-        if "excluding TACTICUS CHARACTER models that began" in phrase:
-            phrase = phrase.split("(excluding", 1)[0].strip()
-            result["exact"] = False
+        attachment_exception = None
+        exception = re.search(
+            r"\((?:excluding|except for)\s+TACTICUS CHARACTER models that "
+            r"(?:began|begin) the battle attached to a non-\s*TACTICUS unit\)",
+            phrase,
+            re.IGNORECASE,
+        )
+        if exception:
+            phrase = (phrase[: exception.start()] + phrase[exception.end() :]).strip()
+            attachment_exception = {
+                "requiredPassengerKeyword": "character",
+                "forbiddenAttachedKeyword": "tacticus",
+            }
         groups = groups_from_phrase(phrase, vocabulary)
         if groups is None:
             result["exact"] = False
         else:
-            result["excluded"].extend(
-                {"keywords": list(group), "minimumWounds": None, "nonCharacter": False}
-                for group in groups
-            )
+            for group in groups:
+                result["excluded"].append(
+                    {
+                        "keywords": list(group),
+                        "minimumWounds": None,
+                        "nonCharacter": False,
+                        "attachmentException": (
+                            attachment_exception if group == ("tacticus",) else None
+                        ),
+                    }
+                )
 
     recognized_cost_sentences = 0
     for sentence in source.split(". "):

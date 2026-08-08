@@ -242,6 +242,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.deepEqual((await transport.json()).data, {
     transport: { id: trukk.id, name: "Trukk" },
     passenger: { id: boyz.id, name: "Boyz" },
+    attached: null,
     capacity: 12,
     eligible: true,
     reason: "",
@@ -300,6 +301,8 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
       {
         passengerUnitId: boyz.id,
         passengerUnitName: "Boyz",
+        attachedUnitId: null,
+        attachedUnitName: null,
         weaponId: 59,
         weaponName: "Shoota",
         modelCount: 12,
@@ -323,6 +326,31 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   );
   assert.equal(invalidDeck.status, 400);
   assert.match((await invalidDeck.text()).toLowerCase(), /allows 12/);
+  const rhino = catalogue.units.find((unit) => unit.id === "000002723");
+  const transportCaptain = catalogue.units.find((unit) => unit.id === "000000073");
+  const tacticalSquad = catalogue.units.find((unit) => unit.id === "000000070");
+  const attachedTransport = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/transport?unit=${rhino.id}&passenger=${transportCaptain.id}&attached=${tacticalSquad.id}`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.equal(attachedTransport.status, 200);
+  const attachedTransportBody = await attachedTransport.json();
+  assert.equal(attachedTransportBody.data.eligible, true);
+  assert.deepEqual(attachedTransportBody.data.attached, {
+    id: tacticalSquad.id,
+    name: tacticalSquad.name,
+  });
+  const unattachedTransport = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/transport?unit=${rhino.id}&passenger=${transportCaptain.id}`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.equal((await unattachedTransport.json()).data.eligible, false);
   const warboss = catalogue.units.find((unit) => unit.name === "Warboss");
   const mightIsRight = warboss.combatPresets.find((preset) => preset.name === "Might is Right");
   assert.equal(mightIsRight.hitModifierRole, "attacker");

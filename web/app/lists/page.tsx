@@ -332,9 +332,11 @@ export default function ArmyLists() {
                           units: current.units
                             .filter((entry) => entry.id !== unit.id)
                             .map((entry) => {
-                              if (entry.transportId !== unit.id) return entry;
+                              if (entry.transportId !== unit.id && entry.attachedToId !== unit.id)
+                                return entry;
                               const next = { ...entry };
-                              delete next.transportId;
+                              if (next.transportId === unit.id) delete next.transportId;
+                              if (next.attachedToId === unit.id) delete next.attachedToId;
                               return next;
                             }),
                         }))
@@ -345,50 +347,90 @@ export default function ArmyLists() {
                   </div>
                   {(() => {
                     const passenger = catalogue?.units.find((entry) => entry.id === unit.unitId);
+                    const attachedSavedUnit = draft.units.find(
+                      (candidate) => candidate.id === unit.attachedToId,
+                    );
+                    const attachedUnit = catalogue?.units.find(
+                      (entry) => entry.id === attachedSavedUnit?.unitId,
+                    );
+                    const isCharacter = passenger?.transportKeywords.includes("character");
                     const transports = draft.units.filter((candidate) => {
                       if (candidate.id === unit.id) return false;
                       const transport = catalogue?.units.find(
                         (entry) => entry.id === candidate.unitId,
                       );
-                      return transportPassengerEligibility(transport, passenger).eligible;
+                      return transportPassengerEligibility(transport, passenger, {
+                        attachedUnit,
+                      }).eligible;
                     });
                     const assignment = transportReport.assignments.find(
                       (entry) => entry.passengerUnit.id === unit.id,
                     );
                     return (
-                      <label>
-                        <span>Embarked in</span>
-                        <select
-                          aria-label={`${unit.name} assigned Transport`}
-                          value={unit.transportId ?? ""}
-                          onChange={(event) =>
-                            changeUnit(unit.id, (current) => {
-                              const next = { ...current };
-                              if (event.target.value) next.transportId = event.target.value;
-                              else delete next.transportId;
-                              return next;
-                            })
-                          }
-                        >
-                          <option value="">Not embarked</option>
-                          {transports.map((transport) => (
-                            <option key={transport.id} value={transport.id}>
-                              {transport.name}
-                            </option>
-                          ))}
-                          {unit.transportId &&
-                            !transports.some((transport) => transport.id === unit.transportId) && (
-                              <option value={unit.transportId}>
-                                Unavailable Transport assignment
-                              </option>
-                            )}
-                        </select>
-                        {assignment && (
-                          <small>
-                            {assignment.slots} Transport spaces ({assignment.modelCost} per model)
-                          </small>
+                      <>
+                        {isCharacter && (
+                          <label>
+                            <span>Attached to</span>
+                            <select
+                              aria-label={`${unit.name} attached unit`}
+                              value={unit.attachedToId ?? ""}
+                              onChange={(event) =>
+                                changeUnit(unit.id, (current) => {
+                                  const next = { ...current };
+                                  if (event.target.value) next.attachedToId = event.target.value;
+                                  else delete next.attachedToId;
+                                  return next;
+                                })
+                              }
+                            >
+                              <option value="">Not attached</option>
+                              {draft.units
+                                .filter((candidate) => candidate.id !== unit.id)
+                                .map((candidate) => (
+                                  <option key={candidate.id} value={candidate.id}>
+                                    {candidate.name}
+                                  </option>
+                                ))}
+                            </select>
+                            <small>Declare the bodyguard unit this Character joined.</small>
+                          </label>
                         )}
-                      </label>
+                        <label>
+                          <span>Embarked in</span>
+                          <select
+                            aria-label={`${unit.name} assigned Transport`}
+                            value={unit.transportId ?? ""}
+                            onChange={(event) =>
+                              changeUnit(unit.id, (current) => {
+                                const next = { ...current };
+                                if (event.target.value) next.transportId = event.target.value;
+                                else delete next.transportId;
+                                return next;
+                              })
+                            }
+                          >
+                            <option value="">Not embarked</option>
+                            {transports.map((transport) => (
+                              <option key={transport.id} value={transport.id}>
+                                {transport.name}
+                              </option>
+                            ))}
+                            {unit.transportId &&
+                              !transports.some(
+                                (transport) => transport.id === unit.transportId,
+                              ) && (
+                                <option value={unit.transportId}>
+                                  Unavailable Transport assignment
+                                </option>
+                              )}
+                          </select>
+                          {assignment && (
+                            <small>
+                              {assignment.slots} Transport spaces ({assignment.modelCost} per model)
+                            </small>
+                          )}
+                        </label>
+                      </>
                     );
                   })()}
                   {(catalogue?.units.find((entry) => entry.id === unit.unitId)

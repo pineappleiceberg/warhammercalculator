@@ -813,9 +813,9 @@ async function handleApi(request: Request, env: Env) {
           loadout: "GET /api/v1/loadout?unit={datasheetId}",
           validateLoadout: "POST /api/v1/validate-loadout",
           firingDeck:
-            "GET /api/v1/firing-deck?unit={transportDatasheetId}&passenger={passengerDatasheetId}",
+            "GET /api/v1/firing-deck?unit={transportDatasheetId}&passenger={passengerDatasheetId}&attached={attachedDatasheetId}",
           transport:
-            "GET /api/v1/transport?unit={transportDatasheetId}&passenger={passengerDatasheetId}&models={modelCount}",
+            "GET /api/v1/transport?unit={transportDatasheetId}&passenger={passengerDatasheetId}&attached={attachedDatasheetId}&models={modelCount}",
           validateFiringDeck: "POST /api/v1/validate-firing-deck",
           targets: "GET /api/v1/targets?unit={datasheetId}",
           profiles: "GET /api/v1/profiles",
@@ -946,8 +946,13 @@ async function handleApi(request: Request, env: Env) {
       if (!transport.firingDeck) return apiError("Unit has no Firing Deck", 409);
       const passenger = catalogue.units.find((entry) => entry.id === passengerId);
       if (!passenger) return apiError("Passenger unit not found", 404);
+      const attachedId = url.searchParams.get("attached");
+      const attached = attachedId ? catalogue.units.find((entry) => entry.id === attachedId) : null;
+      if (attachedId && !attached) return apiError("Attached unit not found", 404);
       if (passenger.id === transport.id) return apiError("A transport cannot be its own passenger");
-      const transportEligibility = transportPassengerEligibility(transport, passenger);
+      const transportEligibility = transportPassengerEligibility(transport, passenger, {
+        attachedUnit: attached,
+      });
       if (!transportEligibility.eligible) return apiError(transportEligibility.reason, 409);
       return json({
         data: {
@@ -963,6 +968,7 @@ async function handleApi(request: Request, env: Env) {
                 !weapon.abilities.some((ability) => ability.name.toLowerCase() === "one shot"),
             ),
           },
+          attached: attached ? { id: attached.id, name: attached.name } : null,
         },
         sourceUpdatedAt: catalogue.sourceUpdatedAt,
       });
@@ -982,11 +988,17 @@ async function handleApi(request: Request, env: Env) {
       const transport = catalogue.units.find((entry) => entry.id === unitId);
       const passenger = catalogue.units.find((entry) => entry.id === passengerId);
       if (!transport || !passenger) return apiError("Transport or passenger unit not found", 404);
-      const eligibility = transportPassengerEligibility(transport, passenger);
+      const attachedId = url.searchParams.get("attached");
+      const attached = attachedId ? catalogue.units.find((entry) => entry.id === attachedId) : null;
+      if (attachedId && !attached) return apiError("Attached unit not found", 404);
+      const eligibility = transportPassengerEligibility(transport, passenger, {
+        attachedUnit: attached,
+      });
       return json({
         data: {
           transport: { id: transport.id, name: transport.name },
           passenger: { id: passenger.id, name: passenger.name },
+          attached: attached ? { id: attached.id, name: attached.name } : null,
           capacity: transport.transport?.capacity ?? 0,
           eligible: eligibility.eligible,
           reason: eligibility.reason,
@@ -1018,6 +1030,8 @@ async function handleApi(request: Request, env: Env) {
           selections: result.selections.map((selection) => ({
             passengerUnitId: selection.passengerUnitId,
             passengerUnitName: selection.passengerUnitName,
+            attachedUnitId: selection.attachedUnitId,
+            attachedUnitName: selection.attachedUnitName,
             weaponId: selection.weaponId,
             weaponName: selection.weaponName,
             modelCount: selection.modelCount,

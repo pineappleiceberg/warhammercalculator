@@ -54,7 +54,10 @@ import {
   firingDeckWeapons,
   resolveFiringDeckSelections,
 } from "../../lib/firing-deck.mjs";
-import { transportPassengerEligibility } from "../../lib/transport.mjs";
+import {
+  transportPassengerAttachmentOptions,
+  transportPassengerCanEmbark,
+} from "../../lib/transport.mjs";
 
 type TargetSegment = OrderedTargetSegment & {
   id: string;
@@ -77,6 +80,7 @@ type WeaponLine = {
 type FiringDeckSelection = {
   id: string;
   passengerUnitId: string;
+  attachedUnitId: string;
   weaponId: number | null;
   modelCount: number;
   unitAlreadyShot: boolean;
@@ -251,7 +255,7 @@ export default function UnitVsUnit() {
       (unit) =>
         unit.id !== attackerUnit?.id &&
         firingDeckWeapons(unit).length > 0 &&
-        transportPassengerEligibility(attackerUnit, unit).eligible,
+        transportPassengerCanEmbark(catalogue, attackerUnit, unit),
     ) ?? [];
   const structuredGroupIds = new Set(
     attackerUnit?.wargearChoicePools.flatMap((pool) =>
@@ -1280,6 +1284,11 @@ export default function UnitVsUnit() {
                       const passenger = firingDeckPassengerUnits.find(
                         (unit) => unit.id === selection.passengerUnitId,
                       );
+                      const attachmentOptions = transportPassengerAttachmentOptions(
+                        catalogue,
+                        attackerUnit,
+                        passenger,
+                      );
                       return (
                         <fieldset key={selection.id}>
                           <legend>Embarked models</legend>
@@ -1295,6 +1304,7 @@ export default function UnitVsUnit() {
                                       ? {
                                           ...entry,
                                           passengerUnitId: event.target.value,
+                                          attachedUnitId: "",
                                           weaponId: null,
                                         }
                                       : entry,
@@ -1310,12 +1320,44 @@ export default function UnitVsUnit() {
                               ))}
                             </select>
                           </label>
+                          {passenger && attachmentOptions.length > 0 && (
+                            <label>
+                              <span>Passenger attached to</span>
+                              <select
+                                aria-label="Firing Deck attached unit"
+                                value={selection.attachedUnitId}
+                                onChange={(event) =>
+                                  setFiringDeckSelections((current) =>
+                                    current.map((entry) =>
+                                      entry.id === selection.id
+                                        ? {
+                                            ...entry,
+                                            attachedUnitId: event.target.value,
+                                            weaponId: null,
+                                          }
+                                        : entry,
+                                    ),
+                                  )
+                                }
+                              >
+                                <option value="">Choose attached unit</option>
+                                {attachmentOptions.map((unit) => (
+                                  <option key={unit.id} value={unit.id}>
+                                    {unit.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
                           <label>
                             <span>One weapon per selected model</span>
                             <select
                               aria-label="Firing Deck passenger weapon"
                               value={selection.weaponId ?? ""}
-                              disabled={!passenger}
+                              disabled={
+                                !passenger ||
+                                (attachmentOptions.length > 0 && !selection.attachedUnitId)
+                              }
                               onChange={(event) =>
                                 setFiringDeckSelections((current) =>
                                   current.map((entry) =>
@@ -1405,6 +1447,7 @@ export default function UnitVsUnit() {
                           {
                             id: crypto.randomUUID(),
                             passengerUnitId: "",
+                            attachedUnitId: "",
                             weaponId: null,
                             modelCount: 1,
                             unitAlreadyShot: false,
