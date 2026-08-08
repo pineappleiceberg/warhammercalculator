@@ -420,6 +420,7 @@ test("Firing Deck catalogue requests enforce selection limits and transport bear
   );
   const trukk = catalogue.units.find((unit) => unit.id === "000000026");
   const boyz = catalogue.units.find((unit) => unit.id === "000000016");
+  const stormlord = catalogue.units.find((unit) => unit.id === "000000708");
   const heavyWeapons = catalogue.units.find((unit) => unit.id === "000000686");
   const target = catalogue.units.find((unit) => unit.name === "Brutalis Dreadnought");
   assert.equal(trukk.firingDeck.capacity, 12);
@@ -439,7 +440,7 @@ test("Firing Deck catalogue requests enforce selection limits and transport bear
   assert.equal(selection.firingDeck.modelCount, 12);
   assert.equal(selection.firingDeck.slots, 12);
 
-  const heavySelection = resolveFiringDeckSelections(catalogue, trukk, [
+  const heavySelection = resolveFiringDeckSelections(catalogue, stormlord, [
     {
       passengerUnitId: heavyWeapons.id,
       weaponId: heavyWeapons.weapons.find((weapon) => weapon.name === "Lascannon").id,
@@ -448,6 +449,17 @@ test("Firing Deck catalogue requests enforce selection limits and transport bear
     },
   ]);
   assert.equal(heavySelection.slots, 12);
+  assert.throws(
+    () =>
+      resolveFiringDeckSelections(catalogue, trukk, [
+        {
+          passengerUnitId: heavyWeapons.id,
+          weaponId: heavyWeapons.weapons.find((weapon) => weapon.name === "Lascannon").id,
+          modelCount: 1,
+        },
+      ]),
+    /required Transport keywords/i,
+  );
   assert.throws(
     () =>
       resolveAgentCatalogueSelection(
@@ -480,13 +492,8 @@ test("Firing Deck catalogue requests enforce selection limits and transport bear
       ),
     /must match firingDeckModels/,
   );
-  const oneShotPassenger = catalogue.units.find((unit) =>
-    unit.weapons.some(
-      (weapon) =>
-        weapon.type === "Ranged" &&
-        weapon.abilities.some((ability) => ability.name.toLowerCase() === "one shot"),
-    ),
-  );
+  const fortress = catalogue.units.find((unit) => unit.id === "000000243");
+  const oneShotPassenger = catalogue.units.find((unit) => unit.id === "000003716");
   const oneShotWeapon = oneShotPassenger.weapons.find(
     (weapon) =>
       weapon.type === "Ranged" &&
@@ -494,7 +501,7 @@ test("Firing Deck catalogue requests enforce selection limits and transport bear
   );
   assert.throws(
     () =>
-      resolveFiringDeckSelections(catalogue, trukk, [
+      resolveFiringDeckSelections(catalogue, fortress, [
         {
           passengerUnitId: oneShotPassenger.id,
           weaponId: oneShotWeapon.id,

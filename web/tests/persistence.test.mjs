@@ -37,6 +37,7 @@ const list = {
       choiceSelections: { "datasheet-1:choice:1": 0 },
       loadoutSubjectCounts: { "datasheet-1:subject:1": 4 },
       combatPresetIds: ["datasheet-1:ability:2"],
+      transportId: "unit-transport",
     },
   ],
   createdAt: 1_700_000_000_000,
@@ -53,6 +54,7 @@ test("round-trips a versioned army-list backup", () => {
   assert.equal(backup.version, 1);
   assert.equal(backup.profileSourceUpdatedAt, "2026-07-31T00:00:00.000Z");
   assert.deepEqual(parseArmyListBackup(JSON.parse(JSON.stringify(backup))), backup);
+  assert.equal(backup.lists[0].units[0].transportId, "unit-transport");
 });
 
 test("rejects incompatible and malformed army-list backups", () => {
@@ -106,6 +108,19 @@ test("rejects incompatible and malformed army-list backups", () => {
         ],
       }),
     /combatPresetIds/i,
+  );
+  assert.throws(
+    () =>
+      parseArmyListBackup({
+        ...backup,
+        lists: [
+          {
+            ...list,
+            units: [{ ...list.units[0], transportId: list.units[0].id }],
+          },
+        ],
+      }),
+    /transportId/i,
   );
 });
 

@@ -27,6 +27,7 @@ import {
   normalizeEquippedCount,
   unitLoadoutWarnings,
 } from "../../lib/loadout.mjs";
+import { transportAssignmentReport, transportPassengerEligibility } from "../../lib/transport.mjs";
 
 const emptyList: ArmyListInput = { name: "", factionId: "", units: [] };
 const DRAFT_KEY = "warhammer-calculator:army-list-draft:v1";
@@ -94,6 +95,13 @@ export default function ArmyLists() {
   const units = useMemo(
     () => catalogue?.units.filter((unit) => unit.factionId === draft.factionId) ?? [],
     [catalogue, draft.factionId],
+  );
+  const transportReport = useMemo(
+    () =>
+      catalogue
+        ? transportAssignmentReport(catalogue, draft)
+        : { assignments: [], errors: [], slotsByTransport: new Map() },
+    [catalogue, draft],
   );
 
   const addUnit = () => {
@@ -321,13 +329,68 @@ export default function ArmyLists() {
                       onClick={() =>
                         setDraft((current) => ({
                           ...current,
-                          units: current.units.filter((entry) => entry.id !== unit.id),
+                          units: current.units
+                            .filter((entry) => entry.id !== unit.id)
+                            .map((entry) => {
+                              if (entry.transportId !== unit.id) return entry;
+                              const next = { ...entry };
+                              delete next.transportId;
+                              return next;
+                            }),
                         }))
                       }
                     >
                       Remove
                     </button>
                   </div>
+                  {(() => {
+                    const passenger = catalogue?.units.find((entry) => entry.id === unit.unitId);
+                    const transports = draft.units.filter((candidate) => {
+                      if (candidate.id === unit.id) return false;
+                      const transport = catalogue?.units.find(
+                        (entry) => entry.id === candidate.unitId,
+                      );
+                      return transportPassengerEligibility(transport, passenger).eligible;
+                    });
+                    const assignment = transportReport.assignments.find(
+                      (entry) => entry.passengerUnit.id === unit.id,
+                    );
+                    return (
+                      <label>
+                        <span>Embarked in</span>
+                        <select
+                          aria-label={`${unit.name} assigned Transport`}
+                          value={unit.transportId ?? ""}
+                          onChange={(event) =>
+                            changeUnit(unit.id, (current) => {
+                              const next = { ...current };
+                              if (event.target.value) next.transportId = event.target.value;
+                              else delete next.transportId;
+                              return next;
+                            })
+                          }
+                        >
+                          <option value="">Not embarked</option>
+                          {transports.map((transport) => (
+                            <option key={transport.id} value={transport.id}>
+                              {transport.name}
+                            </option>
+                          ))}
+                          {unit.transportId &&
+                            !transports.some((transport) => transport.id === unit.transportId) && (
+                              <option value={unit.transportId}>
+                                Unavailable Transport assignment
+                              </option>
+                            )}
+                        </select>
+                        {assignment && (
+                          <small>
+                            {assignment.slots} Transport spaces ({assignment.modelCost} per model)
+                          </small>
+                        )}
+                      </label>
+                    );
+                  })()}
                   {(catalogue?.units.find((entry) => entry.id === unit.unitId)
                     ?.unresolvedLoadoutSubjects.length ?? 0) > 0 && (
                     <details className="source-choice-pools model-composition-editor" open>
@@ -602,6 +665,17 @@ export default function ArmyLists() {
                 </button>
               )}
             </div>
+            {transportReport.errors.length > 0 && (
+              <div className="loadout-warnings" role="status">
+                <strong>Transport assignment check</strong>
+                <ul>
+                  {transportReport.errors.map((error) => (
+                    <li key={error}>{error}</li>
+                  ))}
+                </ul>
+                <small>Correct these assignments before using Firing Deck in Play Mode.</small>
+              </div>
+            )}
           </div>
         </section>
         <aside className="saved-lists">

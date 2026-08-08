@@ -227,7 +227,12 @@ Wracks.
 Firing Deck transports expose their published model limit. Model vs Model and
 Unit vs Unit can select an explicit passenger datasheet, one ranged weapon, and
 the number of embarked models using it; Play Mode selects the passenger from
-the attacking saved list. Melee and One Shot weapons are excluded, a passenger
+the attacking saved list only after that saved unit has been assigned to the
+specific transport in Army Lists. Published Transport faction/unit keywords,
+explicit exclusions, Wounds thresholds, fixed per-model space costs, aggregate
+capacity, and equipped killkannon/kannon/supa-kannon capacity changes are
+validated. Conditional clauses that are not fully normalized remain unavailable
+instead of being guessed. Melee and One Shot weapons are excluded, a passenger
 unit that has already shot is rejected, and Heavy Weapons Squad-style weapons
 consume two Firing Deck model slots. The selected weapon keeps its own profile
 and weapon abilities, but the transport is the bearer: transport combat rules
@@ -649,7 +654,10 @@ failed check. Failed catalogue and calculator loads are evicted from the worker
 cache so a recovered dependency can be retried without restarting the service.
 
 `GET /api/v1/firing-deck?unit={transportId}&passenger={passengerId}` discovers
-that passenger's eligible ranged weapons and slot cost. `POST
+that legally compatible passenger's eligible ranged weapons and slot cost.
+`GET /api/v1/transport?unit={transportId}&passenger={passengerId}&models={count}`
+returns the exact source clause, eligibility, per-model cost, total spaces, and
+whether the selection fits. `POST
 /api/v1/validate-firing-deck` validates one or more explicit passenger/model/
 weapon selections, the aggregate Firing Deck limit, phase eligibility, and
 returns the transport bearer ID before clients build exact or simulated volley

@@ -121,6 +121,8 @@ def export(database: Path, output: Path) -> None:
                 "defensiveEquipment": [],
                 "firingDeck": None,
                 "firingDeckModelCost": 1,
+                "transport": None,
+                "transportKeywords": [],
                 "suggestedModelCount": None,
                 "maximumModelCount": None,
             }
@@ -180,6 +182,106 @@ def export(database: Path, output: Path) -> None:
                FROM unit_firing_deck_passenger_costs ORDER BY datasheet_id"""
         ):
             units[row["datasheet_id"]]["firingDeckModelCost"] = row["model_cost"]
+
+        transport_allowed: dict[tuple[str, int], list[str]] = {}
+        for row in connection.execute(
+            """SELECT datasheet_id, group_position, keyword
+               FROM unit_transport_allowed_keywords
+               ORDER BY datasheet_id, group_position, keyword_position"""
+        ):
+            transport_allowed.setdefault(
+                (row["datasheet_id"], row["group_position"]), []
+            ).append(row["keyword"])
+        transport_excluded: dict[tuple[str, int], list[str]] = {}
+        for row in connection.execute(
+            """SELECT datasheet_id, group_position, keyword
+               FROM unit_transport_exclusion_keywords
+               ORDER BY datasheet_id, group_position, keyword_position"""
+        ):
+            transport_excluded.setdefault(
+                (row["datasheet_id"], row["group_position"]), []
+            ).append(row["keyword"])
+        transport_costs: dict[tuple[str, int], list[str]] = {}
+        for row in connection.execute(
+            """SELECT datasheet_id, group_position, keyword
+               FROM unit_transport_model_cost_keywords
+               ORDER BY datasheet_id, group_position, keyword_position"""
+        ):
+            transport_costs.setdefault(
+                (row["datasheet_id"], row["group_position"]), []
+            ).append(row["keyword"])
+        exclusions: dict[str, list[dict]] = {}
+        for row in connection.execute(
+            """SELECT datasheet_id, group_position, minimum_wounds,
+                      requires_non_character
+               FROM unit_transport_exclusion_groups
+               ORDER BY datasheet_id, group_position"""
+        ):
+            exclusions.setdefault(row["datasheet_id"], []).append(
+                {
+                    "keywords": transport_excluded.get(
+                        (row["datasheet_id"], row["group_position"]), []
+                    ),
+                    "minimumWounds": row["minimum_wounds"],
+                    "nonCharacter": bool(row["requires_non_character"]),
+                }
+            )
+        model_costs: dict[str, list[dict]] = {}
+        for row in connection.execute(
+            """SELECT datasheet_id, group_position, model_cost, minimum_wounds
+               FROM unit_transport_model_cost_groups
+               ORDER BY datasheet_id, group_position"""
+        ):
+            model_costs.setdefault(row["datasheet_id"], []).append(
+                {
+                    "keywords": transport_costs.get(
+                        (row["datasheet_id"], row["group_position"]), []
+                    ),
+                    "minimumWounds": row["minimum_wounds"],
+                    "cost": row["model_cost"],
+                }
+            )
+        modifiers: dict[str, list[dict]] = {}
+        for row in connection.execute(
+            """SELECT datasheet_id, equipment_name, capacity
+               FROM unit_transport_capacity_modifiers
+               ORDER BY datasheet_id, position"""
+        ):
+            modifiers.setdefault(row["datasheet_id"], []).append(
+                {"equipment": row["equipment_name"], "capacity": row["capacity"]}
+            )
+        for row in connection.execute(
+            """SELECT datasheet_id, capacity, exact_rules, source_text
+               FROM unit_transport ORDER BY datasheet_id"""
+        ):
+            datasheet_id = row["datasheet_id"]
+            allowed_groups = [
+                keywords
+                for (candidate_id, _), keywords in transport_allowed.items()
+                if candidate_id == datasheet_id
+            ]
+            units[datasheet_id]["transport"] = {
+                "capacity": row["capacity"],
+                "exactRules": bool(row["exact_rules"]),
+                "source": row["source_text"],
+                "allowedKeywords": allowed_groups,
+                "excluded": exclusions.get(datasheet_id, []),
+                "modelCosts": model_costs.get(datasheet_id, []),
+                "capacityModifiers": modifiers.get(datasheet_id, []),
+            }
+
+        for unit in units.values():
+            unit["transportKeywords"] = sorted(
+                {
+                    *(
+                        keyword.casefold()
+                        for model in unit["models"]
+                        for keyword in model["keywords"]
+                    ),
+                    *(model["name"].casefold() for model in unit["models"]),
+                    unit["name"].casefold(),
+                }
+            )
 
         abilities: dict[int, list[dict[str, str | None]]] = {}
         for row in connection.execute(

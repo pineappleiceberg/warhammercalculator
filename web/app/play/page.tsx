@@ -30,6 +30,7 @@ import {
   PLAY_RECOVERY_KEY,
 } from "../../lib/play-recovery.mjs";
 import { firingDeckWeapons, resolveFiringDeckSelection } from "../../lib/firing-deck.mjs";
+import { transportAssignmentReport } from "../../lib/transport.mjs";
 
 type LogEntry = {
   id: string;
@@ -222,6 +223,15 @@ export default function PlayMode() {
     (unit) => unit.id === firingDeckPassengerUnit?.unitId,
   );
   const targetCatalogueUnit = catalogue?.units.find((unit) => unit.id === targetUnit?.unitId);
+  const attackerTransportReport =
+    catalogue && attackerList
+      ? transportAssignmentReport(catalogue, attackerList)
+      : { assignments: [], errors: [] };
+  const validFiringDeckPassengerIds = new Set(
+    attackerTransportReport.assignments
+      .filter((assignment) => assignment.transportUnit.id === attackerUnitId)
+      .map((assignment) => assignment.passengerUnit.id),
+  );
   const playSupportUnits =
     attackerList?.units
       .filter((unit) => unit.id !== attackerUnitId)
@@ -263,7 +273,7 @@ export default function PlayMode() {
   const firingDeckPlayOptions =
     attackerCatalogueUnit?.firingDeck && catalogue
       ? (attackerList?.units ?? [])
-          .filter((unit) => unit.id !== attackerUnitId)
+          .filter((unit) => validFiringDeckPassengerIds.has(unit.id))
           .map((unit) => {
             const source = catalogue.units.find((entry) => entry.id === unit.unitId);
             const eligibleIds = new Set(
@@ -432,6 +442,10 @@ export default function PlayMode() {
     if (!weapon || !model) return;
     let weaponCount = listWeapon?.count ?? 1;
     if (nextFiringDeckChoice && catalogue && attackerCatalogueUnit) {
+      if (!validFiringDeckPassengerIds.has(nextPassengerArmyUnit?.id ?? "")) {
+        setStatus("Assign this passenger to the attacking Transport in Army Lists first");
+        return;
+      }
       const maximumModels = Math.max(
         1,
         Math.min(
@@ -1290,6 +1304,10 @@ export default function PlayMode() {
 
   const roll = () => {
     if (!attackerUnit || !targetUnit || !selectedWeapon || !weaponProfile) return;
+    if (firingDeckChoice && !validFiringDeckPassengerIds.has(firingDeckChoice.passengerUnitId)) {
+      setStatus("Assign this passenger to the attacking Transport in Army Lists first");
+      return;
+    }
     if (firingDeckChoice && firingDeckPassengerAlreadyShot) {
       setStatus("Firing Deck cannot use models from a unit that has already shot this phase");
       return;
@@ -1328,23 +1346,26 @@ export default function PlayMode() {
       selectedWeapon &&
       weaponProfile &&
       targetModelId &&
+      !(firingDeckChoice && !validFiringDeckPassengerIds.has(firingDeckChoice.passengerUnitId)) &&
       !(firingDeckChoice && firingDeckPassengerAlreadyShot),
   );
   const readyLabel = !attackerList
     ? "Choose an attacking list"
     : !attackerUnit
       ? "Choose an attacking unit"
-      : firingDeckChoice && firingDeckPassengerAlreadyShot
-        ? "Passenger unit has already shot"
-        : !selectedWeapon
-          ? "Choose a weapon"
-          : !targetList
-            ? "Choose a target list"
-            : !targetUnit
-              ? "Choose a target unit"
-              : !targetModelId
-                ? "Choose a target profile"
-                : `${attackerUnit.name} into ${targetUnit.name}`;
+      : firingDeckChoice && !validFiringDeckPassengerIds.has(firingDeckChoice.passengerUnitId)
+        ? "Passenger is not legally assigned to this Transport"
+        : firingDeckChoice && firingDeckPassengerAlreadyShot
+          ? "Passenger unit has already shot"
+          : !selectedWeapon
+            ? "Choose a weapon"
+            : !targetList
+              ? "Choose a target list"
+              : !targetUnit
+                ? "Choose a target unit"
+                : !targetModelId
+                  ? "Choose a target profile"
+                  : `${attackerUnit.name} into ${targetUnit.name}`;
 
   const resetBattle = () => {
     suppressRecoverySave.current = true;
@@ -1458,6 +1479,21 @@ export default function PlayMode() {
                       const nextUnit = attackerList?.units.find(
                         (unit) => unit.id === event.target.value,
                       );
+                      const nextEmbarkedAssignments = attackerTransportReport.assignments.filter(
+                        (assignment) => assignment.transportUnit.id === event.target.value,
+                      );
+                      const nextEmbarkedModels = nextEmbarkedAssignments.reduce(
+                        (total, assignment) => total + assignment.passengerUnit.modelCount,
+                        0,
+                      );
+                      const nextEmbarkedWracksModels = nextEmbarkedAssignments
+                        .filter((assignment) =>
+                          assignment.passenger.transportKeywords.includes("wracks"),
+                        )
+                        .reduce(
+                          (total, assignment) => total + assignment.passengerUnit.modelCount,
+                          0,
+                        );
                       setAttackerUnitId(event.target.value);
                       setActiveAttackerPresetIds(nextUnit?.combatPresetIds ?? []);
                       setSupportUnitId("");
@@ -1488,8 +1524,8 @@ export default function PlayMode() {
                         nearbyEnemyUnits: 0,
                         enemyCharacterModelsDestroyed: 0,
                         destructiveFightPhases: 0,
-                        embarkedModels: 0,
-                        embarkedWracksModels: 0,
+                        embarkedModels: nextEmbarkedModels,
+                        embarkedWracksModels: nextEmbarkedWracksModels,
                         attackerBattleShocked: false,
                         supportDistance: 0,
                       }));

@@ -54,6 +54,7 @@ import {
   firingDeckWeapons,
   resolveFiringDeckSelections,
 } from "../../lib/firing-deck.mjs";
+import { transportPassengerEligibility } from "../../lib/transport.mjs";
 
 type TargetSegment = OrderedTargetSegment & {
   id: string;
@@ -247,7 +248,10 @@ export default function UnitVsUnit() {
   const weaponGroups = groupWeaponProfiles(attackerUnit?.weapons ?? []);
   const firingDeckPassengerUnits =
     catalogue?.units.filter(
-      (unit) => unit.id !== attackerUnit?.id && firingDeckWeapons(unit).length > 0,
+      (unit) =>
+        unit.id !== attackerUnit?.id &&
+        firingDeckWeapons(unit).length > 0 &&
+        transportPassengerEligibility(attackerUnit, unit).eligible,
     ) ?? [];
   const structuredGroupIds = new Set(
     attackerUnit?.wargearChoicePools.flatMap((pool) =>

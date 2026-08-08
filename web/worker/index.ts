@@ -35,6 +35,7 @@ import {
 } from "../lib/loadout.mjs";
 import type { CatalogueCombatPreset } from "../lib/catalogue";
 import { resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
+import { transportPassengerEligibility } from "../lib/transport.mjs";
 
 interface Env {
   ASSETS: Fetcher;
@@ -123,6 +124,20 @@ type Catalogue = {
     combatPresets: CatalogueCombatPreset[];
     firingDeck: { capacity: number; abilityId: string | null } | null;
     firingDeckModelCost: number;
+    transport: {
+      capacity: number;
+      exactRules: boolean;
+      source: string;
+      allowedKeywords: string[][];
+      excluded: Array<{
+        keywords: string[];
+        minimumWounds: number | null;
+        nonCharacter: boolean;
+      }>;
+      modelCosts: Array<{ keywords: string[]; minimumWounds: number | null; cost: number }>;
+      capacityModifiers: Array<{ equipment: string; capacity: number }>;
+    } | null;
+    transportKeywords: string[];
   }>;
 };
 
@@ -799,6 +814,8 @@ async function handleApi(request: Request, env: Env) {
           validateLoadout: "POST /api/v1/validate-loadout",
           firingDeck:
             "GET /api/v1/firing-deck?unit={transportDatasheetId}&passenger={passengerDatasheetId}",
+          transport:
+            "GET /api/v1/transport?unit={transportDatasheetId}&passenger={passengerDatasheetId}&models={modelCount}",
           validateFiringDeck: "POST /api/v1/validate-firing-deck",
           targets: "GET /api/v1/targets?unit={datasheetId}",
           profiles: "GET /api/v1/profiles",
@@ -879,6 +896,7 @@ async function handleApi(request: Request, env: Env) {
           weaponProfileCount: unit.weapons.length,
           weaponGroupCount: new Set(unit.weapons.map((weapon) => weapon.groupId)).size,
           firingDeck: unit.firingDeck,
+          transport: unit.transport,
           suggestedModelCount: unit.suggestedModelCount,
           maximumModelCount: unit.maximumModelCount,
         }));
@@ -906,6 +924,8 @@ async function handleApi(request: Request, env: Env) {
           wargearChoicePools: unit.wargearChoicePools,
           firingDeck: unit.firingDeck,
           firingDeckModelCost: unit.firingDeckModelCost,
+          transport: unit.transport,
+          transportKeywords: unit.transportKeywords,
           suggestedModelCount: unit.suggestedModelCount,
           maximumModelCount: unit.maximumModelCount,
           weapons: unit.weapons,
@@ -927,6 +947,8 @@ async function handleApi(request: Request, env: Env) {
       const passenger = catalogue.units.find((entry) => entry.id === passengerId);
       if (!passenger) return apiError("Passenger unit not found", 404);
       if (passenger.id === transport.id) return apiError("A transport cannot be its own passenger");
+      const transportEligibility = transportPassengerEligibility(transport, passenger);
+      if (!transportEligibility.eligible) return apiError(transportEligibility.reason, 409);
       return json({
         data: {
           transport: { id: transport.id, name: transport.name },
@@ -941,6 +963,40 @@ async function handleApi(request: Request, env: Env) {
                 !weapon.abilities.some((ability) => ability.name.toLowerCase() === "one shot"),
             ),
           },
+        },
+        sourceUpdatedAt: catalogue.sourceUpdatedAt,
+      });
+    }
+
+    if (url.pathname === "/api/v1/transport" && request.method === "GET") {
+      const unitId = url.searchParams.get("unit");
+      const passengerId = url.searchParams.get("passenger");
+      if (!unitId || !passengerId) {
+        return apiError("Missing required unit or passenger query parameter");
+      }
+      const models = Number(url.searchParams.get("models") ?? "1");
+      if (!Number.isSafeInteger(models) || models < 1 || models > 1000) {
+        return apiError("models must be an integer from 1 to 1000");
+      }
+      const catalogue = await loadCatalogue(request, env);
+      const transport = catalogue.units.find((entry) => entry.id === unitId);
+      const passenger = catalogue.units.find((entry) => entry.id === passengerId);
+      if (!transport || !passenger) return apiError("Transport or passenger unit not found", 404);
+      const eligibility = transportPassengerEligibility(transport, passenger);
+      return json({
+        data: {
+          transport: { id: transport.id, name: transport.name },
+          passenger: { id: passenger.id, name: passenger.name },
+          capacity: transport.transport?.capacity ?? 0,
+          eligible: eligibility.eligible,
+          reason: eligibility.reason,
+          modelCost: eligibility.modelCost ?? null,
+          models,
+          slots: eligibility.eligible ? models * eligibility.modelCost : null,
+          fits:
+            eligibility.eligible &&
+            models * eligibility.modelCost <= (transport.transport?.capacity ?? 0),
+          source: transport.transport?.source ?? null,
         },
         sourceUpdatedAt: catalogue.sourceUpdatedAt,
       });

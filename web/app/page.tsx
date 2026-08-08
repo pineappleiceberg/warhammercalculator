@@ -27,6 +27,7 @@ import {
   selectedAndAutomaticCombatPresets,
 } from "../lib/combat-presets.mjs";
 import { firingDeckWeapons, resolveFiringDeckSelection } from "../lib/firing-deck.mjs";
+import { transportPassengerEligibility } from "../lib/transport.mjs";
 
 type Result = {
   minimum: number;
@@ -900,7 +901,10 @@ export default function Home() {
   const selectedAttackerUnit = attackerUnits.find((unit) => unit.id === attackerUnit);
   const firingDeckPassengerUnits =
     catalogue?.units.filter(
-      (unit) => unit.id !== selectedAttackerUnit?.id && firingDeckWeapons(unit).length > 0,
+      (unit) =>
+        unit.id !== selectedAttackerUnit?.id &&
+        firingDeckWeapons(unit).length > 0 &&
+        transportPassengerEligibility(selectedAttackerUnit, unit).eligible,
     ) ?? [];
   const selectedFiringDeckPassenger = firingDeckPassengerUnits.find(
     (unit) => unit.id === firingDeckPassenger,

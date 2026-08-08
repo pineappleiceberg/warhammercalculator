@@ -206,6 +206,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.match(documented.endpoints.volleyComplexity, /POST \/api\/v1\/volley\/complexity/);
   assert.match(documented.endpoints.volleySimulate, /POST \/api\/v1\/volley\/simulate/);
   assert.match(documented.endpoints.firingDeck, /GET \/api\/v1\/firing-deck/);
+  assert.match(documented.endpoints.transport, /GET \/api\/v1\/transport/);
   assert.match(documented.endpoints.validateFiringDeck, /POST \/api\/v1\/validate-firing-deck/);
   assert.match(documented.endpoints.lists, /lists\/export/);
 
@@ -227,7 +228,44 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.ok(warriors);
   const trukk = catalogue.units.find((unit) => unit.id === "000000026");
   const boyz = catalogue.units.find((unit) => unit.id === "000000016");
+  const stormboyz = catalogue.units.find((unit) => unit.id === "000000027");
   assert.deepEqual(trukk.firingDeck, { capacity: 12, abilityId: "000008334" });
+  assert.equal(trukk.transport.capacity, 12);
+  const transport = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/transport?unit=${trukk.id}&passenger=${boyz.id}&models=12`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.equal(transport.status, 200);
+  assert.deepEqual((await transport.json()).data, {
+    transport: { id: trukk.id, name: "Trukk" },
+    passenger: { id: boyz.id, name: "Boyz" },
+    capacity: 12,
+    eligible: true,
+    reason: "",
+    modelCost: 1,
+    models: 12,
+    slots: 12,
+    fits: true,
+    source: trukk.transport.source,
+  });
+  const illegalTransport = await worker.fetch(
+    new Request(
+      `http://localhost/api/v1/transport?unit=${trukk.id}&passenger=${stormboyz.id}&models=1`,
+    ),
+    testEnv,
+    context,
+  );
+  assert.equal(illegalTransport.status, 200);
+  assert.equal((await illegalTransport.json()).data.eligible, false);
+  const illegalFiringDeck = await worker.fetch(
+    new Request(`http://localhost/api/v1/firing-deck?unit=${trukk.id}&passenger=${stormboyz.id}`),
+    testEnv,
+    context,
+  );
+  assert.equal(illegalFiringDeck.status, 409);
   const firingDeck = await worker.fetch(
     new Request(`http://localhost/api/v1/firing-deck?unit=${trukk.id}&passenger=${boyz.id}`),
     testEnv,

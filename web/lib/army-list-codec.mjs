@@ -88,6 +88,18 @@ export function normalizeArmyListInput(value) {
       }
       combatPresetIds = [...new Set(unit.combatPresetIds)];
     }
+    let transportId;
+    if (unit.transportId !== undefined) {
+      if (
+        typeof unit.transportId !== "string" ||
+        !unit.transportId ||
+        unit.transportId.length > 100 ||
+        unit.transportId === unit.id
+      ) {
+        throw new Error("transportId must reference a different saved unit");
+      }
+      transportId = unit.transportId;
+    }
     const weapons = unit.weapons.map((candidateWeapon) => {
       const weapon = object(candidateWeapon, "Each weapon must be a JSON object");
       if (
@@ -129,6 +141,7 @@ export function normalizeArmyListInput(value) {
       normalized.loadoutSubjectCounts = loadoutSubjectCounts;
     }
     if (combatPresetIds !== undefined) normalized.combatPresetIds = combatPresetIds;
+    if (transportId !== undefined) normalized.transportId = transportId;
     return normalized;
   });
   return { name: body.name.trim(), factionId: body.factionId, units };

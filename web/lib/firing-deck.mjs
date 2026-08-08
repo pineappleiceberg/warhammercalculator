@@ -28,6 +28,8 @@ export function resolveFiringDeckSelection(catalogue, transport, candidate) {
   }
   const passenger = itemById(catalogue.units, candidate.passengerUnitId, "Passenger unit");
   if (passenger.id === transport.id) throw new Error("A transport cannot be its own passenger");
+  const transportEligibility = transportPassengerEligibility(transport, passenger);
+  if (!transportEligibility.eligible) throw new Error(transportEligibility.reason);
   const weapon = itemById(passenger.weapons, candidate.weaponId, "Passenger weapon");
   if (weapon.type !== "Ranged") throw new Error("Firing Deck can select only ranged weapons");
   if (isOneShotWeapon(weapon)) throw new Error("Firing Deck cannot select a One Shot weapon");
@@ -90,3 +92,4 @@ export function firingDeckWeaponLines(catalogue, transport, candidates) {
     }),
   );
 }
+import { transportPassengerEligibility } from "./transport.mjs";

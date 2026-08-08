@@ -23,6 +23,7 @@ export type ArmyListUnit = {
   choiceSelections?: Record<string, number>;
   loadoutSubjectCounts?: Record<string, number>;
   combatPresetIds?: string[];
+  transportId?: string;
 };
 
 export type ArmyListInput = {

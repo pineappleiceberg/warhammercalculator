@@ -18,8 +18,10 @@ from pathlib import Path
 
 try:
     from scripts.wargear_constraints import CONSTRAINT_SCHEMA, populate_constraints
+    from scripts.transport_rules import normalized_term, parse_transport_rule
 except ModuleNotFoundError:
     from wargear_constraints import CONSTRAINT_SCHEMA, populate_constraints
+    from transport_rules import normalized_term, parse_transport_rule
 
 
 BASE_URL = "https://wahapedia.ru/wh40k10ed"
@@ -67,6 +69,8 @@ CREATE TABLE datasheets (
     battlefield_role TEXT,
     loadout_html TEXT NOT NULL DEFAULT '',
     loadout_text TEXT NOT NULL DEFAULT '',
+    transport_html TEXT NOT NULL DEFAULT '',
+    transport_text TEXT NOT NULL DEFAULT '',
     is_virtual INTEGER NOT NULL DEFAULT 0 CHECK (is_virtual IN (0, 1)),
     source_url TEXT NOT NULL
 ) WITHOUT ROWID;
@@ -338,6 +342,65 @@ CREATE TABLE unit_firing_deck_passenger_costs (
     model_cost INTEGER NOT NULL CHECK (model_cost > 1),
     FOREIGN KEY (datasheet_id, ability_position)
         REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE TABLE unit_transport (
+    datasheet_id TEXT PRIMARY KEY REFERENCES datasheets(id) ON DELETE CASCADE,
+    capacity INTEGER NOT NULL CHECK (capacity > 0),
+    exact_rules INTEGER NOT NULL CHECK (exact_rules IN (0, 1)),
+    source_text TEXT NOT NULL
+) WITHOUT ROWID;
+
+CREATE TABLE unit_transport_allowed_keywords (
+    datasheet_id TEXT NOT NULL REFERENCES unit_transport(datasheet_id) ON DELETE CASCADE,
+    group_position INTEGER NOT NULL CHECK (group_position >= 1),
+    keyword_position INTEGER NOT NULL CHECK (keyword_position >= 1),
+    keyword TEXT NOT NULL,
+    PRIMARY KEY (datasheet_id, group_position, keyword_position)
+) WITHOUT ROWID;
+
+CREATE TABLE unit_transport_exclusion_groups (
+    datasheet_id TEXT NOT NULL REFERENCES unit_transport(datasheet_id) ON DELETE CASCADE,
+    group_position INTEGER NOT NULL CHECK (group_position >= 1),
+    minimum_wounds INTEGER CHECK (minimum_wounds > 0),
+    requires_non_character INTEGER NOT NULL CHECK (requires_non_character IN (0, 1)),
+    PRIMARY KEY (datasheet_id, group_position)
+) WITHOUT ROWID;
+
+CREATE TABLE unit_transport_exclusion_keywords (
+    datasheet_id TEXT NOT NULL,
+    group_position INTEGER NOT NULL,
+    keyword_position INTEGER NOT NULL CHECK (keyword_position >= 1),
+    keyword TEXT NOT NULL,
+    PRIMARY KEY (datasheet_id, group_position, keyword_position),
+    FOREIGN KEY (datasheet_id, group_position)
+        REFERENCES unit_transport_exclusion_groups(datasheet_id, group_position) ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE TABLE unit_transport_model_cost_groups (
+    datasheet_id TEXT NOT NULL REFERENCES unit_transport(datasheet_id) ON DELETE CASCADE,
+    group_position INTEGER NOT NULL CHECK (group_position >= 1),
+    model_cost INTEGER NOT NULL CHECK (model_cost > 1),
+    minimum_wounds INTEGER CHECK (minimum_wounds > 0),
+    PRIMARY KEY (datasheet_id, group_position)
+) WITHOUT ROWID;
+
+CREATE TABLE unit_transport_model_cost_keywords (
+    datasheet_id TEXT NOT NULL,
+    group_position INTEGER NOT NULL,
+    keyword_position INTEGER NOT NULL CHECK (keyword_position >= 1),
+    keyword TEXT NOT NULL,
+    PRIMARY KEY (datasheet_id, group_position, keyword_position),
+    FOREIGN KEY (datasheet_id, group_position)
+        REFERENCES unit_transport_model_cost_groups(datasheet_id, group_position) ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE TABLE unit_transport_capacity_modifiers (
+    datasheet_id TEXT NOT NULL REFERENCES unit_transport(datasheet_id) ON DELETE CASCADE,
+    position INTEGER NOT NULL CHECK (position >= 1),
+    equipment_name TEXT NOT NULL,
+    capacity INTEGER NOT NULL CHECK (capacity > 0),
+    PRIMARY KEY (datasheet_id, position)
 ) WITHOUT ROWID;
 
 CREATE TABLE unit_composition (
@@ -3388,6 +3451,103 @@ def populate_firing_deck(connection: sqlite3.Connection) -> tuple[int, int]:
     return firing_decks, passenger_costs
 
 
+def populate_transports(connection: sqlite3.Connection) -> tuple[int, int]:
+    vocabulary = {
+        normalized_term(row[0])
+        for row in connection.execute("SELECT DISTINCT keyword FROM datasheet_keywords")
+    }
+    vocabulary.update(
+        normalized_term(row[0])
+        for row in connection.execute("SELECT DISTINCT name FROM model_profiles")
+    )
+    vocabulary.update(
+        normalized_term(row[0])
+        for row in connection.execute("SELECT DISTINCT name FROM datasheets")
+    )
+    vocabulary.discard("")
+    inserted = 0
+    exact = 0
+    for datasheet_id, source in connection.execute(
+        """SELECT id, transport_text FROM datasheets
+           WHERE transport_text <> '' ORDER BY id"""
+    ):
+        rules = parse_transport_rule(source, vocabulary)
+        if not rules["capacity"]:
+            continue
+        connection.execute(
+            """INSERT INTO unit_transport
+               (datasheet_id, capacity, exact_rules, source_text) VALUES (?, ?, ?, ?)""",
+            (datasheet_id, rules["capacity"], int(rules["exact"]), source),
+        )
+        for group_position, keywords in enumerate(rules["allowed"], start=1):
+            connection.executemany(
+                """INSERT INTO unit_transport_allowed_keywords
+                   (datasheet_id, group_position, keyword_position, keyword)
+                   VALUES (?, ?, ?, ?)""",
+                (
+                    (datasheet_id, group_position, keyword_position, keyword)
+                    for keyword_position, keyword in enumerate(keywords, start=1)
+                ),
+            )
+        for group_position, group in enumerate(rules["excluded"], start=1):
+            connection.execute(
+                """INSERT INTO unit_transport_exclusion_groups
+                   (datasheet_id, group_position, minimum_wounds, requires_non_character)
+                   VALUES (?, ?, ?, ?)""",
+                (
+                    datasheet_id,
+                    group_position,
+                    group["minimumWounds"],
+                    int(group["nonCharacter"]),
+                ),
+            )
+            connection.executemany(
+                """INSERT INTO unit_transport_exclusion_keywords
+                   (datasheet_id, group_position, keyword_position, keyword)
+                   VALUES (?, ?, ?, ?)""",
+                (
+                    (datasheet_id, group_position, keyword_position, keyword)
+                    for keyword_position, keyword in enumerate(
+                        group["keywords"], start=1
+                    )
+                ),
+            )
+        for group_position, group in enumerate(rules["costs"], start=1):
+            connection.execute(
+                """INSERT INTO unit_transport_model_cost_groups
+                   (datasheet_id, group_position, model_cost, minimum_wounds)
+                   VALUES (?, ?, ?, ?)""",
+                (
+                    datasheet_id,
+                    group_position,
+                    group["cost"],
+                    group["minimumWounds"],
+                ),
+            )
+            connection.executemany(
+                """INSERT INTO unit_transport_model_cost_keywords
+                   (datasheet_id, group_position, keyword_position, keyword)
+                   VALUES (?, ?, ?, ?)""",
+                (
+                    (datasheet_id, group_position, keyword_position, keyword)
+                    for keyword_position, keyword in enumerate(
+                        group["keywords"], start=1
+                    )
+                ),
+            )
+        connection.executemany(
+            """INSERT INTO unit_transport_capacity_modifiers
+               (datasheet_id, position, equipment_name, capacity) VALUES (?, ?, ?, ?)""",
+            (
+                (datasheet_id, position, modifier["equipment"], modifier["capacity"])
+                for position, modifier in enumerate(rules["capacityModifiers"], start=1)
+            ),
+        )
+        inserted += 1
+        exact += int(rules["exact"])
+    return inserted, exact
+
+
 def composition_components(value: str) -> list[tuple[str, int, int]]:
     normalized = plain_text(value).replace("‑", "-").replace("–", "-")
     if re.search(r"\bor\b", normalized, re.IGNORECASE):
@@ -3521,7 +3681,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "53"),
+                    ("schema_version", "54"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),
@@ -3552,8 +3712,8 @@ def create_database(
             connection.executemany(
                 """INSERT INTO datasheets
                    (id, faction_id, name, battlefield_role, loadout_html,
-                    loadout_text, is_virtual, source_url)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    loadout_text, transport_html, transport_text, is_virtual, source_url)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     (
                         row["id"],
@@ -3562,6 +3722,8 @@ def create_database(
                         row["role"] or None,
                         row["loadout"],
                         plain_text(row["loadout"]),
+                        row["transport"],
+                        plain_text(row["transport"]),
                         boolean(row["virtual"]),
                         row["link"],
                     )
@@ -3784,6 +3946,7 @@ def create_database(
 
             rebuild_combat_presets(connection)
             populate_firing_deck(connection)
+            populate_transports(connection)
             populate_constraints(connection)
 
         integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
@@ -3804,6 +3967,13 @@ def create_database(
                 "unit_combat_preset_effects",
                 "unit_firing_deck",
                 "unit_firing_deck_passenger_costs",
+                "unit_transport",
+                "unit_transport_allowed_keywords",
+                "unit_transport_exclusion_groups",
+                "unit_transport_exclusion_keywords",
+                "unit_transport_model_cost_groups",
+                "unit_transport_model_cost_keywords",
+                "unit_transport_capacity_modifiers",
                 "unit_composition",
                 "unit_composition_models",
                 "wargear_options",

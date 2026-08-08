@@ -16,14 +16,32 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Import exact Transport capacity keyword restrictions and per-model space
-   costs, then assign saved unit instances to transports in lists and Play Mode
-   so Firing Deck cannot select a passenger that was never legally embarked.
+1. Normalize the remaining compound Transport clauses: attached Tacticus
+   Character exceptions, mixed Infantry/Vehicle capacity pools, variable
+   Wounds-based Vehicle space, and per-model costs in mixed-composition units.
+   Add explicit attachment and model-composition formation state where exact
+   evaluation requires it.
 2. Extend normalized defensive-equipment selection to Model vs Model and Play
    Mode while preserving model-by-model allocation and preventing bearer-only
    gear from becoming a homogeneous unit-wide defense.
 
 ## Completed cycles
+
+- 2026-08-08: Added source-backed Transport assignments and legal Firing Deck
+  passengers. SQLite schema 54 retains the exact Transport paragraph for 178
+  datasheets and normalizes 137 unambiguous rules, including 60 of 61 Firing
+  Deck transports, into allowed keyword groups, exclusions, Wounds thresholds,
+  fixed per-model space costs, and four equipped-wargear capacity changes. Army
+  Lists assigns each passenger instance to a specific compatible transport,
+  detects missing, self, circular, and over-capacity formations, and preserves
+  assignments through device/cloud storage and backups. Model vs Model, Unit vs
+  Unit, static agent URLs, and API Firing Deck resolution now reject passengers
+  that the transport cannot legally carry; Play Mode additionally requires the
+  saved assignment. Conditional source clauses not yet representable are
+  unavailable instead of inferred. Parser negatives, database and catalogue
+  snapshots, keyword/exclusion/cost boundaries, aggregate capacity, equipment
+  modifiers, circular assignment, persistence, API discovery, and existing
+  C/WebAssembly Firing Deck regressions cover the change.
 
 - 2026-08-08: Added explicit Firing Deck weapon selection. SQLite schema 53
   records the published Firing Deck limit for 61 transports and exact two-slot

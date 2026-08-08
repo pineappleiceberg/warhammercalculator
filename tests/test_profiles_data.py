@@ -22,6 +22,7 @@ from scripts.profile_freshness import (
     offline_report,
     table_snapshot,
 )
+from scripts.transport_rules import normalized_term, parse_transport_rule
 from scripts.wargear_constraints import (
     allowance,
     choice_weapon_vector,
@@ -40,6 +41,52 @@ SOURCE_LOCK = ROOT / "data" / "profile-source-lock.json"
 
 
 class ProfileDataTests(unittest.TestCase):
+    def test_transport_parser_preserves_exact_keyword_cost_and_wounds_clauses(self):
+        vocabulary = {
+            normalized_term(value)
+            for value in (
+                "Orks",
+                "Infantry",
+                "Mega Armour",
+                "Jump Pack",
+                "Ghazghkull Thraka",
+                "Character",
+            )
+        }
+        trukk = parse_transport_rule(
+            "This model has a transport capacity of 12 Orks Infantry models. "
+            "Each Mega Armour model takes up the space of 2 models. "
+            "It cannot transport Jump Pack or Ghazghkull Thraka models.",
+            vocabulary,
+        )
+        self.assertTrue(trukk["exact"])
+        self.assertEqual(trukk["capacity"], 12)
+        self.assertEqual(trukk["allowed"], [["orks", "infantry"]])
+        self.assertEqual(
+            trukk["costs"],
+            [{"keywords": ["mega armour"], "minimumWounds": None, "cost": 2}],
+        )
+        self.assertEqual(
+            [group["keywords"] for group in trukk["excluded"]],
+            [["jump pack"], ["ghazghkull thraka"]],
+        )
+        fortification = parse_transport_rule(
+            "This FORTIFICATION has a transport capacity of 20 INFANTRY models. "
+            "Each model with a Wounds characteristic of 3 or more takes up the space of 2 models. "
+            "It cannot transport non-CHARACTER models with a Wounds characteristic of 4 or more.",
+            vocabulary,
+        )
+        self.assertTrue(fortification["exact"])
+        self.assertEqual(fortification["costs"][0]["minimumWounds"], 3)
+        self.assertEqual(fortification["excluded"][0]["minimumWounds"], 4)
+        self.assertTrue(fortification["excluded"][0]["nonCharacter"])
+        self.assertFalse(
+            parse_transport_rule(
+                "This model carries twelve friendly models under an unknown rule.",
+                vocabulary,
+            )["exact"]
+        )
+
     def test_combat_guidance_classifies_exact_non_self_support_auras(self):
         taskmaster = combat_guidance_presets(
             "Taskmaster (Aura)",
@@ -1661,7 +1708,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "53",
+                "54",
             )
             self.assertEqual(
                 connection.execute("SELECT count(*) FROM unit_firing_deck").fetchone()[
@@ -1674,6 +1721,54 @@ class ProfileDataTests(unittest.TestCase):
                     "SELECT count(*) FROM unit_firing_deck_passenger_costs"
                 ).fetchone()[0],
                 4,
+            )
+            self.assertEqual(
+                connection.execute("SELECT count(*) FROM unit_transport").fetchone()[0],
+                178,
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM unit_transport WHERE exact_rules = 1"
+                ).fetchone()[0],
+                137,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*)
+                       FROM unit_transport AS transport
+                       JOIN unit_firing_deck AS deck USING (datasheet_id)
+                       WHERE transport.exact_rules = 1"""
+                ).fetchone()[0],
+                60,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT capacity, exact_rules, source_text
+                       FROM unit_transport WHERE datasheet_id = '000000026'"""
+                ).fetchone(),
+                (
+                    12,
+                    1,
+                    "This model has a transport capacity of 12 Orks Infantry models. "
+                    "Each Mega Armour model takes up the space of 2 models. It cannot "
+                    "transport Jump Pack or Ghazghkull Thraka models.",
+                ),
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT group_position, group_concat(keyword, '|')
+                       FROM unit_transport_allowed_keywords
+                       WHERE datasheet_id = '000000026' GROUP BY group_position"""
+                ).fetchall(),
+                [(1, "orks|infantry")],
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT model_cost
+                       FROM unit_transport_model_cost_groups
+                       WHERE datasheet_id = '000000026'"""
+                ).fetchall(),
+                [(2,)],
             )
             self.assertEqual(
                 connection.execute(
@@ -3483,7 +3578,14 @@ class ProfileDataTests(unittest.TestCase):
             unit for unit in catalogue["units"] if unit["id"] == "000000686"
         )
         self.assertEqual(heavy_weapons["firingDeckModelCost"], 2)
+        trukk = next(unit for unit in catalogue["units"] if unit["id"] == "000000026")
+        self.assertEqual(trukk["transport"]["capacity"], 12)
+        self.assertTrue(trukk["transport"]["exactRules"])
+        self.assertEqual(trukk["transport"]["allowedKeywords"], [["orks", "infantry"]])
+        self.assertEqual(trukk["transport"]["modelCosts"][0]["cost"], 2)
+        self.assertIn("mega armour", trukk["transport"]["modelCosts"][0]["keywords"])
         boyz = next(unit for unit in catalogue["units"] if unit["name"] == "Boyz")
+        self.assertIn("boss nob", boyz["transportKeywords"])
         waaagh = [
             preset
             for preset in boyz["combatPresets"]

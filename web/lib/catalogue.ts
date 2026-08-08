@@ -240,6 +240,20 @@ export type CatalogueUnit = {
   defensiveEquipment: CatalogueDefensiveEquipment[];
   firingDeck: { capacity: number; abilityId: string | null } | null;
   firingDeckModelCost: number;
+  transport: {
+    capacity: number;
+    exactRules: boolean;
+    source: string;
+    allowedKeywords: string[][];
+    excluded: Array<{
+      keywords: string[];
+      minimumWounds: number | null;
+      nonCharacter: boolean;
+    }>;
+    modelCosts: Array<{ keywords: string[]; minimumWounds: number | null; cost: number }>;
+    capacityModifiers: Array<{ equipment: string; capacity: number }>;
+  } | null;
+  transportKeywords: string[];
   suggestedModelCount: number | null;
   maximumModelCount: number | null;
 };
