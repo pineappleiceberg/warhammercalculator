@@ -107,9 +107,12 @@ export function combatPresetMeetsEligibility(
   sourceUnitGuidedAgainstTarget = false,
   targetUnitSpotted = false,
   targetUnitSpottedByMarkerlightObserver = false,
+  supportedUnitKeywords = [],
+  supportDistance = 0,
 ) {
   const targets = new Set(targetKeywords.map(normalizedKeyword));
   const attacks = new Set(attackKeywords.map(normalizedKeyword));
+  const supported = new Set(supportedUnitKeywords.map(normalizedKeyword));
   const distanceEligible =
     !preset.maximumTargetDistance ||
     (targetDistance > 0 && targetDistance <= preset.maximumTargetDistance);
@@ -119,8 +122,16 @@ export function combatPresetMeetsEligibility(
     (preset.requiredTargetStrengthState === "below_half" && targetStrengthState === "below_half") ||
     (preset.requiredTargetStrengthState === "not_below_half" &&
       targetStrengthState !== "below_half");
+  const supportDistanceEligible =
+    !preset.maximumSupportDistance ||
+    (supportDistance > 0 && supportDistance <= preset.maximumSupportDistance);
+  const supportedUnitEligible = (preset.requiredSupportedKeywords ?? []).every((keyword) =>
+    supported.has(normalizedKeyword(keyword)),
+  );
   return (
     distanceEligible &&
+    supportDistanceEligible &&
+    supportedUnitEligible &&
     strengthEligible &&
     (!preset.requiresAttackerCharge || attackerCharged) &&
     (!preset.requiresAttackerStationary || attackerRemainedStationary) &&
@@ -180,6 +191,8 @@ export function selectedAndAutomaticCombatPresets(
   targetUnitSpotted = false,
   targetUnitSpottedByMarkerlightObserver = false,
   sourceRelationship = "self",
+  supportedUnitKeywords = [],
+  supportDistance = 0,
 ) {
   const selected = new Set(selectedIds);
   return presets.filter(
@@ -211,6 +224,8 @@ export function selectedAndAutomaticCombatPresets(
         sourceUnitGuidedAgainstTarget,
         targetUnitSpotted,
         targetUnitSpottedByMarkerlightObserver,
+        supportedUnitKeywords,
+        supportDistance,
       ),
   );
 }
@@ -274,6 +289,8 @@ export function combatPresetEffects(
   sourceUnitGuidedAgainstTarget = false,
   targetUnitSpotted = false,
   targetUnitSpottedByMarkerlightObserver = false,
+  supportedUnitKeywords = [],
+  supportDistance = 0,
 ) {
   const applicable = presets.filter(
     (preset) =>
@@ -303,6 +320,8 @@ export function combatPresetEffects(
         sourceUnitGuidedAgainstTarget,
         targetUnitSpotted,
         targetUnitSpottedByMarkerlightObserver,
+        supportedUnitKeywords,
+        supportDistance,
       ),
   );
   const hitModifiers = applicable.filter((preset) =>
@@ -670,6 +689,8 @@ export function applyCombatPresets(
     context.targetSpottedByMarkerlightObserver ??
       profile.targetSpottedByMarkerlightObserver ??
       false,
+    context.supportedUnitKeywords ?? [],
+    context.supportDistance ?? profile.supportDistance ?? 0,
   );
   const target = combatPresetEffects(
     targetPresets,
@@ -710,6 +731,8 @@ export function applyCombatPresets(
     context.targetSpottedByMarkerlightObserver ??
       profile.targetSpottedByMarkerlightObserver ??
       false,
+    [],
+    0,
   );
   const attacksReplacements = [attacker.attacksReplacement, target.attacksReplacement].filter(
     (value) => value > 0,

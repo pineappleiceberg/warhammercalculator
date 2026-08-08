@@ -16,9 +16,9 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Extend the supporting-unit relationship to conservative friendly-unit aura
-   and targeted-support abilities, with explicit source distance and eligibility
-   where their published conditions require it.
+1. Classify the remaining friendly-unit auras conservatively: self-applicable
+   sources, exclusions, closest-target clauses, and defensive target-side
+   support still need explicit relationship state before automation.
 2. Add reproducible closest-target and line-of-sight relationship state for the
    remaining compound attack conditions that still require manual
    interpretation.
@@ -30,6 +30,20 @@ priority over feature count.
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added exact range and affected-keyword eligibility for simple
+  non-self friendly-unit auras. SQLite schema 44 classifies Brood Progenitor,
+  Drone Commander, Taskmaster, Unholy Mechanisms, and three Wisdom of the
+  Ancients source rows as supporting-unit effects, while retaining
+  self-applicable and compound auras conservatively. Model vs Model, Unit vs
+  Unit, Play Mode, shared profiles, normalized APIs, and static agent URLs now
+  preserve an editable source-to-supported-unit distance; zero is unknown and
+  therefore inactive. The affected attacker must also contain every published
+  keyword. Agent results expose both requirements, and Play Mode preserves the
+  support effect while changing targets. Exact-text parser negatives,
+  database/catalogue snapshots, URL and recovery round trips, boundary tests,
+  native and WebAssembly builds, 330/330 formal proofs, zero Eva alarms, E-ACSL,
+  and the bounded sanitizer fuzz campaign cover the change.
 
 - 2026-08-07: Added exact per-battle support-use tracking. SQLite schema 43
   records the published two-use limit only on Blacklight Marker Drones and

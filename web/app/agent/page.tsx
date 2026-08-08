@@ -97,6 +97,7 @@ export default function AgentCalculator() {
           const selection = resolveAgentCatalogueSelection(search, catalogue);
           const requestedContext = parseAgentProfile(search, DEFAULT_PROFILE, false);
           const requestedDistance = requestedContext.targetDistance;
+          const supportDistance = requestedContext.supportDistance;
           const attackerUnitModels = requestedContext.attackerUnitModels;
           const nearbyEnemyModels = requestedContext.nearbyEnemyModels;
           const attackerCharged = requestedContext.attackerCharged;
@@ -154,6 +155,7 @@ export default function AgentCalculator() {
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
+            supportDistance,
           };
           const attackerPresets = [
             ...selectedAndAutomaticCombatPresets(
@@ -212,6 +214,8 @@ export default function AgentCalculator() {
               targetSpotted,
               targetSpottedByMarkerlightObserver,
               "supporting_unit",
+              selection.attacker.models[0]?.keywords ?? [],
+              supportDistance,
             ),
           ];
           const targetPresets = selectedAndAutomaticCombatPresets(
@@ -275,6 +279,8 @@ export default function AgentCalculator() {
               attackerBattleShocked,
               targetBattleShocked,
               targetStrengthState,
+              supportDistance,
+              supportedUnitKeywords: selection.attacker.models[0]?.keywords ?? [],
             },
           );
           candidate = parseAgentProfile(search, profile, false);
@@ -292,6 +298,8 @@ export default function AgentCalculator() {
               id: preset.id,
               name: preset.name,
               usesPerBattle: preset.usesPerBattle ?? null,
+              maximumSupportDistance: preset.maximumSupportDistance ?? null,
+              requiredSupportedKeywords: preset.requiredSupportedKeywords ?? [],
             })),
             attackerPresets: attackerPresets.map((preset) => ({
               id: preset.id,
@@ -418,10 +426,10 @@ export default function AgentCalculator() {
               targetBattleShocked, attackerOnAttackerSelectedObjective,
               targetOnAttackerSelectedObjective, attackerOnTargetSelectedObjective,
               targetOnTargetSelectedObjective, guided, spotted, markerlightSpotted, targetStrength,
-              attackerPreset, targetPreset, support, supportPreset, and rules. A supportPreset is
-              resolved only from the named same-faction supporting unit and cannot be applied as the
-              attacker&apos;s own ability. Limited-use metadata is returned in the result; this
-              stateless URL does not spend battle uses.
+              attackerPreset, targetPreset, support, supportPreset, supportDistance, and rules. A
+              supportPreset is resolved only from the named same-faction supporting unit and cannot
+              be applied as the attacker&apos;s own ability. Limited-use metadata is returned in the
+              result; this stateless URL does not spend battle uses.
             </p>
             <p>
               <code>rules</code> accepts comma-separated values such as{" "}

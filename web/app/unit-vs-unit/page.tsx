@@ -99,6 +99,7 @@ export default function UnitVsUnit() {
   const [activeTargetPresetIds, setActiveTargetPresetIds] = useState<string[]>([]);
   const [supportUnitId, setSupportUnitId] = useState("");
   const [activeSupportPresetIds, setActiveSupportPresetIds] = useState<string[]>([]);
+  const [supportDistance, setSupportDistance] = useState(0);
   const [weaponOrder, setWeaponOrder] = useState<number[]>([]);
   const [targetSegments, setTargetSegments] = useState<TargetSegment[]>([]);
   const [initialWoundsLost, setInitialWoundsLost] = useState(0);
@@ -225,6 +226,7 @@ export default function UnitVsUnit() {
     activeTargetPresetIds,
     supportUnitId,
     activeSupportPresetIds,
+    supportDistance,
   });
   const resultsAreCurrent = resultKey === inputKey;
   const rollIsCurrent = rollKey === inputKey;
@@ -276,6 +278,7 @@ export default function UnitVsUnit() {
     setActiveAttackerPresetIds([]);
     setSupportUnitId("");
     setActiveSupportPresetIds([]);
+    setSupportDistance(0);
     setResults([]);
     setVolleySummary(null);
     setRollResult(null);
@@ -371,6 +374,7 @@ export default function UnitVsUnit() {
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
+            supportDistance,
           },
           line.weapon,
           targetSegments[0]?.keywords ?? [],
@@ -432,6 +436,8 @@ export default function UnitVsUnit() {
             targetSpotted,
             targetSpottedByMarkerlightObserver,
             "supporting_unit",
+            attackerUnit?.models[0]?.keywords ?? [],
+            supportDistance,
           ),
         ],
         selectedAndAutomaticCombatPresets(
@@ -491,6 +497,8 @@ export default function UnitVsUnit() {
           attackerGuidedAgainstTarget,
           targetSpotted,
           targetSpottedByMarkerlightObserver,
+          supportDistance,
+          supportedUnitKeywords: attackerUnit?.models[0]?.keywords ?? [],
         },
       ),
     );
@@ -702,6 +710,9 @@ export default function UnitVsUnit() {
                   setAttackerUnitModels(0);
                   setNearbyEnemyModels(0);
                   setAttackerBattleShocked(false);
+                  setSupportUnitId("");
+                  setActiveSupportPresetIds([]);
+                  setSupportDistance(0);
                 }}
               >
                 <option value="">Choose faction</option>
@@ -773,8 +784,12 @@ export default function UnitVsUnit() {
                   onUnitChange={(unitId) => {
                     setSupportUnitId(unitId);
                     setActiveSupportPresetIds([]);
+                    setSupportDistance(0);
                   }}
                   onPresetChange={setActiveSupportPresetIds}
+                  supportDistance={supportDistance}
+                  onSupportDistanceChange={setSupportDistance}
+                  supportedUnitKeywords={attackerUnit.models[0]?.keywords ?? []}
                   attackerCharged={attackerCharged}
                   attackerRemainedStationary={attackerRemainedStationary}
                   attackerBattleShocked={attackerBattleShocked}

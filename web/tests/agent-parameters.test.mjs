@@ -194,6 +194,7 @@ test("canonical agent parameters round-trip every supported profile field", () =
     criticalWounds: 5,
     rapidFire: 2,
     targetDistance: 9,
+    supportDistance: 8,
     attackerUnitModels: 11,
     nearbyEnemyModels: 7,
     attackerCharged: true,

@@ -163,11 +163,21 @@ def export(database: Path, output: Path) -> None:
                 {"name": row["name"], "value": row["value"]}
             )
 
+        supported_keywords: dict[tuple[str, int, int], list[str]] = {}
+        for row in connection.execute(
+            """SELECT datasheet_id, ability_position, preset_position, keyword
+               FROM unit_combat_preset_supported_keywords
+               ORDER BY datasheet_id, ability_position, preset_position, keyword_position"""
+        ):
+            supported_keywords.setdefault(
+                (row["datasheet_id"], row["ability_position"], row["preset_position"]), []
+            ).append(row["keyword"])
+
         for row in connection.execute(
             """SELECT datasheet_id, ability_position, preset_position, name, description_text,
                       is_exclusive_choice, activation, source_relationship, uses_per_battle,
                       weapon_scope,
-                      maximum_target_distance,
+                      maximum_target_distance, maximum_support_distance,
                       requires_attacker_charge, requires_attacker_stationary,
                       requires_attached_unit,
                       requires_waaagh_active,
@@ -192,6 +202,7 @@ def export(database: Path, output: Path) -> None:
                ORDER BY datasheet_id, ability_position, preset_position"""
         ):
             base_id = f"{row['datasheet_id']}:{row['ability_position']}"
+            preset_key = (row["datasheet_id"], row["ability_position"], row["preset_position"])
             exported_preset = {
                     "id": base_id if row["preset_position"] == 1 else f"{base_id}:{row['preset_position']}",
                     "choiceGroup": base_id if row["is_exclusive_choice"] else None,
@@ -208,6 +219,16 @@ def export(database: Path, output: Path) -> None:
                     **(
                         {"maximumTargetDistance": row["maximum_target_distance"]}
                         if row["maximum_target_distance"]
+                        else {}
+                    ),
+                    **(
+                        {"maximumSupportDistance": row["maximum_support_distance"]}
+                        if row["maximum_support_distance"]
+                        else {}
+                    ),
+                    **(
+                        {"requiredSupportedKeywords": supported_keywords[preset_key]}
+                        if preset_key in supported_keywords
                         else {}
                     ),
                     **(

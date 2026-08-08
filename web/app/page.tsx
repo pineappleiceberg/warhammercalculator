@@ -903,6 +903,8 @@ export default function Home() {
     targetUnitSpotted = false,
     targetUnitSpottedByMarkerlightObserver = false,
     sourceRelationship: "self" | "supporting_unit" = "self",
+    supportedUnitKeywords: string[] = [],
+    supportDistance = 0,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -932,6 +934,8 @@ export default function Home() {
       targetUnitSpotted,
       targetUnitSpottedByMarkerlightObserver,
       sourceRelationship,
+      supportedUnitKeywords,
+      supportDistance,
     );
   const withActivePresets = (
     current: Profile,
@@ -1062,6 +1066,8 @@ export default function Home() {
           baseProfile.targetSpotted,
           baseProfile.targetSpottedByMarkerlightObserver,
           "supporting_unit",
+          selectedAttackerUnit?.models[0]?.keywords ?? [],
+          baseProfile.supportDistance,
         ),
       ],
       selectedPresets(
@@ -1120,6 +1126,8 @@ export default function Home() {
         attackerGuidedAgainstTarget: baseProfile.attackerGuidedAgainstTarget,
         targetSpotted: baseProfile.targetSpotted,
         targetSpottedByMarkerlightObserver: baseProfile.targetSpottedByMarkerlightObserver,
+        supportedUnitKeywords: selectedAttackerUnit?.models[0]?.keywords ?? [],
+        supportDistance: baseProfile.supportDistance,
       },
     ) as Profile;
   };
@@ -1489,7 +1497,7 @@ export default function Home() {
                     setActiveSupportPresetIds([]);
                     setProfile((current) =>
                       withActivePresets(
-                        current,
+                        { ...current, supportDistance: 0 },
                         selectedWeapon,
                         activeAttackerPresetIds,
                         activeTargetPresetIds,
@@ -1500,6 +1508,13 @@ export default function Home() {
                     );
                   }}
                   onPresetChange={chooseSupportPresets}
+                  supportDistance={profile.supportDistance}
+                  onSupportDistanceChange={(distance) =>
+                    setProfile((current) =>
+                      withActivePresets({ ...current, supportDistance: distance }),
+                    )
+                  }
+                  supportedUnitKeywords={selectedAttackerUnit.models[0]?.keywords ?? []}
                   attackerCharged={profile.attackerCharged}
                   attackerRemainedStationary={profile.attackerRemainedStationary}
                   attackerBattleShocked={profile.attackerBattleShocked}

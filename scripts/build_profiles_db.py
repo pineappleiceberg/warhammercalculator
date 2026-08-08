@@ -161,6 +161,7 @@ CREATE TABLE unit_combat_presets (
     uses_per_battle INTEGER CHECK (uses_per_battle > 0),
     weapon_scope TEXT NOT NULL CHECK (weapon_scope IN ('Any', 'Ranged', 'Melee')),
     maximum_target_distance INTEGER CHECK (maximum_target_distance > 0),
+    maximum_support_distance INTEGER CHECK (maximum_support_distance > 0),
     requires_attacker_charge INTEGER NOT NULL DEFAULT 0
         CHECK (requires_attacker_charge IN (0, 1)),
     requires_attacker_stationary INTEGER NOT NULL DEFAULT 0
@@ -221,6 +222,18 @@ CREATE TABLE unit_combat_presets (
     PRIMARY KEY (datasheet_id, ability_position, preset_position),
     FOREIGN KEY (datasheet_id, ability_position)
         REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE TABLE unit_combat_preset_supported_keywords (
+    datasheet_id TEXT NOT NULL,
+    ability_position INTEGER NOT NULL,
+    preset_position INTEGER NOT NULL,
+    keyword_position INTEGER NOT NULL CHECK (keyword_position >= 1),
+    keyword TEXT NOT NULL,
+    PRIMARY KEY (datasheet_id, ability_position, preset_position, keyword_position),
+    FOREIGN KEY (datasheet_id, ability_position, preset_position)
+        REFERENCES unit_combat_presets(datasheet_id, ability_position, preset_position)
+        ON DELETE CASCADE
 ) WITHOUT ROWID;
 
 CREATE TABLE unit_combat_preset_effects (
@@ -2088,6 +2101,66 @@ def combat_guidance_presets(
     if not effects:
         return []
 
+    support_auras = (
+        (
+            "Brood Progenitor (Aura, Psychic)",
+            "While a friendly Termagants unit is within 6\" of this model, ranged weapons "
+            "equipped by models in that unit have the [LETHAL HITS] ability.",
+            6,
+            ["termagants"],
+        ),
+        (
+            "Drone Commander (Aura)",
+            "While a friendly Spindle Drones unit is within 6\" of this model, each time a "
+            "model in that unit makes an attack, add 1 to the Hit roll.",
+            6,
+            ["spindle drones"],
+        ),
+        (
+            "Taskmaster (Aura)",
+            "While a friendly War Dog model is within 9\" of this model, each time that WAR "
+            "DOG model makes a ranged attack, re-roll a Hit roll of 1.",
+            9,
+            ["war dog"],
+        ),
+        (
+            "Unholy Mechanisms (Aura)",
+            "While a friendly Daemon Vehicle unit is within 6\" of this model, add 2 to the "
+            "Strength characteristic of weapons equipped by models in that unit.",
+            6,
+            ["daemon", "vehicle"],
+        ),
+        (
+            "Wisdom of the Ancients (Aura)",
+            "While a friendly Adeptus Astartes Infantry unit is within 6\" of this model, each "
+            "time a model in that unit makes an attack, re-roll a Hit roll of 1.",
+            6,
+            ["adeptus astartes", "infantry"],
+        ),
+        (
+            "Wisdom of the Ancients (Aura)",
+            "While a friendly Grey Knights Infantry unit is within 6\" of this model, each time "
+            "a model in that unit makes an attack, re-roll a Hit roll of 1 and re-roll a Wound "
+            "roll of 1.",
+            6,
+            ["grey knights", "infantry"],
+        ),
+    )
+    for aura_name, aura_text, distance, supported_keywords in support_auras:
+        if name == aura_name and text.casefold() == aura_text.casefold():
+            return [
+                {
+                    "name": name,
+                    "description": text,
+                    "is_exclusive_choice": 0,
+                    "activation": "situational",
+                    "source_relationship": "supporting_unit",
+                    "maximum_support_distance": distance,
+                    "required_supported_keywords": supported_keywords,
+                    **effects,
+                }
+            ]
+
     if name == "For the Greater Good" and all(
         phrase.casefold() in text.casefold()
         for phrase in (
@@ -2467,12 +2540,23 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                 )
             if preset["additional_effects"] and not resolved_effects:
                 continue
+            required_supported_keywords = preset.get("required_supported_keywords", [])
+            if required_supported_keywords:
+                source_keywords = {
+                    keyword.casefold()
+                    for (keyword,) in connection.execute(
+                        "SELECT keyword FROM datasheet_keywords WHERE datasheet_id = ?",
+                        (datasheet_id,),
+                    )
+                }
+                if all(keyword.casefold() in source_keywords for keyword in required_supported_keywords):
+                    continue
             connection.execute(
                 """INSERT INTO unit_combat_presets
                    (datasheet_id, ability_position, preset_position, name, description_text,
                      is_exclusive_choice, activation, source_relationship, uses_per_battle,
                      weapon_scope,
-                    maximum_target_distance,
+                    maximum_target_distance, maximum_support_distance,
                     requires_attacker_charge, requires_attacker_stationary,
                     requires_attached_unit,
                     requires_waaagh_active,
@@ -2494,7 +2578,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                     hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
                     wound_reroll_subject)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     ability_position,
@@ -2507,6 +2591,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     preset.get("uses_per_battle"),
                     preset["weapon_scope"],
                     preset["maximum_target_distance"],
+                    preset.get("maximum_support_distance"),
                     int(preset["requires_attacker_charge"]),
                     int(preset["requires_attacker_stationary"]),
                     int(preset["requires_attached_unit"]),
@@ -2540,6 +2625,15 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     preset["reroll_wound_ones"],
                     preset.get("wound_reroll_role"),
                     preset.get("wound_reroll_subject"),
+                ),
+            )
+            connection.executemany(
+                """INSERT INTO unit_combat_preset_supported_keywords
+                   (datasheet_id, ability_position, preset_position, keyword_position, keyword)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (
+                    (datasheet_id, ability_position, preset_position, position, keyword)
+                    for position, keyword in enumerate(required_supported_keywords, start=1)
                 ),
             )
             for effect_position, effect in enumerate(resolved_effects, start=1):
@@ -2707,7 +2801,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "43"),
+                    ("schema_version", "44"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

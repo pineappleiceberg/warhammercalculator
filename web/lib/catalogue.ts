@@ -104,6 +104,8 @@ export type CatalogueCombatPreset = {
   description: string;
   weaponScope: "Any" | "Ranged" | "Melee";
   maximumTargetDistance?: number;
+  maximumSupportDistance?: number;
+  requiredSupportedKeywords?: string[];
   requiresAttackerCharge?: boolean;
   requiresAttackerStationary?: boolean;
   requiresAttachedUnit?: boolean;
@@ -239,6 +241,8 @@ type CombatPresetContext = {
   targetKeywords?: string[];
   attackKeywords?: string[];
   targetDistance?: number;
+  supportDistance?: number;
+  supportedUnitKeywords?: string[];
   attackerCharged?: boolean;
   attackerRemainedStationary?: boolean;
   attackerAttached?: boolean;

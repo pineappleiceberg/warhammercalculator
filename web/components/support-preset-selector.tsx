@@ -23,6 +23,9 @@ type Props = {
   attackerBattleShocked?: boolean;
   targetBattleShocked?: boolean;
   targetStrengthState?: "full" | "below_starting" | "below_half";
+  supportDistance?: number;
+  onSupportDistanceChange?: (distance: number) => void;
+  supportedUnitKeywords?: string[];
   supportUsesSpent?: Record<string, Record<string, number>>;
   onSupportUsesChange?: (uses: Record<string, Record<string, number>>) => void;
 };
@@ -36,6 +39,9 @@ export function SupportPresetSelector({
   onPresetChange,
   supportUsesSpent = {},
   onSupportUsesChange,
+  supportDistance = 0,
+  onSupportDistanceChange,
+  supportedUnitKeywords = [],
   ...eligibility
 }: Props) {
   const supportUnits = units.filter((unit) =>
@@ -72,6 +78,29 @@ export function SupportPresetSelector({
       </label>
       {selectedUnit ? (
         <>
+          {selectedUnit.combatPresets.some(
+            (preset) =>
+              preset.sourceRelationship === "supporting_unit" && preset.maximumSupportDistance,
+          ) && onSupportDistanceChange ? (
+            <label>
+              <span>Distance from supporting unit</span>
+              <input
+                aria-label="Distance from supporting unit in inches"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                max={1000}
+                step="any"
+                value={supportDistance}
+                onChange={(event) =>
+                  onSupportDistanceChange(
+                    Math.min(1000, Math.max(0, Number(event.target.value) || 0)),
+                  )
+                }
+              />
+              <small>Inches; 0 means unknown</small>
+            </label>
+          ) : null}
           <CombatPresetSelector
             presets={selectedUnit.combatPresets}
             role={role}
@@ -102,6 +131,8 @@ export function SupportPresetSelector({
                 : "Select an ability only when this unit is providing it to the attacker against this target."
             }
             sourceRelationship="supporting_unit"
+            supportDistance={supportDistance}
+            supportedUnitKeywords={supportedUnitKeywords}
             disabledIds={
               tracked
                 ? limitedPresets

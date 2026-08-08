@@ -13,6 +13,7 @@ except ModuleNotFoundError:
 
 TABLE_SCHEMA = """
 DROP TABLE IF EXISTS unit_combat_preset_effects;
+DROP TABLE IF EXISTS unit_combat_preset_supported_keywords;
 DROP TABLE unit_combat_presets;
 CREATE TABLE unit_combat_presets (
     datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
@@ -27,6 +28,7 @@ CREATE TABLE unit_combat_presets (
     uses_per_battle INTEGER CHECK (uses_per_battle > 0),
     weapon_scope TEXT NOT NULL CHECK (weapon_scope IN ('Any', 'Ranged', 'Melee')),
     maximum_target_distance INTEGER CHECK (maximum_target_distance > 0),
+    maximum_support_distance INTEGER CHECK (maximum_support_distance > 0),
     requires_attacker_charge INTEGER NOT NULL DEFAULT 0
         CHECK (requires_attacker_charge IN (0, 1)),
     requires_attacker_stationary INTEGER NOT NULL DEFAULT 0
@@ -89,6 +91,17 @@ CREATE TABLE unit_combat_presets (
         REFERENCES datasheet_abilities(datasheet_id, position) ON DELETE CASCADE
 ) WITHOUT ROWID;
 CREATE INDEX idx_unit_combat_presets_datasheet ON unit_combat_presets(datasheet_id);
+CREATE TABLE unit_combat_preset_supported_keywords (
+    datasheet_id TEXT NOT NULL,
+    ability_position INTEGER NOT NULL,
+    preset_position INTEGER NOT NULL,
+    keyword_position INTEGER NOT NULL CHECK (keyword_position >= 1),
+    keyword TEXT NOT NULL,
+    PRIMARY KEY (datasheet_id, ability_position, preset_position, keyword_position),
+    FOREIGN KEY (datasheet_id, ability_position, preset_position)
+        REFERENCES unit_combat_presets(datasheet_id, ability_position, preset_position)
+        ON DELETE CASCADE
+) WITHOUT ROWID;
 CREATE TABLE unit_combat_preset_effects (
     datasheet_id TEXT NOT NULL,
     ability_position INTEGER NOT NULL,
@@ -139,7 +152,7 @@ def main() -> None:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
         connection.execute(
-            "UPDATE metadata SET value = '43' WHERE key = 'schema_version'"
+            "UPDATE metadata SET value = '44' WHERE key = 'schema_version'"
         )
         connection.execute("PRAGMA optimize")
         connection.commit()

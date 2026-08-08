@@ -8,6 +8,7 @@ from pathlib import Path
 from scripts.build_profiles_db import (
     combat_preset,
     combat_presets,
+    combat_guidance_presets,
     composition_components,
     composition_range,
     plain_text,
@@ -37,6 +38,24 @@ SOURCE_LOCK = ROOT / "data" / "profile-source-lock.json"
 
 
 class ProfileDataTests(unittest.TestCase):
+    def test_combat_guidance_classifies_exact_non_self_support_auras(self):
+        taskmaster = combat_guidance_presets(
+            "Taskmaster (Aura)",
+            'While a friendly War Dog model is within 9" of this model, each time that WAR '
+            "DOG model makes a ranged attack, re-roll a Hit roll of 1.",
+        )[0]
+        self.assertEqual(taskmaster["source_relationship"], "supporting_unit")
+        self.assertEqual(taskmaster["maximum_support_distance"], 9)
+        self.assertEqual(taskmaster["required_supported_keywords"], ["war dog"])
+        self.assertEqual(
+            combat_guidance_presets(
+                "Taskmaster (Aura)",
+                'While a friendly War Dog model is within 12" of this model, each time that WAR '
+                "DOG model makes a ranged attack, re-roll a Hit roll of 1.",
+            ),
+            [],
+        )
+
     def test_combat_preset_parser_preserves_scope_and_first_reroll_tier(self):
         self.assertEqual(
             combat_preset(
@@ -1324,7 +1343,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "43",
+                "44",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1782,7 +1801,7 @@ class ProfileDataTests(unittest.TestCase):
                        FROM unit_combat_presets
                        GROUP BY source_relationship ORDER BY source_relationship"""
                 ).fetchall(),
-                [("self", 1986), ("supporting_unit", 3)],
+                [("self", 1979), ("supporting_unit", 10)],
             )
             oath_rows = connection.execute(
                 """SELECT preset.name, preset.requires_oath_wound_bonus,
@@ -2231,7 +2250,7 @@ class ProfileDataTests(unittest.TestCase):
         finally:
             connection.close()
 
-    def test_browser_catalogue_exports_limited_support_uses_exactly(self):
+    def test_browser_catalogue_exports_support_eligibility_exactly(self):
         catalogue = json.loads(CATALOGUE.read_text(encoding="utf-8"))
         support_presets = [
             preset
@@ -2239,11 +2258,16 @@ class ProfileDataTests(unittest.TestCase):
             for preset in unit["combatPresets"]
             if preset["sourceRelationship"] == "supporting_unit"
         ]
-        self.assertEqual(len(support_presets), 3)
+        self.assertEqual(len(support_presets), 10)
         self.assertEqual(
             {
                 preset["name"]: preset.get("usesPerBattle")
                 for preset in support_presets
+                if preset["name"] in {
+                    "Blacklight Marker Drones",
+                    "Forward Observers",
+                    "High-intensity Markerlights",
+                }
             },
             {
                 "Blacklight Marker Drones": 2,
@@ -2251,6 +2275,9 @@ class ProfileDataTests(unittest.TestCase):
                 "High-intensity Markerlights": None,
             },
         )
+        taskmaster = next(preset for preset in support_presets if preset["name"] == "Taskmaster (Aura)")
+        self.assertEqual(taskmaster["maximumSupportDistance"], 9)
+        self.assertEqual(taskmaster["requiredSupportedKeywords"], ["war dog"])
 
     def test_bearer_defenses_are_limited_to_single_model_datasheets(self):
         connection = sqlite3.connect(DATABASE)

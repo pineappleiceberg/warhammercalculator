@@ -226,6 +226,8 @@ export default function PlayMode() {
     targetUnitSpotted = false,
     targetUnitSpottedByMarkerlightObserver = false,
     sourceRelationship: "self" | "supporting_unit" = "self",
+    supportedUnitKeywords: string[] = [],
+    supportDistance = 0,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -255,6 +257,8 @@ export default function PlayMode() {
       targetUnitSpotted,
       targetUnitSpottedByMarkerlightObserver,
       sourceRelationship,
+      supportedUnitKeywords,
+      supportDistance,
     );
 
   const refreshProfile = (
@@ -290,6 +294,7 @@ export default function PlayMode() {
     nextTargetSpottedByMarkerlightObserver = profile.targetSpottedByMarkerlightObserver,
     nextSupportPresetIds = activeSupportPresetIds,
     nextSupportCatalogueUnit = supportCatalogueUnit,
+    nextSupportDistance = profile.supportDistance,
   ) => {
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
@@ -337,6 +342,7 @@ export default function PlayMode() {
             attackerBattleShocked: nextAttackerBattleShocked,
             targetBattleShocked: nextTargetBattleShocked,
             targetStrengthState: nextTargetStrengthState,
+            supportDistance: nextSupportDistance,
           },
           weapon,
           model.keywords,
@@ -394,6 +400,8 @@ export default function PlayMode() {
             nextTargetSpotted,
             nextTargetSpottedByMarkerlightObserver,
             "supporting_unit",
+            attackerCatalogueUnit?.models[0]?.keywords ?? [],
+            nextSupportDistance,
           ),
         ],
         selectedCombatPresets(
@@ -452,6 +460,8 @@ export default function PlayMode() {
           attackerBattleShocked: nextAttackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
+          supportDistance: nextSupportDistance,
+          supportedUnitKeywords: attackerCatalogueUnit?.models[0]?.keywords ?? [],
         },
       ),
     );
@@ -585,7 +595,11 @@ export default function PlayMode() {
       targetSpottedByMarkerlightObserver,
     );
 
-  const refreshSupportState = (ids: string[], unitId = supportUnitId) => {
+  const refreshSupportState = (
+    ids: string[],
+    unitId = supportUnitId,
+    distance = profile.supportDistance,
+  ) => {
     const armyUnit = attackerList?.units.find((unit) => unit.id === unitId);
     const catalogueUnit = catalogue?.units.find((unit) => unit.id === armyUnit?.unitId);
     refreshProfile(
@@ -621,6 +635,7 @@ export default function PlayMode() {
       profile.targetSpottedByMarkerlightObserver,
       ids,
       catalogueUnit,
+      distance,
     );
   };
 
@@ -702,36 +717,68 @@ export default function PlayMode() {
             targetSpotted: nextTargetSpotted,
             targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
             targetStrengthState: nextTargetStrengthState,
+            supportDistance: profile.supportDistance,
           },
           weaponProfile,
           model.keywords,
         ),
-        selectedCombatPresets(
-          activeAttackerPresetIds,
-          attackerCatalogueUnit,
-          weaponProfile,
-          model.keywords,
-          profile.targetDistance,
-          profile.attackerCharged,
-          profile.attackerBattleShocked,
-          nextTargetBattleShocked,
-          nextTargetStrengthState,
-          profile.attackerRemainedStationary,
-          profile.attackerAttached,
-          profile.attackerWaaaghActive,
-          nextTargetOathOfMoment,
-          profile.attackerOathWoundBonusEligible,
-          profile.attackerOnObjective,
-          nextTargetOnObjective,
-          profile.attackerOnObjective && profile.attackerObjectiveOwner === "attacker",
-          false,
-          profile.attackerOnAttackerSelectedObjective,
-          nextTargetOnAttackerSelectedObjective,
-          profile.attackerBattleShocked,
-          nextAttackerGuidedAgainstTarget,
-          nextTargetSpotted,
-          nextTargetSpottedByMarkerlightObserver,
-        ),
+        [
+          ...selectedCombatPresets(
+            activeAttackerPresetIds,
+            attackerCatalogueUnit,
+            weaponProfile,
+            model.keywords,
+            profile.targetDistance,
+            profile.attackerCharged,
+            profile.attackerBattleShocked,
+            nextTargetBattleShocked,
+            nextTargetStrengthState,
+            profile.attackerRemainedStationary,
+            profile.attackerAttached,
+            profile.attackerWaaaghActive,
+            nextTargetOathOfMoment,
+            profile.attackerOathWoundBonusEligible,
+            profile.attackerOnObjective,
+            nextTargetOnObjective,
+            profile.attackerOnObjective && profile.attackerObjectiveOwner === "attacker",
+            false,
+            profile.attackerOnAttackerSelectedObjective,
+            nextTargetOnAttackerSelectedObjective,
+            profile.attackerBattleShocked,
+            nextAttackerGuidedAgainstTarget,
+            nextTargetSpotted,
+            nextTargetSpottedByMarkerlightObserver,
+          ),
+          ...selectedCombatPresets(
+            activeSupportPresetIds,
+            supportCatalogueUnit,
+            weaponProfile,
+            model.keywords,
+            profile.targetDistance,
+            profile.attackerCharged,
+            profile.attackerBattleShocked,
+            nextTargetBattleShocked,
+            nextTargetStrengthState,
+            profile.attackerRemainedStationary,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            nextAttackerGuidedAgainstTarget,
+            nextTargetSpotted,
+            nextTargetSpottedByMarkerlightObserver,
+            "supporting_unit",
+            attackerCatalogueUnit?.models[0]?.keywords ?? [],
+            profile.supportDistance,
+          ),
+        ],
         selectedCombatPresets(
           nextTargetPresetIds,
           nextTargetCatalogueUnit,
@@ -788,6 +835,8 @@ export default function PlayMode() {
           attackerBattleShocked: profile.attackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
+          supportDistance: profile.supportDistance,
+          supportedUnitKeywords: attackerCatalogueUnit?.models[0]?.keywords ?? [],
         },
       ),
     );
@@ -925,6 +974,7 @@ export default function PlayMode() {
                         attackerUnitModels: 0,
                         nearbyEnemyModels: 0,
                         attackerBattleShocked: false,
+                        supportDistance: 0,
                       }));
                       setResult(null);
                     }}
@@ -972,6 +1022,7 @@ export default function PlayMode() {
                         attackerUnitModels: 0,
                         nearbyEnemyModels: 0,
                         attackerBattleShocked: false,
+                        supportDistance: 0,
                       }));
                       setResult(null);
                     }}
@@ -1691,12 +1742,17 @@ export default function PlayMode() {
                   onUnitChange={(unitId) => {
                     setSupportUnitId(unitId);
                     setActiveSupportPresetIds([]);
-                    refreshSupportState([], unitId);
+                    refreshSupportState([], unitId, 0);
                   }}
                   onPresetChange={(ids) => {
                     setActiveSupportPresetIds(ids);
                     refreshSupportState(ids);
                   }}
+                  supportDistance={profile.supportDistance}
+                  onSupportDistanceChange={(distance) =>
+                    refreshSupportState(activeSupportPresetIds, supportUnitId, distance)
+                  }
+                  supportedUnitKeywords={attackerCatalogueUnit.models[0]?.keywords ?? []}
                   attackerCharged={profile.attackerCharged}
                   attackerRemainedStationary={profile.attackerRemainedStationary}
                   attackerBattleShocked={profile.attackerBattleShocked}

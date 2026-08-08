@@ -795,6 +795,50 @@ test("automatic target-keyword presets apply only to eligible weapons and target
   );
 });
 
+test("support auras require an eligible supported unit at a known in-range distance", () => {
+  const taskmaster = {
+    id: "knight-desecrator:taskmaster",
+    sourceRelationship: "supporting_unit",
+    maximumSupportDistance: 9,
+    requiredSupportedKeywords: ["war dog"],
+    weaponScope: "Ranged",
+    rerollHitOnes: true,
+    effects: [],
+  };
+  const eligible = (keywords, distance) =>
+    combatPresetMeetsEligibility(
+      taskmaster,
+      [],
+      [],
+      0,
+      false,
+      false,
+      false,
+      "full",
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      keywords,
+      distance,
+    );
+  assert.equal(eligible(["Vehicle", "War Dog"], 9), true);
+  assert.equal(eligible(["Vehicle", "War Dog"], 10), false);
+  assert.equal(eligible(["Vehicle", "War Dog"], 0), false);
+  assert.equal(eligible(["Vehicle"], 9), false);
+});
+
 test("Psychic-only defenses apply by attack keyword and reject incompatible volleys", () => {
   const abomination = {
     id: "culexus:abomination",

@@ -16,6 +16,8 @@ type Props = {
   title?: string;
   hint?: string;
   targetDistance?: number;
+  supportDistance?: number;
+  supportedUnitKeywords?: string[];
   attackerCharged?: boolean;
   attackerRemainedStationary?: boolean;
   sourceUnitAttached?: boolean;
@@ -36,6 +38,8 @@ export function CombatPresetSelector({
   title,
   hint,
   targetDistance = 0,
+  supportDistance = 0,
+  supportedUnitKeywords = [],
   attackerCharged = false,
   attackerRemainedStationary = false,
   sourceUnitAttached = false,
@@ -89,6 +93,26 @@ export function CombatPresetSelector({
                 {targetDistance <= 0 || targetDistance > preset.maximumTargetDistance
                   ? " · inactive at current distance"
                   : " · active at current distance"}
+              </small>
+            ) : null}
+            {preset.maximumSupportDistance ? (
+              <small>
+                Requires supported unit within {preset.maximumSupportDistance}&quot;
+                {supportDistance > 0 && supportDistance <= preset.maximumSupportDistance
+                  ? " · active at current distance"
+                  : " · inactive at current distance"}
+              </small>
+            ) : null}
+            {preset.requiredSupportedKeywords?.length ? (
+              <small>
+                Requires supported unit keywords: {preset.requiredSupportedKeywords.join(", ")}
+                {preset.requiredSupportedKeywords.every((keyword) =>
+                  supportedUnitKeywords.some(
+                    (candidate) => candidate.toLocaleLowerCase() === keyword.toLocaleLowerCase(),
+                  ),
+                )
+                  ? " · eligible"
+                  : " · ineligible"}
               </small>
             ) : null}
             {preset.requiresAttackerCharge ? (

@@ -136,6 +136,7 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
       hitOn: 3,
       damage: 2,
       targetDistance: 9,
+      supportDistance: 6,
       attackerUnitModels: 11,
       nearbyEnemyModels: 7,
       attackerRemainedStationary: true,
@@ -179,6 +180,7 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
     "unit-2": { "datasheet-3:ability:5": 1 },
   });
   assert.equal(recovery.profile.targetDistance, 9);
+  assert.equal(recovery.profile.supportDistance, 6);
   assert.equal(recovery.profile.attackerUnitModels, 11);
   assert.equal(recovery.profile.nearbyEnemyModels, 7);
   assert.equal(recovery.profile.attackerRemainedStationary, true);
