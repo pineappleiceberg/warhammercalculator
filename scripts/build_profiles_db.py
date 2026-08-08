@@ -198,6 +198,8 @@ CREATE TABLE unit_combat_presets (
         CHECK (requires_target_spotted IN (0, 1)),
     requires_target_spotted_by_markerlight_observer INTEGER NOT NULL DEFAULT 0
         CHECK (requires_target_spotted_by_markerlight_observer IN (0, 1)),
+    requires_target_closest_eligible INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_target_closest_eligible IN (0, 1)),
     required_target_strength_state TEXT
         CHECK (required_target_strength_state IN
             ('below_starting', 'below_half', 'not_below_half')),
@@ -1970,6 +1972,7 @@ def combat_preset(
     effects["requires_source_guided_against_target"] = False
     effects["requires_target_spotted"] = False
     effects["requires_target_spotted_by_markerlight_observer"] = False
+    effects["requires_target_closest_eligible"] = False
     effects["uses_per_battle"] = None
     (
         effects["requires_target_battle_shocked"],
@@ -2002,6 +2005,7 @@ def combat_preset_activation(description: str, preset: dict[str, object]) -> str
             "requires_source_guided_against_target",
             "requires_target_spotted",
             "requires_target_spotted_by_markerlight_observer",
+            "requires_target_closest_eligible",
             "required_target_strength_state",
         )
     ):
@@ -2374,10 +2378,90 @@ def combat_guidance_presets(
     return []
 
 
+def combat_closest_target_presets(
+    name: str, description: str, allow_bearer_defenses: bool = False
+) -> list[dict[str, object]] | None:
+    text = plain_text(description).strip()
+    exact_rules = {
+        "Close-quarters Firepower": "Each time a model in this unit makes a ranged attack that targets the closest eligible target, improve the Armour Penetration characteristic of that attack by 1.",
+        "Heavy Assault Infantry": "Each time a model in this unit makes a ranged attack that targets the closest eligible target, re-roll a Wound roll of 1.",
+        "Decisive Destruction": "Each time a model in this unit makes a ranged attack that targets the closest eligible target, re-roll a Hit roll of 1.",
+        "Gun-crazy Show-offs": "Each time a model in this unit targets the closest eligible target with its snazzgun, until the end of the phase, that weapon has an Attacks characteristic of 4.",
+        "Furious Onslaught": "Each time this model makes a ranged attack that targets the closest eligible target within 18\", you can re-roll the Hit roll.",
+        "Aggressive Assault": "Each time this model makes a ranged attack that targets the closest eligible target, add 1 to the Hit roll.",
+        "Seasoned Noble": "Each time this model makes a ranged attack that targets the closest eligible target, improve the Armour Penetration characteristic of that attack by 1.",
+        "Point-blank Barrage": "Each time a model in this unit makes a ranged attack that targets the closest eligible target, improve the Armour Penetration characteristic of that attack by 1.",
+        "Virtuous Onslaught": "Each time a model in this unit makes an attack that targets the closest eligible target, re-roll a Wound roll of 1.",
+        "Exemplars of Mont’ka": "Each time a model in this unit makes a ranged attack that targets the closest eligible target, that attack has the [SUSTAINED HITS 1] and [IGNORES COVER] abilities.",
+        "Masters of Close Confines": "Each time a model in this unit makes a ranged attack that targets the closest eligible target, that attack has the [LETHAL HITS] ability.",
+    }
+    expected = exact_rules.get(name)
+    if expected is not None:
+        if text.casefold() != expected.casefold():
+            return None
+        effects = combat_preset(text, allow_bearer_defenses)
+        if not effects:
+            return []
+        effects["requires_target_closest_eligible"] = True
+        if name == "Furious Onslaught":
+            effects["maximum_target_distance"] = 18
+        return [
+            {
+                "name": name,
+                "description": text,
+                "is_exclusive_choice": 0,
+                "activation": "automatic",
+                **effects,
+            }
+        ]
+
+    windriders = (
+        "Each time a model in this unit makes a ranged attack, re-roll a Hit roll of 1. "
+        "If the target of that attack is the closest eligible target, you can re-roll the Hit roll instead."
+    )
+    if name != "Swift Demise":
+        return None
+    if text.casefold() != windriders.casefold():
+        return None
+    baseline = combat_preset(
+        "Each time a model in this unit makes a ranged attack, re-roll a Hit roll of 1.",
+        allow_bearer_defenses,
+    )
+    if not baseline:
+        return []
+    upgrade = {
+        **baseline,
+        "reroll_hits": 1,
+        "reroll_hit_ones": 0,
+        "requires_target_closest_eligible": True,
+    }
+    return [
+        {
+            "name": f"{name} — Base re-roll",
+            "description": text,
+            "is_exclusive_choice": 0,
+            "activation": "automatic",
+            **baseline,
+        },
+        {
+            "name": f"{name} — Closest-target re-roll",
+            "description": text,
+            "is_exclusive_choice": 0,
+            "activation": "automatic",
+            **upgrade,
+        },
+    ]
+
+
 def combat_presets(
     name: str, description: str, allow_bearer_defenses: bool = False
 ) -> list[dict[str, object]]:
     text = plain_text(description)
+    closest_target_presets = combat_closest_target_presets(
+        name, text, allow_bearer_defenses
+    )
+    if closest_target_presets is not None:
+        return closest_target_presets
     guidance_presets = combat_guidance_presets(name, text, allow_bearer_defenses)
     if guidance_presets:
         return guidance_presets
@@ -2678,13 +2762,14 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     requires_source_guided_against_target,
                     requires_target_spotted,
                     requires_target_spotted_by_markerlight_observer,
+                    requires_target_closest_eligible,
                     required_target_strength_state,
                     hit_modifier, hit_modifier_role,
                     hit_modifier_subject, wound_modifier, wound_modifier_role,
                     wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
                     hit_reroll_subject, reroll_wounds, reroll_wound_ones, wound_reroll_role,
                     wound_reroll_subject)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     datasheet_id,
                     ability_position,
@@ -2716,6 +2801,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     int(preset["requires_source_guided_against_target"]),
                     int(preset["requires_target_spotted"]),
                     int(preset["requires_target_spotted_by_markerlight_observer"]),
+                    int(preset["requires_target_closest_eligible"]),
                     preset["required_target_strength_state"],
                     preset["hit_modifier"],
                     preset.get("hit_modifier_role"),
@@ -2907,7 +2993,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "46"),
+                    ("schema_version", "47"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

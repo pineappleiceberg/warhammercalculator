@@ -65,6 +65,8 @@ CREATE TABLE unit_combat_presets (
         CHECK (requires_target_spotted IN (0, 1)),
     requires_target_spotted_by_markerlight_observer INTEGER NOT NULL DEFAULT 0
         CHECK (requires_target_spotted_by_markerlight_observer IN (0, 1)),
+    requires_target_closest_eligible INTEGER NOT NULL DEFAULT 0
+        CHECK (requires_target_closest_eligible IN (0, 1)),
     required_target_strength_state TEXT
         CHECK (required_target_strength_state IN
             ('below_starting', 'below_half', 'not_below_half')),
@@ -152,7 +154,7 @@ def main() -> None:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
         connection.execute(
-            "UPDATE metadata SET value = '46' WHERE key = 'schema_version'"
+            "UPDATE metadata SET value = '47' WHERE key = 'schema_version'"
         )
         connection.execute("PRAGMA optimize")
         connection.commit()

@@ -130,6 +130,7 @@ export default function UnitVsUnit() {
   const [targetSpotted, setTargetSpotted] = useState(false);
   const [targetSpottedByMarkerlightObserver, setTargetSpottedByMarkerlightObserver] =
     useState(false);
+  const [targetClosestEligible, setTargetClosestEligible] = useState(false);
   const [attackerBattleShocked, setAttackerBattleShocked] = useState(false);
   const [targetBattleShocked, setTargetBattleShocked] = useState(false);
   const [targetStrengthState, setTargetStrengthState] = useState<TargetStrengthState>("full");
@@ -223,6 +224,7 @@ export default function UnitVsUnit() {
     attackerGuidedAgainstTarget,
     targetSpotted,
     targetSpottedByMarkerlightObserver,
+    targetClosestEligible,
     attackerBattleShocked,
     targetBattleShocked,
     targetStrengthState,
@@ -258,6 +260,7 @@ export default function UnitVsUnit() {
     setTargetOnTargetSelectedObjective(false);
     setAttackerGuidedAgainstTarget(false);
     setTargetSpotted(false);
+    setTargetClosestEligible(false);
     setTargetSpottedByMarkerlightObserver(false);
     setAttackerUnitModels(0);
     setNearbyEnemyModels(0);
@@ -307,6 +310,7 @@ export default function UnitVsUnit() {
     setTargetOnTargetSelectedObjective(false);
     setAttackerGuidedAgainstTarget(false);
     setTargetSpotted(false);
+    setTargetClosestEligible(false);
     setTargetSpottedByMarkerlightObserver(false);
     setTargetBattleShocked(false);
     setTargetStrengthState("full");
@@ -383,6 +387,7 @@ export default function UnitVsUnit() {
             attackerGuidedAgainstTarget,
             targetSpotted,
             targetSpottedByMarkerlightObserver,
+            targetClosestEligible,
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
@@ -420,6 +425,10 @@ export default function UnitVsUnit() {
             attackerGuidedAgainstTarget,
             targetSpotted,
             targetSpottedByMarkerlightObserver,
+            "self",
+            [],
+            0,
+            targetClosestEligible,
           ),
           ...selectedAndAutomaticCombatPresets(
             supportUnit?.combatPresets ?? [],
@@ -451,6 +460,7 @@ export default function UnitVsUnit() {
             "supporting_unit",
             attackerUnit?.models[0]?.keywords ?? [],
             supportDistance,
+            targetClosestEligible,
           ),
         ],
         [
@@ -481,6 +491,10 @@ export default function UnitVsUnit() {
             false,
             targetSpotted,
             targetSpottedByMarkerlightObserver,
+            "self",
+            [],
+            0,
+            targetClosestEligible,
           ),
           ...selectedAndAutomaticCombatPresets(
             targetSupportUnit?.combatPresets ?? [],
@@ -512,6 +526,7 @@ export default function UnitVsUnit() {
             "supporting_unit",
             targetSegments[0]?.keywords ?? [],
             targetSupportDistance,
+            targetClosestEligible,
           ),
         ],
         line.weapon.type,
@@ -543,6 +558,7 @@ export default function UnitVsUnit() {
           attackerGuidedAgainstTarget,
           targetSpotted,
           targetSpottedByMarkerlightObserver,
+          targetClosestEligible,
           supportDistance,
           supportedUnitKeywords: attackerUnit?.models[0]?.keywords ?? [],
           targetSupportDistance,
@@ -584,6 +600,10 @@ export default function UnitVsUnit() {
               false,
               targetSpotted,
               targetSpottedByMarkerlightObserver,
+              "self",
+              [],
+              0,
+              targetClosestEligible,
             ),
             ...selectedAndAutomaticCombatPresets(
               targetSupportUnit?.combatPresets ?? [],
@@ -615,6 +635,7 @@ export default function UnitVsUnit() {
               "supporting_unit",
               targetSegments[0]?.keywords ?? [],
               targetSupportDistance,
+              targetClosestEligible,
             ),
           ])
           .map((preset) => [preset.id, preset]),
@@ -648,6 +669,7 @@ export default function UnitVsUnit() {
         attackerGuidedAgainstTarget,
         targetSpotted,
         targetSpottedByMarkerlightObserver,
+        targetClosestEligible,
         targetSupportDistance,
         targetSupportedUnitKeywords: targetSegments[0]?.keywords ?? [],
       })),
@@ -1403,6 +1425,18 @@ export default function UnitVsUnit() {
                 }
               />
               <small>Inches; 0 means unknown</small>
+            </label>
+            <label>
+              <span>Target relationship</span>
+              <span className="inline-checkbox">
+                <input
+                  aria-label="Target is the closest eligible target"
+                  type="checkbox"
+                  checked={targetClosestEligible}
+                  onChange={(event) => setTargetClosestEligible(event.target.checked)}
+                />
+                Closest eligible target
+              </span>
             </label>
             <label>
               <span>Models in attacker unit</span>

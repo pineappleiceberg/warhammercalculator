@@ -124,6 +124,7 @@ export type CatalogueCombatPreset = {
   requiresSourceGuidedAgainstTarget?: boolean;
   requiresTargetSpotted?: boolean;
   requiresTargetSpottedByMarkerlightObserver?: boolean;
+  requiresTargetClosestEligible?: boolean;
   requiredTargetStrengthState?: "below_starting" | "below_half" | "not_below_half";
   hitModifier: number;
   hitModifierRole: CombatPresetRole | null;
@@ -264,6 +265,7 @@ type CombatPresetContext = {
   attackerGuidedAgainstTarget?: boolean;
   targetSpotted?: boolean;
   targetSpottedByMarkerlightObserver?: boolean;
+  targetClosestEligible?: boolean;
   attackerBattleShocked?: boolean;
   targetBattleShocked?: boolean;
   targetStrengthState?: CombatProfile["targetStrengthState"];

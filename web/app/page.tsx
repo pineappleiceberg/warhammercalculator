@@ -738,6 +738,7 @@ function Toggle({
   return (
     <label className="rule-toggle">
       <input
+        aria-label={label}
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
@@ -930,6 +931,7 @@ export default function Home() {
     sourceRelationship: "self" | "supporting_unit" = "self",
     supportedUnitKeywords: string[] = [],
     supportDistance = 0,
+    targetClosestEligible = profile.targetClosestEligible,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -961,6 +963,7 @@ export default function Home() {
       sourceRelationship,
       supportedUnitKeywords,
       supportDistance,
+      targetClosestEligible,
     );
   const withActivePresets = (
     current: Profile,
@@ -1067,6 +1070,10 @@ export default function Home() {
           baseProfile.attackerGuidedAgainstTarget,
           baseProfile.targetSpotted,
           baseProfile.targetSpottedByMarkerlightObserver,
+          "self",
+          [],
+          0,
+          baseProfile.targetClosestEligible,
         ),
         ...selectedPresets(
           supportUnit,
@@ -1096,6 +1103,7 @@ export default function Home() {
           "supporting_unit",
           selectedAttackerUnit?.models[0]?.keywords ?? [],
           baseProfile.supportDistance,
+          baseProfile.targetClosestEligible,
         ),
       ],
       [
@@ -1125,6 +1133,10 @@ export default function Home() {
           false,
           baseProfile.targetSpotted,
           baseProfile.targetSpottedByMarkerlightObserver,
+          "self",
+          [],
+          0,
+          baseProfile.targetClosestEligible,
         ),
         ...selectedPresets(
           targetSupportUnit,
@@ -1154,6 +1166,7 @@ export default function Home() {
           "supporting_unit",
           selectedTargetModel?.keywords ?? [],
           baseProfile.targetSupportDistance,
+          baseProfile.targetClosestEligible,
         ),
       ],
       weapon?.type ?? "Ranged",
@@ -1185,6 +1198,7 @@ export default function Home() {
         attackerGuidedAgainstTarget: baseProfile.attackerGuidedAgainstTarget,
         targetSpotted: baseProfile.targetSpotted,
         targetSpottedByMarkerlightObserver: baseProfile.targetSpottedByMarkerlightObserver,
+        targetClosestEligible: baseProfile.targetClosestEligible,
         supportedUnitKeywords: selectedAttackerUnit?.models[0]?.keywords ?? [],
         supportDistance: baseProfile.supportDistance,
         targetSupportedUnitKeywords: selectedTargetModel?.keywords ?? [],
@@ -1720,6 +1734,7 @@ export default function Home() {
                             attackerGuidedAgainstTarget: false,
                             targetSpotted: false,
                             targetSpottedByMarkerlightObserver: false,
+                            targetClosestEligible: false,
                             targetStrengthState: "full",
                             targetSupportDistance: 0,
                           },
@@ -1771,6 +1786,7 @@ export default function Home() {
                             attackerGuidedAgainstTarget: false,
                             targetSpotted: false,
                             targetSpottedByMarkerlightObserver: false,
+                            targetClosestEligible: false,
                             targetStrengthState: "full",
                             targetSupportDistance: 0,
                           },
@@ -1790,7 +1806,7 @@ export default function Home() {
                         applyTarget(
                           unit.models[0],
                           [],
-                          { targetSupportDistance: 0 },
+                          { targetSupportDistance: 0, targetClosestEligible: false },
                           undefined,
                           [],
                           unit,
@@ -2492,6 +2508,15 @@ export default function Home() {
                       targetSpottedByMarkerlightObserver: value,
                       targetSpotted: value || current.targetSpotted,
                     }),
+                  )
+                }
+              />
+              <Toggle
+                label="Target is the closest eligible target"
+                checked={profile.targetClosestEligible}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({ ...current, targetClosestEligible: value }),
                   )
                 }
               />

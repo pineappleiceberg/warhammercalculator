@@ -217,6 +217,7 @@ test("canonical agent parameters round-trip every supported profile field", () =
     attackerGuidedAgainstTarget: true,
     targetSpotted: true,
     targetSpottedByMarkerlightObserver: true,
+    targetClosestEligible: true,
     attackerBattleShocked: true,
     targetBattleShocked: true,
     targetStrengthState: "below_half",
@@ -1001,6 +1002,24 @@ test("source-backed target-distance presets require a known in-range target", as
   assert.equal(selected(0).length, 0);
   assert.equal(selected(9).length, 1);
   assert.equal(selected(10).length, 0);
+});
+
+test("catalogue agent closest-target state gates exact automatic rules", async () => {
+  const catalogue = JSON.parse(
+    await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
+  );
+  const aggressors = catalogue.units.find((unit) => unit.name === "Aggressor Squad");
+  const preset = aggressors.combatPresets.find(
+    (entry) => entry.name === "Close-quarters Firepower",
+  );
+  const parsed = parseAgentProfile("closestTarget=true", defaults, false);
+  assert.equal(parsed.targetClosestEligible, true);
+  assert.equal(preset.requiresTargetClosestEligible, true);
+  assert.equal(applyCombatPresets(defaults, [preset], [], "Ranged").ap, 0);
+  assert.equal(
+    applyCombatPresets({ ...defaults, targetClosestEligible: true }, [preset], [], "Ranged").ap,
+    1,
+  );
 });
 
 test("catalogue agent Battle-shock state selects only exact automatic rules", async () => {

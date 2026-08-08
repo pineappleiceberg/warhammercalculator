@@ -16,9 +16,9 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Add reproducible closest-target and line-of-sight relationship state for the
-   remaining compound attack conditions that still require manual
-   interpretation.
+1. Add explicit target visibility and source-to-target line-of-sight/range
+   state for selected-target abilities, and separate it cleanly from the
+   existing Indirect Fire penalty override.
 2. Represent casualty- and nearby-unit-count-scaled Attacks modifiers as
    explicit reproducible state instead of requiring manual arithmetic; direct
    source-unit and nearby-enemy model counts are now covered.
@@ -27,6 +27,20 @@ priority over feature count.
    shield or crest never affects models that do not carry it.
 
 ## Completed cycles
+
+- 2026-08-07: Added exact closest-eligible-target state. Model vs Model, Unit
+  vs Unit, Play Mode recovery, shared matchup profiles, normalized API inputs,
+  and static agent URLs now preserve an editable `targetClosestEligible` fact;
+  `closestTarget=true` is its compact agent alias. SQLite schema 47 marks 11
+  exact single-clause abilities automatic only for that relationship and
+  splits Windriders' Swift Demise into its unconditional Hit re-roll of 1 and
+  its closest-target full re-roll. Forgefiend additionally enforces the
+  published 18-inch boundary, while Flash Gitz remains scoped to its snazzgun.
+  Altered wording and the Indomitor, Nekrosor, and Bondsman compound cases stay
+  conservative. Exact-text negatives, database/catalogue snapshots, legacy
+  recovery, URL round trips, rendered workflows, native and WebAssembly damage
+  monotonicity, 330/330 proofs, zero Eva alarms, E-ACSL, and a direct
+  2,000-input sanitizer campaign cover the change.
 
 - 2026-08-07: Added independent target-side support. Model vs Model, Unit vs
   Unit, Play Mode, recovery, shared matchup links, normalized profiles, and

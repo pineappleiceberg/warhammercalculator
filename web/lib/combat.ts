@@ -86,6 +86,7 @@ export type CombatProfile = {
   attackerGuidedAgainstTarget: boolean;
   targetSpotted: boolean;
   targetSpottedByMarkerlightObserver: boolean;
+  targetClosestEligible: boolean;
   attackerBattleShocked: boolean;
   targetBattleShocked: boolean;
   targetStrengthState: TargetStrengthState;
@@ -285,6 +286,7 @@ export const DEFAULT_PROFILE: CombatProfile = {
   attackerGuidedAgainstTarget: false,
   targetSpotted: false,
   targetSpottedByMarkerlightObserver: false,
+  targetClosestEligible: false,
   attackerBattleShocked: false,
   targetBattleShocked: false,
   targetStrengthState: "full",
@@ -465,6 +467,7 @@ export function normalizeProfile(input: unknown): CombatProfile {
     attackerGuidedAgainstTarget: booleanValue("attackerGuidedAgainstTarget"),
     targetSpotted: booleanValue("targetSpotted"),
     targetSpottedByMarkerlightObserver: booleanValue("targetSpottedByMarkerlightObserver"),
+    targetClosestEligible: booleanValue("targetClosestEligible"),
     attackerBattleShocked: booleanValue("attackerBattleShocked"),
     targetBattleShocked: booleanValue("targetBattleShocked"),
     targetStrengthState: targetStrengthState as TargetStrengthState,

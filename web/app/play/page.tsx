@@ -252,6 +252,7 @@ export default function PlayMode() {
     sourceRelationship: "self" | "supporting_unit" = "self",
     supportedUnitKeywords: string[] = [],
     supportDistance = 0,
+    targetClosestEligible = profile.targetClosestEligible,
   ) =>
     selectedAndAutomaticCombatPresets(
       unit?.combatPresets ?? [],
@@ -283,6 +284,7 @@ export default function PlayMode() {
       sourceRelationship,
       supportedUnitKeywords,
       supportDistance,
+      targetClosestEligible,
     );
 
   const refreshProfile = (
@@ -322,6 +324,7 @@ export default function PlayMode() {
     nextTargetSupportPresetIds = activeTargetSupportPresetIds,
     nextTargetSupportCatalogueUnit = targetSupportCatalogueUnit,
     nextTargetSupportDistance = profile.targetSupportDistance,
+    nextTargetClosestEligible = profile.targetClosestEligible,
   ) => {
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
@@ -366,6 +369,7 @@ export default function PlayMode() {
             attackerGuidedAgainstTarget: nextAttackerGuidedAgainstTarget,
             targetSpotted: nextTargetSpotted,
             targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
+            targetClosestEligible: nextTargetClosestEligible,
             attackerBattleShocked: nextAttackerBattleShocked,
             targetBattleShocked: nextTargetBattleShocked,
             targetStrengthState: nextTargetStrengthState,
@@ -401,6 +405,10 @@ export default function PlayMode() {
             nextAttackerGuidedAgainstTarget,
             nextTargetSpotted,
             nextTargetSpottedByMarkerlightObserver,
+            "self",
+            [],
+            0,
+            nextTargetClosestEligible,
           ),
           ...selectedCombatPresets(
             nextSupportPresetIds,
@@ -430,6 +438,7 @@ export default function PlayMode() {
             "supporting_unit",
             attackerCatalogueUnit?.models[0]?.keywords ?? [],
             nextSupportDistance,
+            nextTargetClosestEligible,
           ),
         ],
         [
@@ -459,6 +468,10 @@ export default function PlayMode() {
             false,
             nextTargetSpotted,
             nextTargetSpottedByMarkerlightObserver,
+            "self",
+            [],
+            0,
+            nextTargetClosestEligible,
           ),
           ...selectedCombatPresets(
             nextTargetSupportPresetIds,
@@ -488,6 +501,7 @@ export default function PlayMode() {
             "supporting_unit",
             model.keywords,
             nextTargetSupportDistance,
+            nextTargetClosestEligible,
           ),
         ],
         weapon.type,
@@ -516,6 +530,7 @@ export default function PlayMode() {
           attackerGuidedAgainstTarget: nextAttackerGuidedAgainstTarget,
           targetSpotted: nextTargetSpotted,
           targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
+          targetClosestEligible: nextTargetClosestEligible,
           attackerBattleShocked: nextAttackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
@@ -656,6 +671,47 @@ export default function PlayMode() {
       targetSpottedByMarkerlightObserver,
     );
 
+  const refreshClosestTargetState = (targetClosestEligible: boolean) =>
+    refreshProfile(
+      weaponId,
+      targetModelId,
+      profileId,
+      activeAttackerPresetIds,
+      activeTargetPresetIds,
+      profile.targetDistance,
+      profile.attackerCharged,
+      profile.attackerBattleShocked,
+      profile.targetBattleShocked,
+      profile.targetStrengthState,
+      profile.attackerRemainedStationary,
+      profile.attackerAttached,
+      profile.targetAttached,
+      profile.attackerWaaaghActive,
+      profile.targetWaaaghActive,
+      profile.targetOathOfMoment,
+      profile.attackerOathWoundBonusEligible,
+      profile.attackerUnitModels,
+      profile.nearbyEnemyModels,
+      profile.attackerOnObjective,
+      profile.targetOnObjective,
+      profile.attackerObjectiveOwner,
+      profile.targetObjectiveOwner,
+      profile.attackerOnAttackerSelectedObjective,
+      profile.targetOnAttackerSelectedObjective,
+      profile.attackerOnTargetSelectedObjective,
+      profile.targetOnTargetSelectedObjective,
+      profile.attackerGuidedAgainstTarget,
+      profile.targetSpotted,
+      profile.targetSpottedByMarkerlightObserver,
+      activeSupportPresetIds,
+      supportCatalogueUnit,
+      profile.supportDistance,
+      activeTargetSupportPresetIds,
+      targetSupportCatalogueUnit,
+      profile.targetSupportDistance,
+      targetClosestEligible,
+    );
+
   const refreshSupportState = (
     ids: string[],
     unitId = supportUnitId,
@@ -770,6 +826,7 @@ export default function PlayMode() {
     const nextAttackerGuidedAgainstTarget = false;
     const nextTargetSpotted = false;
     const nextTargetSpottedByMarkerlightObserver = false;
+    const nextTargetClosestEligible = false;
     const nextTargetStrengthState = "full" as const;
     setTargetModelId(model ? String(model.id) : "");
     setActiveTargetPresetIds(nextTargetPresetIds);
@@ -790,6 +847,7 @@ export default function PlayMode() {
         attackerGuidedAgainstTarget: nextAttackerGuidedAgainstTarget,
         targetSpotted: nextTargetSpotted,
         targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
+        targetClosestEligible: nextTargetClosestEligible,
         targetBattleShocked: nextTargetBattleShocked,
         targetStrengthState: nextTargetStrengthState,
         targetSupportDistance: 0,
@@ -827,6 +885,7 @@ export default function PlayMode() {
             attackerGuidedAgainstTarget: nextAttackerGuidedAgainstTarget,
             targetSpotted: nextTargetSpotted,
             targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
+            targetClosestEligible: nextTargetClosestEligible,
             targetStrengthState: nextTargetStrengthState,
             supportDistance: profile.supportDistance,
             targetSupportDistance: 0,
@@ -860,6 +919,10 @@ export default function PlayMode() {
             nextAttackerGuidedAgainstTarget,
             nextTargetSpotted,
             nextTargetSpottedByMarkerlightObserver,
+            "self",
+            [],
+            0,
+            nextTargetClosestEligible,
           ),
           ...selectedCombatPresets(
             activeSupportPresetIds,
@@ -889,6 +952,7 @@ export default function PlayMode() {
             "supporting_unit",
             attackerCatalogueUnit?.models[0]?.keywords ?? [],
             profile.supportDistance,
+            nextTargetClosestEligible,
           ),
         ],
         selectedCombatPresets(
@@ -917,6 +981,10 @@ export default function PlayMode() {
           false,
           nextTargetSpotted,
           nextTargetSpottedByMarkerlightObserver,
+          "self",
+          [],
+          0,
+          nextTargetClosestEligible,
         ),
         weaponProfile.type,
         {
@@ -944,6 +1012,7 @@ export default function PlayMode() {
           attackerGuidedAgainstTarget: nextAttackerGuidedAgainstTarget,
           targetSpotted: nextTargetSpotted,
           targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
+          targetClosestEligible: nextTargetClosestEligible,
           attackerBattleShocked: profile.attackerBattleShocked,
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
@@ -1646,6 +1715,18 @@ export default function PlayMode() {
                       }
                     />
                     Remained stationary
+                  </span>
+                </label>
+                <label>
+                  <span>Target relationship</span>
+                  <span className="inline-checkbox">
+                    <input
+                      aria-label="Target is the closest eligible target"
+                      type="checkbox"
+                      checked={profile.targetClosestEligible}
+                      onChange={(event) => refreshClosestTargetState(event.target.checked)}
+                    />
+                    Closest eligible target
                   </span>
                 </label>
                 <label>

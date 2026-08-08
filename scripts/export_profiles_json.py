@@ -193,6 +193,7 @@ def export(database: Path, output: Path) -> None:
                       requires_source_guided_against_target,
                       requires_target_spotted,
                       requires_target_spotted_by_markerlight_observer,
+                      requires_target_closest_eligible,
                       hit_modifier, hit_modifier_role,
                       hit_modifier_subject, wound_modifier, wound_modifier_role,
                       wound_modifier_subject, reroll_hits, reroll_hit_ones, hit_reroll_role,
@@ -319,6 +320,11 @@ def export(database: Path, output: Path) -> None:
                     **(
                         {"requiresTargetSpottedByMarkerlightObserver": True}
                         if row["requires_target_spotted_by_markerlight_observer"]
+                        else {}
+                    ),
+                    **(
+                        {"requiresTargetClosestEligible": True}
+                        if row["requires_target_closest_eligible"]
                         else {}
                     ),
                     **(

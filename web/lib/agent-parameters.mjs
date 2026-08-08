@@ -84,6 +84,7 @@ const booleanParameters = [
   ],
   ["attackerGuidedAgainstTarget", ["attackerGuidedAgainstTarget", "guided"]],
   ["targetSpotted", ["targetSpotted", "spotted"]],
+  ["targetClosestEligible", ["targetClosestEligible", "closestTarget"]],
   [
     "targetSpottedByMarkerlightObserver",
     ["targetSpottedByMarkerlightObserver", "markerlightSpotted"],

@@ -48,7 +48,11 @@ export function createPlayRecovery(state, savedAt = Date.now()) {
     }
     recovery[key] = [...new Set(ids)];
   }
-  recovery.profile = object(value.profile, "profile must be an object");
+  const profile = object(value.profile, "profile must be an object");
+  recovery.profile = {
+    ...profile,
+    targetClosestEligible: profile.targetClosestEligible ?? false,
+  };
   recovery.supportUsesSpent = normalizeSupportUses(value.supportUsesSpent ?? {});
   if (!Array.isArray(value.history) || value.history.length > 30) {
     throw new Error("history must contain at most 30 attacks");

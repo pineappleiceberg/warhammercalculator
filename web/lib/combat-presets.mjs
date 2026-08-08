@@ -109,6 +109,7 @@ export function combatPresetMeetsEligibility(
   targetUnitSpottedByMarkerlightObserver = false,
   supportedUnitKeywords = [],
   supportDistance = 0,
+  targetClosestEligible = false,
 ) {
   const targets = new Set(targetKeywords.map(normalizedKeyword));
   const attacks = new Set(attackKeywords.map(normalizedKeyword));
@@ -151,6 +152,7 @@ export function combatPresetMeetsEligibility(
     (!preset.requiresTargetSpotted || targetUnitSpotted) &&
     (!preset.requiresTargetSpottedByMarkerlightObserver ||
       targetUnitSpottedByMarkerlightObserver) &&
+    (!preset.requiresTargetClosestEligible || targetClosestEligible) &&
     (!preset.requiresTargetBattleShocked || targetBattleShocked) &&
     (!preset.requiresAttackerNotBattleShocked || !attackerBattleShocked) &&
     (preset.effects ?? []).every(
@@ -193,6 +195,7 @@ export function selectedAndAutomaticCombatPresets(
   sourceRelationship = "self",
   supportedUnitKeywords = [],
   supportDistance = 0,
+  targetClosestEligible = false,
 ) {
   const selected = new Set(selectedIds);
   return presets.filter(
@@ -226,6 +229,7 @@ export function selectedAndAutomaticCombatPresets(
         targetUnitSpottedByMarkerlightObserver,
         supportedUnitKeywords,
         supportDistance,
+        targetClosestEligible,
       ),
   );
 }
@@ -291,6 +295,7 @@ export function combatPresetEffects(
   targetUnitSpottedByMarkerlightObserver = false,
   supportedUnitKeywords = [],
   supportDistance = 0,
+  targetClosestEligible = false,
 ) {
   const applicable = presets.filter(
     (preset) =>
@@ -322,6 +327,7 @@ export function combatPresetEffects(
         targetUnitSpottedByMarkerlightObserver,
         supportedUnitKeywords,
         supportDistance,
+        targetClosestEligible,
       ),
   );
   const hitModifiers = applicable.filter((preset) =>
@@ -594,6 +600,7 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
       false,
       context.targetSupportedUnitKeywords ?? [],
       context.targetSupportDistance ?? 0,
+      context.targetClosestEligible ?? false,
     ),
   );
   const candidates = effects.map((effect) =>
@@ -693,6 +700,7 @@ export function applyCombatPresets(
       false,
     context.supportedUnitKeywords ?? [],
     context.supportDistance ?? profile.supportDistance ?? 0,
+    context.targetClosestEligible ?? profile.targetClosestEligible ?? false,
   );
   const target = combatPresetEffects(
     targetPresets,
@@ -735,6 +743,7 @@ export function applyCombatPresets(
       false,
     context.targetSupportedUnitKeywords ?? [],
     context.targetSupportDistance ?? profile.targetSupportDistance ?? 0,
+    context.targetClosestEligible ?? profile.targetClosestEligible ?? false,
   );
   const attacksReplacements = [attacker.attacksReplacement, target.attacksReplacement].filter(
     (value) => value > 0,

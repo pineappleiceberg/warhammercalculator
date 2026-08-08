@@ -124,6 +124,7 @@ export default function AgentCalculator() {
           const targetSpotted = requestedContext.targetSpotted;
           const targetSpottedByMarkerlightObserver =
             requestedContext.targetSpottedByMarkerlightObserver;
+          const targetClosestEligible = requestedContext.targetClosestEligible;
           const attackerBattleShocked = requestedContext.attackerBattleShocked;
           const targetBattleShocked = requestedContext.targetBattleShocked;
           const targetStrengthState = requestedContext.targetStrengthState;
@@ -153,6 +154,7 @@ export default function AgentCalculator() {
             attackerGuidedAgainstTarget,
             targetSpotted,
             targetSpottedByMarkerlightObserver,
+            targetClosestEligible,
             attackerBattleShocked,
             targetBattleShocked,
             targetStrengthState,
@@ -187,6 +189,10 @@ export default function AgentCalculator() {
               attackerGuidedAgainstTarget,
               targetSpotted,
               targetSpottedByMarkerlightObserver,
+              "self",
+              [],
+              0,
+              targetClosestEligible,
             ),
             ...selectedAndAutomaticCombatPresets(
               selection.support?.combatPresets ?? [],
@@ -218,6 +224,7 @@ export default function AgentCalculator() {
               "supporting_unit",
               selection.attacker.models[0]?.keywords ?? [],
               supportDistance,
+              targetClosestEligible,
             ),
           ];
           const targetPresets = [
@@ -248,6 +255,10 @@ export default function AgentCalculator() {
               false,
               targetSpotted,
               targetSpottedByMarkerlightObserver,
+              "self",
+              [],
+              0,
+              targetClosestEligible,
             ),
             ...selectedAndAutomaticCombatPresets(
               selection.targetSupport?.combatPresets ?? [],
@@ -279,6 +290,7 @@ export default function AgentCalculator() {
               "supporting_unit",
               selection.model.keywords,
               targetSupportDistance,
+              targetClosestEligible,
             ),
           ];
           profile = applyCombatPresets(
@@ -311,6 +323,7 @@ export default function AgentCalculator() {
               attackerGuidedAgainstTarget,
               targetSpotted,
               targetSpottedByMarkerlightObserver,
+              targetClosestEligible,
               attackerBattleShocked,
               targetBattleShocked,
               targetStrengthState,
@@ -472,11 +485,11 @@ export default function AgentCalculator() {
               attackerObjectiveOwner, targetObjectiveOwner, attackerBattleShocked,
               targetBattleShocked, attackerOnAttackerSelectedObjective,
               targetOnAttackerSelectedObjective, attackerOnTargetSelectedObjective,
-              targetOnTargetSelectedObjective, guided, spotted, markerlightSpotted, targetStrength,
-              attackerPreset, targetPreset, support, supportPreset, supportDistance, targetSupport,
-              targetSupportPreset, targetSupportDistance, and rules. Support presets are resolved
-              only from the named same-faction supporting unit and cannot be applied as the
-              supported unit&apos;s own ability. Limited-use metadata is returned in the result;
+              targetOnTargetSelectedObjective, guided, spotted, markerlightSpotted, closestTarget,
+              targetStrength, attackerPreset, targetPreset, support, supportPreset, supportDistance,
+              targetSupport, targetSupportPreset, targetSupportDistance, and rules. Support presets
+              are resolved only from the named same-faction supporting unit and cannot be applied as
+              the supported unit&apos;s own ability. Limited-use metadata is returned in the result;
               this stateless URL does not spend battle uses.
             </p>
             <p>
@@ -487,9 +500,9 @@ export default function AgentCalculator() {
             <p>
               Catalogue queries apply exact target-, attack-keyword, charge, distance, Battle-shock,
               Attached-unit, Waaagh!, Oath of Moment, objective-marker position and ownership,
-              Guided/Spotted/Markerlight relationships, and model-count conditions automatically.
-              Applied source rules are listed in the result with <code>automatic: true</code>; any
-              numeric URL override is applied afterward.
+              Guided/Spotted/Markerlight and closest-target relationships, and model-count
+              conditions automatically. Applied source rules are listed in the result with{" "}
+              <code>automatic: true</code>; any numeric URL override is applied afterward.
             </p>
           </div>
         </article>

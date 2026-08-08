@@ -139,6 +139,7 @@ class ProfileDataTests(unittest.TestCase):
                 "requires_source_guided_against_target": False,
                 "requires_target_spotted": False,
                 "requires_target_spotted_by_markerlight_observer": False,
+                "requires_target_closest_eligible": False,
                 "uses_per_battle": None,
                 "required_target_strength_state": None,
                 "hit_modifier_role": "attacker",
@@ -389,6 +390,50 @@ class ProfileDataTests(unittest.TestCase):
             ],
             [(1, 0), (0, 1)],
         )
+
+    def test_combat_preset_parser_gates_exact_closest_target_rules(self):
+        close_quarters = (
+            "Each time a model in this unit makes a ranged attack that targets the closest "
+            "eligible target, improve the Armour Penetration characteristic of that attack by 1."
+        )
+        preset = combat_presets("Close-quarters Firepower", close_quarters)[0]
+        self.assertEqual(preset["activation"], "automatic")
+        self.assertTrue(preset["requires_target_closest_eligible"])
+        self.assertEqual(preset["additional_effects"][0]["type"], "ap_modifier")
+
+        forgefiend = combat_presets(
+            "Furious Onslaught",
+            'Each time this model makes a ranged attack that targets the closest eligible target '
+            'within 18", you can re-roll the Hit roll.',
+        )[0]
+        self.assertEqual(forgefiend["maximum_target_distance"], 18)
+        self.assertTrue(forgefiend["requires_target_closest_eligible"])
+
+        windriders = combat_presets(
+            "Swift Demise",
+            "Each time a model in this unit makes a ranged attack, re-roll a Hit roll of 1. "
+            "If the target of that attack is the closest eligible target, you can re-roll "
+            "the Hit roll instead.",
+        )
+        self.assertEqual(
+            [
+                (preset["reroll_hits"], preset["reroll_hit_ones"], preset["requires_target_closest_eligible"])
+                for preset in windriders
+            ],
+            [(0, 1, False), (1, 0, True)],
+        )
+
+        altered = close_quarters.replace("closest eligible target", "closest visible target")
+        fallback = combat_presets("Close-quarters Firepower", altered)[0]
+        self.assertEqual(fallback["activation"], "situational")
+        self.assertFalse(fallback["requires_target_closest_eligible"])
+        compound = combat_presets(
+            "Indomitor Doctrines",
+            "Each time a model in this unit makes a ranged attack that targets the closest "
+            "eligible target, or makes a melee attack in a turn in which it made a Charge "
+            "move, improve the Strength characteristic of that attack by 2.",
+        )[0]
+        self.assertFalse(compound["requires_target_closest_eligible"])
 
     def test_combat_preset_parser_projects_combat_effects_from_objective_control_text(self):
         black_rage = (
@@ -1392,7 +1437,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "46",
+                "47",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1677,14 +1722,14 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 1101), ("inherent", 32), ("situational", 856)],
+                [("automatic", 1114), ("inherent", 32), ("situational", 844)],
             )
             self.assertEqual(
                 connection.execute(
                     "SELECT weapon_scope, count(*) FROM unit_combat_presets "
                     "GROUP BY weapon_scope ORDER BY weapon_scope"
                 ).fetchall(),
-                [("Any", 1198), ("Melee", 402), ("Ranged", 389)],
+                [("Any", 1198), ("Melee", 402), ("Ranged", 390)],
             )
             self.assertEqual(
                 connection.execute(
@@ -1740,6 +1785,27 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     """SELECT count(*) FROM unit_combat_presets
                        WHERE requires_attacker_charge = 1 AND activation != 'automatic'"""
+                ).fetchone()[0],
+                0,
+            )
+            closest_rows = connection.execute(
+                """SELECT datasheet.name, preset.name, preset.maximum_target_distance
+                   FROM unit_combat_presets AS preset
+                   JOIN datasheets AS datasheet ON datasheet.id = preset.datasheet_id
+                   WHERE preset.requires_target_closest_eligible = 1
+                   ORDER BY datasheet.name, preset.name"""
+            ).fetchall()
+            self.assertEqual(len(closest_rows), 12)
+            self.assertIn(("Forgefiend", "Furious Onslaught", 18), closest_rows)
+            self.assertIn(
+                ("Windriders", "Swift Demise — Closest-target re-roll", None),
+                closest_rows,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM unit_combat_presets
+                       WHERE requires_target_closest_eligible = 1
+                         AND activation != 'automatic'"""
                 ).fetchone()[0],
                 0,
             )
@@ -1850,7 +1916,7 @@ class ProfileDataTests(unittest.TestCase):
                        FROM unit_combat_presets
                        GROUP BY source_relationship ORDER BY source_relationship"""
                 ).fetchall(),
-                [("self", 1970), ("supporting_unit", 19)],
+                [("self", 1971), ("supporting_unit", 19)],
             )
             self.assertEqual(
                 connection.execute(
@@ -2354,6 +2420,7 @@ class ProfileDataTests(unittest.TestCase):
                 ).fetchall(),
                 [
                     ("Commander Farsight", "Way of the Short Blade", 9),
+                    ("Forgefiend", "Furious Onslaught", 18),
                     ("Warbikers", "Drive-by Dakka", 9),
                     ("Wartrakks", "Drive-by Dakka", 9),
                 ],
@@ -2620,7 +2687,8 @@ class ProfileDataTests(unittest.TestCase):
             for preset in flash_gitz["combatPresets"]
             if preset["name"] == "Gun-crazy Show-offs"
         )
-        self.assertEqual(show_offs["activation"], "situational")
+        self.assertEqual(show_offs["activation"], "automatic")
+        self.assertTrue(show_offs["requiresTargetClosestEligible"])
         self.assertEqual(show_offs["effects"][0]["weaponName"], "snazzgun")
         self.assertEqual(show_offs["effects"][0]["value"], 4)
 
@@ -2922,6 +2990,18 @@ class ProfileDataTests(unittest.TestCase):
         }
         self.assertTrue(guardian["Aggressor Guardian — Defence"]["requiresSourceOnObjective"])
         self.assertTrue(guardian["Aggressor Guardian — Offence"]["requiresTargetOnObjective"])
+        closest_presets = [
+            (unit["name"], preset)
+            for unit in catalogue["units"]
+            for preset in unit["combatPresets"]
+            if preset.get("requiresTargetClosestEligible")
+        ]
+        self.assertEqual(len(closest_presets), 12)
+        forgefiend_closest = next(
+            preset for unit, preset in closest_presets if unit == "Forgefiend"
+        )
+        self.assertEqual(forgefiend_closest["maximumTargetDistance"], 18)
+        self.assertTrue(all(preset["activation"] == "automatic" for _, preset in closest_presets))
         brigand = next(
             unit for unit in catalogue["units"] if unit["name"] == "Leman Russ Battle Tank"
         )

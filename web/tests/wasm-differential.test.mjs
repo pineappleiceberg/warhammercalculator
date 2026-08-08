@@ -2971,12 +2971,29 @@ test("source-backed situational Attacks replacements reach C/Wasm exactly", asyn
   assert.equal(
     applyCombatPresets({ ...base, weaponName: "Snazzgun" }, [showOffs], [], "Ranged")
       .attacksReplacement,
-    4,
-  );
-  assert.equal(
-    applyCombatPresets({ ...base, weaponName: "Choppa" }, [showOffs], [], "Melee")
-      .attacksReplacement,
     0,
+  );
+  const closestShowOffs = applyCombatPresets(
+    { ...base, weaponName: "Snazzgun", targetClosestEligible: true },
+    [showOffs],
+    [],
+    "Ranged",
+  );
+  assert.equal(closestShowOffs.attacksReplacement, 4);
+  assert.equal(
+    applyCombatPresets(
+      { ...base, weaponName: "Choppa", targetClosestEligible: true },
+      [showOffs],
+      [],
+      "Melee",
+    ).attacksReplacement,
+    0,
+  );
+  assert.ok(
+    lessThanOrEqual(
+      exactMean({ attacks: 3, save: 7 }),
+      exactMean({ attacks: 3, attacksReplacement: closestShowOffs.attacksReplacement, save: 7 }),
+    ),
   );
 
   const kommandos = catalogue.units.find((unit) => unit.name === "Kommandos");

@@ -159,8 +159,8 @@ automatic when the editable `attackerCharged` state is enabled and inert when it
 is disabled. The same state activates the +1 Wound benefit of a catalogue
 weapon with the Lance ability, including Lance granted by a selected source
 rule. An explicit `lanceActive` profile value remains an editable override.
-Rules that also allow being charged, combine a charge with a
-closest-target alternative, or change how exclusive modes are selected remain
+Rules that also allow being charged, combine a charge with an alternative
+condition, or change how exclusive modes are selected remain
 explicit choices until every branch can be represented exactly.
 
 Unambiguous rules triggered by the attacker Remaining Stationary use the
@@ -205,8 +205,8 @@ use this ownership without guessing. Four directional selected-marker facts
 record whether either unit is at the objective selected by the attacker or by
 the target. This activates Archon’s Will, Priority Objective Identified, and
 Seeker of the Unfound exactly; Archon’s Will also requires its source unit not
-to be Battle-shocked. Conditions that combine a marker with an aura, token,
-closest-target, or alternative condition remain explicit choices. Objective
+to be Battle-shocked. Conditions that combine a marker with an aura, token, or
+alternative condition remain explicit choices. Objective
 Control characteristic text that does not
 condition the combat effect no longer makes Black Rage or Voice of Experience
 manual.
@@ -525,6 +525,7 @@ expression such as `D6+2`. Optional parameters include `weaponCount`, `model`,
 `attackerBattleShocked`, `targetBattleShocked` (booleans),
 `attackerOnAttackerSelectedObjective`, `targetOnAttackerSelectedObjective`,
 `attackerOnTargetSelectedObjective`, `targetOnTargetSelectedObjective`,
+`closestTarget` (alias for `targetClosestEligible`),
 `targetStrength` (`full`, `below-starting`, or `below-half`), `damageDivisor`,
 `attacksReplacement`, `attacksMultiplier`, `attacksModifier`,
 `strengthReplacement`, `strengthMultiplier`, `strengthModifier`, `damageReplacement`,
@@ -585,6 +586,9 @@ Likewise, `targetBattleShocked=true` or `attackerBattleShocked=true` resolves
 compatible exact source rules before later numeric overrides are applied.
 `targetStrength=below-half` and the other two strength values likewise resolve
 compatible exact target-strength rules before numeric overrides.
+`closestTarget=true` activates source-exact closest-eligible-target rules. The
+safe default is false; compound closest-or-other-condition rules remain manual
+until every branch is represented.
 Distance-gated source abilities apply only when the value is known and within
 their published limit; `0` deliberately means unknown and leaves them inactive.
 

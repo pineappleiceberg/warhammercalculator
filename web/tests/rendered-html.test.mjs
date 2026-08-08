@@ -119,6 +119,7 @@ test("server-renders the calculator interface", async () => {
   assert.match(html, /Share matchup/);
   assert.match(html, /aria-label="Attacker objective owner"/);
   assert.match(html, /aria-label="Target objective owner"/);
+  assert.match(html, /aria-label="Target is the closest eligible target"/);
   assert.match(html, /LIVE RESOLUTION/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
@@ -160,6 +161,7 @@ test("server-renders every battle workflow", async () => {
       assert.match(html, /aria-label="Attacker objective owner"/);
       assert.match(html, /aria-label="Target objective owner"/);
       assert.match(html, /aria-label="Attacker qualifies for the Codex Oath wound bonus"/);
+      assert.match(html, /aria-label="Target is the closest eligible target"/);
     }
     if (pathname === "/unit-vs-unit") {
       assert.match(html, /aria-label="Target distance in inches"/);
@@ -173,6 +175,7 @@ test("server-renders every battle workflow", async () => {
       assert.match(html, /aria-label="Attacker objective owner"/);
       assert.match(html, /aria-label="Target objective owner"/);
       assert.match(html, /aria-label="Attacker qualifies for the Codex Oath wound bonus"/);
+      assert.match(html, /aria-label="Target is the closest eligible target"/);
     }
     if (pathname === "/agent") {
       assert.match(html, /Call with a URL/);
@@ -1692,6 +1695,7 @@ test("generated API profiles preserve combat invariants and reject malformed fie
     "attackerGuidedAgainstTarget",
     "targetSpotted",
     "targetSpottedByMarkerlightObserver",
+    "targetClosestEligible",
     "torrent",
     "blast",
     "heavyActive",
