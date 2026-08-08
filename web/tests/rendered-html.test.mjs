@@ -323,6 +323,18 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
       subject: "friendly_unit",
     },
   ]);
+  const marshal = catalogue.units.find((unit) => unit.name === "Marshal");
+  const piousFervour = marshal.combatPresets.find((preset) => preset.name === "Pious Fervour");
+  assert.equal(piousFervour.activation, "automatic");
+  assert.deepEqual(
+    piousFervour.effects.map((effect) => [
+      effect.modelCountSource,
+      effect.modelsPerIncrement,
+      effect.maximumModifier,
+      effect.weaponName,
+    ]),
+    [["nearby_enemy_units", 1, 3, "master-crafted power weapon"]],
+  );
   const captain = catalogue.units.find((unit) => unit.id === "000000073");
   const finestHour = captain.combatPresets.find((preset) => preset.name === "Finest Hour");
   assert.equal(finestHour.weaponScope, "Melee");
@@ -1705,6 +1717,9 @@ test("generated API profiles preserve combat invariants and reject malformed fie
     "targetModels",
     "attackerUnitModels",
     "nearbyEnemyModels",
+    "nearbyEnemyUnits",
+    "enemyCharacterModelsDestroyed",
+    "destructiveFightPhases",
     "attackerSourceTargetDistance",
     "targetSourceAttackerDistance",
   ];

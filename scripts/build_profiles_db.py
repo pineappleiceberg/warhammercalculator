@@ -277,7 +277,10 @@ CREATE TABLE unit_combat_preset_effects (
     dice_count INTEGER NOT NULL DEFAULT 0 CHECK (dice_count >= 0),
     dice_sides INTEGER NOT NULL DEFAULT 0 CHECK (dice_sides >= 0),
     models_per_increment INTEGER CHECK (models_per_increment > 0),
-    model_count_source TEXT CHECK (model_count_source IN ('source_unit', 'nearby_enemy')),
+    model_count_source TEXT CHECK (model_count_source IN
+        ('source_unit', 'nearby_enemy', 'nearby_enemy_units',
+         'enemy_character_models_destroyed', 'destructive_fight_phases')),
+    maximum_modifier INTEGER CHECK (maximum_modifier > 0),
     weapon_name TEXT,
     required_target_keyword TEXT,
     required_attack_keyword TEXT,
@@ -285,6 +288,7 @@ CREATE TABLE unit_combat_preset_effects (
     subject TEXT NOT NULL CHECK (subject IN
         ('self', 'led_unit', 'friendly_unit', 'enemy_unit', 'affected_unit', 'unknown')),
     CHECK ((models_per_increment IS NULL) = (model_count_source IS NULL)),
+    CHECK (maximum_modifier IS NULL OR model_count_source IS NOT NULL),
     PRIMARY KEY (datasheet_id, ability_position, preset_position, effect_position),
     FOREIGN KEY (datasheet_id, ability_position, preset_position)
         REFERENCES unit_combat_presets(datasheet_id, ability_position, preset_position)
@@ -1572,6 +1576,56 @@ def combat_additional_effects(
                     "nearby_enemy" if nearby_enemy_scaling else "source_unit"
                 ),
                 "weapon_name": scaling.group(2).strip(),
+                "role": "attacker",
+                "subject": "self",
+            }
+        )
+
+    destroyed_character = re.fullmatch(
+        r"Each time this model destroys an enemy CHARACTER model(?: in the Fight phase)?, "
+        r"(?:you gain 1CP and )?until the end of the battle, add (\d+) to the Attacks "
+        r"characteristic of (?:its|this model[’']s) (.+?)\.",
+        plain_text(text).strip(),
+        re.IGNORECASE,
+    )
+    destructive_fight_phases = re.fullmatch(
+        r"At the end of the Fight phase, if one or more attacks made by this model this "
+        r"phase destroyed one or more enemy units, until the end of the battle, add (\d+) "
+        r"to the Attacks characteristic of this model[’']s weapons\.",
+        plain_text(text).strip(),
+        re.IGNORECASE,
+    )
+    nearby_enemy_units = re.fullmatch(
+        r"Each time this model[’']s unit is selected to fight, until the end of the phase, "
+        r"add (\d+) to the Attacks characteristic of this model[’']s (.+?) for each enemy "
+        r"unit within \d+[\"”] of this model \(to a maximum of \+(\d+)\)\.",
+        plain_text(text).strip(),
+        re.IGNORECASE,
+    )
+    counted_scaling = destroyed_character or destructive_fight_phases or nearby_enemy_units
+    if counted_scaling:
+        if destroyed_character:
+            count_source = "enemy_character_models_destroyed"
+            weapon_name = destroyed_character.group(2).strip()
+            maximum_modifier = None
+        elif destructive_fight_phases:
+            count_source = "destructive_fight_phases"
+            weapon_name = None
+            maximum_modifier = None
+        else:
+            count_source = "nearby_enemy_units"
+            weapon_name = nearby_enemy_units.group(2).strip()
+            maximum_modifier = int(nearby_enemy_units.group(3))
+        effects.append(
+            {
+                "type": "attacks_modifier",
+                "value": int(counted_scaling.group(1)),
+                "dice_count": 0,
+                "dice_sides": 0,
+                "models_per_increment": 1,
+                "model_count_source": count_source,
+                "maximum_modifier": maximum_modifier,
+                "weapon_name": weapon_name,
                 "role": "attacker",
                 "subject": "self",
             }
@@ -3006,10 +3060,10 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                     """INSERT INTO unit_combat_preset_effects
                        (datasheet_id, ability_position, preset_position, effect_position,
                         effect_type, value, uses, dice_count, dice_sides,
-                        models_per_increment, model_count_source, weapon_name,
+                        models_per_increment, model_count_source, maximum_modifier, weapon_name,
                         required_target_keyword, required_attack_keyword,
                         application_role, subject)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         datasheet_id,
                         ability_position,
@@ -3022,6 +3076,7 @@ def rebuild_combat_presets(connection: sqlite3.Connection) -> int:
                         effect["dice_sides"],
                         effect.get("models_per_increment"),
                         effect.get("model_count_source"),
+                        effect.get("maximum_modifier"),
                         effect.get("weapon_name"),
                         effect.get("required_target_keyword"),
                         effect.get("required_attack_keyword"),
@@ -3166,7 +3221,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "49"),
+                    ("schema_version", "50"),
                     ("skipped_orphan_model_rows", str(orphan_model_count)),
                     ("skipped_orphan_weapon_rows", str(orphan_weapon_count)),
                     ("skipped_placeholder_weapon_rows", str(placeholder_weapon_count)),

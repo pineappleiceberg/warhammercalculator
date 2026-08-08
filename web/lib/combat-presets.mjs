@@ -324,6 +324,9 @@ export function combatPresetEffects(
   sourceUnitOathWoundBonusEligible = false,
   attackerUnitModels = 0,
   nearbyEnemyModels = 0,
+  nearbyEnemyUnits = 0,
+  enemyCharacterModelsDestroyed = 0,
+  destructiveFightPhases = 0,
   sourceUnitOnObjective = false,
   targetUnitOnObjective = false,
   sourceUnitControlsObjective = false,
@@ -523,9 +526,18 @@ export function combatPresetEffects(
       .filter((effect) => effect.type === "attacks_modifier" && effect.diceCount === 0)
       .reduce((sum, effect) => {
         if (!effect.modelsPerIncrement) return sum + effect.value;
-        const modelCount =
-          effect.modelCountSource === "source_unit" ? attackerUnitModels : nearbyEnemyModels;
-        return sum + effect.value * Math.floor(modelCount / effect.modelsPerIncrement);
+        const counts = {
+          source_unit: attackerUnitModels,
+          nearby_enemy: nearbyEnemyModels,
+          nearby_enemy_units: nearbyEnemyUnits,
+          enemy_character_models_destroyed: enemyCharacterModelsDestroyed,
+          destructive_fight_phases: destructiveFightPhases,
+        };
+        const count = counts[effect.modelCountSource] ?? 0;
+        const modifier = effect.value * Math.floor(count / effect.modelsPerIncrement);
+        return (
+          sum + (effect.maximumModifier ? Math.min(modifier, effect.maximumModifier) : modifier)
+        );
       }, 0),
     strengthModifier: additional
       .filter((effect) => effect.type === "strength_modifier" && effect.diceCount === 0)
@@ -646,6 +658,9 @@ export function applyTargetCombatPresets(targets, targetPresets, weaponContexts)
       false,
       context.attackerUnitModels ?? 0,
       context.nearbyEnemyModels ?? 0,
+      context.nearbyEnemyUnits ?? 0,
+      context.enemyCharacterModelsDestroyed ?? 0,
+      context.destructiveFightPhases ?? 0,
       context.targetOnObjective ?? false,
       context.attackerOnObjective ?? false,
       controlsObjective(
@@ -745,6 +760,9 @@ export function applyCombatPresets(
     context.attackerOathWoundBonusEligible ?? profile.attackerOathWoundBonusEligible ?? false,
     context.attackerUnitModels ?? profile.attackerUnitModels ?? 0,
     context.nearbyEnemyModels ?? profile.nearbyEnemyModels ?? 0,
+    context.nearbyEnemyUnits ?? profile.nearbyEnemyUnits ?? 0,
+    context.enemyCharacterModelsDestroyed ?? profile.enemyCharacterModelsDestroyed ?? 0,
+    context.destructiveFightPhases ?? profile.destructiveFightPhases ?? 0,
     context.attackerOnObjective ?? profile.attackerOnObjective ?? false,
     context.targetOnObjective ?? profile.targetOnObjective ?? false,
     controlsObjective(
@@ -793,6 +811,9 @@ export function applyCombatPresets(
     false,
     context.attackerUnitModels ?? profile.attackerUnitModels ?? 0,
     context.nearbyEnemyModels ?? profile.nearbyEnemyModels ?? 0,
+    context.nearbyEnemyUnits ?? profile.nearbyEnemyUnits ?? 0,
+    context.enemyCharacterModelsDestroyed ?? profile.enemyCharacterModelsDestroyed ?? 0,
+    context.destructiveFightPhases ?? profile.destructiveFightPhases ?? 0,
     context.targetOnObjective ?? profile.targetOnObjective ?? false,
     context.attackerOnObjective ?? profile.attackerOnObjective ?? false,
     controlsObjective(

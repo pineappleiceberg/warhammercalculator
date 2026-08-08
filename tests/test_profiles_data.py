@@ -1109,6 +1109,53 @@ class ProfileDataTests(unittest.TestCase):
             source_scaling["additional_effects"][0]["model_count_source"],
             "source_unit",
         )
+        character_kills = combat_preset(
+            "Each time this model destroys an enemy CHARACTER model, until the end "
+            "of the battle, add 1 to the Attacks characteristic of its executioner "
+            "relic blade."
+        )
+        self.assertEqual(
+            character_kills["additional_effects"],
+            [
+                {
+                    "type": "attacks_modifier",
+                    "value": 1,
+                    "dice_count": 0,
+                    "dice_sides": 0,
+                    "models_per_increment": 1,
+                    "model_count_source": "enemy_character_models_destroyed",
+                    "maximum_modifier": None,
+                    "weapon_name": "executioner relic blade",
+                    "role": "attacker",
+                    "subject": "self",
+                }
+            ],
+        )
+        soul_eater = combat_preset(
+            "At the end of the Fight phase, if one or more attacks made by this model "
+            "this phase destroyed one or more enemy units, until the end of the battle, "
+            "add 1 to the Attacks characteristic of this model’s weapons."
+        )
+        self.assertEqual(
+            soul_eater["additional_effects"][0]["model_count_source"],
+            "destructive_fight_phases",
+        )
+        nearby_units = combat_preset(
+            "Each time this model’s unit is selected to fight, until the end of the "
+            "phase, add 1 to the Attacks characteristic of this model’s master-crafted "
+            'power weapon for each enemy unit within 6" of this model (to a maximum of +3).'
+        )
+        self.assertEqual(nearby_units["additional_effects"][0]["maximum_modifier"], 3)
+        self.assertEqual(
+            nearby_units["additional_effects"][0]["model_count_source"],
+            "nearby_enemy_units",
+        )
+        self.assertIsNone(
+            combat_preset(
+                "Each time this model destroys an enemy model, add 1 to the Attacks "
+                "characteristic of its executioner relic blade."
+            )
+        )
         self.assertIsNone(
             combat_preset(
                 "Each time this model fights, add 1 to its Attacks characteristic for "
@@ -1517,7 +1564,7 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "49",
+                "50",
             )
             for filename, minimum_rows in (
                 ("Abilities.csv", 80),
@@ -1749,7 +1796,7 @@ class ProfileDataTests(unittest.TestCase):
                        GROUP BY effect_type ORDER BY effect_type"""
                 ).fetchall(),
                 [
-                    ("attacks_modifier", 110),
+                    ("attacks_modifier", 114),
                     ("damage_modifier", 5),
                     ("strength_modifier", 179),
                 ],
@@ -1802,20 +1849,21 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT activation, count(*) FROM unit_combat_presets GROUP BY activation"
                 ).fetchall(),
-                [("automatic", 1114), ("inherent", 32), ("situational", 844)],
+                [("automatic", 1118), ("inherent", 32), ("situational", 844)],
             )
             self.assertEqual(
                 connection.execute(
                     "SELECT weapon_scope, count(*) FROM unit_combat_presets "
                     "GROUP BY weapon_scope ORDER BY weapon_scope"
                 ).fetchall(),
-                [("Any", 1198), ("Melee", 402), ("Ranged", 390)],
+                [("Any", 1201), ("Melee", 403), ("Ranged", 390)],
             )
             self.assertEqual(
                 connection.execute(
                     """SELECT datasheet.name, preset.name, preset.activation,
                               preset.requires_attached_unit, effect.value,
                               effect.models_per_increment, effect.model_count_source,
+                              effect.maximum_modifier,
                               effect.weapon_name
                        FROM unit_combat_preset_effects AS effect
                        JOIN unit_combat_presets AS preset
@@ -1826,6 +1874,17 @@ class ProfileDataTests(unittest.TestCase):
                 ).fetchall(),
                 [
                     (
+                        "Brotherhood Champion",
+                        "Inspiring Exemplar",
+                        "automatic",
+                        0,
+                        1,
+                        1,
+                        "enemy_character_models_destroyed",
+                        None,
+                        "Nemesis force weapon",
+                    ),
+                    (
                         "Gabriel Seth",
                         "Whirlwind of Gore",
                         "automatic",
@@ -1833,7 +1892,41 @@ class ProfileDataTests(unittest.TestCase):
                         1,
                         5,
                         "nearby_enemy",
+                        None,
                         "Blood Reaver",
+                    ),
+                    (
+                        "Judiciar",
+                        "Silent Fury",
+                        "automatic",
+                        0,
+                        1,
+                        1,
+                        "enemy_character_models_destroyed",
+                        None,
+                        "executioner relic blade",
+                    ),
+                    (
+                        "Marshal",
+                        "Pious Fervour",
+                        "automatic",
+                        0,
+                        1,
+                        1,
+                        "nearby_enemy_units",
+                        3,
+                        "master-crafted power weapon",
+                    ),
+                    (
+                        "Venomcrawler",
+                        "Soul Eater",
+                        "automatic",
+                        0,
+                        1,
+                        1,
+                        "destructive_fight_phases",
+                        None,
+                        None,
                     ),
                     (
                         "Wurrboy",
@@ -1843,6 +1936,7 @@ class ProfileDataTests(unittest.TestCase):
                         2,
                         5,
                         "source_unit",
+                        None,
                         "Eyez of Mork",
                     ),
                 ],
@@ -2056,7 +2150,7 @@ class ProfileDataTests(unittest.TestCase):
                        GROUP BY source_relationship ORDER BY source_relationship"""
                 ).fetchall(),
                 [
-                    ("self", 1953),
+                    ("self", 1957),
                     ("self_or_supporting_unit", 18),
                     ("supporting_unit", 19),
                 ],
@@ -3077,6 +3171,37 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertTrue(unstable["requiresAttachedUnit"])
         self.assertEqual(unstable["effects"][0]["modelCountSource"], "source_unit")
+        marshal = next(unit for unit in catalogue["units"] if unit["name"] == "Marshal")
+        pious_fervour = next(
+            preset for preset in marshal["combatPresets"] if preset["name"] == "Pious Fervour"
+        )
+        self.assertEqual(
+            pious_fervour["effects"][0],
+            {
+                "type": "attacks_modifier",
+                "value": 1,
+                "diceCount": 0,
+                "diceSides": 0,
+                "modelsPerIncrement": 1,
+                "modelCountSource": "nearby_enemy_units",
+                "maximumModifier": 3,
+                "weaponName": "master-crafted power weapon",
+                "role": "attacker",
+                "subject": "self",
+            },
+        )
+        venomcrawler = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Venomcrawler"
+        )
+        soul_eater = next(
+            preset
+            for preset in venomcrawler["combatPresets"]
+            if preset["name"] == "Soul Eater"
+        )
+        self.assertEqual(
+            soul_eater["effects"][0]["modelCountSource"],
+            "destructive_fight_phases",
+        )
         boyz = next(unit for unit in catalogue["units"] if unit["name"] == "Boyz")
         waaagh = [
             preset for preset in boyz["combatPresets"] if preset["name"].startswith("Waaagh! —")

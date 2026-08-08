@@ -1195,6 +1195,9 @@ export default function Home() {
         targetDistance: baseProfile.targetDistance,
         attackerUnitModels: baseProfile.attackerUnitModels,
         nearbyEnemyModels: baseProfile.nearbyEnemyModels,
+        nearbyEnemyUnits: baseProfile.nearbyEnemyUnits,
+        enemyCharacterModelsDestroyed: baseProfile.enemyCharacterModelsDestroyed,
+        destructiveFightPhases: baseProfile.destructiveFightPhases,
         attackerCharged: baseProfile.attackerCharged,
         attackerBattleShocked: baseProfile.attackerBattleShocked,
         targetBattleShocked: baseProfile.targetBattleShocked,
@@ -1496,6 +1499,9 @@ export default function Home() {
                             targetSpottedByMarkerlightObserver: false,
                             attackerUnitModels: 0,
                             nearbyEnemyModels: 0,
+                            nearbyEnemyUnits: 0,
+                            enemyCharacterModelsDestroyed: 0,
+                            destructiveFightPhases: 0,
                             attackerBattleShocked: false,
                           },
                           selectedWeapon,
@@ -1545,6 +1551,9 @@ export default function Home() {
                             targetSpottedByMarkerlightObserver: false,
                             attackerUnitModels: 0,
                             nearbyEnemyModels: 0,
+                            nearbyEnemyUnits: 0,
+                            enemyCharacterModelsDestroyed: 0,
+                            destructiveFightPhases: 0,
                             attackerBattleShocked: false,
                           },
                           selectedWeapon,
@@ -2342,6 +2351,36 @@ export default function Home() {
                 onChange={(value) =>
                   setProfile((current) =>
                     withActivePresets({ ...current, nearbyEnemyModels: value }),
+                  )
+                }
+              />
+              <NumberField
+                label="Nearby enemy units"
+                value={profile.nearbyEnemyUnits}
+                max={1000}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({ ...current, nearbyEnemyUnits: value }),
+                  )
+                }
+              />
+              <NumberField
+                label="Enemy Character models destroyed by attacker"
+                value={profile.enemyCharacterModelsDestroyed}
+                max={1000}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({ ...current, enemyCharacterModelsDestroyed: value }),
+                  )
+                }
+              />
+              <NumberField
+                label="Fight phases triggering cumulative attack bonus"
+                value={profile.destructiveFightPhases}
+                max={1000}
+                onChange={(value) =>
+                  setProfile((current) =>
+                    withActivePresets({ ...current, destructiveFightPhases: value }),
                   )
                 }
               />

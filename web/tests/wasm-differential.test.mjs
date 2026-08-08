@@ -2672,7 +2672,7 @@ test("Attached-unit state activates exact attacking and defensive leader rules",
   assert.ok(lessThanOrEqual(exactMean(), exactMean({ woundModifier: 1 })));
 });
 
-test("model-count-scaled Attacks use explicit source-unit and nearby-enemy counts", async () => {
+test("count-scaled Attacks use exact model, unit, casualty, and phase state", async () => {
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
   );
@@ -2743,6 +2743,52 @@ test("model-count-scaled Attacks use explicit source-unit and nearby-enemy count
   );
   assert.ok(lessThanOrEqual(exactMean({ attacks: 4 }), exactMean({ attacks: 5 })));
   assert.ok(lessThanOrEqual(exactMean({ attacks: 4 }), exactMean({ attacks: 8 })));
+
+  const marshal = catalogue.units.find((unit) => unit.name === "Marshal");
+  const pious = marshal.combatPresets.find((preset) => preset.name === "Pious Fervour");
+  const marshalBase = { weaponName: "master-crafted power weapon", attacksModifier: 0 };
+  assert.equal(applyCombatPresets(marshalBase, [pious], [], "Melee").attacksModifier, 0);
+  assert.equal(
+    applyCombatPresets({ ...marshalBase, nearbyEnemyUnits: 2 }, [pious], [], "Melee")
+      .attacksModifier,
+    2,
+  );
+  assert.equal(
+    applyCombatPresets({ ...marshalBase, nearbyEnemyUnits: 5 }, [pious], [], "Melee")
+      .attacksModifier,
+    3,
+  );
+
+  const judiciar = catalogue.units.find((unit) => unit.name === "Judiciar");
+  const silentFury = judiciar.combatPresets.find((preset) => preset.name === "Silent Fury");
+  const judiciarBase = { weaponName: "executioner relic blade", attacksModifier: 0 };
+  assert.equal(
+    applyCombatPresets(
+      { ...judiciarBase, enemyCharacterModelsDestroyed: 2 },
+      [silentFury],
+      [],
+      "Melee",
+    ).attacksModifier,
+    2,
+  );
+  assert.equal(
+    applyCombatPresets(
+      { ...judiciarBase, weaponName: "absolvor bolt pistol", enemyCharacterModelsDestroyed: 2 },
+      [silentFury],
+      [],
+      "Ranged",
+    ).attacksModifier,
+    0,
+  );
+
+  const venomcrawler = catalogue.units.find((unit) => unit.name === "Venomcrawler");
+  const soulEater = venomcrawler.combatPresets.find((preset) => preset.name === "Soul Eater");
+  assert.equal(
+    applyCombatPresets({ attacksModifier: 0, destructiveFightPhases: 3 }, [soulEater], [], "Ranged")
+      .attacksModifier,
+    3,
+  );
+  assert.ok(lessThanOrEqual(exactMean({ attacks: 4 }), exactMean({ attacks: 7 })));
 });
 
 test("Waaagh benefit state composes universal and direct Orks rules into C/Wasm", async () => {

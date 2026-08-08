@@ -68,6 +68,9 @@ const defaults = {
   targetSourceAttackerDistance: 0,
   attackerUnitModels: 0,
   nearbyEnemyModels: 0,
+  nearbyEnemyUnits: 0,
+  enemyCharacterModelsDestroyed: 0,
+  destructiveFightPhases: 0,
   attackerCharged: false,
   attackerRemainedStationary: false,
   attackerAttached: false,
@@ -205,6 +208,9 @@ test("canonical agent parameters round-trip every supported profile field", () =
     targetSupportDistance: 5,
     attackerUnitModels: 11,
     nearbyEnemyModels: 7,
+    nearbyEnemyUnits: 3,
+    enemyCharacterModelsDestroyed: 2,
+    destructiveFightPhases: 4,
     attackerCharged: true,
     attackerRemainedStationary: true,
     attackerAttached: true,
@@ -341,6 +347,12 @@ test("catalogue agent Attached-unit state selects exact automatic leader rules",
   );
   assert.equal(parseAgentProfile("unitModels=12", defaults, false).attackerUnitModels, 12);
   assert.equal(parseAgentProfile("nearbyEnemyModels=9", defaults, false).nearbyEnemyModels, 9);
+  assert.equal(parseAgentProfile("nearbyEnemyUnits=3", defaults, false).nearbyEnemyUnits, 3);
+  assert.equal(
+    parseAgentProfile("characterKills=2", defaults, false).enemyCharacterModelsDestroyed,
+    2,
+  );
+  assert.equal(parseAgentProfile("soulEaterStacks=4", defaults, false).destructiveFightPhases, 4);
 });
 
 test("catalogue agent Waaagh state selects exact universal and direct rules", async () => {
@@ -672,6 +684,27 @@ test("catalogue agent model counts compose exact automatic Attacks scaling", asy
     { nearbyEnemyModels: requested.nearbyEnemyModels },
   );
   assert.equal(profile.attacksModifier, 2);
+
+  const marshal = catalogue.units.find((unit) => unit.name === "Marshal");
+  const marshalWeapon = marshal.weapons.find(
+    (entry) => entry.name.toLowerCase() === "master-crafted power weapon",
+  );
+  const marshalRequested = parseAgentProfile("nearbyEnemyUnits=8", defaults, false);
+  const marshalPresets = selectedAndAutomaticCombatPresets(
+    marshal.combatPresets,
+    [],
+    marshalWeapon.type,
+    marshalWeapon.name,
+    [],
+    attackKeywordsForWeapon(marshalWeapon),
+  );
+  const marshalProfile = applyCombatPresets(
+    { ...marshalRequested, weaponName: marshalWeapon.name },
+    marshalPresets,
+    [],
+    marshalWeapon.type,
+  );
+  assert.equal(marshalProfile.attacksModifier, 3);
 });
 
 test("catalogue agent applies Guided, Spotted, and Markerlight rules at exact boundaries", async () => {

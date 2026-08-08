@@ -113,6 +113,9 @@ export default function UnitVsUnit() {
   const [targetSourceCanSeeAttacker, setTargetSourceCanSeeAttacker] = useState(false);
   const [attackerUnitModels, setAttackerUnitModels] = useState(0);
   const [nearbyEnemyModels, setNearbyEnemyModels] = useState(0);
+  const [nearbyEnemyUnits, setNearbyEnemyUnits] = useState(0);
+  const [enemyCharacterModelsDestroyed, setEnemyCharacterModelsDestroyed] = useState(0);
+  const [destructiveFightPhases, setDestructiveFightPhases] = useState(0);
   const [attackerCharged, setAttackerCharged] = useState(false);
   const [attackerRemainedStationary, setAttackerRemainedStationary] = useState(false);
   const [attackerAttached, setAttackerAttached] = useState(false);
@@ -213,6 +216,9 @@ export default function UnitVsUnit() {
     targetSourceCanSeeAttacker,
     attackerUnitModels,
     nearbyEnemyModels,
+    nearbyEnemyUnits,
+    enemyCharacterModelsDestroyed,
+    destructiveFightPhases,
     attackerCharged,
     attackerRemainedStationary,
     attackerAttached,
@@ -276,6 +282,9 @@ export default function UnitVsUnit() {
     setTargetSpottedByMarkerlightObserver(false);
     setAttackerUnitModels(0);
     setNearbyEnemyModels(0);
+    setNearbyEnemyUnits(0);
+    setEnemyCharacterModelsDestroyed(0);
+    setDestructiveFightPhases(0);
     setAttackerBattleShocked(false);
     const unit = attackerUnits.find((entry) => entry.id === unitId);
     const groups = groupWeaponProfiles(unit?.weapons ?? []);
@@ -388,6 +397,9 @@ export default function UnitVsUnit() {
             targetSourceCanSeeAttacker,
             attackerUnitModels,
             nearbyEnemyModels,
+            nearbyEnemyUnits,
+            enemyCharacterModelsDestroyed,
+            destructiveFightPhases,
             attackerCharged,
             attackerRemainedStationary,
             attackerAttached,
@@ -571,6 +583,9 @@ export default function UnitVsUnit() {
           targetDistance,
           attackerUnitModels,
           nearbyEnemyModels,
+          nearbyEnemyUnits,
+          enemyCharacterModelsDestroyed,
+          destructiveFightPhases,
           attackerCharged,
           attackerBattleShocked,
           targetBattleShocked,
@@ -697,6 +712,9 @@ export default function UnitVsUnit() {
         targetDistance,
         attackerUnitModels,
         nearbyEnemyModels,
+        nearbyEnemyUnits,
+        enemyCharacterModelsDestroyed,
+        destructiveFightPhases,
         attackerCharged,
         attackerBattleShocked,
         targetBattleShocked,
@@ -860,6 +878,9 @@ export default function UnitVsUnit() {
                   setAttackerObjectiveOwner("unknown");
                   setAttackerUnitModels(0);
                   setNearbyEnemyModels(0);
+                  setNearbyEnemyUnits(0);
+                  setEnemyCharacterModelsDestroyed(0);
+                  setDestructiveFightPhases(0);
                   setAttackerBattleShocked(false);
                   setSupportUnitId("");
                   setActiveSupportPresetIds([]);
@@ -1565,6 +1586,48 @@ export default function UnitVsUnit() {
                 }
               />
               <small>Count models within the rule’s stated range</small>
+            </label>
+            <label>
+              <span>Nearby enemy units</span>
+              <input
+                aria-label="Enemy units within the ability range"
+                type="number"
+                min={0}
+                max={1000}
+                value={nearbyEnemyUnits}
+                onChange={(event) =>
+                  setNearbyEnemyUnits(Math.min(1000, Math.max(0, +event.target.value || 0)))
+                }
+              />
+              <small>Count units within the rule’s stated range</small>
+            </label>
+            <label>
+              <span>Enemy Character models destroyed</span>
+              <input
+                aria-label="Enemy Character models destroyed by the attacker"
+                type="number"
+                min={0}
+                max={1000}
+                value={enemyCharacterModelsDestroyed}
+                onChange={(event) =>
+                  setEnemyCharacterModelsDestroyed(
+                    Math.min(1000, Math.max(0, +event.target.value || 0)),
+                  )
+                }
+              />
+            </label>
+            <label>
+              <span>Fight phases triggering cumulative attack bonus</span>
+              <input
+                aria-label="Fight phases in which this attacker destroyed enemy units"
+                type="number"
+                min={0}
+                max={1000}
+                value={destructiveFightPhases}
+                onChange={(event) =>
+                  setDestructiveFightPhases(Math.min(1000, Math.max(0, +event.target.value || 0)))
+                }
+              />
             </label>
             <label>
               <span>Target unit strength</span>

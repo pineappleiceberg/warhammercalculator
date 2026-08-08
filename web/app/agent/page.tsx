@@ -101,6 +101,9 @@ export default function AgentCalculator() {
           const targetSupportDistance = requestedContext.targetSupportDistance;
           const attackerUnitModels = requestedContext.attackerUnitModels;
           const nearbyEnemyModels = requestedContext.nearbyEnemyModels;
+          const nearbyEnemyUnits = requestedContext.nearbyEnemyUnits;
+          const enemyCharacterModelsDestroyed = requestedContext.enemyCharacterModelsDestroyed;
+          const destructiveFightPhases = requestedContext.destructiveFightPhases;
           const attackerCharged = requestedContext.attackerCharged;
           const attackerRemainedStationary = requestedContext.attackerRemainedStationary;
           const attackerAttached = requestedContext.attackerAttached;
@@ -139,6 +142,9 @@ export default function AgentCalculator() {
             targetDistance: requestedDistance,
             attackerUnitModels,
             nearbyEnemyModels,
+            nearbyEnemyUnits,
+            enemyCharacterModelsDestroyed,
+            destructiveFightPhases,
             attackerCharged,
             attackerRemainedStationary,
             attackerAttached,
@@ -325,6 +331,9 @@ export default function AgentCalculator() {
               targetDistance: requestedDistance,
               attackerUnitModels,
               nearbyEnemyModels,
+              nearbyEnemyUnits,
+              enemyCharacterModelsDestroyed,
+              destructiveFightPhases,
               attackerCharged,
               attackerRemainedStationary,
               attackerAttached,
@@ -521,7 +530,8 @@ export default function AgentCalculator() {
               characteristicModifierDamage, model, models, fnp, reduction, damageDivisor,
               criticalHits, criticalWounds, sustainedHits, rapidFire, melta, hitModifier,
               woundModifier, rerollHits, rerollWounds, distance, unitModels, nearbyEnemyModels,
-              charged, stationary, attackerAttached, targetAttached, attackerWaaaghActive,
+              nearbyEnemyUnits, enemyCharacterModelsDestroyed, destructiveFightPhases, charged,
+              stationary, attackerAttached, targetAttached, attackerWaaaghActive,
               targetWaaaghActive, oathTarget, oathWoundBonus, attackerObjective, targetObjective,
               attackerObjectiveOwner, targetObjectiveOwner, attackerBattleShocked,
               targetBattleShocked, attackerOnAttackerSelectedObjective,

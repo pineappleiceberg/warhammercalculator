@@ -50,9 +50,11 @@ The main tables are:
   preserves conservative phase eligibility: an effect explicitly bounded to a
   Shooting or Fight phase is restricted to ranged or melee attacks, while
   dual-phase and end-of-turn effects remain unrestricted
-- exact model-count-scaled Attacks modifiers store the count source and models
-  per increment on the affected named weapon. The browser and API provide the
-  current count; zero is conservative unknown state and never invents a bonus
+- exact count-scaled Attacks modifiers store the count source, count per
+  increment, optional cap, and affected named weapon. Source-unit models,
+  nearby enemy models or units, enemy Character models destroyed, and prior
+  Fight phases that triggered a cumulative bonus are explicit browser and API
+  state; zero is conservative unknown state and never invents a bonus
 - the universal Orks Waaagh! ability is stored as separate automatic melee
   offense and unrestricted defense presets so +1 Strength/Attacks cannot leak
   onto ranged weapons and its 5+ invulnerable save cannot be limited to melee

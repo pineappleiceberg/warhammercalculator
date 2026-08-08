@@ -16,14 +16,25 @@ priority over feature count.
 
 ## Prioritized backlog
 
-1. Represent casualty- and nearby-unit-count-scaled Attacks modifiers as
-   explicit reproducible state instead of requiring manual arithmetic; direct
-   source-unit and nearby-enemy model counts are now covered.
-2. Extend bearer and subset-model defenses beyond composition-proven
+1. Extend bearer and subset-model defenses beyond composition-proven
    single-model datasheets with per-target-segment equipment selection, so a
    shield or crest never affects models that do not carry it.
+2. Represent embarked-model-count-scaled Attacks for Hunta Rig and Raider with
+   explicit transport contents and the Hunta Rig's published +6 cap, without
+   treating every embarked model as a Wrack.
 
 ## Completed cycles
+
+- 2026-08-07: Generalized exact count-scaled Attacks. SQLite schema 50 imports
+  Brotherhood Champion and Judiciar bonuses per enemy Character model
+  destroyed, Venomcrawler's cumulative Soul Eater bonus per qualifying Fight
+  phase, and Marshal's Pious Fervour bonus per nearby enemy unit with its exact
+  +3 cap. Model vs Model, Unit vs Unit, Play Mode recovery, normalized API
+  profiles, static agent URLs, and catalogue discovery preserve three new
+  editable counters; zero remains conservative unknown state. Exact source-text
+  negatives, database and JSON snapshots, named-weapon boundaries, capped and
+  cumulative composition, URL round trips, persistence, and C/WebAssembly
+  damage monotonicity cover the change.
 
 - 2026-08-07: Corrected cross-unit selected-target abilities. SQLite schema 49
   marks 18 generated presets from 15 exact source rules as usable by either the

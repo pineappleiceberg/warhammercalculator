@@ -144,6 +144,9 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
       targetSupportDistance: 3,
       attackerUnitModels: 11,
       nearbyEnemyModels: 7,
+      nearbyEnemyUnits: 3,
+      enemyCharacterModelsDestroyed: 2,
+      destructiveFightPhases: 4,
       attackerRemainedStationary: true,
       attackerAttached: true,
       targetAttached: true,
@@ -196,6 +199,9 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   assert.equal(recovery.profile.targetSupportDistance, 3);
   assert.equal(recovery.profile.attackerUnitModels, 11);
   assert.equal(recovery.profile.nearbyEnemyModels, 7);
+  assert.equal(recovery.profile.nearbyEnemyUnits, 3);
+  assert.equal(recovery.profile.enemyCharacterModelsDestroyed, 2);
+  assert.equal(recovery.profile.destructiveFightPhases, 4);
   assert.equal(recovery.profile.attackerRemainedStationary, true);
   assert.equal(recovery.profile.attackerAttached, true);
   assert.equal(recovery.profile.targetAttached, true);

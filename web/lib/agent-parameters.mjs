@@ -61,6 +61,9 @@ const integerParameters = [
   ["targetSupportDistance", ["targetSupportDistance"]],
   ["attackerUnitModels", ["attackerUnitModels", "unitModels"]],
   ["nearbyEnemyModels", ["nearbyEnemyModels"]],
+  ["nearbyEnemyUnits", ["nearbyEnemyUnits"]],
+  ["enemyCharacterModelsDestroyed", ["enemyCharacterModelsDestroyed", "characterKills"]],
+  ["destructiveFightPhases", ["destructiveFightPhases", "soulEaterStacks"]],
 ];
 
 const booleanParameters = [
@@ -500,6 +503,9 @@ export function canonicalAgentParameters(profile) {
   search.set("targetSupportDistance", String(profile.targetSupportDistance ?? 0));
   search.set("attackerUnitModels", String(profile.attackerUnitModels ?? 0));
   search.set("nearbyEnemyModels", String(profile.nearbyEnemyModels ?? 0));
+  search.set("nearbyEnemyUnits", String(profile.nearbyEnemyUnits ?? 0));
+  search.set("enemyCharacterModelsDestroyed", String(profile.enemyCharacterModelsDestroyed ?? 0));
+  search.set("destructiveFightPhases", String(profile.destructiveFightPhases ?? 0));
   for (const [field, aliases] of booleanParameters) {
     search.set(aliases[0], profile[field] ? "true" : "false");
   }

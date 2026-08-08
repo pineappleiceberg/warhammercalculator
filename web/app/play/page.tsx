@@ -39,6 +39,11 @@ type LogEntry = {
   successful: number;
 };
 
+type AttackCountContext = Pick<
+  CombatProfile,
+  "nearbyEnemyUnits" | "enemyCharacterModelsDestroyed" | "destructiveFightPhases"
+>;
+
 export default function PlayMode() {
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
   const [lists, setLists] = useState<ArmyListRecord[]>([]);
@@ -294,7 +299,7 @@ export default function PlayMode() {
     );
 
   const refreshProfile = (
-    nextWeaponId = weaponId,
+    nextWeaponOrCounts: string | Partial<AttackCountContext> = weaponId,
     nextTargetModelId = targetModelId,
     nextProfileId = profileId,
     nextAttackerPresetIds = activeAttackerPresetIds,
@@ -336,6 +341,13 @@ export default function PlayMode() {
     nextAttackerSourceCanSeeTarget = profile.attackerSourceCanSeeTarget,
     nextTargetSourceCanSeeAttacker = profile.targetSourceCanSeeAttacker,
   ) => {
+    const nextWeaponId = typeof nextWeaponOrCounts === "string" ? nextWeaponOrCounts : weaponId;
+    const countOverrides = typeof nextWeaponOrCounts === "string" ? {} : nextWeaponOrCounts;
+    const nextNearbyEnemyUnits = countOverrides.nearbyEnemyUnits ?? profile.nearbyEnemyUnits;
+    const nextEnemyCharacterModelsDestroyed =
+      countOverrides.enemyCharacterModelsDestroyed ?? profile.enemyCharacterModelsDestroyed;
+    const nextDestructiveFightPhases =
+      countOverrides.destructiveFightPhases ?? profile.destructiveFightPhases;
     const listWeapon = attackerUnit?.weapons.find(
       (entry) => String(entry.weaponId) === nextWeaponId,
     );
@@ -360,6 +372,9 @@ export default function PlayMode() {
             targetDistance: nextTargetDistance,
             attackerUnitModels: nextAttackerUnitModels,
             nearbyEnemyModels: nextNearbyEnemyModels,
+            nearbyEnemyUnits: nextNearbyEnemyUnits,
+            enemyCharacterModelsDestroyed: nextEnemyCharacterModelsDestroyed,
+            destructiveFightPhases: nextDestructiveFightPhases,
             attackerCharged: nextAttackerCharged,
             attackerRemainedStationary: nextAttackerRemainedStationary,
             attackerAttached: nextAttackerAttached,
@@ -538,6 +553,9 @@ export default function PlayMode() {
           targetDistance: nextTargetDistance,
           attackerUnitModels: nextAttackerUnitModels,
           nearbyEnemyModels: nextNearbyEnemyModels,
+          nearbyEnemyUnits: nextNearbyEnemyUnits,
+          enemyCharacterModelsDestroyed: nextEnemyCharacterModelsDestroyed,
+          destructiveFightPhases: nextDestructiveFightPhases,
           attackerCharged: nextAttackerCharged,
           attackerRemainedStationary: nextAttackerRemainedStationary,
           attackerAttached: nextAttackerAttached,
@@ -954,6 +972,9 @@ export default function PlayMode() {
             targetDistance: profile.targetDistance,
             attackerUnitModels: profile.attackerUnitModels,
             nearbyEnemyModels: profile.nearbyEnemyModels,
+            nearbyEnemyUnits: profile.nearbyEnemyUnits,
+            enemyCharacterModelsDestroyed: profile.enemyCharacterModelsDestroyed,
+            destructiveFightPhases: profile.destructiveFightPhases,
             attackerCharged: profile.attackerCharged,
             attackerRemainedStationary: profile.attackerRemainedStationary,
             attackerBattleShocked: profile.attackerBattleShocked,
@@ -1096,6 +1117,9 @@ export default function PlayMode() {
           targetDistance: profile.targetDistance,
           attackerUnitModels: profile.attackerUnitModels,
           nearbyEnemyModels: profile.nearbyEnemyModels,
+          nearbyEnemyUnits: profile.nearbyEnemyUnits,
+          enemyCharacterModelsDestroyed: profile.enemyCharacterModelsDestroyed,
+          destructiveFightPhases: profile.destructiveFightPhases,
           attackerCharged: profile.attackerCharged,
           attackerRemainedStationary: profile.attackerRemainedStationary,
           attackerAttached: profile.attackerAttached,
@@ -1265,6 +1289,9 @@ export default function PlayMode() {
                         targetSpottedByMarkerlightObserver: false,
                         attackerUnitModels: 0,
                         nearbyEnemyModels: 0,
+                        nearbyEnemyUnits: 0,
+                        enemyCharacterModelsDestroyed: 0,
+                        destructiveFightPhases: 0,
                         attackerBattleShocked: false,
                         supportDistance: 0,
                       }));
@@ -1313,6 +1340,9 @@ export default function PlayMode() {
                         targetSpottedByMarkerlightObserver: false,
                         attackerUnitModels: 0,
                         nearbyEnemyModels: 0,
+                        nearbyEnemyUnits: 0,
+                        enemyCharacterModelsDestroyed: 0,
+                        destructiveFightPhases: 0,
                         attackerBattleShocked: false,
                         supportDistance: 0,
                       }));
@@ -1611,6 +1641,58 @@ export default function PlayMode() {
                     }
                   />
                   <small>Count models within the rule’s stated range</small>
+                </label>
+                <label>
+                  <span>Nearby enemy units</span>
+                  <input
+                    aria-label="Enemy units within the ability range"
+                    type="number"
+                    min={0}
+                    max={1000}
+                    value={profile.nearbyEnemyUnits}
+                    onChange={(event) =>
+                      refreshProfile({
+                        nearbyEnemyUnits: Math.min(1000, Math.max(0, +event.target.value || 0)),
+                      })
+                    }
+                  />
+                  <small>Count units within the rule’s stated range</small>
+                </label>
+                <label>
+                  <span>Enemy Character models destroyed</span>
+                  <input
+                    aria-label="Enemy Character models destroyed by the attacker"
+                    type="number"
+                    min={0}
+                    max={1000}
+                    value={profile.enemyCharacterModelsDestroyed}
+                    onChange={(event) =>
+                      refreshProfile({
+                        enemyCharacterModelsDestroyed: Math.min(
+                          1000,
+                          Math.max(0, +event.target.value || 0),
+                        ),
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Fight phases triggering cumulative attack bonus</span>
+                  <input
+                    aria-label="Fight phases in which this attacker destroyed enemy units"
+                    type="number"
+                    min={0}
+                    max={1000}
+                    value={profile.destructiveFightPhases}
+                    onChange={(event) =>
+                      refreshProfile({
+                        destructiveFightPhases: Math.min(
+                          1000,
+                          Math.max(0, +event.target.value || 0),
+                        ),
+                      })
+                    }
+                  />
                 </label>
                 <label>
                   <span>Oath of Moment</span>

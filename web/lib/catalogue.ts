@@ -188,7 +188,13 @@ export type CatalogueCombatPresetEffect = {
   diceCount: number;
   diceSides: number;
   modelsPerIncrement?: number;
-  modelCountSource?: "source_unit" | "nearby_enemy";
+  modelCountSource?:
+    | "source_unit"
+    | "nearby_enemy"
+    | "nearby_enemy_units"
+    | "enemy_character_models_destroyed"
+    | "destructive_fight_phases";
+  maximumModifier?: number;
   uses?: number;
   role: CombatPresetRole;
   subject: CombatPresetSubject;
@@ -282,6 +288,9 @@ type CombatPresetContext = {
   targetStrengthState?: CombatProfile["targetStrengthState"];
   attackerUnitModels?: number;
   nearbyEnemyModels?: number;
+  nearbyEnemyUnits?: number;
+  enemyCharacterModelsDestroyed?: number;
+  destructiveFightPhases?: number;
 };
 export type Catalogue = {
   sourceUpdatedAt: string;

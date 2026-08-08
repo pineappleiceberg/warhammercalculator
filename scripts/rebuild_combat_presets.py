@@ -143,7 +143,10 @@ CREATE TABLE unit_combat_preset_effects (
     dice_count INTEGER NOT NULL DEFAULT 0 CHECK (dice_count >= 0),
     dice_sides INTEGER NOT NULL DEFAULT 0 CHECK (dice_sides >= 0),
     models_per_increment INTEGER CHECK (models_per_increment > 0),
-    model_count_source TEXT CHECK (model_count_source IN ('source_unit', 'nearby_enemy')),
+    model_count_source TEXT CHECK (model_count_source IN
+        ('source_unit', 'nearby_enemy', 'nearby_enemy_units',
+         'enemy_character_models_destroyed', 'destructive_fight_phases')),
+    maximum_modifier INTEGER CHECK (maximum_modifier > 0),
     weapon_name TEXT,
     required_target_keyword TEXT,
     required_attack_keyword TEXT,
@@ -151,6 +154,7 @@ CREATE TABLE unit_combat_preset_effects (
     subject TEXT NOT NULL CHECK (subject IN
         ('self', 'led_unit', 'friendly_unit', 'enemy_unit', 'affected_unit', 'unknown')),
     CHECK ((models_per_increment IS NULL) = (model_count_source IS NULL)),
+    CHECK (maximum_modifier IS NULL OR model_count_source IS NOT NULL),
     PRIMARY KEY (datasheet_id, ability_position, preset_position, effect_position),
     FOREIGN KEY (datasheet_id, ability_position, preset_position)
         REFERENCES unit_combat_presets(datasheet_id, ability_position, preset_position)
@@ -173,7 +177,7 @@ def main() -> None:
         connection.executescript(TABLE_SCHEMA)
         count = rebuild_combat_presets(connection)
         connection.execute(
-            "UPDATE metadata SET value = '49' WHERE key = 'schema_version'"
+            "UPDATE metadata SET value = '50' WHERE key = 'schema_version'"
         )
         connection.execute("PRAGMA optimize")
         connection.commit()
