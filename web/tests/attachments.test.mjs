@@ -41,6 +41,9 @@ import {
   savedUnitCombatPresetIds,
 } from "../lib/formations.mjs";
 import {
+  applyChoiceSelectionChange,
+  choiceAlternativeMaximum,
+  choicePoolUsed,
   choiceSelectionLimitWarnings,
   compositionLoadoutSubjectCounts,
   defaultLoadoutSubjectCounts,
@@ -1230,6 +1233,105 @@ test("distinct Wolf Guard choices enforce item uniqueness and pistol pairing", (
     choiceSelectionLimitWarnings(leader, 1, { [boltgun.id]: 2 }).join("\n"),
     /boltgun: 2 selections.*exceeds the shared limit of 1/i,
   );
+});
+
+test("mixed twin-claw branches and Terminator cyclone pairings preserve exact loadouts", () => {
+  const tactical = unit("000000070");
+  const tacticalPool = tactical.wargearChoicePools.find((entry) => entry.id === "000000070:3");
+  assert.ok(tacticalPool);
+  const tacticalChoice = (pattern) => {
+    const alternative = tacticalPool.alternatives.find((entry) => pattern.test(entry.label));
+    assert.ok(alternative);
+    return alternative;
+  };
+  const twinClaws = tacticalChoice(/^1 twin lightning claws$/i);
+  const boltPistol = tacticalChoice(/^1 bolt pistol$/i);
+  const boltgun = tacticalChoice(/^1 boltgun$/i);
+  assert.equal(tacticalPool.selectionsPerReplacement, 2);
+  assert.equal(twinClaws.selectionSlots, 2);
+  assert.equal(twinClaws.maximumSelections, 1);
+  assert.equal(choiceAlternativeMaximum(tacticalPool, twinClaws, 10), 1);
+  assert.equal(choicePoolUsed(tacticalPool, { [twinClaws.id]: 1 }), 2);
+  const tacticalDefaults = defaultWeaponCounts(tactical, 10);
+  const withTwinClaws = applyChoiceSelectionChange(
+    tacticalDefaults,
+    tacticalPool,
+    twinClaws,
+    0,
+    1,
+    {},
+  );
+  assert.equal(
+    withTwinClaws[
+      tactical.weapons.find((weapon) => /^Twin lightning claws$/i.test(weapon.groupName)).groupId
+    ],
+    1,
+  );
+  assert.deepEqual(choiceSelectionLimitWarnings(tactical, 10, { [twinClaws.id]: 1 }), []);
+  assert.match(
+    choiceSelectionLimitWarnings(tactical, 10, {
+      [twinClaws.id]: 1,
+      [boltPistol.id]: 1,
+    }).join("\n"),
+    /3 selections exceeds the shared limit of 2/i,
+  );
+  assert.deepEqual(
+    choiceSelectionLimitWarnings(tactical, 10, {
+      [boltPistol.id]: 1,
+      [boltgun.id]: 1,
+    }),
+    [],
+  );
+
+  const terminator = unit("000002803");
+  const terminatorPool = terminator.wargearChoicePools.find((entry) => entry.id === "000002803:2");
+  assert.ok(terminatorPool);
+  const terminatorChoice = (pattern) => {
+    const alternative = terminatorPool.alternatives.find((entry) => pattern.test(entry.label));
+    assert.ok(alternative);
+    return alternative;
+  };
+  const cyclone = terminatorChoice(/cyclone missile launcher/i);
+  const chainfist = terminatorChoice(/^1 chainfist$/i);
+  const assaultCannon = terminatorChoice(/^1 assault cannon$/i);
+  const stormBolter = terminatorChoice(/^1 storm bolter$/i);
+  const combiWeapon = terminator.wargearChoicePools
+    .flatMap((pool) => pool.alternatives)
+    .find((alternative) => /^1 combi-weapon$/i.test(alternative.label));
+  assert.ok(combiWeapon);
+  assert.deepEqual(
+    choiceSelectionLimitWarnings(terminator, 1, {
+      [cyclone.id]: 1,
+      [chainfist.id]: 1,
+    }),
+    [],
+  );
+  assert.match(
+    choiceSelectionLimitWarnings(terminator, 1, {
+      [assaultCannon.id]: 1,
+      [stormBolter.id]: 1,
+    }).join("\n"),
+    /requires at least 1 cyclone missile launcher selection/i,
+  );
+  assert.match(
+    choiceSelectionLimitWarnings(terminator, 1, {
+      [cyclone.id]: 1,
+      [assaultCannon.id]: 1,
+    }).join("\n"),
+    /3 ranged selections exceeds the permitted maximum of 2/i,
+  );
+  const cycloneCombiChoices = {
+    [cyclone.id]: 1,
+    [chainfist.id]: 1,
+    [combiWeapon.id]: 1,
+  };
+  assert.deepEqual(choiceSelectionLimitWarnings(terminator, 1, cycloneCombiChoices), []);
+  const equipped = sourceEquippedWeaponCounts(terminator, 1, cycloneCombiChoices);
+  const group = (pattern) =>
+    terminator.weapons.find((weapon) => pattern.test(weapon.groupName)).groupId;
+  assert.equal(equipped[group(/^Cyclone missile launcher$/i)], 1);
+  assert.equal(equipped[group(/^Combi-weapon$/i)], 1);
+  assert.equal(equipped[group(/^Storm bolter$/i)], 0);
 });
 
 test("defensive equipment source bounds require explicit saved-list overrides", () => {

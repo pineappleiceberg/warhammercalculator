@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 import { antiWoundThreshold } from "../lib/anti.mjs";
+import { sourceEquippedWeaponCounts } from "../lib/loadout.mjs";
 import {
   advanceBattleClock,
   applyBattleEffect,
@@ -267,7 +268,17 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     {
       poolId: "000002804:2",
       weaponType: "Ranged",
+      evaluationScope: "pool",
       triggerCount: 2,
+      maximumTypedSelections: 2,
+      requirements: [
+        {
+          label: "pistol",
+          minimum: 1,
+          maximum: 1,
+          matches: [{ kind: "ability", value: "pistol" }],
+        },
+      ],
       requiredAbility: "pistol",
       requiredMinimum: 1,
       requiredMaximum: 1,
@@ -1221,6 +1232,64 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
     wolfGuardLeader.wargearChoicePairingRules,
   );
   assert.match(invalidWolfPairData.warnings.join("\n"), /requires at least 1 pistol selection/i);
+
+  const terminatorLeader = catalogue.units.find((unit) => unit.id === "000002803");
+  const terminatorPool = terminatorLeader.wargearChoicePools.find(
+    (pool) => pool.id === "000002803:2",
+  );
+  const cyclone = terminatorPool.alternatives.find((choice) =>
+    /cyclone missile launcher/i.test(choice.label),
+  );
+  const chainfist = terminatorPool.alternatives.find((choice) =>
+    /^1 chainfist$/i.test(choice.label),
+  );
+  const assaultCannon = terminatorPool.alternatives.find((choice) =>
+    /^1 assault cannon$/i.test(choice.label),
+  );
+  const combiWeapon = terminatorLeader.wargearChoicePools
+    .flatMap((pool) => pool.alternatives)
+    .find((choice) => /^1 combi-weapon$/i.test(choice.label));
+  const validCycloneChoices = {
+    [cyclone.id]: 1,
+    [chainfist.id]: 1,
+    [combiWeapon.id]: 1,
+  };
+  const validCycloneLoadout = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: terminatorLeader.id,
+        modelCount: 1,
+        weaponCounts: sourceEquippedWeaponCounts(terminatorLeader, 1, validCycloneChoices),
+        choiceSelections: validCycloneChoices,
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  const validCycloneData = (await validCycloneLoadout.json()).data;
+  assert.equal(validCycloneData.valid, true, validCycloneData.warnings.join("\n"));
+  assert.equal(validCycloneData.wargearChoicePairingRules[0].evaluationScope, "unit");
+
+  const invalidCycloneChoices = { [cyclone.id]: 1, [assaultCannon.id]: 1 };
+  const invalidCycloneLoadout = await worker.fetch(
+    new Request("http://localhost/api/v1/validate-loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        unitId: terminatorLeader.id,
+        modelCount: 1,
+        weaponCounts: sourceEquippedWeaponCounts(terminatorLeader, 1, invalidCycloneChoices),
+        choiceSelections: invalidCycloneChoices,
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  const invalidCycloneData = (await invalidCycloneLoadout.json()).data;
+  assert.equal(invalidCycloneData.valid, false);
+  assert.match(invalidCycloneData.warnings.join("\n"), /3 ranged selections.*maximum of 2/i);
 
   const burstGroup = crisis.weapons.find((weapon) => weapon.groupName === "Burst cannon").groupId;
   const tooManyRangedWeapons = await worker.fetch(

@@ -67,6 +67,8 @@ SNAPSHOT_TABLES = (
     "wargear_choice_replaced_weapons",
     "wargear_choice_item_limits",
     "wargear_choice_pairing_rules",
+    "wargear_choice_pairing_requirements",
+    "wargear_choice_pairing_requirement_matches",
     "wargear_weapon_type_limits",
     "default_weapon_loadout",
     "default_loadout_subjects",

@@ -77,6 +77,30 @@ export function choicePoolMaximum(pool, modelCount) {
   return pool.fixed + Math.floor(models / pool.modelsPerIncrement) * pool.perIncrement;
 }
 
+export function choiceAlternativeMaximum(pool, alternative, modelCount) {
+  const slots = Math.max(1, normalizeEquippedCount(alternative.selectionSlots ?? 1));
+  const poolMaximum = Math.floor(choicePoolMaximum(pool, modelCount) / slots);
+  return Math.min(poolMaximum, alternative.maximumSelections ?? poolMaximum);
+}
+
+export function choicePoolUsed(pool, choiceSelections = {}) {
+  return pool.alternatives.reduce(
+    (total, alternative) =>
+      total +
+      normalizeEquippedCount(choiceSelections[alternative.id] ?? 0) *
+        Math.max(1, normalizeEquippedCount(alternative.selectionSlots ?? 1)),
+    0,
+  );
+}
+
+function choicePoolReplacementUses(pool, choiceSelections = {}) {
+  const selectionsPerReplacement = Math.max(
+    1,
+    normalizeEquippedCount(pool.selectionsPerReplacement ?? 1),
+  );
+  return Math.ceil(choicePoolUsed(pool, choiceSelections) / selectionsPerReplacement);
+}
+
 export function choiceItemLimitMaximum(limit, modelCount) {
   const models = normalizeEquippedCount(modelCount, 1000);
   return limit.fixed + Math.floor(models / limit.modelsPerIncrement) * limit.perIncrement;
@@ -214,9 +238,14 @@ export function defaultWeaponCounts(unit, modelCount, loadoutSubjectCounts = {})
 export function choiceSelectionReplacementCounts(unit, choiceSelections = {}) {
   const counts = {};
   for (const pool of unit?.wargearChoicePools ?? []) {
+    const commonReplacementUses = choicePoolReplacementUses(pool, choiceSelections);
+    for (const weapon of pool.replaces ?? []) {
+      counts[weapon.groupId] =
+        (counts[weapon.groupId] ?? 0) + commonReplacementUses * weapon.quantity;
+    }
     for (const alternative of pool.alternatives) {
       const selected = normalizeEquippedCount(choiceSelections[alternative.id] ?? 0);
-      for (const weapon of alternative.replaces ?? pool.replaces ?? []) {
+      for (const weapon of alternative.replaces ?? []) {
         counts[weapon.groupId] = (counts[weapon.groupId] ?? 0) + selected * weapon.quantity;
       }
     }
@@ -248,10 +277,21 @@ export function applyChoiceSelectionChange(
   alternative,
   previousValue,
   nextValue,
+  choiceSelections = {},
 ) {
   const delta = normalizeEquippedCount(nextValue) - normalizeEquippedCount(previousValue);
   const counts = { ...equippedCounts };
-  for (const weapon of alternative.replaces ?? pool.replaces ?? []) {
+  const previousSelections = { ...choiceSelections, [alternative.id]: previousValue };
+  const nextSelections = { ...choiceSelections, [alternative.id]: nextValue };
+  const commonReplacementDelta =
+    choicePoolReplacementUses(pool, nextSelections) -
+    choicePoolReplacementUses(pool, previousSelections);
+  for (const weapon of pool.replaces ?? []) {
+    counts[weapon.groupId] = normalizeEquippedCount(
+      (counts[weapon.groupId] ?? 0) - commonReplacementDelta * weapon.quantity,
+    );
+  }
+  for (const weapon of alternative.replaces ?? []) {
     counts[weapon.groupId] = normalizeEquippedCount(
       (counts[weapon.groupId] ?? 0) - delta * weapon.quantity,
     );
@@ -381,7 +421,16 @@ export function choiceSelectionLimitWarnings(unit, modelCount, choiceSelections 
     for (const alternative of pool.alternatives) {
       knownAlternativeIds.add(alternative.id);
       const alternativeCount = normalizeEquippedCount(choiceSelections[alternative.id] ?? 0);
-      selected += alternativeCount;
+      selected +=
+        alternativeCount * Math.max(1, normalizeEquippedCount(alternative.selectionSlots ?? 1));
+      if (
+        alternative.maximumSelections !== undefined &&
+        alternativeCount > alternative.maximumSelections
+      ) {
+        warnings.push(
+          `${alternative.label}: ${alternativeCount} selections exceeds the source limit of ${alternative.maximumSelections} — ${pool.source}`,
+        );
+      }
       if (alternativeCount <= 0) continue;
       for (const prerequisite of alternative.prerequisites ?? []) {
         const requiredCount = normalizeEquippedCount(
@@ -424,34 +473,64 @@ export function choiceSelectionLimitWarnings(unit, modelCount, choiceSelections 
   for (const rule of unit.wargearChoicePairingRules ?? []) {
     const pool = (unit.wargearChoicePools ?? []).find((entry) => entry.id === rule.poolId);
     if (!pool) continue;
+    const requirements =
+      rule.requirements ??
+      (rule.requiredAbility
+        ? [
+            {
+              label: rule.requiredAbility,
+              minimum: rule.requiredMinimum,
+              maximum: rule.requiredMaximum,
+              matches: [{ kind: "ability", value: rule.requiredAbility }],
+            },
+          ]
+        : []);
     let typedSelections = 0;
-    let abilitySelections = 0;
-    for (const alternative of pool.alternatives) {
-      const selected = normalizeEquippedCount(choiceSelections[alternative.id] ?? 0);
-      for (const choice of alternative.weapons) {
-        const profiles = weaponProfilesByGroup.get(choice.groupId) ?? [];
-        if (!profiles.some((weapon) => weapon.type === rule.weaponType)) continue;
-        const copies = selected * choice.quantity;
-        typedSelections += copies;
-        if (
-          profiles.some((weapon) =>
+    const requirementSelections = requirements.map(() => 0);
+    const weaponSelections =
+      rule.evaluationScope === "unit"
+        ? sourceEquippedWeaponCounts(unit, modelCount, choiceSelections)
+        : pool.alternatives.reduce((counts, alternative) => {
+            const selected = normalizeEquippedCount(choiceSelections[alternative.id] ?? 0);
+            for (const choice of alternative.weapons) {
+              counts[choice.groupId] = (counts[choice.groupId] ?? 0) + selected * choice.quantity;
+            }
+            return counts;
+          }, {});
+    for (const [groupId, copies] of Object.entries(weaponSelections)) {
+      const profiles = weaponProfilesByGroup.get(groupId) ?? [];
+      if (!profiles.some((weapon) => weapon.type === rule.weaponType)) continue;
+      typedSelections += copies;
+      for (const [index, requirement] of requirements.entries()) {
+        const matches = requirement.matches.some((match) => {
+          if (match.kind === "weapon_group") return groupId === match.value;
+          return profiles.some((weapon) =>
             (weapon.abilities ?? []).some(
-              (ability) => ability.name.toLowerCase() === rule.requiredAbility.toLowerCase(),
+              (ability) => ability.name.toLowerCase() === match.value.toLowerCase(),
             ),
-          )
-        ) {
-          abilitySelections += copies;
-        }
+          );
+        });
+        if (matches) requirementSelections[index] += copies;
       }
     }
-    if (abilitySelections > rule.requiredMaximum) {
+    if (typedSelections < rule.triggerCount) continue;
+    const maximumTypedSelections = rule.maximumTypedSelections ?? rule.triggerCount;
+    if (typedSelections > maximumTypedSelections) {
       warnings.push(
-        `Source choice pairing: ${abilitySelections} ${rule.requiredAbility} selections exceeds the limit of ${rule.requiredMaximum} — ${rule.source}`,
+        `Source choice pairing: ${typedSelections} ${rule.weaponType.toLowerCase()} selections exceeds the permitted maximum of ${maximumTypedSelections} — ${rule.source}`,
       );
-    } else if (typedSelections >= rule.triggerCount && abilitySelections < rule.requiredMinimum) {
-      warnings.push(
-        `Source choice pairing: ${typedSelections} ${rule.weaponType.toLowerCase()} selections requires at least ${rule.requiredMinimum} ${rule.requiredAbility} selection — ${rule.source}`,
-      );
+    }
+    for (const [index, requirement] of requirements.entries()) {
+      const matched = requirementSelections[index];
+      if (matched > requirement.maximum) {
+        warnings.push(
+          `Source choice pairing: ${matched} ${requirement.label} selections exceeds the limit of ${requirement.maximum} — ${rule.source}`,
+        );
+      } else if (matched < requirement.minimum) {
+        warnings.push(
+          `Source choice pairing: ${typedSelections} ${rule.weaponType.toLowerCase()} selections requires at least ${requirement.minimum} ${requirement.label} selection — ${rule.source}`,
+        );
+      }
     }
   }
   return warnings;
@@ -470,19 +549,25 @@ export function choiceSelectionWarnings(
   const replacedWeapons = choiceSelectionReplacementCounts(unit, choiceSelections);
   const defaultWeapons = defaultWeaponCounts(unit, modelCount, loadoutSubjectCounts);
   for (const [groupId, count] of Object.entries(replacedWeapons)) {
-    if (count > (defaultWeapons[groupId] ?? 0)) {
+    const available = (defaultWeapons[groupId] ?? 0) + (selectedWeapons[groupId] ?? 0);
+    if (count > available) {
       const name = unit.weapons.find((weapon) => weapon.groupId === groupId)?.groupName ?? groupId;
       warnings.push(
-        `${name}: structured choices replace ${count} copies but the source default has ${defaultWeapons[groupId] ?? 0}`,
+        `${name}: structured choices replace ${count} copies but the source loadout and selected options supply ${available}`,
       );
     }
   }
   for (const [groupId, count] of Object.entries(selectedWeapons)) {
+    const replacedSelectedCopies = Math.max(
+      0,
+      (replacedWeapons[groupId] ?? 0) - (defaultWeapons[groupId] ?? 0),
+    );
+    const remainingSelectedCopies = Math.max(0, count - replacedSelectedCopies);
     const equipped = normalizeEquippedCount(equippedCounts[groupId] ?? 0);
-    if (count > equipped) {
+    if (remainingSelectedCopies > equipped) {
       const name = unit.weapons.find((weapon) => weapon.groupId === groupId)?.groupName ?? groupId;
       warnings.push(
-        `${name}: structured choices produce ${count} copies but only ${equipped} are equipped`,
+        `${name}: structured choices produce ${remainingSelectedCopies} retained copies but only ${equipped} are equipped`,
       );
     }
   }

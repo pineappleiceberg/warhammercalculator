@@ -1340,12 +1340,13 @@ def export(database: Path, output: Path) -> None:
         for row in connection.execute(
             """SELECT pool.datasheet_id, pool.option_position, pool.fixed_limit,
                       pool.limit_per_increment, pool.models_per_increment,
-                      pool.minimum_models,
+                      pool.minimum_models, pool.selections_per_replacement,
                       pool.description_text AS source_text,
                       alternative.alternative_position,
                       alternative.description_text AS alternative_text,
                       alternative.selection_key, alternative.selection_name,
-                      alternative.selection_quantity,
+                      alternative.selection_quantity, alternative.selection_slots,
+                      alternative.maximum_selections,
                       weapon.weapon_group_id, weapon.weapon_group_name, weapon.quantity
                FROM wargear_choice_pools AS pool
                JOIN wargear_choice_alternatives AS alternative
@@ -1364,6 +1365,7 @@ def export(database: Path, output: Path) -> None:
                     "perIncrement": row["limit_per_increment"],
                     "modelsPerIncrement": row["models_per_increment"],
                     "minimumModels": row["minimum_models"],
+                    "selectionsPerReplacement": row["selections_per_replacement"],
                     "source": row["source_text"],
                     "replaces": [],
                     "alternatives": [],
@@ -1375,8 +1377,11 @@ def export(database: Path, output: Path) -> None:
                 alternative = {
                     "id": f"{pool['id']}:{row['alternative_position']}",
                     "label": row["alternative_text"],
+                    "selectionSlots": row["selection_slots"],
                     "weapons": [],
                 }
+                if row["maximum_selections"] is not None:
+                    alternative["maximumSelections"] = row["maximum_selections"]
                 if row["selection_key"] is not None:
                     alternative.update(
                         {
@@ -1440,23 +1445,81 @@ def export(database: Path, output: Path) -> None:
                 }
             )
 
+        pairing_rules = {}
         for row in connection.execute(
-            """SELECT datasheet_id, option_position, weapon_type, trigger_count,
-                      required_ability, required_minimum, required_maximum, source_text
+            """SELECT datasheet_id, option_position, rule_position, weapon_type,
+                      evaluation_scope,
+                      trigger_count, maximum_typed_count, source_text
                FROM wargear_choice_pairing_rules
-               ORDER BY datasheet_id, option_position, required_ability"""
+               ORDER BY datasheet_id, option_position, rule_position"""
         ):
-            units[row["datasheet_id"]]["wargearChoicePairingRules"].append(
-                {
-                    "poolId": f"{row['datasheet_id']}:{row['option_position']}",
-                    "weaponType": row["weapon_type"],
-                    "triggerCount": row["trigger_count"],
-                    "requiredAbility": row["required_ability"],
-                    "requiredMinimum": row["required_minimum"],
-                    "requiredMaximum": row["required_maximum"],
-                    "source": row["source_text"],
-                }
+            rule = {
+                "poolId": f"{row['datasheet_id']}:{row['option_position']}",
+                "weaponType": row["weapon_type"],
+                "evaluationScope": row["evaluation_scope"],
+                "triggerCount": row["trigger_count"],
+                "maximumTypedSelections": row["maximum_typed_count"],
+                "requirements": [],
+                "source": row["source_text"],
+            }
+            pairing_rules[
+                (row["datasheet_id"], row["option_position"], row["rule_position"])
+            ] = rule
+            units[row["datasheet_id"]]["wargearChoicePairingRules"].append(rule)
+        pairing_requirements = {}
+        for row in connection.execute(
+            """SELECT datasheet_id, option_position, rule_position,
+                      requirement_position, label, required_minimum,
+                      required_maximum
+               FROM wargear_choice_pairing_requirements
+               ORDER BY datasheet_id, option_position, rule_position,
+                        requirement_position"""
+        ):
+            requirement = {
+                "label": row["label"],
+                "minimum": row["required_minimum"],
+                "maximum": row["required_maximum"],
+                "matches": [],
+            }
+            key = (
+                row["datasheet_id"],
+                row["option_position"],
+                row["rule_position"],
+                row["requirement_position"],
             )
+            pairing_requirements[key] = requirement
+            pairing_rules[key[:3]]["requirements"].append(requirement)
+        for row in connection.execute(
+            """SELECT datasheet_id, option_position, rule_position,
+                      requirement_position, match_kind, match_value
+               FROM wargear_choice_pairing_requirement_matches
+               ORDER BY datasheet_id, option_position, rule_position,
+                        requirement_position, match_position"""
+        ):
+            pairing_requirements[
+                (
+                    row["datasheet_id"],
+                    row["option_position"],
+                    row["rule_position"],
+                    row["requirement_position"],
+                )
+            ]["matches"].append(
+                {"kind": row["match_kind"], "value": row["match_value"]}
+            )
+        for rule in pairing_rules.values():
+            if (
+                len(rule["requirements"]) == 1
+                and len(rule["requirements"][0]["matches"]) == 1
+                and rule["requirements"][0]["matches"][0]["kind"] == "ability"
+            ):
+                requirement = rule["requirements"][0]
+                rule.update(
+                    {
+                        "requiredAbility": requirement["matches"][0]["value"],
+                        "requiredMinimum": requirement["minimum"],
+                        "requiredMaximum": requirement["maximum"],
+                    }
+                )
 
         for row in connection.execute(
             """SELECT datasheet_id, weapon_type, fixed_limit,
@@ -1624,6 +1687,12 @@ def export(database: Path, output: Path) -> None:
                 ).fetchone()[0],
                 "choicePairingRuleCount": connection.execute(
                     "SELECT count(*) FROM wargear_choice_pairing_rules"
+                ).fetchone()[0],
+                "choicePairingRequirementCount": connection.execute(
+                    "SELECT count(*) FROM wargear_choice_pairing_requirements"
+                ).fetchone()[0],
+                "choicePairingMatchCount": connection.execute(
+                    "SELECT count(*) FROM wargear_choice_pairing_requirement_matches"
                 ).fetchone()[0],
                 "choicePrerequisiteCount": connection.execute(
                     "SELECT count(*) FROM wargear_choice_prerequisites"

@@ -548,7 +548,7 @@ expose both their weapon-replacement and duplicate-capable equipment pools.
 Starred items share their published no-duplicate limit across both paths, and
 Crisis suits enforce the published three-ranged-weapons-per-model limit.
 Single-model defensive presets and named combat wargear use the same
-source-choice relationship. Schema 76 links 123 published alternatives to 32
+source-choice relationship. Schema 77 links 123 published alternatives to 32
 combat presets, all with complete equipment-choice coverage. Selecting an Impulsor shield dome, Ogryn
 brute shield, Lieutenant storm shield, or Commander shield generator activates
 its defense without a second ability toggle. Replacing a default weavefield crest
@@ -567,7 +567,13 @@ ability controls remain editable after initialization. Keeper shining aegises, t
 Lord’s nanoscarab amulet, the Wazbom force field, and Wolf Guard Pack Leader
 storm shields follow their equipment-only alternatives. Exact two-different-
 weapon pools also enforce item uniqueness and their published Pistol pairing
-rule instead of accepting an illegal pair silently.
+rule instead of accepting an illegal pair silently. Mixed twin-lightning-claw
+branches consume both published choice slots instead of being flattened into
+the two-distinct-weapons list, and their common starting weapons are removed
+only once. The Wolf Guard Pack Leader in Terminator Armour also enforces the
+complete two-ranged-weapon rule: exactly one cyclone missile launcher paired
+with either its storm bolter or a combi-weapon, including the cross-option
+storm-bolter replacement.
 Schema 73 stores published legal starting sizes independently from editable
 current model counts. Inclusive compositions such as 10–20 models remain one
 range, while source alternatives such as exactly 5 or 10 models remain two

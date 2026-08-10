@@ -5805,7 +5805,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "76"),
+                    ("schema_version", "77"),
                     ("leader_global_maximum", "2"),
                     ("leader_global_rule_source_url", LEADER_GLOBAL_RULE_SOURCE_URL),
                     (
@@ -6371,6 +6371,8 @@ def create_database(
                 "wargear_choice_replaced_weapons",
                 "wargear_choice_item_limits",
                 "wargear_choice_pairing_rules",
+                "wargear_choice_pairing_requirements",
+                "wargear_choice_pairing_requirement_matches",
                 "wargear_choice_prerequisites",
                 "wargear_weapon_type_limits",
                 "default_weapon_loadout",

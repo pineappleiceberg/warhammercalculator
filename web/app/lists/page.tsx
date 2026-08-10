@@ -20,7 +20,9 @@ import {
   applyLoadoutSubjectCountsChange,
   applyModelCountChange,
   armyListWeaponsFromGroups,
+  choiceAlternativeMaximum,
   choicePoolMaximum,
+  choicePoolUsed,
   compositionLoadoutSubjectCounts,
   defaultWeaponCounts,
   defaultLoadoutSubjectCounts,
@@ -1023,15 +1025,11 @@ export default function ArmyLists() {
                             <summary>Source option choices</summary>
                             {sourceUnit?.wargearChoicePools.map((pool) => {
                               const maximum = choicePoolMaximum(pool, unit.modelCount);
-                              const used = pool.alternatives.reduce(
-                                (sum, alternative) =>
-                                  sum + (unit.choiceSelections?.[alternative.id] ?? 0),
-                                0,
-                              );
+                              const used = choicePoolUsed(pool, unit.choiceSelections);
                               return (
                                 <fieldset key={pool.id}>
                                   <legend>
-                                    {used}/{maximum} selections
+                                    {used}/{maximum} choice slots
                                   </legend>
                                   <small>{pool.source}</small>
                                   {pool.alternatives.map((alternative) => (
@@ -1041,12 +1039,20 @@ export default function ArmyLists() {
                                         aria-label={`${alternative.label} source selections`}
                                         type="number"
                                         min={0}
-                                        max={maximum}
+                                        max={choiceAlternativeMaximum(
+                                          pool,
+                                          alternative,
+                                          unit.modelCount,
+                                        )}
                                         value={unit.choiceSelections?.[alternative.id] ?? 0}
                                         onChange={(event) => {
                                           const next = normalizeEquippedCount(
                                             +event.target.value,
-                                            maximum,
+                                            choiceAlternativeMaximum(
+                                              pool,
+                                              alternative,
+                                              unit.modelCount,
+                                            ),
                                           );
                                           changeUnit(unit.id, (current) => {
                                             const previous =
@@ -1063,6 +1069,7 @@ export default function ArmyLists() {
                                               alternative,
                                               previous,
                                               next,
+                                              current.choiceSelections,
                                             );
                                             const choiceSelections = {
                                               ...(current.choiceSelections ?? {}),

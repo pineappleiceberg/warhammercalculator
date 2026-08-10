@@ -82,6 +82,8 @@ export type CatalogueWargearAlternative = {
   selectionKey?: string;
   selectionName?: string;
   selectionQuantity?: number;
+  selectionSlots: number;
+  maximumSelections?: number;
   prerequisites?: Array<{
     alternativeId: string;
     minimum: number;
@@ -95,6 +97,7 @@ export type CatalogueWargearChoicePool = {
   perIncrement: number;
   modelsPerIncrement: number;
   minimumModels: number;
+  selectionsPerReplacement: number;
   source: string;
   replaces: CatalogueWargearChoice[];
   alternatives: CatalogueWargearAlternative[];
@@ -110,10 +113,18 @@ export type CatalogueWargearChoiceItemLimit = {
 export type CatalogueWargearChoicePairingRule = {
   poolId: string;
   weaponType: "Ranged" | "Melee";
+  evaluationScope: "pool" | "unit";
   triggerCount: number;
-  requiredAbility: string;
-  requiredMinimum: number;
-  requiredMaximum: number;
+  maximumTypedSelections: number;
+  requirements: Array<{
+    label: string;
+    minimum: number;
+    maximum: number;
+    matches: Array<{ kind: "ability" | "weapon_group"; value: string }>;
+  }>;
+  requiredAbility?: string;
+  requiredMinimum?: number;
+  requiredMaximum?: number;
   source: string;
 };
 export type CatalogueWeaponTypeLimit = {

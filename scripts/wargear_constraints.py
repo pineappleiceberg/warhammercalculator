@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS wargear_choice_pools (
     limit_per_increment INTEGER NOT NULL CHECK (limit_per_increment >= 0),
     models_per_increment INTEGER NOT NULL CHECK (models_per_increment >= 1),
     minimum_models INTEGER NOT NULL DEFAULT 1 CHECK (minimum_models >= 1),
+    selections_per_replacement INTEGER NOT NULL DEFAULT 1
+        CHECK (selections_per_replacement >= 1),
     description_text TEXT NOT NULL,
     PRIMARY KEY (datasheet_id, option_position),
     FOREIGN KEY (datasheet_id, option_position)
@@ -82,6 +84,8 @@ CREATE TABLE IF NOT EXISTS wargear_choice_alternatives (
     selection_key TEXT,
     selection_name TEXT,
     selection_quantity INTEGER CHECK (selection_quantity >= 1),
+    selection_slots INTEGER NOT NULL DEFAULT 1 CHECK (selection_slots >= 1),
+    maximum_selections INTEGER CHECK (maximum_selections >= 1),
     PRIMARY KEY (datasheet_id, option_position, alternative_position),
     FOREIGN KEY (datasheet_id, option_position)
         REFERENCES wargear_choice_pools(datasheet_id, option_position) ON DELETE CASCADE
@@ -111,17 +115,54 @@ CREATE TABLE IF NOT EXISTS wargear_weapon_type_limits (
 CREATE TABLE IF NOT EXISTS wargear_choice_pairing_rules (
     datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
     option_position INTEGER NOT NULL,
+    rule_position INTEGER NOT NULL CHECK (rule_position >= 1),
+    evaluation_scope TEXT NOT NULL CHECK (evaluation_scope IN ('pool', 'unit')),
     weapon_type TEXT NOT NULL CHECK (weapon_type IN ('Ranged', 'Melee')),
     trigger_count INTEGER NOT NULL CHECK (trigger_count >= 1),
-    required_ability TEXT NOT NULL,
-    required_minimum INTEGER NOT NULL CHECK (required_minimum >= 0),
-    required_maximum INTEGER NOT NULL CHECK
-        (required_maximum >= required_minimum),
+    maximum_typed_count INTEGER NOT NULL CHECK
+        (maximum_typed_count >= trigger_count),
     source_text TEXT NOT NULL,
-    PRIMARY KEY (datasheet_id, option_position, required_ability),
+    PRIMARY KEY (datasheet_id, option_position, rule_position),
     FOREIGN KEY (datasheet_id, option_position)
         REFERENCES wargear_choice_pools(datasheet_id, option_position)
         ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS wargear_choice_pairing_requirements (
+    datasheet_id TEXT NOT NULL,
+    option_position INTEGER NOT NULL,
+    rule_position INTEGER NOT NULL,
+    requirement_position INTEGER NOT NULL CHECK (requirement_position >= 1),
+    label TEXT NOT NULL,
+    required_minimum INTEGER NOT NULL CHECK (required_minimum >= 0),
+    required_maximum INTEGER NOT NULL CHECK
+        (required_maximum >= required_minimum),
+    PRIMARY KEY (
+        datasheet_id, option_position, rule_position, requirement_position
+    ),
+    FOREIGN KEY (datasheet_id, option_position, rule_position)
+        REFERENCES wargear_choice_pairing_rules(
+            datasheet_id, option_position, rule_position
+        ) ON DELETE CASCADE
+) WITHOUT ROWID;
+
+CREATE TABLE IF NOT EXISTS wargear_choice_pairing_requirement_matches (
+    datasheet_id TEXT NOT NULL,
+    option_position INTEGER NOT NULL,
+    rule_position INTEGER NOT NULL,
+    requirement_position INTEGER NOT NULL,
+    match_position INTEGER NOT NULL CHECK (match_position >= 1),
+    match_kind TEXT NOT NULL CHECK (match_kind IN ('ability', 'weapon_group')),
+    match_value TEXT NOT NULL,
+    PRIMARY KEY (
+        datasheet_id, option_position, rule_position,
+        requirement_position, match_position
+    ),
+    FOREIGN KEY (
+        datasheet_id, option_position, rule_position, requirement_position
+    ) REFERENCES wargear_choice_pairing_requirements(
+        datasheet_id, option_position, rule_position, requirement_position
+    ) ON DELETE CASCADE
 ) WITHOUT ROWID;
 
 CREATE TABLE IF NOT EXISTS wargear_choice_alternative_weapons (
@@ -333,7 +374,9 @@ def duplicate_choice_allowance(description: str) -> tuple[int, int, int] | None:
 def different_choice_allowance(description: str) -> tuple[int, int, int] | None:
     value = normalized_name(description)
     match = re.search(
-        r"\bcan be replaced with ([a-z0-9]+) different weapons from the following list\b",
+        r"\bcan be replaced with (?:with )?(?:(?:either )?1 twin lightning claws or )?"
+        r"([a-z0-9]+) different (?:weapons|options) "
+        r"from the following list\b",
         value,
     )
     if not match:
@@ -342,6 +385,17 @@ def different_choice_allowance(description: str) -> tuple[int, int, int] | None:
     if maximum is None or maximum < 1:
         return None
     return maximum, 0, 1
+
+
+def includes_twin_claws_branch(description: str) -> bool:
+    value = normalized_name(description)
+    return bool(
+        re.search(
+            r"\bcan be replaced with (?:with )?(?:either )?1 twin lightning claws or "
+            r"two different weapons from the following list\b",
+            value,
+        )
+    )
 
 
 def pistol_pairing_rule(
@@ -359,6 +413,18 @@ def pistol_pairing_rule(
     if trigger_count is None or trigger_count < 1:
         return None
     return "Ranged", trigger_count, "pistol", 1, 1
+
+
+def cyclone_pairing_rule(description: str) -> bool:
+    value = normalized_name(description)
+    return bool(
+        re.fullmatch(
+            r"this model can only be equipped with two ranged weapons if one of them "
+            r"is a cyclone missile launcher and the other is either a storm bolter or "
+            r"a combi weapon",
+            value,
+        )
+    )
 
 
 def duplicate_item_limit(
@@ -581,6 +647,8 @@ def ensure_choice_selection_columns(connection: sqlite3.Connection) -> None:
         "selection_key": "TEXT",
         "selection_name": "TEXT",
         "selection_quantity": "INTEGER CHECK (selection_quantity >= 1)",
+        "selection_slots": "INTEGER NOT NULL DEFAULT 1 CHECK (selection_slots >= 1)",
+        "maximum_selections": "INTEGER CHECK (maximum_selections >= 1)",
     }
     for name, declaration in columns.items():
         if name not in existing:
@@ -595,6 +663,83 @@ def ensure_choice_selection_columns(connection: sqlite3.Connection) -> None:
             "ALTER TABLE wargear_choice_pools ADD COLUMN minimum_models "
             "INTEGER NOT NULL DEFAULT 1 CHECK (minimum_models >= 1)"
         )
+    if pool_columns and "selections_per_replacement" not in pool_columns:
+        connection.execute(
+            "ALTER TABLE wargear_choice_pools ADD COLUMN selections_per_replacement "
+            "INTEGER NOT NULL DEFAULT 1 CHECK (selections_per_replacement >= 1)"
+        )
+
+
+def ensure_pairing_rule_schema(connection: sqlite3.Connection) -> None:
+    columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(wargear_choice_pairing_rules)")
+    }
+    if columns and "rule_position" not in columns:
+        connection.execute("DROP TABLE IF EXISTS wargear_choice_pairing_requirement_matches")
+        connection.execute("DROP TABLE IF EXISTS wargear_choice_pairing_requirements")
+        connection.execute("DROP TABLE wargear_choice_pairing_rules")
+    elif columns and "evaluation_scope" not in columns:
+        connection.execute(
+            "ALTER TABLE wargear_choice_pairing_rules ADD COLUMN evaluation_scope "
+            "TEXT NOT NULL DEFAULT 'pool' CHECK (evaluation_scope IN ('pool', 'unit'))"
+        )
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS wargear_choice_pairing_rules (
+            datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+            option_position INTEGER NOT NULL,
+            rule_position INTEGER NOT NULL CHECK (rule_position >= 1),
+            evaluation_scope TEXT NOT NULL CHECK (evaluation_scope IN ('pool', 'unit')),
+            weapon_type TEXT NOT NULL CHECK (weapon_type IN ('Ranged', 'Melee')),
+            trigger_count INTEGER NOT NULL CHECK (trigger_count >= 1),
+            maximum_typed_count INTEGER NOT NULL CHECK
+                (maximum_typed_count >= trigger_count),
+            source_text TEXT NOT NULL,
+            PRIMARY KEY (datasheet_id, option_position, rule_position),
+            FOREIGN KEY (datasheet_id, option_position)
+                REFERENCES wargear_choice_pools(datasheet_id, option_position)
+                ON DELETE CASCADE
+        ) WITHOUT ROWID;
+
+        CREATE TABLE IF NOT EXISTS wargear_choice_pairing_requirements (
+            datasheet_id TEXT NOT NULL,
+            option_position INTEGER NOT NULL,
+            rule_position INTEGER NOT NULL,
+            requirement_position INTEGER NOT NULL CHECK (requirement_position >= 1),
+            label TEXT NOT NULL,
+            required_minimum INTEGER NOT NULL CHECK (required_minimum >= 0),
+            required_maximum INTEGER NOT NULL CHECK
+                (required_maximum >= required_minimum),
+            PRIMARY KEY (
+                datasheet_id, option_position, rule_position, requirement_position
+            ),
+            FOREIGN KEY (datasheet_id, option_position, rule_position)
+                REFERENCES wargear_choice_pairing_rules(
+                    datasheet_id, option_position, rule_position
+                ) ON DELETE CASCADE
+        ) WITHOUT ROWID;
+
+        CREATE TABLE IF NOT EXISTS wargear_choice_pairing_requirement_matches (
+            datasheet_id TEXT NOT NULL,
+            option_position INTEGER NOT NULL,
+            rule_position INTEGER NOT NULL,
+            requirement_position INTEGER NOT NULL,
+            match_position INTEGER NOT NULL CHECK (match_position >= 1),
+            match_kind TEXT NOT NULL CHECK
+                (match_kind IN ('ability', 'weapon_group')),
+            match_value TEXT NOT NULL,
+            PRIMARY KEY (
+                datasheet_id, option_position, rule_position,
+                requirement_position, match_position
+            ),
+            FOREIGN KEY (
+                datasheet_id, option_position, rule_position, requirement_position
+            ) REFERENCES wargear_choice_pairing_requirements(
+                datasheet_id, option_position, rule_position, requirement_position
+            ) ON DELETE CASCADE
+        ) WITHOUT ROWID;
+        """
+    )
 
 
 def weapon_vector(
@@ -790,6 +935,7 @@ def populate_constraints(
 ) -> int:
     connection.executescript(CONSTRAINT_SCHEMA)
     ensure_choice_selection_columns(connection)
+    ensure_pairing_rule_schema(connection)
     connection.execute("DELETE FROM default_weapon_loadout")
     connection.execute("DELETE FROM default_loadout_subject_weapons")
     connection.execute("DELETE FROM default_loadout_subjects")
@@ -798,6 +944,8 @@ def populate_constraints(
     connection.execute("DELETE FROM wargear_choice_alternative_weapons")
     connection.execute("DELETE FROM wargear_choice_prerequisites")
     connection.execute("DELETE FROM wargear_choice_alternatives")
+    connection.execute("DELETE FROM wargear_choice_pairing_requirement_matches")
+    connection.execute("DELETE FROM wargear_choice_pairing_requirements")
     connection.execute("DELETE FROM wargear_choice_pairing_rules")
     connection.execute("DELETE FROM wargear_choice_pools")
     connection.execute("DELETE FROM wargear_choice_item_limits")
@@ -940,6 +1088,7 @@ def populate_constraints(
             normalized = f" {normalized_name(description_text)} "
             duplicate_limit = duplicate_choice_allowance(description_text)
             different_limit = different_choice_allowance(description_text)
+            twin_claws_branch = includes_twin_claws_branch(description_text)
             source_override = source_equipment_choice_override(
                 datasheet_id, position, description_text
             )
@@ -949,6 +1098,8 @@ def populate_constraints(
                 else duplicate_limit or different_limit or allowance(description_text)
             )
             choices = option_choices(description_html, description_text)
+            if twin_claws_branch:
+                choices.insert(0, "1 twin lightning claws")
             if source_override is not None:
                 allowed_equipment = source_override["equipment"]
                 if "<li" not in description_html.casefold():
@@ -998,7 +1149,12 @@ def populate_constraints(
             for alternative_position, choice in enumerate(choices, start=1):
                 vector = choice_weapon_vector(choice, known, set())
                 alternative_replaced = replaced_weapon_vector(choice, known, set())
-                if vector or alternative_replaced or equipment_relevant:
+                if (
+                    vector
+                    or alternative_replaced
+                    or equipment_relevant
+                    or different_limit is not None
+                ):
                     alternative_text = html.unescape(re.sub(r"<[^>]+>", " ", choice)).strip()
                     selection = simple_choice_item(choice, vector)
                     alternatives.append(
@@ -1045,8 +1201,9 @@ def populate_constraints(
                 connection.execute(
                     """INSERT INTO wargear_choice_pools
                        (datasheet_id, option_position, fixed_limit, limit_per_increment,
-                        models_per_increment, minimum_models, description_text)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        models_per_increment, minimum_models,
+                        selections_per_replacement, description_text)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         datasheet_id,
                         position,
@@ -1054,6 +1211,7 @@ def populate_constraints(
                         source_override["minimum_models"]
                         if source_override is not None
                         else 1,
+                        different_limit[0] if different_limit is not None else 1,
                         description_text,
                     ),
                 )
@@ -1068,8 +1226,8 @@ def populate_constraints(
                         """INSERT INTO wargear_choice_alternatives
                            (datasheet_id, option_position, alternative_position,
                             description_text, selection_key, selection_name,
-                            selection_quantity)
-                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                            selection_quantity, selection_slots, maximum_selections)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             datasheet_id,
                             position,
@@ -1078,6 +1236,8 @@ def populate_constraints(
                             selection[0] if selection is not None else None,
                             selection[1] if selection is not None else None,
                             selection[2] if selection is not None else None,
+                            2 if twin_claws_branch and alternative_position == 1 else 1,
+                            1 if different_limit is not None else None,
                         ),
                     )
                     connection.executemany(
@@ -1177,29 +1337,121 @@ def populate_constraints(
             )
         }
         for _unit_id, position, _description_html, description_text in options:
-            rule = pistol_pairing_rule(description_text)
-            if rule is None:
+            pistol_rule = pistol_pairing_rule(description_text)
+            is_cyclone_rule = cyclone_pairing_rule(description_text)
+            if pistol_rule is None and not is_cyclone_rule:
                 continue
-            option_position = position - 1
-            if option_position not in pool_positions:
+            tagged_pool_positions = [
+                source_position
+                for _id, source_position, _html, source in options
+                if source_position < position
+                and source_position in pool_positions
+                and has_single_footnote_marker(source)
+            ]
+            if not tagged_pool_positions:
                 continue
+            option_position = max(tagged_pool_positions)
             pool_source = next(
-                (
-                    source
-                    for _id, source_position, _html, source in options
-                    if source_position == option_position
-                ),
-                "",
+                source
+                for _id, source_position, _html, source in options
+                if source_position == option_position
             )
             if different_choice_allowance(pool_source) is None:
                 continue
+            if pistol_rule is not None:
+                weapon_type, trigger_count, ability, minimum, maximum = pistol_rule
+                requirements = [
+                    ("pistol", minimum, maximum, [("ability", ability)])
+                ]
+            else:
+                required_groups = []
+                for weapon_name in (
+                    "cyclone missile launcher",
+                    "storm bolter",
+                    "combi weapon",
+                ):
+                    weapon = known.get(weapon_name)
+                    if weapon is None:
+                        raise RuntimeError(
+                            f"pairing weapon missing for {datasheet_id}: {weapon_name}"
+                        )
+                    required_groups.append(weapon[0])
+                weapon_type = "Ranged"
+                trigger_count = 2
+                requirements = [
+                    (
+                        "cyclone missile launcher",
+                        1,
+                        1,
+                        [("weapon_group", required_groups[0])],
+                    ),
+                    (
+                        "storm bolter or combi-weapon",
+                        1,
+                        1,
+                        [
+                            ("weapon_group", required_groups[1]),
+                            ("weapon_group", required_groups[2]),
+                        ],
+                    ),
+                ]
+            rule_position = 1
             connection.execute(
                 """INSERT INTO wargear_choice_pairing_rules
-                   (datasheet_id, option_position, weapon_type, trigger_count,
-                    required_ability, required_minimum, required_maximum, source_text)
+                   (datasheet_id, option_position, rule_position, weapon_type,
+                    evaluation_scope, trigger_count, maximum_typed_count, source_text)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (datasheet_id, option_position, *rule, description_text),
+                (
+                    datasheet_id,
+                    option_position,
+                    rule_position,
+                    weapon_type,
+                    "unit" if is_cyclone_rule else "pool",
+                    trigger_count,
+                    trigger_count,
+                    description_text,
+                ),
             )
+            for requirement_position, (label, minimum, maximum, matches) in enumerate(
+                requirements, start=1
+            ):
+                connection.execute(
+                    """INSERT INTO wargear_choice_pairing_requirements
+                       (datasheet_id, option_position, rule_position,
+                        requirement_position, label, required_minimum,
+                        required_maximum)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        datasheet_id,
+                        option_position,
+                        rule_position,
+                        requirement_position,
+                        label,
+                        minimum,
+                        maximum,
+                    ),
+                )
+                connection.executemany(
+                    """INSERT INTO wargear_choice_pairing_requirement_matches
+                       (datasheet_id, option_position, rule_position,
+                        requirement_position, match_position, match_kind,
+                        match_value)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        (
+                            datasheet_id,
+                            option_position,
+                            rule_position,
+                            requirement_position,
+                            match_position,
+                            match_kind,
+                            match_value,
+                        )
+                        for match_position, (match_kind, match_value) in enumerate(
+                            matches, start=1
+                        )
+                    ),
+                )
 
         for prerequisite in SOURCE_EQUIPMENT_CHOICE_PREREQUISITES:
             (
@@ -1283,7 +1535,7 @@ def main() -> None:
     try:
         with connection:
             count = populate_constraints(connection)
-            connection.execute("UPDATE metadata SET value = '76' WHERE key = 'schema_version'")
+            connection.execute("UPDATE metadata SET value = '77' WHERE key = 'schema_version'")
         print(f"Structured {count} source-backed wargear constraints")
         pools = connection.execute("SELECT count(*) FROM wargear_choice_pools").fetchone()[0]
         print(f"Structured {pools} source-backed wargear choice pools")

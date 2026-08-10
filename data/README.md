@@ -137,7 +137,17 @@ The main tables are:
   back to their exact source text
 - `wargear_choice_pools`, `wargear_choice_alternatives`, and
   `wargear_choice_alternative_weapons` for shared allowances and exact
-  multi-weapon bundles, with every alternative linked to its source option
+  multi-weapon bundles, with every alternative linked to its source option.
+  Choice slots and per-alternative maxima preserve mutually exclusive branches
+  such as one twin-lightning-claw selection versus two distinct weapons, while
+  `selections_per_replacement` prevents their shared starting weapons from
+  being removed twice
+- `wargear_choice_pairing_rules`, `wargear_choice_pairing_requirements`, and
+  `wargear_choice_pairing_requirement_matches` for exact multi-weapon
+  restrictions. Requirements can match a weapon ability or one of several
+  weapon groups, and can evaluate either the source pool or a single-model
+  unit's resulting loadout; this preserves both Pistol pairings and the
+  cyclone-missile-launcher plus storm-bolter/combi-weapon rule
 - `default_loadout_subjects`, `default_loadout_subject_weapons`, `default_weapon_loadout`, and
   `wargear_choice_replaced_weapons` for audited loadout subjects, normalized
   starting-quantity formulas, and the equipment removed by a replacement

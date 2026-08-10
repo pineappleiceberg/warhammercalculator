@@ -27,23 +27,36 @@ state.
 
 ## Prioritized backlog
 
-1. Normalize the remaining mixed “twin lightning claws or two different
-   weapons” pools and the Terminator cyclone pairing rule without flattening
-   their mutually exclusive branches.
-2. Add Command Point, Victory Point, objective, Battle-shock, mission, scoring,
+1. Add Command Point, Victory Point, objective, Battle-shock, mission, scoring,
    and limited-resource state on top of the event log.
-3. Expand the legal-action and timing engine through movement, reserves,
+2. Expand the legal-action and timing engine through movement, reserves,
    transports, charges, Fight sequencing, pile-in, consolidation, reactions,
    and Stratagem windows.
-4. Build and enforce the source-locked faction, detachment, enhancement,
+3. Build and enforce the source-locked faction, detachment, enhancement,
    Stratagem, terrain, and mission coverage matrix described by the complete
    battle requirements.
-5. Add reviewable table geometry and player-entered movement, range, visibility,
+4. Add reviewable table geometry and player-entered movement, range, visibility,
    cover, coherency, Engagement Range, terrain, and objective facts.
-6. Deliver full guided-game replay scenarios before adding deterministic
+5. Deliver full guided-game replay scenarios before adding deterministic
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-10: Normalized the remaining mixed twin-lightning-claw branches and
+  the Wolf Guard Terminator cyclone pairing in SQLite schema 77. Tactical
+  Sergeants, Wolf Scout Pack Leaders, Deathwing Strikemasters, and Crusader
+  Sword Brothers now preserve one twin-claw branch that consumes both source
+  choice slots alongside individually capped two-distinct-weapon alternatives.
+  Shared starting weapons are removed once per branch instead of once per
+  selected alternative. Generic pairing requirements now match abilities or
+  exact weapon-group sets and can evaluate a source pool or the resulting
+  single-model loadout. The Terminator rule therefore accepts exactly cyclone
+  plus storm bolter or a cross-option combi-weapon replacement, while rejecting
+  other two-ranged combinations and all three-ranged combinations. Army Lists,
+  Unit vs Unit, the static catalogue, and the validation API share weighted
+  choice-slot limits, per-alternative caps, reconciled cross-option
+  replacements, and editable warnings. Parser, database, UI-library, API,
+  native, WebAssembly, formal, benchmark, and fuzz regressions cover the cycle.
 
 - 2026-08-10: Advanced guided play to battle-state version 3 with a canonical
   five-round clock. Every game now has two ordered turns per round and explicit

@@ -33,7 +33,9 @@ import {
   applyChoiceSelectionChange,
   applyLoadoutSubjectCountsChange,
   applyModelCountChange,
+  choiceAlternativeMaximum,
   choicePoolMaximum,
+  choicePoolUsed,
   choiceSelectionLimitWarnings,
   choiceSelectionWeaponCounts,
   compositionLoadoutSubjectCounts,
@@ -1838,14 +1840,11 @@ export default function UnitVsUnit() {
                           pool,
                           attackerComponentModelCount(unit.id),
                         );
-                        const used = pool.alternatives.reduce(
-                          (sum, alternative) => sum + (choiceSelections[alternative.id] ?? 0),
-                          0,
-                        );
+                        const used = choicePoolUsed(pool, choiceSelections);
                         return (
                           <fieldset key={pool.id}>
                             <legend>
-                              {unit.name}: {used}/{maximum} selections
+                              {unit.name}: {used}/{maximum} choice slots
                             </legend>
                             <small>{pool.source}</small>
                             {pool.alternatives.map((alternative) => (
@@ -1855,13 +1854,21 @@ export default function UnitVsUnit() {
                                   aria-label={`${alternative.label} source selections`}
                                   type="number"
                                   min={0}
-                                  max={maximum}
+                                  max={choiceAlternativeMaximum(
+                                    pool,
+                                    alternative,
+                                    attackerComponentModelCount(unit.id),
+                                  )}
                                   value={choiceSelections[alternative.id] ?? 0}
                                   onChange={(event) => {
                                     const previous = choiceSelections[alternative.id] ?? 0;
                                     const next = normalizeEquippedCount(
                                       +event.target.value,
-                                      maximum,
+                                      choiceAlternativeMaximum(
+                                        pool,
+                                        alternative,
+                                        attackerComponentModelCount(unit.id),
+                                      ),
                                     );
                                     setWeaponCounts((current) =>
                                       applyChoiceSelectionChange(
@@ -1870,6 +1877,7 @@ export default function UnitVsUnit() {
                                         alternative,
                                         previous,
                                         next,
+                                        choiceSelections,
                                       ),
                                     );
                                     setChoiceSelections((current) => ({
@@ -2035,14 +2043,11 @@ export default function UnitVsUnit() {
                 </p>
                 {targetUnit.wargearChoicePools.map((pool) => {
                   const maximum = choicePoolMaximum(pool, targetUnitModelCount);
-                  const used = pool.alternatives.reduce(
-                    (sum, alternative) => sum + (targetChoiceSelections[alternative.id] ?? 0),
-                    0,
-                  );
+                  const used = choicePoolUsed(pool, targetChoiceSelections);
                   return (
                     <fieldset key={pool.id}>
                       <legend>
-                        {used}/{maximum} selections
+                        {used}/{maximum} choice slots
                       </legend>
                       <small>{pool.source}</small>
                       {pool.alternatives.map((alternative) => (
@@ -2052,12 +2057,12 @@ export default function UnitVsUnit() {
                             aria-label={`${alternative.label} target source selections`}
                             type="number"
                             min={0}
-                            max={maximum}
+                            max={choiceAlternativeMaximum(pool, alternative, targetUnitModelCount)}
                             value={targetChoiceSelections[alternative.id] ?? 0}
                             onChange={(event) => {
                               const nextValue = normalizeEquippedCount(
                                 +event.target.value,
-                                maximum,
+                                choiceAlternativeMaximum(pool, alternative, targetUnitModelCount),
                               );
                               const nextChoices = {
                                 ...targetChoiceSelections,
