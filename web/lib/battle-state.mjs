@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 3;
+export const BATTLE_STATE_VERSION = 4;
+export const TIMELINE_BATTLE_STATE_VERSION = 3;
 export const ROSTER_BATTLE_STATE_VERSION = 2;
 export const BATTLE_EVENT_VERSION = 1;
 export const LEGACY_BATTLE_STATE_VERSION = 1;
@@ -33,6 +34,65 @@ function nonnegativeInteger(value, name, maximum = 1_000_000) {
     throw new Error(`${name} must be an integer from 0 to ${maximum}`);
   }
   return value;
+}
+
+function boundedInteger(value, name, minimum = -1_000_000, maximum = 1_000_000) {
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be an integer from ${minimum} to ${maximum}`);
+  }
+  return value;
+}
+
+function defaultMission(players) {
+  return {
+    name: "Custom mission",
+    commandPointsPerCommandPhase: 1,
+    startingCommandPoints: Object.fromEntries(players.map((player) => [player.id, 0])),
+    objectives: Array.from({ length: 5 }, (_, index) => ({
+      id: `objective-${index + 1}`,
+      name: `Objective ${index + 1}`,
+    })),
+  };
+}
+
+function normalizeMission(candidate, players) {
+  const mission = record(candidate, "Battle mission must be an object");
+  if (!Array.isArray(mission.objectives) || mission.objectives.length > 12) {
+    throw new Error("Battle mission must contain at most 12 objectives");
+  }
+  const objectives = mission.objectives.map((candidateObjective) => {
+    const objective = record(candidateObjective, "Each objective must be an object");
+    return {
+      id: boundedString(objective.id, "Objective id", 100),
+      name: boundedString(objective.name, "Objective name", 100),
+    };
+  });
+  if (new Set(objectives.map((objective) => objective.id)).size !== objectives.length) {
+    throw new Error("Objective ids must be unique");
+  }
+  const starting = record(
+    mission.startingCommandPoints,
+    "Mission startingCommandPoints must be an object",
+  );
+  const startingCommandPoints = Object.fromEntries(
+    [...players].map((playerId) => [
+      playerId,
+      nonnegativeInteger(starting[playerId], `Starting Command Points for ${playerId}`, 100),
+    ]),
+  );
+  if (Object.keys(starting).some((playerId) => !players.has(playerId))) {
+    throw new Error("Mission startingCommandPoints contains an unknown player");
+  }
+  return {
+    name: boundedString(mission.name, "Mission name", 200),
+    commandPointsPerCommandPhase: nonnegativeInteger(
+      mission.commandPointsPerCommandPhase,
+      "Command Points per Command phase",
+      10,
+    ),
+    startingCommandPoints,
+    objectives,
+  };
 }
 
 function normalizePlayers(players, stateVersion) {
@@ -281,7 +341,7 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     throw new Error("Unsupported battle event version");
   if (normalized.sequence !== sequence) throw new Error("Battle event sequence is not contiguous");
   if (
-    stateVersion < BATTLE_STATE_VERSION &&
+    stateVersion < TIMELINE_BATTLE_STATE_VERSION &&
     [
       "battle_started",
       "clock_advanced",
@@ -291,6 +351,18 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     ].includes(event.type)
   ) {
     throw new Error("Battle timeline events require battle-state version 3");
+  }
+  if (
+    stateVersion < BATTLE_STATE_VERSION &&
+    [
+      "mission_configured",
+      "resource_changed",
+      "score_recorded",
+      "objective_control_changed",
+      "battleshock_changed",
+    ].includes(event.type)
+  ) {
+    throw new Error("Battle tracker events require battle-state version 4");
   }
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation);
@@ -350,6 +422,63 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.effect = normalizeEffect(event.effect, formations.players);
     return normalized;
   }
+  if (event.type === "mission_configured") {
+    normalized.mission = normalizeMission(event.mission, formations.players);
+    return normalized;
+  }
+  if (event.type === "resource_changed") {
+    normalized.playerId = boundedString(event.playerId, "Resource player id", 100);
+    if (!formations.players.has(normalized.playerId)) throw new Error("Resource player is unknown");
+    normalized.resourceId = boundedString(event.resourceId, "Resource id", 100);
+    normalized.name = boundedString(event.name, "Resource name", 100);
+    normalized.before = nonnegativeInteger(event.before, "Resource value before change", 100000);
+    normalized.after = nonnegativeInteger(event.after, "Resource value after change", 100000);
+    normalized.maximum =
+      event.maximum === null ? null : nonnegativeInteger(event.maximum, "Resource maximum", 100000);
+    if (normalized.maximum !== null && normalized.after > normalized.maximum) {
+      throw new Error("Resource value cannot exceed its maximum");
+    }
+    normalized.reason = boundedString(event.reason, "Resource change reason", 300);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "score_recorded") {
+    normalized.playerId = boundedString(event.playerId, "Scoring player id", 100);
+    if (!formations.players.has(normalized.playerId)) throw new Error("Scoring player is unknown");
+    normalized.category = boundedString(event.category, "Scoring category", 60);
+    normalized.points = boundedInteger(event.points, "Scoring points", -1000, 1000);
+    normalized.before = nonnegativeInteger(event.before, "Victory Points before score", 100000);
+    normalized.after = nonnegativeInteger(event.after, "Victory Points after score", 100000);
+    normalized.reason = boundedString(event.reason, "Scoring reason", 300);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "objective_control_changed") {
+    normalized.objectiveId = boundedString(event.objectiveId, "Objective id", 100);
+    normalized.controllerPlayerId =
+      typeof event.controllerPlayerId === "string" && event.controllerPlayerId
+        ? boundedString(event.controllerPlayerId, "Objective controller", 100)
+        : "";
+    if (normalized.controllerPlayerId && !formations.players.has(normalized.controllerPlayerId)) {
+      throw new Error("Objective controller is unknown");
+    }
+    normalized.contested = Boolean(event.contested);
+    if (normalized.controllerPlayerId && normalized.contested) {
+      throw new Error("A controlled objective cannot also be contested");
+    }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "battleshock_changed") {
+    normalized.formationId = boundedString(event.formationId, "Battle-shock formation id", 100);
+    if (!formations.byId.has(normalized.formationId)) {
+      throw new Error("Battle-shock formation is not registered");
+    }
+    normalized.battleShocked = Boolean(event.battleShocked);
+    normalized.reason = boundedString(event.reason, "Battle-shock reason", 300);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
   if (event.type === "attack_resolved") {
     normalized.attackerFormationId = boundedString(
       event.attackerFormationId,
@@ -357,7 +486,7 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     );
     normalized.targetFormationId = boundedString(event.targetFormationId, "Target formation id");
     if (
-      stateVersion >= BATTLE_STATE_VERSION &&
+      stateVersion >= TIMELINE_BATTLE_STATE_VERSION &&
       !formations.byId.has(normalized.attackerFormationId)
     ) {
       throw new Error("Attack attacker formation is not registered");
@@ -413,9 +542,12 @@ export function createBattleState({ id, createdAt, rulesSnapshot = "catalogue-cu
 export function normalizeBattleState(candidate) {
   const state = record(candidate, "Battle state must be an object");
   if (
-    ![LEGACY_BATTLE_STATE_VERSION, ROSTER_BATTLE_STATE_VERSION, BATTLE_STATE_VERSION].includes(
-      state.version,
-    )
+    ![
+      LEGACY_BATTLE_STATE_VERSION,
+      ROSTER_BATTLE_STATE_VERSION,
+      TIMELINE_BATTLE_STATE_VERSION,
+      BATTLE_STATE_VERSION,
+    ].includes(state.version)
   ) {
     throw new Error(`Unsupported battle state version: ${String(state.version)}`);
   }
@@ -438,14 +570,18 @@ export function normalizeBattleState(candidate) {
     players,
     events,
   };
-  if (state.version === BATTLE_STATE_VERSION && state.migration !== undefined) {
+  if (state.version >= TIMELINE_BATTLE_STATE_VERSION && state.migration !== undefined) {
     const migration = record(state.migration, "Battle migration must be an object");
     const sourceVersion = nonnegativeInteger(
       migration.sourceVersion,
       "Battle migration source version",
-      ROSTER_BATTLE_STATE_VERSION,
+      state.version - 1,
     );
-    if (![LEGACY_BATTLE_STATE_VERSION, ROSTER_BATTLE_STATE_VERSION].includes(sourceVersion)) {
+    if (
+      ![LEGACY_BATTLE_STATE_VERSION, ROSTER_BATTLE_STATE_VERSION, TIMELINE_BATTLE_STATE_VERSION]
+        .filter((version) => version < state.version)
+        .includes(sourceVersion)
+    ) {
       throw new Error("Battle migration source version is unsupported");
     }
     normalized.migration = {
@@ -474,6 +610,53 @@ function sameHealth(left, right) {
   return left.modelsRemaining === right.modelsRemaining && left.woundsLost === right.woundsLost;
 }
 
+function trackerResources(players, mission) {
+  return new Map(
+    players.map((player) => [
+      player.id,
+      new Map([
+        [
+          "command_points",
+          {
+            id: "command_points",
+            name: "Command Points",
+            value: mission.startingCommandPoints[player.id],
+            maximum: null,
+          },
+        ],
+        [
+          "victory_points",
+          { id: "victory_points", name: "Victory Points", value: 0, maximum: null },
+        ],
+      ]),
+    ]),
+  );
+}
+
+function trackerObjectives(mission) {
+  return new Map(
+    mission.objectives.map((objective) => [
+      objective.id,
+      { ...objective, controllerPlayerId: "", contested: false },
+    ]),
+  );
+}
+
+function awardCommandPhasePoints(resources, players, mission) {
+  if (mission.commandPointsPerCommandPhase < 1) return;
+  for (const player of players) {
+    const current = resources.get(player.id).get("command_points");
+    resources.get(player.id).set("command_points", {
+      ...current,
+      value: current.value + mission.commandPointsPerCommandPhase,
+    });
+  }
+}
+
+function commandPhaseStarted(clock) {
+  return clock.status === "active" && clock.phase === "command" && clock.step === "start";
+}
+
 export function replayBattleState(state) {
   const formations = new Map();
   const attacks = new Map();
@@ -482,14 +665,19 @@ export function replayBattleState(state) {
   const pendingChoices = new Map();
   const resolvedChoices = new Map();
   const effects = new Map();
+  const battleShockedFormations = new Map();
+  const scoringEvents = [];
   let clock = setupBattleClock();
+  let mission = defaultMission(state.players);
+  let resources = trackerResources(state.players, mission);
+  let objectives = trackerObjectives(mission);
   const legacyUntimedThroughSequence =
-    state.version < BATTLE_STATE_VERSION
+    state.version < TIMELINE_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyUntimedThroughSequence ?? 0);
   for (const event of state.events) {
     if (event.type === "formation_registered") {
-      if (state.version >= BATTLE_STATE_VERSION && clock.status !== "setup") {
+      if (state.version >= TIMELINE_BATTLE_STATE_VERSION && clock.status !== "setup") {
         throw new Error("Formations must be registered during battle setup");
       }
       if (formations.has(event.formation.id)) throw new Error("Formation is already registered");
@@ -500,7 +688,7 @@ export function replayBattleState(state) {
       continue;
     }
     if (event.type === "formation_configured") {
-      if (state.version >= BATTLE_STATE_VERSION && clock.status !== "setup") {
+      if (state.version >= TIMELINE_BATTLE_STATE_VERSION && clock.status !== "setup") {
         throw new Error("Formation equipment is locked after the battle starts");
       }
       if (targetedFormationIds.has(event.formation.id)) {
@@ -520,6 +708,9 @@ export function replayBattleState(state) {
         throw new Error("Battle start clock is not canonical");
       }
       clock = expected;
+      if (state.version >= BATTLE_STATE_VERSION) {
+        awardCommandPhasePoints(resources, state.players, mission);
+      }
       continue;
     }
     if (event.type === "clock_advanced") {
@@ -545,6 +736,14 @@ export function replayBattleState(state) {
         throw new Error("Battle clock advance has an incorrect effect-expiry set");
       }
       for (const id of expiredEffectIds) effects.delete(id);
+      if (state.version >= BATTLE_STATE_VERSION && commandPhaseStarted(expected)) {
+        awardCommandPhasePoints(resources, state.players, mission);
+        for (const [formationId] of battleShockedFormations) {
+          if (formations.get(formationId)?.playerId === expected.activePlayerId) {
+            battleShockedFormations.delete(formationId);
+          }
+        }
+      }
       clock = expected;
       continue;
     }
@@ -587,8 +786,98 @@ export function replayBattleState(state) {
       effects.set(event.effect.id, event.effect);
       continue;
     }
+    if (event.type === "mission_configured") {
+      if (clock.status !== "setup") throw new Error("Mission setup is locked after battle start");
+      const customResources = new Map(
+        state.players.map((player) => [
+          player.id,
+          [...resources.get(player.id).values()].filter(
+            (resource) => resource.id !== "command_points" && resource.id !== "victory_points",
+          ),
+        ]),
+      );
+      mission = event.mission;
+      resources = trackerResources(state.players, mission);
+      for (const player of state.players) {
+        for (const resource of customResources.get(player.id)) {
+          resources.get(player.id).set(resource.id, resource);
+        }
+      }
+      objectives = trackerObjectives(mission);
+      continue;
+    }
+    if (event.type === "resource_changed") {
+      if (!sameBattleClock(event.clock, clock)) {
+        throw new Error("Resource change does not match the replayed battle clock");
+      }
+      if (event.resourceId === "victory_points") {
+        throw new Error("Victory Points must be changed by a scoring event");
+      }
+      const playerResources = resources.get(event.playerId);
+      const previous = playerResources.get(event.resourceId);
+      if ((previous?.value ?? 0) !== event.before) {
+        throw new Error("Resource change does not match the replayed value");
+      }
+      if (previous && (previous.name !== event.name || previous.maximum !== event.maximum)) {
+        throw new Error("Resource identity cannot change during a battle");
+      }
+      playerResources.set(event.resourceId, {
+        id: event.resourceId,
+        name: event.name,
+        value: event.after,
+        maximum: event.maximum,
+      });
+      continue;
+    }
+    if (event.type === "score_recorded") {
+      if (clock.status !== "active" || !sameBattleClock(event.clock, clock)) {
+        throw new Error("Score was recorded outside its battle timing window");
+      }
+      const playerResources = resources.get(event.playerId);
+      const previous = playerResources.get("victory_points");
+      if (previous.value !== event.before || event.after !== event.before + event.points) {
+        throw new Error("Scoring event does not match the replayed Victory Points");
+      }
+      playerResources.set("victory_points", { ...previous, value: event.after });
+      scoringEvents.push(event);
+      continue;
+    }
+    if (event.type === "objective_control_changed") {
+      if (clock.status !== "active" || !sameBattleClock(event.clock, clock)) {
+        throw new Error("Objective control changed outside its battle timing window");
+      }
+      const objective = objectives.get(event.objectiveId);
+      if (!objective) throw new Error("Objective control references an unknown objective");
+      objectives.set(event.objectiveId, {
+        ...objective,
+        controllerPlayerId: event.controllerPlayerId,
+        contested: event.contested,
+      });
+      continue;
+    }
+    if (event.type === "battleshock_changed") {
+      if (clock.status !== "active" || !sameBattleClock(event.clock, clock)) {
+        throw new Error("Battle-shock changed outside its battle timing window");
+      }
+      if (event.battleShocked) {
+        battleShockedFormations.set(event.formationId, {
+          formationId: event.formationId,
+          reason: event.reason,
+          appliedAt: event.clock,
+        });
+      } else {
+        if (!battleShockedFormations.has(event.formationId)) {
+          throw new Error("Formation is not currently Battle-shocked");
+        }
+        battleShockedFormations.delete(event.formationId);
+      }
+      continue;
+    }
     if (event.type === "attack_resolved") {
-      if (state.version >= BATTLE_STATE_VERSION && event.sequence > legacyUntimedThroughSequence) {
+      if (
+        state.version >= TIMELINE_BATTLE_STATE_VERSION &&
+        event.sequence > legacyUntimedThroughSequence
+      ) {
         if (!battleAttackWindow(clock)) {
           throw new Error("Attacks can only resolve in a Shooting or Fight attack step");
         }
@@ -663,6 +952,11 @@ export function replayBattleState(state) {
     pendingChoices,
     resolvedChoices,
     effects,
+    mission,
+    resources,
+    objectives,
+    scoringEvents,
+    battleShockedFormations,
   };
 }
 
@@ -745,6 +1039,133 @@ export function applyBattleEffect(state, effect, id, at) {
     type: "effect_applied",
     effect: { ...effect, appliedAt },
   });
+}
+
+export function configureBattleMission(state, mission, id, at) {
+  const replayed = replayBattleState(state);
+  if (replayed.clock.status !== "setup") {
+    throw new Error("Mission setup is locked after the battle starts");
+  }
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "mission_configured",
+    mission,
+  });
+}
+
+export function changeBattleResource(
+  state,
+  { playerId, resourceId, name, delta, maximum = null, reason },
+  id,
+  at,
+) {
+  const replayed = replayBattleState(state);
+  if (replayed.clock.status === "complete") {
+    throw new Error("Battle resources are locked after the battle ends");
+  }
+  if (!state.players.some((player) => player.id === playerId)) {
+    throw new Error("Resource player is unknown");
+  }
+  if (resourceId === "victory_points") {
+    throw new Error("Use a scoring event to change Victory Points");
+  }
+  const previous = replayed.resources.get(playerId)?.get(resourceId);
+  const before = previous?.value ?? 0;
+  const after = before + boundedInteger(delta, "Resource change", -100000, 100000);
+  if (after < 0) throw new Error(`${previous?.name ?? name} cannot go below 0`);
+  const normalizedMaximum = previous?.maximum ?? maximum;
+  if (normalizedMaximum !== null && after > normalizedMaximum) {
+    throw new Error(`${previous?.name ?? name} cannot exceed ${normalizedMaximum}`);
+  }
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "resource_changed",
+    playerId,
+    resourceId,
+    name: previous?.name ?? name,
+    before,
+    after,
+    maximum: normalizedMaximum,
+    reason,
+    clock: replayed.clock,
+  });
+}
+
+export function scoreBattlePoints(state, playerId, points, category, reason, id, at) {
+  const replayed = replayBattleState(state);
+  if (replayed.clock.status !== "active") {
+    throw new Error("Victory Points can only be scored during an active battle");
+  }
+  const before = replayed.resources.get(playerId)?.get("victory_points")?.value;
+  if (before === undefined) throw new Error("Scoring player is unknown");
+  const normalizedPoints = boundedInteger(points, "Scoring points", -1000, 1000);
+  const after = before + normalizedPoints;
+  if (after < 0) throw new Error("Victory Points cannot go below 0");
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "score_recorded",
+    playerId,
+    category,
+    points: normalizedPoints,
+    before,
+    after,
+    reason,
+    clock: replayed.clock,
+  });
+}
+
+export function setBattleObjectiveControl(
+  state,
+  objectiveId,
+  controllerPlayerId,
+  contested,
+  id,
+  at,
+) {
+  const clock = replayBattleState(state).clock;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "objective_control_changed",
+    objectiveId,
+    controllerPlayerId,
+    contested,
+    clock,
+  });
+}
+
+export function setFormationBattleShocked(state, formationId, battleShocked, reason, id, at) {
+  const clock = replayBattleState(state).clock;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "battleshock_changed",
+    formationId,
+    battleShocked,
+    reason,
+    clock,
+  });
+}
+
+export function battleResource(state, playerId, resourceId) {
+  return replayBattleState(state).resources.get(playerId)?.get(resourceId) ?? null;
+}
+
+export function battleFormationIsBattleShocked(state, formationId) {
+  return replayBattleState(state).battleShockedFormations.has(formationId);
 }
 
 export function battleCanResolveAttack(state, attackerFormationId) {

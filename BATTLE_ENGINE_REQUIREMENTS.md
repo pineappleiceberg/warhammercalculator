@@ -87,8 +87,8 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    then make attack results persist wounds, casualties, and destroyed units.
 3. **Complete:** add the round, turn, phase, step, pending-choice, and effect-expiry state
    machine.
-4. Add CP, VP, objectives, Battle-shock, missions, scoring, and limited-resource
-   accounting.
+4. **Complete:** add CP, VP, objectives, Battle-shock, missions, scoring, and
+   limited-resource accounting.
 5. Add the remaining legal actions and timing windows, beginning with target
    selection and attack sequencing, then movement, charges, and Fight movement.
 6. Normalize complete faction, detachment, enhancement, Stratagem, and mission

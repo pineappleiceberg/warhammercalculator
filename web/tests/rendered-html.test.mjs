@@ -6,7 +6,11 @@ import { sourceEquippedWeaponCounts } from "../lib/loadout.mjs";
 import {
   advanceBattleClock,
   applyBattleEffect,
+  changeBattleResource,
   openBattleChoice,
+  scoreBattlePoints,
+  setBattleObjectiveControl,
+  setFormationBattleShocked,
   startBattle,
 } from "../lib/battle-state.mjs";
 import { rulesInteractionCases } from "./rules-interaction-corpus.mjs";
@@ -2419,6 +2423,10 @@ test("replays canonical battle health through the C and WebAssembly API", async 
     "open-attack-choice",
     221,
   );
+  assert.deepEqual(versionThree.migration, {
+    sourceVersion: 2,
+    legacyUntimedThroughSequence: versionTwo.events.length,
+  });
   const versionThreeResponse = await worker.fetch(
     new Request("http://localhost/api/v1/battle/replay", {
       method: "POST",
@@ -2428,7 +2436,11 @@ test("replays canonical battle health through the C and WebAssembly API", async 
     testEnv,
     context,
   );
-  assert.equal(versionThreeResponse.status, 200);
+  assert.equal(
+    versionThreeResponse.status,
+    200,
+    JSON.stringify(await versionThreeResponse.clone().json()),
+  );
   const versionThreeResult = await versionThreeResponse.json();
   assert.equal(versionThreeResult.data.schemaVersion, 3);
   assert.deepEqual(versionThreeResult.data.health, result.data.health);
@@ -2452,6 +2464,79 @@ test("replays canonical battle health through the C and WebAssembly API", async 
       sourceFormationId: "attacker",
     },
   ]);
+
+  let versionFour = {
+    ...structuredClone(versionThree),
+    version: 4,
+    migration: {
+      sourceVersion: 3,
+      legacyUntimedThroughSequence: versionThree.migration.legacyUntimedThroughSequence,
+    },
+  };
+  versionFour = changeBattleResource(
+    versionFour,
+    {
+      playerId: "player-1",
+      resourceId: "command_points",
+      name: "Command Points",
+      delta: -1,
+      reason: "Used a Stratagem",
+    },
+    "api-spend-cp",
+    222,
+  );
+  versionFour = scoreBattlePoints(
+    versionFour,
+    "player-1",
+    5,
+    "primary",
+    "Held an objective",
+    "api-score",
+    223,
+  );
+  versionFour = setBattleObjectiveControl(
+    versionFour,
+    "objective-1",
+    "player-1",
+    false,
+    "api-objective",
+    224,
+  );
+  versionFour = setFormationBattleShocked(
+    versionFour,
+    "target",
+    true,
+    "Failed Battle-shock test",
+    "api-shock",
+    225,
+  );
+  const versionFourResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: versionFour, formationId: "target" }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(
+    versionFourResponse.status,
+    200,
+    JSON.stringify(await versionFourResponse.clone().json()),
+  );
+  const versionFourResult = await versionFourResponse.json();
+  assert.equal(versionFourResult.data.schemaVersion, 4);
+  assert.equal(versionFourResult.data.mission.name, "Custom mission");
+  assert.deepEqual(
+    versionFourResult.data.players[0].resources.map(({ id, value }) => [id, value]),
+    [
+      ["command_points", 0],
+      ["victory_points", 5],
+    ],
+  );
+  assert.equal(versionFourResult.data.objectives[0].controllerPlayerId, "player-1");
+  assert.deepEqual(versionFourResult.data.battleShockedFormationIds, ["target"]);
+  assert.equal(versionFourResult.data.scoringEvents[0].reason, "Held an objective");
 
   const configuredVersionTwo = structuredClone(versionTwo);
   configuredVersionTwo.events.splice(2, 0, {

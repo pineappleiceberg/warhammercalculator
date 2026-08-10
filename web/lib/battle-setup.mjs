@@ -1,6 +1,8 @@
 import {
   BATTLE_EVENT_VERSION,
   BATTLE_STATE_VERSION,
+  ROSTER_BATTLE_STATE_VERSION,
+  TIMELINE_BATTLE_STATE_VERSION,
   createBattleState,
   normalizeBattleState,
 } from "./battle-state.mjs";
@@ -151,7 +153,7 @@ function registerCompleteRosters(catalogue, state, firstList, secondList, equipm
 }
 
 export function battleRosterRevisionsMatch(state, firstList, secondList) {
-  if (!state || state.version < BATTLE_STATE_VERSION) return true;
+  if (!state || state.version < ROSTER_BATTLE_STATE_VERSION) return true;
   try {
     const lists = listsForPlayers(state, firstList, secondList);
     return state.players.every(
@@ -202,7 +204,10 @@ export function initializeBattleForLists({
         players: upgradePlayers(next, firstList, secondList),
         migration: {
           sourceVersion,
-          legacyUntimedThroughSequence: next.events.length,
+          legacyUntimedThroughSequence:
+            sourceVersion < TIMELINE_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyUntimedThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

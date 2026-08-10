@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { WorkflowNav } from "../../components/workflow-nav";
 import { CombatPresetSelector } from "../../components/combat-preset-selector";
 import { SupportPresetSelector } from "../../components/support-preset-selector";
@@ -21,12 +21,17 @@ import {
   battleFormation,
   battleFormationHealth,
   battleFormationWasTargeted,
+  changeBattleResource,
+  configureBattleMission,
   configureUnengagedBattleFormation,
   createBattleState,
   normalizeBattleState,
   replayBattleState,
   resolveBattleChoice,
   revertLatestAttack,
+  scoreBattlePoints,
+  setBattleObjectiveControl,
+  setFormationBattleShocked,
   startBattle,
 } from "../../lib/battle-state.mjs";
 import { battleClockLabel } from "../../lib/battle-clock.mjs";
@@ -589,6 +594,15 @@ export default function PlayMode() {
   const battleClock = replayedBattle?.clock ?? null;
   const pendingBattleChoices = replayedBattle ? [...replayedBattle.pendingChoices.values()] : [];
   const activeBattleEffects = replayedBattle ? [...replayedBattle.effects.values()] : [];
+  const battleObjectives = replayedBattle ? [...replayedBattle.objectives.values()] : [];
+  const battleScoringEvents = replayedBattle?.scoringEvents ?? [];
+  const attackerFormationBattleShocked = Boolean(
+    attackerBattleFormationId &&
+      replayedBattle?.battleShockedFormations.has(attackerBattleFormationId),
+  );
+  const targetFormationBattleShocked = Boolean(
+    targetBattleFormationId && replayedBattle?.battleShockedFormations.has(targetBattleFormationId),
+  );
   const targetBattleHealth =
     battleState && targetBattleFormationId
       ? battleFormationHealth(battleState, targetBattleFormationId)
@@ -1576,7 +1590,10 @@ export default function PlayMode() {
       : savedUnitCombatPresetIds(nextTarget, nextTargetCatalogueUnit);
     setTargetUnitId(id);
     setTargetDefensiveEquipmentCounts(nextTargetDefensiveEquipmentCounts);
-    const nextTargetBattleShocked = false;
+    const nextTargetBattleShocked = Boolean(
+      nextFormation &&
+        replayedBattle?.battleShockedFormations.has(`${nextTargetPlayerId}:${nextFormation.id}`),
+    );
     const nextTargetAttached =
       nextFormation?.attached ?? targetTransportReport.attachedUnitIds.has(id);
     const nextTargetWaaaghActive = false;
@@ -1845,6 +1862,12 @@ export default function PlayMode() {
       setStatus("Firing Deck cannot use models from a unit that has already shot this phase");
       return;
     }
+    const resolvedAttackerBattleShocked =
+      battleClock?.status === "active"
+        ? attackerFormationBattleShocked
+        : profile.attackerBattleShocked;
+    const resolvedTargetBattleShocked =
+      battleClock?.status === "active" ? targetFormationBattleShocked : profile.targetBattleShocked;
     let rolled: RollResult | OrderedVolleyRollResult;
     try {
       if (targetFormationModels.ambiguousComponents.length > 0) {
@@ -1861,8 +1884,8 @@ export default function PlayMode() {
         selectedTargetSegment?.model.keywords ?? [],
         profile.targetDistance,
         profile.attackerCharged,
-        profile.attackerBattleShocked,
-        profile.targetBattleShocked,
+        resolvedAttackerBattleShocked,
+        resolvedTargetBattleShocked,
         profile.targetStrengthState,
         profile.attackerRemainedStationary,
         profile.targetAttached,
@@ -1878,8 +1901,8 @@ export default function PlayMode() {
             attackerKeywords: attackerFormationKeywords,
             targetDistance: profile.targetDistance,
             attackerCharged: profile.attackerCharged,
-            attackerBattleShocked: profile.attackerBattleShocked,
-            targetBattleShocked: profile.targetBattleShocked,
+            attackerBattleShocked: resolvedAttackerBattleShocked,
+            targetBattleShocked: resolvedTargetBattleShocked,
             targetStrengthState: profile.targetStrengthState,
             attackerRemainedStationary: profile.attackerRemainedStationary,
             targetAttached: profile.targetAttached,
@@ -1910,7 +1933,12 @@ export default function PlayMode() {
           ? selectedSourceEquipmentSegments
           : [{ count: profile.weaponCount, sourceEquipmentPresetIds: [] }]
       ).map((segment) => {
-        const base = { ...profile, weaponCount: segment.count };
+        const base = {
+          ...profile,
+          weaponCount: segment.count,
+          attackerBattleShocked: resolvedAttackerBattleShocked,
+          targetBattleShocked: resolvedTargetBattleShocked,
+        };
         if (
           selectedSourceEquipmentSegments.length <= 1 ||
           !(segment.sourceEquipmentPresetIds ?? []).length
@@ -1926,8 +1954,8 @@ export default function PlayMode() {
             selectedTargetSegment?.model.keywords ?? [],
             profile.targetDistance,
             profile.attackerCharged,
-            profile.attackerBattleShocked,
-            profile.targetBattleShocked,
+            resolvedAttackerBattleShocked,
+            resolvedTargetBattleShocked,
             profile.targetStrengthState,
             profile.attackerRemainedStationary,
           ),
@@ -1935,8 +1963,8 @@ export default function PlayMode() {
           weaponProfile.type,
           {
             attackerCharged: profile.attackerCharged,
-            attackerBattleShocked: profile.attackerBattleShocked,
-            targetBattleShocked: profile.targetBattleShocked,
+            attackerBattleShocked: resolvedAttackerBattleShocked,
+            targetBattleShocked: resolvedTargetBattleShocked,
             targetStrengthState: profile.targetStrengthState,
             targetKeywords: selectedTargetSegment?.model.keywords ?? [],
             attackKeywords,
@@ -2019,6 +2047,184 @@ export default function PlayMode() {
     }
   };
 
+  const configureMission = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!battleState) return;
+    try {
+      const data = new FormData(event.currentTarget);
+      const objectiveCount = Math.min(12, Math.max(0, Number(data.get("objectives")) || 0));
+      const startingCommandPoints = Object.fromEntries(
+        battleState.players.map((player) => [
+          player.id,
+          Math.min(100, Math.max(0, Number(data.get(`starting-${player.id}`)) || 0)),
+        ]),
+      );
+      const next = configureBattleMission(
+        battleState,
+        {
+          name: String(data.get("mission") || "Custom mission").trim() || "Custom mission",
+          commandPointsPerCommandPhase: Math.min(
+            10,
+            Math.max(0, Number(data.get("command-points")) || 0),
+          ),
+          startingCommandPoints,
+          objectives: Array.from({ length: objectiveCount }, (_, index) => ({
+            id: `objective-${index + 1}`,
+            name: `Objective ${index + 1}`,
+          })),
+        },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setStatus("Mission setup recorded");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Mission setup could not be recorded");
+    }
+  };
+
+  const updateTrackedResource = (
+    playerId: string,
+    resourceId: string,
+    name: string,
+    delta: number,
+    maximum: number | null,
+    reason: string,
+  ) => {
+    if (!battleState) return;
+    try {
+      const next = changeBattleResource(
+        battleState,
+        { playerId, resourceId, name, delta, maximum, reason },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setStatus(`${name} ${delta >= 0 ? "+" : ""}${delta}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Resource could not be changed");
+    }
+  };
+
+  const addTrackedResource = (playerId: string, event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const name = String(data.get("resource-name") || "").trim();
+    if (!name) {
+      setStatus("Enter a resource name");
+      return;
+    }
+    const resourceId = `custom:${name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")}`;
+    const maximumText = String(data.get("resource-maximum") || "").trim();
+    const maximum = maximumText ? Math.min(100000, Math.max(0, Number(maximumText) || 0)) : null;
+    updateTrackedResource(playerId, resourceId, name, 0, maximum, "Resource added");
+    event.currentTarget.reset();
+  };
+
+  const recordScore = (playerId: string, points: number, category: string, reason: string) => {
+    if (!battleState) return;
+    try {
+      const next = scoreBattlePoints(
+        battleState,
+        playerId,
+        points,
+        category,
+        reason,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setStatus(`${points >= 0 ? "+" : ""}${points} Victory Points`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Score could not be recorded");
+    }
+  };
+
+  const recordCustomScore = (playerId: string, event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const points = Math.min(1000, Math.max(-1000, Number(data.get("score-points")) || 0));
+    const category = String(data.get("score-category") || "other");
+    const reason = String(data.get("score-reason") || "Manual score").trim() || "Manual score";
+    if (!Number.isInteger(points) || points === 0) {
+      setStatus("Score must be a non-zero whole number");
+      return;
+    }
+    recordScore(playerId, points, category, reason);
+    event.currentTarget.reset();
+  };
+
+  const updateObjectiveControl = (
+    objectiveId: string,
+    controllerPlayerId: string,
+    contested: boolean,
+  ) => {
+    if (!battleState) return;
+    try {
+      setBattleState(
+        setBattleObjectiveControl(
+          battleState,
+          objectiveId,
+          controllerPlayerId,
+          contested,
+          crypto.randomUUID(),
+          battleState.events.length + 1,
+        ),
+      );
+      setStatus("Objective control recorded");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Objective control could not be recorded");
+    }
+  };
+
+  const updateFormationBattleShock = (
+    formationId: string,
+    battleShocked: boolean,
+    role: "attacker" | "target",
+  ) => {
+    let nextAttacker = role === "attacker" ? battleShocked : profile.attackerBattleShocked;
+    let nextTarget = role === "target" ? battleShocked : profile.targetBattleShocked;
+    if (battleState && battleClock?.status === "active" && formationId) {
+      try {
+        const next = setFormationBattleShocked(
+          battleState,
+          formationId,
+          battleShocked,
+          battleShocked ? "Failed Battle-shock test" : "Battle-shock cleared",
+          crypto.randomUUID(),
+          battleState.events.length + 1,
+        );
+        setBattleState(next);
+        const replayed = replayBattleState(next);
+        nextAttacker = Boolean(
+          attackerBattleFormationId &&
+            replayed.battleShockedFormations.has(attackerBattleFormationId),
+        );
+        nextTarget = Boolean(
+          targetBattleFormationId && replayed.battleShockedFormations.has(targetBattleFormationId),
+        );
+        setStatus(battleShocked ? "Battle-shock recorded" : "Battle-shock cleared");
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : "Battle-shock could not be recorded");
+        return;
+      }
+    }
+    refreshProfile(
+      weaponId,
+      targetModelId,
+      profileId,
+      activeAttackerPresetIds,
+      activeTargetPresetIds,
+      profile.targetDistance,
+      profile.attackerCharged,
+      nextAttacker,
+      nextTarget,
+    );
+  };
+
   const advanceGuidedBattle = () => {
     if (!battleState) return;
     try {
@@ -2028,6 +2234,23 @@ export default function PlayMode() {
         battleState.events.length + 1,
       );
       setBattleState(next);
+      const replayed = replayBattleState(next);
+      refreshProfile(
+        weaponId,
+        targetModelId,
+        profileId,
+        activeAttackerPresetIds,
+        activeTargetPresetIds,
+        profile.targetDistance,
+        profile.attackerCharged,
+        Boolean(
+          attackerBattleFormationId &&
+            replayed.battleShockedFormations.has(attackerBattleFormationId),
+        ),
+        Boolean(
+          targetBattleFormationId && replayed.battleShockedFormations.has(targetBattleFormationId),
+        ),
+      );
       setStatus(battleClockLabel(replayBattleState(next).clock, next.players));
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Battle could not advance");
@@ -2400,7 +2623,12 @@ export default function PlayMode() {
                         destructiveFightPhases: 0,
                         embarkedModels: nextEmbarkedModels,
                         embarkedWracksModels: nextEmbarkedWracksModels,
-                        attackerBattleShocked: false,
+                        attackerBattleShocked: Boolean(
+                          nextFormation &&
+                            replayedBattle?.battleShockedFormations.has(
+                              `${attackerPlayerId}:${nextFormation.id}`,
+                            ),
+                        ),
                         supportDistance: 0,
                       }));
                       setResult(null);
@@ -3295,18 +3523,16 @@ export default function PlayMode() {
                     <input
                       aria-label="Attacker is Battle-shocked"
                       type="checkbox"
-                      checked={profile.attackerBattleShocked}
+                      checked={
+                        battleClock?.status === "active"
+                          ? attackerFormationBattleShocked
+                          : profile.attackerBattleShocked
+                      }
                       onChange={(event) =>
-                        refreshProfile(
-                          weaponId,
-                          targetModelId,
-                          profileId,
-                          activeAttackerPresetIds,
-                          activeTargetPresetIds,
-                          profile.targetDistance,
-                          profile.attackerCharged,
+                        updateFormationBattleShock(
+                          attackerBattleFormationId,
                           event.target.checked,
-                          profile.targetBattleShocked,
+                          "attacker",
                         )
                       }
                     />
@@ -3316,18 +3542,16 @@ export default function PlayMode() {
                     <input
                       aria-label="Target is Battle-shocked"
                       type="checkbox"
-                      checked={profile.targetBattleShocked}
+                      checked={
+                        battleClock?.status === "active"
+                          ? targetFormationBattleShocked
+                          : profile.targetBattleShocked
+                      }
                       onChange={(event) =>
-                        refreshProfile(
-                          weaponId,
-                          targetModelId,
-                          profileId,
-                          activeAttackerPresetIds,
-                          activeTargetPresetIds,
-                          profile.targetDistance,
-                          profile.attackerCharged,
-                          profile.attackerBattleShocked,
+                        updateFormationBattleShock(
+                          targetBattleFormationId,
                           event.target.checked,
+                          "target",
                         )
                       }
                     />
@@ -3849,6 +4073,288 @@ export default function PlayMode() {
                 </button>
               )}
             </div>
+            {battleClock.status === "setup" && replayedBattle && (
+              <form className="mission-setup" onSubmit={configureMission}>
+                <label>
+                  <span>Mission</span>
+                  <input
+                    name="mission"
+                    defaultValue={replayedBattle.mission.name}
+                    maxLength={200}
+                  />
+                </label>
+                <label>
+                  <span>Objectives</span>
+                  <input
+                    name="objectives"
+                    type="number"
+                    min="0"
+                    max="12"
+                    defaultValue={replayedBattle.mission.objectives.length}
+                  />
+                </label>
+                <label>
+                  <span>CP each Command phase</span>
+                  <input
+                    name="command-points"
+                    type="number"
+                    min="0"
+                    max="10"
+                    defaultValue={replayedBattle.mission.commandPointsPerCommandPhase}
+                  />
+                </label>
+                {battleState.players.map((player) => (
+                  <label key={player.id}>
+                    <span>{player.name} starting CP</span>
+                    <input
+                      name={`starting-${player.id}`}
+                      type="number"
+                      min="0"
+                      max="100"
+                      defaultValue={replayedBattle.mission.startingCommandPoints[player.id]}
+                    />
+                  </label>
+                ))}
+                <button type="submit">Save mission setup</button>
+              </form>
+            )}
+            {replayedBattle && (
+              <div className="battle-trackers" aria-label="Battle score and resources">
+                {battleState.players.map((player) => {
+                  const resources = [...replayedBattle.resources.get(player.id).values()];
+                  const commandPoints = resources.find(
+                    (resource) => resource.id === "command_points",
+                  );
+                  const victoryPoints = resources.find(
+                    (resource) => resource.id === "victory_points",
+                  );
+                  const customResources = resources.filter(
+                    (resource) =>
+                      resource.id !== "command_points" && resource.id !== "victory_points",
+                  );
+                  return (
+                    <section key={player.id} className="player-tracker">
+                      <h3>{player.name}</h3>
+                      <div className="primary-trackers">
+                        <div>
+                          <span>CP</span>
+                          <strong>{commandPoints?.value ?? 0}</strong>
+                          <div>
+                            <button
+                              type="button"
+                              disabled={battleClock.status !== "active" || !commandPoints?.value}
+                              onClick={() =>
+                                updateTrackedResource(
+                                  player.id,
+                                  "command_points",
+                                  "Command Points",
+                                  -1,
+                                  null,
+                                  "Spent Command Point",
+                                )
+                              }
+                            >
+                              Spend 1
+                            </button>
+                            <button
+                              type="button"
+                              disabled={battleClock.status !== "active"}
+                              onClick={() =>
+                                updateTrackedResource(
+                                  player.id,
+                                  "command_points",
+                                  "Command Points",
+                                  1,
+                                  null,
+                                  "Manual Command Point gain",
+                                )
+                              }
+                            >
+                              Gain 1
+                            </button>
+                          </div>
+                        </div>
+                        <div>
+                          <span>VP</span>
+                          <strong>{victoryPoints?.value ?? 0}</strong>
+                          <div>
+                            <button
+                              type="button"
+                              disabled={battleClock.status !== "active"}
+                              onClick={() =>
+                                recordScore(player.id, 5, "primary", "Manual primary score")
+                              }
+                            >
+                              +5 primary
+                            </button>
+                            <button
+                              type="button"
+                              disabled={battleClock.status !== "active" || !victoryPoints?.value}
+                              onClick={() =>
+                                recordScore(player.id, -1, "correction", "Manual score correction")
+                              }
+                            >
+                              Correct −1
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <form
+                        className="score-setup"
+                        onSubmit={(event) => recordCustomScore(player.id, event)}
+                      >
+                        <input
+                          aria-label={`${player.name} score points`}
+                          name="score-points"
+                          type="number"
+                          min="-1000"
+                          max="1000"
+                          placeholder="VP"
+                        />
+                        <select
+                          aria-label={`${player.name} score category`}
+                          name="score-category"
+                          defaultValue="secondary"
+                        >
+                          <option value="primary">Primary</option>
+                          <option value="secondary">Secondary</option>
+                          <option value="other">Other</option>
+                          <option value="correction">Correction</option>
+                        </select>
+                        <input
+                          aria-label={`${player.name} score reason`}
+                          name="score-reason"
+                          placeholder="Objective or reason"
+                          maxLength={300}
+                        />
+                        <button type="submit" disabled={battleClock.status !== "active"}>
+                          Record score
+                        </button>
+                      </form>
+                      {customResources.map((resource) => (
+                        <div key={resource.id} className="custom-resource">
+                          <span>
+                            {resource.name} · {resource.value}
+                            {resource.maximum === null ? "" : `/${resource.maximum}`}
+                          </span>
+                          <div>
+                            <button
+                              type="button"
+                              disabled={battleClock.status === "complete" || resource.value < 1}
+                              onClick={() =>
+                                updateTrackedResource(
+                                  player.id,
+                                  resource.id,
+                                  resource.name,
+                                  -1,
+                                  resource.maximum,
+                                  `Spent ${resource.name}`,
+                                )
+                              }
+                            >
+                              −1
+                            </button>
+                            <button
+                              type="button"
+                              disabled={
+                                battleClock.status === "complete" ||
+                                (resource.maximum !== null && resource.value >= resource.maximum)
+                              }
+                              onClick={() =>
+                                updateTrackedResource(
+                                  player.id,
+                                  resource.id,
+                                  resource.name,
+                                  1,
+                                  resource.maximum,
+                                  `Gained ${resource.name}`,
+                                )
+                              }
+                            >
+                              +1
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      <form
+                        className="resource-setup"
+                        onSubmit={(event) => addTrackedResource(player.id, event)}
+                      >
+                        <input
+                          aria-label={`${player.name} resource name`}
+                          name="resource-name"
+                          placeholder="Resource name"
+                          maxLength={100}
+                        />
+                        <input
+                          aria-label={`${player.name} resource maximum`}
+                          name="resource-maximum"
+                          type="number"
+                          min="0"
+                          max="100000"
+                          placeholder="Max"
+                        />
+                        <button type="submit" disabled={battleClock.status === "complete"}>
+                          Add tracker
+                        </button>
+                      </form>
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+            {battleClock.status !== "setup" && battleObjectives.length > 0 && (
+              <div className="objective-trackers" aria-label="Objective control">
+                {battleObjectives.map((objective) => (
+                  <div key={objective.id}>
+                    <strong>{objective.name}</strong>
+                    <div>
+                      {battleState.players.map((player) => (
+                        <button
+                          type="button"
+                          key={player.id}
+                          aria-pressed={objective.controllerPlayerId === player.id}
+                          disabled={battleClock.status !== "active"}
+                          onClick={() => updateObjectiveControl(objective.id, player.id, false)}
+                        >
+                          {player.name}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        aria-pressed={objective.contested}
+                        disabled={battleClock.status !== "active"}
+                        onClick={() => updateObjectiveControl(objective.id, "", true)}
+                      >
+                        Contested
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={!objective.contested && !objective.controllerPlayerId}
+                        disabled={battleClock.status !== "active"}
+                        onClick={() => updateObjectiveControl(objective.id, "", false)}
+                      >
+                        Uncontrolled
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {battleScoringEvents.length > 0 && (
+              <ol className="scoring-events" aria-label="Scoring history">
+                {battleScoringEvents
+                  .slice(-6)
+                  .reverse()
+                  .map((event) => (
+                    <li key={event.id}>
+                      {battleState.players.find((player) => player.id === event.playerId)?.name} ·{" "}
+                      {event.points >= 0 ? "+" : ""}
+                      {event.points} VP · {event.reason}
+                    </li>
+                  ))}
+              </ol>
+            )}
             {pendingBattleChoices.map((choice) => {
               const selected = pendingChoiceSelections[choice.id] ?? [];
               return (

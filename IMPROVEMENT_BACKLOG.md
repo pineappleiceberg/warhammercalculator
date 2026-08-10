@@ -27,20 +27,34 @@ state.
 
 ## Prioritized backlog
 
-1. Add Command Point, Victory Point, objective, Battle-shock, mission, scoring,
-   and limited-resource state on top of the event log.
-2. Expand the legal-action and timing engine through movement, reserves,
+1. Expand the legal-action and timing engine through movement, reserves,
    transports, charges, Fight sequencing, pile-in, consolidation, reactions,
    and Stratagem windows.
-3. Build and enforce the source-locked faction, detachment, enhancement,
+2. Build and enforce the source-locked faction, detachment, enhancement,
    Stratagem, terrain, and mission coverage matrix described by the complete
    battle requirements.
-4. Add reviewable table geometry and player-entered movement, range, visibility,
+3. Add reviewable table geometry and player-entered movement, range, visibility,
    cover, coherency, Engagement Range, terrain, and objective facts.
-5. Deliver full guided-game replay scenarios before adding deterministic
+4. Deliver full guided-game replay scenarios before adding deterministic
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-10: Advanced guided play to battle-state version 4 with integrity-
+  checked mission and game accounting. Mission setup now records its name,
+  objective markers, starting Command Points, and configurable Command-phase CP
+  gain. Both players receive the configured CP automatically at every Command
+  phase. Play Mode records CP spending and gains, categorized primary,
+  secondary, correction, and other VP scoring, controlled/contested/uncontrolled
+  objectives, and capped or uncapped faction resources. Battle-shock belongs to
+  the exact saved formation, feeds attack-rule state, and expires at the start
+  of its owner's next Command phase. Every change records before/after values
+  and timing; replay rejects negative, over-cap, unknown, mistimed, and tampered
+  transitions. Version-1 through version-3 battles migrate without changing
+  legacy timing provenance. The replay API returns the complete tracker state
+  alongside C/WebAssembly-verified health and clock state. State, migration,
+  API, rendered workflow, native, WebAssembly, fuzz, and formal gates cover the
+  cycle.
 
 - 2026-08-10: Normalized the remaining mixed twin-lightning-claw branches and
   the Wolf Guard Terminator cyclone pairing in SQLite schema 77. Tactical

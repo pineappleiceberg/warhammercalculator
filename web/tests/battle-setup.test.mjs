@@ -69,7 +69,7 @@ function setup(state = null) {
 
 test("registers every formation on both rosters before combat with stable ids", () => {
   const state = setup();
-  assert.equal(state.version, 3);
+  assert.equal(state.version, 4);
   assert.deepEqual(
     state.players.map((player) => [player.listId, player.listUpdatedAt]),
     [
@@ -168,7 +168,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
   versionTwo.players[0].listUpdatedAt = attackers.updatedAt;
   versionTwo.players[1].listUpdatedAt = defenders.updatedAt;
   const migrated = setup(normalizeBattleState(versionTwo));
-  assert.equal(migrated.version, 3);
+  assert.equal(migrated.version, 4);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 2,
     legacyUntimedThroughSequence: 3,
@@ -183,7 +183,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
   const legacy = normalizeBattleState(legacySetup);
 
   const migrated = setup(legacy);
-  assert.equal(migrated.version, 3);
+  assert.equal(migrated.version, 4);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 1,
     legacyUntimedThroughSequence: 3,
@@ -196,4 +196,17 @@ test("migrates a partial version-1 log without changing attack ids or health", (
   assert.deepEqual(battleFormationHealth(migrated, "player-2:brutalis"), {
     [sequence.orderedSegments[0].id]: { modelsRemaining: 1, woundsLost: 1 },
   });
+});
+
+test("migrates a version-3 guided battle without reclassifying timed events", () => {
+  const versionThree = structuredClone(setup());
+  versionThree.version = 3;
+  delete versionThree.migration;
+  const migrated = setup(normalizeBattleState(versionThree));
+  assert.equal(migrated.version, 4);
+  assert.deepEqual(migrated.migration, {
+    sourceVersion: 3,
+    legacyUntimedThroughSequence: 0,
+  });
+  assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });

@@ -649,6 +649,28 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
           sourceFormationId,
         }))
         .sort((left, right) => left.id.localeCompare(right.id)),
+      mission: replayed.mission,
+      players: state.players.map((player) => ({
+        id: player.id,
+        name: player.name,
+        resources: [...replayed.resources.get(player.id).values()].map((resource) => ({
+          ...resource,
+        })),
+      })),
+      objectives: [...replayed.objectives.values()].map((objective) => ({ ...objective })),
+      battleShockedFormationIds: [...replayed.battleShockedFormations.keys()].sort(),
+      scoringEvents: replayed.scoringEvents.map(
+        ({ id, playerId, category, points, before, after, reason, clock }) => ({
+          id,
+          playerId,
+          category,
+          points,
+          before,
+          after,
+          reason,
+          clock,
+        }),
+      ),
     };
   } finally {
     calculator.free(profilesPointer);

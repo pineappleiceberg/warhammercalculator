@@ -1849,6 +1849,137 @@ select:focus {
 .active-effects {
   color: #aaa69d;
 }
+.mission-setup,
+.battle-trackers,
+.objective-trackers,
+.scoring-events {
+  grid-column: 1 / -1;
+}
+.mission-setup {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(110px, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+  padding-top: 14px;
+  border-top: 1px solid #55534d;
+}
+.mission-setup label {
+  display: grid;
+  gap: 5px;
+  color: #aaa69d;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.mission-setup input,
+.resource-setup input {
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 8px;
+  color: var(--paper-light);
+  background: #1f1f1d;
+  border: 1px solid #55534d;
+}
+.battle-trackers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.player-tracker {
+  padding: 14px;
+  border: 1px solid #55534d;
+  background: #242321;
+}
+.player-tracker h3 {
+  margin: 0 0 10px;
+  color: var(--paper-light);
+  font-size: 13px;
+}
+.primary-trackers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.primary-trackers > div {
+  padding: 10px;
+  border: 1px solid #45433f;
+}
+.primary-trackers span {
+  color: #aaa69d;
+  font-size: 10px;
+}
+.primary-trackers strong {
+  display: block;
+  margin: 2px 0 8px;
+  color: var(--gold);
+  font:
+    700 28px var(--font-geist-mono),
+    monospace;
+}
+.primary-trackers > div > div,
+.custom-resource > div,
+.objective-trackers > div > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.custom-resource {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid #45433f;
+  color: #d8d3c8;
+  font-size: 11px;
+}
+.resource-setup {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) 70px auto;
+  gap: 7px;
+  margin-top: 10px;
+}
+.score-setup {
+  display: grid;
+  grid-template-columns: 70px 100px minmax(120px, 1fr) auto;
+  gap: 7px;
+  margin: 10px 0;
+}
+.score-setup input,
+.score-setup select {
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 8px;
+  color: var(--paper-light);
+  background: #1f1f1d;
+  border: 1px solid #55534d;
+}
+.objective-trackers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+.objective-trackers > div {
+  padding: 10px;
+  border: 1px solid #55534d;
+}
+.objective-trackers strong {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--paper-light);
+  font-size: 11px;
+}
+.battle-log button[aria-pressed="true"] {
+  color: var(--gold);
+  border-bottom-width: 3px;
+}
+.scoring-events {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 20px;
+  color: #aaa69d;
+  font-size: 11px;
+}
 .pending-choice,
 .active-effects {
   grid-column: 1 / -1;
@@ -1895,6 +2026,10 @@ select:focus {
   .calculator-grid {
     grid-template-columns: 1fr;
   }
+  .mission-setup,
+  .battle-trackers {
+    grid-template-columns: 1fr;
+  }
   .results-panel {
     position: relative;
     top: auto;
@@ -1918,6 +2053,10 @@ select:focus {
 
 @media (max-width: 660px) {
   .battle-timeline {
+    grid-template-columns: 1fr;
+  }
+  .score-setup,
+  .resource-setup {
     grid-template-columns: 1fr;
   }
   .play-ability-selectors {

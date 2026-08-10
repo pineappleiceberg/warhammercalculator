@@ -8,11 +8,16 @@ import {
   advanceBattleClock,
   appendResolvedAttack,
   battleFormationHealth,
+  changeBattleResource,
+  configureBattleMission,
   createBattleState,
   normalizeBattleState,
   registerBattleFormation,
   replayBattleState,
   revertLatestAttack,
+  scoreBattlePoints,
+  setBattleObjectiveControl,
+  setFormationBattleShocked,
   startBattle,
 } from "../lib/battle-state.mjs";
 import { battleAttackWindow } from "../lib/battle-clock.mjs";
@@ -139,6 +144,127 @@ test("replays persistent mixed-profile casualties and compensating undo", () => 
   assert.deepEqual(activeBattleAttacks(state), []);
   assert.equal(state.events.at(-1).revertsEventId, "event-attack-1");
   assert.equal(replayBattleState(state).activeAttackIds.length, 0);
+});
+
+test("replays mission, CP, VP, objectives, Battle-shock, and bounded resources", () => {
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), attackerFormation, "register-attacker", 100),
+    formation,
+    "register-target",
+    101,
+  );
+  state = configureBattleMission(
+    state,
+    {
+      name: "Take and Hold",
+      commandPointsPerCommandPhase: 1,
+      startingCommandPoints: { "player-1": 2, "player-2": 1 },
+      objectives: [
+        { id: "home", name: "Home objective" },
+        { id: "centre", name: "Centre objective" },
+      ],
+    },
+    "mission",
+    102,
+  );
+  state = changeBattleResource(
+    state,
+    {
+      playerId: "player-1",
+      resourceId: "yield_points",
+      name: "Yield Points",
+      delta: 3,
+      maximum: 5,
+      reason: "Army rule setup",
+    },
+    "yield",
+    103,
+  );
+  state = startBattle(state, "player-1", "start", 104);
+  let replayed = replayBattleState(state);
+  assert.equal(replayed.mission.name, "Take and Hold");
+  assert.equal(replayed.resources.get("player-1").get("command_points").value, 3);
+  assert.equal(replayed.resources.get("player-2").get("command_points").value, 2);
+  assert.equal(replayed.resources.get("player-1").get("yield_points").value, 3);
+
+  state = changeBattleResource(
+    state,
+    {
+      playerId: "player-1",
+      resourceId: "command_points",
+      name: "Command Points",
+      delta: -1,
+      reason: "Used a Stratagem",
+    },
+    "spend-cp",
+    105,
+  );
+  state = scoreBattlePoints(state, "player-1", 5, "primary", "Held centre", "score", 106);
+  state = setBattleObjectiveControl(state, "centre", "player-1", false, "control", 107);
+  state = setFormationBattleShocked(state, formation.id, true, "Failed test", "shock", 108);
+  replayed = replayBattleState(state);
+  assert.equal(replayed.resources.get("player-1").get("command_points").value, 2);
+  assert.equal(replayed.resources.get("player-1").get("victory_points").value, 5);
+  assert.equal(replayed.objectives.get("centre").controllerPlayerId, "player-1");
+  assert.equal(replayed.battleShockedFormations.has(formation.id), true);
+
+  while (
+    !(
+      replayBattleState(state).clock.activePlayerId === "player-2" &&
+      replayBattleState(state).clock.phase === "command" &&
+      replayBattleState(state).clock.step === "start"
+    )
+  ) {
+    state = advanceBattleClock(state, `advance-${state.events.length}`, state.events.length + 1);
+  }
+  replayed = replayBattleState(state);
+  assert.equal(replayed.battleShockedFormations.has(formation.id), false);
+  assert.equal(replayed.resources.get("player-1").get("command_points").value, 3);
+  assert.equal(replayed.resources.get("player-2").get("command_points").value, 3);
+  assert.throws(
+    () =>
+      changeBattleResource(
+        state,
+        {
+          playerId: "player-1",
+          resourceId: "yield_points",
+          name: "Yield Points",
+          delta: 3,
+          maximum: 5,
+          reason: "Too many",
+        },
+        "overflow",
+        109,
+      ),
+    /cannot exceed 5/,
+  );
+  assert.throws(
+    () => configureBattleMission(state, replayed.mission, "late-mission", 110),
+    /locked after the battle starts/,
+  );
+});
+
+test("rejects tampered resource and scoring totals", () => {
+  let state = startBattle(newBattle(), "player-1", "start", 100);
+  state = changeBattleResource(
+    state,
+    {
+      playerId: "player-1",
+      resourceId: "command_points",
+      name: "Command Points",
+      delta: -1,
+      reason: "Stratagem",
+    },
+    "spend",
+    101,
+  );
+  state = scoreBattlePoints(state, "player-1", 5, "primary", "Objective", "score", 102);
+  const resource = structuredClone(state);
+  resource.events.find((event) => event.id === "spend").before = 0;
+  assert.throws(() => normalizeBattleState(resource), /replayed value/);
+  const score = structuredClone(state);
+  score.events.find((event) => event.id === "score").after = 7;
+  assert.throws(() => normalizeBattleState(score), /replayed Victory Points/);
 });
 
 test("replays the versioned cross-surface golden battle", () => {
