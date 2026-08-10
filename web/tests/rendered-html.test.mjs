@@ -2288,6 +2288,51 @@ test("replays canonical battle health through the C and WebAssembly API", async 
   });
   assert.deepEqual(result.data.activeAttackIds, ["final-attack"]);
 
+  const versionTwo = structuredClone(goldenBattleReplay);
+  versionTwo.version = 2;
+  versionTwo.players[0].listUpdatedAt = 10;
+  versionTwo.players[1].listUpdatedAt = 20;
+  const versionTwoResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: versionTwo, formationId: "target" }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(versionTwoResponse.status, 200);
+  const versionTwoResult = await versionTwoResponse.json();
+  assert.equal(versionTwoResult.data.schemaVersion, 2);
+  assert.deepEqual(versionTwoResult.data.health, result.data.health);
+
+  const configuredVersionTwo = structuredClone(versionTwo);
+  configuredVersionTwo.events.splice(2, 0, {
+    version: 1,
+    id: "configure-target",
+    sequence: 3,
+    at: 102,
+    type: "formation_configured",
+    formation: {
+      ...structuredClone(configuredVersionTwo.events[1].formation),
+      defensiveEquipmentCounts: { "unit-bodyguard::guard::shield": 1 },
+    },
+  });
+  configuredVersionTwo.events.forEach((event, index) => {
+    event.sequence = index + 1;
+  });
+  const configuredResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: configuredVersionTwo, formationId: "target" }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(configuredResponse.status, 200);
+  assert.deepEqual((await configuredResponse.json()).data.health, result.data.health);
+
   const tampered = structuredClone(goldenBattleReplay);
   tampered.events.at(-1).summary.damage = 5;
   const rejected = await worker.fetch(

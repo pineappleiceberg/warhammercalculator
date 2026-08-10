@@ -1257,7 +1257,7 @@ static void test_battle_health_replay(void) {
     const uint32_t final = 2u * WHC_BATTLE_EVENT_FIELDS;
 
     memset(events, 0, sizeof(events));
-    events[first] = WHC_BATTLE_STATE_VERSION;
+    events[first] = WHC_BATTLE_EVENT_VERSION;
     events[first + 1u] = WHC_BATTLE_EVENT_ATTACK;
     events[first + 2u] = 2u;
     events[first + 4u] = 8u;
@@ -1273,11 +1273,11 @@ static void test_battle_health_replay(void) {
     events[first + 14u] = 1u;
     events[first + 15u] = 2u;
 
-    events[revert] = WHC_BATTLE_STATE_VERSION;
+    events[revert] = WHC_BATTLE_EVENT_VERSION;
     events[revert + 1u] = WHC_BATTLE_EVENT_REVERT;
     events[revert + 3u] = 0u;
 
-    events[final] = WHC_BATTLE_STATE_VERSION;
+    events[final] = WHC_BATTLE_EVENT_VERSION;
     events[final + 1u] = WHC_BATTLE_EVENT_ATTACK;
     events[final + 2u] = 2u;
     events[final + 4u] = 4u;

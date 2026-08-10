@@ -50,6 +50,7 @@ import {
   unavailableSourceEquipmentCombatPresetIds,
 } from "../lib/combat-presets.mjs";
 import {
+  battleFormation,
   battleFormationHealth,
   normalizeBattleState,
   replayBattleState,
@@ -425,7 +426,8 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
   if (!registration || registration.type !== "formation_registered") {
     throw new Error("formationId is not registered in the battle state");
   }
-  const formation = registration.formation;
+  const formation = battleFormation(state, requestedFormationId);
+  if (!formation) throw new Error("formationId is not registered in the battle state");
   const segmentIndices = new Map(formation.segments.map((segment, index) => [segment.id, index]));
   const selectedEvents: Array<(typeof state.events)[number]> = [];
   const attackIndices = new Map<string, number>();

@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "id": "legacy-battle",
+  "createdAt": 0,
+  "rulesSnapshot": "catalogue:test",
+  "players": [
+    { "id": "player-1", "listId": "list-attackers", "name": "Player 1" },
+    { "id": "player-2", "listId": "list-defenders", "name": "Player 2" }
+  ],
+  "events": [
+    {
+      "version": 1,
+      "id": "legacy-registration",
+      "sequence": 1,
+      "at": 1,
+      "type": "formation_registered",
+      "formation": {
+        "id": "player-2:brutalis",
+        "playerId": "player-2",
+        "sourceFormationId": "brutalis",
+        "name": "Brutalis Dreadnought",
+        "segments": [
+          {
+            "id": "brutalis:117",
+            "savedUnitId": "brutalis",
+            "unitName": "Brutalis Dreadnought",
+            "modelName": "Brutalis Dreadnought",
+            "role": "standalone",
+            "wounds": 12,
+            "startingModels": 1
+          }
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "id": "legacy-attack",
+      "sequence": 2,
+      "at": 2,
+      "type": "attack_resolved",
+      "attackerFormationId": "player-1:doom-scythe",
+      "targetFormationId": "player-2:brutalis",
+      "summary": {
+        "attacker": "Doom Scythe",
+        "weapon": "Death ray",
+        "target": "Brutalis Dreadnought",
+        "damage": 1,
+        "successful": 1,
+        "modelsDestroyed": 0
+      },
+      "allocations": [
+        {
+          "segmentId": "brutalis:117",
+          "before": { "modelsRemaining": 1, "woundsLost": 0 },
+          "after": { "modelsRemaining": 1, "woundsLost": 1 }
+        }
+      ]
+    }
+  ]
+}

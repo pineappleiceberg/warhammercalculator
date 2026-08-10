@@ -27,27 +27,41 @@ state.
 
 ## Prioritized backlog
 
-1. Register every formation from both lists at battle setup, preserve stable
-   formation identity across roster edits, and add schema migration fixtures.
-2. Add a round, turn, phase, pending-choice, and exact effect-expiry state
+1. Add a round, turn, phase, pending-choice, and exact effect-expiry state
    machine as the foundation for complete guided play.
-3. Normalize the remaining mixed “twin lightning claws or two different
+2. Normalize the remaining mixed “twin lightning claws or two different
    weapons” pools and the Terminator cyclone pairing rule without flattening
    their mutually exclusive branches.
-4. Add Command Point, Victory Point, objective, Battle-shock, mission, scoring,
+3. Add Command Point, Victory Point, objective, Battle-shock, mission, scoring,
    and limited-resource state on top of the event log.
-5. Expand the legal-action and timing engine through movement, reserves,
+4. Expand the legal-action and timing engine through movement, reserves,
    transports, charges, Fight sequencing, pile-in, consolidation, reactions,
    and Stratagem windows.
-6. Build and enforce the source-locked faction, detachment, enhancement,
+5. Build and enforce the source-locked faction, detachment, enhancement,
    Stratagem, terrain, and mission coverage matrix described by the complete
    battle requirements.
-7. Add reviewable table geometry and player-entered movement, range, visibility,
+6. Add reviewable table geometry and player-entered movement, range, visibility,
    cover, coherency, Engagement Range, terrain, and objective facts.
-8. Deliver full guided-game replay scenarios before adding deterministic
+7. Deliver full guided-game replay scenarios before adding deterministic
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-10: Advanced Play Mode to battle-state version 2 and made roster
+  setup canonical. Selecting both lists now registers every exact formation on
+  both sides before the first attack, using player-qualified saved-unit IDs and
+  binding each player to the selected list revision. Roster edits fail closed
+  instead of silently changing an active battle. A checked version-1 migration
+  fixture preserves registration snapshots, attack IDs, damage allocations,
+  wounds, and casualties while inserting missing attacker and target
+  registrations ahead of combat. Defensive-equipment counts are stored with
+  each formation and remain editable until that formation is targeted, then
+  freeze to protect replay. JavaScript and API replay accept both JSON schema
+  versions while the native/WebAssembly engine retains the explicitly named
+  version-1 flat event ABI. Setup, stable identity, side matching, equipment
+  correction and locking, migration, replay, API, and C regressions cover the
+  change. Pre-target equipment corrections are themselves append-only
+  `formation_configured` events, so setup edits remain auditable.
 
 - 2026-08-10: Made canonical formation-health replay portable across native C,
   WebAssembly, and the API. A dedicated bounded C module accepts the same 32

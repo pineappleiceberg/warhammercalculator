@@ -47,6 +47,14 @@ const formation = {
   ],
 };
 
+const attackerFormation = {
+  ...formation,
+  id: "player-1:formation-9",
+  playerId: "player-1",
+  sourceFormationId: "formation-9",
+  name: "Tank",
+};
+
 const goldenReplay = JSON.parse(
   await readFile(new URL("./fixtures/battle-replay-v1.json", import.meta.url), "utf8"),
 );
@@ -57,10 +65,19 @@ function newBattle() {
     createdAt: 100,
     rulesSnapshot: "catalogue:test",
     players: [
-      { id: "player-1", listId: "list-1", name: "Attackers" },
-      { id: "player-2", listId: "list-2", name: "Defenders" },
+      { id: "player-1", listId: "list-1", listUpdatedAt: 10, name: "Attackers" },
+      { id: "player-2", listId: "list-2", listUpdatedAt: 20, name: "Defenders" },
     ],
   });
+}
+
+function registeredBattle() {
+  return registerBattleFormation(
+    registerBattleFormation(newBattle(), attackerFormation, "event-register-attacker", 100),
+    formation,
+    "event-register",
+    101,
+  );
 }
 
 test("reports exact per-segment damage state across mixed profiles", () => {
@@ -76,7 +93,7 @@ test("reports exact per-segment damage state across mixed profiles", () => {
 });
 
 test("replays persistent mixed-profile casualties and compensating undo", () => {
-  let state = registerBattleFormation(newBattle(), formation, "event-register", 101);
+  let state = registeredBattle();
   state = appendResolvedAttack(state, {
     id: "event-attack-1",
     at: 102,
@@ -124,7 +141,7 @@ test("replays the versioned cross-surface golden battle", () => {
 });
 
 test("rejects divergent replay state and non-latest undo", () => {
-  let state = registerBattleFormation(newBattle(), formation, "event-register", 101);
+  let state = registeredBattle();
   state = appendResolvedAttack(state, {
     id: "event-attack-1",
     at: 102,
@@ -143,11 +160,20 @@ test("rejects divergent replay state and non-latest undo", () => {
     },
   });
   const corrupt = JSON.parse(JSON.stringify(state));
-  corrupt.events[1].allocations[0].before.woundsLost = 1;
+  corrupt.events[2].allocations[0].before.woundsLost = 1;
   assert.throws(() => normalizeBattleState(corrupt), /does not match replayed target health/);
   const falseSummary = JSON.parse(JSON.stringify(state));
-  falseSummary.events[1].summary.damage = 2;
+  falseSummary.events[2].summary.damage = 2;
   assert.throws(() => normalizeBattleState(falseSummary), /summary damage/);
+  const missingAttacker = JSON.parse(JSON.stringify(state));
+  missingAttacker.events = missingAttacker.events.slice(1).map((event, index) => ({
+    ...event,
+    sequence: index + 1,
+  }));
+  assert.throws(
+    () => normalizeBattleState(missingAttacker),
+    /attacker formation is not registered/,
+  );
   const invalidUndo = {
     ...state,
     events: [
@@ -155,7 +181,7 @@ test("rejects divergent replay state and non-latest undo", () => {
       {
         version: 1,
         id: "bad-undo",
-        sequence: 3,
+        sequence: 4,
         at: 103,
         type: "attack_reverted",
         revertsEventId: "missing",

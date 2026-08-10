@@ -465,7 +465,13 @@ export function savedFormationTargetSequence(
   };
 }
 
-export function savedFormationBattleRegistration(formation, playerId, id, targetSequence) {
+export function savedFormationBattleRegistration(
+  formation,
+  playerId,
+  id,
+  targetSequence,
+  defensiveEquipmentCounts = {},
+) {
   const segments = targetSequence?.orderedSegments ?? [];
   if (!formation || segments.length < 1) throw new Error("Formation has no exact model segments");
   return {
@@ -473,6 +479,7 @@ export function savedFormationBattleRegistration(formation, playerId, id, target
     playerId,
     sourceFormationId: formation.id,
     name: formation.name,
+    defensiveEquipmentCounts: { ...defensiveEquipmentCounts },
     segments: segments.map((segment) => ({
       id: segment.id,
       savedUnitId: segment.savedUnitId,

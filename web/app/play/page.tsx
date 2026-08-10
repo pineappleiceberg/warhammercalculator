@@ -16,12 +16,15 @@ import {
 import {
   activeBattleAttacks,
   appendResolvedAttack,
+  battleFormation,
   battleFormationHealth,
+  battleFormationWasTargeted,
+  configureUnengagedBattleFormation,
   createBattleState,
   normalizeBattleState,
-  registerBattleFormation,
   revertLatestAttack,
 } from "../../lib/battle-state.mjs";
+import { battleRosterRevisionsMatch, initializeBattleForLists } from "../../lib/battle-setup.mjs";
 import {
   applyCombatPresets,
   applyTargetProfile,
@@ -130,6 +133,7 @@ export default function PlayMode() {
   const [result, setResult] = useState<RollResult | OrderedVolleyRollResult | null>(null);
   const [history, setHistory] = useState<LogEntry[]>([]);
   const [battleState, setBattleState] = useState<ReturnType<typeof createBattleState> | null>(null);
+  const [battleSetupError, setBattleSetupError] = useState("");
   const [status, setStatus] = useState("Select two saved lists");
   const [recoveryReady, setRecoveryReady] = useState(false);
   const recovered = useRef(false);
@@ -289,6 +293,11 @@ export default function PlayMode() {
     ? `${catalogue.sourceUpdatedAt}:${catalogue.leaderFormationRules.sourceSha256}`
     : "";
   const battleRulesMatch = !battleState || battleState.rulesSnapshot === currentRulesSnapshot;
+  const battleRostersMatch =
+    !battleState ||
+    !attackerList ||
+    !targetList ||
+    battleRosterRevisionsMatch(battleState, attackerList, targetList);
   const attackerFormations =
     catalogue && attackerList ? savedFormationGroups(catalogue, attackerList) : [];
   const targetFormations =
@@ -567,6 +576,46 @@ export default function PlayMode() {
     battleState && targetBattleFormationId
       ? battleFormationHealth(battleState, targetBattleFormationId)
       : null;
+  const targetBattleWasAttacked =
+    battleState && targetBattleFormationId
+      ? battleFormationWasTargeted(battleState, targetBattleFormationId)
+      : false;
+  useEffect(() => {
+    if (!recoveryReady || !catalogue || !attackerList || !targetList) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      try {
+        const next = initializeBattleForLists({
+          catalogue,
+          firstList: attackerList,
+          secondList: targetList,
+          rulesSnapshot: currentRulesSnapshot,
+          state: battleState,
+          id: crypto.randomUUID(),
+          legacyFormationEquipmentCounts: targetBattleFormationId
+            ? { [targetBattleFormationId]: targetDefensiveEquipmentCounts }
+            : {},
+        });
+        if (next !== battleState) setBattleState(next);
+        setBattleSetupError("");
+      } catch (error) {
+        setBattleSetupError(error instanceof Error ? error.message : "Battle setup is invalid");
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    attackerList,
+    battleState,
+    catalogue,
+    currentRulesSnapshot,
+    recoveryReady,
+    targetBattleFormationId,
+    targetDefensiveEquipmentCounts,
+    targetList,
+  ]);
   let targetBattleStateError = "";
   let targetFormationModels = targetFormationBaseModels;
   try {
@@ -1432,8 +1481,8 @@ export default function PlayMode() {
   };
 
   const changeTargetDefensiveEquipment = (key: string, count: number) => {
-    if (targetBattleHealth) {
-      setStatus("Target equipment is locked after this formation enters the battle log");
+    if (targetBattleWasAttacked) {
+      setStatus("Target equipment is locked after this formation has been attacked");
       return;
     }
     const next = { ...targetDefensiveEquipmentCounts };
@@ -1441,6 +1490,27 @@ export default function PlayMode() {
     else delete next[key];
     const nextSequence = savedFormationTargetSequence(targetFormation, targetModelId, next);
     const nextTargetModelId = nextSequence.first?.id ?? "";
+    if (battleState && targetFormation && targetBattleFormationId) {
+      try {
+        setBattleState(
+          configureUnengagedBattleFormation(
+            battleState,
+            savedFormationBattleRegistration(
+              targetFormation,
+              targetPlayerId,
+              targetBattleFormationId,
+              nextSequence,
+              next,
+            ),
+            crypto.randomUUID(),
+            battleState.events.length + 1,
+          ),
+        );
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : "Target equipment could not be changed");
+        return;
+      }
+    }
     setTargetDefensiveEquipmentCounts(next);
     setTargetModelId(nextTargetModelId);
     if (nextTargetModelId) refreshProfile(weaponId, nextTargetModelId, profileId);
@@ -1461,8 +1531,18 @@ export default function PlayMode() {
             ) ?? nextTargetCatalogueUnit.combatPresets,
         }
       : undefined;
-    const nextTargetDefensiveEquipmentCounts =
-      savedFormationDefensiveEquipmentDefaults(nextFormation);
+    const nextTargetPlayerId =
+      battleState?.players.find((player, index) => {
+        if (player.listId !== targetListId) return false;
+        return attackerListId !== targetListId || index === 1;
+      })?.id ?? "player-2";
+    const nextRegistration =
+      battleState && nextFormation
+        ? battleFormation(battleState, `${nextTargetPlayerId}:${nextFormation.id}`)
+        : null;
+    const nextTargetDefensiveEquipmentCounts = nextRegistration
+      ? nextRegistration.defensiveEquipmentCounts
+      : savedFormationDefensiveEquipmentDefaults(nextFormation);
     const nextTargetSequence = savedFormationTargetSequence(
       nextFormation,
       "",
@@ -1857,30 +1937,7 @@ export default function PlayMode() {
       if (!targetFormation || !attackerFormation || !catalogue) {
         throw new Error("Battle state is not ready");
       }
-      if (!nextBattleState) {
-        nextBattleState = createBattleState({
-          id: crypto.randomUUID(),
-          createdAt: 0,
-          rulesSnapshot: currentRulesSnapshot,
-          players: [
-            { id: "player-1", listId: attackerListId, name: "Player 1" },
-            { id: "player-2", listId: targetListId, name: "Player 2" },
-          ],
-        });
-      }
-      if (!battleFormationHealth(nextBattleState, targetBattleFormationId)) {
-        nextBattleState = registerBattleFormation(
-          nextBattleState,
-          savedFormationBattleRegistration(
-            targetFormation,
-            targetPlayerId,
-            targetBattleFormationId,
-            targetFormationBaseModels,
-          ),
-          crypto.randomUUID(),
-          nextBattleState.events.length + 1,
-        );
-      }
+      if (!nextBattleState) throw new Error("Battle setup is not ready");
       nextBattleState = appendResolvedAttack(nextBattleState, {
         id: attackId,
         at: nextBattleState.events.length + 1,
@@ -1933,6 +1990,9 @@ export default function PlayMode() {
       !targetFormationModels.destroyed &&
       !targetBattleStateError &&
       battleRulesMatch &&
+      battleRostersMatch &&
+      !battleSetupError &&
+      Boolean(battleState) &&
       targetFormationModels.ambiguousComponents.length === 0 &&
       !(firingDeckChoice && !validFiringDeckPassengerIds.has(firingDeckChoice.passengerUnitId)) &&
       !(firingDeckChoice && firingDeckPassengerAlreadyShot),
@@ -1957,15 +2017,19 @@ export default function PlayMode() {
                     ? targetBattleStateError
                     : !battleRulesMatch
                       ? "Battle rules snapshot does not match the loaded catalogue"
-                      : targetFormationModels.destroyed
-                        ? `${targetFormation?.name ?? targetUnit.name} is destroyed`
-                        : targetFormationModels.ambiguousComponents.length > 0
-                          ? `Exact composition unavailable for ${targetFormationModels.ambiguousComponents.join(
-                              ", ",
-                            )}`
-                          : `${attackerFormation?.name ?? attackerUnit.name} into ${
-                              targetFormation?.name ?? targetUnit.name
-                            }`;
+                      : !battleRostersMatch
+                        ? "A saved roster changed after this battle was set up"
+                        : battleSetupError
+                          ? battleSetupError
+                          : targetFormationModels.destroyed
+                            ? `${targetFormation?.name ?? targetUnit.name} is destroyed`
+                            : targetFormationModels.ambiguousComponents.length > 0
+                              ? `Exact composition unavailable for ${targetFormationModels.ambiguousComponents.join(
+                                  ", ",
+                                )}`
+                              : `${attackerFormation?.name ?? attackerUnit.name} into ${
+                                  targetFormation?.name ?? targetUnit.name
+                                }`;
 
   const resetBattle = () => {
     suppressRecoverySave.current = true;
@@ -2460,7 +2524,7 @@ export default function PlayMode() {
                               aria-label={`${option.unitName} ${option.name} equipped`}
                               type="checkbox"
                               checked={(targetDefensiveEquipmentCounts[key] ?? 0) > 0}
-                              disabled={Boolean(targetBattleHealth)}
+                              disabled={targetBattleWasAttacked}
                               onChange={(event) =>
                                 changeTargetDefensiveEquipment(key, event.target.checked ? 1 : 0)
                               }
@@ -2496,7 +2560,7 @@ export default function PlayMode() {
                                 min={0}
                                 max={segment.modelCount}
                                 value={targetDefensiveEquipmentCounts[key] ?? 0}
-                                disabled={Boolean(targetBattleHealth)}
+                                disabled={targetBattleWasAttacked}
                                 onChange={(event) =>
                                   changeTargetDefensiveEquipment(
                                     key,
@@ -2511,8 +2575,8 @@ export default function PlayMode() {
                           );
                         });
                     })}
-                    {targetBattleHealth && (
-                      <small>Equipment is locked after this formation enters the event log.</small>
+                    {targetBattleWasAttacked && (
+                      <small>Equipment is locked after this formation has been attacked.</small>
                     )}
                   </details>
                 )}

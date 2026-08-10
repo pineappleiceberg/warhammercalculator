@@ -51,7 +51,7 @@ bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_
         const uint32_t expected_damage = events[event_offset + 4u];
         const uint32_t expected_destroyed = events[event_offset + 5u];
 
-        if (version != WHC_BATTLE_STATE_VERSION) {
+        if (version != WHC_BATTLE_EVENT_VERSION) {
             return false;
         }
 

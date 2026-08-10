@@ -252,7 +252,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     battle_profiles[3] = 1u + next_byte(&input) % 5u;
     memset(battle_events, 0, sizeof(battle_events));
     battle_damage = next_byte(&input) % battle_profiles[0];
-    battle_events[0] = WHC_BATTLE_STATE_VERSION;
+    battle_events[0] = WHC_BATTLE_EVENT_VERSION;
     battle_events[1] = WHC_BATTLE_EVENT_ATTACK;
     battle_events[2] = 1u;
     battle_events[4] = battle_damage;
@@ -264,7 +264,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     battle_event_count = 1u;
     if (next_byte(&input) % 2u != 0u) {
         const uint32_t revert = WHC_BATTLE_EVENT_FIELDS;
-        battle_events[revert] = WHC_BATTLE_STATE_VERSION;
+        battle_events[revert] = WHC_BATTLE_EVENT_VERSION;
         battle_events[revert + 1u] = WHC_BATTLE_EVENT_REVERT;
         battle_events[revert + 3u] = 0u;
         battle_event_count = 2u;

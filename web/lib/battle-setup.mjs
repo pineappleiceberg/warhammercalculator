@@ -1,0 +1,208 @@
+import {
+  BATTLE_EVENT_VERSION,
+  BATTLE_STATE_VERSION,
+  createBattleState,
+  normalizeBattleState,
+} from "./battle-state.mjs";
+import {
+  savedFormationBattleRegistration,
+  savedFormationDefensiveEquipmentDefaults,
+  savedFormationGroups,
+  savedFormationTargetSequence,
+} from "./formations.mjs";
+
+function listRevision(list) {
+  if (!Number.isSafeInteger(list?.updatedAt) || list.updatedAt < 0) {
+    throw new Error("Each battle list must have a valid saved revision");
+  }
+  return list.updatedAt;
+}
+
+function listsForPlayers(state, firstList, secondList) {
+  const available = [firstList, secondList];
+  return state.players.map((player, index) => {
+    const exact = available.find(
+      (list, candidateIndex) => candidateIndex === index && list?.id === player.listId,
+    );
+    const fallback = available.find((list) => list?.id === player.listId);
+    const list = exact ?? fallback;
+    if (!list) throw new Error("Battle references a saved list that is not selected");
+    return list;
+  });
+}
+
+function newPlayers(firstList, secondList) {
+  return [firstList, secondList].map((list, index) => ({
+    id: `player-${index + 1}`,
+    listId: list.id,
+    listUpdatedAt: listRevision(list),
+    name: list.name,
+  }));
+}
+
+function upgradePlayers(state, firstList, secondList) {
+  const lists = listsForPlayers(state, firstList, secondList);
+  return state.players.map((player, index) => ({
+    ...player,
+    listUpdatedAt: listRevision(lists[index]),
+  }));
+}
+
+function registrationFor(formation, player, equipmentOverride) {
+  const equipment = equipmentOverride ?? savedFormationDefensiveEquipmentDefaults(formation);
+  const targetSequence = savedFormationTargetSequence(formation, "", equipment);
+  if (targetSequence.ambiguousComponents.length > 0) {
+    throw new Error(
+      `Exact battle setup composition is unavailable for ${targetSequence.ambiguousComponents.join(
+        ", ",
+      )}`,
+    );
+  }
+  return savedFormationBattleRegistration(
+    formation,
+    player.id,
+    `${player.id}:${formation.id}`,
+    targetSequence,
+    equipment,
+  );
+}
+
+function desiredRegistrations(catalogue, state, firstList, secondList, equipmentOverrides = {}) {
+  const lists = listsForPlayers(state, firstList, secondList);
+  return state.players.flatMap((player, playerIndex) =>
+    savedFormationGroups(catalogue, lists[playerIndex]).map((formation) => {
+      const id = `${player.id}:${formation.id}`;
+      return registrationFor(formation, player, equipmentOverrides[id]);
+    }),
+  );
+}
+
+function sameSegments(left, right) {
+  return (
+    left.length === right.length &&
+    left.every((segment, index) =>
+      Object.entries(segment).every(([key, value]) => value === right[index]?.[key]),
+    )
+  );
+}
+
+function uniqueSetupEventId(used, playerIndex, formationIndex) {
+  const base = `battle-setup-${playerIndex + 1}-${formationIndex + 1}`;
+  let id = base;
+  let suffix = 2;
+  while (used.has(id)) id = `${base}-${suffix++}`;
+  used.add(id);
+  return id;
+}
+
+function registerCompleteRosters(catalogue, state, firstList, secondList, equipmentOverrides = {}) {
+  const desired = desiredRegistrations(catalogue, state, firstList, secondList, equipmentOverrides);
+  const desiredIds = new Set(desired.map((formation) => formation.id));
+  const existingEvents = state.events.filter((event) => event.type === "formation_registered");
+  for (const event of existingEvents) {
+    if (!desiredIds.has(event.formation.id)) {
+      throw new Error(`Saved rosters no longer contain battle formation ${event.formation.name}`);
+    }
+  }
+  const existingById = new Map(existingEvents.map((event) => [event.formation.id, event]));
+  const registrationPrefix = state.events.slice(0, desired.length);
+  const needsEventRewrite =
+    existingEvents.length !== desired.length ||
+    registrationPrefix.some(
+      (event, index) =>
+        event.type !== "formation_registered" || event.formation.id !== desired[index]?.id,
+    );
+  if (!needsEventRewrite && state.version >= BATTLE_STATE_VERSION) return state;
+  const usedEventIds = new Set(state.events.map((event) => event.id));
+  let formationIndex = 0;
+  const registrations = desired.map((formation) => {
+    const existing = existingById.get(formation.id);
+    if (existing) {
+      if (
+        state.version < BATTLE_STATE_VERSION &&
+        sameSegments(existing.formation.segments, formation.segments)
+      ) {
+        return {
+          ...existing,
+          formation: {
+            ...existing.formation,
+            defensiveEquipmentCounts: formation.defensiveEquipmentCounts,
+          },
+        };
+      }
+      return existing;
+    }
+    const playerIndex = state.players.findIndex((player) => player.id === formation.playerId);
+    return {
+      version: BATTLE_EVENT_VERSION,
+      id: uniqueSetupEventId(usedEventIds, playerIndex, formationIndex++),
+      sequence: 0,
+      at: 0,
+      type: "formation_registered",
+      formation,
+    };
+  });
+  const combatEvents = state.events.filter((event) => event.type !== "formation_registered");
+  const events = [...registrations, ...combatEvents].map((event, index) => ({
+    ...event,
+    sequence: index + 1,
+  }));
+  return normalizeBattleState({ ...state, events });
+}
+
+export function battleRosterRevisionsMatch(state, firstList, secondList) {
+  if (!state || state.version < BATTLE_STATE_VERSION) return true;
+  try {
+    const lists = listsForPlayers(state, firstList, secondList);
+    return state.players.every(
+      (player, index) => player.listUpdatedAt === listRevision(lists[index]),
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function initializeBattleForLists({
+  catalogue,
+  firstList,
+  secondList,
+  rulesSnapshot,
+  state = null,
+  id = "battle-current",
+  legacyFormationEquipmentCounts = {},
+}) {
+  if (!catalogue || !firstList || !secondList) {
+    throw new Error("Both saved lists and the catalogue are required for battle setup");
+  }
+  let next = state;
+  if (!next) {
+    next = createBattleState({
+      id,
+      createdAt: 0,
+      rulesSnapshot,
+      players: newPlayers(firstList, secondList),
+    });
+  } else {
+    listsForPlayers(next, firstList, secondList);
+    if (next.rulesSnapshot !== rulesSnapshot) {
+      throw new Error("Battle rules snapshot does not match the loaded catalogue");
+    }
+    if (next.version < BATTLE_STATE_VERSION) {
+      next = registerCompleteRosters(
+        catalogue,
+        next,
+        firstList,
+        secondList,
+        legacyFormationEquipmentCounts,
+      );
+      next = normalizeBattleState({
+        ...next,
+        version: BATTLE_STATE_VERSION,
+        players: upgradePlayers(next, firstList, secondList),
+      });
+    } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {
+      throw new Error("A saved roster changed after this battle was set up");
+    }
+  }
+  return registerCompleteRosters(catalogue, next, firstList, secondList);
+}

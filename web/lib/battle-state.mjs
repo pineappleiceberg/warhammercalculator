@@ -1,6 +1,9 @@
 import { targetSequenceState } from "./allocation.mjs";
+import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 1;
+export const BATTLE_STATE_VERSION = 2;
+export const BATTLE_EVENT_VERSION = 1;
+export const LEGACY_BATTLE_STATE_VERSION = 1;
 
 function record(value, message) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(message);
@@ -21,17 +24,25 @@ function nonnegativeInteger(value, name, maximum = 1_000_000) {
   return value;
 }
 
-function normalizePlayers(players) {
+function normalizePlayers(players, stateVersion) {
   if (!Array.isArray(players) || players.length !== 2) {
     throw new Error("Battle state must contain exactly two players");
   }
   const normalized = players.map((candidate) => {
     const player = record(candidate, "Each battle player must be an object");
-    return {
+    const normalized = {
       id: boundedString(player.id, "Player id", 100),
       listId: boundedString(player.listId, "Player list id", 100),
       name: boundedString(player.name, "Player name"),
     };
+    if (stateVersion >= BATTLE_STATE_VERSION) {
+      normalized.listUpdatedAt = nonnegativeInteger(
+        player.listUpdatedAt,
+        "Player listUpdatedAt",
+        Number.MAX_SAFE_INTEGER,
+      );
+    }
+    return normalized;
   });
   if (new Set(normalized.map((player) => player.id)).size !== normalized.length) {
     throw new Error("Battle player ids must be unique");
@@ -74,7 +85,7 @@ function normalizeFormation(candidate) {
   if (new Set(segments.map((segment) => segment.id)).size !== segments.length) {
     throw new Error("Formation segment ids must be unique");
   }
-  return {
+  const normalized = {
     id: boundedString(formation.id, "Formation id"),
     playerId: boundedString(formation.playerId, "Formation player id", 100),
     sourceFormationId: boundedString(
@@ -85,6 +96,11 @@ function normalizeFormation(candidate) {
     name: boundedString(formation.name, "Formation name"),
     segments,
   };
+  normalized.defensiveEquipmentCounts = normalizeDefensiveEquipmentCounts(
+    formation.defensiveEquipmentCounts ?? {},
+    "Formation defensiveEquipmentCounts",
+  );
+  return normalized;
 }
 
 function normalizeHealth(candidate, segment, label) {
@@ -117,21 +133,35 @@ function normalizeSummary(candidate) {
   return normalized;
 }
 
-function normalizeEvent(candidate, sequence, formations) {
+function normalizeEvent(candidate, sequence, formations, stateVersion) {
   const event = record(candidate, "Each battle event must be an object");
   const normalized = {
-    version: nonnegativeInteger(event.version, "Event version", BATTLE_STATE_VERSION),
+    version: nonnegativeInteger(event.version, "Event version", BATTLE_EVENT_VERSION),
     id: boundedString(event.id, "Event id", 100),
     sequence: nonnegativeInteger(event.sequence, "Event sequence"),
     at: nonnegativeInteger(event.at, "Event timestamp", Number.MAX_SAFE_INTEGER),
     type: boundedString(event.type, "Event type", 40),
   };
-  if (normalized.version !== BATTLE_STATE_VERSION)
+  if (normalized.version !== BATTLE_EVENT_VERSION)
     throw new Error("Unsupported battle event version");
   if (normalized.sequence !== sequence) throw new Error("Battle event sequence is not contiguous");
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation);
     if (!formations.players.has(formation.playerId)) throw new Error("Formation player is unknown");
+    normalized.formation = formation;
+    formations.byId.set(formation.id, formation);
+    return normalized;
+  }
+  if (event.type === "formation_configured") {
+    const formation = normalizeFormation(event.formation);
+    const previous = formations.byId.get(formation.id);
+    if (!previous) throw new Error("Configured formation is not registered");
+    if (
+      previous.playerId !== formation.playerId ||
+      previous.sourceFormationId !== formation.sourceFormationId
+    ) {
+      throw new Error("Formation identity cannot change during battle setup");
+    }
     normalized.formation = formation;
     formations.byId.set(formation.id, formation);
     return normalized;
@@ -142,6 +172,12 @@ function normalizeEvent(candidate, sequence, formations) {
       "Attacker formation id",
     );
     normalized.targetFormationId = boundedString(event.targetFormationId, "Target formation id");
+    if (
+      stateVersion >= BATTLE_STATE_VERSION &&
+      !formations.byId.has(normalized.attackerFormationId)
+    ) {
+      throw new Error("Attack attacker formation is not registered");
+    }
     const target = formations.byId.get(normalized.targetFormationId);
     if (!target) throw new Error("Attack target formation is not registered");
     normalized.summary = normalizeSummary(event.summary);
@@ -192,20 +228,22 @@ export function createBattleState({ id, createdAt, rulesSnapshot = "catalogue-cu
 
 export function normalizeBattleState(candidate) {
   const state = record(candidate, "Battle state must be an object");
-  if (state.version !== BATTLE_STATE_VERSION) {
+  if (![LEGACY_BATTLE_STATE_VERSION, BATTLE_STATE_VERSION].includes(state.version)) {
     throw new Error(`Unsupported battle state version: ${String(state.version)}`);
   }
-  const players = normalizePlayers(state.players);
+  const players = normalizePlayers(state.players, state.version);
   if (!Array.isArray(state.events) || state.events.length > 10_000) {
     throw new Error("Battle state events must contain at most 10000 entries");
   }
   const formations = { players: new Set(players.map((player) => player.id)), byId: new Map() };
-  const events = state.events.map((event, index) => normalizeEvent(event, index + 1, formations));
+  const events = state.events.map((event, index) =>
+    normalizeEvent(event, index + 1, formations, state.version),
+  );
   if (new Set(events.map((event) => event.id)).size !== events.length) {
     throw new Error("Battle event ids must be unique");
   }
   const normalized = {
-    version: BATTLE_STATE_VERSION,
+    version: state.version,
     id: boundedString(state.id, "Battle state id", 100),
     createdAt: nonnegativeInteger(state.createdAt, "Battle createdAt", Number.MAX_SAFE_INTEGER),
     rulesSnapshot: boundedString(state.rulesSnapshot, "Battle rules snapshot"),
@@ -233,9 +271,20 @@ export function replayBattleState(state) {
   const formations = new Map();
   const attacks = new Map();
   const activeAttackIds = [];
+  const targetedFormationIds = new Set();
   for (const event of state.events) {
     if (event.type === "formation_registered") {
       if (formations.has(event.formation.id)) throw new Error("Formation is already registered");
+      formations.set(event.formation.id, {
+        ...event.formation,
+        health: initialHealth(event.formation),
+      });
+      continue;
+    }
+    if (event.type === "formation_configured") {
+      if (targetedFormationIds.has(event.formation.id)) {
+        throw new Error("Formation cannot be configured after it has been attacked");
+      }
       formations.set(event.formation.id, {
         ...event.formation,
         health: initialHealth(event.formation),
@@ -281,6 +330,7 @@ export function replayBattleState(state) {
       }
       attacks.set(event.id, event);
       activeAttackIds.push(event.id);
+      targetedFormationIds.add(event.targetFormationId);
       continue;
     }
     const reverted = attacks.get(event.revertsEventId);
@@ -307,7 +357,7 @@ export function registerBattleFormation(state, formation, id, at) {
   const replayed = replayBattleState(state);
   if (replayed.formations.has(formation.id)) return state;
   return appendEvent(state, {
-    version: BATTLE_STATE_VERSION,
+    version: BATTLE_EVENT_VERSION,
     id,
     sequence: state.events.length + 1,
     at,
@@ -318,6 +368,41 @@ export function registerBattleFormation(state, formation, id, at) {
 
 export function battleFormationHealth(state, formationId) {
   return replayBattleState(state).formations.get(formationId)?.health ?? null;
+}
+
+export function battleFormation(state, formationId) {
+  return replayBattleState(state).formations.get(formationId) ?? null;
+}
+
+export function battleFormationWasTargeted(state, formationId) {
+  return state.events.some(
+    (event) => event.type === "attack_resolved" && event.targetFormationId === formationId,
+  );
+}
+
+export function configureUnengagedBattleFormation(state, formation, id, at) {
+  if (battleFormationWasTargeted(state, formation.id)) {
+    throw new Error("Target equipment is locked after this formation has been attacked");
+  }
+  const index = state.events.findIndex(
+    (event) => event.type === "formation_registered" && event.formation.id === formation.id,
+  );
+  if (index < 0) throw new Error("Formation is not registered for this battle");
+  const previous = state.events[index].formation;
+  if (
+    previous.playerId !== formation.playerId ||
+    previous.sourceFormationId !== formation.sourceFormationId
+  ) {
+    throw new Error("Formation identity cannot change during battle setup");
+  }
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "formation_configured",
+    formation,
+  });
 }
 
 export function appendResolvedAttack(
@@ -361,7 +446,7 @@ export function appendResolvedAttack(
     },
   }));
   return appendEvent(state, {
-    version: BATTLE_STATE_VERSION,
+    version: BATTLE_EVENT_VERSION,
     id,
     sequence: state.events.length + 1,
     at,
@@ -378,7 +463,7 @@ export function revertLatestAttack(state, id, at) {
   const revertsEventId = replayed.activeAttackIds.at(-1);
   if (!revertsEventId) throw new Error("There is no resolved attack to undo");
   return appendEvent(state, {
-    version: BATTLE_STATE_VERSION,
+    version: BATTLE_EVENT_VERSION,
     id,
     sequence: state.events.length + 1,
     at,

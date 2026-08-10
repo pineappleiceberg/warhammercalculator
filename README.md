@@ -640,13 +640,23 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-stores resolved attacks in a versioned append-only event log. Mixed-profile
+creates battle-state version 2 as soon as both lists are selected. Every
+formation from both saved roster revisions receives a stable player-and-saved-unit
+identity before combat, so attackers and targets never appear implicitly on
+their first attack. A later roster edit fails closed instead of mixing a changed
+list into existing wounds or casualties. Version-1 logs migrate by preserving
+their registrations, attack IDs, allocations, and health while adding every
+missing roster formation ahead of combat events. Defensive-equipment allocation
+remains battle-local and editable until that formation has actually been
+targeted, after which its exact bearer identities are frozen for replay.
+Play Mode stores resolved attacks in a versioned append-only event log. Mixed-profile
 wounds, casualties, destroyed formations, and defensive-equipment bearer
 identity carry into later attacks, including after swapping which list is
 attacking. Undo appends a compensating event instead of deleting history.
 Validated JSON battle exports and imports preserve the rules snapshot and fail
 closed when the referenced saved lists or loaded catalogue do not match.
-The same version-1 formation-health replay now runs in native C and WebAssembly.
+The same version-1 flat event ABI for formation-health replay runs in native C
+and WebAssembly for both version-1 and version-2 JSON battle envelopes.
 It validates attack transitions, damage and casualty totals, the one-wounded-model
 invariant, and last-in-first-out compensating undo without modifying its output
 when an event stream is invalid. `POST /api/v1/battle/replay` accepts
