@@ -14,16 +14,53 @@ priority over feature count.
 - Cover every rules or profile change with regression tests.
 - Keep native C, WebAssembly, API, web, formal checks, and CI consistent.
 
+## Complete battle target
+
+The persistent goal now includes a complete guided and automated battle engine,
+not only matchup and attack resolution. The authoritative completion criteria,
+required state, rules coverage, geometry, automation boundaries, verification
+evidence, and delivery order are defined in
+[`BATTLE_ENGINE_REQUIREMENTS.md`](BATTLE_ENGINE_REQUIREMENTS.md). The goal is not
+complete while a supported full game still requires the calculator to silently
+ignore a mandatory rule or while attack results do not update canonical battle
+state.
+
 ## Prioritized backlog
 
-1. Track limited self-unit abilities such as Oversight Drone in Play Mode with
-   the same explicit per-battle spend and recovery semantics already used for
-   supporting abilities.
-2. Normalize the remaining mixed “twin lightning claws or two different
+1. Introduce a versioned canonical battle state and append-only event log, then
+   make resolved attacks persist wounds, casualties, destroyed units, and
+   reversible allocations against the selected saved-list formations.
+2. Add a round, turn, phase, pending-choice, and exact effect-expiry state
+   machine as the foundation for complete guided play.
+3. Normalize the remaining mixed “twin lightning claws or two different
    weapons” pools and the Terminator cyclone pairing rule without flattening
    their mutually exclusive branches.
+4. Add Command Point, Victory Point, objective, Battle-shock, mission, scoring,
+   and limited-resource state on top of the event log.
+5. Expand the legal-action and timing engine through movement, reserves,
+   transports, charges, Fight sequencing, pile-in, consolidation, reactions,
+   and Stratagem windows.
+6. Build and enforce the source-locked faction, detachment, enhancement,
+   Stratagem, terrain, and mission coverage matrix described by the complete
+   battle requirements.
+7. Add reviewable table geometry and player-entered movement, range, visibility,
+   cover, coherency, Engagement Range, terrain, and objective facts.
+8. Deliver full guided-game replay scenarios before adding deterministic
+   automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-10: Unified limited self-unit and supporting-unit resources in Play
+  Mode. Oversight Drone now spends its once-per-battle use when activated,
+  remains active across every affected weapon, disables after exhaustion, and
+  exposes an editable remaining-use correction alongside Blacklight Marker
+  Drones. Uses are keyed to the exact saved unit, including unique source units
+  inside formations. Ambiguous duplicate sources fail closed. Limited abilities
+  saved as list defaults start inactive instead of receiving a free use. Play
+  recovery version 2 preserves prior supporting-unit counts and conservatively
+  spends an already-active legacy self-unit ability during migration. Generic
+  resource, formation-source, Vespid equipment, exhaustion, correction,
+  persistence, migration, and rendered workflow regressions cover the change.
 
 - 2026-08-08: Bound the remaining named wargear-derived combat rules in SQLite
   schema 76. Survey Augur, Rod of Office, both Panspectral Scanner rules,
@@ -154,8 +191,7 @@ priority over feature count.
   regressions cover the change. Twelve specialist or named-group mappings
   remain explicitly conservative.
 
-- 2026-08-08: Made every defensive-equipment count limit exact in SQLite schema
-  67. Command Squad and Company Veterans on Bikes now expose six stable,
+- 2026-08-08: Made every defensive-equipment count limit exact in SQLite schema 67. Command Squad and Company Veterans on Bikes now expose six stable,
   composition-derived catalogue models linked to their two original uniform
   source statlines. Shield eligibility distinguishes the Company Champion and
   Company Veterans from the Apothecary and Ancient, and excludes the Veteran

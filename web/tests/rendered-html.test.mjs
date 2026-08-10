@@ -144,7 +144,7 @@ test("server-renders every battle workflow", async () => {
       assert.match(html, /Reset battle/);
       assert.match(html, /Allocate first/);
       assert.match(html, /recover automatically/i);
-      assert.match(html, /limited supporting-ability uses/i);
+      assert.match(html, /limited ability uses/i);
       assert.match(html, /<legend>Attacker<\/legend>/);
       assert.match(html, /<legend>Target<\/legend>/);
       assert.match(html, /role="status"/);

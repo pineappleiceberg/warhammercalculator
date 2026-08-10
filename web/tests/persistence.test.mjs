@@ -8,12 +8,15 @@ import {
 } from "../lib/army-list-codec.mjs";
 import { createPlayRecovery, parsePlayRecovery } from "../lib/play-recovery.mjs";
 import {
-  commitSupportPresetSelection,
-  normalizeSupportUses,
-  setSupportUsesRemaining,
-  spendSupportUse,
-  supportUsesRemaining,
-} from "../lib/support-uses.mjs";
+  abilityUsesRemaining,
+  commitAbilityPresetSelection,
+  normalizeAbilityUses,
+  reconcileActiveLimitedAbilityUses,
+  setAbilityUsesRemaining,
+  spendAbilityUse,
+  withoutLimitedAbilityPresetIds,
+} from "../lib/ability-uses.mjs";
+import { savedFormationCombatPresetSourceUnitIds } from "../lib/formations.mjs";
 
 const list = {
   id: "01234567-89ab-4cde-8fab-0123456789ab",
@@ -237,7 +240,10 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
     activeSupportPresetIds: ["datasheet-3:ability:5"],
     targetSupportUnitId: "unit-3",
     activeTargetSupportPresetIds: ["datasheet-4:ability:6"],
-    supportUsesSpent: { "unit-2": { "datasheet-3:ability:5": 1 } },
+    abilityUsesSpent: {
+      "unit-1": { "datasheet-1:ability:2": 1 },
+      "unit-2": { "datasheet-3:ability:5": 1 },
+    },
     targetDefensiveEquipmentCounts: { "unit-1::3::equipment-1": 1 },
     profile: {
       attacks: 2,
@@ -299,7 +305,9 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   assert.deepEqual(recovery.activeSupportPresetIds, ["datasheet-3:ability:5"]);
   assert.equal(recovery.targetSupportUnitId, "unit-3");
   assert.deepEqual(recovery.activeTargetSupportPresetIds, ["datasheet-4:ability:6"]);
-  assert.deepEqual(recovery.supportUsesSpent, {
+  assert.equal(recovery.version, 2);
+  assert.deepEqual(recovery.abilityUsesSpent, {
+    "unit-1": { "datasheet-1:ability:2": 1 },
     "unit-2": { "datasheet-3:ability:5": 1 },
   });
   assert.deepEqual(recovery.targetDefensiveEquipmentCounts, {
@@ -342,19 +350,23 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   assert.equal(recovery.profile.targetBattleShocked, true);
   assert.equal(recovery.profile.targetStrengthState, "below_half");
   assert.deepEqual(parsePlayRecovery(JSON.parse(JSON.stringify(recovery))), recovery);
-  const legacy = { ...recovery };
+  const legacy = { ...recovery, version: 1, supportUsesSpent: recovery.abilityUsesSpent };
+  delete legacy.abilityUsesSpent;
   delete legacy.supportUnitId;
   delete legacy.activeSupportPresetIds;
   delete legacy.targetSupportUnitId;
   delete legacy.activeTargetSupportPresetIds;
-  delete legacy.supportUsesSpent;
   delete legacy.targetDefensiveEquipmentCounts;
   const migrated = parsePlayRecovery(legacy);
+  assert.equal(migrated.version, 2);
   assert.equal(migrated.supportUnitId, "");
   assert.deepEqual(migrated.activeSupportPresetIds, []);
   assert.equal(migrated.targetSupportUnitId, "");
   assert.deepEqual(migrated.activeTargetSupportPresetIds, []);
-  assert.deepEqual(migrated.supportUsesSpent, {});
+  assert.deepEqual(migrated.abilityUsesSpent, {
+    "unit-1": { "datasheet-1:ability:2": 1 },
+    "unit-2": { "datasheet-3:ability:5": 1 },
+  });
   assert.deepEqual(migrated.targetDefensiveEquipmentCounts, {});
   const legacyProfile = JSON.parse(JSON.stringify(recovery));
   delete legacyProfile.profile.targetClosestEligible;
@@ -388,7 +400,7 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
     /activeTargetSupportPresetIds/,
   );
   assert.throws(
-    () => parsePlayRecovery({ ...recovery, supportUsesSpent: { "unit-2": { preset: -1 } } }),
+    () => parsePlayRecovery({ ...recovery, abilityUsesSpent: { "unit-2": { preset: -1 } } }),
     /use count/i,
   );
   assert.throws(
@@ -401,7 +413,7 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   );
 });
 
-test("tracks limited support uses per saved unit without spending per attack", () => {
+test("tracks limited self and support ability uses per saved unit without spending per attack", () => {
   const limited = {
     id: "datasheet:ability",
     name: "Blacklight Marker Drones",
@@ -409,49 +421,99 @@ test("tracks limited support uses per saved unit without spending per attack", (
   };
   const unlimited = { id: "datasheet:other", name: "Forward Observers" };
   let state = {};
-  let selection = commitSupportPresetSelection(
+  let selection = commitAbilityPresetSelection(
     [limited, unlimited],
     [],
     [limited.id],
-    "army-unit-a",
+    { [limited.id]: "army-unit-a" },
     state,
   );
   state = selection.uses;
-  assert.equal(supportUsesRemaining(state, "army-unit-a", limited.id, 2), 1);
+  assert.equal(abilityUsesRemaining(state, "army-unit-a", limited.id, 2), 1);
   assert.deepEqual(selection.selectedIds, [limited.id]);
 
-  selection = commitSupportPresetSelection(
+  selection = commitAbilityPresetSelection(
     [limited, unlimited],
     selection.selectedIds,
     selection.selectedIds,
-    "army-unit-a",
+    { [limited.id]: "army-unit-a" },
     state,
   );
-  assert.equal(supportUsesRemaining(selection.uses, "army-unit-a", limited.id, 2), 1);
+  assert.equal(abilityUsesRemaining(selection.uses, "army-unit-a", limited.id, 2), 1);
 
-  selection = commitSupportPresetSelection(
+  selection = commitAbilityPresetSelection(
     [limited, unlimited],
     [limited.id],
     [],
-    "army-unit-a",
+    { [limited.id]: "army-unit-a" },
     selection.uses,
   );
-  selection = commitSupportPresetSelection(
+  selection = commitAbilityPresetSelection(
     [limited, unlimited],
     [],
     [limited.id],
-    "army-unit-a",
+    { [limited.id]: "army-unit-a" },
     selection.uses,
   );
-  assert.equal(supportUsesRemaining(selection.uses, "army-unit-a", limited.id, 2), 0);
-  assert.equal(supportUsesRemaining(selection.uses, "army-unit-b", limited.id, 2), 2);
+  assert.equal(abilityUsesRemaining(selection.uses, "army-unit-a", limited.id, 2), 0);
+  assert.equal(abilityUsesRemaining(selection.uses, "army-unit-b", limited.id, 2), 2);
   assert.throws(
-    () => spendSupportUse(selection.uses, "army-unit-a", limited.id, 2),
+    () => spendAbilityUse(selection.uses, "army-unit-a", limited.id, 2),
     /no uses remaining/i,
   );
-  const corrected = setSupportUsesRemaining(selection.uses, "army-unit-a", limited.id, 2, 1);
-  assert.equal(supportUsesRemaining(corrected, "army-unit-a", limited.id, 2), 1);
-  assert.deepEqual(setSupportUsesRemaining(corrected, "army-unit-a", limited.id, 2, 2), {});
-  assert.deepEqual(normalizeSupportUses({ "army-unit-a": { [limited.id]: 0 } }), {});
-  assert.throws(() => normalizeSupportUses({ "army-unit-a": { [limited.id]: 1.5 } }), /count/);
+  const corrected = setAbilityUsesRemaining(selection.uses, "army-unit-a", limited.id, 2, 1);
+  assert.equal(abilityUsesRemaining(corrected, "army-unit-a", limited.id, 2), 1);
+  assert.deepEqual(setAbilityUsesRemaining(corrected, "army-unit-a", limited.id, 2, 2), {});
+  assert.deepEqual(normalizeAbilityUses({ "army-unit-a": { [limited.id]: 0 } }), {});
+  assert.throws(() => normalizeAbilityUses({ "army-unit-a": { [limited.id]: 1.5 } }), /count/);
+  assert.deepEqual(
+    withoutLimitedAbilityPresetIds([limited, unlimited], [limited.id, unlimited.id]),
+    [unlimited.id],
+  );
+  assert.throws(
+    () => commitAbilityPresetSelection([limited], [], [limited.id], {}, {}),
+    /source unit is ambiguous/i,
+  );
+  assert.deepEqual(
+    reconcileActiveLimitedAbilityUses(
+      [
+        {
+          presets: [limited, unlimited],
+          selectedIds: [limited.id],
+          sourceUnitIds: { [limited.id]: "legacy-self-unit" },
+        },
+      ],
+      {},
+    ),
+    { "legacy-self-unit": { [limited.id]: 1 } },
+  );
+  assert.deepEqual(
+    reconcileActiveLimitedAbilityUses(
+      [
+        {
+          presets: [limited],
+          selectedIds: [limited.id],
+          sourceUnitIds: { [limited.id]: "army-unit-a" },
+        },
+      ],
+      selection.uses,
+    ),
+    selection.uses,
+  );
+});
+
+test("maps a limited formation ability to one saved source unit and fails closed if ambiguous", () => {
+  const preset = { id: "datasheet:ability", usesPerBattle: 1 };
+  const formation = {
+    components: [
+      { unit: { id: "saved-a" }, catalogueUnit: { combatPresets: [preset] } },
+      { unit: { id: "saved-b" }, catalogueUnit: { combatPresets: [{ id: "other" }] } },
+    ],
+  };
+  assert.deepEqual(savedFormationCombatPresetSourceUnitIds(formation), {
+    [preset.id]: "saved-a",
+    other: "saved-b",
+  });
+  formation.components[1].catalogueUnit.combatPresets.push(preset);
+  assert.deepEqual(savedFormationCombatPresetSourceUnitIds(formation), { other: "saved-b" });
 });

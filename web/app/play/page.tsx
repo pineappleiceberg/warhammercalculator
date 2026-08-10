@@ -40,6 +40,7 @@ import {
   savedFormationForUnit,
   savedFormationDefensiveEquipmentDefaults,
   savedFormationCombatPresetIds,
+  savedFormationCombatPresetSourceUnitIds,
   savedFormationGroups,
   savedFormationModelSegments,
   savedFormationTargetSequence,
@@ -50,6 +51,10 @@ import {
   applyDefensiveEquipmentTargets,
   defensiveEquipmentSelectionKey,
 } from "../../lib/defensive-equipment.mjs";
+import {
+  reconcileActiveLimitedAbilityUses,
+  withoutLimitedAbilityPresetIds,
+} from "../../lib/ability-uses.mjs";
 
 type LogEntry = {
   id: string;
@@ -108,7 +113,7 @@ export default function PlayMode() {
   const [activeSupportPresetIds, setActiveSupportPresetIds] = useState<string[]>([]);
   const [targetSupportUnitId, setTargetSupportUnitId] = useState("");
   const [activeTargetSupportPresetIds, setActiveTargetSupportPresetIds] = useState<string[]>([]);
-  const [supportUsesSpent, setSupportUsesSpent] = useState<Record<string, Record<string, number>>>(
+  const [abilityUsesSpent, setAbilityUsesSpent] = useState<Record<string, Record<string, number>>>(
     {},
   );
   const [profile, setProfile] = useState<CombatProfile>(DEFAULT_PROFILE);
@@ -117,6 +122,7 @@ export default function PlayMode() {
   const [status, setStatus] = useState("Select two saved lists");
   const [recoveryReady, setRecoveryReady] = useState(false);
   const recovered = useRef(false);
+  const migrateLegacyLimitedUses = useRef(false);
   const suppressRecoverySave = useRef(false);
   const latestResult = useRef<HTMLElement>(null);
 
@@ -137,7 +143,9 @@ export default function PlayMode() {
       try {
         const raw = window.localStorage.getItem(PLAY_RECOVERY_KEY);
         if (raw) {
-          const saved = parsePlayRecovery(JSON.parse(raw)) as unknown as {
+          const rawRecovery = JSON.parse(raw);
+          migrateLegacyLimitedUses.current = rawRecovery.version === 1;
+          const saved = parsePlayRecovery(rawRecovery) as unknown as {
             attackerListId: string;
             targetListId: string;
             attackerUnitId: string;
@@ -155,7 +163,7 @@ export default function PlayMode() {
             activeSupportPresetIds: string[];
             targetSupportUnitId: string;
             activeTargetSupportPresetIds: string[];
-            supportUsesSpent: Record<string, Record<string, number>>;
+            abilityUsesSpent: Record<string, Record<string, number>>;
             targetDefensiveEquipmentCounts: Record<string, number>;
           };
           setAttackerListId(saved.attackerListId);
@@ -173,7 +181,7 @@ export default function PlayMode() {
           setActiveSupportPresetIds(saved.activeSupportPresetIds);
           setTargetSupportUnitId(saved.targetSupportUnitId);
           setActiveTargetSupportPresetIds(saved.activeTargetSupportPresetIds);
-          setSupportUsesSpent(saved.supportUsesSpent);
+          setAbilityUsesSpent(saved.abilityUsesSpent);
           setTargetDefensiveEquipmentCounts(saved.targetDefensiveEquipmentCounts);
           setProfile(normalizeProfile(saved.profile));
           setHistory(saved.history);
@@ -213,7 +221,7 @@ export default function PlayMode() {
       activeSupportPresetIds,
       targetSupportUnitId,
       activeTargetSupportPresetIds,
-      supportUsesSpent,
+      abilityUsesSpent,
       targetDefensiveEquipmentCounts,
       profile,
       history,
@@ -237,7 +245,7 @@ export default function PlayMode() {
     targetUnitId,
     supportUnitId,
     targetSupportUnitId,
-    supportUsesSpent,
+    abilityUsesSpent,
     targetDefensiveEquipmentCounts,
     weaponId,
   ]);
@@ -311,6 +319,8 @@ export default function PlayMode() {
           ) ?? targetCatalogueUnit.combatPresets,
       }
     : undefined;
+  const attackerAbilitySourceUnitIds = savedFormationCombatPresetSourceUnitIds(attackerFormation);
+  const targetAbilitySourceUnitIds = savedFormationCombatPresetSourceUnitIds(targetFormation);
   const attackerFormationKeywords = [
     ...new Set(
       attackerFormation?.components.flatMap(
@@ -379,6 +389,87 @@ export default function PlayMode() {
   const targetSupportCatalogueUnit = catalogue?.units.find(
     (unit) => unit.id === targetSupportArmyUnit?.unitId,
   );
+  useEffect(() => {
+    if (!recoveryReady || !catalogue || !migrateLegacyLimitedUses.current) return;
+    migrateLegacyLimitedUses.current = false;
+    const recoveredAttackerList = lists.find((list) => list.id === attackerListId);
+    const recoveredTargetList = lists.find((list) => list.id === targetListId);
+    const recoveredAttackerFormation = recoveredAttackerList
+      ? savedFormationForUnit(catalogue, recoveredAttackerList, attackerUnitId)
+      : undefined;
+    const recoveredTargetFormation = recoveredTargetList
+      ? savedFormationForUnit(catalogue, recoveredTargetList, targetUnitId)
+      : undefined;
+    const recoveredSupportUnit = recoveredAttackerList?.units.find(
+      (unit) => unit.id === supportUnitId,
+    );
+    const recoveredTargetSupportUnit = recoveredTargetList?.units.find(
+      (unit) => unit.id === targetSupportUnitId,
+    );
+    const recoveredSupportCatalogueUnit = catalogue.units.find(
+      (unit) => unit.id === recoveredSupportUnit?.unitId,
+    );
+    const recoveredTargetSupportCatalogueUnit = catalogue.units.find(
+      (unit) => unit.id === recoveredTargetSupportUnit?.unitId,
+    );
+    setAbilityUsesSpent((current) =>
+      reconcileActiveLimitedAbilityUses(
+        [
+          {
+            presets:
+              recoveredAttackerFormation?.components.flatMap(
+                (component) => component.catalogueUnit?.combatPresets ?? [],
+              ) ?? [],
+            selectedIds: activeAttackerPresetIds,
+            sourceUnitIds: savedFormationCombatPresetSourceUnitIds(recoveredAttackerFormation),
+          },
+          {
+            presets:
+              recoveredTargetFormation?.components.flatMap(
+                (component) => component.catalogueUnit?.combatPresets ?? [],
+              ) ?? [],
+            selectedIds: activeTargetPresetIds,
+            sourceUnitIds: savedFormationCombatPresetSourceUnitIds(recoveredTargetFormation),
+          },
+          {
+            presets: recoveredSupportCatalogueUnit?.combatPresets ?? [],
+            selectedIds: activeSupportPresetIds,
+            sourceUnitIds: Object.fromEntries(
+              (recoveredSupportCatalogueUnit?.combatPresets ?? []).map((preset) => [
+                preset.id,
+                supportUnitId,
+              ]),
+            ),
+          },
+          {
+            presets: recoveredTargetSupportCatalogueUnit?.combatPresets ?? [],
+            selectedIds: activeTargetSupportPresetIds,
+            sourceUnitIds: Object.fromEntries(
+              (recoveredTargetSupportCatalogueUnit?.combatPresets ?? []).map((preset) => [
+                preset.id,
+                targetSupportUnitId,
+              ]),
+            ),
+          },
+        ],
+        current,
+      ),
+    );
+  }, [
+    activeAttackerPresetIds,
+    activeSupportPresetIds,
+    activeTargetPresetIds,
+    activeTargetSupportPresetIds,
+    attackerListId,
+    attackerUnitId,
+    catalogue,
+    lists,
+    recoveryReady,
+    supportUnitId,
+    targetListId,
+    targetSupportUnitId,
+    targetUnitId,
+  ]);
   const weaponGroups = groupWeaponProfiles(
     (firingDeckChoice
       ? firingDeckPassengerCatalogueUnit
@@ -1328,7 +1419,12 @@ export default function PlayMode() {
     const nextTargetSourceCanSeeAttacker = false;
     const nextTargetStrengthState = "full" as const;
     setTargetModelId(firstSegment?.id ?? (model ? `${nextTarget?.id}:${model.id}` : ""));
-    setActiveTargetPresetIds(nextTargetPresetIds);
+    setActiveTargetPresetIds(
+      withoutLimitedAbilityPresetIds(
+        nextTargetPresetUnit?.combatPresets ?? [],
+        nextTargetPresetIds,
+      ),
+    );
     setActiveSupportPresetIds([]);
     setTargetSupportUnitId("");
     setActiveTargetSupportPresetIds([]);
@@ -1752,7 +1848,7 @@ export default function PlayMode() {
     setActiveSupportPresetIds([]);
     setTargetSupportUnitId("");
     setActiveTargetSupportPresetIds([]);
-    setSupportUsesSpent({});
+    setAbilityUsesSpent({});
     setProfile(DEFAULT_PROFILE);
     setResult(null);
     setHistory([]);
@@ -1865,13 +1961,20 @@ export default function PlayMode() {
                           0,
                         );
                       setAttackerUnitId(event.target.value);
+                      const nextCatalogueUnit = catalogue?.units.find(
+                        (unit) => unit.id === nextUnit?.unitId,
+                      );
+                      const nextPresets =
+                        nextFormation?.components.flatMap(
+                          (component) => component.catalogueUnit?.combatPresets ?? [],
+                        ) ??
+                        nextCatalogueUnit?.combatPresets ??
+                        [];
+                      const nextPresetIds = nextFormation
+                        ? savedFormationCombatPresetIds(nextFormation)
+                        : savedUnitCombatPresetIds(nextUnit, nextCatalogueUnit);
                       setActiveAttackerPresetIds(
-                        nextFormation
-                          ? savedFormationCombatPresetIds(nextFormation)
-                          : savedUnitCombatPresetIds(
-                              nextUnit,
-                              catalogue?.units.find((unit) => unit.id === nextUnit?.unitId),
-                            ),
+                        withoutLimitedAbilityPresetIds(nextPresets, nextPresetIds),
                       );
                       setSupportUnitId("");
                       setActiveSupportPresetIds([]);
@@ -2984,6 +3087,9 @@ export default function PlayMode() {
                   sourceTargetDistance={profile.attackerSourceTargetDistance}
                   sourceTargetVisible={profile.attackerSourceCanSeeTarget}
                   disabledIds={unavailableAttackerSourcePresetIds}
+                  abilityUsesSpent={abilityUsesSpent}
+                  abilitySourceUnitIds={attackerAbilitySourceUnitIds}
+                  onAbilityUsesChange={setAbilityUsesSpent}
                 />
               )}
               {attackerCatalogueUnit ? (
@@ -2992,8 +3098,8 @@ export default function PlayMode() {
                   role="attacker"
                   selectedUnitId={supportUnitId}
                   selectedIds={activeSupportPresetIds}
-                  supportUsesSpent={supportUsesSpent}
-                  onSupportUsesChange={setSupportUsesSpent}
+                  abilityUsesSpent={abilityUsesSpent}
+                  onAbilityUsesChange={setAbilityUsesSpent}
                   onUnitChange={(unitId) => {
                     setSupportUnitId(unitId);
                     setActiveSupportPresetIds([]);
@@ -3037,6 +3143,9 @@ export default function PlayMode() {
                   targetStrengthState={profile.targetStrengthState}
                   sourceTargetDistance={profile.targetSourceAttackerDistance}
                   sourceTargetVisible={profile.targetSourceCanSeeAttacker}
+                  abilityUsesSpent={abilityUsesSpent}
+                  abilitySourceUnitIds={targetAbilitySourceUnitIds}
+                  onAbilityUsesChange={setAbilityUsesSpent}
                 />
               )}
               {targetCatalogueUnit ? (
@@ -3045,8 +3154,8 @@ export default function PlayMode() {
                   role="target"
                   selectedUnitId={targetSupportUnitId}
                   selectedIds={activeTargetSupportPresetIds}
-                  supportUsesSpent={supportUsesSpent}
-                  onSupportUsesChange={setSupportUsesSpent}
+                  abilityUsesSpent={abilityUsesSpent}
+                  onAbilityUsesChange={setAbilityUsesSpent}
                   onUnitChange={(unitId) => {
                     setTargetSupportUnitId(unitId);
                     setActiveTargetSupportPresetIds([]);
@@ -3318,8 +3427,8 @@ export default function PlayMode() {
           </div>
         </div>
         <small className="storage-note">
-          Selections, overrides, limited supporting-ability uses, and the attack log recover
-          automatically on this device.
+          Selections, overrides, limited ability uses, and the attack log recover automatically on
+          this device.
         </small>
         {history.length === 0 ? (
           <p>Resolved attacks will appear here for this play session.</p>

@@ -165,6 +165,22 @@ export function savedFormationCombatPresetIds(formation) {
   ];
 }
 
+export function savedFormationCombatPresetSourceUnitIds(formation) {
+  const sources = {};
+  const ambiguous = new Set();
+  for (const component of formation?.components ?? []) {
+    for (const preset of component.catalogueUnit?.combatPresets ?? []) {
+      if (sources[preset.id] && sources[preset.id] !== component.unit.id) {
+        delete sources[preset.id];
+        ambiguous.add(preset.id);
+      } else if (!ambiguous.has(preset.id)) {
+        sources[preset.id] = component.unit.id;
+      }
+    }
+  }
+  return sources;
+}
+
 export function savedUnitDefensiveEquipmentDefaults(savedUnit, catalogueUnit) {
   const stored = savedUnit?.defensiveEquipmentCounts;
   const defaults = {};

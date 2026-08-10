@@ -8,6 +8,11 @@ import {
   combatPresetSupportsRole,
   updateCombatPresetSelection,
 } from "../lib/combat-presets.mjs";
+import {
+  abilityUsesRemaining,
+  commitAbilityPresetSelection,
+  setAbilityUsesRemaining,
+} from "../lib/ability-uses.mjs";
 
 type Props = {
   presets: CatalogueCombatPreset[];
@@ -31,6 +36,9 @@ type Props = {
   sourceRelationship?: "self" | "supporting_unit";
   disabledIds?: string[];
   usageLabels?: Record<string, string>;
+  abilityUsesSpent?: Record<string, Record<string, number>>;
+  abilitySourceUnitIds?: Record<string, string>;
+  onAbilityUsesChange?: (uses: Record<string, Record<string, number>>) => void;
 };
 
 export function CombatPresetSelector({
@@ -55,6 +63,9 @@ export function CombatPresetSelector({
   sourceRelationship = "self",
   disabledIds = [],
   usageLabels = {},
+  abilityUsesSpent = {},
+  abilitySourceUnitIds = {},
+  onAbilityUsesChange,
 }: Props) {
   const available = presets.filter(
     (preset) =>
@@ -63,28 +74,70 @@ export function CombatPresetSelector({
       combatPresetSupportsRole(preset, role),
   );
   if (!available.length) return null;
+  const tracked = Boolean(onAbilityUsesChange);
+  const limitedPresets = available.filter((preset) => preset.usesPerBattle);
+  const remaining = Object.fromEntries(
+    limitedPresets
+      .filter((preset) => abilitySourceUnitIds[preset.id])
+      .map((preset) => [
+        preset.id,
+        abilityUsesRemaining(
+          abilityUsesSpent,
+          abilitySourceUnitIds[preset.id],
+          preset.id,
+          preset.usesPerBattle,
+        ),
+      ]),
+  );
   const selected = new Set(selectedIds);
-  const disabled = new Set(disabledIds);
+  const disabled = new Set([
+    ...disabledIds,
+    ...(tracked
+      ? limitedPresets
+          .filter((preset) => !abilitySourceUnitIds[preset.id] || remaining[preset.id] === 0)
+          .map((preset) => preset.id)
+      : []),
+  ]);
   return (
     <fieldset className="combat-preset-selector">
       <legend>{title ?? "Conditional unit abilities"}</legend>
-      <small>{hint ?? "Enable only when the published condition applies."}</small>
+      <small>
+        {hint ??
+          (tracked && limitedPresets.length
+            ? "Turning on a limited ability spends one use. Leave it on while resolving every weapon it affects."
+            : "Enable only when the published condition applies.")}
+      </small>
       {available.map((preset) => (
         <label key={preset.id} title={preset.description}>
           <input
             type="checkbox"
             checked={selected.has(preset.id)}
             disabled={disabled.has(preset.id) && !selected.has(preset.id)}
-            onChange={(event) =>
-              onChange(
-                updateCombatPresetSelection(
+            onChange={(event) => {
+              const nextIds = updateCombatPresetSelection(
+                available,
+                selectedIds,
+                preset.id,
+                event.target.checked,
+              );
+              if (!tracked) {
+                onChange(nextIds);
+                return;
+              }
+              try {
+                const next = commitAbilityPresetSelection(
                   available,
                   selectedIds,
-                  preset.id,
-                  event.target.checked,
-                ),
-              )
-            }
+                  nextIds,
+                  abilitySourceUnitIds,
+                  abilityUsesSpent,
+                );
+                onAbilityUsesChange?.(next.uses);
+                onChange(next.selectedIds);
+              } catch {
+                onChange(selectedIds);
+              }
+            }}
           />
           <span>
             <b>{preset.name}</b>
@@ -212,9 +265,53 @@ export function CombatPresetSelector({
             ) : null}
             <small>Affects {combatPresetSubjectSummary(preset, role)}</small>
             {usageLabels[preset.id] ? <small>{usageLabels[preset.id]}</small> : null}
+            {tracked && preset.usesPerBattle ? (
+              <small>
+                {abilitySourceUnitIds[preset.id]
+                  ? `${remaining[preset.id]} of ${preset.usesPerBattle} uses remaining`
+                  : "Source unit is ambiguous · unavailable"}
+              </small>
+            ) : null}
           </span>
         </label>
       ))}
+      {tracked && limitedPresets.some((preset) => abilitySourceUnitIds[preset.id]) ? (
+        <div className="support-use-controls">
+          {limitedPresets
+            .filter((preset) => abilitySourceUnitIds[preset.id])
+            .map((preset) => (
+              <label key={preset.id}>
+                <span>{preset.name} uses remaining</span>
+                <input
+                  aria-label={`${preset.name} uses remaining`}
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={preset.usesPerBattle}
+                  value={remaining[preset.id]}
+                  onChange={(event) => {
+                    const nextRemaining = Math.min(
+                      preset.usesPerBattle ?? 0,
+                      Math.max(0, Number(event.target.value) || 0),
+                    );
+                    onAbilityUsesChange?.(
+                      setAbilityUsesRemaining(
+                        abilityUsesSpent,
+                        abilitySourceUnitIds[preset.id],
+                        preset.id,
+                        preset.usesPerBattle,
+                        nextRemaining,
+                      ),
+                    );
+                    if (nextRemaining === 0 && selectedIds.includes(preset.id)) {
+                      onChange(selectedIds.filter((id) => id !== preset.id));
+                    }
+                  }}
+                />
+              </label>
+            ))}
+        </div>
+      ) : null}
     </fieldset>
   );
 }

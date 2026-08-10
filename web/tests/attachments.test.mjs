@@ -49,6 +49,11 @@ import {
   loadoutSubjectWarnings,
   rebaseCompositionLoadoutSubjectCounts,
 } from "../lib/loadout.mjs";
+import {
+  abilityUsesRemaining,
+  commitAbilityPresetSelection,
+  withoutLimitedAbilityPresetIds,
+} from "../lib/ability-uses.mjs";
 
 const catalogue = JSON.parse(
   await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),
@@ -1153,6 +1158,35 @@ test("named combat wargear enforces source choices and bearer-only attack splits
       choiceSelections: { [oversightChoice.id]: 1 },
     }),
     [],
+  );
+  assert.equal(oversight.usesPerBattle, 1);
+  assert.deepEqual(withoutLimitedAbilityPresetIds(vespid.combatPresets, [oversight.id]), []);
+  const activatedOversight = commitAbilityPresetSelection(
+    vespid.combatPresets,
+    [],
+    [oversight.id],
+    { [oversight.id]: "saved-vespid-a" },
+    {},
+  );
+  assert.equal(
+    abilityUsesRemaining(
+      activatedOversight.uses,
+      "saved-vespid-a",
+      oversight.id,
+      oversight.usesPerBattle,
+    ),
+    0,
+  );
+  assert.throws(
+    () =>
+      commitAbilityPresetSelection(
+        vespid.combatPresets,
+        [],
+        [oversight.id],
+        { [oversight.id]: "saved-vespid-a" },
+        activatedOversight.uses,
+      ),
+    /no uses remaining/i,
   );
 });
 

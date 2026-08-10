@@ -1,8 +1,8 @@
-import { normalizeSupportUses } from "./support-uses.mjs";
+import { normalizeAbilityUses } from "./ability-uses.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
 export const PLAY_RECOVERY_KEY = "warhammer-calculator:play-state:v1";
-export const PLAY_RECOVERY_VERSION = 1;
+export const PLAY_RECOVERY_VERSION = 2;
 
 const selectorKeys = [
   "attackerListId",
@@ -70,7 +70,9 @@ export function createPlayRecovery(state, savedAt = Date.now()) {
     attackerSourceCanSeeTarget: profile.attackerSourceCanSeeTarget ?? false,
     targetSourceCanSeeAttacker: profile.targetSourceCanSeeAttacker ?? false,
   };
-  recovery.supportUsesSpent = normalizeSupportUses(value.supportUsesSpent ?? {});
+  recovery.abilityUsesSpent = normalizeAbilityUses(
+    value.abilityUsesSpent ?? value.supportUsesSpent ?? {},
+  );
   recovery.targetDefensiveEquipmentCounts = normalizeDefensiveEquipmentCounts(
     value.targetDefensiveEquipmentCounts ?? {},
   );
@@ -103,7 +105,7 @@ export function createPlayRecovery(state, savedAt = Date.now()) {
 
 export function parsePlayRecovery(value) {
   const recovery = object(value, "Play recovery state must be an object");
-  if (recovery.version !== PLAY_RECOVERY_VERSION) {
+  if (![1, PLAY_RECOVERY_VERSION].includes(recovery.version)) {
     throw new Error(`Unsupported play recovery version: ${String(recovery.version)}`);
   }
   return createPlayRecovery(recovery, recovery.savedAt);

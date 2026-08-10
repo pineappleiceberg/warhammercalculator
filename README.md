@@ -734,10 +734,15 @@ that side can be used there. Observer effects additionally require
 `guided=true&spotted=true`, which prevents an Observer ability from being
 treated as the Observer's own attack bonus. A support distance of `0` is unknown
 and leaves range-gated rules inactive.
-Play Mode spends and recovers limited supporting-unit uses per saved unit
-instance; keep an activated support ability on while resolving each weapon it
-supports. Agent URLs are stateless and do not spend uses, but their result
-source reports `usesPerBattle` for selected limited support presets.
+Play Mode spends and recovers limited self-unit and supporting-unit uses per
+saved unit instance; keep an activated ability on while resolving each weapon
+it affects. Exhausted abilities cannot be reactivated unless the editable
+remaining-use control is corrected. Recovery version 2 migrates version-1
+support-use state and charges an already-active legacy self-unit ability once,
+so an interrupted battle cannot gain a free reuse during upgrade. Saved-list
+defaults never activate a limited ability without spending it. Agent URLs are
+stateless and do not spend uses, but their result source reports
+`usesPerBattle` for selected limited presets.
 `unitModels`, `nearbyEnemyModels`, `embarkedModels`, and
 `embarkedWracksModels` activate exact model-count-scaled Attacks bonuses at
 their published rounding boundaries; `0` means unknown. Embarked Wracks must
