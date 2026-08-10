@@ -1778,6 +1778,19 @@ select:focus {
   color: var(--muted);
   font-size: 12px;
 }
+.action-eligibility {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: #e8e1d4;
+}
+.action-eligibility > input {
+  min-height: 38px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+}
 .resolution-panel:focus {
   outline: 3px solid var(--gold);
   outline-offset: 3px;
@@ -1854,6 +1867,43 @@ select:focus {
 .objective-trackers,
 .scoring-events {
   grid-column: 1 / -1;
+}
+.action-tracker {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  color: var(--paper-light);
+  border: 1px solid #55534d;
+  background: #242321;
+}
+.action-tracker > span {
+  color: #aaa69d;
+  font-size: 12px;
+}
+.action-buttons {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+}
+.action-buttons label {
+  display: grid;
+  gap: 4px;
+  color: #aaa69d;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.action-buttons input {
+  width: 78px;
+  min-height: 34px;
+  padding: 6px 8px;
+  color: var(--paper-light);
+  background: #1f1f1d;
+  border: 1px solid #55534d;
 }
 .mission-setup {
   display: grid;

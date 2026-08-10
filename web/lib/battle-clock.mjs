@@ -61,12 +61,26 @@ export function nextBattleClock(clock, players) {
   const stepIndex = steps?.indexOf(clock.step) ?? -1;
   if (stepIndex < 0) throw new Error("Battle clock phase and step are inconsistent");
   if (stepIndex + 1 < steps.length) {
-    return { ...clock, step: steps[stepIndex + 1] };
+    const step = steps[stepIndex + 1];
+    return {
+      ...clock,
+      step,
+      priorityPlayerId:
+        clock.phase === "fight" && ["fights_first", "remaining_combats"].includes(step)
+          ? otherPlayerId(players, clock.activePlayerId)
+          : clock.priorityPlayerId,
+    };
   }
   const phaseIndex = BATTLE_PHASES.indexOf(clock.phase);
   if (phaseIndex + 1 < BATTLE_PHASES.length) {
     const phase = BATTLE_PHASES[phaseIndex + 1];
-    return { ...clock, phase, step: BATTLE_PHASE_STEPS[phase][0] };
+    return {
+      ...clock,
+      phase,
+      step: BATTLE_PHASE_STEPS[phase][0],
+      priorityPlayerId:
+        phase === "fight" ? otherPlayerId(players, clock.activePlayerId) : clock.activePlayerId,
+    };
   }
   if (clock.turn === 1) {
     const activePlayerId = otherPlayerId(players, clock.firstPlayerId);

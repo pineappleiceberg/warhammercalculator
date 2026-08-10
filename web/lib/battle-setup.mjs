@@ -208,6 +208,7 @@ export function initializeBattleForLists({
             sourceVersion < TIMELINE_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyUntimedThroughSequence ?? 0),
+          legacyUnactionedThroughSequence: next.events.length,
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

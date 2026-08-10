@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 4 as soon as both lists are selected. Every
+creates battle-state version 5 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -660,9 +660,21 @@ The guided timeline records battle round, first or second player turn, active
 and priority player, phase, and step. It covers Command, Movement, Shooting,
 Charge, and Fight through five rounds. Pending bounded choices stop both attacks
 and clock advancement until resolved, and recorded effects expire exactly at
-their step, phase, turn, round, or battle boundary. Attacks are accepted only
-from the active player's registered formation during the Shooting attack step or
-one of the two Fight attack steps.
+their step, phase, turn, round, or battle boundary. Version 5 records each
+formation's Remain Stationary, Normal Move, Advance, or Fall Back outcome, each
+charge attempt and target, and explicit player-confirmed exceptions for rules or
+physical-table facts that are not executable yet. Shooting and Fight attacks
+must belong to an open formation activation. A formation can complete only one
+activation in that phase, the clock cannot advance during an activation,
+Advanced formations are restricted to Assault weapons unless an exception is
+recorded, and ranged/melee weapon types are enforced by phase. Fight priority
+begins with the non-active player in each selection step, alternates after
+completed activations, and can be explicitly passed when that player has no
+eligible formation.
+Target legality is a separate fail-closed fact: each charge and attack records
+the player's confirmation of range, visibility, Engagement Range, and current
+table state. That confirmation never grants a rules exception; exceptions use a
+separate reason-bearing override until the corresponding rule is executable.
 Battle-state version 4 adds mission setup and replayed game accounting. Mission
 setup records the mission name, objective-marker count, starting Command Points,
 and the amount both players gain at the start of every Command phase. Play Mode
@@ -681,7 +693,7 @@ attacking. Undo appends a compensating event instead of deleting history.
 Validated JSON battle exports and imports preserve the rules snapshot and fail
 closed when the referenced saved lists or loaded catalogue do not match.
 The same version-1 flat event ABI for formation-health replay runs in native C
-and WebAssembly for version-1 through version-4 JSON battle envelopes.
+and WebAssembly for version-1 through version-5 JSON battle envelopes.
 It validates attack transitions, damage and casualty totals, the one-wounded-model
 invariant, and last-in-first-out compensating undo without modifying its output
 when an event stream is invalid. `POST /api/v1/battle/replay` accepts
@@ -690,7 +702,8 @@ replays the selected formation through Wasm, cross-checks the result against the
 web replay, independently cross-checks every guided clock transition through
 the C/WebAssembly clock, and returns per-segment health, active attack IDs, the
 current clock, pending-choice IDs, active effects, mission, per-player resources,
-objective control, Battle-shocked formation IDs, and categorized scoring history. The
+objective control, Battle-shocked formation IDs, categorized scoring history,
+movement and charge outcomes, and current/completed activation state. The
 portable ABI supports the same 32 formation segments and 10,000-event bound as
 the saved web schema.
 On narrow screens, Play Mode groups the attacker and target into guided steps,

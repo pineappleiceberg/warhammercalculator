@@ -1341,6 +1341,10 @@ static void test_battle_clock(void) {
     while (current[0] == WHC_BATTLE_CLOCK_ACTIVE) {
         assert(advances < 170u);
         assert(whc_next_battle_clock(current, next));
+        if (next[3] == WHC_BATTLE_PHASE_FIGHT &&
+            (next[4] == 0u || next[4] == 1u || next[4] == 2u)) {
+            assert(next[7] == 1u - next[6]);
+        }
         memcpy(current, next, sizeof(current));
         advances++;
     }

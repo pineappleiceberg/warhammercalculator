@@ -89,8 +89,12 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    machine.
 4. **Complete:** add CP, VP, objectives, Battle-shock, missions, scoring, and
    limited-resource accounting.
-5. Add the remaining legal actions and timing windows, beginning with target
-   selection and attack sequencing, then movement, charges, and Fight movement.
+5. **In progress:** target and weapon-type selection, replayed movement outcomes,
+   charge attempts, once-per-phase Shooting/Fight activations, Assault-after-
+   Advance restrictions, alternating Fight priority, and explicit fail-closed
+   eligibility overrides are complete. Remaining work includes deployment,
+   reserves, transports, reactions, full target eligibility, charge movement,
+   Heroic Intervention, pile-in, consolidation, and geometry-backed engagement.
 6. Normalize complete faction, detachment, enhancement, Stratagem, and mission
    coverage with source-locked executable rules and a fail-closed coverage gate.
 7. Add table geometry and player-supplied measurement and visibility facts.

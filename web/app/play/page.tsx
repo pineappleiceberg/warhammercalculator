@@ -22,10 +22,14 @@ import {
   battleFormationHealth,
   battleFormationWasTargeted,
   changeBattleResource,
+  completeFormationActivation,
   configureBattleMission,
   configureUnengagedBattleFormation,
   createBattleState,
   normalizeBattleState,
+  passFightPriority,
+  recordFormationCharge,
+  recordFormationMovement,
   replayBattleState,
   resolveBattleChoice,
   revertLatestAttack,
@@ -33,6 +37,7 @@ import {
   setBattleObjectiveControl,
   setFormationBattleShocked,
   startBattle,
+  startFormationActivation,
 } from "../../lib/battle-state.mjs";
 import { battleClockLabel } from "../../lib/battle-clock.mjs";
 import { battleRosterRevisionsMatch, initializeBattleForLists } from "../../lib/battle-setup.mjs";
@@ -149,6 +154,11 @@ export default function PlayMode() {
     {},
   );
   const [status, setStatus] = useState("Select two saved lists");
+  const [targetEligibilityConfirmationKey, setTargetEligibilityConfirmationKey] = useState("");
+  const [actionEligibilityOverride, setActionEligibilityOverride] = useState(false);
+  const [actionOverrideReason, setActionOverrideReason] = useState("");
+  const [fightsFirstOverride, setFightsFirstOverride] = useState(false);
+  const [chargeRoll, setChargeRoll] = useState(7);
   const [recoveryReady, setRecoveryReady] = useState(false);
   const recovered = useRef(false);
   const migrateLegacyLimitedUses = useRef(false);
@@ -299,6 +309,10 @@ export default function PlayMode() {
     if (retainBattleForLists(nextAttackerListId, nextTargetListId)) return;
     setBattleState(null);
     setPendingChoiceSelections({});
+    setActionEligibilityOverride(false);
+    setActionOverrideReason("");
+    setFightsFirstOverride(false);
+    setChargeRoll(7);
     setHistory([]);
   };
 
@@ -592,6 +606,44 @@ export default function PlayMode() {
     : "";
   const replayedBattle = battleState ? replayBattleState(battleState) : null;
   const battleClock = replayedBattle?.clock ?? null;
+  const targetEligibilityKey = `${attackerBattleFormationId}:${targetBattleFormationId}:${weaponProfile?.id ?? ""}:${battleClock?.battleRound ?? 0}:${battleClock?.turn ?? 0}:${battleClock?.phase ?? "setup"}:${battleClock?.step ?? "setup"}`;
+  const targetEligibilityConfirmed = targetEligibilityConfirmationKey === targetEligibilityKey;
+  const weaponHasAssault = Boolean(
+    weaponProfile?.abilities.some((ability) => ability.name.toLowerCase() === "assault"),
+  );
+  const battleActionOptions = {
+    weaponHasAssault,
+    weaponType: weaponProfile?.type ?? "",
+    eligibilityOverride: actionEligibilityOverride,
+    targetEligibilityConfirmed,
+    targetEligibilityReason:
+      actionOverrideReason.trim() ||
+      "Player confirmed range, visibility, Engagement Range, and target eligibility",
+    overrideReason:
+      actionOverrideReason.trim() || "Player confirmed a rule or physical-table eligibility fact",
+    fightsFirst: fightsFirstOverride,
+  };
+  const activeFormationActivation = replayedBattle?.activeActivation ?? null;
+  const selectedMovement = attackerBattleFormationId
+    ? replayedBattle?.movementByFormation.get(attackerBattleFormationId)
+    : null;
+  const selectedCharge = attackerBattleFormationId
+    ? replayedBattle?.chargeByFormation.get(attackerBattleFormationId)
+    : null;
+  const selectedMovementCurrent = Boolean(
+    selectedMovement &&
+      battleClock?.status === "active" &&
+      selectedMovement.clock.battleRound === battleClock.battleRound &&
+      selectedMovement.clock.turn === battleClock.turn &&
+      selectedMovement.clock.activePlayerId === battleClock.activePlayerId,
+  );
+  const selectedChargeCurrent = Boolean(
+    selectedCharge &&
+      battleClock?.status === "active" &&
+      selectedCharge.clock.battleRound === battleClock.battleRound &&
+      selectedCharge.clock.turn === battleClock.turn &&
+      selectedCharge.clock.activePlayerId === battleClock.activePlayerId,
+  );
   const pendingBattleChoices = replayedBattle ? [...replayedBattle.pendingChoices.values()] : [];
   const activeBattleEffects = replayedBattle ? [...replayedBattle.effects.values()] : [];
   const battleObjectives = replayedBattle ? [...replayedBattle.objectives.values()] : [];
@@ -1987,6 +2039,15 @@ export default function PlayMode() {
         throw new Error("Battle state is not ready");
       }
       if (!nextBattleState) throw new Error("Battle setup is not ready");
+      if (!replayBattleState(nextBattleState).activeActivation) {
+        nextBattleState = startFormationActivation(
+          nextBattleState,
+          attackerBattleFormationId,
+          battleActionOptions,
+          crypto.randomUUID(),
+          nextBattleState.events.length + 1,
+        );
+      }
       nextBattleState = appendResolvedAttack(nextBattleState, {
         id: attackId,
         at: nextBattleState.events.length + 1,
@@ -1996,6 +2057,10 @@ export default function PlayMode() {
         targets: orderedTargets,
         initialWoundsLost: targetFormationModels.initialWoundsLost,
         result: rolled,
+        weaponHasAssault,
+        weaponType: weaponProfile.type,
+        targetEligibilityConfirmed: battleActionOptions.targetEligibilityConfirmed,
+        targetEligibilityReason: battleActionOptions.targetEligibilityReason,
         summary: {
           attacker: attackerFormation.name,
           weapon: weaponProfile.name,
@@ -2257,6 +2322,96 @@ export default function PlayMode() {
     }
   };
 
+  const recordSelectedMovement = (movement: "stationary" | "normal" | "advance" | "fall_back") => {
+    if (!battleState || !attackerBattleFormationId) return;
+    try {
+      const next = recordFormationMovement(
+        battleState,
+        attackerBattleFormationId,
+        movement,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      refreshProfile(
+        weaponId,
+        targetModelId,
+        profileId,
+        activeAttackerPresetIds,
+        activeTargetPresetIds,
+        profile.targetDistance,
+        profile.attackerCharged,
+        profile.attackerBattleShocked,
+        profile.targetBattleShocked,
+        profile.targetStrengthState,
+        movement === "stationary",
+      );
+      setStatus(`${attackerFormation?.name ?? "Formation"} · ${movement.replace("_", " ")}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Movement could not be recorded");
+    }
+  };
+
+  const recordSelectedCharge = (successful: boolean) => {
+    if (!battleState || !attackerBattleFormationId || !targetBattleFormationId) return;
+    try {
+      const next = recordFormationCharge(
+        battleState,
+        attackerBattleFormationId,
+        [targetBattleFormationId],
+        successful,
+        chargeRoll,
+        battleActionOptions,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      refreshProfile(
+        weaponId,
+        targetModelId,
+        profileId,
+        activeAttackerPresetIds,
+        activeTargetPresetIds,
+        profile.targetDistance,
+        successful,
+      );
+      setStatus(`${successful ? "Successful" : "Failed"} charge · rolled ${chargeRoll}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Charge could not be recorded");
+    }
+  };
+
+  const finishFormationActivation = () => {
+    if (!battleState) return;
+    try {
+      const next = completeFormationActivation(
+        battleState,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setStatus("Formation activation completed");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Activation could not be completed");
+    }
+  };
+
+  const yieldFightPriority = () => {
+    if (!battleState) return;
+    try {
+      const next = passFightPriority(
+        battleState,
+        "No eligible formation selected at this priority",
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setStatus("Fight priority passed to the other player");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Fight priority could not pass");
+    }
+  };
+
   const togglePendingChoice = (choiceId: string, optionId: string, maximum: number) => {
     setPendingChoiceSelections((current) => {
       const selected = current[choiceId] ?? [];
@@ -2294,7 +2449,7 @@ export default function PlayMode() {
 
   const battleAttackReady =
     Boolean(battleState && attackerBattleFormationId) &&
-    battleCanResolveAttack(battleState, attackerBattleFormationId);
+    battleCanResolveAttack(battleState, attackerBattleFormationId, battleActionOptions);
 
   const ready = Boolean(
     attackerUnit &&
@@ -2337,10 +2492,29 @@ export default function PlayMode() {
       return "Resolve the pending choice before attacking";
     }
     if (battleClock.activePlayerId !== attackerPlayerId) {
-      return `${battleClockLabel(battleClock, battleState.players)} · swap sides to attack`;
+      if (battleClock.phase !== "fight") {
+        return `${battleClockLabel(battleClock, battleState.players)} · swap sides to attack`;
+      }
+    }
+    if (["shooting", "fight"].includes(battleClock.phase) && !targetEligibilityConfirmed) {
+      return "Confirm range, visibility, Engagement Range, and target eligibility";
     }
     if (!battleAttackReady) {
-      return `${battleClockLabel(battleClock, battleState.players)} · advance to an attack step`;
+      if (
+        activeFormationActivation &&
+        activeFormationActivation.formationId !== attackerBattleFormationId
+      ) {
+        return "Finish the current formation activation before selecting another unit";
+      }
+      if (battleClock.phase === "shooting" && selectedMovement?.movement === "advance") {
+        return weaponHasAssault
+          ? "This formation already completed its Shooting activation"
+          : "Only Assault weapons can fire after Advancing";
+      }
+      if (battleClock.phase === "fight") {
+        return "Select the formation with Fight priority, or confirm its eligibility";
+      }
+      return `${battleClockLabel(battleClock, battleState.players)} · record movement and advance to an attack step`;
     }
     if (targetFormationModels.destroyed) {
       return `${targetFormation?.name ?? targetUnit.name} is destroyed`;
@@ -3977,6 +4151,52 @@ export default function PlayMode() {
                 ))}
               </div>
             </details>
+            {battleClock?.status === "active" && (
+              <div className="action-eligibility">
+                <label className="inline-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={targetEligibilityConfirmed}
+                    onChange={(event) =>
+                      setTargetEligibilityConfirmationKey(
+                        event.target.checked ? targetEligibilityKey : "",
+                      )
+                    }
+                  />
+                  <span>
+                    Confirm the selected target is legal (range, visibility, Engagement Range, and
+                    table state)
+                  </span>
+                </label>
+                <label className="inline-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={actionEligibilityOverride}
+                    onChange={(event) => setActionEligibilityOverride(event.target.checked)}
+                  />
+                  <span>Apply a rules exception to this action</span>
+                </label>
+                {actionEligibilityOverride && (
+                  <input
+                    aria-label="Eligibility override reason"
+                    value={actionOverrideReason}
+                    maxLength={300}
+                    placeholder="Rule, Stratagem, Engagement Range, or table fact"
+                    onChange={(event) => setActionOverrideReason(event.target.value)}
+                  />
+                )}
+                {battleClock.phase === "fight" && actionEligibilityOverride && (
+                  <label className="inline-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={fightsFirstOverride}
+                      onChange={(event) => setFightsFirstOverride(event.target.checked)}
+                    />
+                    <span>This formation has Fights First</span>
+                  </label>
+                )}
+              </div>
+            )}
             <div className="play-action-bar">
               <span id="play-action-hint">{readyLabel}</span>
               <button
@@ -4066,13 +4286,120 @@ export default function PlayMode() {
               {battleClock.status === "active" && (
                 <button
                   type="button"
-                  disabled={pendingBattleChoices.length > 0}
+                  disabled={pendingBattleChoices.length > 0 || Boolean(activeFormationActivation)}
                   onClick={advanceGuidedBattle}
                 >
                   Next step
                 </button>
               )}
             </div>
+            {battleClock.status === "active" && activeFormationActivation && (
+              <div className="action-tracker" role="status">
+                <strong>
+                  {battleFormation(battleState, activeFormationActivation.formationId)?.name ??
+                    "Formation"}{" "}
+                  · {activeFormationActivation.activationType} activation
+                </strong>
+                <span>
+                  {activeFormationActivation.weaponRestriction === "assault_only"
+                    ? "Assault weapons only"
+                    : "Resolve every selected weapon before finishing"}
+                </span>
+                <button type="button" onClick={finishFormationActivation}>
+                  Finish activation
+                </button>
+              </div>
+            )}
+            {battleClock.status === "active" &&
+              battleClock.phase === "movement" &&
+              battleClock.step === "move_units" &&
+              attackerBattleFormationId &&
+              attackerPlayerId === battleClock.activePlayerId && (
+                <div className="action-tracker">
+                  <strong>{attackerFormation?.name ?? "Selected formation"} movement</strong>
+                  {selectedMovementCurrent ? (
+                    <span>Recorded: {selectedMovement?.movement.replace("_", " ")}</span>
+                  ) : (
+                    <div className="action-buttons" aria-label="Record selected formation movement">
+                      {(
+                        [
+                          ["stationary", "Remained stationary"],
+                          ["normal", "Normal move"],
+                          ["advance", "Advanced"],
+                          ["fall_back", "Fell Back"],
+                        ] as const
+                      ).map(([movement, label]) => (
+                        <button
+                          type="button"
+                          key={movement}
+                          onClick={() => recordSelectedMovement(movement)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            {battleClock.status === "active" &&
+              battleClock.phase === "charge" &&
+              battleClock.step === "charge_moves" &&
+              attackerBattleFormationId &&
+              targetBattleFormationId &&
+              attackerPlayerId === battleClock.activePlayerId && (
+                <div className="action-tracker">
+                  <strong>
+                    {attackerFormation?.name ?? "Selected formation"} charges{" "}
+                    {targetFormation?.name ?? "selected target"}
+                  </strong>
+                  {selectedChargeCurrent ? (
+                    <span>
+                      {selectedCharge?.successful ? "Successful" : "Failed"} · rolled{" "}
+                      {selectedCharge?.roll}
+                    </span>
+                  ) : (
+                    <div className="action-buttons">
+                      <label>
+                        <span>2D6 roll</span>
+                        <input
+                          type="number"
+                          min={2}
+                          max={12}
+                          value={chargeRoll}
+                          onChange={(event) =>
+                            setChargeRoll(Math.min(12, Math.max(2, +event.target.value || 2)))
+                          }
+                        />
+                      </label>
+                      <button type="button" onClick={() => recordSelectedCharge(true)}>
+                        Charge succeeded
+                      </button>
+                      <button type="button" onClick={() => recordSelectedCharge(false)}>
+                        Charge failed
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            {battleClock.status === "active" &&
+              battleClock.phase === "fight" &&
+              ["fights_first", "remaining_combats"].includes(battleClock.step) &&
+              !activeFormationActivation && (
+                <div className="action-tracker">
+                  <strong>
+                    Fight priority ·{" "}
+                    {battleState.players.find(
+                      (player) => player.id === battleClock.priorityPlayerId,
+                    )?.name ?? "Player"}
+                  </strong>
+                  <span>
+                    Select that player’s eligible formation, or pass if none can activate.
+                  </span>
+                  <button type="button" onClick={yieldFightPriority}>
+                    Pass Fight priority
+                  </button>
+                </div>
+              )}
             {battleClock.status === "setup" && replayedBattle && (
               <form className="mission-setup" onSubmit={configureMission}>
                 <label>

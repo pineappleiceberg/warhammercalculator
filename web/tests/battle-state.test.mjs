@@ -8,17 +8,23 @@ import {
   advanceBattleClock,
   appendResolvedAttack,
   battleFormationHealth,
+  battleCanResolveAttack,
   changeBattleResource,
+  completeFormationActivation,
   configureBattleMission,
   createBattleState,
   normalizeBattleState,
+  passFightPriority,
   registerBattleFormation,
+  recordFormationCharge,
+  recordFormationMovement,
   replayBattleState,
   revertLatestAttack,
   scoreBattlePoints,
   setBattleObjectiveControl,
   setFormationBattleShocked,
   startBattle,
+  startFormationActivation,
 } from "../lib/battle-state.mjs";
 import { battleAttackWindow } from "../lib/battle-clock.mjs";
 import { applyBattleHealthToTargetSequence } from "../lib/formations.mjs";
@@ -88,10 +94,33 @@ function registeredBattle() {
   );
   state = startBattle(state, "player-1", "battle-start", 102);
   let advance = 0;
+  while (
+    !(
+      replayBattleState(state).clock.phase === "movement" &&
+      replayBattleState(state).clock.step === "move_units"
+    )
+  ) {
+    advance += 1;
+    state = advanceBattleClock(state, `clock-${advance}`, 102 + advance);
+  }
+  state = recordFormationMovement(
+    state,
+    attackerFormation.id,
+    "stationary",
+    `movement-${++advance}`,
+    102 + advance,
+  );
   while (!battleAttackWindow(replayBattleState(state).clock)) {
     advance += 1;
     state = advanceBattleClock(state, `clock-${advance}`, 102 + advance);
   }
+  state = startFormationActivation(
+    state,
+    attackerFormation.id,
+    {},
+    `activation-${++advance}`,
+    102 + advance,
+  );
   return state;
 }
 
@@ -107,9 +136,244 @@ test("reports exact per-segment damage state across mixed profiles", () => {
   assert.throws(() => targetSequenceState(12, targets), /Invalid target sequence damage state/);
 });
 
+test("replays movement and enforces one weapon-scoped Shooting activation", () => {
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), attackerFormation, "register-attacker", 1),
+    formation,
+    "register-target",
+    2,
+  );
+  state = startBattle(state, "player-1", "start", 3);
+  while (
+    !(
+      replayBattleState(state).clock.phase === "movement" &&
+      replayBattleState(state).clock.step === "move_units"
+    )
+  ) {
+    state = advanceBattleClock(state, `to-move-${state.events.length}`, state.events.length + 1);
+  }
+  state = recordFormationMovement(
+    state,
+    attackerFormation.id,
+    "advance",
+    "advanced",
+    state.events.length + 1,
+  );
+  while (!battleAttackWindow(replayBattleState(state).clock)) {
+    state = advanceBattleClock(state, `to-shoot-${state.events.length}`, state.events.length + 1);
+  }
+  assert.equal(
+    battleCanResolveAttack(state, attackerFormation.id, {
+      weaponType: "Ranged",
+      targetEligibilityConfirmed: true,
+    }),
+    false,
+  );
+  assert.equal(
+    battleCanResolveAttack(state, attackerFormation.id, {
+      weaponHasAssault: true,
+      weaponType: "Ranged",
+      targetEligibilityConfirmed: true,
+    }),
+    true,
+  );
+  assert.throws(
+    () =>
+      startFormationActivation(
+        state,
+        attackerFormation.id,
+        {},
+        "illegal-start",
+        state.events.length + 1,
+      ),
+    /Assault weapon/i,
+  );
+  state = startFormationActivation(
+    state,
+    attackerFormation.id,
+    { weaponHasAssault: true },
+    "shooting-start",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).activeActivation.weaponRestriction, "assault_only");
+  assert.equal(
+    battleCanResolveAttack(state, attackerFormation.id, {
+      weaponType: "Ranged",
+      targetEligibilityConfirmed: true,
+    }),
+    false,
+  );
+  assert.equal(
+    battleCanResolveAttack(state, attackerFormation.id, {
+      weaponHasAssault: true,
+      weaponType: "Ranged",
+      targetEligibilityConfirmed: true,
+    }),
+    true,
+  );
+  assert.throws(
+    () => advanceBattleClock(state, "advance-during-activation", state.events.length + 1),
+    /finish its activation/i,
+  );
+  assert.throws(
+    () =>
+      appendResolvedAttack(state, {
+        weaponType: "Ranged",
+        id: "unconfirmed-target",
+        at: state.events.length + 1,
+        attackerFormationId: attackerFormation.id,
+        targetFormationId: formation.id,
+        segmentIds: ["bodyguard", "leader"],
+        targets,
+        initialWoundsLost: 0,
+        result: { appliedDamage: 0, modelsDestroyed: 0 },
+        weaponHasAssault: true,
+        summary: {
+          attacker: "Tank",
+          weapon: "Assault cannon",
+          target: formation.name,
+          damage: 0,
+          successful: 0,
+        },
+      }),
+    /target eligibility requires explicit/i,
+  );
+  state = appendResolvedAttack(state, {
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Target is visible and in range",
+    id: "assault-attack",
+    at: state.events.length + 1,
+    attackerFormationId: attackerFormation.id,
+    targetFormationId: formation.id,
+    segmentIds: ["bodyguard", "leader"],
+    targets,
+    initialWoundsLost: 0,
+    result: { appliedDamage: 0, modelsDestroyed: 0 },
+    summary: {
+      attacker: "Tank",
+      weapon: "Assault cannon",
+      target: formation.name,
+      damage: 0,
+      successful: 0,
+    },
+    weaponHasAssault: true,
+  });
+  state = completeFormationActivation(state, "shooting-complete", state.events.length + 1);
+  assert.equal(
+    battleCanResolveAttack(state, attackerFormation.id, {
+      weaponHasAssault: true,
+      weaponType: "Ranged",
+      targetEligibilityConfirmed: true,
+    }),
+    false,
+  );
+  assert.throws(
+    () =>
+      startFormationActivation(
+        state,
+        attackerFormation.id,
+        { weaponHasAssault: true },
+        "repeat-start",
+        state.events.length + 1,
+      ),
+    /already completed/i,
+  );
+});
+
+test("records charge eligibility and alternates replayed Fight priority", () => {
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), attackerFormation, "register-attacker", 1),
+    formation,
+    "register-target",
+    2,
+  );
+  state = startBattle(state, "player-1", "start", 3);
+  while (
+    !(
+      replayBattleState(state).clock.phase === "movement" &&
+      replayBattleState(state).clock.step === "move_units"
+    )
+  ) {
+    state = advanceBattleClock(state, `to-move-${state.events.length}`, state.events.length + 1);
+  }
+  state = recordFormationMovement(
+    state,
+    attackerFormation.id,
+    "advance",
+    "advanced",
+    state.events.length + 1,
+  );
+  while (
+    !(
+      replayBattleState(state).clock.phase === "charge" &&
+      replayBattleState(state).clock.step === "charge_moves"
+    )
+  ) {
+    state = advanceBattleClock(state, `to-charge-${state.events.length}`, state.events.length + 1);
+  }
+  assert.throws(
+    () =>
+      recordFormationCharge(
+        state,
+        attackerFormation.id,
+        [formation.id],
+        true,
+        8,
+        {},
+        "illegal-charge",
+        state.events.length + 1,
+      ),
+    /explicit confirmation/i,
+  );
+  state = recordFormationCharge(
+    state,
+    attackerFormation.id,
+    [formation.id],
+    true,
+    8,
+    {
+      targetEligibilityConfirmed: true,
+      targetEligibilityReason: "Target is visible and within charge range",
+      eligibilityOverride: true,
+      overrideReason: "Army rule permits charging after Advance",
+    },
+    "charge",
+    state.events.length + 1,
+  );
+  while (
+    !(
+      replayBattleState(state).clock.phase === "fight" &&
+      replayBattleState(state).clock.step === "fights_first"
+    )
+  ) {
+    state = advanceBattleClock(state, `to-fight-${state.events.length}`, state.events.length + 1);
+  }
+  assert.equal(replayBattleState(state).clock.priorityPlayerId, "player-2");
+  state = passFightPriority(
+    state,
+    "No eligible Fights First formation",
+    "pass-priority",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).clock.priorityPlayerId, "player-1");
+  state = startFormationActivation(
+    state,
+    attackerFormation.id,
+    {},
+    "fight-start",
+    state.events.length + 1,
+  );
+  state = completeFormationActivation(state, "fight-complete", state.events.length + 1);
+  assert.equal(replayBattleState(state).clock.priorityPlayerId, "player-2");
+});
+
 test("replays persistent mixed-profile casualties and compensating undo", () => {
   let state = registeredBattle();
   state = appendResolvedAttack(state, {
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Target is visible and in range",
     id: "event-attack-1",
     at: 102,
     attackerFormationId: "player-1:formation-9",
@@ -279,6 +543,9 @@ test("replays the versioned cross-surface golden battle", () => {
 test("rejects divergent replay state and non-latest undo", () => {
   let state = registeredBattle();
   state = appendResolvedAttack(state, {
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Target is visible and in range",
     id: "event-attack-1",
     at: 102,
     attackerFormationId: "player-1:formation-9",
@@ -307,10 +574,7 @@ test("rejects divergent replay state and non-latest undo", () => {
     ...event,
     sequence: index + 1,
   }));
-  assert.throws(
-    () => normalizeBattleState(missingAttacker),
-    /attacker formation is not registered/,
-  );
+  assert.throws(() => normalizeBattleState(missingAttacker), /formation is not registered/);
   const invalidUndo = {
     ...state,
     events: [

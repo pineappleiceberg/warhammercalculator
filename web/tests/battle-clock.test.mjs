@@ -9,12 +9,13 @@ import {
   createBattleState,
   normalizeBattleState,
   openBattleChoice,
+  recordFormationMovement,
   registerBattleFormation,
   replayBattleState,
   resolveBattleChoice,
   startBattle,
+  startFormationActivation,
 } from "../lib/battle-state.mjs";
-import { battleAttackWindow } from "../lib/battle-clock.mjs";
 
 function formation(id, playerId) {
   return {
@@ -63,6 +64,26 @@ function advanceUntil(state, predicate, prefix = "advance") {
   return next;
 }
 
+function readyToShoot(state) {
+  let next = advanceUntil(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "to-move",
+  );
+  next = recordFormationMovement(
+    next,
+    "unit-1",
+    "stationary",
+    `stationary-${next.events.length + 1}`,
+    next.events.length + 1,
+  );
+  return advanceUntil(
+    next,
+    (clock) => clock.phase === "shooting" && clock.step === "resolve_attacks",
+    "to-shoot",
+  );
+}
+
 test("advances the canonical five-round two-turn phase and step topology", () => {
   let state = startBattle(setupBattle(), "player-1", "start", 3);
   const seenTurns = [];
@@ -97,7 +118,7 @@ test("advances the canonical five-round two-turn phase and step topology", () =>
 
 test("pending choices block time and attacks until a bounded selection resolves", () => {
   let state = startBattle(setupBattle(), "player-1", "start", 3);
-  state = advanceUntil(state, battleAttackWindow);
+  state = readyToShoot(state);
   state = openBattleChoice(
     state,
     {
@@ -130,7 +151,13 @@ test("pending choices block time and attacks until a bounded selection resolves"
     state.events.length + 1,
   );
   assert.equal(replayBattleState(state).pendingChoices.size, 0);
-  assert.equal(battleCanResolveAttack(state, "unit-1"), true);
+  assert.equal(
+    battleCanResolveAttack(state, "unit-1", {
+      weaponType: "Ranged",
+      targetEligibilityConfirmed: true,
+    }),
+    true,
+  );
 });
 
 test("expires effects exactly at step, phase, turn, round, and battle boundaries", () => {
@@ -179,10 +206,20 @@ test("expires effects exactly at step, phase, turn, round, and battle boundaries
 test("allows attacks only for the active player in Shooting or Fight attack steps", () => {
   let state = startBattle(setupBattle(), "player-1", "start", 3);
   assert.equal(battleCanResolveAttack(state, "unit-1"), false);
-  state = advanceUntil(state, battleAttackWindow);
-  assert.equal(battleCanResolveAttack(state, "unit-1"), true);
+  state = readyToShoot(state);
+  assert.equal(
+    battleCanResolveAttack(state, "unit-1", {
+      weaponType: "Ranged",
+      targetEligibilityConfirmed: true,
+    }),
+    true,
+  );
   assert.equal(battleCanResolveAttack(state, "unit-2"), false);
+  state = startFormationActivation(state, "unit-1", {}, "start-shooting", state.events.length + 1);
   state = appendResolvedAttack(state, {
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Target is visible and in range",
     id: "attack-1",
     at: state.events.length + 1,
     attackerFormationId: "unit-1",
@@ -209,5 +246,8 @@ test("allows attacks only for the active player in Shooting or Fight attack step
       event.id === "attack-1" ? { ...event, attackerFormationId: "unit-2" } : event,
     ),
   };
-  assert.throws(() => normalizeBattleState(wrongPlayer), /active player's formation/i);
+  assert.throws(
+    () => normalizeBattleState(wrongPlayer),
+    /active player's formation|active formation/i,
+  );
 });

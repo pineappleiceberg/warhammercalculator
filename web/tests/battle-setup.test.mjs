@@ -10,7 +10,9 @@ import {
   configureUnengagedBattleFormation,
   normalizeBattleState,
   replayBattleState,
+  recordFormationMovement,
   startBattle,
+  startFormationActivation,
 } from "../lib/battle-state.mjs";
 import { battleAttackWindow } from "../lib/battle-clock.mjs";
 import { battleRosterRevisionsMatch, initializeBattleForLists } from "../lib/battle-setup.mjs";
@@ -69,7 +71,7 @@ function setup(state = null) {
 
 test("registers every formation on both rosters before combat with stable ids", () => {
   const state = setup();
-  assert.equal(state.version, 4);
+  assert.equal(state.version, 5);
   assert.deepEqual(
     state.players.map((player) => [player.listId, player.listUpdatedAt]),
     [
@@ -130,9 +132,31 @@ test("allows equipment correction during setup, then freezes it when battle star
     () => configureUnengagedBattleFormation(state, registration, "configure-after-start", 5),
     /locked after the battle starts/i,
   );
+  while (
+    !(
+      replayBattleState(state).clock.phase === "movement" &&
+      replayBattleState(state).clock.step === "move_units"
+    )
+  ) {
+    state = advanceBattleClock(state, `advance-${state.events.length}`, state.events.length + 1);
+  }
+  state = recordFormationMovement(
+    state,
+    "player-1:doom-scythe",
+    "stationary",
+    "stationary",
+    state.events.length + 1,
+  );
   while (!battleAttackWindow(replayBattleState(state).clock)) {
     state = advanceBattleClock(state, `advance-${state.events.length}`, state.events.length + 1);
   }
+  state = startFormationActivation(
+    state,
+    "player-1:doom-scythe",
+    {},
+    "start-activation",
+    state.events.length + 1,
+  );
 
   const target = battleFormation(state, targetId);
   const targets = target.segments.map((segment) => ({
@@ -140,6 +164,9 @@ test("allows equipment correction during setup, then freezes it when battle star
     modelCount: segment.startingModels,
   }));
   state = appendResolvedAttack(state, {
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Target is visible and in range",
     id: "attack-1",
     at: state.events.length + 1,
     attackerFormationId: "player-1:doom-scythe",
@@ -168,10 +195,11 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
   versionTwo.players[0].listUpdatedAt = attackers.updatedAt;
   versionTwo.players[1].listUpdatedAt = defenders.updatedAt;
   const migrated = setup(normalizeBattleState(versionTwo));
-  assert.equal(migrated.version, 4);
+  assert.equal(migrated.version, 5);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 2,
     legacyUntimedThroughSequence: 3,
+    legacyUnactionedThroughSequence: 3,
   });
   assert.equal(migrated.events.at(-1).id, "legacy-attack");
 });
@@ -183,10 +211,11 @@ test("migrates a partial version-1 log without changing attack ids or health", (
   const legacy = normalizeBattleState(legacySetup);
 
   const migrated = setup(legacy);
-  assert.equal(migrated.version, 4);
+  assert.equal(migrated.version, 5);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 1,
     legacyUntimedThroughSequence: 3,
+    legacyUnactionedThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -203,10 +232,24 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
   versionThree.version = 3;
   delete versionThree.migration;
   const migrated = setup(normalizeBattleState(versionThree));
-  assert.equal(migrated.version, 4);
+  assert.equal(migrated.version, 5);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 3,
     legacyUntimedThroughSequence: 0,
+    legacyUnactionedThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
+});
+
+test("migrates a version-4 tracker battle with explicit unactioned provenance", () => {
+  const versionFour = structuredClone(setup());
+  versionFour.version = 4;
+  delete versionFour.migration;
+  const migrated = setup(normalizeBattleState(versionFour));
+  assert.equal(migrated.version, 5);
+  assert.deepEqual(migrated.migration, {
+    sourceVersion: 4,
+    legacyUntimedThroughSequence: 0,
+    legacyUnactionedThroughSequence: 2,
+  });
 });

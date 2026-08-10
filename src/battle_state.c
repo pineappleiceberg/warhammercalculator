@@ -43,8 +43,7 @@ static bool whc_battle_clock_is_active_valid(const uint32_t *clock) {
     }
     steps = whc_battle_phase_step_count(clock[3]);
     expected_active = clock[2] == 1u ? clock[5] : 1u - clock[5];
-    return steps > 0u && clock[4] < steps && clock[6] == expected_active &&
-           clock[7] == expected_active;
+    return steps > 0u && clock[4] < steps && clock[6] == expected_active && clock[7] <= 1u;
 }
 
 bool whc_start_battle_clock(uint32_t first_player_index, uint32_t *clock) {
@@ -80,9 +79,14 @@ bool whc_next_battle_clock(const uint32_t *current, uint32_t *next) {
     steps = whc_battle_phase_step_count(candidate[3]);
     if (candidate[4] + 1u < steps) {
         candidate[4]++;
+        if (candidate[3] == WHC_BATTLE_PHASE_FIGHT &&
+            (candidate[4] == 1u || candidate[4] == 2u)) {
+            candidate[7] = 1u - candidate[6];
+        }
     } else if (candidate[3] < WHC_BATTLE_PHASE_FIGHT) {
         candidate[3]++;
         candidate[4] = 0u;
+        candidate[7] = candidate[3] == WHC_BATTLE_PHASE_FIGHT ? 1u - candidate[6] : candidate[6];
     } else if (candidate[2] == 1u) {
         candidate[2] = 2u;
         candidate[3] = WHC_BATTLE_PHASE_COMMAND;

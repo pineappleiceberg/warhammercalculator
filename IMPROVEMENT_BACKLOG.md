@@ -27,9 +27,10 @@ state.
 
 ## Prioritized backlog
 
-1. Expand the legal-action and timing engine through movement, reserves,
-   transports, charges, Fight sequencing, pile-in, consolidation, reactions,
-   and Stratagem windows.
+1. Continue the legal-action engine with deployment, reserves, Transport
+   embark/disembark timing, target range/visibility eligibility, charge
+   movement, Heroic Intervention, pile-in, consolidation, reactions, and
+   Stratagem windows.
 2. Build and enforce the source-locked faction, detachment, enhancement,
    Stratagem, terrain, and mission coverage matrix described by the complete
    battle requirements.
@@ -39,6 +40,24 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-10: Advanced guided play to battle-state version 5 with replayed
+  movement, charge, and formation-activation legality. Every active formation
+  now records Remain Stationary, Normal Move, Advance, or Fall Back; every
+  charge attempt records targets, roll, success, and any explicit rules
+  exception. Shooting and Fight attacks require an open activation, weapon type
+  must match the phase, Advanced formations are restricted to Assault weapons,
+  formations cannot activate twice, and time cannot advance mid-activation.
+  Both Fight steps begin with the non-active player's priority, alternate after
+  each completed activation, and record a pass when no eligible formation is
+  available. Each charge and attack fails closed until the player separately
+  confirms target range, visibility, Engagement Range, and table state;
+  not-yet-executable faction exceptions use a distinct reason-bearing override.
+  Version-1 through
+  version-4 logs migrate with explicit unactioned provenance. The replay API
+  exposes movement, charge, and activation state alongside C/WebAssembly-
+  verified health and clock data. State, tamper, phase, migration, API, UI,
+  native, WebAssembly, and formal release gates cover the cycle.
 
 - 2026-08-10: Advanced guided play to battle-state version 4 with integrity-
   checked mission and game accounting. Mission setup now records its name,

@@ -98,6 +98,7 @@ bool whc_start_battle_clock(uint32_t first_player_index, uint32_t *clock);
     ensures \result ==> 1 <= next[1] && next[1] <= 5;
     ensures \result ==> 1 <= next[2] && next[2] <= 2;
     ensures \result ==> next[5] <= 1;
+    ensures \result ==> next[0] == WHC_BATTLE_CLOCK_COMPLETE || next[7] <= 1;
 */
 bool whc_next_battle_clock(const uint32_t *current, uint32_t *next);
 

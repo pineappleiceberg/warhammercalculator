@@ -6,3 +6,4 @@
 data/*.sqlite.tmp
 __pycache__/
 /a.out.frama.c
+/tmp/

@@ -8,10 +8,12 @@ import {
   applyBattleEffect,
   changeBattleResource,
   openBattleChoice,
+  resolveBattleChoice,
   scoreBattlePoints,
   setBattleObjectiveControl,
   setFormationBattleShocked,
   startBattle,
+  startFormationActivation,
 } from "../lib/battle-state.mjs";
 import { rulesInteractionCases } from "./rules-interaction-corpus.mjs";
 
@@ -2537,6 +2539,57 @@ test("replays canonical battle health through the C and WebAssembly API", async 
   assert.equal(versionFourResult.data.objectives[0].controllerPlayerId, "player-1");
   assert.deepEqual(versionFourResult.data.battleShockedFormationIds, ["target"]);
   assert.equal(versionFourResult.data.scoringEvents[0].reason, "Held an objective");
+
+  let versionFive = {
+    ...structuredClone(versionFour),
+    version: 5,
+    migration: {
+      sourceVersion: 4,
+      legacyUntimedThroughSequence: versionFour.migration.legacyUntimedThroughSequence,
+      legacyUnactionedThroughSequence: versionFour.events.length,
+    },
+  };
+  versionFive = resolveBattleChoice(
+    versionFive,
+    "attack-choice",
+    ["focused"],
+    "resolve-api-choice",
+    226,
+  );
+  versionFive = startFormationActivation(
+    versionFive,
+    "attacker",
+    {
+      weaponType: "Ranged",
+      eligibilityOverride: true,
+      overrideReason: "Migrated battle has no recorded movement",
+    },
+    "api-activation",
+    227,
+  );
+  const versionFiveResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: versionFive, formationId: "target" }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(
+    versionFiveResponse.status,
+    200,
+    JSON.stringify(await versionFiveResponse.clone().json()),
+  );
+  const versionFiveResult = await versionFiveResponse.json();
+  assert.equal(versionFiveResult.data.schemaVersion, 5);
+  assert.deepEqual(versionFiveResult.data.movement, []);
+  assert.deepEqual(versionFiveResult.data.charges, []);
+  assert.deepEqual(versionFiveResult.data.activeActivation, {
+    formationId: "attacker",
+    activationType: "shooting",
+    weaponRestriction: "all",
+  });
 
   const configuredVersionTwo = structuredClone(versionTwo);
   configuredVersionTwo.events.splice(2, 0, {

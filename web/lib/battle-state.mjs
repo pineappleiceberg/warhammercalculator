@@ -11,7 +11,9 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 4;
+export const BATTLE_STATE_VERSION = 5;
+export const ACTION_BATTLE_STATE_VERSION = 5;
+export const TRACKER_BATTLE_STATE_VERSION = 4;
 export const TIMELINE_BATTLE_STATE_VERSION = 3;
 export const ROSTER_BATTLE_STATE_VERSION = 2;
 export const BATTLE_EVENT_VERSION = 1;
@@ -41,6 +43,29 @@ function boundedInteger(value, name, minimum = -1_000_000, maximum = 1_000_000) 
     throw new Error(`${name} must be an integer from ${minimum} to ${maximum}`);
   }
   return value;
+}
+
+const MOVEMENT_KINDS = Object.freeze(["stationary", "normal", "advance", "fall_back"]);
+const ACTIVATION_TYPES = Object.freeze(["shooting", "fight"]);
+
+function formationDestroyed(formation) {
+  return Object.values(formation?.health ?? {}).every((health) => health.modelsRemaining === 0);
+}
+
+function sameTurn(left, right) {
+  return (
+    left?.status === "active" &&
+    right?.status === "active" &&
+    left.battleRound === right.battleRound &&
+    left.turn === right.turn &&
+    left.activePlayerId === right.activePlayerId
+  );
+}
+
+function otherPlayerId(players, playerId) {
+  const other = players.find((player) => player.id !== playerId);
+  if (!other) throw new Error("Battle state cannot determine the other player");
+  return other.id;
 }
 
 function defaultMission(players) {
@@ -353,7 +378,7 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     throw new Error("Battle timeline events require battle-state version 3");
   }
   if (
-    stateVersion < BATTLE_STATE_VERSION &&
+    stateVersion < TRACKER_BATTLE_STATE_VERSION &&
     [
       "mission_configured",
       "resource_changed",
@@ -363,6 +388,18 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     ].includes(event.type)
   ) {
     throw new Error("Battle tracker events require battle-state version 4");
+  }
+  if (
+    stateVersion < ACTION_BATTLE_STATE_VERSION &&
+    [
+      "movement_recorded",
+      "charge_recorded",
+      "activation_started",
+      "activation_completed",
+      "fight_priority_passed",
+    ].includes(event.type)
+  ) {
+    throw new Error("Battle action events require battle-state version 5");
   }
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation);
@@ -479,6 +516,87 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
+  if (event.type === "movement_recorded") {
+    normalized.formationId = boundedString(event.formationId, "Movement formation id", 100);
+    if (!formations.byId.has(normalized.formationId)) {
+      throw new Error("Movement formation is not registered");
+    }
+    normalized.movement = boundedString(event.movement, "Movement kind", 20);
+    if (!MOVEMENT_KINDS.includes(normalized.movement)) {
+      throw new Error("Movement kind is unsupported");
+    }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "charge_recorded") {
+    normalized.formationId = boundedString(event.formationId, "Charge formation id", 100);
+    if (!formations.byId.has(normalized.formationId)) {
+      throw new Error("Charging formation is not registered");
+    }
+    normalized.targetFormationIds = normalizeStringArray(
+      event.targetFormationIds,
+      "Charge target formation ids",
+      12,
+    );
+    if (normalized.targetFormationIds.length < 1) {
+      throw new Error("A charge must name at least one target formation");
+    }
+    if (normalized.targetFormationIds.some((id) => !formations.byId.has(id))) {
+      throw new Error("Charge target formation is not registered");
+    }
+    normalized.successful = Boolean(event.successful);
+    normalized.roll = nonnegativeInteger(event.roll, "Charge roll", 12);
+    if (normalized.roll < 2) throw new Error("Charge roll must be from 2 to 12");
+    normalized.targetEligibilityConfirmed = Boolean(event.targetEligibilityConfirmed);
+    normalized.targetEligibilityReason = normalized.targetEligibilityConfirmed
+      ? boundedString(event.targetEligibilityReason, "Charge target eligibility reason", 300)
+      : "";
+    normalized.eligibilityOverride = Boolean(event.eligibilityOverride);
+    normalized.overrideReason = normalized.eligibilityOverride
+      ? boundedString(event.overrideReason, "Charge eligibility override reason", 300)
+      : "";
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "activation_started") {
+    normalized.formationId = boundedString(event.formationId, "Activation formation id", 100);
+    if (!formations.byId.has(normalized.formationId)) {
+      throw new Error("Activation formation is not registered");
+    }
+    normalized.activationType = boundedString(event.activationType, "Activation type", 20);
+    if (!ACTIVATION_TYPES.includes(normalized.activationType)) {
+      throw new Error("Activation type is unsupported");
+    }
+    normalized.weaponHasAssault = Boolean(event.weaponHasAssault);
+    normalized.eligibilityOverride = Boolean(event.eligibilityOverride);
+    normalized.overrideReason = normalized.eligibilityOverride
+      ? boundedString(event.overrideReason, "Activation eligibility override reason", 300)
+      : "";
+    normalized.fightsFirst = Boolean(event.fightsFirst);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "activation_completed") {
+    normalized.formationId = boundedString(event.formationId, "Activation formation id", 100);
+    if (!formations.byId.has(normalized.formationId)) {
+      throw new Error("Activation formation is not registered");
+    }
+    normalized.activationType = boundedString(event.activationType, "Activation type", 20);
+    if (!ACTIVATION_TYPES.includes(normalized.activationType)) {
+      throw new Error("Activation type is unsupported");
+    }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "fight_priority_passed") {
+    normalized.playerId = boundedString(event.playerId, "Passing player id", 100);
+    if (!formations.players.has(normalized.playerId)) {
+      throw new Error("Passing player is unknown");
+    }
+    normalized.reason = boundedString(event.reason, "Fight priority pass reason", 300);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
   if (event.type === "attack_resolved") {
     normalized.attackerFormationId = boundedString(
       event.attackerFormationId,
@@ -494,6 +612,13 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     const target = formations.byId.get(normalized.targetFormationId);
     if (!target) throw new Error("Attack target formation is not registered");
     normalized.summary = normalizeSummary(event.summary);
+    normalized.weaponHasAssault = Boolean(event.weaponHasAssault);
+    normalized.weaponType =
+      event.weaponType === "Ranged" || event.weaponType === "Melee" ? event.weaponType : "";
+    normalized.targetEligibilityConfirmed = Boolean(event.targetEligibilityConfirmed);
+    normalized.targetEligibilityReason = normalized.targetEligibilityConfirmed
+      ? boundedString(event.targetEligibilityReason, "Target eligibility confirmation", 300)
+      : "";
     if (
       !Array.isArray(event.allocations) ||
       event.allocations.length < 1 ||
@@ -546,6 +671,7 @@ export function normalizeBattleState(candidate) {
       LEGACY_BATTLE_STATE_VERSION,
       ROSTER_BATTLE_STATE_VERSION,
       TIMELINE_BATTLE_STATE_VERSION,
+      TRACKER_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -578,7 +704,12 @@ export function normalizeBattleState(candidate) {
       state.version - 1,
     );
     if (
-      ![LEGACY_BATTLE_STATE_VERSION, ROSTER_BATTLE_STATE_VERSION, TIMELINE_BATTLE_STATE_VERSION]
+      ![
+        LEGACY_BATTLE_STATE_VERSION,
+        ROSTER_BATTLE_STATE_VERSION,
+        TIMELINE_BATTLE_STATE_VERSION,
+        TRACKER_BATTLE_STATE_VERSION,
+      ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
     ) {
@@ -592,6 +723,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       ),
     };
+    if (state.version >= ACTION_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyUnactionedThroughSequence = nonnegativeInteger(
+        migration.legacyUnactionedThroughSequence,
+        "Legacy unactioned event sequence",
+        events.length,
+      );
+    }
   }
   replayBattleState(normalized);
   return normalized;
@@ -667,6 +805,10 @@ export function replayBattleState(state) {
   const effects = new Map();
   const battleShockedFormations = new Map();
   const scoringEvents = [];
+  const movementByFormation = new Map();
+  const chargeByFormation = new Map();
+  const completedActivations = new Set();
+  let activeActivation = null;
   let clock = setupBattleClock();
   let mission = defaultMission(state.players);
   let resources = trackerResources(state.players, mission);
@@ -675,6 +817,10 @@ export function replayBattleState(state) {
     state.version < TIMELINE_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyUntimedThroughSequence ?? 0);
+  const legacyUnactionedThroughSequence =
+    state.version < ACTION_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyUnactionedThroughSequence ?? 0);
   for (const event of state.events) {
     if (event.type === "formation_registered") {
       if (state.version >= TIMELINE_BATTLE_STATE_VERSION && clock.status !== "setup") {
@@ -708,7 +854,7 @@ export function replayBattleState(state) {
         throw new Error("Battle start clock is not canonical");
       }
       clock = expected;
-      if (state.version >= BATTLE_STATE_VERSION) {
+      if (state.version >= TRACKER_BATTLE_STATE_VERSION) {
         awardCommandPhasePoints(resources, state.players, mission);
       }
       continue;
@@ -716,6 +862,9 @@ export function replayBattleState(state) {
     if (event.type === "clock_advanced") {
       if (pendingChoices.size > 0) {
         throw new Error("Pending choices must be resolved before advancing the battle");
+      }
+      if (activeActivation) {
+        throw new Error("The active formation must finish its activation before advancing");
       }
       if (!sameBattleClock(event.from, clock)) {
         throw new Error("Battle clock advance does not match replayed state");
@@ -736,7 +885,7 @@ export function replayBattleState(state) {
         throw new Error("Battle clock advance has an incorrect effect-expiry set");
       }
       for (const id of expiredEffectIds) effects.delete(id);
-      if (state.version >= BATTLE_STATE_VERSION && commandPhaseStarted(expected)) {
+      if (state.version >= TRACKER_BATTLE_STATE_VERSION && commandPhaseStarted(expected)) {
         awardCommandPhasePoints(resources, state.players, mission);
         for (const [formationId] of battleShockedFormations) {
           if (formations.get(formationId)?.playerId === expected.activePlayerId) {
@@ -873,6 +1022,176 @@ export function replayBattleState(state) {
       }
       continue;
     }
+    if (event.type === "movement_recorded") {
+      if (
+        clock.status !== "active" ||
+        clock.phase !== "movement" ||
+        clock.step !== "move_units" ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Movement was recorded outside the Move Units step");
+      }
+      const formation = formations.get(event.formationId);
+      if (formation.playerId !== clock.activePlayerId) {
+        throw new Error("Only the active player's formation can move");
+      }
+      if (formationDestroyed(formation)) throw new Error("A destroyed formation cannot move");
+      const previous = movementByFormation.get(event.formationId);
+      if (previous && sameTurn(previous.clock, clock)) {
+        throw new Error("Formation movement has already been recorded this turn");
+      }
+      movementByFormation.set(event.formationId, event);
+      continue;
+    }
+    if (event.type === "charge_recorded") {
+      if (
+        clock.status !== "active" ||
+        clock.phase !== "charge" ||
+        clock.step !== "charge_moves" ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Charge was recorded outside the Charge Moves step");
+      }
+      const formation = formations.get(event.formationId);
+      if (formation.playerId !== clock.activePlayerId) {
+        throw new Error("Only the active player's formation can charge");
+      }
+      if (formationDestroyed(formation)) throw new Error("A destroyed formation cannot charge");
+      const previous = chargeByFormation.get(event.formationId);
+      if (previous && sameTurn(previous.clock, clock)) {
+        throw new Error("Formation has already attempted a charge this turn");
+      }
+      for (const targetFormationId of event.targetFormationIds) {
+        const target = formations.get(targetFormationId);
+        if (target.playerId === formation.playerId) {
+          throw new Error("A formation cannot charge a friendly formation");
+        }
+        if (formationDestroyed(target))
+          throw new Error("A formation cannot charge a destroyed target");
+      }
+      if (!event.targetEligibilityConfirmed) {
+        throw new Error(
+          "Charge eligibility requires an explicit confirmation of range and table state",
+        );
+      }
+      const movement = movementByFormation.get(event.formationId);
+      const currentMovement = movement && sameTurn(movement.clock, clock) ? movement : null;
+      if (!currentMovement && !event.eligibilityOverride) {
+        throw new Error(
+          "Record this formation's movement or confirm a charge eligibility override",
+        );
+      }
+      if (
+        ["advance", "fall_back"].includes(currentMovement?.movement) &&
+        !event.eligibilityOverride
+      ) {
+        throw new Error(
+          `A formation that ${currentMovement.movement === "advance" ? "Advanced" : "Fell Back"} requires an explicit charge eligibility override`,
+        );
+      }
+      chargeByFormation.set(event.formationId, event);
+      continue;
+    }
+    if (event.type === "fight_priority_passed") {
+      if (
+        !battleAttackWindow(clock) ||
+        clock.phase !== "fight" ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Fight priority can only pass during a Fight selection step");
+      }
+      if (activeActivation) throw new Error("Fight priority cannot pass during an activation");
+      if (pendingChoices.size > 0) throw new Error("Pending choices block Fight priority");
+      if (event.playerId !== clock.priorityPlayerId) {
+        throw new Error("Only the player with Fight priority can pass");
+      }
+      clock = { ...clock, priorityPlayerId: otherPlayerId(state.players, event.playerId) };
+      continue;
+    }
+    if (event.type === "activation_started") {
+      if (!battleAttackWindow(clock) || !sameBattleClock(event.clock, clock)) {
+        throw new Error("Formation activation started outside an attack step");
+      }
+      if (pendingChoices.size > 0) throw new Error("Pending choices block formation activation");
+      if (activeActivation) throw new Error("Another formation activation is already in progress");
+      const formation = formations.get(event.formationId);
+      if (formationDestroyed(formation)) throw new Error("A destroyed formation cannot activate");
+      const expectedType = clock.phase === "shooting" ? "shooting" : "fight";
+      if (event.activationType !== expectedType) {
+        throw new Error(`Only a ${expectedType} activation can start in this step`);
+      }
+      const activationKey = `${clock.battleRound}:${clock.turn}:${clock.phase}:${event.formationId}`;
+      if (completedActivations.has(activationKey)) {
+        throw new Error("Formation has already completed an activation this phase");
+      }
+      let weaponRestriction = "all";
+      if (event.activationType === "shooting") {
+        if (formation.playerId !== clock.activePlayerId) {
+          throw new Error("Only the active player's formation can shoot");
+        }
+        const movement = movementByFormation.get(event.formationId);
+        const currentMovement = movement && sameTurn(movement.clock, clock) ? movement : null;
+        if (!currentMovement && !event.eligibilityOverride) {
+          throw new Error(
+            "Record this formation's movement or confirm a shooting eligibility override",
+          );
+        }
+        if (
+          currentMovement?.movement === "advance" &&
+          !event.weaponHasAssault &&
+          !event.eligibilityOverride
+        ) {
+          throw new Error("An Advanced formation requires an Assault weapon or explicit override");
+        }
+        if (currentMovement?.movement === "fall_back" && !event.eligibilityOverride) {
+          throw new Error(
+            "A formation that Fell Back requires an explicit shooting eligibility override",
+          );
+        }
+        if (currentMovement?.movement === "advance" && !event.eligibilityOverride) {
+          weaponRestriction = "assault_only";
+        }
+      } else {
+        if (formation.playerId !== clock.priorityPlayerId) {
+          throw new Error("Only the player with Fight priority can activate a formation");
+        }
+        const charge = chargeByFormation.get(event.formationId);
+        const charged = Boolean(charge?.successful && sameTurn(charge.clock, clock));
+        if (!charged && !event.eligibilityOverride) {
+          throw new Error(
+            "Confirm Engagement Range eligibility for a formation that did not charge",
+          );
+        }
+        if (clock.step === "fights_first" && !charged && !event.fightsFirst) {
+          throw new Error("Formation is not confirmed to have Fights First");
+        }
+      }
+      activeActivation = { ...event, weaponRestriction };
+      continue;
+    }
+    if (event.type === "activation_completed") {
+      if (!activeActivation) throw new Error("No formation activation is in progress");
+      if (!sameBattleClock(event.clock, clock)) {
+        throw new Error("Formation activation completed outside its timing window");
+      }
+      if (
+        event.formationId !== activeActivation.formationId ||
+        event.activationType !== activeActivation.activationType
+      ) {
+        throw new Error("Completed activation does not match the active formation");
+      }
+      completedActivations.add(
+        `${clock.battleRound}:${clock.turn}:${clock.phase}:${event.formationId}`,
+      );
+      activeActivation = null;
+      if (event.activationType === "fight") {
+        clock = {
+          ...clock,
+          priorityPlayerId: otherPlayerId(state.players, clock.priorityPlayerId),
+        };
+      }
+      continue;
+    }
     if (event.type === "attack_resolved") {
       if (
         state.version >= TIMELINE_BATTLE_STATE_VERSION &&
@@ -884,8 +1203,30 @@ export function replayBattleState(state) {
         if (pendingChoices.size > 0) {
           throw new Error("Pending choices must be resolved before resolving attacks");
         }
-        if (formations.get(event.attackerFormationId)?.playerId !== clock.activePlayerId) {
-          throw new Error("Only the active player's formation can resolve an attack");
+        if (event.sequence <= legacyUnactionedThroughSequence) {
+          if (formations.get(event.attackerFormationId)?.playerId !== clock.activePlayerId) {
+            throw new Error("Only the active player's formation can resolve an attack");
+          }
+        } else {
+          if (!activeActivation || activeActivation.formationId !== event.attackerFormationId) {
+            throw new Error("Attack does not belong to the active formation");
+          }
+          if (
+            clock.phase === "shooting" &&
+            activeActivation.weaponRestriction === "assault_only" &&
+            !event.weaponHasAssault
+          ) {
+            throw new Error("Only Assault weapons can fire after this formation Advanced");
+          }
+          const expectedWeaponType = clock.phase === "shooting" ? "Ranged" : "Melee";
+          if (event.weaponType !== expectedWeaponType) {
+            throw new Error(`${expectedWeaponType} weapons are required in this attack step`);
+          }
+          if (!event.targetEligibilityConfirmed) {
+            throw new Error(
+              "Attack target eligibility requires explicit range, visibility, and table-state confirmation",
+            );
+          }
         }
       }
       const formation = formations.get(event.targetFormationId);
@@ -957,6 +1298,10 @@ export function replayBattleState(state) {
     objectives,
     scoringEvents,
     battleShockedFormations,
+    movementByFormation,
+    chargeByFormation,
+    completedActivations,
+    activeActivation,
   };
 }
 
@@ -983,6 +1328,9 @@ export function advanceBattleClock(state, id, at) {
   const replayed = replayBattleState(state);
   if (replayed.pendingChoices.size > 0) {
     throw new Error("Pending choices must be resolved before advancing the battle");
+  }
+  if (replayed.activeActivation) {
+    throw new Error("The active formation must finish its activation before advancing");
   }
   const from = replayed.clock;
   const to = nextBattleClock(from, state.players);
@@ -1168,14 +1516,170 @@ export function battleFormationIsBattleShocked(state, formationId) {
   return replayBattleState(state).battleShockedFormations.has(formationId);
 }
 
-export function battleCanResolveAttack(state, attackerFormationId) {
+export function recordFormationMovement(state, formationId, movement, id, at) {
+  const clock = replayBattleState(state).clock;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "movement_recorded",
+    formationId,
+    movement,
+    clock,
+  });
+}
+
+export function recordFormationCharge(
+  state,
+  formationId,
+  targetFormationIds,
+  successful,
+  roll,
+  {
+    targetEligibilityConfirmed = false,
+    targetEligibilityReason = "",
+    eligibilityOverride = false,
+    overrideReason = "",
+  } = {},
+  id,
+  at,
+) {
+  const clock = replayBattleState(state).clock;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "charge_recorded",
+    formationId,
+    targetFormationIds,
+    successful,
+    roll,
+    targetEligibilityConfirmed,
+    targetEligibilityReason,
+    eligibilityOverride,
+    overrideReason,
+    clock,
+  });
+}
+
+export function startFormationActivation(
+  state,
+  formationId,
+  {
+    weaponHasAssault = false,
+    eligibilityOverride = false,
+    overrideReason = "",
+    fightsFirst = false,
+  } = {},
+  id,
+  at,
+) {
+  const clock = replayBattleState(state).clock;
+  const activationType = clock.phase === "shooting" ? "shooting" : "fight";
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "activation_started",
+    formationId,
+    activationType,
+    weaponHasAssault,
+    eligibilityOverride,
+    overrideReason,
+    fightsFirst,
+    clock,
+  });
+}
+
+export function completeFormationActivation(state, id, at) {
+  const replayed = replayBattleState(state);
+  if (!replayed.activeActivation) throw new Error("No formation activation is in progress");
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "activation_completed",
+    formationId: replayed.activeActivation.formationId,
+    activationType: replayed.activeActivation.activationType,
+    clock: replayed.clock,
+  });
+}
+
+export function passFightPriority(state, reason, id, at) {
+  const replayed = replayBattleState(state);
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "fight_priority_passed",
+    playerId: replayed.clock.priorityPlayerId,
+    reason,
+    clock: replayed.clock,
+  });
+}
+
+export function battleCanStartFormationActivation(
+  state,
+  attackerFormationId,
+  {
+    weaponHasAssault = false,
+    weaponType = "",
+    eligibilityOverride = false,
+    fightsFirst = false,
+  } = {},
+) {
   if (!state) return false;
   const replayed = replayBattleState(state);
-  return (
-    battleAttackWindow(replayed.clock) &&
-    replayed.pendingChoices.size === 0 &&
-    replayed.formations.get(attackerFormationId)?.playerId === replayed.clock.activePlayerId
-  );
+  const formation = replayed.formations.get(attackerFormationId);
+  if (
+    !formation ||
+    formationDestroyed(formation) ||
+    !battleAttackWindow(replayed.clock) ||
+    replayed.pendingChoices.size > 0 ||
+    replayed.activeActivation ||
+    replayed.completedActivations.has(
+      `${replayed.clock.battleRound}:${replayed.clock.turn}:${replayed.clock.phase}:${attackerFormationId}`,
+    )
+  ) {
+    return false;
+  }
+  if (replayed.clock.phase === "shooting") {
+    if (weaponType !== "Ranged") return false;
+    if (formation.playerId !== replayed.clock.activePlayerId) return false;
+    const movement = replayed.movementByFormation.get(attackerFormationId);
+    const currentMovement = movement && sameTurn(movement.clock, replayed.clock) ? movement : null;
+    if (!currentMovement) return eligibilityOverride;
+    if (currentMovement.movement === "advance") return weaponHasAssault || eligibilityOverride;
+    if (currentMovement.movement === "fall_back") return eligibilityOverride;
+    return true;
+  }
+  if (weaponType !== "Melee") return false;
+  if (formation.playerId !== replayed.clock.priorityPlayerId) return false;
+  const charge = replayed.chargeByFormation.get(attackerFormationId);
+  const charged = Boolean(charge?.successful && sameTurn(charge.clock, replayed.clock));
+  if (!charged && !eligibilityOverride) return false;
+  return replayed.clock.step !== "fights_first" || charged || fightsFirst;
+}
+
+export function battleCanResolveAttack(state, attackerFormationId, options = {}) {
+  if (!state) return false;
+  if (!options.targetEligibilityConfirmed) return false;
+  const replayed = replayBattleState(state);
+  if (replayed.activeActivation) {
+    const expectedWeaponType = replayed.clock.phase === "shooting" ? "Ranged" : "Melee";
+    return (
+      replayed.activeActivation.formationId === attackerFormationId &&
+      options.weaponType === expectedWeaponType &&
+      (replayed.activeActivation.weaponRestriction !== "assault_only" ||
+        Boolean(options.weaponHasAssault))
+    );
+  }
+  return battleCanStartFormationActivation(state, attackerFormationId, options);
 }
 
 export function registerBattleFormation(state, formation, id, at) {
@@ -1242,6 +1746,10 @@ export function appendResolvedAttack(
     initialWoundsLost,
     result,
     summary,
+    weaponHasAssault = false,
+    weaponType = "",
+    targetEligibilityConfirmed = false,
+    targetEligibilityReason = "",
   },
 ) {
   const replayed = replayBattleState(state);
@@ -1279,6 +1787,10 @@ export function appendResolvedAttack(
     attackerFormationId,
     targetFormationId,
     summary: { ...summary, modelsDestroyed: result.modelsDestroyed },
+    weaponHasAssault,
+    weaponType,
+    targetEligibilityConfirmed,
+    targetEligibilityReason,
     allocations,
   });
 }

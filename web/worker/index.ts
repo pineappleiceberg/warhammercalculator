@@ -659,6 +659,42 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
       })),
       objectives: [...replayed.objectives.values()].map((objective) => ({ ...objective })),
       battleShockedFormationIds: [...replayed.battleShockedFormations.keys()].sort(),
+      movement: [...replayed.movementByFormation.values()]
+        .map(({ formationId, movement, clock }) => ({ formationId, movement, clock }))
+        .sort((left, right) => left.formationId.localeCompare(right.formationId)),
+      charges: [...replayed.chargeByFormation.values()]
+        .map(
+          ({
+            formationId,
+            targetFormationIds,
+            successful,
+            roll,
+            targetEligibilityConfirmed,
+            targetEligibilityReason,
+            eligibilityOverride,
+            overrideReason,
+            clock,
+          }) => ({
+            formationId,
+            targetFormationIds,
+            successful,
+            roll,
+            targetEligibilityConfirmed,
+            targetEligibilityReason,
+            eligibilityOverride,
+            overrideReason,
+            clock,
+          }),
+        )
+        .sort((left, right) => left.formationId.localeCompare(right.formationId)),
+      activeActivation: replayed.activeActivation
+        ? {
+            formationId: replayed.activeActivation.formationId,
+            activationType: replayed.activeActivation.activationType,
+            weaponRestriction: replayed.activeActivation.weaponRestriction,
+          }
+        : null,
+      completedActivationKeys: [...replayed.completedActivations].sort(),
       scoringEvents: replayed.scoringEvents.map(
         ({ id, playerId, category, points, before, after, reason, clock }) => ({
           id,
