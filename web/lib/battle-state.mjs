@@ -1,7 +1,18 @@
 import { targetSequenceState } from "./allocation.mjs";
+import {
+  BATTLE_EFFECT_DURATIONS,
+  BATTLE_PHASE_STEPS,
+  battleAttackWindow,
+  effectExpiresOnAdvance,
+  nextBattleClock,
+  sameBattleClock,
+  setupBattleClock,
+  startBattleClock,
+} from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 2;
+export const BATTLE_STATE_VERSION = 3;
+export const ROSTER_BATTLE_STATE_VERSION = 2;
 export const BATTLE_EVENT_VERSION = 1;
 export const LEGACY_BATTLE_STATE_VERSION = 1;
 
@@ -35,7 +46,7 @@ function normalizePlayers(players, stateVersion) {
       listId: boundedString(player.listId, "Player list id", 100),
       name: boundedString(player.name, "Player name"),
     };
-    if (stateVersion >= BATTLE_STATE_VERSION) {
+    if (stateVersion >= ROSTER_BATTLE_STATE_VERSION) {
       normalized.listUpdatedAt = nonnegativeInteger(
         player.listUpdatedAt,
         "Player listUpdatedAt",
@@ -46,6 +57,130 @@ function normalizePlayers(players, stateVersion) {
   });
   if (new Set(normalized.map((player) => player.id)).size !== normalized.length) {
     throw new Error("Battle player ids must be unique");
+  }
+  return normalized;
+}
+
+function normalizeClock(candidate, players) {
+  const clock = record(candidate, "Battle clock must be an object");
+  const normalized = {
+    status: boundedString(clock.status, "Battle clock status", 20),
+    battleRound: nonnegativeInteger(clock.battleRound, "Battle round", 5),
+    turn: nonnegativeInteger(clock.turn, "Battle turn", 2),
+    phase: boundedString(clock.phase, "Battle phase", 40),
+    step: boundedString(clock.step, "Battle step", 40),
+    firstPlayerId: typeof clock.firstPlayerId === "string" ? clock.firstPlayerId : "",
+    activePlayerId: typeof clock.activePlayerId === "string" ? clock.activePlayerId : "",
+    priorityPlayerId: typeof clock.priorityPlayerId === "string" ? clock.priorityPlayerId : "",
+  };
+  if (normalized.status === "setup") {
+    if (!sameBattleClock(normalized, setupBattleClock())) {
+      throw new Error("Setup battle clock is invalid");
+    }
+    return normalized;
+  }
+  if (normalized.status === "complete") {
+    if (
+      normalized.battleRound !== 5 ||
+      normalized.turn !== 2 ||
+      normalized.phase !== "complete" ||
+      normalized.step !== "complete" ||
+      normalized.activePlayerId ||
+      normalized.priorityPlayerId ||
+      !players.has(normalized.firstPlayerId)
+    ) {
+      throw new Error("Completed battle clock is invalid");
+    }
+    return normalized;
+  }
+  if (
+    normalized.status !== "active" ||
+    normalized.battleRound < 1 ||
+    normalized.turn < 1 ||
+    !BATTLE_PHASE_STEPS[normalized.phase]?.includes(normalized.step) ||
+    !players.has(normalized.firstPlayerId) ||
+    !players.has(normalized.activePlayerId) ||
+    !players.has(normalized.priorityPlayerId)
+  ) {
+    throw new Error("Active battle clock is invalid");
+  }
+  return normalized;
+}
+
+function normalizeStringArray(value, name, maximum = 100) {
+  if (
+    !Array.isArray(value) ||
+    value.length > maximum ||
+    value.some((entry) => typeof entry !== "string" || !entry || entry.length > 200) ||
+    new Set(value).size !== value.length
+  ) {
+    throw new Error(`${name} must contain at most ${maximum} unique strings`);
+  }
+  return [...value];
+}
+
+function normalizeChoice(candidate, players) {
+  const choice = record(candidate, "Pending choice must be an object");
+  if (!Array.isArray(choice.options) || choice.options.length < 1 || choice.options.length > 32) {
+    throw new Error("Pending choice must contain 1 to 32 options");
+  }
+  const options = choice.options.map((candidateOption) => {
+    const option = record(candidateOption, "Each pending choice option must be an object");
+    return {
+      id: boundedString(option.id, "Pending choice option id", 100),
+      label: boundedString(option.label, "Pending choice option label"),
+    };
+  });
+  if (new Set(options.map((option) => option.id)).size !== options.length) {
+    throw new Error("Pending choice option ids must be unique");
+  }
+  const minimumSelections = nonnegativeInteger(
+    choice.minimumSelections,
+    "Pending choice minimum selections",
+    options.length,
+  );
+  const maximumSelections = nonnegativeInteger(
+    choice.maximumSelections,
+    "Pending choice maximum selections",
+    options.length,
+  );
+  if (minimumSelections > maximumSelections) {
+    throw new Error("Pending choice selection bounds are invalid");
+  }
+  const ownerPlayerId = boundedString(choice.ownerPlayerId, "Pending choice owner", 100);
+  if (!players.has(ownerPlayerId)) throw new Error("Pending choice owner is unknown");
+  return {
+    id: boundedString(choice.id, "Pending choice id", 100),
+    kind: boundedString(choice.kind, "Pending choice kind", 60),
+    ownerPlayerId,
+    prompt: boundedString(choice.prompt, "Pending choice prompt", 500),
+    minimumSelections,
+    maximumSelections,
+    options,
+  };
+}
+
+function normalizeEffect(candidate, players) {
+  const effect = record(candidate, "Battle effect must be an object");
+  const ownerPlayerId = boundedString(effect.ownerPlayerId, "Battle effect owner", 100);
+  if (!players.has(ownerPlayerId)) throw new Error("Battle effect owner is unknown");
+  const duration = boundedString(effect.duration, "Battle effect duration", 40);
+  if (!BATTLE_EFFECT_DURATIONS.includes(duration)) {
+    throw new Error("Battle effect duration is unsupported");
+  }
+  const normalized = {
+    id: boundedString(effect.id, "Battle effect id", 100),
+    name: boundedString(effect.name, "Battle effect name"),
+    ownerPlayerId,
+    sourceFormationId:
+      typeof effect.sourceFormationId === "string" && effect.sourceFormationId
+        ? boundedString(effect.sourceFormationId, "Battle effect source formation id")
+        : "",
+    duration,
+    appliedAt: normalizeClock(effect.appliedAt, players),
+  };
+  if (normalized.appliedAt.status !== "active") {
+    throw new Error("Battle effects require an active clock");
   }
   return normalized;
 }
@@ -145,6 +280,18 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   if (normalized.version !== BATTLE_EVENT_VERSION)
     throw new Error("Unsupported battle event version");
   if (normalized.sequence !== sequence) throw new Error("Battle event sequence is not contiguous");
+  if (
+    stateVersion < BATTLE_STATE_VERSION &&
+    [
+      "battle_started",
+      "clock_advanced",
+      "choice_opened",
+      "choice_resolved",
+      "effect_applied",
+    ].includes(event.type)
+  ) {
+    throw new Error("Battle timeline events require battle-state version 3");
+  }
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation);
     if (!formations.players.has(formation.playerId)) throw new Error("Formation player is unknown");
@@ -164,6 +311,43 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     }
     normalized.formation = formation;
     formations.byId.set(formation.id, formation);
+    return normalized;
+  }
+  if (event.type === "battle_started") {
+    normalized.firstPlayerId = boundedString(event.firstPlayerId, "First player id", 100);
+    if (!formations.players.has(normalized.firstPlayerId)) {
+      throw new Error("First player is unknown");
+    }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "clock_advanced") {
+    normalized.from = normalizeClock(event.from, formations.players);
+    normalized.to = normalizeClock(event.to, formations.players);
+    normalized.expiredEffectIds = normalizeStringArray(
+      event.expiredEffectIds,
+      "Expired effect ids",
+      1000,
+    );
+    return normalized;
+  }
+  if (event.type === "choice_opened") {
+    normalized.choice = normalizeChoice(event.choice, formations.players);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "choice_resolved") {
+    normalized.choiceId = boundedString(event.choiceId, "Resolved choice id", 100);
+    normalized.selectedOptionIds = normalizeStringArray(
+      event.selectedOptionIds,
+      "Selected option ids",
+      32,
+    );
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "effect_applied") {
+    normalized.effect = normalizeEffect(event.effect, formations.players);
     return normalized;
   }
   if (event.type === "attack_resolved") {
@@ -228,7 +412,11 @@ export function createBattleState({ id, createdAt, rulesSnapshot = "catalogue-cu
 
 export function normalizeBattleState(candidate) {
   const state = record(candidate, "Battle state must be an object");
-  if (![LEGACY_BATTLE_STATE_VERSION, BATTLE_STATE_VERSION].includes(state.version)) {
+  if (
+    ![LEGACY_BATTLE_STATE_VERSION, ROSTER_BATTLE_STATE_VERSION, BATTLE_STATE_VERSION].includes(
+      state.version,
+    )
+  ) {
     throw new Error(`Unsupported battle state version: ${String(state.version)}`);
   }
   const players = normalizePlayers(state.players, state.version);
@@ -250,6 +438,25 @@ export function normalizeBattleState(candidate) {
     players,
     events,
   };
+  if (state.version === BATTLE_STATE_VERSION && state.migration !== undefined) {
+    const migration = record(state.migration, "Battle migration must be an object");
+    const sourceVersion = nonnegativeInteger(
+      migration.sourceVersion,
+      "Battle migration source version",
+      ROSTER_BATTLE_STATE_VERSION,
+    );
+    if (![LEGACY_BATTLE_STATE_VERSION, ROSTER_BATTLE_STATE_VERSION].includes(sourceVersion)) {
+      throw new Error("Battle migration source version is unsupported");
+    }
+    normalized.migration = {
+      sourceVersion,
+      legacyUntimedThroughSequence: nonnegativeInteger(
+        migration.legacyUntimedThroughSequence,
+        "Legacy untimed event sequence",
+        events.length,
+      ),
+    };
+  }
   replayBattleState(normalized);
   return normalized;
 }
@@ -272,8 +479,19 @@ export function replayBattleState(state) {
   const attacks = new Map();
   const activeAttackIds = [];
   const targetedFormationIds = new Set();
+  const pendingChoices = new Map();
+  const resolvedChoices = new Map();
+  const effects = new Map();
+  let clock = setupBattleClock();
+  const legacyUntimedThroughSequence =
+    state.version < BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyUntimedThroughSequence ?? 0);
   for (const event of state.events) {
     if (event.type === "formation_registered") {
+      if (state.version >= BATTLE_STATE_VERSION && clock.status !== "setup") {
+        throw new Error("Formations must be registered during battle setup");
+      }
       if (formations.has(event.formation.id)) throw new Error("Formation is already registered");
       formations.set(event.formation.id, {
         ...event.formation,
@@ -282,6 +500,9 @@ export function replayBattleState(state) {
       continue;
     }
     if (event.type === "formation_configured") {
+      if (state.version >= BATTLE_STATE_VERSION && clock.status !== "setup") {
+        throw new Error("Formation equipment is locked after the battle starts");
+      }
       if (targetedFormationIds.has(event.formation.id)) {
         throw new Error("Formation cannot be configured after it has been attacked");
       }
@@ -291,7 +512,93 @@ export function replayBattleState(state) {
       });
       continue;
     }
+    if (event.type === "battle_started") {
+      if (clock.status !== "setup") throw new Error("Battle has already started");
+      if (pendingChoices.size > 0) throw new Error("Pending choices block the battle start");
+      const expected = startBattleClock(state.players, event.firstPlayerId);
+      if (!sameBattleClock(event.clock, expected)) {
+        throw new Error("Battle start clock is not canonical");
+      }
+      clock = expected;
+      continue;
+    }
+    if (event.type === "clock_advanced") {
+      if (pendingChoices.size > 0) {
+        throw new Error("Pending choices must be resolved before advancing the battle");
+      }
+      if (!sameBattleClock(event.from, clock)) {
+        throw new Error("Battle clock advance does not match replayed state");
+      }
+      const expected = nextBattleClock(clock, state.players);
+      if (!sameBattleClock(event.to, expected)) {
+        throw new Error("Battle clock advance is not canonical");
+      }
+      const expiredEffectIds = [...effects.values()]
+        .filter((effect) => effectExpiresOnAdvance(effect, clock, expected))
+        .map((effect) => effect.id)
+        .sort();
+      const recordedExpiredEffectIds = [...event.expiredEffectIds].sort();
+      if (
+        expiredEffectIds.length !== recordedExpiredEffectIds.length ||
+        expiredEffectIds.some((id, index) => id !== recordedExpiredEffectIds[index])
+      ) {
+        throw new Error("Battle clock advance has an incorrect effect-expiry set");
+      }
+      for (const id of expiredEffectIds) effects.delete(id);
+      clock = expected;
+      continue;
+    }
+    if (event.type === "choice_opened") {
+      if (clock.status !== "active" || !sameBattleClock(event.clock, clock)) {
+        throw new Error("Pending choice was opened outside its battle timing window");
+      }
+      if (pendingChoices.has(event.choice.id) || resolvedChoices.has(event.choice.id)) {
+        throw new Error("Pending choice id has already been used");
+      }
+      pendingChoices.set(event.choice.id, event.choice);
+      continue;
+    }
+    if (event.type === "choice_resolved") {
+      if (!sameBattleClock(event.clock, clock)) {
+        throw new Error("Pending choice was resolved outside its battle timing window");
+      }
+      const choice = pendingChoices.get(event.choiceId);
+      if (!choice) throw new Error("Resolved choice is not pending");
+      const options = new Set(choice.options.map((option) => option.id));
+      if (
+        event.selectedOptionIds.length < choice.minimumSelections ||
+        event.selectedOptionIds.length > choice.maximumSelections ||
+        event.selectedOptionIds.some((id) => !options.has(id))
+      ) {
+        throw new Error("Resolved choice selections are invalid");
+      }
+      pendingChoices.delete(event.choiceId);
+      resolvedChoices.set(event.choiceId, [...event.selectedOptionIds]);
+      continue;
+    }
+    if (event.type === "effect_applied") {
+      if (clock.status !== "active" || !sameBattleClock(event.effect.appliedAt, clock)) {
+        throw new Error("Battle effect was applied outside its timing window");
+      }
+      if (effects.has(event.effect.id)) throw new Error("Battle effect id has already been used");
+      if (event.effect.sourceFormationId && !formations.has(event.effect.sourceFormationId)) {
+        throw new Error("Battle effect source formation is not registered");
+      }
+      effects.set(event.effect.id, event.effect);
+      continue;
+    }
     if (event.type === "attack_resolved") {
+      if (state.version >= BATTLE_STATE_VERSION && event.sequence > legacyUntimedThroughSequence) {
+        if (!battleAttackWindow(clock)) {
+          throw new Error("Attacks can only resolve in a Shooting or Fight attack step");
+        }
+        if (pendingChoices.size > 0) {
+          throw new Error("Pending choices must be resolved before resolving attacks");
+        }
+        if (formations.get(event.attackerFormationId)?.playerId !== clock.activePlayerId) {
+          throw new Error("Only the active player's formation can resolve an attack");
+        }
+      }
       const formation = formations.get(event.targetFormationId);
       if (!formation) throw new Error("Attack target formation is not registered");
       let appliedDamage = 0;
@@ -333,6 +640,9 @@ export function replayBattleState(state) {
       targetedFormationIds.add(event.targetFormationId);
       continue;
     }
+    if (event.type !== "attack_reverted") {
+      throw new Error(`Unsupported replayed battle event type: ${event.type}`);
+    }
     const reverted = attacks.get(event.revertsEventId);
     if (!reverted || activeAttackIds.at(-1) !== reverted.id) {
       throw new Error("Only the latest unreverted attack can be reverted");
@@ -346,11 +656,105 @@ export function replayBattleState(state) {
     }
     activeAttackIds.pop();
   }
-  return { formations, activeAttackIds };
+  return {
+    formations,
+    activeAttackIds,
+    clock,
+    pendingChoices,
+    resolvedChoices,
+    effects,
+  };
 }
 
 function appendEvent(state, event) {
   return normalizeBattleState({ ...state, events: [...state.events, event] });
+}
+
+export function startBattle(state, firstPlayerId, id, at) {
+  const replayed = replayBattleState(state);
+  if (replayed.clock.status !== "setup") throw new Error("Battle has already started");
+  const clock = startBattleClock(state.players, firstPlayerId);
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "battle_started",
+    firstPlayerId,
+    clock,
+  });
+}
+
+export function advanceBattleClock(state, id, at) {
+  const replayed = replayBattleState(state);
+  if (replayed.pendingChoices.size > 0) {
+    throw new Error("Pending choices must be resolved before advancing the battle");
+  }
+  const from = replayed.clock;
+  const to = nextBattleClock(from, state.players);
+  const expiredEffectIds = [...replayed.effects.values()]
+    .filter((effect) => effectExpiresOnAdvance(effect, from, to))
+    .map((effect) => effect.id)
+    .sort();
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "clock_advanced",
+    from,
+    to,
+    expiredEffectIds,
+  });
+}
+
+export function openBattleChoice(state, choice, id, at) {
+  const clock = replayBattleState(state).clock;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "choice_opened",
+    choice,
+    clock,
+  });
+}
+
+export function resolveBattleChoice(state, choiceId, selectedOptionIds, id, at) {
+  const clock = replayBattleState(state).clock;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "choice_resolved",
+    choiceId,
+    selectedOptionIds,
+    clock,
+  });
+}
+
+export function applyBattleEffect(state, effect, id, at) {
+  const appliedAt = replayBattleState(state).clock;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "effect_applied",
+    effect: { ...effect, appliedAt },
+  });
+}
+
+export function battleCanResolveAttack(state, attackerFormationId) {
+  if (!state) return false;
+  const replayed = replayBattleState(state);
+  return (
+    battleAttackWindow(replayed.clock) &&
+    replayed.pendingChoices.size === 0 &&
+    replayed.formations.get(attackerFormationId)?.playerId === replayed.clock.activePlayerId
+  );
 }
 
 export function registerBattleFormation(state, formation, id, at) {

@@ -157,6 +157,9 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     uint32_t battle_event_count;
     uint32_t battle_damage;
     bool battle_replayed;
+    uint32_t battle_clock[WHC_BATTLE_CLOCK_FIELDS];
+    uint32_t next_battle_clock[WHC_BATTLE_CLOCK_FIELDS];
+    uint32_t battle_clock_advances;
 
     while (index < weapon_count) {
         generate_weapon(&input, &weapons[index]);
@@ -290,5 +293,15 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         assert(battle_health[2] == 103u);
         assert(battle_health[3] == 104u);
     }
+    assert(whc_start_battle_clock(next_byte(&input) % 2u, battle_clock));
+    battle_clock_advances = next_byte(&input) % 171u;
+    index = 0u;
+    while (index < battle_clock_advances && battle_clock[0] == WHC_BATTLE_CLOCK_ACTIVE) {
+        assert(whc_next_battle_clock(battle_clock, next_battle_clock));
+        memcpy(battle_clock, next_battle_clock, sizeof(battle_clock));
+        index++;
+    }
+    assert(battle_clock[0] == WHC_BATTLE_CLOCK_ACTIVE ||
+           battle_clock[0] == WHC_BATTLE_CLOCK_COMPLETE);
     return 0;
 }

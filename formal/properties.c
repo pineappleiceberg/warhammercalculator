@@ -162,3 +162,24 @@ bool whc_prove_empty_battle_replay_initializes_health(uint32_t wounds, uint32_t 
     /*@ assert health[1] == 0; */
     return replayed && health[0] == models && health[1] == 0u;
 }
+
+/*@ requires first_player_index <= 1;
+    assigns \nothing;
+    ensures \result;
+*/
+bool whc_prove_battle_clock_start(uint32_t first_player_index) {
+    uint32_t clock[WHC_BATTLE_CLOCK_FIELDS] = {0u};
+    bool started = whc_start_battle_clock(first_player_index, clock);
+
+    /*@ assert started; */
+    /*@ assert clock[0] == WHC_BATTLE_CLOCK_ACTIVE; */
+    /*@ assert clock[1] == 1 && clock[2] == 1; */
+    /*@ assert clock[3] == WHC_BATTLE_PHASE_COMMAND && clock[4] == 0; */
+    /*@ assert clock[5] == first_player_index; */
+    /*@ assert clock[6] == first_player_index; */
+    /*@ assert clock[7] == first_player_index; */
+    return started && clock[0] == WHC_BATTLE_CLOCK_ACTIVE && clock[1] == 1u &&
+           clock[2] == 1u && clock[3] == WHC_BATTLE_PHASE_COMMAND && clock[4] == 0u &&
+           clock[5] == first_player_index && clock[6] == first_player_index &&
+           clock[7] == first_player_index;
+}

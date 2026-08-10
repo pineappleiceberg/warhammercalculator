@@ -27,25 +27,41 @@ state.
 
 ## Prioritized backlog
 
-1. Add a round, turn, phase, pending-choice, and exact effect-expiry state
-   machine as the foundation for complete guided play.
-2. Normalize the remaining mixed “twin lightning claws or two different
+1. Normalize the remaining mixed “twin lightning claws or two different
    weapons” pools and the Terminator cyclone pairing rule without flattening
    their mutually exclusive branches.
-3. Add Command Point, Victory Point, objective, Battle-shock, mission, scoring,
+2. Add Command Point, Victory Point, objective, Battle-shock, mission, scoring,
    and limited-resource state on top of the event log.
-4. Expand the legal-action and timing engine through movement, reserves,
+3. Expand the legal-action and timing engine through movement, reserves,
    transports, charges, Fight sequencing, pile-in, consolidation, reactions,
    and Stratagem windows.
-5. Build and enforce the source-locked faction, detachment, enhancement,
+4. Build and enforce the source-locked faction, detachment, enhancement,
    Stratagem, terrain, and mission coverage matrix described by the complete
    battle requirements.
-6. Add reviewable table geometry and player-entered movement, range, visibility,
+5. Add reviewable table geometry and player-entered movement, range, visibility,
    cover, coherency, Engagement Range, terrain, and objective facts.
-7. Deliver full guided-game replay scenarios before adding deterministic
+6. Deliver full guided-game replay scenarios before adding deterministic
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-10: Advanced guided play to battle-state version 3 with a canonical
+  five-round clock. Every game now has two ordered turns per round and explicit
+  Command, Movement, Shooting, Charge, and Fight steps; exactly 170 validated
+  transitions lead from battle start to completion. Only the active player's
+  registered formations can attack, and only in the Shooting resolve-attacks or
+  Fight attack steps. Pending bounded choices block attacks and time, while
+  named effects expire deterministically at their recorded step, phase, turn,
+  round, or battle boundary. Setup-only equipment freezes when the battle starts.
+  Existing version-1 and version-2 logs migrate without invented timing and mark
+  their preserved events as explicitly legacy-untimed. Native C and WebAssembly
+  expose the same eight-field clock ABI; the replay API independently walks every
+  version-3 transition through Wasm and returns the clock, pending choices, and
+  active effects. Differential tests cover both first players through all 170
+  transitions, migration tests cover both older schemas, expiry and tamper tests
+  cover every duration, sanitizer fuzzing covers bounded advances, and ACSL/WP
+  proves all 477 selected obligations including start state and transition
+  failure atomicity.
 
 - 2026-08-10: Advanced Play Mode to battle-state version 2 and made roster
   setup canonical. Selecting both lists now registers every exact formation on

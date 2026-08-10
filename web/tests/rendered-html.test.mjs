@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 import { antiWoundThreshold } from "../lib/anti.mjs";
+import {
+  advanceBattleClock,
+  applyBattleEffect,
+  openBattleChoice,
+  startBattle,
+} from "../lib/battle-state.mjs";
 import { rulesInteractionCases } from "./rules-interaction-corpus.mjs";
 
 const projectRoot = new URL("../", import.meta.url);
@@ -2305,6 +2311,78 @@ test("replays canonical battle health through the C and WebAssembly API", async 
   const versionTwoResult = await versionTwoResponse.json();
   assert.equal(versionTwoResult.data.schemaVersion, 2);
   assert.deepEqual(versionTwoResult.data.health, result.data.health);
+
+  let versionThree = {
+    ...structuredClone(versionTwo),
+    version: 3,
+    migration: {
+      sourceVersion: 2,
+      legacyUntimedThroughSequence: versionTwo.events.length,
+    },
+  };
+  versionThree = startBattle(versionThree, "player-1", "start-guided-battle", 200);
+  for (let index = 0; index < 8; index++) {
+    versionThree = advanceBattleClock(versionThree, `advance-clock-${index}`, 201 + index);
+  }
+  versionThree = applyBattleEffect(
+    versionThree,
+    {
+      id: "phase-effect",
+      name: "Test phase effect",
+      ownerPlayerId: "player-1",
+      sourceFormationId: "attacker",
+      duration: "end_of_phase",
+    },
+    "apply-phase-effect",
+    220,
+  );
+  versionThree = openBattleChoice(
+    versionThree,
+    {
+      id: "attack-choice",
+      kind: "test",
+      ownerPlayerId: "player-1",
+      prompt: "Choose a firing mode",
+      minimumSelections: 1,
+      maximumSelections: 1,
+      options: [{ id: "focused", label: "Focused" }],
+    },
+    "open-attack-choice",
+    221,
+  );
+  const versionThreeResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: versionThree, formationId: "target" }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(versionThreeResponse.status, 200);
+  const versionThreeResult = await versionThreeResponse.json();
+  assert.equal(versionThreeResult.data.schemaVersion, 3);
+  assert.deepEqual(versionThreeResult.data.health, result.data.health);
+  assert.deepEqual(versionThreeResult.data.clock, {
+    status: "active",
+    battleRound: 1,
+    turn: 1,
+    phase: "shooting",
+    step: "resolve_attacks",
+    firstPlayerId: "player-1",
+    activePlayerId: "player-1",
+    priorityPlayerId: "player-1",
+  });
+  assert.deepEqual(versionThreeResult.data.pendingChoiceIds, ["attack-choice"]);
+  assert.deepEqual(versionThreeResult.data.activeEffects, [
+    {
+      id: "phase-effect",
+      name: "Test phase effect",
+      duration: "end_of_phase",
+      ownerPlayerId: "player-1",
+      sourceFormationId: "attacker",
+    },
+  ]);
 
   const configuredVersionTwo = structuredClone(versionTwo);
   configuredVersionTwo.events.splice(2, 0, {

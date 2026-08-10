@@ -15,15 +15,21 @@ import {
 } from "../../lib/combat";
 import {
   activeBattleAttacks,
+  advanceBattleClock,
   appendResolvedAttack,
+  battleCanResolveAttack,
   battleFormation,
   battleFormationHealth,
   battleFormationWasTargeted,
   configureUnengagedBattleFormation,
   createBattleState,
   normalizeBattleState,
+  replayBattleState,
+  resolveBattleChoice,
   revertLatestAttack,
+  startBattle,
 } from "../../lib/battle-state.mjs";
+import { battleClockLabel } from "../../lib/battle-clock.mjs";
 import { battleRosterRevisionsMatch, initializeBattleForLists } from "../../lib/battle-setup.mjs";
 import {
   applyCombatPresets,
@@ -134,6 +140,9 @@ export default function PlayMode() {
   const [history, setHistory] = useState<LogEntry[]>([]);
   const [battleState, setBattleState] = useState<ReturnType<typeof createBattleState> | null>(null);
   const [battleSetupError, setBattleSetupError] = useState("");
+  const [pendingChoiceSelections, setPendingChoiceSelections] = useState<Record<string, string[]>>(
+    {},
+  );
   const [status, setStatus] = useState("Select two saved lists");
   const [recoveryReady, setRecoveryReady] = useState(false);
   const recovered = useRef(false);
@@ -284,6 +293,7 @@ export default function PlayMode() {
   const resetBattleForChangedLists = (nextAttackerListId: string, nextTargetListId: string) => {
     if (retainBattleForLists(nextAttackerListId, nextTargetListId)) return;
     setBattleState(null);
+    setPendingChoiceSelections({});
     setHistory([]);
   };
 
@@ -572,6 +582,13 @@ export default function PlayMode() {
       return attackerListId !== targetListId || index === 1;
     })?.id ?? "player-2";
   const targetBattleFormationId = targetFormation ? `${targetPlayerId}:${targetFormation.id}` : "";
+  const attackerBattleFormationId = attackerFormation
+    ? `${attackerPlayerId}:${attackerFormation.id}`
+    : "";
+  const replayedBattle = battleState ? replayBattleState(battleState) : null;
+  const battleClock = replayedBattle?.clock ?? null;
+  const pendingBattleChoices = replayedBattle ? [...replayedBattle.pendingChoices.values()] : [];
+  const activeBattleEffects = replayedBattle ? [...replayedBattle.effects.values()] : [];
   const targetBattleHealth =
     battleState && targetBattleFormationId
       ? battleFormationHealth(battleState, targetBattleFormationId)
@@ -580,6 +597,10 @@ export default function PlayMode() {
     battleState && targetBattleFormationId
       ? battleFormationWasTargeted(battleState, targetBattleFormationId)
       : false;
+  const targetEquipmentLocked =
+    targetBattleWasAttacked ||
+    battleClock?.status === "active" ||
+    battleClock?.status === "complete";
   useEffect(() => {
     if (!recoveryReady || !catalogue || !attackerList || !targetList) return;
     let cancelled = false;
@@ -1481,8 +1502,8 @@ export default function PlayMode() {
   };
 
   const changeTargetDefensiveEquipment = (key: string, count: number) => {
-    if (targetBattleWasAttacked) {
-      setStatus("Target equipment is locked after this formation has been attacked");
+    if (targetEquipmentLocked) {
+      setStatus("Target equipment is locked after the battle starts");
       return;
     }
     const next = { ...targetDefensiveEquipmentCounts };
@@ -1981,6 +2002,77 @@ export default function PlayMode() {
   const setNumber = (key: keyof CombatProfile, value: number) =>
     setProfile((current) => ({ ...current, [key]: value }));
 
+  const startGuidedBattle = () => {
+    if (!battleState) return;
+    try {
+      setBattleState(
+        startBattle(
+          battleState,
+          attackerPlayerId,
+          crypto.randomUUID(),
+          battleState.events.length + 1,
+        ),
+      );
+      setStatus(`${attackerList?.name ?? "Attacker"} has the first turn`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Battle could not start");
+    }
+  };
+
+  const advanceGuidedBattle = () => {
+    if (!battleState) return;
+    try {
+      const next = advanceBattleClock(
+        battleState,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setStatus(battleClockLabel(replayBattleState(next).clock, next.players));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Battle could not advance");
+    }
+  };
+
+  const togglePendingChoice = (choiceId: string, optionId: string, maximum: number) => {
+    setPendingChoiceSelections((current) => {
+      const selected = current[choiceId] ?? [];
+      const next = selected.includes(optionId)
+        ? selected.filter((id) => id !== optionId)
+        : maximum === 1
+          ? [optionId]
+          : [...selected, optionId].slice(0, maximum);
+      return { ...current, [choiceId]: next };
+    });
+  };
+
+  const finishPendingChoice = (choiceId: string) => {
+    if (!battleState) return;
+    try {
+      setBattleState(
+        resolveBattleChoice(
+          battleState,
+          choiceId,
+          pendingChoiceSelections[choiceId] ?? [],
+          crypto.randomUUID(),
+          battleState.events.length + 1,
+        ),
+      );
+      setPendingChoiceSelections((current) => {
+        const next = { ...current };
+        delete next[choiceId];
+        return next;
+      });
+      setStatus("Choice recorded");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Choice could not be recorded");
+    }
+  };
+
+  const battleAttackReady =
+    Boolean(battleState && attackerBattleFormationId) &&
+    battleCanResolveAttack(battleState, attackerBattleFormationId);
+
   const ready = Boolean(
     attackerUnit &&
       targetUnit &&
@@ -1993,43 +2085,52 @@ export default function PlayMode() {
       battleRostersMatch &&
       !battleSetupError &&
       Boolean(battleState) &&
+      battleAttackReady &&
       targetFormationModels.ambiguousComponents.length === 0 &&
       !(firingDeckChoice && !validFiringDeckPassengerIds.has(firingDeckChoice.passengerUnitId)) &&
       !(firingDeckChoice && firingDeckPassengerAlreadyShot),
   );
-  const readyLabel = !attackerList
-    ? "Choose an attacking list"
-    : !attackerUnit
-      ? "Choose an attacking unit"
-      : firingDeckChoice && !validFiringDeckPassengerIds.has(firingDeckChoice.passengerUnitId)
-        ? "Passenger is not legally assigned to this Transport"
-        : firingDeckChoice && firingDeckPassengerAlreadyShot
-          ? "Passenger unit has already shot"
-          : !selectedWeapon
-            ? "Choose a weapon"
-            : !targetList
-              ? "Choose a target list"
-              : !targetUnit
-                ? "Choose a target unit"
-                : !targetModelId
-                  ? "Choose a target profile"
-                  : targetBattleStateError
-                    ? targetBattleStateError
-                    : !battleRulesMatch
-                      ? "Battle rules snapshot does not match the loaded catalogue"
-                      : !battleRostersMatch
-                        ? "A saved roster changed after this battle was set up"
-                        : battleSetupError
-                          ? battleSetupError
-                          : targetFormationModels.destroyed
-                            ? `${targetFormation?.name ?? targetUnit.name} is destroyed`
-                            : targetFormationModels.ambiguousComponents.length > 0
-                              ? `Exact composition unavailable for ${targetFormationModels.ambiguousComponents.join(
-                                  ", ",
-                                )}`
-                              : `${attackerFormation?.name ?? attackerUnit.name} into ${
-                                  targetFormation?.name ?? targetUnit.name
-                                }`;
+  const readyLabel = (() => {
+    if (!attackerList) return "Choose an attacking list";
+    if (!attackerUnit) return "Choose an attacking unit";
+    if (firingDeckChoice && !validFiringDeckPassengerIds.has(firingDeckChoice.passengerUnitId)) {
+      return "Passenger is not legally assigned to this Transport";
+    }
+    if (firingDeckChoice && firingDeckPassengerAlreadyShot) {
+      return "Passenger unit has already shot";
+    }
+    if (!selectedWeapon) return "Choose a weapon";
+    if (!targetList) return "Choose a target list";
+    if (!targetUnit) return "Choose a target unit";
+    if (!targetModelId) return "Choose a target profile";
+    if (targetBattleStateError) return targetBattleStateError;
+    if (!battleRulesMatch) return "Battle rules snapshot does not match the loaded catalogue";
+    if (!battleRostersMatch) return "A saved roster changed after this battle was set up";
+    if (battleSetupError) return battleSetupError;
+    if (!battleState || !battleClock) return "Preparing battle setup";
+    if (battleClock.status === "setup") return "Start the battle before resolving attacks";
+    if (battleClock.status === "complete") return "The battle is complete";
+    if (pendingBattleChoices.length > 0) {
+      return "Resolve the pending choice before attacking";
+    }
+    if (battleClock.activePlayerId !== attackerPlayerId) {
+      return `${battleClockLabel(battleClock, battleState.players)} · swap sides to attack`;
+    }
+    if (!battleAttackReady) {
+      return `${battleClockLabel(battleClock, battleState.players)} · advance to an attack step`;
+    }
+    if (targetFormationModels.destroyed) {
+      return `${targetFormation?.name ?? targetUnit.name} is destroyed`;
+    }
+    if (targetFormationModels.ambiguousComponents.length > 0) {
+      return `Exact composition unavailable for ${targetFormationModels.ambiguousComponents.join(
+        ", ",
+      )}`;
+    }
+    return `${attackerFormation?.name ?? attackerUnit.name} into ${
+      targetFormation?.name ?? targetUnit.name
+    }`;
+  })();
 
   const resetBattle = () => {
     suppressRecoverySave.current = true;
@@ -2053,6 +2154,7 @@ export default function PlayMode() {
     setResult(null);
     setHistory([]);
     setBattleState(null);
+    setPendingChoiceSelections({});
     window.localStorage.removeItem(PLAY_RECOVERY_KEY);
     setStatus("Battle reset");
   };
@@ -2524,7 +2626,7 @@ export default function PlayMode() {
                               aria-label={`${option.unitName} ${option.name} equipped`}
                               type="checkbox"
                               checked={(targetDefensiveEquipmentCounts[key] ?? 0) > 0}
-                              disabled={targetBattleWasAttacked}
+                              disabled={targetEquipmentLocked}
                               onChange={(event) =>
                                 changeTargetDefensiveEquipment(key, event.target.checked ? 1 : 0)
                               }
@@ -2560,7 +2662,7 @@ export default function PlayMode() {
                                 min={0}
                                 max={segment.modelCount}
                                 value={targetDefensiveEquipmentCounts[key] ?? 0}
-                                disabled={targetBattleWasAttacked}
+                                disabled={targetEquipmentLocked}
                                 onChange={(event) =>
                                   changeTargetDefensiveEquipment(
                                     key,
@@ -2575,8 +2677,8 @@ export default function PlayMode() {
                           );
                         });
                     })}
-                    {targetBattleWasAttacked && (
-                      <small>Equipment is locked after this formation has been attacked.</small>
+                    {targetEquipmentLocked && (
+                      <small>Equipment is locked after the battle starts.</small>
                     )}
                   </details>
                 )}
@@ -3717,6 +3819,78 @@ export default function PlayMode() {
         </aside>
       </div>
       <section className="battle-log">
+        {battleState && battleClock && (
+          <div className="battle-timeline" aria-labelledby="battle-timeline-heading">
+            <div>
+              <span className="section-kicker">Guided timeline</span>
+              <h2 id="battle-timeline-heading">
+                {battleClockLabel(battleClock, battleState.players)}
+              </h2>
+              {battleState.migration && battleClock.status === "setup" && (
+                <small>
+                  Imported attacks remain explicitly untimed. Start the guided timeline from the
+                  current health state.
+                </small>
+              )}
+            </div>
+            <div className="battle-log-actions">
+              {battleClock.status === "setup" && (
+                <button type="button" onClick={startGuidedBattle}>
+                  Start battle · {attackerList?.name ?? "current attacker"} first
+                </button>
+              )}
+              {battleClock.status === "active" && (
+                <button
+                  type="button"
+                  disabled={pendingBattleChoices.length > 0}
+                  onClick={advanceGuidedBattle}
+                >
+                  Next step
+                </button>
+              )}
+            </div>
+            {pendingBattleChoices.map((choice) => {
+              const selected = pendingChoiceSelections[choice.id] ?? [];
+              return (
+                <fieldset key={choice.id} className="pending-choice">
+                  <legend>{choice.prompt}</legend>
+                  {choice.options.map((option) => (
+                    <label key={option.id}>
+                      <input
+                        type={choice.maximumSelections === 1 ? "radio" : "checkbox"}
+                        name={`choice-${choice.id}`}
+                        checked={selected.includes(option.id)}
+                        onChange={() =>
+                          togglePendingChoice(choice.id, option.id, choice.maximumSelections)
+                        }
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                  <button
+                    type="button"
+                    disabled={
+                      selected.length < choice.minimumSelections ||
+                      selected.length > choice.maximumSelections
+                    }
+                    onClick={() => finishPendingChoice(choice.id)}
+                  >
+                    Confirm choice
+                  </button>
+                </fieldset>
+              );
+            })}
+            {activeBattleEffects.length > 0 && (
+              <ul className="active-effects" aria-label="Active battle effects">
+                {activeBattleEffects.map((effect) => (
+                  <li key={effect.id}>
+                    {effect.name} · {effect.duration.replaceAll("_", " ")}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
         <div className="battle-log-head">
           <div>
             <span className="section-kicker">Attack history</span>

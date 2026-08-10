@@ -5,6 +5,7 @@ import test from "node:test";
 import { targetSequenceState } from "../lib/allocation.mjs";
 import {
   activeBattleAttacks,
+  advanceBattleClock,
   appendResolvedAttack,
   battleFormationHealth,
   createBattleState,
@@ -12,7 +13,9 @@ import {
   registerBattleFormation,
   replayBattleState,
   revertLatestAttack,
+  startBattle,
 } from "../lib/battle-state.mjs";
+import { battleAttackWindow } from "../lib/battle-clock.mjs";
 import { applyBattleHealthToTargetSequence } from "../lib/formations.mjs";
 
 const targets = [
@@ -72,12 +75,19 @@ function newBattle() {
 }
 
 function registeredBattle() {
-  return registerBattleFormation(
+  let state = registerBattleFormation(
     registerBattleFormation(newBattle(), attackerFormation, "event-register-attacker", 100),
     formation,
     "event-register",
     101,
   );
+  state = startBattle(state, "player-1", "battle-start", 102);
+  let advance = 0;
+  while (!battleAttackWindow(replayBattleState(state).clock)) {
+    advance += 1;
+    state = advanceBattleClock(state, `clock-${advance}`, 102 + advance);
+  }
+  return state;
 }
 
 test("reports exact per-segment damage state across mixed profiles", () => {
@@ -160,10 +170,11 @@ test("rejects divergent replay state and non-latest undo", () => {
     },
   });
   const corrupt = JSON.parse(JSON.stringify(state));
-  corrupt.events[2].allocations[0].before.woundsLost = 1;
+  corrupt.events.find((event) => event.id === "event-attack-1").allocations[0].before.woundsLost =
+    1;
   assert.throws(() => normalizeBattleState(corrupt), /does not match replayed target health/);
   const falseSummary = JSON.parse(JSON.stringify(state));
-  falseSummary.events[2].summary.damage = 2;
+  falseSummary.events.find((event) => event.id === "event-attack-1").summary.damage = 2;
   assert.throws(() => normalizeBattleState(falseSummary), /summary damage/);
   const missingAttacker = JSON.parse(JSON.stringify(state));
   missingAttacker.events = missingAttacker.events.slice(1).map((event, index) => ({
@@ -181,7 +192,7 @@ test("rejects divergent replay state and non-latest undo", () => {
       {
         version: 1,
         id: "bad-undo",
-        sequence: 4,
+        sequence: state.events.length + 1,
         at: 103,
         type: "attack_reverted",
         revertsEventId: "missing",

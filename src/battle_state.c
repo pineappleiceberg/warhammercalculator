@@ -4,6 +4,115 @@
 #include <string.h>
 
 _Static_assert(WHC_BATTLE_EVENT_FIELDS == 166u, "Battle event ABI changed");
+_Static_assert(WHC_BATTLE_CLOCK_FIELDS == 8u, "Battle clock ABI changed");
+
+/*@ assigns \nothing;
+    ensures \result <= 4;
+*/
+static uint32_t whc_battle_phase_step_count(uint32_t phase) {
+    if (phase == WHC_BATTLE_PHASE_COMMAND || phase == WHC_BATTLE_PHASE_SHOOTING ||
+        phase == WHC_BATTLE_PHASE_CHARGE) {
+        return 3u;
+    }
+    if (phase == WHC_BATTLE_PHASE_MOVEMENT || phase == WHC_BATTLE_PHASE_FIGHT) {
+        return 4u;
+    }
+    return 0u;
+}
+
+/*@ requires \valid_read(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));
+    assigns \nothing;
+    ensures \result ==> clock[0] == WHC_BATTLE_CLOCK_ACTIVE;
+    ensures \result ==> 1 <= clock[1] && clock[1] <= 5;
+    ensures \result ==> 1 <= clock[2] && clock[2] <= 2;
+    ensures \result ==> WHC_BATTLE_PHASE_COMMAND <= clock[3] &&
+                         clock[3] <= WHC_BATTLE_PHASE_FIGHT;
+    ensures \result ==> clock[4] < 4;
+    ensures \result ==> clock[5] <= 1;
+    ensures \result ==> clock[6] <= 1 && clock[7] <= 1;
+*/
+static bool whc_battle_clock_is_active_valid(const uint32_t *clock) {
+    uint32_t steps;
+    uint32_t expected_active;
+
+    if (clock == NULL || clock[0] != WHC_BATTLE_CLOCK_ACTIVE || clock[1] < 1u ||
+        clock[1] > 5u || clock[2] < 1u || clock[2] > 2u ||
+        clock[3] < WHC_BATTLE_PHASE_COMMAND || clock[3] > WHC_BATTLE_PHASE_FIGHT ||
+        clock[5] > 1u) {
+        return false;
+    }
+    steps = whc_battle_phase_step_count(clock[3]);
+    expected_active = clock[2] == 1u ? clock[5] : 1u - clock[5];
+    return steps > 0u && clock[4] < steps && clock[6] == expected_active &&
+           clock[7] == expected_active;
+}
+
+bool whc_start_battle_clock(uint32_t first_player_index, uint32_t *clock) {
+    if (clock == NULL || first_player_index > 1u) {
+        return false;
+    }
+    clock[0] = WHC_BATTLE_CLOCK_ACTIVE;
+    clock[1] = 1u;
+    clock[2] = 1u;
+    clock[3] = WHC_BATTLE_PHASE_COMMAND;
+    clock[4] = 0u;
+    clock[5] = first_player_index;
+    clock[6] = first_player_index;
+    clock[7] = first_player_index;
+    return true;
+}
+
+bool whc_next_battle_clock(const uint32_t *current, uint32_t *next) {
+    uint32_t candidate[WHC_BATTLE_CLOCK_FIELDS];
+    uint32_t steps;
+
+    if (current == NULL || next == NULL || !whc_battle_clock_is_active_valid(current)) {
+        return false;
+    }
+    candidate[0] = current[0];
+    candidate[1] = current[1];
+    candidate[2] = current[2];
+    candidate[3] = current[3];
+    candidate[4] = current[4];
+    candidate[5] = current[5];
+    candidate[6] = current[6];
+    candidate[7] = current[7];
+    steps = whc_battle_phase_step_count(candidate[3]);
+    if (candidate[4] + 1u < steps) {
+        candidate[4]++;
+    } else if (candidate[3] < WHC_BATTLE_PHASE_FIGHT) {
+        candidate[3]++;
+        candidate[4] = 0u;
+    } else if (candidate[2] == 1u) {
+        candidate[2] = 2u;
+        candidate[3] = WHC_BATTLE_PHASE_COMMAND;
+        candidate[4] = 0u;
+        candidate[6] = 1u - candidate[5];
+        candidate[7] = candidate[6];
+    } else if (candidate[1] < 5u) {
+        candidate[1]++;
+        candidate[2] = 1u;
+        candidate[3] = WHC_BATTLE_PHASE_COMMAND;
+        candidate[4] = 0u;
+        candidate[6] = candidate[5];
+        candidate[7] = candidate[5];
+    } else {
+        candidate[0] = WHC_BATTLE_CLOCK_COMPLETE;
+        candidate[3] = WHC_BATTLE_PHASE_COMPLETE;
+        candidate[4] = 0u;
+        candidate[6] = WHC_BATTLE_PLAYER_NONE;
+        candidate[7] = WHC_BATTLE_PLAYER_NONE;
+    }
+    next[0] = candidate[0];
+    next[1] = candidate[1];
+    next[2] = candidate[2];
+    next[3] = candidate[3];
+    next[4] = candidate[4];
+    next[5] = candidate[5];
+    next[6] = candidate[6];
+    next[7] = candidate[7];
+    return true;
+}
 
 /*@ assigns \nothing;
     ensures \result <==> wounds > 0 && starting_models > 0 &&

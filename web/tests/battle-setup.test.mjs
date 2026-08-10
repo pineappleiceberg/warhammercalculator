@@ -3,12 +3,16 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  advanceBattleClock,
   appendResolvedAttack,
   battleFormation,
   battleFormationHealth,
   configureUnengagedBattleFormation,
   normalizeBattleState,
+  replayBattleState,
+  startBattle,
 } from "../lib/battle-state.mjs";
+import { battleAttackWindow } from "../lib/battle-clock.mjs";
 import { battleRosterRevisionsMatch, initializeBattleForLists } from "../lib/battle-setup.mjs";
 import {
   savedFormationDefensiveEquipmentDefaults,
@@ -65,7 +69,7 @@ function setup(state = null) {
 
 test("registers every formation on both rosters before combat with stable ids", () => {
   const state = setup();
-  assert.equal(state.version, 2);
+  assert.equal(state.version, 3);
   assert.deepEqual(
     state.players.map((player) => [player.listId, player.listUpdatedAt]),
     [
@@ -106,7 +110,7 @@ test("registers every formation on both rosters before combat with stable ids", 
   );
 });
 
-test("allows equipment correction until the formation is targeted, then freezes it", () => {
+test("allows equipment correction during setup, then freezes it when battle starts", () => {
   let state = setup();
   const targetId = "player-2:brutalis";
   const registration = battleFormation(state, targetId);
@@ -121,6 +125,14 @@ test("allows equipment correction until the formation is targeted, then freezes 
   assert.deepEqual(battleFormation(state, targetId).defensiveEquipmentCounts, {
     "brutalis::unit::narrative": 1,
   });
+  state = startBattle(state, "player-1", "start-battle", 4);
+  assert.throws(
+    () => configureUnengagedBattleFormation(state, registration, "configure-after-start", 5),
+    /locked after the battle starts/i,
+  );
+  while (!battleAttackWindow(replayBattleState(state).clock)) {
+    state = advanceBattleClock(state, `advance-${state.events.length}`, state.events.length + 1);
+  }
 
   const target = battleFormation(state, targetId);
   const targets = target.segments.map((segment) => ({
@@ -129,7 +141,7 @@ test("allows equipment correction until the formation is targeted, then freezes 
   }));
   state = appendResolvedAttack(state, {
     id: "attack-1",
-    at: 4,
+    at: state.events.length + 1,
     attackerFormationId: "player-1:doom-scythe",
     targetFormationId: targetId,
     segmentIds: target.segments.map((segment) => segment.id),
@@ -150,6 +162,20 @@ test("allows equipment correction until the formation is targeted, then freezes 
   );
 });
 
+test("migrates a version-2 roster battle with explicit untimed provenance", () => {
+  const versionTwo = structuredClone(legacySetup);
+  versionTwo.version = 2;
+  versionTwo.players[0].listUpdatedAt = attackers.updatedAt;
+  versionTwo.players[1].listUpdatedAt = defenders.updatedAt;
+  const migrated = setup(normalizeBattleState(versionTwo));
+  assert.equal(migrated.version, 3);
+  assert.deepEqual(migrated.migration, {
+    sourceVersion: 2,
+    legacyUntimedThroughSequence: 3,
+  });
+  assert.equal(migrated.events.at(-1).id, "legacy-attack");
+});
+
 test("migrates a partial version-1 log without changing attack ids or health", () => {
   const defenderFormation = savedFormationGroups(catalogue, defenders)[0];
   const equipment = savedFormationDefensiveEquipmentDefaults(defenderFormation);
@@ -157,7 +183,11 @@ test("migrates a partial version-1 log without changing attack ids or health", (
   const legacy = normalizeBattleState(legacySetup);
 
   const migrated = setup(legacy);
-  assert.equal(migrated.version, 2);
+  assert.equal(migrated.version, 3);
+  assert.deepEqual(migrated.migration, {
+    sourceVersion: 1,
+    legacyUntimedThroughSequence: 3,
+  });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
     ["formation_registered", "formation_registered", "attack_resolved"],

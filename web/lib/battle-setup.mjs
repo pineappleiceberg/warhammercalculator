@@ -188,6 +188,7 @@ export function initializeBattleForLists({
       throw new Error("Battle rules snapshot does not match the loaded catalogue");
     }
     if (next.version < BATTLE_STATE_VERSION) {
+      const sourceVersion = next.version;
       next = registerCompleteRosters(
         catalogue,
         next,
@@ -199,6 +200,10 @@ export function initializeBattleForLists({
         ...next,
         version: BATTLE_STATE_VERSION,
         players: upgradePlayers(next, firstList, secondList),
+        migration: {
+          sourceVersion,
+          legacyUntimedThroughSequence: next.events.length,
+        },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {
       throw new Error("A saved roster changed after this battle was set up");

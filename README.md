@@ -640,15 +640,23 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 2 as soon as both lists are selected. Every
+creates battle-state version 3 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
-list into existing wounds or casualties. Version-1 logs migrate by preserving
+list into existing wounds or casualties. Version-1 and version-2 logs migrate by preserving
 their registrations, attack IDs, allocations, and health while adding every
-missing roster formation ahead of combat events. Defensive-equipment allocation
-remains battle-local and editable until that formation has actually been
-targeted, after which its exact bearer identities are frozen for replay.
+missing roster formation ahead of combat events. Preserved attacks remain
+explicitly legacy-untimed instead of being assigned invented phases. Defensive-
+equipment allocation remains battle-local and editable during setup, then its
+exact bearer identities freeze when the battle starts.
+The guided timeline records battle round, first or second player turn, active
+and priority player, phase, and step. It covers Command, Movement, Shooting,
+Charge, and Fight through five rounds. Pending bounded choices stop both attacks
+and clock advancement until resolved, and recorded effects expire exactly at
+their step, phase, turn, round, or battle boundary. Attacks are accepted only
+from the active player's registered formation during the Shooting attack step or
+one of the two Fight attack steps.
 Play Mode stores resolved attacks in a versioned append-only event log. Mixed-profile
 wounds, casualties, destroyed formations, and defensive-equipment bearer
 identity carry into later attacks, including after swapping which list is
@@ -656,13 +664,15 @@ attacking. Undo appends a compensating event instead of deleting history.
 Validated JSON battle exports and imports preserve the rules snapshot and fail
 closed when the referenced saved lists or loaded catalogue do not match.
 The same version-1 flat event ABI for formation-health replay runs in native C
-and WebAssembly for both version-1 and version-2 JSON battle envelopes.
+and WebAssembly for version-1, version-2, and version-3 JSON battle envelopes.
 It validates attack transitions, damage and casualty totals, the one-wounded-model
 invariant, and last-in-first-out compensating undo without modifying its output
 when an event stream is invalid. `POST /api/v1/battle/replay` accepts
 `{ "battleState": ..., "formationId": ... }`, validates the canonical JSON log,
 replays the selected formation through Wasm, cross-checks the result against the
-web replay, and returns its per-segment health plus the active attack IDs. The
+web replay, independently cross-checks every version-3 clock transition through
+the C/WebAssembly clock, and returns per-segment health, active attack IDs, the
+current clock, pending-choice IDs, and active effects. The
 portable ABI supports the same 32 formation segments and 10,000-event bound as
 the saved web schema.
 On narrow screens, Play Mode groups the attacker and target into guided steps,

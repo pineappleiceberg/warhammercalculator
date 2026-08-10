@@ -1328,6 +1328,33 @@ static void test_battle_health_replay(void) {
     assert(health[3] == 94u);
 }
 
+/*@ assigns \nothing;
+*/
+static void test_battle_clock(void) {
+    uint32_t current[WHC_BATTLE_CLOCK_FIELDS] = {0u};
+    uint32_t next[WHC_BATTLE_CLOCK_FIELDS] = {0u};
+    uint32_t advances = 0u;
+
+    assert(whc_start_battle_clock(1u, current));
+    assert(current[0] == WHC_BATTLE_CLOCK_ACTIVE);
+    assert(current[5] == 1u && current[6] == 1u && current[7] == 1u);
+    while (current[0] == WHC_BATTLE_CLOCK_ACTIVE) {
+        assert(advances < 170u);
+        assert(whc_next_battle_clock(current, next));
+        memcpy(current, next, sizeof(current));
+        advances++;
+    }
+    assert(advances == 170u);
+    assert(current[0] == WHC_BATTLE_CLOCK_COMPLETE);
+    assert(current[1] == 5u && current[2] == 2u);
+    assert(current[3] == WHC_BATTLE_PHASE_COMPLETE);
+    assert(current[5] == 1u);
+    assert(current[6] == WHC_BATTLE_PLAYER_NONE);
+    next[0] = 91u;
+    assert(!whc_next_battle_clock(current, next));
+    assert(next[0] == 91u);
+}
+
 /*@ terminates \true;
     ensures \result == 0;
 */
@@ -1355,6 +1382,7 @@ int main(void) {
     test_first_failed_save_damage_replacement();
     test_allocated_attack_damage_replacement();
     test_battle_health_replay();
+    test_battle_clock();
     puts("all tests passed");
     return 0;
 }

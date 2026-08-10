@@ -23,6 +23,7 @@ import {
   normalizeBattleState,
   replayBattleState,
 } from "../lib/battle-state.mjs";
+import { BATTLE_PHASE_STEPS, nextBattleClock, startBattleClock } from "../lib/battle-clock.mjs";
 import {
   applyCombatPresets,
   applyTargetCombatPresets,
@@ -83,6 +84,65 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._attack_plan_is_valid, "function");
   assert.equal(typeof calculator._whc_estimate_ordered_volley_complexity, "function");
   assert.equal(typeof calculator._whc_replay_battle_health_events, "function");
+  assert.equal(typeof calculator._whc_start_battle_clock, "function");
+  assert.equal(typeof calculator._whc_next_battle_clock, "function");
+});
+
+test("WebAssembly and JavaScript battle clocks match every transition", () => {
+  const statuses = { setup: 0, active: 1, complete: 2 };
+  const phases = {
+    setup: 0,
+    command: 1,
+    movement: 2,
+    shooting: 3,
+    charge: 4,
+    fight: 5,
+    complete: 6,
+  };
+  const players = [{ id: "alpha" }, { id: "beta" }];
+  const words = (clock) => {
+    const steps = BATTLE_PHASE_STEPS[clock.phase];
+    const playerIndex = (id) => (id ? players.findIndex((player) => player.id === id) : 2);
+    return [
+      statuses[clock.status],
+      clock.battleRound,
+      clock.turn,
+      phases[clock.phase],
+      steps ? steps.indexOf(clock.step) : 0,
+      playerIndex(clock.firstPlayerId),
+      playerIndex(clock.activePlayerId),
+      playerIndex(clock.priorityPlayerId),
+    ];
+  };
+  const currentPointer = calculator._malloc(8 * 4);
+  const nextPointer = calculator._malloc(8 * 4);
+  try {
+    for (const firstPlayerIndex of [0, 1]) {
+      let clock = startBattleClock(players, players[firstPlayerIndex].id);
+      assert.equal(calculator._whc_start_battle_clock(firstPlayerIndex, currentPointer), 1);
+      assert.deepEqual(
+        [...new Uint32Array(calculator.HEAPU8.buffer, currentPointer, 8)],
+        words(clock),
+      );
+      let transitions = 0;
+      while (clock.status === "active") {
+        clock = nextBattleClock(clock, players);
+        assert.equal(calculator._whc_next_battle_clock(currentPointer, nextPointer), 1);
+        assert.deepEqual(
+          [...new Uint32Array(calculator.HEAPU8.buffer, nextPointer, 8)],
+          words(clock),
+        );
+        new Uint32Array(calculator.HEAPU8.buffer, currentPointer, 8).set(
+          new Uint32Array(calculator.HEAPU8.buffer, nextPointer, 8),
+        );
+        transitions++;
+      }
+      assert.equal(transitions, 170);
+    }
+  } finally {
+    calculator._free(currentPointer);
+    calculator._free(nextPointer);
+  }
 });
 
 test("WebAssembly matches JavaScript for the versioned golden battle replay", async () => {

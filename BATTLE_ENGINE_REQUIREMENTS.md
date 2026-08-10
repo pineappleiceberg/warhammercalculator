@@ -82,10 +82,10 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
 
 ## Delivery order
 
-1. Finish unified tracking for limited self-unit and supporting-unit abilities.
-2. Introduce the canonical versioned battle state and append-only event log,
+1. **Complete:** finish unified tracking for limited self-unit and supporting-unit abilities.
+2. **Complete:** introduce the canonical versioned battle state and append-only event log,
    then make attack results persist wounds, casualties, and destroyed units.
-3. Add the round, turn, phase, step, pending-choice, and effect-expiry state
+3. **Complete:** add the round, turn, phase, step, pending-choice, and effect-expiry state
    machine.
 4. Add CP, VP, objectives, Battle-shock, missions, scoring, and limited-resource
    accounting.

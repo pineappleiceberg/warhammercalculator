@@ -1831,6 +1831,49 @@ select:focus {
 .battle-log-head {
   margin-bottom: 18px;
 }
+.battle-timeline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 24px;
+  padding: 18px;
+  border: 1px solid #55534d;
+  background: #2a2926;
+}
+.battle-timeline h2 {
+  margin: 4px 0;
+  color: var(--paper-light);
+}
+.battle-timeline small,
+.active-effects {
+  color: #aaa69d;
+}
+.pending-choice,
+.active-effects {
+  grid-column: 1 / -1;
+}
+.pending-choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #55534d;
+}
+.pending-choice label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.active-effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11px;
+}
 .battle-log article {
   display: grid;
   grid-template-columns: 30px 1fr 1fr 1fr auto auto;
@@ -1874,6 +1917,9 @@ select:focus {
 }
 
 @media (max-width: 660px) {
+  .battle-timeline {
+    grid-template-columns: 1fr;
+  }
   .play-ability-selectors {
     grid-template-columns: 1fr;
   }

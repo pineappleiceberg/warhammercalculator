@@ -23,6 +23,8 @@ int main(void) {
     uint32_t battle_profiles[WHC_BATTLE_PROFILE_FIELDS] = {3u, 2u};
     uint32_t battle_health[WHC_BATTLE_HEALTH_FIELDS] = {99u, 99u};
     uint32_t invalid_battle_event[WHC_BATTLE_EVENT_FIELDS] = {0u};
+    uint32_t battle_clock[WHC_BATTLE_CLOCK_FIELDS] = {0u};
+    uint32_t next_battle_clock[WHC_BATTLE_CLOCK_FIELDS] = {0u};
 
     /*@ loop invariant 2 <= save && save <= 8;
         loop assigns save;
@@ -130,5 +132,10 @@ int main(void) {
                                             battle_health));
     assert(battle_health[0] == 97u);
     assert(battle_health[1] == 98u);
+    assert(whc_start_battle_clock(0u, battle_clock));
+    assert(battle_clock[0] == WHC_BATTLE_CLOCK_ACTIVE);
+    assert(whc_next_battle_clock(battle_clock, next_battle_clock));
+    assert(next_battle_clock[3] == WHC_BATTLE_PHASE_COMMAND);
+    assert(next_battle_clock[4] == 1u);
     return 0;
 }

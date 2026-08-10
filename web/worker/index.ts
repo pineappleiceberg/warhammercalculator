@@ -55,6 +55,7 @@ import {
   normalizeBattleState,
   replayBattleState,
 } from "../lib/battle-state.mjs";
+import { BATTLE_PHASE_STEPS } from "../lib/battle-clock.mjs";
 
 interface Env {
   ASSETS: Fetcher;
@@ -263,6 +264,8 @@ type CalculatorExports = {
   whc_calculate_ordered_volley_summary(...values: number[]): number;
   whc_estimate_ordered_volley_complexity(...values: number[]): number;
   whc_replay_battle_health_events(...values: number[]): number;
+  whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
+  whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
 
 type OrderedTargetSegment = {
@@ -395,7 +398,9 @@ async function loadCalculator() {
       typeof calculator.whc_calculate_summary_with_characteristic_roll !== "function" ||
       typeof calculator.whc_calculate_ordered_volley_summary !== "function" ||
       typeof calculator.whc_estimate_ordered_volley_complexity !== "function" ||
-      typeof calculator.whc_replay_battle_health_events !== "function"
+      typeof calculator.whc_replay_battle_health_events !== "function" ||
+      typeof calculator.whc_start_battle_clock !== "function" ||
+      typeof calculator.whc_next_battle_clock !== "function"
     ) {
       throw new ServiceUnavailableError(
         "Calculator engine exports are invalid",
@@ -413,6 +418,97 @@ async function loadCalculator() {
     );
   });
   return calculatorPromise;
+}
+
+const BATTLE_CLOCK_FIELDS = 8;
+const BATTLE_CLOCK_STATUS = { setup: 0, active: 1, complete: 2 } as const;
+const BATTLE_CLOCK_PHASE = {
+  setup: 0,
+  command: 1,
+  movement: 2,
+  shooting: 3,
+  charge: 4,
+  fight: 5,
+  complete: 6,
+} as const;
+
+function battleClockWords(
+  clock: ReturnType<typeof replayBattleState>["clock"],
+  players: unknown[],
+) {
+  const playerIds = players.map((candidate) => (candidate as { id: string }).id);
+  const playerIndex = (id: string) => (id ? playerIds.indexOf(id) : 2);
+  const steps = BATTLE_PHASE_STEPS[clock.phase as keyof typeof BATTLE_PHASE_STEPS];
+  return [
+    BATTLE_CLOCK_STATUS[clock.status as keyof typeof BATTLE_CLOCK_STATUS],
+    clock.battleRound,
+    clock.turn,
+    BATTLE_CLOCK_PHASE[clock.phase as keyof typeof BATTLE_CLOCK_PHASE],
+    steps ? steps.indexOf(clock.step) : 0,
+    playerIndex(clock.firstPlayerId),
+    playerIndex(clock.activePlayerId),
+    playerIndex(clock.priorityPlayerId),
+  ];
+}
+
+function assertBattleClockWords(
+  calculator: CalculatorExports,
+  pointer: number,
+  expectedClock: ReturnType<typeof replayBattleState>["clock"],
+  players: unknown[],
+) {
+  const actual = [...new Uint32Array(calculator.memory.buffer, pointer, BATTLE_CLOCK_FIELDS)];
+  const expected = battleClockWords(expectedClock, players);
+  if (actual.some((value, index) => value !== expected[index])) {
+    throw new ServiceUnavailableError(
+      "Canonical battle clock diverged from the web replay",
+      "BATTLE_CLOCK_DIVERGENCE",
+    );
+  }
+}
+
+function verifyBattleClock(
+  state: ReturnType<typeof normalizeBattleState>,
+  calculator: CalculatorExports,
+) {
+  const start = state.events.find((event) => event.type === "battle_started");
+  if (!start || start.type !== "battle_started") return;
+  const firstPlayerIndex = state.players.findIndex((player) => player.id === start.firstPlayerId);
+  const currentPointer = calculator.malloc(BATTLE_CLOCK_FIELDS * 4);
+  const nextPointer = calculator.malloc(BATTLE_CLOCK_FIELDS * 4);
+  if (!currentPointer || !nextPointer) {
+    if (currentPointer) calculator.free(currentPointer);
+    if (nextPointer) calculator.free(nextPointer);
+    throw new ServiceUnavailableError(
+      "Battle clock replay memory is unavailable",
+      "BATTLE_CLOCK_MEMORY",
+    );
+  }
+  try {
+    if (!calculator.whc_start_battle_clock(firstPlayerIndex, currentPointer)) {
+      throw new ServiceUnavailableError(
+        "Canonical battle clock rejected the battle start",
+        "BATTLE_CLOCK_DIVERGENCE",
+      );
+    }
+    assertBattleClockWords(calculator, currentPointer, start.clock, state.players);
+    for (const event of state.events) {
+      if (event.type !== "clock_advanced") continue;
+      if (!calculator.whc_next_battle_clock(currentPointer, nextPointer)) {
+        throw new ServiceUnavailableError(
+          "Canonical battle clock rejected a valid transition",
+          "BATTLE_CLOCK_DIVERGENCE",
+        );
+      }
+      assertBattleClockWords(calculator, nextPointer, event.to, state.players);
+      new Uint32Array(calculator.memory.buffer, currentPointer, BATTLE_CLOCK_FIELDS).set(
+        new Uint32Array(calculator.memory.buffer, nextPointer, BATTLE_CLOCK_FIELDS),
+      );
+    }
+  } finally {
+    calculator.free(currentPointer);
+    calculator.free(nextPointer);
+  }
 }
 
 async function replayFormationHealth(candidate: unknown, requestedFormationId: unknown) {
@@ -488,6 +584,7 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
     );
   }
   try {
+    verifyBattleClock(state, calculator);
     new Uint32Array(calculator.memory.buffer, profilesPointer, profiles.length).set(profiles);
     if (eventsPointer) {
       new Uint32Array(calculator.memory.buffer, eventsPointer, events.length).set(events);
@@ -523,12 +620,24 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         "BATTLE_REPLAY_DIVERGENCE",
       );
     }
+    const replayed = replayBattleState(state);
     return {
       schemaVersion: state.version,
       rulesSnapshot: state.rulesSnapshot,
       formationId: requestedFormationId,
       health,
-      activeAttackIds: replayBattleState(state).activeAttackIds,
+      activeAttackIds: replayed.activeAttackIds,
+      clock: replayed.clock,
+      pendingChoiceIds: [...replayed.pendingChoices.keys()].sort(),
+      activeEffects: [...replayed.effects.values()]
+        .map(({ id, name, duration, ownerPlayerId, sourceFormationId }) => ({
+          id,
+          name,
+          duration,
+          ownerPlayerId,
+          sourceFormationId,
+        }))
+        .sort((left, right) => left.id.localeCompare(right.id)),
     };
   } finally {
     calculator.free(profilesPointer);
