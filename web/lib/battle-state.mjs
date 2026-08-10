@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 5;
+export const BATTLE_STATE_VERSION = 6;
+export const DEPLOYMENT_BATTLE_STATE_VERSION = 6;
 export const ACTION_BATTLE_STATE_VERSION = 5;
 export const TRACKER_BATTLE_STATE_VERSION = 4;
 export const TIMELINE_BATTLE_STATE_VERSION = 3;
@@ -47,6 +48,7 @@ function boundedInteger(value, name, minimum = -1_000_000, maximum = 1_000_000) 
 
 const MOVEMENT_KINDS = Object.freeze(["stationary", "normal", "advance", "fall_back"]);
 const ACTIVATION_TYPES = Object.freeze(["shooting", "fight"]);
+const DEPLOYMENT_LOCATIONS = Object.freeze(["battlefield", "reserves", "strategic_reserves"]);
 
 function formationDestroyed(formation) {
   return Object.values(formation?.health ?? {}).every((health) => health.modelsRemaining === 0);
@@ -71,6 +73,8 @@ function otherPlayerId(players, playerId) {
 function defaultMission(players) {
   return {
     name: "Custom mission",
+    pointsLimit: 2000,
+    deploymentFirstPlayerId: players[0].id,
     commandPointsPerCommandPhase: 1,
     startingCommandPoints: Object.fromEntries(players.map((player) => [player.id, 0])),
     objectives: Array.from({ length: 5 }, (_, index) => ({
@@ -108,8 +112,18 @@ function normalizeMission(candidate, players) {
   if (Object.keys(starting).some((playerId) => !players.has(playerId))) {
     throw new Error("Mission startingCommandPoints contains an unknown player");
   }
+  const deploymentFirstPlayerId = boundedString(
+    mission.deploymentFirstPlayerId ?? [...players][0],
+    "Mission deployment first player",
+    100,
+  );
+  if (!players.has(deploymentFirstPlayerId)) {
+    throw new Error("Mission deployment first player is unknown");
+  }
   return {
     name: boundedString(mission.name, "Mission name", 200),
+    pointsLimit: nonnegativeInteger(mission.pointsLimit ?? 2000, "Mission points limit", 100000),
+    deploymentFirstPlayerId,
     commandPointsPerCommandPhase: nonnegativeInteger(
       mission.commandPointsPerCommandPhase,
       "Command Points per Command phase",
@@ -314,6 +328,9 @@ function normalizeFormation(candidate) {
       100,
     ),
     name: boundedString(formation.name, "Formation name"),
+    keywords: normalizeStringArray(formation.keywords ?? [], "Formation keywords", 100).map(
+      (keyword) => keyword.toLowerCase(),
+    ),
     segments,
   };
   normalized.defensiveEquipmentCounts = normalizeDefensiveEquipmentCounts(
@@ -400,6 +417,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     ].includes(event.type)
   ) {
     throw new Error("Battle action events require battle-state version 5");
+  }
+  if (
+    stateVersion < DEPLOYMENT_BATTLE_STATE_VERSION &&
+    ["deployment_declared", "formation_deployed", "reserve_arrived"].includes(event.type)
+  ) {
+    throw new Error("Battle deployment events require battle-state version 6");
   }
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation);
@@ -524,6 +547,68 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.movement = boundedString(event.movement, "Movement kind", 20);
     if (!MOVEMENT_KINDS.includes(normalized.movement)) {
       throw new Error("Movement kind is unsupported");
+    }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "deployment_declared") {
+    normalized.formationId = boundedString(event.formationId, "Deployment formation id", 100);
+    if (!formations.byId.has(normalized.formationId)) {
+      throw new Error("Deployment formation is not registered");
+    }
+    normalized.location = boundedString(event.location, "Deployment location", 40);
+    if (!DEPLOYMENT_LOCATIONS.includes(normalized.location)) {
+      throw new Error("Deployment location is unsupported");
+    }
+    normalized.points = nonnegativeInteger(event.points, "Deployment points", 100000);
+    normalized.earliestBattleRound = nonnegativeInteger(
+      event.earliestBattleRound,
+      "Earliest reserve battle round",
+      5,
+    );
+    if (normalized.earliestBattleRound < 1) {
+      throw new Error("Earliest reserve battle round must be from 1 to 5");
+    }
+    if (
+      normalized.location === "strategic_reserves" &&
+      (normalized.points < 1 || normalized.earliestBattleRound < 2)
+    ) {
+      throw new Error("Strategic Reserves require points and cannot arrive in round one");
+    }
+    normalized.eligibilityConfirmed = Boolean(event.eligibilityConfirmed);
+    normalized.eligibilityReason = normalized.eligibilityConfirmed
+      ? boundedString(event.eligibilityReason, "Reserve eligibility confirmation", 300)
+      : "";
+    if (normalized.location !== "battlefield" && !normalized.eligibilityConfirmed) {
+      throw new Error("A Reserves declaration requires explicit source-rule eligibility");
+    }
+    return normalized;
+  }
+  if (event.type === "formation_deployed") {
+    normalized.formationId = boundedString(event.formationId, "Deployed formation id", 100);
+    if (!formations.byId.has(normalized.formationId)) {
+      throw new Error("Deployed formation is not registered");
+    }
+    normalized.placementConfirmed = Boolean(event.placementConfirmed);
+    normalized.placementReason = normalized.placementConfirmed
+      ? boundedString(event.placementReason, "Deployment placement confirmation", 300)
+      : "";
+    if (!normalized.placementConfirmed) {
+      throw new Error("Deployment requires explicit deployment-zone and table-state confirmation");
+    }
+    return normalized;
+  }
+  if (event.type === "reserve_arrived") {
+    normalized.formationId = boundedString(event.formationId, "Reserve formation id", 100);
+    if (!formations.byId.has(normalized.formationId)) {
+      throw new Error("Reserve formation is not registered");
+    }
+    normalized.placementConfirmed = Boolean(event.placementConfirmed);
+    normalized.placementReason = normalized.placementConfirmed
+      ? boundedString(event.placementReason, "Reserve placement confirmation", 300)
+      : "";
+    if (!normalized.placementConfirmed) {
+      throw new Error("Reserve arrival requires explicit placement confirmation");
     }
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
@@ -672,6 +757,7 @@ export function normalizeBattleState(candidate) {
       ROSTER_BATTLE_STATE_VERSION,
       TIMELINE_BATTLE_STATE_VERSION,
       TRACKER_BATTLE_STATE_VERSION,
+      ACTION_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -709,6 +795,7 @@ export function normalizeBattleState(candidate) {
         ROSTER_BATTLE_STATE_VERSION,
         TIMELINE_BATTLE_STATE_VERSION,
         TRACKER_BATTLE_STATE_VERSION,
+        ACTION_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -727,6 +814,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyUnactionedThroughSequence = nonnegativeInteger(
         migration.legacyUnactionedThroughSequence,
         "Legacy unactioned event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= DEPLOYMENT_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyDeploymentThroughSequence = nonnegativeInteger(
+        migration.legacyDeploymentThroughSequence,
+        "Legacy deployment event sequence",
         events.length,
       );
     }
@@ -795,6 +889,57 @@ function commandPhaseStarted(clock) {
   return clock.status === "active" && clock.phase === "command" && clock.step === "start";
 }
 
+function deploymentDeclarationsComplete(formations, deploymentByFormation) {
+  return formations.size > 0 && deploymentByFormation.size === formations.size;
+}
+
+function undeployedBattlefieldFormations(
+  formations,
+  deploymentByFormation,
+  deployedFormationIds,
+  playerId,
+) {
+  return [...formations.values()].filter(
+    (formation) =>
+      formation.playerId === playerId &&
+      deploymentByFormation.get(formation.id)?.location === "battlefield" &&
+      !deployedFormationIds.has(formation.id),
+  );
+}
+
+function nextDeploymentPlayer(
+  players,
+  preferredPlayerId,
+  formations,
+  deploymentByFormation,
+  deployedFormationIds,
+) {
+  if (
+    undeployedBattlefieldFormations(
+      formations,
+      deploymentByFormation,
+      deployedFormationIds,
+      preferredPlayerId,
+    ).length > 0
+  ) {
+    return preferredPlayerId;
+  }
+  const other = otherPlayerId(players, preferredPlayerId);
+  return undeployedBattlefieldFormations(
+    formations,
+    deploymentByFormation,
+    deployedFormationIds,
+    other,
+  ).length > 0
+    ? other
+    : "";
+}
+
+function formationIsOnBattlefield(formationId, deploymentByFormation, deployedFormationIds) {
+  const deployment = deploymentByFormation.get(formationId);
+  return Boolean(deployment && deployedFormationIds.has(formationId));
+}
+
 export function replayBattleState(state) {
   const formations = new Map();
   const attacks = new Map();
@@ -807,8 +952,12 @@ export function replayBattleState(state) {
   const scoringEvents = [];
   const movementByFormation = new Map();
   const chargeByFormation = new Map();
+  const deploymentByFormation = new Map();
+  const deployedFormationIds = new Set();
+  const reserveArrivals = new Map();
   const completedActivations = new Set();
   let activeActivation = null;
+  let deploymentPriorityPlayerId = "";
   let clock = setupBattleClock();
   let mission = defaultMission(state.players);
   let resources = trackerResources(state.players, mission);
@@ -846,9 +995,110 @@ export function replayBattleState(state) {
       });
       continue;
     }
+    if (event.type === "deployment_declared") {
+      if (clock.status !== "setup") {
+        throw new Error("Deployment declarations are locked after the battle starts");
+      }
+      if (deployedFormationIds.size > 0) {
+        throw new Error("Deployment declarations are locked after deployment begins");
+      }
+      const formation = formations.get(event.formationId);
+      if (!formation) throw new Error("Deployment formation is not registered");
+      if (
+        event.location === "strategic_reserves" &&
+        formation.keywords.some((keyword) => ["fortification", "fortifications"].includes(keyword))
+      ) {
+        throw new Error("Fortifications cannot be placed into Strategic Reserves");
+      }
+      deploymentByFormation.set(event.formationId, event);
+      const strategicPoints = [...deploymentByFormation.values()]
+        .filter(
+          (deployment) =>
+            deployment.location === "strategic_reserves" &&
+            formations.get(deployment.formationId)?.playerId === formation.playerId,
+        )
+        .reduce((total, deployment) => total + deployment.points, 0);
+      if (strategicPoints > Math.floor(mission.pointsLimit / 4)) {
+        throw new Error(
+          `Strategic Reserves exceed the ${Math.floor(mission.pointsLimit / 4)} point limit`,
+        );
+      }
+      deploymentPriorityPlayerId = deploymentDeclarationsComplete(formations, deploymentByFormation)
+        ? nextDeploymentPlayer(
+            state.players,
+            mission.deploymentFirstPlayerId,
+            formations,
+            deploymentByFormation,
+            deployedFormationIds,
+          )
+        : "";
+      continue;
+    }
+    if (event.type === "formation_deployed") {
+      if (clock.status !== "setup") throw new Error("Formation deployment is locked after start");
+      if (!deploymentDeclarationsComplete(formations, deploymentByFormation)) {
+        throw new Error("Declare every formation before deploying armies");
+      }
+      const formation = formations.get(event.formationId);
+      const deployment = deploymentByFormation.get(event.formationId);
+      if (deployment?.location !== "battlefield") {
+        throw new Error("Only a battlefield formation can be deployed");
+      }
+      if (deployedFormationIds.has(event.formationId)) {
+        throw new Error("Formation has already been deployed");
+      }
+      const expectedPlayerId = nextDeploymentPlayer(
+        state.players,
+        deploymentPriorityPlayerId || mission.deploymentFirstPlayerId,
+        formations,
+        deploymentByFormation,
+        deployedFormationIds,
+      );
+      if (!expectedPlayerId || formation.playerId !== expectedPlayerId) {
+        throw new Error("Formation was deployed out of alternating player order");
+      }
+      deployedFormationIds.add(event.formationId);
+      deploymentPriorityPlayerId = nextDeploymentPlayer(
+        state.players,
+        otherPlayerId(state.players, expectedPlayerId),
+        formations,
+        deploymentByFormation,
+        deployedFormationIds,
+      );
+      continue;
+    }
     if (event.type === "battle_started") {
       if (clock.status !== "setup") throw new Error("Battle has already started");
       if (pendingChoices.size > 0) throw new Error("Pending choices block the battle start");
+      if (
+        (state.version < DEPLOYMENT_BATTLE_STATE_VERSION || state.migration) &&
+        deploymentByFormation.size === 0
+      ) {
+        for (const formation of formations.values()) {
+          deploymentByFormation.set(formation.id, {
+            formationId: formation.id,
+            location: "battlefield",
+            points: 0,
+            earliestBattleRound: 1,
+            eligibilityConfirmed: true,
+            eligibilityReason: "Migrated battle assumed deployed on battlefield",
+            legacyAssumed: true,
+          });
+          deployedFormationIds.add(formation.id);
+        }
+      }
+      if (!deploymentDeclarationsComplete(formations, deploymentByFormation)) {
+        throw new Error("Every formation must have a deployment declaration before battle start");
+      }
+      if (
+        [...deploymentByFormation.values()].some(
+          (deployment) =>
+            deployment.location === "battlefield" &&
+            !deployedFormationIds.has(deployment.formationId),
+        )
+      ) {
+        throw new Error("Every battlefield formation must be deployed before battle start");
+      }
       const expected = startBattleClock(state.players, event.firstPlayerId);
       if (!sameBattleClock(event.clock, expected)) {
         throw new Error("Battle start clock is not canonical");
@@ -937,6 +1187,9 @@ export function replayBattleState(state) {
     }
     if (event.type === "mission_configured") {
       if (clock.status !== "setup") throw new Error("Mission setup is locked after battle start");
+      if (deploymentByFormation.size > 0) {
+        throw new Error("Mission setup is locked after deployment declarations begin");
+      }
       const customResources = new Map(
         state.players.map((player) => [
           player.id,
@@ -1022,6 +1275,41 @@ export function replayBattleState(state) {
       }
       continue;
     }
+    if (event.type === "reserve_arrived") {
+      if (
+        clock.status !== "active" ||
+        clock.phase !== "movement" ||
+        clock.step !== "reinforcements" ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Reserves can only arrive in the Reinforcements step");
+      }
+      const formation = formations.get(event.formationId);
+      const deployment = deploymentByFormation.get(event.formationId);
+      if (!formation || !["reserves", "strategic_reserves"].includes(deployment?.location)) {
+        throw new Error("Formation did not start the battle in Reserves");
+      }
+      if (formation.playerId !== clock.activePlayerId) {
+        throw new Error("Only the active player's Reserves can arrive");
+      }
+      if (deployedFormationIds.has(event.formationId) || reserveArrivals.has(event.formationId)) {
+        throw new Error("Reserve formation is already on the battlefield");
+      }
+      if (clock.battleRound < deployment.earliestBattleRound) {
+        throw new Error(
+          `This Reserve formation cannot arrive before battle round ${deployment.earliestBattleRound}`,
+        );
+      }
+      deployedFormationIds.add(event.formationId);
+      reserveArrivals.set(event.formationId, event);
+      movementByFormation.set(event.formationId, {
+        formationId: event.formationId,
+        movement: "normal",
+        clock: event.clock,
+        fromReserves: true,
+      });
+      continue;
+    }
     if (event.type === "movement_recorded") {
       if (
         clock.status !== "active" ||
@@ -1032,6 +1320,11 @@ export function replayBattleState(state) {
         throw new Error("Movement was recorded outside the Move Units step");
       }
       const formation = formations.get(event.formationId);
+      if (
+        !formationIsOnBattlefield(event.formationId, deploymentByFormation, deployedFormationIds)
+      ) {
+        throw new Error("A formation that is not on the battlefield cannot move");
+      }
       if (formation.playerId !== clock.activePlayerId) {
         throw new Error("Only the active player's formation can move");
       }
@@ -1053,6 +1346,11 @@ export function replayBattleState(state) {
         throw new Error("Charge was recorded outside the Charge Moves step");
       }
       const formation = formations.get(event.formationId);
+      if (
+        !formationIsOnBattlefield(event.formationId, deploymentByFormation, deployedFormationIds)
+      ) {
+        throw new Error("A formation that is not on the battlefield cannot charge");
+      }
       if (formation.playerId !== clock.activePlayerId) {
         throw new Error("Only the active player's formation can charge");
       }
@@ -1063,6 +1361,11 @@ export function replayBattleState(state) {
       }
       for (const targetFormationId of event.targetFormationIds) {
         const target = formations.get(targetFormationId);
+        if (
+          !formationIsOnBattlefield(targetFormationId, deploymentByFormation, deployedFormationIds)
+        ) {
+          throw new Error("A formation cannot charge a target outside the battlefield");
+        }
         if (target.playerId === formation.playerId) {
           throw new Error("A formation cannot charge a friendly formation");
         }
@@ -1116,6 +1419,11 @@ export function replayBattleState(state) {
       if (activeActivation) throw new Error("Another formation activation is already in progress");
       const formation = formations.get(event.formationId);
       if (formationDestroyed(formation)) throw new Error("A destroyed formation cannot activate");
+      if (
+        !formationIsOnBattlefield(event.formationId, deploymentByFormation, deployedFormationIds)
+      ) {
+        throw new Error("A formation outside the battlefield cannot activate");
+      }
       const expectedType = clock.phase === "shooting" ? "shooting" : "fight";
       if (event.activationType !== expectedType) {
         throw new Error(`Only a ${expectedType} activation can start in this step`);
@@ -1231,6 +1539,16 @@ export function replayBattleState(state) {
       }
       const formation = formations.get(event.targetFormationId);
       if (!formation) throw new Error("Attack target formation is not registered");
+      if (
+        event.sequence > legacyUnactionedThroughSequence &&
+        !formationIsOnBattlefield(
+          event.targetFormationId,
+          deploymentByFormation,
+          deployedFormationIds,
+        )
+      ) {
+        throw new Error("Attack target is not on the battlefield");
+      }
       let appliedDamage = 0;
       let modelsDestroyed = 0;
       for (const allocation of event.allocations) {
@@ -1286,6 +1604,15 @@ export function replayBattleState(state) {
     }
     activeAttackIds.pop();
   }
+  const offBattlefieldFormationIds = new Set(
+    [...formations.keys()].filter(
+      (formationId) =>
+        !formationIsOnBattlefield(formationId, deploymentByFormation, deployedFormationIds),
+    ),
+  );
+  const reserveDestroyedFormationIds = new Set(
+    clock.status === "complete" ? offBattlefieldFormationIds : [],
+  );
   return {
     formations,
     activeAttackIds,
@@ -1300,6 +1627,18 @@ export function replayBattleState(state) {
     battleShockedFormations,
     movementByFormation,
     chargeByFormation,
+    deploymentByFormation,
+    deployedFormationIds,
+    deploymentPriorityPlayerId,
+    deploymentComplete:
+      deploymentDeclarationsComplete(formations, deploymentByFormation) &&
+      [...deploymentByFormation.values()].every(
+        (deployment) =>
+          deployment.location !== "battlefield" || deployedFormationIds.has(deployment.formationId),
+      ),
+    reserveArrivals,
+    offBattlefieldFormationIds,
+    reserveDestroyedFormationIds,
     completedActivations,
     activeActivation,
   };
@@ -1307,6 +1646,74 @@ export function replayBattleState(state) {
 
 function appendEvent(state, event) {
   return normalizeBattleState({ ...state, events: [...state.events, event] });
+}
+
+export function declareFormationDeployment(
+  state,
+  formationId,
+  location,
+  {
+    points = 0,
+    earliestBattleRound = location === "strategic_reserves" ? 2 : 1,
+    eligibilityConfirmed = false,
+    eligibilityReason = "",
+  } = {},
+  id,
+  at,
+) {
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "deployment_declared",
+    formationId,
+    location,
+    points,
+    earliestBattleRound,
+    eligibilityConfirmed,
+    eligibilityReason,
+  });
+}
+
+export function deployFormation(
+  state,
+  formationId,
+  { placementConfirmed = false, placementReason = "" } = {},
+  id,
+  at,
+) {
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "formation_deployed",
+    formationId,
+    placementConfirmed,
+    placementReason,
+  });
+}
+
+export function arriveFromReserves(
+  state,
+  formationId,
+  { placementConfirmed = false, placementReason = "" } = {},
+  id,
+  at,
+) {
+  const clock = replayBattleState(state).clock;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "reserve_arrived",
+    formationId,
+    placementConfirmed,
+    placementReason,
+    clock,
+  });
 }
 
 export function startBattle(state, firstPlayerId, id, at) {
@@ -1393,6 +1800,9 @@ export function configureBattleMission(state, mission, id, at) {
   const replayed = replayBattleState(state);
   if (replayed.clock.status !== "setup") {
     throw new Error("Mission setup is locked after the battle starts");
+  }
+  if (replayed.deploymentByFormation.size > 0) {
+    throw new Error("Mission setup is locked after deployment declarations begin");
   }
   return appendEvent(state, {
     version: BATTLE_EVENT_VERSION,
@@ -1514,6 +1924,15 @@ export function battleResource(state, playerId, resourceId) {
 
 export function battleFormationIsBattleShocked(state, formationId) {
   return replayBattleState(state).battleShockedFormations.has(formationId);
+}
+
+export function battleFormationIsOnBattlefield(state, formationId) {
+  const replayed = replayBattleState(state);
+  return formationIsOnBattlefield(
+    formationId,
+    replayed.deploymentByFormation,
+    replayed.deployedFormationIds,
+  );
 }
 
 export function recordFormationMovement(state, formationId, movement, id, at) {
@@ -1639,6 +2058,11 @@ export function battleCanStartFormationActivation(
   if (
     !formation ||
     formationDestroyed(formation) ||
+    !formationIsOnBattlefield(
+      attackerFormationId,
+      replayed.deploymentByFormation,
+      replayed.deployedFormationIds,
+    ) ||
     !battleAttackWindow(replayed.clock) ||
     replayed.pendingChoices.size > 0 ||
     replayed.activeActivation ||
@@ -1670,6 +2094,16 @@ export function battleCanResolveAttack(state, attackerFormationId, options = {})
   if (!state) return false;
   if (!options.targetEligibilityConfirmed) return false;
   const replayed = replayBattleState(state);
+  if (
+    options.targetFormationId &&
+    !formationIsOnBattlefield(
+      options.targetFormationId,
+      replayed.deploymentByFormation,
+      replayed.deployedFormationIds,
+    )
+  ) {
+    return false;
+  }
   if (replayed.activeActivation) {
     const expectedWeaponType = replayed.clock.phase === "shooting" ? "Ranged" : "Melee";
     return (

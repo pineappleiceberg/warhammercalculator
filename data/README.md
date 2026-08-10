@@ -1,5 +1,11 @@
 # Warhammer 40,000 10th edition profile database
 
+`battle-rule-sources.json` pins the official rules documents used by the
+canonical battle-state engine, including retrieval date, content hash, relevant
+pages, and the executable behavior derived from each source. It is separate
+from datasheet/profile provenance because battle timing and setup rules apply
+across every catalogue faction.
+
 `warhammer_10e.sqlite` is generated from Wahapedia's structured 10th-edition
 CSV exports. It contains calculator-relevant profile data only: factions,
 datasheets, model defenses, weapon statlines, weapon ability tags, unit combat

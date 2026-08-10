@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 5 as soon as both lists are selected. Every
+creates battle-state version 6 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -656,6 +656,19 @@ missing roster formation ahead of combat events. Preserved attacks remain
 explicitly legacy-untimed instead of being assigned invented phases. Defensive-
 equipment allocation remains battle-local and editable during setup, then its
 exact bearer identities freeze when the battle starts.
+Version 6 records every formation's starting location before models are
+deployed. Strategic Reserves are capped per player at 25% of the configured
+battle size, cannot contain a Fortification, and cannot arrive in round one.
+Battlefield formations deploy one at a time in alternating player order;
+Reserves can arrive only for the active player in the Reinforcements step and
+are recorded as having made a Normal move. Formations outside the battlefield
+cannot move, charge, activate, attack, or be targeted, and any that remain there
+when the battle ends are reported as destroyed. Physical deployment-zone,
+board-edge, enemy-distance, Deep Strike, and source-rule eligibility facts stay
+fail-closed behind explicit reason-bearing player confirmations until table
+geometry is executable. The official Core Rules source identity, retrieval date,
+content hash, and relevant pages are pinned in
+`data/battle-rule-sources.json`.
 The guided timeline records battle round, first or second player turn, active
 and priority player, phase, and step. It covers Command, Movement, Shooting,
 Charge, and Fight through five rounds. Pending bounded choices stop both attacks
@@ -693,7 +706,7 @@ attacking. Undo appends a compensating event instead of deleting history.
 Validated JSON battle exports and imports preserve the rules snapshot and fail
 closed when the referenced saved lists or loaded catalogue do not match.
 The same version-1 flat event ABI for formation-health replay runs in native C
-and WebAssembly for version-1 through version-5 JSON battle envelopes.
+and WebAssembly for version-1 through version-6 JSON battle envelopes.
 It validates attack transitions, damage and casualty totals, the one-wounded-model
 invariant, and last-in-first-out compensating undo without modifying its output
 when an event stream is invalid. `POST /api/v1/battle/replay` accepts
@@ -703,7 +716,9 @@ web replay, independently cross-checks every guided clock transition through
 the C/WebAssembly clock, and returns per-segment health, active attack IDs, the
 current clock, pending-choice IDs, active effects, mission, per-player resources,
 objective control, Battle-shocked formation IDs, categorized scoring history,
-movement and charge outcomes, and current/completed activation state. The
+movement and charge outcomes, current/completed activation state, deployment
+declarations and order, battlefield/off-battlefield identities, Reserve
+arrivals, and Reserves destroyed at battle end. The
 portable ABI supports the same 32 formation segments and 10,000-event bound as
 the saved web schema.
 On narrow screens, Play Mode groups the attacker and target into guided steps,

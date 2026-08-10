@@ -479,6 +479,13 @@ export function savedFormationBattleRegistration(
     playerId,
     sourceFormationId: formation.id,
     name: formation.name,
+    keywords: [
+      ...new Set(
+        formation.components.flatMap((component) =>
+          (component.catalogueUnit?.models ?? []).flatMap((model) => model.keywords ?? []),
+        ),
+      ),
+    ],
     defensiveEquipmentCounts: { ...defensiveEquipmentCounts },
     segments: segments.map((segment) => ({
       id: segment.id,

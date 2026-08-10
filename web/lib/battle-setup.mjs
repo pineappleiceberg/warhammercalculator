@@ -1,4 +1,5 @@
 import {
+  ACTION_BATTLE_STATE_VERSION,
   BATTLE_EVENT_VERSION,
   BATTLE_STATE_VERSION,
   ROSTER_BATTLE_STATE_VERSION,
@@ -128,6 +129,7 @@ function registerCompleteRosters(catalogue, state, firstList, secondList, equipm
           ...existing,
           formation: {
             ...existing.formation,
+            keywords: formation.keywords,
             defensiveEquipmentCounts: formation.defensiveEquipmentCounts,
           },
         };
@@ -208,7 +210,11 @@ export function initializeBattleForLists({
             sourceVersion < TIMELINE_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyUntimedThroughSequence ?? 0),
-          legacyUnactionedThroughSequence: next.events.length,
+          legacyUnactionedThroughSequence:
+            sourceVersion < ACTION_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyUnactionedThroughSequence ?? 0),
+          legacyDeploymentThroughSequence: next.events.length,
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

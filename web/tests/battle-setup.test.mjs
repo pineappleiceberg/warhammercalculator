@@ -8,6 +8,8 @@ import {
   battleFormation,
   battleFormationHealth,
   configureUnengagedBattleFormation,
+  declareFormationDeployment,
+  deployFormation,
   normalizeBattleState,
   replayBattleState,
   recordFormationMovement,
@@ -69,9 +71,40 @@ function setup(state = null) {
   });
 }
 
+function deployAllOnBattlefield(state) {
+  let next = state;
+  for (const formation of replayBattleState(next).formations.values()) {
+    next = declareFormationDeployment(
+      next,
+      formation.id,
+      "battlefield",
+      {},
+      `declare-${formation.id}`,
+      next.events.length + 1,
+    );
+  }
+  while (!replayBattleState(next).deploymentComplete) {
+    const replayed = replayBattleState(next);
+    const formation = [...replayed.formations.values()].find(
+      (candidate) =>
+        candidate.playerId === replayed.deploymentPriorityPlayerId &&
+        !replayed.deployedFormationIds.has(candidate.id),
+    );
+    assert.ok(formation);
+    next = deployFormation(
+      next,
+      formation.id,
+      { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
+      `deploy-${formation.id}`,
+      next.events.length + 1,
+    );
+  }
+  return next;
+}
+
 test("registers every formation on both rosters before combat with stable ids", () => {
   const state = setup();
-  assert.equal(state.version, 5);
+  assert.equal(state.version, 6);
   assert.deepEqual(
     state.players.map((player) => [player.listId, player.listUpdatedAt]),
     [
@@ -127,7 +160,7 @@ test("allows equipment correction during setup, then freezes it when battle star
   assert.deepEqual(battleFormation(state, targetId).defensiveEquipmentCounts, {
     "brutalis::unit::narrative": 1,
   });
-  state = startBattle(state, "player-1", "start-battle", 4);
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "start-battle", 4);
   assert.throws(
     () => configureUnengagedBattleFormation(state, registration, "configure-after-start", 5),
     /locked after the battle starts/i,
@@ -195,11 +228,12 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
   versionTwo.players[0].listUpdatedAt = attackers.updatedAt;
   versionTwo.players[1].listUpdatedAt = defenders.updatedAt;
   const migrated = setup(normalizeBattleState(versionTwo));
-  assert.equal(migrated.version, 5);
+  assert.equal(migrated.version, 6);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 2,
     legacyUntimedThroughSequence: 3,
     legacyUnactionedThroughSequence: 3,
+    legacyDeploymentThroughSequence: 3,
   });
   assert.equal(migrated.events.at(-1).id, "legacy-attack");
 });
@@ -211,11 +245,12 @@ test("migrates a partial version-1 log without changing attack ids or health", (
   const legacy = normalizeBattleState(legacySetup);
 
   const migrated = setup(legacy);
-  assert.equal(migrated.version, 5);
+  assert.equal(migrated.version, 6);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 1,
     legacyUntimedThroughSequence: 3,
     legacyUnactionedThroughSequence: 3,
+    legacyDeploymentThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -232,11 +267,12 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
   versionThree.version = 3;
   delete versionThree.migration;
   const migrated = setup(normalizeBattleState(versionThree));
-  assert.equal(migrated.version, 5);
+  assert.equal(migrated.version, 6);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 3,
     legacyUntimedThroughSequence: 0,
     legacyUnactionedThroughSequence: 2,
+    legacyDeploymentThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -246,10 +282,31 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
   versionFour.version = 4;
   delete versionFour.migration;
   const migrated = setup(normalizeBattleState(versionFour));
-  assert.equal(migrated.version, 5);
+  assert.equal(migrated.version, 6);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 4,
     legacyUntimedThroughSequence: 0,
     legacyUnactionedThroughSequence: 2,
+    legacyDeploymentThroughSequence: 2,
   });
+});
+
+test("migrates a version-5 action battle as already deployed without rewriting its log", () => {
+  const versionFive = structuredClone(setup());
+  versionFive.version = 5;
+  delete versionFive.migration;
+  let migrated = setup(normalizeBattleState(versionFive));
+  assert.equal(migrated.version, 6);
+  assert.deepEqual(migrated.migration, {
+    sourceVersion: 5,
+    legacyUntimedThroughSequence: 0,
+    legacyUnactionedThroughSequence: 0,
+    legacyDeploymentThroughSequence: 2,
+  });
+  assert.equal(migrated.events.length, 2);
+  migrated = startBattle(migrated, "player-1", "start-migrated", 3);
+  const replayed = replayBattleState(migrated);
+  assert.equal(replayed.deploymentComplete, true);
+  assert.deepEqual([...replayed.offBattlefieldFormationIds], []);
+  assert.equal(replayed.deploymentByFormation.get("player-1:doom-scythe").legacyAssumed, true);
 });

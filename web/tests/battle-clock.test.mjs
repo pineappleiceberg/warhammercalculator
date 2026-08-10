@@ -7,6 +7,8 @@ import {
   applyBattleEffect,
   battleCanResolveAttack,
   createBattleState,
+  declareFormationDeployment,
+  deployFormation,
   normalizeBattleState,
   openBattleChoice,
   recordFormationMovement,
@@ -50,6 +52,22 @@ function setupBattle() {
   });
   state = registerBattleFormation(state, formation("unit-1", "player-1"), "register-1", 1);
   state = registerBattleFormation(state, formation("unit-2", "player-2"), "register-2", 2);
+  state = declareFormationDeployment(state, "unit-1", "battlefield", {}, "declare-1", 3);
+  state = declareFormationDeployment(state, "unit-2", "battlefield", {}, "declare-2", 4);
+  state = deployFormation(
+    state,
+    "unit-1",
+    { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
+    "deploy-1",
+    5,
+  );
+  state = deployFormation(
+    state,
+    "unit-2",
+    { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
+    "deploy-2",
+    6,
+  );
   return state;
 }
 

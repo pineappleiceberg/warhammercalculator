@@ -7,12 +7,15 @@ import {
   activeBattleAttacks,
   advanceBattleClock,
   appendResolvedAttack,
+  arriveFromReserves,
   battleFormationHealth,
   battleCanResolveAttack,
   changeBattleResource,
   completeFormationActivation,
   configureBattleMission,
   createBattleState,
+  declareFormationDeployment,
+  deployFormation,
   normalizeBattleState,
   passFightPriority,
   registerBattleFormation,
@@ -72,6 +75,9 @@ const attackerFormation = {
 const goldenReplay = JSON.parse(
   await readFile(new URL("./fixtures/battle-replay-v1.json", import.meta.url), "utf8"),
 );
+const battleRuleSources = JSON.parse(
+  await readFile(new URL("../../data/battle-rule-sources.json", import.meta.url), "utf8"),
+);
 
 function newBattle() {
   return createBattleState({
@@ -85,6 +91,37 @@ function newBattle() {
   });
 }
 
+function deployAllOnBattlefield(state) {
+  let next = state;
+  for (const formation of replayBattleState(next).formations.values()) {
+    next = declareFormationDeployment(
+      next,
+      formation.id,
+      "battlefield",
+      {},
+      `declare-${formation.id}`,
+      next.events.length + 1,
+    );
+  }
+  while (!replayBattleState(next).deploymentComplete) {
+    const replayed = replayBattleState(next);
+    const formation = [...replayed.formations.values()].find(
+      (candidate) =>
+        candidate.playerId === replayed.deploymentPriorityPlayerId &&
+        !replayed.deployedFormationIds.has(candidate.id),
+    );
+    assert.ok(formation, "Expected a formation for deployment priority");
+    next = deployFormation(
+      next,
+      formation.id,
+      { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
+      `deploy-${formation.id}`,
+      next.events.length + 1,
+    );
+  }
+  return next;
+}
+
 function registeredBattle() {
   let state = registerBattleFormation(
     registerBattleFormation(newBattle(), attackerFormation, "event-register-attacker", 100),
@@ -92,6 +129,7 @@ function registeredBattle() {
     "event-register",
     101,
   );
+  state = deployAllOnBattlefield(state);
   state = startBattle(state, "player-1", "battle-start", 102);
   let advance = 0;
   while (
@@ -136,6 +174,15 @@ test("reports exact per-segment damage state across mixed profiles", () => {
   assert.throws(() => targetSequenceState(12, targets), /Invalid target sequence damage state/);
 });
 
+test("pins the official deployment and Reserves rules source", () => {
+  assert.equal(battleRuleSources.version, 1);
+  assert.deepEqual(battleRuleSources.sources[0].pages, [16, 39, 43, 57, 60]);
+  assert.equal(
+    battleRuleSources.sources[0].sha256,
+    "4d0e8019cbfddd6f46781d5b4ed31d46fb21eb2d0d10a0f6fabefac0ce054364",
+  );
+});
+
 test("replays movement and enforces one weapon-scoped Shooting activation", () => {
   let state = registerBattleFormation(
     registerBattleFormation(newBattle(), attackerFormation, "register-attacker", 1),
@@ -143,6 +190,7 @@ test("replays movement and enforces one weapon-scoped Shooting activation", () =
     "register-target",
     2,
   );
+  state = deployAllOnBattlefield(state);
   state = startBattle(state, "player-1", "start", 3);
   while (
     !(
@@ -288,6 +336,7 @@ test("records charge eligibility and alternates replayed Fight priority", () => 
     "register-target",
     2,
   );
+  state = deployAllOnBattlefield(state);
   state = startBattle(state, "player-1", "start", 3);
   while (
     !(
@@ -444,7 +493,7 @@ test("replays mission, CP, VP, objectives, Battle-shock, and bounded resources",
     "yield",
     103,
   );
-  state = startBattle(state, "player-1", "start", 104);
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "start", 104);
   let replayed = replayBattleState(state);
   assert.equal(replayed.mission.name, "Take and Hold");
   assert.equal(replayed.resources.get("player-1").get("command_points").value, 3);
@@ -509,7 +558,13 @@ test("replays mission, CP, VP, objectives, Battle-shock, and bounded resources",
 });
 
 test("rejects tampered resource and scoring totals", () => {
-  let state = startBattle(newBattle(), "player-1", "start", 100);
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), attackerFormation, "register-attacker", 1),
+    formation,
+    "register-target",
+    2,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "start", 100);
   state = changeBattleResource(
     state,
     {
@@ -529,6 +584,245 @@ test("rejects tampered resource and scoring totals", () => {
   const score = structuredClone(state);
   score.events.find((event) => event.id === "score").after = 7;
   assert.throws(() => normalizeBattleState(score), /replayed Victory Points/);
+});
+
+test("replays alternating deployment and Strategic Reserves arrival", () => {
+  const reserveFormation = {
+    ...attackerFormation,
+    id: "player-1:formation-reserve",
+    sourceFormationId: "formation-reserve",
+    name: "Reserve Tank",
+  };
+  let state = registerBattleFormation(
+    registerBattleFormation(
+      registerBattleFormation(newBattle(), attackerFormation, "register-attacker", 1),
+      reserveFormation,
+      "register-reserve",
+      2,
+    ),
+    formation,
+    "register-target",
+    3,
+  );
+  const mission = replayBattleState(state).mission;
+  state = configureBattleMission(
+    state,
+    { ...mission, pointsLimit: 1000, deploymentFirstPlayerId: "player-1" },
+    "mission",
+    4,
+  );
+  assert.throws(
+    () =>
+      declareFormationDeployment(
+        state,
+        reserveFormation.id,
+        "strategic_reserves",
+        {
+          points: 251,
+          earliestBattleRound: 2,
+          eligibilityConfirmed: true,
+          eligibilityReason: "Strategic Reserves",
+        },
+        "over-cap",
+        5,
+      ),
+    /250 point limit/,
+  );
+  state = declareFormationDeployment(
+    state,
+    attackerFormation.id,
+    "battlefield",
+    {},
+    "declare-attacker",
+    5,
+  );
+  state = declareFormationDeployment(
+    state,
+    reserveFormation.id,
+    "strategic_reserves",
+    {
+      points: 250,
+      earliestBattleRound: 2,
+      eligibilityConfirmed: true,
+      eligibilityReason: "Strategic Reserves",
+    },
+    "declare-reserve",
+    6,
+  );
+  state = declareFormationDeployment(state, formation.id, "battlefield", {}, "declare-target", 7);
+  assert.equal(replayBattleState(state).deploymentPriorityPlayerId, "player-1");
+  assert.throws(
+    () =>
+      deployFormation(
+        state,
+        formation.id,
+        { placementConfirmed: true, placementReason: "Deployment zone" },
+        "wrong-order",
+        8,
+      ),
+    /alternating player order/,
+  );
+  state = deployFormation(
+    state,
+    attackerFormation.id,
+    { placementConfirmed: true, placementReason: "Deployment zone" },
+    "deploy-attacker",
+    8,
+  );
+  assert.equal(replayBattleState(state).deploymentPriorityPlayerId, "player-2");
+  assert.throws(() => startBattle(state, "player-1", "early-start", 9), /must be deployed/);
+  state = deployFormation(
+    state,
+    formation.id,
+    { placementConfirmed: true, placementReason: "Deployment zone" },
+    "deploy-target",
+    9,
+  );
+  assert.equal(replayBattleState(state).deploymentComplete, true);
+  state = startBattle(state, "player-1", "start", 10);
+  let replayed = replayBattleState(state);
+  assert.equal(replayed.offBattlefieldFormationIds.has(reserveFormation.id), true);
+  assert.equal(
+    battleCanResolveAttack(state, reserveFormation.id, {
+      targetFormationId: formation.id,
+      weaponType: "Ranged",
+      targetEligibilityConfirmed: true,
+    }),
+    false,
+  );
+  assert.equal(
+    battleCanResolveAttack(state, attackerFormation.id, {
+      targetFormationId: reserveFormation.id,
+      weaponType: "Ranged",
+      targetEligibilityConfirmed: true,
+    }),
+    false,
+  );
+  while (
+    !(
+      replayed.clock.battleRound === 1 &&
+      replayed.clock.activePlayerId === "player-1" &&
+      replayed.clock.phase === "movement" &&
+      replayed.clock.step === "reinforcements"
+    )
+  ) {
+    state = advanceBattleClock(
+      state,
+      `to-round-one-${state.events.length}`,
+      state.events.length + 1,
+    );
+    replayed = replayBattleState(state);
+  }
+  assert.throws(
+    () =>
+      arriveFromReserves(
+        state,
+        reserveFormation.id,
+        { placementConfirmed: true, placementReason: "Legal board-edge position" },
+        "too-early",
+        state.events.length + 1,
+      ),
+    /before battle round 2/,
+  );
+  while (
+    !(
+      replayed.clock.battleRound === 2 &&
+      replayed.clock.activePlayerId === "player-1" &&
+      replayed.clock.phase === "movement" &&
+      replayed.clock.step === "reinforcements"
+    )
+  ) {
+    state = advanceBattleClock(
+      state,
+      `to-round-two-${state.events.length}`,
+      state.events.length + 1,
+    );
+    replayed = replayBattleState(state);
+  }
+  state = arriveFromReserves(
+    state,
+    reserveFormation.id,
+    { placementConfirmed: true, placementReason: "Legal board-edge position outside 9 inches" },
+    "reserve-arrives",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.offBattlefieldFormationIds.has(reserveFormation.id), false);
+  assert.equal(replayed.reserveArrivals.has(reserveFormation.id), true);
+  assert.deepEqual(replayed.movementByFormation.get(reserveFormation.id), {
+    formationId: reserveFormation.id,
+    movement: "normal",
+    clock: replayed.clock,
+    fromReserves: true,
+  });
+});
+
+test("reports a Reserve formation destroyed when the battle ends off battlefield", () => {
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), attackerFormation, "register-reserve", 1),
+    formation,
+    "register-target",
+    2,
+  );
+  state = declareFormationDeployment(
+    state,
+    attackerFormation.id,
+    "reserves",
+    {
+      earliestBattleRound: 1,
+      eligibilityConfirmed: true,
+      eligibilityReason: "Source rule permits Reserves",
+    },
+    "declare-reserve",
+    3,
+  );
+  state = declareFormationDeployment(state, formation.id, "battlefield", {}, "declare-target", 4);
+  assert.throws(
+    () => deployFormation(state, formation.id, {}, "unconfirmed-deploy", 5),
+    /explicit deployment-zone/,
+  );
+  state = deployFormation(
+    state,
+    formation.id,
+    { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
+    "deploy-target",
+    5,
+  );
+  state = startBattle(state, "player-1", "start", 6);
+  while (replayBattleState(state).clock.status !== "complete") {
+    state = advanceBattleClock(state, `complete-${state.events.length}`, state.events.length + 1);
+  }
+  const replayed = replayBattleState(state);
+  assert.deepEqual([...replayed.reserveDestroyedFormationIds], [attackerFormation.id]);
+  assert.equal(replayed.offBattlefieldFormationIds.has(attackerFormation.id), true);
+});
+
+test("rejects Fortifications in Strategic Reserves", () => {
+  const fortification = {
+    ...attackerFormation,
+    id: "player-1:fortification",
+    sourceFormationId: "fortification",
+    name: "Fortification",
+    keywords: ["Fortification"],
+  };
+  const state = registerBattleFormation(newBattle(), fortification, "register-fortification", 1);
+  assert.throws(
+    () =>
+      declareFormationDeployment(
+        state,
+        fortification.id,
+        "strategic_reserves",
+        {
+          points: 100,
+          earliestBattleRound: 2,
+          eligibilityConfirmed: true,
+          eligibilityReason: "Strategic Reserves",
+        },
+        "illegal-fortification",
+        2,
+      ),
+    /Fortifications cannot/,
+  );
 });
 
 test("replays the versioned cross-surface golden battle", () => {

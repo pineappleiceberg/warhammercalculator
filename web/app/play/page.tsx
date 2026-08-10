@@ -17,8 +17,10 @@ import {
   activeBattleAttacks,
   advanceBattleClock,
   appendResolvedAttack,
+  arriveFromReserves,
   battleCanResolveAttack,
   battleFormation,
+  battleFormationIsOnBattlefield,
   battleFormationHealth,
   battleFormationWasTargeted,
   changeBattleResource,
@@ -26,6 +28,8 @@ import {
   configureBattleMission,
   configureUnengagedBattleFormation,
   createBattleState,
+  declareFormationDeployment,
+  deployFormation,
   normalizeBattleState,
   passFightPriority,
   recordFormationCharge,
@@ -159,6 +163,10 @@ export default function PlayMode() {
   const [actionOverrideReason, setActionOverrideReason] = useState("");
   const [fightsFirstOverride, setFightsFirstOverride] = useState(false);
   const [chargeRoll, setChargeRoll] = useState(7);
+  const [deploymentPlacementConfirmed, setDeploymentPlacementConfirmed] = useState(false);
+  const [deploymentPlacementReason, setDeploymentPlacementReason] = useState("");
+  const [reservePlacementConfirmed, setReservePlacementConfirmed] = useState(false);
+  const [reservePlacementReason, setReservePlacementReason] = useState("");
   const [recoveryReady, setRecoveryReady] = useState(false);
   const recovered = useRef(false);
   const migrateLegacyLimitedUses = useRef(false);
@@ -612,6 +620,7 @@ export default function PlayMode() {
     weaponProfile?.abilities.some((ability) => ability.name.toLowerCase() === "assault"),
   );
   const battleActionOptions = {
+    targetFormationId: targetBattleFormationId,
     weaponHasAssault,
     weaponType: weaponProfile?.type ?? "",
     eligibilityOverride: actionEligibilityOverride,
@@ -2112,6 +2121,88 @@ export default function PlayMode() {
     }
   };
 
+  const declareDeployments = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!battleState || !replayedBattle) return;
+    try {
+      const data = new FormData(event.currentTarget);
+      let next = battleState;
+      for (const formation of replayedBattle.formations.values()) {
+        const location = String(data.get(`location-${formation.id}`) || "battlefield");
+        const inReserves = location !== "battlefield";
+        next = declareFormationDeployment(
+          next,
+          formation.id,
+          location,
+          {
+            points:
+              location === "strategic_reserves"
+                ? Math.max(0, Number(data.get(`points-${formation.id}`)) || 0)
+                : 0,
+            earliestBattleRound:
+              location === "strategic_reserves"
+                ? Math.max(2, Number(data.get(`round-${formation.id}`)) || 2)
+                : Math.max(1, Number(data.get(`round-${formation.id}`)) || 1),
+            eligibilityConfirmed: !inReserves || data.get(`eligible-${formation.id}`) === "on",
+            eligibilityReason: inReserves
+              ? String(data.get(`reason-${formation.id}`) || "").trim()
+              : "Battlefield deployment",
+          },
+          crypto.randomUUID(),
+          next.events.length + 1,
+        );
+      }
+      setBattleState(next);
+      setStatus("Deployment declarations recorded");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Deployment could not be declared");
+    }
+  };
+
+  const recordFormationDeployment = (formationId: string) => {
+    if (!battleState) return;
+    try {
+      const next = deployFormation(
+        battleState,
+        formationId,
+        {
+          placementConfirmed: deploymentPlacementConfirmed,
+          placementReason: deploymentPlacementReason.trim(),
+        },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setDeploymentPlacementConfirmed(false);
+      setDeploymentPlacementReason("");
+      setStatus(`${battleFormation(next, formationId)?.name ?? "Formation"} deployed`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Formation could not be deployed");
+    }
+  };
+
+  const recordReserveArrival = () => {
+    if (!battleState || !attackerBattleFormationId) return;
+    try {
+      const next = arriveFromReserves(
+        battleState,
+        attackerBattleFormationId,
+        {
+          placementConfirmed: reservePlacementConfirmed,
+          placementReason: reservePlacementReason.trim(),
+        },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setReservePlacementConfirmed(false);
+      setReservePlacementReason("");
+      setStatus(`${attackerFormation?.name ?? "Formation"} arrived from Reserves`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Reserve could not arrive");
+    }
+  };
+
   const configureMission = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!battleState) return;
@@ -2128,6 +2219,10 @@ export default function PlayMode() {
         battleState,
         {
           name: String(data.get("mission") || "Custom mission").trim() || "Custom mission",
+          pointsLimit: Math.min(100000, Math.max(0, Number(data.get("points-limit")) || 0)),
+          deploymentFirstPlayerId: String(
+            data.get("deployment-first") || battleState.players[0].id,
+          ),
           commandPointsPerCommandPhase: Math.min(
             10,
             Math.max(0, Number(data.get("command-points")) || 0),
@@ -2486,8 +2581,24 @@ export default function PlayMode() {
     if (!battleRostersMatch) return "A saved roster changed after this battle was set up";
     if (battleSetupError) return battleSetupError;
     if (!battleState || !battleClock) return "Preparing battle setup";
-    if (battleClock.status === "setup") return "Start the battle before resolving attacks";
+    if (battleClock.status === "setup") {
+      return replayedBattle?.deploymentComplete || battleState.migration
+        ? "Start the battle before resolving attacks"
+        : "Finish deployment before starting the battle";
+    }
     if (battleClock.status === "complete") return "The battle is complete";
+    if (
+      attackerBattleFormationId &&
+      !battleFormationIsOnBattlefield(battleState, attackerBattleFormationId)
+    ) {
+      return "The attacking formation is not on the battlefield";
+    }
+    if (
+      targetBattleFormationId &&
+      !battleFormationIsOnBattlefield(battleState, targetBattleFormationId)
+    ) {
+      return "The target formation is not on the battlefield";
+    }
     if (pendingBattleChoices.length > 0) {
       return "Resolve the pending choice before attacking";
     }
@@ -2552,6 +2663,10 @@ export default function PlayMode() {
     setHistory([]);
     setBattleState(null);
     setPendingChoiceSelections({});
+    setDeploymentPlacementConfirmed(false);
+    setDeploymentPlacementReason("");
+    setReservePlacementConfirmed(false);
+    setReservePlacementReason("");
     window.localStorage.removeItem(PLAY_RECOVERY_KEY);
     setStatus("Battle reset");
   };
@@ -4279,8 +4394,14 @@ export default function PlayMode() {
             </div>
             <div className="battle-log-actions">
               {battleClock.status === "setup" && (
-                <button type="button" onClick={startGuidedBattle}>
-                  Start battle · {attackerList?.name ?? "current attacker"} first
+                <button
+                  type="button"
+                  disabled={!replayedBattle.deploymentComplete && !battleState.migration}
+                  onClick={startGuidedBattle}
+                >
+                  {replayedBattle.deploymentComplete || battleState.migration
+                    ? `Start battle · ${attackerList?.name ?? "current attacker"} first`
+                    : "Complete deployment to start"}
                 </button>
               )}
               {battleClock.status === "active" && (
@@ -4342,6 +4463,40 @@ export default function PlayMode() {
                 </div>
               )}
             {battleClock.status === "active" &&
+              battleClock.phase === "movement" &&
+              battleClock.step === "reinforcements" &&
+              attackerBattleFormationId &&
+              attackerPlayerId === battleClock.activePlayerId &&
+              replayedBattle.offBattlefieldFormationIds.has(attackerBattleFormationId) &&
+              ["reserves", "strategic_reserves"].includes(
+                replayedBattle.deploymentByFormation.get(attackerBattleFormationId)?.location ?? "",
+              ) && (
+                <div className="action-tracker">
+                  <strong>{attackerFormation?.name ?? "Selected formation"} · Reserves</strong>
+                  <span>
+                    Confirm its source-rule, round, board-edge or setup-zone, and enemy-distance
+                    requirements on the physical table.
+                  </span>
+                  <label className="confirmation-row">
+                    <input
+                      type="checkbox"
+                      checked={reservePlacementConfirmed}
+                      onChange={(event) => setReservePlacementConfirmed(event.target.checked)}
+                    />
+                    Legal Reserve placement confirmed
+                  </label>
+                  <input
+                    value={reservePlacementReason}
+                    maxLength={300}
+                    placeholder="Rule and placement checked (for example, Strategic Reserves outside 9 inches)"
+                    onChange={(event) => setReservePlacementReason(event.target.value)}
+                  />
+                  <button type="button" onClick={recordReserveArrival}>
+                    Arrive from Reserves
+                  </button>
+                </div>
+              )}
+            {battleClock.status === "active" &&
               battleClock.phase === "charge" &&
               battleClock.step === "charge_moves" &&
               attackerBattleFormationId &&
@@ -4400,50 +4555,197 @@ export default function PlayMode() {
                   </button>
                 </div>
               )}
-            {battleClock.status === "setup" && replayedBattle && (
-              <form className="mission-setup" onSubmit={configureMission}>
-                <label>
-                  <span>Mission</span>
-                  <input
-                    name="mission"
-                    defaultValue={replayedBattle.mission.name}
-                    maxLength={200}
-                  />
-                </label>
-                <label>
-                  <span>Objectives</span>
-                  <input
-                    name="objectives"
-                    type="number"
-                    min="0"
-                    max="12"
-                    defaultValue={replayedBattle.mission.objectives.length}
-                  />
-                </label>
-                <label>
-                  <span>CP each Command phase</span>
-                  <input
-                    name="command-points"
-                    type="number"
-                    min="0"
-                    max="10"
-                    defaultValue={replayedBattle.mission.commandPointsPerCommandPhase}
-                  />
-                </label>
-                {battleState.players.map((player) => (
-                  <label key={player.id}>
-                    <span>{player.name} starting CP</span>
+            {battleClock.status === "setup" &&
+              replayedBattle &&
+              replayedBattle.deploymentByFormation.size === 0 && (
+                <form className="mission-setup" onSubmit={configureMission}>
+                  <label>
+                    <span>Mission</span>
                     <input
-                      name={`starting-${player.id}`}
-                      type="number"
-                      min="0"
-                      max="100"
-                      defaultValue={replayedBattle.mission.startingCommandPoints[player.id]}
+                      name="mission"
+                      defaultValue={replayedBattle.mission.name}
+                      maxLength={200}
                     />
                   </label>
-                ))}
-                <button type="submit">Save mission setup</button>
-              </form>
+                  <label>
+                    <span>Battle size (points)</span>
+                    <input
+                      name="points-limit"
+                      type="number"
+                      min="0"
+                      max="100000"
+                      defaultValue={replayedBattle.mission.pointsLimit}
+                    />
+                  </label>
+                  <label>
+                    <span>Deploy first</span>
+                    <select
+                      name="deployment-first"
+                      defaultValue={replayedBattle.mission.deploymentFirstPlayerId}
+                    >
+                      {battleState.players.map((player) => (
+                        <option key={player.id} value={player.id}>
+                          {player.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Objectives</span>
+                    <input
+                      name="objectives"
+                      type="number"
+                      min="0"
+                      max="12"
+                      defaultValue={replayedBattle.mission.objectives.length}
+                    />
+                  </label>
+                  <label>
+                    <span>CP each Command phase</span>
+                    <input
+                      name="command-points"
+                      type="number"
+                      min="0"
+                      max="10"
+                      defaultValue={replayedBattle.mission.commandPointsPerCommandPhase}
+                    />
+                  </label>
+                  {battleState.players.map((player) => (
+                    <label key={player.id}>
+                      <span>{player.name} starting CP</span>
+                      <input
+                        name={`starting-${player.id}`}
+                        type="number"
+                        min="0"
+                        max="100"
+                        defaultValue={replayedBattle.mission.startingCommandPoints[player.id]}
+                      />
+                    </label>
+                  ))}
+                  <button type="submit">Save mission setup</button>
+                </form>
+              )}
+            {battleClock.status === "setup" &&
+              replayedBattle.deploymentByFormation.size === 0 &&
+              !battleState.migration && (
+                <form className="deployment-planner" onSubmit={declareDeployments}>
+                  <div>
+                    <strong>Declare battle formations</strong>
+                    <span>
+                      Put every formation on the battlefield, in Reserves, or in Strategic Reserves
+                      before either player deploys a model.
+                    </span>
+                  </div>
+                  {[...replayedBattle.formations.values()].map((formation) => (
+                    <fieldset key={formation.id}>
+                      <legend>
+                        {battleState.players.find((player) => player.id === formation.playerId)
+                          ?.name ?? "Player"}{" "}
+                        · {formation.name}
+                      </legend>
+                      <label>
+                        <span>Starting location</span>
+                        <select name={"location-" + formation.id} defaultValue="battlefield">
+                          <option value="battlefield">Battlefield</option>
+                          <option value="reserves">Reserves (source rule)</option>
+                          <option value="strategic_reserves">Strategic Reserves</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Points in Strategic Reserves</span>
+                        <input
+                          name={"points-" + formation.id}
+                          type="number"
+                          min="0"
+                          max="100000"
+                          defaultValue="0"
+                        />
+                      </label>
+                      <label>
+                        <span>Earliest arrival round</span>
+                        <input
+                          name={"round-" + formation.id}
+                          type="number"
+                          min="1"
+                          max="5"
+                          defaultValue="2"
+                        />
+                      </label>
+                      <label className="confirmation-row">
+                        <input type="checkbox" name={"eligible-" + formation.id} />
+                        Reserve eligibility confirmed when not deploying on the battlefield
+                      </label>
+                      <label>
+                        <span>Reserve source rule</span>
+                        <input
+                          name={"reason-" + formation.id}
+                          maxLength={300}
+                          placeholder="Deep Strike, Strategic Reserves, mission rule…"
+                        />
+                      </label>
+                    </fieldset>
+                  ))}
+                  <button type="submit">Lock deployment declarations</button>
+                </form>
+              )}
+            {battleClock.status === "setup" &&
+              replayedBattle.deploymentByFormation.size > 0 &&
+              !replayedBattle.deploymentComplete && (
+                <div className="deployment-planner">
+                  <div>
+                    <strong>
+                      Deploy{" "}
+                      {battleState.players.find(
+                        (player) => player.id === replayedBattle.deploymentPriorityPlayerId,
+                      )?.name ?? "next player"}
+                    </strong>
+                    <span>Place one formation, then alternate. Confirm physical placement.</span>
+                  </div>
+                  <label className="confirmation-row">
+                    <input
+                      type="checkbox"
+                      checked={deploymentPlacementConfirmed}
+                      onChange={(event) => setDeploymentPlacementConfirmed(event.target.checked)}
+                    />
+                    Deployment-zone and table-state placement confirmed
+                  </label>
+                  <input
+                    value={deploymentPlacementReason}
+                    maxLength={300}
+                    placeholder="Deployment zone and applicable setup rules checked"
+                    onChange={(event) => setDeploymentPlacementReason(event.target.value)}
+                  />
+                  <div className="deployment-options">
+                    {[...replayedBattle.formations.values()]
+                      .filter(
+                        (formation) =>
+                          replayedBattle.deploymentByFormation.get(formation.id)?.location ===
+                            "battlefield" && !replayedBattle.deployedFormationIds.has(formation.id),
+                      )
+                      .map((formation) => (
+                        <button
+                          type="button"
+                          key={formation.id}
+                          disabled={
+                            formation.playerId !== replayedBattle.deploymentPriorityPlayerId
+                          }
+                          onClick={() => recordFormationDeployment(formation.id)}
+                        >
+                          Deploy {formation.name}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+            {battleClock.status === "setup" && replayedBattle.deploymentComplete && (
+              <div className="action-tracker" role="status">
+                <strong>Deployment complete</strong>
+                <span>
+                  {replayedBattle.offBattlefieldFormationIds.size} formation
+                  {replayedBattle.offBattlefieldFormationIds.size === 1 ? "" : "s"} waiting in
+                  Reserves.
+                </span>
+              </div>
             )}
             {replayedBattle && (
               <div className="battle-trackers" aria-label="Battle score and resources">

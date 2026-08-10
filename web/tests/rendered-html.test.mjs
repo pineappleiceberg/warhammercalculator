@@ -2591,6 +2591,37 @@ test("replays canonical battle health through the C and WebAssembly API", async 
     weaponRestriction: "all",
   });
 
+  const versionSix = {
+    ...structuredClone(versionFive),
+    version: 6,
+    migration: {
+      sourceVersion: 5,
+      legacyUntimedThroughSequence: versionFive.migration.legacyUntimedThroughSequence,
+      legacyUnactionedThroughSequence: versionFive.migration.legacyUnactionedThroughSequence,
+      legacyDeploymentThroughSequence: versionFive.events.length,
+    },
+  };
+  const versionSixResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: versionSix, formationId: "target" }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(
+    versionSixResponse.status,
+    200,
+    JSON.stringify(await versionSixResponse.clone().json()),
+  );
+  const versionSixResult = await versionSixResponse.json();
+  assert.equal(versionSixResult.data.schemaVersion, 6);
+  assert.equal(versionSixResult.data.deployment.complete, true);
+  assert.deepEqual(versionSixResult.data.deployment.offBattlefieldFormationIds, []);
+  assert.deepEqual(versionSixResult.data.deployment.deployedFormationIds, ["attacker", "target"]);
+  assert.equal(versionSixResult.data.deployment.declarations[0].legacyAssumed, true);
+
   const configuredVersionTwo = structuredClone(versionTwo);
   configuredVersionTwo.events.splice(2, 0, {
     version: 1,

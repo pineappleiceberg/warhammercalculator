@@ -660,7 +660,12 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
       objectives: [...replayed.objectives.values()].map((objective) => ({ ...objective })),
       battleShockedFormationIds: [...replayed.battleShockedFormations.keys()].sort(),
       movement: [...replayed.movementByFormation.values()]
-        .map(({ formationId, movement, clock }) => ({ formationId, movement, clock }))
+        .map(({ formationId, movement, clock, fromReserves = false }) => ({
+          formationId,
+          movement,
+          clock,
+          fromReserves,
+        }))
         .sort((left, right) => left.formationId.localeCompare(right.formationId)),
       charges: [...replayed.chargeByFormation.values()]
         .map(
@@ -695,6 +700,41 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
           }
         : null,
       completedActivationKeys: [...replayed.completedActivations].sort(),
+      deployment: {
+        complete: replayed.deploymentComplete,
+        priorityPlayerId: replayed.deploymentPriorityPlayerId || null,
+        declarations: [...replayed.deploymentByFormation.values()]
+          .map(
+            ({
+              formationId,
+              location,
+              points,
+              earliestBattleRound,
+              eligibilityConfirmed,
+              eligibilityReason,
+              legacyAssumed = false,
+            }) => ({
+              formationId,
+              location,
+              points,
+              earliestBattleRound,
+              eligibilityConfirmed,
+              eligibilityReason,
+              legacyAssumed,
+            }),
+          )
+          .sort((left, right) => left.formationId.localeCompare(right.formationId)),
+        deployedFormationIds: [...replayed.deployedFormationIds].sort(),
+        offBattlefieldFormationIds: [...replayed.offBattlefieldFormationIds].sort(),
+        reserveArrivals: [...replayed.reserveArrivals.values()]
+          .map(({ formationId, placementReason, clock }) => ({
+            formationId,
+            placementReason,
+            clock,
+          }))
+          .sort((left, right) => left.formationId.localeCompare(right.formationId)),
+        destroyedAtBattleEndFormationIds: [...replayed.reserveDestroyedFormationIds].sort(),
+      },
       scoringEvents: replayed.scoringEvents.map(
         ({ id, playerId, category, points, before, after, reason, clock }) => ({
           id,

@@ -27,8 +27,8 @@ state.
 
 ## Prioritized backlog
 
-1. Continue the legal-action engine with deployment, reserves, Transport
-   embark/disembark timing, target range/visibility eligibility, charge
+1. Continue the legal-action engine with Transport embark/disembark timing,
+   target range/visibility eligibility, charge
    movement, Heroic Intervention, pile-in, consolidation, reactions, and
    Stratagem windows.
 2. Build and enforce the source-locked faction, detachment, enhancement,
@@ -40,6 +40,23 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-10: Advanced guided play to battle-state version 6 with replayed
+  deployment and Reserves. Every formation declares battlefield, Reserves, or
+  Strategic Reserves before deployment; Strategic Reserves enforce the
+  per-player 25% points cap, round-two minimum, and Fortification exclusion.
+  Battlefield formations deploy one at a time in alternating player order.
+  Reserve arrivals are restricted to the owning active player's Reinforcements
+  step and recorded as a Normal move. Off-battlefield formations cannot move,
+  charge, activate, attack, or be targeted, and undeployed formations are
+  reported destroyed at battle end. Physical deployment-zone, board-edge,
+  enemy-distance, Deep Strike, and source-rule facts require explicit
+  reason-bearing confirmation. Play Mode guides declarations, placement, and
+  arrivals; the replay API exposes complete deployment state. Version-1 through
+  version-5 logs migrate without rewriting prior events. The official Core
+  Rules PDF identity and relevant pages are source-locked, and replay,
+  migration, cap, timing, API, UI, native, WebAssembly, and formal release gates
+  cover the cycle.
 
 - 2026-08-10: Advanced guided play to battle-state version 5 with replayed
   movement, charge, and formation-activation legality. Every active formation
