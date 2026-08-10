@@ -19,6 +19,11 @@ import {
 import { abilityDiceValue } from "../lib/dice.mjs";
 import { parseAgentProfile } from "../lib/agent-parameters.mjs";
 import {
+  battleFormationHealth,
+  normalizeBattleState,
+  replayBattleState,
+} from "../lib/battle-state.mjs";
+import {
   applyCombatPresets,
   applyTargetCombatPresets,
   attackKeywordsForWeapon,
@@ -77,6 +82,91 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._probability_distribution_is_normalized, "function");
   assert.equal(typeof calculator._attack_plan_is_valid, "function");
   assert.equal(typeof calculator._whc_estimate_ordered_volley_complexity, "function");
+  assert.equal(typeof calculator._whc_replay_battle_health_events, "function");
+});
+
+test("WebAssembly matches JavaScript for the versioned golden battle replay", async () => {
+  const state = normalizeBattleState(
+    JSON.parse(
+      await readFile(new URL("./fixtures/battle-replay-v1.json", import.meta.url), "utf8"),
+    ),
+  );
+  const formation = state.events.find(
+    (event) => event.type === "formation_registered" && event.formation.id === "target",
+  ).formation;
+  const segmentIndices = new Map(formation.segments.map((segment, index) => [segment.id, index]));
+  const selectedEvents = [];
+  const attackIndices = new Map();
+  for (const event of state.events) {
+    if (event.type === "attack_resolved" && event.targetFormationId === formation.id) {
+      attackIndices.set(event.id, selectedEvents.length);
+      selectedEvents.push(event);
+    } else if (event.type === "attack_reverted" && attackIndices.has(event.revertsEventId)) {
+      selectedEvents.push(event);
+    }
+  }
+  const profiles = new Uint32Array(formation.segments.length * 2);
+  formation.segments.forEach((segment, index) => {
+    profiles[index * 2] = segment.wounds;
+    profiles[index * 2 + 1] = segment.startingModels;
+  });
+  const eventFields = 166;
+  const events = new Uint32Array(selectedEvents.length * eventFields);
+  selectedEvents.forEach((event, index) => {
+    const offset = index * eventFields;
+    events[offset] = event.version;
+    if (event.type === "attack_resolved") {
+      events[offset + 1] = 1;
+      events[offset + 2] = event.allocations.length;
+      events[offset + 4] = event.summary.damage;
+      events[offset + 5] = event.summary.modelsDestroyed;
+      event.allocations.forEach((allocation, allocationIndex) => {
+        const allocationOffset = offset + 6 + allocationIndex * 5;
+        events[allocationOffset] = segmentIndices.get(allocation.segmentId);
+        events[allocationOffset + 1] = allocation.before.modelsRemaining;
+        events[allocationOffset + 2] = allocation.before.woundsLost;
+        events[allocationOffset + 3] = allocation.after.modelsRemaining;
+        events[allocationOffset + 4] = allocation.after.woundsLost;
+      });
+    } else {
+      events[offset + 1] = 2;
+      events[offset + 3] = attackIndices.get(event.revertsEventId);
+    }
+  });
+  const profilesPointer = calculator._malloc(profiles.byteLength);
+  const eventsPointer = calculator._malloc(events.byteLength);
+  const healthPointer = calculator._malloc(formation.segments.length * 8);
+  try {
+    new Uint32Array(calculator.HEAPU8.buffer, profilesPointer, profiles.length).set(profiles);
+    new Uint32Array(calculator.HEAPU8.buffer, eventsPointer, events.length).set(events);
+    assert.equal(
+      calculator._whc_replay_battle_health_events(
+        profilesPointer,
+        formation.segments.length,
+        eventsPointer,
+        selectedEvents.length,
+        healthPointer,
+      ),
+      1,
+    );
+    const result = new Uint32Array(
+      calculator.HEAPU8.buffer,
+      healthPointer,
+      formation.segments.length * 2,
+    );
+    const health = Object.fromEntries(
+      formation.segments.map((segment, index) => [
+        segment.id,
+        { modelsRemaining: result[index * 2], woundsLost: result[index * 2 + 1] },
+      ]),
+    );
+    assert.deepEqual(health, battleFormationHealth(state, formation.id));
+    assert.deepEqual(replayBattleState(state).activeAttackIds, ["final-attack"]);
+  } finally {
+    calculator._free(profilesPointer);
+    calculator._free(eventsPointer);
+    calculator._free(healthPointer);
+  }
 });
 
 test("Firing Deck model selection scales the exact C/WebAssembly attack count", async () => {

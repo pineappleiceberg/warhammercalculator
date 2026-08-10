@@ -5,6 +5,9 @@ import { antiWoundThreshold } from "../lib/anti.mjs";
 import { rulesInteractionCases } from "./rules-interaction-corpus.mjs";
 
 const projectRoot = new URL("../", import.meta.url);
+const goldenBattleReplay = JSON.parse(
+  await readFile(new URL("./fixtures/battle-replay-v1.json", import.meta.url), "utf8"),
+);
 
 function createD1Mock() {
   const rows = [];
@@ -208,6 +211,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.match(documented.endpoints.calculate, /POST \/api\/v1\/calculate/);
   assert.match(documented.endpoints.volleyComplexity, /POST \/api\/v1\/volley\/complexity/);
   assert.match(documented.endpoints.volleySimulate, /POST \/api\/v1\/volley\/simulate/);
+  assert.match(documented.endpoints.battleReplay, /POST \/api\/v1\/battle\/replay/);
   assert.match(documented.endpoints.firingDeck, /GET \/api\/v1\/firing-deck/);
   assert.match(documented.endpoints.transport, /GET \/api\/v1\/transport/);
   assert.match(documented.endpoints.leader, /GET \/api\/v1\/leader/);
@@ -2260,6 +2264,43 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   );
   assert.equal(replacementSimulation.status, 200);
   assert.equal((await replacementSimulation.json()).data.means.attacksResolved, 6);
+});
+
+test("replays canonical battle health through the C and WebAssembly API", async () => {
+  const worker = await loadWorker();
+  const context = { waitUntil() {}, passThroughOnException() {} };
+  const response = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: goldenBattleReplay, formationId: "target" }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.data.schemaVersion, 1);
+  assert.equal(result.data.rulesSnapshot, "catalogue:test");
+  assert.deepEqual(result.data.health, {
+    bodyguard: { modelsRemaining: 1, woundsLost: 1 },
+    leader: { modelsRemaining: 1, woundsLost: 0 },
+  });
+  assert.deepEqual(result.data.activeAttackIds, ["final-attack"]);
+
+  const tampered = structuredClone(goldenBattleReplay);
+  tampered.events.at(-1).summary.damage = 5;
+  const rejected = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: tampered, formationId: "target" }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(rejected.status, 400);
+  assert.equal((await rejected.json()).error.code, "INVALID_REQUEST");
 });
 
 test("API exact and seeded simulation paths match the shared rules interaction corpus", async () => {

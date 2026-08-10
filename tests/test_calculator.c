@@ -1247,6 +1247,87 @@ static void test_allocated_attack_damage_replacement(void) {
     assert(web_summary.maximum == 0u);
 }
 
+/*@ terminates \true; */
+static void test_battle_health_replay(void) {
+    uint32_t profiles[2u * WHC_BATTLE_PROFILE_FIELDS] = {3u, 2u, 5u, 1u};
+    uint32_t events[3u * WHC_BATTLE_EVENT_FIELDS];
+    uint32_t health[2u * WHC_BATTLE_HEALTH_FIELDS] = {0u};
+    const uint32_t first = 0u;
+    const uint32_t revert = WHC_BATTLE_EVENT_FIELDS;
+    const uint32_t final = 2u * WHC_BATTLE_EVENT_FIELDS;
+
+    memset(events, 0, sizeof(events));
+    events[first] = WHC_BATTLE_STATE_VERSION;
+    events[first + 1u] = WHC_BATTLE_EVENT_ATTACK;
+    events[first + 2u] = 2u;
+    events[first + 4u] = 8u;
+    events[first + 5u] = 2u;
+    events[first + 6u] = 0u;
+    events[first + 7u] = 2u;
+    events[first + 8u] = 0u;
+    events[first + 9u] = 0u;
+    events[first + 10u] = 0u;
+    events[first + 11u] = 1u;
+    events[first + 12u] = 1u;
+    events[first + 13u] = 0u;
+    events[first + 14u] = 1u;
+    events[first + 15u] = 2u;
+
+    events[revert] = WHC_BATTLE_STATE_VERSION;
+    events[revert + 1u] = WHC_BATTLE_EVENT_REVERT;
+    events[revert + 3u] = 0u;
+
+    events[final] = WHC_BATTLE_STATE_VERSION;
+    events[final + 1u] = WHC_BATTLE_EVENT_ATTACK;
+    events[final + 2u] = 2u;
+    events[final + 4u] = 4u;
+    events[final + 5u] = 1u;
+    events[final + 6u] = 0u;
+    events[final + 7u] = 2u;
+    events[final + 8u] = 0u;
+    events[final + 9u] = 1u;
+    events[final + 10u] = 1u;
+    events[final + 11u] = 1u;
+    events[final + 12u] = 1u;
+    events[final + 13u] = 0u;
+    events[final + 14u] = 1u;
+    events[final + 15u] = 0u;
+
+    assert(whc_replay_battle_health_events(profiles, 2u, events, 3u, health));
+    assert(health[0] == 1u);
+    assert(health[1] == 1u);
+    assert(health[2] == 1u);
+    assert(health[3] == 0u);
+
+    events[final + 4u] = 5u;
+    health[0] = 91u;
+    health[1] = 92u;
+    health[2] = 93u;
+    health[3] = 94u;
+    assert(!whc_replay_battle_health_events(profiles, 2u, events, 3u, health));
+    assert(health[0] == 91u);
+    assert(health[1] == 92u);
+    assert(health[2] == 93u);
+    assert(health[3] == 94u);
+
+    events[final + 4u] = 4u;
+    events[revert + 3u] = 1u;
+    assert(!whc_replay_battle_health_events(profiles, 2u, events, 3u, health));
+    assert(health[0] == 91u);
+    assert(health[1] == 92u);
+    assert(health[2] == 93u);
+    assert(health[3] == 94u);
+
+    events[revert + 3u] = 0u;
+    events[final + 4u] = 5u;
+    events[final + 15u] = 1u;
+    assert(!whc_replay_battle_health_events(profiles, 2u, events, 3u, health));
+    assert(health[0] == 91u);
+    assert(health[1] == 92u);
+    assert(health[2] == 93u);
+    assert(health[3] == 94u);
+}
+
 /*@ terminates \true;
     ensures \result == 0;
 */
@@ -1273,6 +1354,7 @@ int main(void) {
     test_shared_random_characteristic_modifier();
     test_first_failed_save_damage_replacement();
     test_allocated_attack_damage_replacement();
+    test_battle_health_replay();
     puts("all tests passed");
     return 0;
 }

@@ -2,6 +2,7 @@
 #define WARHAMMERCALCULATOR_WEB_API_H
 
 #include "warhammercalculator/calculator.h"
+#include "warhammercalculator/battle_state.h"
 
 #include <stdbool.h>
 #include <stdint.h>

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { targetSequenceState } from "../lib/allocation.mjs";
@@ -45,6 +46,10 @@ const formation = {
     },
   ],
 };
+
+const goldenReplay = JSON.parse(
+  await readFile(new URL("./fixtures/battle-replay-v1.json", import.meta.url), "utf8"),
+);
 
 function newBattle() {
   return createBattleState({
@@ -107,6 +112,15 @@ test("replays persistent mixed-profile casualties and compensating undo", () => 
   assert.deepEqual(activeBattleAttacks(state), []);
   assert.equal(state.events.at(-1).revertsEventId, "event-attack-1");
   assert.equal(replayBattleState(state).activeAttackIds.length, 0);
+});
+
+test("replays the versioned cross-surface golden battle", () => {
+  const state = normalizeBattleState(goldenReplay);
+  assert.deepEqual(battleFormationHealth(state, "target"), {
+    bodyguard: { modelsRemaining: 1, woundsLost: 1 },
+    leader: { modelsRemaining: 1, woundsLost: 0 },
+  });
+  assert.deepEqual(replayBattleState(state).activeAttackIds, ["final-attack"]);
 });
 
 test("rejects divergent replay state and non-latest undo", () => {

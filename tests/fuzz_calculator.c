@@ -151,6 +151,12 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     bool valid = false;
     bool estimated = false;
     uint16_t initial_wounds_lost = 0u;
+    uint32_t battle_profiles[2u * WHC_BATTLE_PROFILE_FIELDS];
+    uint32_t battle_events[2u * WHC_BATTLE_EVENT_FIELDS];
+    uint32_t battle_health[2u * WHC_BATTLE_HEALTH_FIELDS];
+    uint32_t battle_event_count;
+    uint32_t battle_damage;
+    bool battle_replayed;
 
     while (index < weapon_count) {
         generate_weapon(&input, &weapons[index]);
@@ -239,5 +245,50 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     (void)dice_value_is_valid(dice);
     (void)allocate_damage_to_unit(next_u16(&input), next_u16(&input), 1u + next_byte(&input) % 20u,
                                   1u + next_byte(&input) % 20u);
+
+    battle_profiles[0] = 1u + next_byte(&input) % 10u;
+    battle_profiles[1] = 1u + next_byte(&input) % 5u;
+    battle_profiles[2] = 1u + next_byte(&input) % 10u;
+    battle_profiles[3] = 1u + next_byte(&input) % 5u;
+    memset(battle_events, 0, sizeof(battle_events));
+    battle_damage = next_byte(&input) % battle_profiles[0];
+    battle_events[0] = WHC_BATTLE_STATE_VERSION;
+    battle_events[1] = WHC_BATTLE_EVENT_ATTACK;
+    battle_events[2] = 1u;
+    battle_events[4] = battle_damage;
+    battle_events[6] = 0u;
+    battle_events[7] = battle_profiles[1];
+    battle_events[8] = 0u;
+    battle_events[9] = battle_profiles[1];
+    battle_events[10] = battle_damage;
+    battle_event_count = 1u;
+    if (next_byte(&input) % 2u != 0u) {
+        const uint32_t revert = WHC_BATTLE_EVENT_FIELDS;
+        battle_events[revert] = WHC_BATTLE_STATE_VERSION;
+        battle_events[revert + 1u] = WHC_BATTLE_EVENT_REVERT;
+        battle_events[revert + 3u] = 0u;
+        battle_event_count = 2u;
+    }
+    if (next_byte(&input) % 4u == 0u) {
+        battle_events[next_byte(&input) % (battle_event_count * WHC_BATTLE_EVENT_FIELDS)] ^=
+            1u + next_byte(&input);
+    }
+    battle_health[0] = 101u;
+    battle_health[1] = 102u;
+    battle_health[2] = 103u;
+    battle_health[3] = 104u;
+    battle_replayed = whc_replay_battle_health_events(battle_profiles, 2u, battle_events,
+                                                      battle_event_count, battle_health);
+    if (battle_replayed) {
+        assert(battle_health[0] <= battle_profiles[1]);
+        assert(battle_health[1] < battle_profiles[0]);
+        assert(battle_health[2] <= battle_profiles[3]);
+        assert(battle_health[3] < battle_profiles[2]);
+    } else {
+        assert(battle_health[0] == 101u);
+        assert(battle_health[1] == 102u);
+        assert(battle_health[2] == 103u);
+        assert(battle_health[3] == 104u);
+    }
     return 0;
 }

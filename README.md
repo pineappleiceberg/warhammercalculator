@@ -646,6 +646,15 @@ identity carry into later attacks, including after swapping which list is
 attacking. Undo appends a compensating event instead of deleting history.
 Validated JSON battle exports and imports preserve the rules snapshot and fail
 closed when the referenced saved lists or loaded catalogue do not match.
+The same version-1 formation-health replay now runs in native C and WebAssembly.
+It validates attack transitions, damage and casualty totals, the one-wounded-model
+invariant, and last-in-first-out compensating undo without modifying its output
+when an event stream is invalid. `POST /api/v1/battle/replay` accepts
+`{ "battleState": ..., "formationId": ... }`, validates the canonical JSON log,
+replays the selected formation through Wasm, cross-checks the result against the
+web replay, and returns its per-segment health plus the active attack IDs. The
+portable ABI supports the same 32 formation segments and 10,000-event bound as
+the saved web schema.
 On narrow screens, Play Mode groups the attacker and target into guided steps,
 collapses optional overrides, and keeps the resolve action above the device safe
 area. Selects and action controls use touch-sized targets. Battle status and the

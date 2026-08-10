@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "id": "golden-battle-replay-v1",
+  "createdAt": 100,
+  "rulesSnapshot": "catalogue:test",
+  "players": [
+    { "id": "player-1", "listId": "list-1", "name": "Attackers" },
+    { "id": "player-2", "listId": "list-2", "name": "Defenders" }
+  ],
+  "events": [
+    {
+      "version": 1,
+      "id": "register-attacker",
+      "sequence": 1,
+      "at": 101,
+      "type": "formation_registered",
+      "formation": {
+        "id": "attacker",
+        "playerId": "player-1",
+        "sourceFormationId": "source-attacker",
+        "name": "Tank",
+        "segments": [
+          {
+            "id": "tank",
+            "savedUnitId": "unit-tank",
+            "unitName": "Tank",
+            "modelName": "Tank",
+            "role": "bodyguard",
+            "wounds": 12,
+            "startingModels": 1
+          }
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "id": "register-target",
+      "sequence": 2,
+      "at": 102,
+      "type": "formation_registered",
+      "formation": {
+        "id": "target",
+        "playerId": "player-2",
+        "sourceFormationId": "source-target",
+        "name": "Bodyguard + Leader",
+        "segments": [
+          {
+            "id": "bodyguard",
+            "savedUnitId": "unit-bodyguard",
+            "unitName": "Bodyguard",
+            "modelName": "Guard",
+            "role": "bodyguard",
+            "wounds": 3,
+            "startingModels": 2
+          },
+          {
+            "id": "leader",
+            "savedUnitId": "unit-leader",
+            "unitName": "Leader",
+            "modelName": "Leader",
+            "role": "leader",
+            "wounds": 5,
+            "startingModels": 1
+          }
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "id": "attack-reverted-later",
+      "sequence": 3,
+      "at": 103,
+      "type": "attack_resolved",
+      "attackerFormationId": "attacker",
+      "targetFormationId": "target",
+      "summary": {
+        "damage": 8,
+        "successful": 2,
+        "modelsDestroyed": 2,
+        "attacker": "Tank",
+        "weapon": "Cannon",
+        "target": "Bodyguard + Leader"
+      },
+      "allocations": [
+        {
+          "segmentId": "bodyguard",
+          "before": { "modelsRemaining": 2, "woundsLost": 0 },
+          "after": { "modelsRemaining": 0, "woundsLost": 0 }
+        },
+        {
+          "segmentId": "leader",
+          "before": { "modelsRemaining": 1, "woundsLost": 0 },
+          "after": { "modelsRemaining": 1, "woundsLost": 2 }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "id": "revert-first-attack",
+      "sequence": 4,
+      "at": 104,
+      "type": "attack_reverted",
+      "revertsEventId": "attack-reverted-later"
+    },
+    {
+      "version": 1,
+      "id": "final-attack",
+      "sequence": 5,
+      "at": 105,
+      "type": "attack_resolved",
+      "attackerFormationId": "attacker",
+      "targetFormationId": "target",
+      "summary": {
+        "damage": 4,
+        "successful": 2,
+        "modelsDestroyed": 1,
+        "attacker": "Tank",
+        "weapon": "Cannon",
+        "target": "Bodyguard + Leader"
+      },
+      "allocations": [
+        {
+          "segmentId": "bodyguard",
+          "before": { "modelsRemaining": 2, "woundsLost": 0 },
+          "after": { "modelsRemaining": 1, "woundsLost": 1 }
+        },
+        {
+          "segmentId": "leader",
+          "before": { "modelsRemaining": 1, "woundsLost": 0 },
+          "after": { "modelsRemaining": 1, "woundsLost": 0 }
+        }
+      ]
+    }
+  ]
+}

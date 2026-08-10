@@ -27,9 +27,8 @@ state.
 
 ## Prioritized backlog
 
-1. Extend the canonical event schema across the native C, WebAssembly, and API
-   surfaces, add complete formation registration at battle setup, and add
-   golden cross-surface replay and migration fixtures.
+1. Register every formation from both lists at battle setup, preserve stable
+   formation identity across roster edits, and add schema migration fixtures.
 2. Add a round, turn, phase, pending-choice, and exact effect-expiry state
    machine as the foundation for complete guided play.
 3. Normalize the remaining mixed “twin lightning claws or two different
@@ -49,6 +48,19 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-10: Made canonical formation-health replay portable across native C,
+  WebAssembly, and the API. A dedicated bounded C module accepts the same 32
+  formation segments and 10,000-event limit as battle-state version 1, validates
+  before/after health, damage and casualty totals, the one-wounded-model
+  invariant, and last-in-first-out compensating undo, and leaves caller output
+  unchanged on rejection. The new `POST /api/v1/battle/replay` endpoint validates
+  the complete canonical log, replays a requested formation in Wasm, and fails
+  closed if it differs from JavaScript replay. One versioned golden fixture now
+  crosses JavaScript, direct Wasm, and the API, with equivalent native C vectors.
+  ACSL specifies valid output, empty-log initialization, and failure atomicity;
+  WP proves the empty replay property and E-ACSL exercises successful and rejected
+  streams. Native, fuzz, rendered API, and cross-runtime regressions cover the ABI.
 
 - 2026-08-10: Introduced Play Mode battle-state version 1 and recovery version 3. Target formations register their exact mixed-model and defensive-equipment
   segments on first resolution; later attacks inherit wounds, casualties,

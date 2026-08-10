@@ -1,4 +1,5 @@
 #include "warhammercalculator/calculator.h"
+#include "warhammercalculator/web_api.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -19,6 +20,9 @@ int main(void) {
     struct probability_distribution distribution;
     uint64_t mass_sum = 0u;
     uint32_t outcome = 0u;
+    uint32_t battle_profiles[WHC_BATTLE_PROFILE_FIELDS] = {3u, 2u};
+    uint32_t battle_health[WHC_BATTLE_HEALTH_FIELDS] = {99u, 99u};
+    uint32_t invalid_battle_event[WHC_BATTLE_EVENT_FIELDS] = {0u};
 
     /*@ loop invariant 2 <= save && save <= 8;
         loop assigns save;
@@ -114,5 +118,17 @@ int main(void) {
     assert(!probability_distribution_is_normalized(&distribution));
     plan.flags |= UINT32_C(1) << 31u;
     assert(!attack_plan_is_valid(&plan));
+    assert(whc_replay_battle_health_events(battle_profiles, 1u, NULL, 0u, battle_health));
+    assert(battle_health[0] == 2u);
+    assert(battle_health[1] == 0u);
+    invalid_battle_event[0] = WHC_BATTLE_STATE_VERSION;
+    invalid_battle_event[1] = WHC_BATTLE_EVENT_ATTACK;
+    invalid_battle_event[2] = 1u;
+    battle_health[0] = 97u;
+    battle_health[1] = 98u;
+    assert(!whc_replay_battle_health_events(battle_profiles, 1u, invalid_battle_event, 1u,
+                                            battle_health));
+    assert(battle_health[0] == 97u);
+    assert(battle_health[1] == 98u);
     return 0;
 }

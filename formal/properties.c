@@ -1,4 +1,7 @@
 #include "warhammercalculator/calculator.h"
+#include "warhammercalculator/battle_state.h"
+
+#include <stddef.h>
 
 /*@ assigns \nothing;
     ensures \result == 6;
@@ -143,4 +146,19 @@ bool whc_prove_zero_mixed_damage_changes_nothing(const struct target_unit_layout
 
     /*@ assert result == applied_damage; */
     return result == applied_damage;
+}
+
+/*@ requires wounds > 0 && models > 0;
+    assigns \nothing;
+    ensures \result;
+*/
+bool whc_prove_empty_battle_replay_initializes_health(uint32_t wounds, uint32_t models) {
+    uint32_t profiles[WHC_BATTLE_PROFILE_FIELDS] = {wounds, models};
+    uint32_t health[WHC_BATTLE_HEALTH_FIELDS] = {0u, 0u};
+    bool replayed = whc_replay_battle_health_events(profiles, 1u, NULL, 0u, health);
+
+    /*@ assert replayed; */
+    /*@ assert health[0] == models; */
+    /*@ assert health[1] == 0; */
+    return replayed && health[0] == models && health[1] == 0u;
 }

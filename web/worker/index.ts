@@ -49,6 +49,11 @@ import {
   sourceEquipmentCombatPresetIds,
   unavailableSourceEquipmentCombatPresetIds,
 } from "../lib/combat-presets.mjs";
+import {
+  battleFormationHealth,
+  normalizeBattleState,
+  replayBattleState,
+} from "../lib/battle-state.mjs";
 
 interface Env {
   ASSETS: Fetcher;
@@ -256,6 +261,7 @@ type CalculatorExports = {
   whc_calculate_summary_with_characteristic_roll(...values: number[]): number;
   whc_calculate_ordered_volley_summary(...values: number[]): number;
   whc_estimate_ordered_volley_complexity(...values: number[]): number;
+  whc_replay_battle_health_events(...values: number[]): number;
 };
 
 type OrderedTargetSegment = {
@@ -387,7 +393,8 @@ async function loadCalculator() {
       typeof calculator.__wasm_call_ctors !== "function" ||
       typeof calculator.whc_calculate_summary_with_characteristic_roll !== "function" ||
       typeof calculator.whc_calculate_ordered_volley_summary !== "function" ||
-      typeof calculator.whc_estimate_ordered_volley_complexity !== "function"
+      typeof calculator.whc_estimate_ordered_volley_complexity !== "function" ||
+      typeof calculator.whc_replay_battle_health_events !== "function"
     ) {
       throw new ServiceUnavailableError(
         "Calculator engine exports are invalid",
@@ -405,6 +412,127 @@ async function loadCalculator() {
     );
   });
   return calculatorPromise;
+}
+
+async function replayFormationHealth(candidate: unknown, requestedFormationId: unknown) {
+  if (typeof requestedFormationId !== "string" || !requestedFormationId) {
+    throw new Error("formationId must be a non-empty string");
+  }
+  const state = normalizeBattleState(candidate);
+  const registration = state.events.find(
+    (event) => event.type === "formation_registered" && event.formation.id === requestedFormationId,
+  );
+  if (!registration || registration.type !== "formation_registered") {
+    throw new Error("formationId is not registered in the battle state");
+  }
+  const formation = registration.formation;
+  const segmentIndices = new Map(formation.segments.map((segment, index) => [segment.id, index]));
+  const selectedEvents: Array<(typeof state.events)[number]> = [];
+  const attackIndices = new Map<string, number>();
+  for (const event of state.events) {
+    if (event.type === "attack_resolved" && event.targetFormationId === requestedFormationId) {
+      attackIndices.set(event.id, selectedEvents.length);
+      selectedEvents.push(event);
+    } else if (event.type === "attack_reverted" && attackIndices.has(event.revertsEventId)) {
+      selectedEvents.push(event);
+    }
+  }
+
+  const profileFields = 2;
+  const eventFields = 166;
+  const eventHeaderFields = 6;
+  const allocationFields = 5;
+  const profiles = new Uint32Array(formation.segments.length * profileFields);
+  formation.segments.forEach((segment, index) => {
+    profiles[index * profileFields] = segment.wounds;
+    profiles[index * profileFields + 1] = segment.startingModels;
+  });
+  const events = new Uint32Array(selectedEvents.length * eventFields);
+  selectedEvents.forEach((event, index) => {
+    const offset = index * eventFields;
+    events[offset] = event.version;
+    if (event.type === "attack_resolved") {
+      events[offset + 1] = 1;
+      events[offset + 2] = event.allocations.length;
+      events[offset + 4] = event.summary.damage;
+      events[offset + 5] = event.summary.modelsDestroyed;
+      event.allocations.forEach((allocation, allocationIndex) => {
+        const segmentIndex = segmentIndices.get(allocation.segmentId);
+        if (segmentIndex === undefined) throw new Error("Attack allocation segment is unknown");
+        const allocationOffset = offset + eventHeaderFields + allocationIndex * allocationFields;
+        events[allocationOffset] = segmentIndex;
+        events[allocationOffset + 1] = allocation.before.modelsRemaining;
+        events[allocationOffset + 2] = allocation.before.woundsLost;
+        events[allocationOffset + 3] = allocation.after.modelsRemaining;
+        events[allocationOffset + 4] = allocation.after.woundsLost;
+      });
+    } else if (event.type === "attack_reverted") {
+      events[offset + 1] = 2;
+      events[offset + 3] = attackIndices.get(event.revertsEventId) ?? 0xffffffff;
+    }
+  });
+
+  const calculator = await loadCalculator();
+  const profilesPointer = calculator.malloc(profiles.byteLength);
+  const eventsPointer = events.byteLength > 0 ? calculator.malloc(events.byteLength) : 0;
+  const healthPointer = calculator.malloc(formation.segments.length * 2 * 4);
+  if (!profilesPointer || !healthPointer || (events.byteLength > 0 && !eventsPointer)) {
+    if (profilesPointer) calculator.free(profilesPointer);
+    if (eventsPointer) calculator.free(eventsPointer);
+    if (healthPointer) calculator.free(healthPointer);
+    throw new ServiceUnavailableError(
+      "Battle replay memory is unavailable",
+      "BATTLE_REPLAY_MEMORY",
+    );
+  }
+  try {
+    new Uint32Array(calculator.memory.buffer, profilesPointer, profiles.length).set(profiles);
+    if (eventsPointer) {
+      new Uint32Array(calculator.memory.buffer, eventsPointer, events.length).set(events);
+    }
+    const ok = calculator.whc_replay_battle_health_events(
+      profilesPointer,
+      formation.segments.length,
+      eventsPointer,
+      selectedEvents.length,
+      healthPointer,
+    );
+    if (!ok) {
+      throw new ServiceUnavailableError(
+        "Canonical battle replay diverged from the calculator engine",
+        "BATTLE_REPLAY_DIVERGENCE",
+      );
+    }
+    const result = new Uint32Array(
+      calculator.memory.buffer,
+      healthPointer,
+      formation.segments.length * 2,
+    );
+    const health = Object.fromEntries(
+      formation.segments.map((segment, index) => [
+        segment.id,
+        { modelsRemaining: result[index * 2], woundsLost: result[index * 2 + 1] },
+      ]),
+    );
+    const expected = battleFormationHealth(state, requestedFormationId);
+    if (JSON.stringify(health) !== JSON.stringify(expected)) {
+      throw new ServiceUnavailableError(
+        "Canonical battle replay diverged from the web replay",
+        "BATTLE_REPLAY_DIVERGENCE",
+      );
+    }
+    return {
+      schemaVersion: state.version,
+      rulesSnapshot: state.rulesSnapshot,
+      formationId: requestedFormationId,
+      health,
+      activeAttackIds: replayBattleState(state).activeAttackIds,
+    };
+  } finally {
+    calculator.free(profilesPointer);
+    if (eventsPointer) calculator.free(eventsPointer);
+    calculator.free(healthPointer);
+  }
 }
 
 async function withStorage<T>(operation: () => Promise<T>) {
@@ -957,6 +1085,7 @@ async function handleApi(request: Request, env: Env) {
           roll: "POST /api/v1/roll?details={true|false}",
           volleyRoll: "POST /api/v1/volley/roll?details={true|false}",
           volleySimulate: "POST /api/v1/volley/simulate",
+          battleReplay: "POST /api/v1/battle/replay",
           lists:
             "GET|POST /api/v1/lists; PUT|DELETE /api/v1/lists/{id}; GET /api/v1/lists/export; POST /api/v1/lists/import",
         },
@@ -1578,6 +1707,20 @@ async function handleApi(request: Request, env: Env) {
         profiles,
         targets,
         initialWoundsLost,
+        apiVersion: "v1",
+      });
+    }
+
+    if (url.pathname === "/api/v1/battle/replay" && request.method === "POST") {
+      const body = (await request.json()) as {
+        battleState?: unknown;
+        formationId?: unknown;
+      };
+      if (!body || body.battleState === undefined) {
+        return apiError("battleState is required");
+      }
+      return json({
+        data: await replayFormationHealth(body.battleState, body.formationId),
         apiVersion: "v1",
       });
     }
