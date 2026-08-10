@@ -76,6 +76,28 @@ export function targetSequencePosition(appliedDamage, targets) {
   return null;
 }
 
+export function targetSequenceState(appliedDamage, targets) {
+  const capacity = targetSequenceCapacity(targets);
+  if (!Number.isSafeInteger(appliedDamage) || appliedDamage < 0 || appliedDamage > capacity) {
+    throw new Error("Invalid target sequence damage state");
+  }
+  let remainingDamage = appliedDamage;
+  return targets.map((target, segmentIndex) => {
+    const segmentCapacity = target.wounds * target.modelCount;
+    const damage = Math.min(remainingDamage, segmentCapacity);
+    const modelsDestroyed = Math.floor(damage / target.wounds);
+    const modelsRemaining = target.modelCount - modelsDestroyed;
+    const woundsLost = modelsRemaining > 0 ? damage % target.wounds : 0;
+    remainingDamage -= damage;
+    return {
+      segmentIndex,
+      modelsDestroyed,
+      modelsRemaining,
+      woundsLost,
+    };
+  });
+}
+
 export function allocateDamageToSequence(appliedDamage, incomingDamage, targets) {
   const capacity = targetSequenceCapacity(targets);
   if (

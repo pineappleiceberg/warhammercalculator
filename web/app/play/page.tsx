@@ -8,12 +8,20 @@ import { fetchArmyLists, type ArmyListRecord } from "../../lib/army-list";
 import {
   DEFAULT_PROFILE,
   normalizeProfile,
-  simulateAttack,
   simulateOrderedVolley,
   type CombatProfile,
   type OrderedVolleyRollResult,
   type RollResult,
 } from "../../lib/combat";
+import {
+  activeBattleAttacks,
+  appendResolvedAttack,
+  battleFormationHealth,
+  createBattleState,
+  normalizeBattleState,
+  registerBattleFormation,
+  revertLatestAttack,
+} from "../../lib/battle-state.mjs";
 import {
   applyCombatPresets,
   applyTargetProfile,
@@ -44,6 +52,8 @@ import {
   savedFormationGroups,
   savedFormationModelSegments,
   savedFormationTargetSequence,
+  savedFormationBattleRegistration,
+  applyBattleHealthToTargetSequence,
   savedUnitDefensiveEquipmentWarnings,
   savedUnitCombatPresetIds,
 } from "../../lib/formations.mjs";
@@ -119,12 +129,14 @@ export default function PlayMode() {
   const [profile, setProfile] = useState<CombatProfile>(DEFAULT_PROFILE);
   const [result, setResult] = useState<RollResult | OrderedVolleyRollResult | null>(null);
   const [history, setHistory] = useState<LogEntry[]>([]);
+  const [battleState, setBattleState] = useState<ReturnType<typeof createBattleState> | null>(null);
   const [status, setStatus] = useState("Select two saved lists");
   const [recoveryReady, setRecoveryReady] = useState(false);
   const recovered = useRef(false);
   const migrateLegacyLimitedUses = useRef(false);
   const suppressRecoverySave = useRef(false);
   const latestResult = useRef<HTMLElement>(null);
+  const importBattleInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     Promise.all([loadCatalogue(), fetchArmyLists()])
@@ -165,6 +177,7 @@ export default function PlayMode() {
             activeTargetSupportPresetIds: string[];
             abilityUsesSpent: Record<string, Record<string, number>>;
             targetDefensiveEquipmentCounts: Record<string, number>;
+            battleState: ReturnType<typeof createBattleState> | null;
           };
           setAttackerListId(saved.attackerListId);
           setTargetListId(saved.targetListId);
@@ -183,6 +196,7 @@ export default function PlayMode() {
           setActiveTargetSupportPresetIds(saved.activeTargetSupportPresetIds);
           setAbilityUsesSpent(saved.abilityUsesSpent);
           setTargetDefensiveEquipmentCounts(saved.targetDefensiveEquipmentCounts);
+          setBattleState(saved.battleState);
           setProfile(normalizeProfile(saved.profile));
           setHistory(saved.history);
           recovered.current = true;
@@ -225,6 +239,7 @@ export default function PlayMode() {
       targetDefensiveEquipmentCounts,
       profile,
       history,
+      battleState,
     });
     window.localStorage.setItem(PLAY_RECOVERY_KEY, JSON.stringify(saved));
   }, [
@@ -235,6 +250,7 @@ export default function PlayMode() {
     activeTargetSupportPresetIds,
     attackerUnitId,
     history,
+    battleState,
     profile,
     profileId,
     recoveryReady,
@@ -250,8 +266,29 @@ export default function PlayMode() {
     weaponId,
   ]);
 
+  const retainBattleForLists = (nextAttackerListId: string, nextTargetListId: string) => {
+    const listIds = battleState?.players?.map((player) => player.listId) ?? [];
+    return (
+      listIds.length === 2 &&
+      listIds.includes(nextAttackerListId) &&
+      listIds.includes(nextTargetListId) &&
+      (nextAttackerListId !== nextTargetListId ||
+        listIds.every((listId) => listId === nextAttackerListId))
+    );
+  };
+
+  const resetBattleForChangedLists = (nextAttackerListId: string, nextTargetListId: string) => {
+    if (retainBattleForLists(nextAttackerListId, nextTargetListId)) return;
+    setBattleState(null);
+    setHistory([]);
+  };
+
   const attackerList = lists.find((list) => list.id === attackerListId);
   const targetList = lists.find((list) => list.id === targetListId);
+  const currentRulesSnapshot = catalogue
+    ? `${catalogue.sourceUpdatedAt}:${catalogue.leaderFormationRules.sourceSha256}`
+    : "";
+  const battleRulesMatch = !battleState || battleState.rulesSnapshot === currentRulesSnapshot;
   const attackerFormations =
     catalogue && attackerList ? savedFormationGroups(catalogue, attackerList) : [];
   const targetFormations =
@@ -510,14 +547,49 @@ export default function PlayMode() {
       }),
     ) ?? [];
   const targetBaseModels = savedFormationModelSegments(targetFormation);
-  const targetFormationModels = savedFormationTargetSequence(
+  const targetFormationBaseModels = savedFormationTargetSequence(
     targetFormation,
     targetModelId,
     targetDefensiveEquipmentCounts,
   );
+  const attackerPlayerId =
+    battleState?.players.find((player, index) => {
+      if (player.listId !== attackerListId) return false;
+      return attackerListId !== targetListId || index === 0;
+    })?.id ?? "player-1";
+  const targetPlayerId =
+    battleState?.players.find((player, index) => {
+      if (player.listId !== targetListId) return false;
+      return attackerListId !== targetListId || index === 1;
+    })?.id ?? "player-2";
+  const targetBattleFormationId = targetFormation ? `${targetPlayerId}:${targetFormation.id}` : "";
+  const targetBattleHealth =
+    battleState && targetBattleFormationId
+      ? battleFormationHealth(battleState, targetBattleFormationId)
+      : null;
+  let targetBattleStateError = "";
+  let targetFormationModels = targetFormationBaseModels;
+  try {
+    targetFormationModels = applyBattleHealthToTargetSequence(
+      targetFormationBaseModels,
+      targetBattleHealth,
+    );
+  } catch (error) {
+    targetBattleStateError =
+      error instanceof Error ? error.message : "Target battle state is invalid";
+  }
   const targetProfiles = targetFormationModels.segments;
   const targetAllocationOptions = targetFormationModels.allocationOptions;
   const selectedTargetSegment = targetFormationModels.first;
+  const targetModelsRemaining = targetFormationModels.orderedSegments.reduce(
+    (total, segment) => total + segment.modelCount,
+    0,
+  );
+  const targetModelSelectValue = targetAllocationOptions.some(
+    (segment) => segment.id === targetModelId,
+  )
+    ? targetModelId
+    : (targetFormationModels.first?.id ?? "");
   const targetDefensiveEquipmentOptions =
     targetFormation?.components.flatMap((component) =>
       (component.catalogueUnit?.defensiveEquipment ?? []).map((option) => ({
@@ -1360,6 +1432,10 @@ export default function PlayMode() {
   };
 
   const changeTargetDefensiveEquipment = (key: string, count: number) => {
+    if (targetBattleHealth) {
+      setStatus("Target equipment is locked after this formation enters the battle log");
+      return;
+    }
     const next = { ...targetDefensiveEquipmentCounts };
     if (count > 0) next[key] = count;
     else delete next[key];
@@ -1766,21 +1842,72 @@ export default function PlayMode() {
           },
         );
       });
-      rolled =
-        attackProfiles.length > 1 ||
-        orderedTargets.length > 1 ||
-        Object.keys(targetDefensiveEquipmentCounts).length > 0
-          ? simulateOrderedVolley(attackProfiles, orderedTargets)
-          : simulateAttack(attackProfiles[0]);
+      rolled = simulateOrderedVolley(
+        attackProfiles,
+        orderedTargets,
+        targetFormationModels.initialWoundsLost,
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Attack could not be resolved");
       return;
     }
+    const attackId = crypto.randomUUID();
+    let nextBattleState = battleState;
+    try {
+      if (!targetFormation || !attackerFormation || !catalogue) {
+        throw new Error("Battle state is not ready");
+      }
+      if (!nextBattleState) {
+        nextBattleState = createBattleState({
+          id: crypto.randomUUID(),
+          createdAt: 0,
+          rulesSnapshot: currentRulesSnapshot,
+          players: [
+            { id: "player-1", listId: attackerListId, name: "Player 1" },
+            { id: "player-2", listId: targetListId, name: "Player 2" },
+          ],
+        });
+      }
+      if (!battleFormationHealth(nextBattleState, targetBattleFormationId)) {
+        nextBattleState = registerBattleFormation(
+          nextBattleState,
+          savedFormationBattleRegistration(
+            targetFormation,
+            targetPlayerId,
+            targetBattleFormationId,
+            targetFormationBaseModels,
+          ),
+          crypto.randomUUID(),
+          nextBattleState.events.length + 1,
+        );
+      }
+      nextBattleState = appendResolvedAttack(nextBattleState, {
+        id: attackId,
+        at: nextBattleState.events.length + 1,
+        attackerFormationId: `${attackerPlayerId}:${attackerFormation.id}`,
+        targetFormationId: targetBattleFormationId,
+        segmentIds: targetFormationModels.orderedSegments.map((segment) => segment.id),
+        targets: orderedTargets,
+        initialWoundsLost: targetFormationModels.initialWoundsLost,
+        result: rolled,
+        summary: {
+          attacker: attackerFormation.name,
+          weapon: weaponProfile.name,
+          target: targetFormation.name,
+          damage: rolled.appliedDamage,
+          successful: rolled.successfulAttacks,
+        },
+      });
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Attack could not be recorded");
+      return;
+    }
+    setBattleState(nextBattleState);
     setResult(rolled);
     setHistory((current) =>
       [
         {
-          id: crypto.randomUUID(),
+          id: attackId,
           attacker: attackerFormation?.name ?? attackerUnit.name,
           weapon: weaponProfile.name,
           target: targetFormation?.name ?? targetUnit.name,
@@ -1803,6 +1930,9 @@ export default function PlayMode() {
       selectedWeapon &&
       weaponProfile &&
       targetModelId &&
+      !targetFormationModels.destroyed &&
+      !targetBattleStateError &&
+      battleRulesMatch &&
       targetFormationModels.ambiguousComponents.length === 0 &&
       !(firingDeckChoice && !validFiringDeckPassengerIds.has(firingDeckChoice.passengerUnitId)) &&
       !(firingDeckChoice && firingDeckPassengerAlreadyShot),
@@ -1823,13 +1953,19 @@ export default function PlayMode() {
                 ? "Choose a target unit"
                 : !targetModelId
                   ? "Choose a target profile"
-                  : targetFormationModels.ambiguousComponents.length > 0
-                    ? `Exact composition unavailable for ${targetFormationModels.ambiguousComponents.join(
-                        ", ",
-                      )}`
-                    : `${attackerFormation?.name ?? attackerUnit.name} into ${
-                        targetFormation?.name ?? targetUnit.name
-                      }`;
+                  : targetBattleStateError
+                    ? targetBattleStateError
+                    : !battleRulesMatch
+                      ? "Battle rules snapshot does not match the loaded catalogue"
+                      : targetFormationModels.destroyed
+                        ? `${targetFormation?.name ?? targetUnit.name} is destroyed`
+                        : targetFormationModels.ambiguousComponents.length > 0
+                          ? `Exact composition unavailable for ${targetFormationModels.ambiguousComponents.join(
+                              ", ",
+                            )}`
+                          : `${attackerFormation?.name ?? attackerUnit.name} into ${
+                              targetFormation?.name ?? targetUnit.name
+                            }`;
 
   const resetBattle = () => {
     suppressRecoverySave.current = true;
@@ -1852,8 +1988,99 @@ export default function PlayMode() {
     setProfile(DEFAULT_PROFILE);
     setResult(null);
     setHistory([]);
+    setBattleState(null);
     window.localStorage.removeItem(PLAY_RECOVERY_KEY);
     setStatus("Battle reset");
+  };
+
+  const undoLastAttack = () => {
+    if (!battleState) return;
+    try {
+      const attack = activeBattleAttacks(battleState).at(-1);
+      if (!attack) throw new Error("There is no resolved attack to undo");
+      setBattleState(
+        revertLatestAttack(battleState, crypto.randomUUID(), battleState.events.length + 1),
+      );
+      setHistory((current) => current.filter((entry) => entry.id !== attack.id));
+      setResult(null);
+      setStatus(`Undid ${attack.summary.damage} damage from ${attack.summary.weapon}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Attack could not be undone");
+    }
+  };
+
+  const swapSides = () => {
+    if (!attackerListId || !targetListId) return;
+    setAttackerListId(targetListId);
+    setTargetListId(attackerListId);
+    setAttackerUnitId("");
+    setTargetUnitId("");
+    setWeaponId("");
+    setProfileId("");
+    setTargetModelId("");
+    setTargetDefensiveEquipmentCounts({});
+    setActiveAttackerPresetIds([]);
+    setActiveTargetPresetIds([]);
+    setSupportUnitId("");
+    setActiveSupportPresetIds([]);
+    setTargetSupportUnitId("");
+    setActiveTargetSupportPresetIds([]);
+    setResult(null);
+    setStatus("Sides swapped · choose the next attacking unit");
+  };
+
+  const exportBattle = () => {
+    if (!battleState) return;
+    const url = URL.createObjectURL(
+      new Blob([`${JSON.stringify(battleState, null, 2)}\n`], { type: "application/json" }),
+    );
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `warhammer-battle-${battleState.id}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setStatus("Battle event log exported");
+  };
+
+  const importBattle = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      if (file.size > 5_000_000) throw new Error("Battle import must be 5 MB or smaller");
+      const imported = normalizeBattleState(JSON.parse(await file.text()));
+      if (!catalogue || imported.rulesSnapshot !== currentRulesSnapshot) {
+        throw new Error("Battle import uses a different rules snapshot");
+      }
+      if (imported.players.some((player) => !lists.some((list) => list.id === player.listId))) {
+        throw new Error("Import both referenced saved lists before importing this battle");
+      }
+      const importedAttacks = activeBattleAttacks(imported);
+      setBattleState(imported);
+      setAttackerListId(imported.players[0].listId);
+      setTargetListId(imported.players[1].listId);
+      setAttackerUnitId("");
+      setTargetUnitId("");
+      setWeaponId("");
+      setProfileId("");
+      setTargetModelId("");
+      setTargetDefensiveEquipmentCounts({});
+      setHistory(
+        importedAttacks
+          .slice(-30)
+          .reverse()
+          .map((attack) => ({
+            id: attack.id,
+            attacker: attack.summary.attacker,
+            weapon: attack.summary.weapon,
+            target: attack.summary.target,
+            damage: attack.summary.damage,
+            successful: attack.summary.successful,
+          })),
+      );
+      setResult(null);
+      setStatus(`Imported ${importedAttacks.length} resolved attacks`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Battle import is invalid");
+    }
   };
 
   return (
@@ -1887,6 +2114,7 @@ export default function PlayMode() {
                   <select
                     value={attackerListId}
                     onChange={(event) => {
+                      resetBattleForChangedLists(event.target.value, targetListId);
                       setAttackerListId(event.target.value);
                       setAttackerUnitId("");
                       setWeaponId("");
@@ -2152,6 +2380,7 @@ export default function PlayMode() {
                   <select
                     value={targetListId}
                     onChange={(event) => {
+                      resetBattleForChangedLists(attackerListId, event.target.value);
                       setTargetListId(event.target.value);
                       setTargetUnitId("");
                       setTargetModelId("");
@@ -2231,6 +2460,7 @@ export default function PlayMode() {
                               aria-label={`${option.unitName} ${option.name} equipped`}
                               type="checkbox"
                               checked={(targetDefensiveEquipmentCounts[key] ?? 0) > 0}
+                              disabled={Boolean(targetBattleHealth)}
                               onChange={(event) =>
                                 changeTargetDefensiveEquipment(key, event.target.checked ? 1 : 0)
                               }
@@ -2266,6 +2496,7 @@ export default function PlayMode() {
                                 min={0}
                                 max={segment.modelCount}
                                 value={targetDefensiveEquipmentCounts[key] ?? 0}
+                                disabled={Boolean(targetBattleHealth)}
                                 onChange={(event) =>
                                   changeTargetDefensiveEquipment(
                                     key,
@@ -2280,6 +2511,9 @@ export default function PlayMode() {
                           );
                         });
                     })}
+                    {targetBattleHealth && (
+                      <small>Equipment is locked after this formation enters the event log.</small>
+                    )}
                   </details>
                 )}
                 {targetDefensiveEquipmentWarnings.length > 0 && (
@@ -2306,7 +2540,7 @@ export default function PlayMode() {
                 <label>
                   <span>Allocate first</span>
                   <select
-                    value={targetModelId}
+                    value={targetModelSelectValue}
                     disabled={!targetUnit}
                     onChange={(event) => chooseTargetProfile(event.target.value)}
                   >
@@ -2320,6 +2554,15 @@ export default function PlayMode() {
                   {targetProfiles.length > 1 && (
                     <small>
                       The chosen profile resolves first; remaining profiles follow roster order.
+                    </small>
+                  )}
+                  {targetBattleHealth && (
+                    <small>
+                      Battle state: {targetModelsRemaining} model
+                      {targetModelsRemaining === 1 ? "" : "s"} remaining
+                      {targetFormationModels.initialWoundsLost > 0
+                        ? ` · current model has lost ${targetFormationModels.initialWoundsLost} wounds`
+                        : ""}
                     </small>
                   )}
                 </label>
@@ -3416,19 +3659,43 @@ export default function PlayMode() {
             <h2>Battle log</h2>
           </div>
           <div className="battle-log-actions">
-            {history.length > 0 && (
-              <button type="button" onClick={() => setHistory([])}>
-                Clear log
+            {attackerListId && targetListId && attackerListId !== targetListId && (
+              <button type="button" onClick={swapSides}>
+                Swap sides
               </button>
             )}
+            {battleState && activeBattleAttacks(battleState).length > 0 && (
+              <button type="button" onClick={undoLastAttack}>
+                Undo last attack
+              </button>
+            )}
+            {battleState && (
+              <button type="button" onClick={exportBattle}>
+                Export battle
+              </button>
+            )}
+            <button type="button" onClick={() => importBattleInput.current?.click()}>
+              Import battle
+            </button>
+            <input
+              ref={importBattleInput}
+              className="visually-hidden-input"
+              type="file"
+              accept="application/json,.json"
+              tabIndex={-1}
+              onChange={(event) => {
+                void importBattle(event.target.files?.[0]);
+                event.target.value = "";
+              }}
+            />
             <button type="button" onClick={resetBattle}>
               Reset battle
             </button>
           </div>
         </div>
         <small className="storage-note">
-          Selections, overrides, limited ability uses, and the attack log recover automatically on
-          this device.
+          Selections, overrides, limited ability uses, wounds, casualties, and the event log recover
+          automatically on this device.
         </small>
         {history.length === 0 ? (
           <p>Resolved attacks will appear here for this play session.</p>

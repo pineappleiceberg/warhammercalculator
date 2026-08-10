@@ -142,7 +142,9 @@ test("server-renders every battle workflow", async () => {
     }
     if (pathname === "/play") {
       assert.match(html, /Reset battle/);
+      assert.match(html, /Import battle/);
       assert.match(html, /Allocate first/);
+      assert.match(html, /wounds, casualties, and the event log/i);
       assert.match(html, /recover automatically/i);
       assert.match(html, /limited ability uses/i);
       assert.match(html, /<legend>Attacker<\/legend>/);

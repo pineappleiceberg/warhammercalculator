@@ -27,9 +27,9 @@ state.
 
 ## Prioritized backlog
 
-1. Introduce a versioned canonical battle state and append-only event log, then
-   make resolved attacks persist wounds, casualties, destroyed units, and
-   reversible allocations against the selected saved-list formations.
+1. Extend the canonical event schema across the native C, WebAssembly, and API
+   surfaces, add complete formation registration at battle setup, and add
+   golden cross-surface replay and migration fixtures.
 2. Add a round, turn, phase, pending-choice, and exact effect-expiry state
    machine as the foundation for complete guided play.
 3. Normalize the remaining mixed “twin lightning claws or two different
@@ -49,6 +49,20 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-10: Introduced Play Mode battle-state version 1 and recovery version 3. Target formations register their exact mixed-model and defensive-equipment
+  segments on first resolution; later attacks inherit wounds, casualties,
+  destroyed segments, and mandatory wounded-model allocation. The two player
+  identities survive a side swap, while changing to a different list pair
+  starts a separate battle. Every resolved attack stores exact before/after
+  segment health in an append-only rules-snapshot-bound event log. Undo uses a
+  validated compensating event, and JSON export/import provides portable,
+  fail-closed replay when both referenced lists and the catalogue snapshot are
+  available. Replay rejects non-contiguous events, unknown segments, healing,
+  multiple wounded models, out-of-order undo, and damage or casualty summaries
+  that disagree with their allocations. Pure replay, mixed-profile allocation,
+  tamper, recovery migration, rendered workflow, full web, C/WebAssembly
+  differential, API, and deployment regressions cover the foundation.
 
 - 2026-08-10: Unified limited self-unit and supporting-unit resources in Play
   Mode. Oversight Drone now spends its once-per-battle use when activated,

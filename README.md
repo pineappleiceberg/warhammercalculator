@@ -638,8 +638,14 @@ lists from reappearing. The list screen can export and import a versioned JSON
 backup that includes the profile-source timestamp. Imports preserve list IDs and
 update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
-Unfinished list drafts and Play Mode selections,
-overrides, and attack history recover automatically on the current device.
+Unfinished list drafts and Play Mode selections, overrides, limited ability
+uses, and battle state recover automatically on the current device. Play Mode
+stores resolved attacks in a versioned append-only event log. Mixed-profile
+wounds, casualties, destroyed formations, and defensive-equipment bearer
+identity carry into later attacks, including after swapping which list is
+attacking. Undo appends a compensating event instead of deleting history.
+Validated JSON battle exports and imports preserve the rules snapshot and fail
+closed when the referenced saved lists or loaded catalogue do not match.
 On narrow screens, Play Mode groups the attacker and target into guided steps,
 collapses optional overrides, and keeps the resolve action above the device safe
 area. Selects and action controls use touch-sized targets. Battle status and the

@@ -1644,6 +1644,15 @@ select:focus {
   border: 0;
   border-bottom: 1px solid currentColor;
   font-size: 11px;
+  cursor: pointer;
+}
+.visually-hidden-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .weapon-counts {
   display: grid;

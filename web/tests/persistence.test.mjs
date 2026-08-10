@@ -305,7 +305,7 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   assert.deepEqual(recovery.activeSupportPresetIds, ["datasheet-3:ability:5"]);
   assert.equal(recovery.targetSupportUnitId, "unit-3");
   assert.deepEqual(recovery.activeTargetSupportPresetIds, ["datasheet-4:ability:6"]);
-  assert.equal(recovery.version, 2);
+  assert.equal(recovery.version, 3);
   assert.deepEqual(recovery.abilityUsesSpent, {
     "unit-1": { "datasheet-1:ability:2": 1 },
     "unit-2": { "datasheet-3:ability:5": 1 },
@@ -313,6 +313,7 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   assert.deepEqual(recovery.targetDefensiveEquipmentCounts, {
     "unit-1::3::equipment-1": 1,
   });
+  assert.equal(recovery.battleState, null);
   assert.equal(recovery.profile.targetDistance, 9);
   assert.equal(recovery.profile.attackerSourceTargetDistance, 18);
   assert.equal(recovery.profile.targetSourceAttackerDistance, 12);
@@ -358,7 +359,7 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
   delete legacy.activeTargetSupportPresetIds;
   delete legacy.targetDefensiveEquipmentCounts;
   const migrated = parsePlayRecovery(legacy);
-  assert.equal(migrated.version, 2);
+  assert.equal(migrated.version, 3);
   assert.equal(migrated.supportUnitId, "");
   assert.deepEqual(migrated.activeSupportPresetIds, []);
   assert.equal(migrated.targetSupportUnitId, "");
@@ -367,6 +368,9 @@ test("round-trips bounded play recovery and rejects corrupt history", () => {
     "unit-1": { "datasheet-1:ability:2": 1 },
     "unit-2": { "datasheet-3:ability:5": 1 },
   });
+  const versionTwo = { ...recovery, version: 2 };
+  delete versionTwo.battleState;
+  assert.equal(parsePlayRecovery(versionTwo).battleState, null);
   assert.deepEqual(migrated.targetDefensiveEquipmentCounts, {});
   const legacyProfile = JSON.parse(JSON.stringify(recovery));
   delete legacyProfile.profile.targetClosestEligible;

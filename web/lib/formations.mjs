@@ -464,3 +464,80 @@ export function savedFormationTargetSequence(
     })),
   };
 }
+
+export function savedFormationBattleRegistration(formation, playerId, id, targetSequence) {
+  const segments = targetSequence?.orderedSegments ?? [];
+  if (!formation || segments.length < 1) throw new Error("Formation has no exact model segments");
+  return {
+    id,
+    playerId,
+    sourceFormationId: formation.id,
+    name: formation.name,
+    segments: segments.map((segment) => ({
+      id: segment.id,
+      savedUnitId: segment.savedUnitId,
+      unitName: segment.unitName,
+      modelName: segment.model.name,
+      role: segment.role,
+      wounds: segment.model.wounds ?? 1,
+      startingModels: segment.modelCount,
+    })),
+  };
+}
+
+export function applyBattleHealthToTargetSequence(targetSequence, health) {
+  if (!health) return { ...targetSequence, initialWoundsLost: 0, destroyed: false };
+  const entries = targetSequence.orderedSegments.map((segment, index) => {
+    const current = health[segment.id];
+    if (!current) {
+      throw new Error("Target equipment or composition changed after battle damage was recorded");
+    }
+    return {
+      segment,
+      target: targetSequence.targets[index],
+      health: current,
+    };
+  });
+  if (
+    Object.keys(health).some(
+      (segmentId) => !entries.some(({ segment }) => segment.id === segmentId),
+    )
+  ) {
+    throw new Error("Target equipment or composition changed after battle damage was recorded");
+  }
+  const live = entries.filter(({ health: current }) => current.modelsRemaining > 0);
+  const wounded = live.filter(({ health: current }) => current.woundsLost > 0);
+  if (wounded.length > 1) throw new Error("Battle state contains more than one wounded model");
+  const ordered = wounded.length
+    ? [wounded[0], ...live.filter((entry) => entry !== wounded[0])]
+    : live;
+  const hasProtectedLeader = ordered.some(({ segment }) => segment.role !== "leader");
+  const allocationOptions = ordered
+    .filter(
+      ({ segment }) =>
+        (wounded.length === 0 || segment.id === wounded[0].segment.id) &&
+        (!hasProtectedLeader || segment.role !== "leader"),
+    )
+    .map(({ segment, health: current }) => ({ ...segment, modelCount: current.modelsRemaining }));
+  return {
+    ...targetSequence,
+    segments: ordered.map(({ segment, health: current }) => ({
+      ...segment,
+      modelCount: current.modelsRemaining,
+    })),
+    allocationOptions,
+    first: ordered[0]
+      ? { ...ordered[0].segment, modelCount: ordered[0].health.modelsRemaining }
+      : undefined,
+    orderedSegments: ordered.map(({ segment, health: current }) => ({
+      ...segment,
+      modelCount: current.modelsRemaining,
+    })),
+    targets: ordered.map(({ target, health: current }) => ({
+      ...target,
+      modelCount: current.modelsRemaining,
+    })),
+    initialWoundsLost: ordered[0]?.health.woundsLost ?? 0,
+    destroyed: ordered.length === 0,
+  };
+}
