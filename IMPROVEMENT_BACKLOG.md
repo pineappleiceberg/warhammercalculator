@@ -27,10 +27,10 @@ state.
 
 ## Prioritized backlog
 
-1. Implement Smokescreen as the next activation-wide target-selection response,
-   including Smoke eligibility, 1CP spending, Battle-shock and repeat-use guards,
-   Benefit of Cover plus Stealth for the complete incoming attack sequence, and
-   canonical Guided Play, API, C, WebAssembly, migration, and formal evidence.
+1. Implement Rapid Ingress as the next universal reaction window, including the
+   opponent's Movement-phase timing, Reserves eligibility, round and placement
+   restrictions, 1CP spending, Battle-shock and repeat-use guards, and canonical
+   Guided Play, API, C, WebAssembly, migration, and formal evidence.
 2. Build and enforce the source-locked faction, detachment, enhancement,
    Stratagem, terrain, and mission coverage matrix described by the complete
    battle requirements.
@@ -41,6 +41,22 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced guided play to battle-state version 22 with canonical
+  Smokescreen. Closing an activation-wide ranged declaration now offers every
+  eligible enemy Smoke target before attack dice, blocks unrelated events,
+  spends 1CP atomically, enforces Battle-shock and once-per-phase restrictions,
+  and grants Benefit of Cover plus Stealth until the end of the phase. When Go
+  to Ground and Smokescreen trigger together, the active player explicitly
+  chooses their Core Rules sequencing order; either order is replayed and the
+  second window is recomputed after the first decision. Guided Play composes
+  cover and the capped -1 Hit modifier into editable attack snapshots, and the
+  replay API exposes pending, resolved, declined, active-effect, and sequencing
+  state. An ACSL-specified predicate is proved and differentially checked across
+  C, WebAssembly, JavaScript, the API, native tests, 2,000 sanitizer fuzz runs,
+  E-ACSL runtime checks, Eva, and 663 WP goals. Version-21 histories migrate
+  without retroactive response windows. Official Core Rules pages 9, 20, 42,
+  and 44 plus Core Rules Updates page 21 define the source boundary.
 
 - 2026-08-11: Advanced guided play to battle-state version 21 with canonical
   Counter-offensive. Every completed enemy Fight activation can now open the

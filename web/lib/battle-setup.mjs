@@ -11,6 +11,7 @@ import {
   HEROIC_INTERVENTION_BATTLE_STATE_VERSION,
   RANGED_DECLARATION_BATTLE_STATE_VERSION,
   SETUP_RULES_BATTLE_STATE_VERSION,
+  SMOKESCREEN_BATTLE_STATE_VERSION,
   ROSTER_BATTLE_STATE_VERSION,
   TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
   TIMELINE_BATTLE_STATE_VERSION,
@@ -508,6 +509,10 @@ export function initializeBattleForLists({
             sourceVersion < COUNTER_OFFENSIVE_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyCounterOffensiveThroughSequence ?? 0),
+          legacySmokescreenThroughSequence:
+            sourceVersion < SMOKESCREEN_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacySmokescreenThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

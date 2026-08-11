@@ -79,6 +79,12 @@
 #define WHC_COUNTER_OFFENSIVE_RESPONDING_PLAYER 8u
 #define WHC_COUNTER_OFFENSIVE_FIGHTS_NEXT 16u
 #define WHC_COUNTER_OFFENSIVE_FLAGS_MASK 31u
+#define WHC_SMOKESCREEN_TARGET_SELECTED 1u
+#define WHC_SMOKESCREEN_TARGET_SMOKE 2u
+#define WHC_SMOKESCREEN_RESPONDING_PLAYER 4u
+#define WHC_SMOKESCREEN_BENEFIT_OF_COVER 8u
+#define WHC_SMOKESCREEN_STEALTH 16u
+#define WHC_SMOKESCREEN_FLAGS_MASK 31u
 #define WHC_RANGED_DECLARATION_SAME_ACTIVATION 1u
 #define WHC_RANGED_DECLARATION_BEFORE_ATTACKS 2u
 #define WHC_RANGED_DECLARATION_ALL_ELIGIBLE 4u
@@ -370,6 +376,18 @@ bool whc_go_to_ground_is_valid(uint32_t phase, uint32_t command_points_before,
 bool whc_counter_offensive_is_valid(uint32_t phase, uint32_t command_points_before,
                                     uint32_t command_point_cost, uint32_t command_points_after,
                                     bool already_used, bool target_battle_shocked, uint32_t flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        phase == WHC_BATTLE_PHASE_SHOOTING && command_points_before >= 1 &&
+        command_points_before <= 100000 && command_point_cost == 1 &&
+        command_points_after == command_points_before - command_point_cost &&
+        !already_used && !target_battle_shocked &&
+        flags == WHC_SMOKESCREEN_FLAGS_MASK;
+*/
+bool whc_smokescreen_is_valid(uint32_t phase, uint32_t command_points_before,
+                              uint32_t command_point_cost, uint32_t command_points_after,
+                              bool already_used, bool target_battle_shocked, uint32_t flags);
 
 /*@ assigns \nothing;
     ensures \result <==>

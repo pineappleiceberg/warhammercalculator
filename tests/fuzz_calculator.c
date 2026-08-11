@@ -208,6 +208,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     bool expected_go_to_ground_valid;
     bool counter_offensive_valid;
     bool expected_counter_offensive_valid;
+    bool smokescreen_valid;
+    bool expected_smokescreen_valid;
     uint32_t declaration_count;
     uint32_t unique_declaration_count;
     uint32_t target_run_count;
@@ -522,6 +524,17 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         !go_to_ground_already_used && !go_to_ground_battle_shocked &&
         go_to_ground_flags == WHC_COUNTER_OFFENSIVE_FLAGS_MASK;
     assert(counter_offensive_valid == expected_counter_offensive_valid);
+    smokescreen_valid = whc_smokescreen_is_valid(
+        go_to_ground_phase, go_to_ground_cp_before, go_to_ground_cost,
+        go_to_ground_cp_after, go_to_ground_already_used, go_to_ground_battle_shocked,
+        go_to_ground_flags);
+    expected_smokescreen_valid =
+        go_to_ground_phase == WHC_BATTLE_PHASE_SHOOTING && go_to_ground_cp_before >= 1u &&
+        go_to_ground_cp_before <= 100000u && go_to_ground_cost == 1u &&
+        go_to_ground_cp_after == go_to_ground_cp_before - go_to_ground_cost &&
+        !go_to_ground_already_used && !go_to_ground_battle_shocked &&
+        go_to_ground_flags == WHC_SMOKESCREEN_FLAGS_MASK;
+    assert(smokescreen_valid == expected_smokescreen_valid);
     declaration_count = next_u16(&input);
     unique_declaration_count = next_u16(&input);
     target_run_count = next_u16(&input);

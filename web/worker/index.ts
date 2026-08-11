@@ -67,6 +67,8 @@ import {
   FIRE_OVERWATCH_TRIGGERS,
   goToGroundFlags,
   goToGroundIsValid,
+  smokescreenFlags,
+  smokescreenIsValid,
   HAZARDOUS_FLAGS,
   hazardousResolutionIsValid,
   heroicInterventionChargeFlags,
@@ -333,6 +335,7 @@ type CalculatorExports = {
   whc_fire_overwatch_is_valid(...values: number[]): number;
   whc_hazardous_resolution_is_valid(...values: number[]): number;
   whc_go_to_ground_is_valid(...values: number[]): number;
+  whc_smokescreen_is_valid(...values: number[]): number;
   whc_counter_offensive_is_valid(...values: number[]): number;
   whc_ranged_declaration_is_valid(...values: number[]): number;
   whc_transport_load_is_valid(...values: number[]): number;
@@ -482,6 +485,7 @@ async function loadCalculator() {
       typeof calculator.whc_fire_overwatch_is_valid !== "function" ||
       typeof calculator.whc_hazardous_resolution_is_valid !== "function" ||
       typeof calculator.whc_go_to_ground_is_valid !== "function" ||
+      typeof calculator.whc_smokescreen_is_valid !== "function" ||
       typeof calculator.whc_counter_offensive_is_valid !== "function" ||
       typeof calculator.whc_ranged_declaration_is_valid !== "function" ||
       typeof calculator.whc_transport_load_is_valid !== "function" ||
@@ -827,6 +831,7 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         declarationCount: event.declarationCount,
         uniqueTargetCount: event.uniqueTargetCount,
         uniqueTargetProfileCount: event.uniqueTargetProfileCount,
+        reactionOrder: event.reactionOrder || null,
         flags: event.flags,
       };
     });
@@ -1152,6 +1157,68 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
           canonical: true,
         };
       });
+    const smokescreens = state.events
+      .filter((event) => event.type === "smokescreen_resolved")
+      .map((event) => {
+        const target = replayed.formations.get(event.targetFormationId);
+        if (!target) {
+          throw new ServiceUnavailableError(
+            "Smokescreen target is unavailable",
+            "SMOKESCREEN_DIVERGENCE",
+          );
+        }
+        const flags = smokescreenFlags(
+          event,
+          target.keywords.includes("smoke"),
+          target.playerId === event.playerId,
+        );
+        const values = [
+          3,
+          event.commandPointsBefore,
+          event.commandPointCost,
+          event.commandPointsAfter,
+          0,
+          0,
+          flags,
+        ];
+        const javascriptValid = smokescreenIsValid(
+          "shooting",
+          event.commandPointsBefore,
+          event.commandPointCost,
+          event.commandPointsAfter,
+          false,
+          false,
+          flags,
+        );
+        const nativeValid = Boolean(calculator.whc_smokescreen_is_valid(...values));
+        if (!javascriptValid || javascriptValid !== nativeValid) {
+          throw new ServiceUnavailableError(
+            "Smokescreen diverged from the C/WebAssembly predicate",
+            "SMOKESCREEN_DIVERGENCE",
+          );
+        }
+        const effect = replayed.smokescreens.find((candidate) => candidate.id === event.id);
+        if (!effect) {
+          throw new ServiceUnavailableError(
+            "Smokescreen lost its phase effect",
+            "SMOKESCREEN_DIVERGENCE",
+          );
+        }
+        return {
+          eventId: event.id,
+          triggerEventId: event.triggerEventId,
+          playerId: event.playerId,
+          targetFormationId: event.targetFormationId,
+          commandPointCost: event.commandPointCost,
+          commandPointsBefore: event.commandPointsBefore,
+          commandPointsAfter: event.commandPointsAfter,
+          allModelsHaveBenefitOfCover: event.allModelsHaveBenefitOfCover,
+          allModelsHaveStealth: event.allModelsHaveStealth,
+          effect,
+          clock: event.clock,
+          canonical: true,
+        };
+      });
     const counterOffensives = replayed.counterOffensives.map((event) => {
       const flags = counterOffensiveFlags(event, true, true);
       const values = [
@@ -1441,6 +1508,7 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         clock: event.clock,
       })),
       pendingGoToGround: replayed.pendingGoToGround ? { ...replayed.pendingGoToGround } : null,
+      pendingSmokescreen: replayed.pendingSmokescreen ? { ...replayed.pendingSmokescreen } : null,
       pendingCounterOffensive: replayed.pendingCounterOffensive
         ? { ...replayed.pendingCounterOffensive }
         : null,
@@ -1474,6 +1542,18 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         ...effect,
       })),
       goToGroundPasses: replayed.goToGroundPasses.map((event) => ({
+        eventId: event.id,
+        triggerEventId: event.triggerEventId,
+        playerId: event.playerId,
+        targetFormationId: event.targetFormationId,
+        reason: event.reason,
+        clock: event.clock,
+      })),
+      smokescreens,
+      activeSmokescreenEffects: replayed.activeSmokescreenEffects.map((effect) => ({
+        ...effect,
+      })),
+      smokescreenPasses: replayed.smokescreenPasses.map((event) => ({
         eventId: event.id,
         triggerEventId: event.triggerEventId,
         playerId: event.playerId,

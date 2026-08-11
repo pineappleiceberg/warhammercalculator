@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 21;
+export const BATTLE_STATE_VERSION = 22;
+export const SMOKESCREEN_BATTLE_STATE_VERSION = 22;
 export const COUNTER_OFFENSIVE_BATTLE_STATE_VERSION = 21;
 export const SETUP_RULES_BATTLE_STATE_VERSION = 20;
 export const TRANSPORT_NESTING_BATTLE_STATE_VERSION = 19;
@@ -112,6 +113,15 @@ export const COUNTER_OFFENSIVE_FLAGS = Object.freeze({
   targetNotFought: 4,
   respondingPlayer: 8,
   fightsNext: 16,
+  mask: 31,
+});
+
+export const SMOKESCREEN_FLAGS = Object.freeze({
+  targetSelected: 1,
+  targetSmoke: 2,
+  respondingPlayer: 4,
+  benefitOfCover: 8,
+  stealth: 16,
   mask: 31,
 });
 
@@ -424,6 +434,38 @@ export function counterOffensiveFlags(event, targetNotFought, respondingPlayer) 
     (targetNotFought ? COUNTER_OFFENSIVE_FLAGS.targetNotFought : 0) |
     (respondingPlayer ? COUNTER_OFFENSIVE_FLAGS.respondingPlayer : 0) |
     (event.fightsNextConfirmed ? COUNTER_OFFENSIVE_FLAGS.fightsNext : 0)
+  );
+}
+
+export function smokescreenIsValid(
+  phase,
+  commandPointsBefore,
+  commandPointCost,
+  commandPointsAfter,
+  alreadyUsed,
+  targetBattleShocked,
+  flags,
+) {
+  return Boolean(
+    phase === "shooting" &&
+      Number.isSafeInteger(commandPointsBefore) &&
+      commandPointsBefore >= 1 &&
+      commandPointsBefore <= 100_000 &&
+      commandPointCost === 1 &&
+      commandPointsAfter === commandPointsBefore - commandPointCost &&
+      !alreadyUsed &&
+      !targetBattleShocked &&
+      flags === SMOKESCREEN_FLAGS.mask,
+  );
+}
+
+export function smokescreenFlags(event, targetIsSmoke, respondingPlayer) {
+  return (
+    SMOKESCREEN_FLAGS.targetSelected |
+    (targetIsSmoke ? SMOKESCREEN_FLAGS.targetSmoke : 0) |
+    (respondingPlayer ? SMOKESCREEN_FLAGS.respondingPlayer : 0) |
+    (event.allModelsHaveBenefitOfCover ? SMOKESCREEN_FLAGS.benefitOfCover : 0) |
+    (event.allModelsHaveStealth ? SMOKESCREEN_FLAGS.stealth : 0)
   );
 }
 
@@ -1755,6 +1797,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   ) {
     throw new Error("Counter-offensive reactions require battle-state version 21");
   }
+  if (
+    stateVersion < SMOKESCREEN_BATTLE_STATE_VERSION &&
+    ["smokescreen_passed", "smokescreen_resolved"].includes(event.type)
+  ) {
+    throw new Error("Smokescreen reactions require battle-state version 22");
+  }
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation, stateVersion);
     if (!formations.players.has(formation.playerId)) throw new Error("Formation player is unknown");
@@ -2487,6 +2535,58 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
+  if (event.type === "smokescreen_passed") {
+    normalized.triggerEventId = boundedString(
+      event.triggerEventId,
+      "Smokescreen trigger event id",
+      100,
+    );
+    normalized.playerId = boundedString(event.playerId, "Smokescreen player id", 100);
+    if (!formations.players.has(normalized.playerId)) {
+      throw new Error("Smokescreen player is unknown");
+    }
+    normalized.reason = boundedString(event.reason, "Smokescreen pass reason", 300);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "smokescreen_resolved") {
+    normalized.triggerEventId = boundedString(
+      event.triggerEventId,
+      "Smokescreen trigger event id",
+      100,
+    );
+    normalized.playerId = boundedString(event.playerId, "Smokescreen player id", 100);
+    if (!formations.players.has(normalized.playerId)) {
+      throw new Error("Smokescreen player is unknown");
+    }
+    normalized.targetFormationId = boundedString(
+      event.targetFormationId,
+      "Smokescreen target formation id",
+      100,
+    );
+    if (!formations.byId.has(normalized.targetFormationId)) {
+      throw new Error("Smokescreen target formation is unknown");
+    }
+    normalized.commandPointCost = nonnegativeInteger(
+      event.commandPointCost,
+      "Smokescreen Command Point cost",
+      5,
+    );
+    normalized.commandPointsBefore = nonnegativeInteger(
+      event.commandPointsBefore,
+      "Command Points before Smokescreen",
+      100_000,
+    );
+    normalized.commandPointsAfter = nonnegativeInteger(
+      event.commandPointsAfter,
+      "Command Points after Smokescreen",
+      100_000,
+    );
+    normalized.allModelsHaveBenefitOfCover = Boolean(event.allModelsHaveBenefitOfCover);
+    normalized.allModelsHaveStealth = Boolean(event.allModelsHaveStealth);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
   if (event.type === "fire_overwatch_started") {
     normalized.triggerEventId = boundedString(
       event.triggerEventId,
@@ -2960,6 +3060,15 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
       256,
     );
     normalized.flags = nonnegativeInteger(event.flags, "Ranged declaration flags", 63);
+    normalized.reactionOrder = event.reactionOrder
+      ? boundedString(event.reactionOrder, "Ranged reaction order", 30)
+      : "";
+    if (
+      normalized.reactionOrder &&
+      !["go_to_ground_first", "smokescreen_first"].includes(normalized.reactionOrder)
+    ) {
+      throw new Error("Ranged reaction order is unknown");
+    }
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
@@ -3088,6 +3197,7 @@ export function normalizeBattleState(candidate) {
       TRANSPORT_NESTING_BATTLE_STATE_VERSION,
       SETUP_RULES_BATTLE_STATE_VERSION,
       COUNTER_OFFENSIVE_BATTLE_STATE_VERSION,
+      SMOKESCREEN_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -3142,6 +3252,7 @@ export function normalizeBattleState(candidate) {
         TRANSPORT_NESTING_BATTLE_STATE_VERSION,
         SETUP_RULES_BATTLE_STATE_VERSION,
         COUNTER_OFFENSIVE_BATTLE_STATE_VERSION,
+        SMOKESCREEN_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -3265,6 +3376,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyCounterOffensiveThroughSequence = nonnegativeInteger(
         migration.legacyCounterOffensiveThroughSequence,
         "Legacy Counter-offensive event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= SMOKESCREEN_BATTLE_STATE_VERSION) {
+      normalized.migration.legacySmokescreenThroughSequence = nonnegativeInteger(
+        migration.legacySmokescreenThroughSequence,
+        "Legacy Smokescreen event sequence",
         events.length,
       );
     }
@@ -4011,6 +4129,9 @@ export function replayBattleState(state) {
   const goToGrounds = [];
   const goToGroundPasses = [];
   const usedGoToGroundKeys = new Set();
+  const smokescreens = [];
+  const smokescreenPasses = [];
+  const usedSmokescreenKeys = new Set();
   const counterOffensives = [];
   const counterOffensivePasses = [];
   const usedCounterOffensiveKeys = new Set();
@@ -4022,6 +4143,7 @@ export function replayBattleState(state) {
   let pendingHeroicIntervention = null;
   let pendingHazardous = null;
   let pendingGoToGround = null;
+  let pendingSmokescreen = null;
   let pendingCounterOffensive = null;
   let forcedFightFormationId = "";
   let readyRangedAttack = null;
@@ -4077,6 +4199,10 @@ export function replayBattleState(state) {
     state.version < COUNTER_OFFENSIVE_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyCounterOffensiveThroughSequence ?? 0);
+  const legacySmokescreenThroughSequence =
+    state.version < SMOKESCREEN_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacySmokescreenThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -4138,7 +4264,7 @@ export function replayBattleState(state) {
     RANGED_DECLARATION_FLAGS.targetsContiguous |
     RANGED_DECLARATION_FLAGS.profilesContiguous;
   const refreshReadyRangedAttacks = () => {
-    if (!activeRangedDeclarationSet || pendingGoToGround) {
+    if (!activeRangedDeclarationSet || pendingGoToGround || pendingSmokescreen) {
       readyRangedAttacks = [];
       return;
     }
@@ -4159,7 +4285,120 @@ export function replayBattleState(state) {
               effect.targetFormationId === declaration.targetFormationId &&
               samePhase(effect.appliedAt, clock),
           )?.id ?? "",
+        smokescreenEffectId:
+          smokescreens.find(
+            (effect) =>
+              effect.targetFormationId === declaration.targetFormationId &&
+              samePhase(effect.appliedAt, clock),
+          )?.id ?? "",
       }));
+  };
+  const declaredTargetFormationIds = () => [
+    ...new Set(
+      activeRangedDeclarationSet?.declarations.map(
+        (declaration) => declaration.targetFormationId,
+      ) ?? [],
+    ),
+  ];
+  const goToGroundCandidateTargetFormationIds = () =>
+    declaredTargetFormationIds().filter((targetFormationId) => {
+      const target = formations.get(targetFormationId);
+      const usageKey = `${clock.battleRound}:${clock.turn}:${clock.phase}:${target.playerId}:go_to_ground`;
+      const commandPoints = resources.get(target.playerId).get("command_points")?.value ?? 0;
+      const activeEffect = goToGrounds.some(
+        (effect) => effect.targetFormationId === target.id && samePhase(effect.appliedAt, clock),
+      );
+      return (
+        target.playerId !== clock.activePlayerId &&
+        target.keywords.includes("infantry") &&
+        !battleShockedFormations.has(target.id) &&
+        commandPoints >= 1 &&
+        !usedGoToGroundKeys.has(usageKey) &&
+        !activeEffect
+      );
+    });
+  const smokescreenCandidateTargetFormationIds = () =>
+    declaredTargetFormationIds().filter((targetFormationId) => {
+      const target = formations.get(targetFormationId);
+      const usageKey = `${clock.battleRound}:${clock.turn}:${clock.phase}:${target.playerId}:smokescreen`;
+      const commandPoints = resources.get(target.playerId).get("command_points")?.value ?? 0;
+      const activeEffect = smokescreens.some(
+        (effect) => effect.targetFormationId === target.id && samePhase(effect.appliedAt, clock),
+      );
+      return (
+        target.playerId !== clock.activePlayerId &&
+        target.keywords.includes("smoke") &&
+        !battleShockedFormations.has(target.id) &&
+        commandPoints >= 1 &&
+        !usedSmokescreenKeys.has(usageKey) &&
+        !activeEffect
+      );
+    });
+  const openGoToGroundWindow = () => {
+    if (
+      !activeRangedDeclarationSet ||
+      activeRangedDeclarationSet.goToGroundWindowHandled ||
+      activeRangedDeclarationSet.sequence <= legacyGoToGroundThroughSequence
+    ) {
+      return;
+    }
+    const candidateTargetFormationIds = goToGroundCandidateTargetFormationIds();
+    activeRangedDeclarationSet = {
+      ...activeRangedDeclarationSet,
+      goToGroundWindowHandled: true,
+    };
+    if (candidateTargetFormationIds.length < 1) return;
+    const responderPlayerId = formations.get(candidateTargetFormationIds[0]).playerId;
+    if (
+      candidateTargetFormationIds.some(
+        (targetFormationId) => formations.get(targetFormationId).playerId !== responderPlayerId,
+      )
+    ) {
+      throw new Error("Go to Ground candidates must belong to one defending player");
+    }
+    pendingGoToGround = {
+      activationWide: true,
+      triggerEventId: activeRangedDeclarationSet.id,
+      activationEventId: activeRangedDeclarationSet.activationEventId,
+      attackerFormationId: activeActivation.formationId,
+      targetFormationId: candidateTargetFormationIds[0],
+      candidateTargetFormationIds,
+      responderPlayerId,
+      clock: { ...clock },
+    };
+  };
+  const openSmokescreenWindow = () => {
+    if (
+      !activeRangedDeclarationSet ||
+      activeRangedDeclarationSet.smokescreenWindowHandled ||
+      activeRangedDeclarationSet.sequence <= legacySmokescreenThroughSequence
+    ) {
+      return;
+    }
+    const candidateTargetFormationIds = smokescreenCandidateTargetFormationIds();
+    activeRangedDeclarationSet = {
+      ...activeRangedDeclarationSet,
+      smokescreenWindowHandled: true,
+    };
+    if (candidateTargetFormationIds.length < 1) return;
+    const responderPlayerId = formations.get(candidateTargetFormationIds[0]).playerId;
+    if (
+      candidateTargetFormationIds.some(
+        (targetFormationId) => formations.get(targetFormationId).playerId !== responderPlayerId,
+      )
+    ) {
+      throw new Error("Smokescreen candidates must belong to one defending player");
+    }
+    pendingSmokescreen = {
+      activationWide: true,
+      triggerEventId: activeRangedDeclarationSet.id,
+      activationEventId: activeRangedDeclarationSet.activationEventId,
+      attackerFormationId: activeActivation.formationId,
+      targetFormationId: candidateTargetFormationIds[0],
+      candidateTargetFormationIds,
+      responderPlayerId,
+      clock: { ...clock },
+    };
   };
   for (const event of state.events) {
     if (pendingTransportDestructions.size > 0 && event.type !== "transport_destroyed_resolved") {
@@ -4204,6 +4443,12 @@ export function replayBattleState(state) {
       !["go_to_ground_resolved", "go_to_ground_passed"].includes(event.type)
     ) {
       throw new Error("Resolve or pass the pending Go to Ground window first");
+    }
+    if (
+      pendingSmokescreen &&
+      !["smokescreen_resolved", "smokescreen_passed"].includes(event.type)
+    ) {
+      throw new Error("Resolve or pass the pending Smokescreen window first");
     }
     if (
       pendingCounterOffensive &&
@@ -5959,12 +6204,20 @@ export function replayBattleState(state) {
       if (pendingGoToGround.activationWide) {
         activeRangedDeclarationSet = {
           ...activeRangedDeclarationSet,
-          reactionResolved: true,
+          reactionResolved: false,
         };
       } else {
         readyRangedAttack = { ...pendingGoToGround, goToGroundEffectId: "" };
       }
+      const activationWide = pendingGoToGround.activationWide;
       pendingGoToGround = null;
+      if (activationWide) {
+        openSmokescreenWindow();
+        activeRangedDeclarationSet = {
+          ...activeRangedDeclarationSet,
+          reactionResolved: !pendingSmokescreen,
+        };
+      }
       refreshReadyRangedAttacks();
       continue;
     }
@@ -6019,13 +6272,96 @@ export function replayBattleState(state) {
       if (pendingGoToGround.activationWide) {
         activeRangedDeclarationSet = {
           ...activeRangedDeclarationSet,
-          reactionResolved: true,
+          reactionResolved: false,
           goToGroundEffectId: effect.id,
         };
       } else {
         readyRangedAttack = { ...pendingGoToGround, goToGroundEffectId: effect.id };
       }
+      const activationWide = pendingGoToGround.activationWide;
       pendingGoToGround = null;
+      if (activationWide) {
+        openSmokescreenWindow();
+        activeRangedDeclarationSet = {
+          ...activeRangedDeclarationSet,
+          reactionResolved: !pendingSmokescreen,
+        };
+      }
+      refreshReadyRangedAttacks();
+      continue;
+    }
+    if (event.type === "smokescreen_passed") {
+      if (
+        !pendingSmokescreen ||
+        event.triggerEventId !== pendingSmokescreen.triggerEventId ||
+        event.playerId !== pendingSmokescreen.responderPlayerId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Smokescreen pass does not match the pending reaction window");
+      }
+      smokescreenPasses.push({ ...event, ...pendingSmokescreen });
+      pendingSmokescreen = null;
+      openGoToGroundWindow();
+      activeRangedDeclarationSet = {
+        ...activeRangedDeclarationSet,
+        reactionResolved: !pendingGoToGround,
+      };
+      refreshReadyRangedAttacks();
+      continue;
+    }
+    if (event.type === "smokescreen_resolved") {
+      if (
+        !pendingSmokescreen ||
+        event.triggerEventId !== pendingSmokescreen.triggerEventId ||
+        event.playerId !== pendingSmokescreen.responderPlayerId ||
+        !pendingSmokescreen.candidateTargetFormationIds.includes(event.targetFormationId) ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Smokescreen does not match the pending reaction window");
+      }
+      const target = formations.get(event.targetFormationId);
+      const targetIsSmoke = target.keywords.includes("smoke");
+      const respondingPlayer = target.playerId === pendingSmokescreen.responderPlayerId;
+      const usageKey = `${clock.battleRound}:${clock.turn}:${clock.phase}:${event.playerId}:smokescreen`;
+      const commandPoints = resources.get(event.playerId).get("command_points");
+      if (
+        event.commandPointsBefore !== commandPoints.value ||
+        !smokescreenIsValid(
+          clock.phase,
+          event.commandPointsBefore,
+          event.commandPointCost,
+          event.commandPointsAfter,
+          usedSmokescreenKeys.has(usageKey),
+          battleShockedFormations.has(target.id),
+          smokescreenFlags(event, targetIsSmoke, respondingPlayer),
+        )
+      ) {
+        throw new Error("Smokescreen facts or Command Point spending are inconsistent");
+      }
+      resources.get(event.playerId).set("command_points", {
+        ...commandPoints,
+        value: event.commandPointsAfter,
+      });
+      usedSmokescreenKeys.add(usageKey);
+      const effect = {
+        id: event.id,
+        name: "Smokescreen",
+        targetFormationId: event.targetFormationId,
+        ownerPlayerId: event.playerId,
+        triggerEventId: event.triggerEventId,
+        duration: "end_of_phase",
+        appliedAt: { ...clock },
+        benefitOfCover: true,
+        stealth: true,
+      };
+      smokescreens.push(effect);
+      pendingSmokescreen = null;
+      openGoToGroundWindow();
+      activeRangedDeclarationSet = {
+        ...activeRangedDeclarationSet,
+        reactionResolved: !pendingGoToGround,
+        smokescreenEffectId: effect.id,
+      };
       refreshReadyRangedAttacks();
       continue;
     }
@@ -6151,53 +6487,34 @@ export function replayBattleState(state) {
         ...event,
         declarations: ordered,
         reactionResolved: false,
+        goToGroundWindowHandled: false,
+        smokescreenWindowHandled: false,
       };
       rangedDeclarationSets.push(activeRangedDeclarationSet);
       rangedDeclarationDraft = [];
-      const candidateTargetFormationIds = [
-        ...new Set(ordered.map((declaration) => declaration.targetFormationId)),
-      ].filter((targetFormationId) => {
-        const target = formations.get(targetFormationId);
-        const usageKey = `${clock.battleRound}:${clock.turn}:${clock.phase}:${target.playerId}:go_to_ground`;
-        const commandPoints = resources.get(target.playerId).get("command_points")?.value ?? 0;
-        const activeEffect = goToGrounds.some(
-          (effect) => effect.targetFormationId === target.id && samePhase(effect.appliedAt, clock),
+      const goToGroundCandidates = goToGroundCandidateTargetFormationIds();
+      const smokescreenCandidates = smokescreenCandidateTargetFormationIds();
+      if (
+        goToGroundCandidates.length > 0 &&
+        smokescreenCandidates.length > 0 &&
+        !["go_to_ground_first", "smokescreen_first"].includes(event.reactionOrder)
+      ) {
+        throw new Error(
+          "The active player must choose whether Go to Ground or Smokescreen resolves first",
         );
-        return (
-          target.playerId !== clock.activePlayerId &&
-          target.keywords.includes("infantry") &&
-          !battleShockedFormations.has(target.id) &&
-          commandPoints >= 1 &&
-          !usedGoToGroundKeys.has(usageKey) &&
-          !activeEffect
-        );
-      });
-      if (candidateTargetFormationIds.length > 0) {
-        const responderPlayerId = formations.get(candidateTargetFormationIds[0]).playerId;
-        if (
-          candidateTargetFormationIds.some(
-            (targetFormationId) => formations.get(targetFormationId).playerId !== responderPlayerId,
-          )
-        ) {
-          throw new Error("Go to Ground candidates must belong to one defending player");
-        }
-        pendingGoToGround = {
-          activationWide: true,
-          triggerEventId: event.id,
-          activationEventId: activeActivation.id,
-          attackerFormationId: activeActivation.formationId,
-          targetFormationId: candidateTargetFormationIds[0],
-          candidateTargetFormationIds,
-          responderPlayerId,
-          clock: { ...clock },
-        };
-      } else {
-        activeRangedDeclarationSet = {
-          ...activeRangedDeclarationSet,
-          reactionResolved: true,
-        };
-        refreshReadyRangedAttacks();
       }
+      if (event.reactionOrder === "smokescreen_first") {
+        openSmokescreenWindow();
+        if (!pendingSmokescreen) openGoToGroundWindow();
+      } else {
+        openGoToGroundWindow();
+        if (!pendingGoToGround) openSmokescreenWindow();
+      }
+      activeRangedDeclarationSet = {
+        ...activeRangedDeclarationSet,
+        reactionResolved: !pendingGoToGround && !pendingSmokescreen,
+      };
+      refreshReadyRangedAttacks();
       continue;
     }
     if (event.type === "ranged_target_eligibility_recorded") {
@@ -6891,6 +7208,10 @@ export function replayBattleState(state) {
     goToGrounds,
     goToGroundPasses,
     activeGoToGroundEffects: goToGrounds.filter((effect) => samePhase(effect.appliedAt, clock)),
+    pendingSmokescreen,
+    smokescreens,
+    smokescreenPasses,
+    activeSmokescreenEffects: smokescreens.filter((effect) => samePhase(effect.appliedAt, clock)),
     pendingCounterOffensive,
     counterOffensives,
     counterOffensivePasses,
@@ -7017,6 +7338,9 @@ export function advanceBattleClock(state, id, at) {
   }
   if (replayed.pendingFireOverwatch) {
     throw new Error("Resolve or pass the pending Fire Overwatch window first");
+  }
+  if (replayed.pendingSmokescreen) {
+    throw new Error("Resolve or pass the pending Smokescreen window first");
   }
   if (replayed.pendingCounterOffensive) {
     throw new Error("Resolve or pass the pending Counter-offensive window first");
@@ -7554,7 +7878,7 @@ export function retractRangedTargetDeclaration(state, declarationEventId, reason
   });
 }
 
-export function closeRangedTargetDeclarations(state, id, at) {
+export function closeRangedTargetDeclarations(state, id, at, reactionOrder = "") {
   const replayed = replayBattleState(state);
   if (!replayed.activeActivation || replayed.rangedDeclarationDraft.length < 1) {
     throw new Error("Declare at least one ranged attack before finishing target selection");
@@ -7571,6 +7895,7 @@ export function closeRangedTargetDeclarations(state, id, at) {
     declarationEventIds: ordered.map((declaration) => declaration.id),
     ...stats,
     flags: RANGED_DECLARATION_FLAGS.mask,
+    reactionOrder,
     clock: replayed.clock,
   });
 }
@@ -7620,6 +7945,55 @@ export function resolveGoToGround(state, targetFormationId, id, at) {
 export function battleGoToGroundEffect(state, formationId) {
   return (
     replayBattleState(state).activeGoToGroundEffects.find(
+      (effect) => effect.targetFormationId === formationId,
+    ) ?? null
+  );
+}
+
+export function passSmokescreen(state, reason, id, at) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingSmokescreen;
+  if (!pending) throw new Error("No Smokescreen window is pending");
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "smokescreen_passed",
+    triggerEventId: pending.triggerEventId,
+    playerId: pending.responderPlayerId,
+    reason,
+    clock: replayed.clock,
+  });
+}
+
+export function resolveSmokescreen(state, targetFormationId, id, at) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingSmokescreen;
+  if (!pending) throw new Error("No Smokescreen window is pending");
+  const commandPointsBefore =
+    replayed.resources.get(pending.responderPlayerId)?.get("command_points")?.value ?? 0;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "smokescreen_resolved",
+    triggerEventId: pending.triggerEventId,
+    playerId: pending.responderPlayerId,
+    targetFormationId,
+    commandPointCost: 1,
+    commandPointsBefore,
+    commandPointsAfter: commandPointsBefore - 1,
+    allModelsHaveBenefitOfCover: true,
+    allModelsHaveStealth: true,
+    clock: replayed.clock,
+  });
+}
+
+export function battleSmokescreenEffect(state, formationId) {
+  return (
+    replayBattleState(state).activeSmokescreenEffects.find(
       (effect) => effect.targetFormationId === formationId,
     ) ?? null
   );
@@ -8218,6 +8592,7 @@ export function battleCanStartFormationActivation(
     replayed.pendingChoices.size > 0 ||
     replayed.pendingFireOverwatch ||
     replayed.pendingHeroicIntervention ||
+    replayed.pendingSmokescreen ||
     replayed.pendingCounterOffensive ||
     replayed.activeActivation ||
     replayed.completedActivations.has(
@@ -8257,7 +8632,7 @@ export function battleCanResolveAttack(state, attackerFormationId, options = {})
   if (!state) return false;
   if (!options.targetEligibilityConfirmed) return false;
   const replayed = replayBattleState(state);
-  if (replayed.pendingGoToGround) return false;
+  if (replayed.pendingGoToGround || replayed.pendingSmokescreen) return false;
   if (
     options.targetFormationId &&
     !formationIsOnBattlefield(
@@ -8332,6 +8707,7 @@ export function battleCanDeclareRangedAttack(state, attackerFormationId, options
   const replayed = replayBattleState(state);
   if (
     replayed.pendingGoToGround ||
+    replayed.pendingSmokescreen ||
     replayed.readyRangedAttacks.length > 0 ||
     replayed.activeRangedDeclarationSet
   ) {

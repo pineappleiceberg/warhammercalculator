@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 20 as soon as both lists are selected. Every
+creates battle-state version 22 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -733,6 +733,20 @@ selection and decline paths. The replay API reports pending, resolved, passed,
 and forced-next state and cross-checks the ACSL-specified C/WebAssembly
 predicate. Version-20 and older histories retain their original activation
 ordering behind an explicit migration boundary.
+Version 22 makes Smokescreen an executable Shooting-phase response after the
+complete activation-wide target declaration. When Go to Ground and Smokescreen
+trigger together, the active player chooses their Core Rules sequencing order;
+replay then offers one eligible enemy target at a time, blocks attack dice until
+each choice is answered, atomically spends 1CP for Smokescreen, enforces
+Battle-shock and same-Stratagem once-per-phase restrictions, and grants every
+model in the selected formation Benefit of Cover and Stealth until the end of
+the phase. Guided Play exposes resolve and decline controls and composes the
+effect into the editable attack snapshot: cover uses the existing save and
+Ignores Cover rules, while Stealth applies the normal capped -1 Hit modifier.
+The replay API reports pending, resolved, passed, and active phase-effect state
+and independently cross-checks the same ACSL-specified predicate through C and
+WebAssembly. Version-21 and older histories preserve their original attack
+ordering behind an explicit Smokescreen migration boundary.
 Version 8 makes ranged target eligibility an executable replay fact. The
 browser catalogue preserves each weapon's published Range, while Guided Play
 records the effective Range, closest-point measured distance to one thousandth

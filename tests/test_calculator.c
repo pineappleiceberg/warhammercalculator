@@ -1595,6 +1595,26 @@ static void test_counter_offensive(void) {
                                             WHC_COUNTER_OFFENSIVE_FLAGS_MASK - 1u));
 }
 
+static void test_smokescreen(void) {
+    assert(whc_smokescreen_is_valid(WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, false, false,
+                                    WHC_SMOKESCREEN_FLAGS_MASK));
+    assert(whc_smokescreen_is_valid(WHC_BATTLE_PHASE_SHOOTING, 1u, 1u, 0u, false, false,
+                                    WHC_SMOKESCREEN_FLAGS_MASK));
+    assert(!whc_smokescreen_is_valid(WHC_BATTLE_PHASE_MOVEMENT, 2u, 1u, 1u, false, false,
+                                     WHC_SMOKESCREEN_FLAGS_MASK));
+    assert(!whc_smokescreen_is_valid(WHC_BATTLE_PHASE_SHOOTING, 0u, 1u, 0u, false, false,
+                                     WHC_SMOKESCREEN_FLAGS_MASK));
+    assert(!whc_smokescreen_is_valid(WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 0u, false, false,
+                                     WHC_SMOKESCREEN_FLAGS_MASK));
+    assert(!whc_smokescreen_is_valid(WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, true, false,
+                                     WHC_SMOKESCREEN_FLAGS_MASK));
+    assert(!whc_smokescreen_is_valid(WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, false, true,
+                                     WHC_SMOKESCREEN_FLAGS_MASK));
+    assert(!whc_smokescreen_is_valid(
+        WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, false, false,
+        WHC_SMOKESCREEN_FLAGS_MASK & ~WHC_SMOKESCREEN_STEALTH));
+}
+
 static void test_ranged_declaration(void) {
     assert(whc_ranged_declaration_is_valid(3u, 3u, 2u, 2u, 3u, 3u,
                                            WHC_RANGED_DECLARATION_FLAGS_MASK));
@@ -1746,6 +1766,7 @@ int main(void) {
     test_hazardous_resolution();
     test_go_to_ground();
     test_counter_offensive();
+    test_smokescreen();
     test_ranged_declaration();
     test_transport_load();
     test_transport_deployment_chain();

@@ -15,6 +15,7 @@ import {
 } from "../../lib/combat";
 import { applyFireOverwatchAttackRules } from "../../lib/fire-overwatch.mjs";
 import { applyGoToGroundAttackEffects } from "../../lib/go-to-ground.mjs";
+import { applySmokescreenAttackEffects } from "../../lib/smokescreen.mjs";
 import {
   activeBattleAttacks,
   advanceBattleClock,
@@ -47,6 +48,7 @@ import {
   passCounterOffensive,
   passFireOverwatch,
   passGoToGround,
+  passSmokescreen,
   passHeroicIntervention,
   recordFormationCharge,
   recordHazardousTests,
@@ -62,6 +64,7 @@ import {
   resolveHeroicIntervention,
   resolveHazardousDamage,
   resolveGoToGround,
+  resolveSmokescreen,
   resolveCounterOffensive,
   revertLatestAttack,
   scoreBattlePoints,
@@ -225,6 +228,9 @@ export default function PlayMode() {
   const [fireOverwatchPassReason, setFireOverwatchPassReason] = useState("");
   const [goToGroundPassReason, setGoToGroundPassReason] = useState("");
   const [goToGroundTargetFormationId, setGoToGroundTargetFormationId] = useState("");
+  const [smokescreenPassReason, setSmokescreenPassReason] = useState("");
+  const [smokescreenTargetFormationId, setSmokescreenTargetFormationId] = useState("");
+  const [rangedReactionOrder, setRangedReactionOrder] = useState("go_to_ground_first");
   const [counterOffensiveFormationId, setCounterOffensiveFormationId] = useState("");
   const [counterOffensiveEligibilityReason, setCounterOffensiveEligibilityReason] = useState("");
   const [counterOffensivePassReason, setCounterOffensivePassReason] = useState("");
@@ -928,6 +934,7 @@ export default function PlayMode() {
   const pendingBattleChoices = replayedBattle ? [...replayedBattle.pendingChoices.values()] : [];
   const pendingFireOverwatch = replayedBattle?.pendingFireOverwatch ?? null;
   const pendingGoToGround = replayedBattle?.pendingGoToGround ?? null;
+  const pendingSmokescreen = replayedBattle?.pendingSmokescreen ?? null;
   const pendingCounterOffensive = replayedBattle?.pendingCounterOffensive ?? null;
   const counterOffensiveFormationOptions = pendingCounterOffensive
     ? pendingCounterOffensive.candidateFormationIds
@@ -960,6 +967,15 @@ export default function PlayMode() {
     : (pendingGoToGround?.targetFormationId ?? "");
   const goToGroundResponderCommandPoints = pendingGoToGround
     ? (replayedBattle?.resources.get(pendingGoToGround.responderPlayerId)?.get("command_points")
+        ?.value ?? 0)
+    : 0;
+  const selectedSmokescreenTargetFormationId = pendingSmokescreen
+    ? pendingSmokescreen.candidateTargetFormationIds.includes(smokescreenTargetFormationId)
+      ? smokescreenTargetFormationId
+      : (pendingSmokescreen.candidateTargetFormationIds[0] ?? "")
+    : "";
+  const smokescreenResponderCommandPoints = pendingSmokescreen
+    ? (replayedBattle?.resources.get(pendingSmokescreen.responderPlayerId)?.get("command_points")
         ?.value ?? 0)
     : 0;
   const pendingHazardous = replayedBattle?.pendingHazardous ?? null;
@@ -2336,8 +2352,16 @@ export default function PlayMode() {
         (effect: { targetFormationId: string }) =>
           effect.targetFormationId === declaration.targetFormationId,
       );
-      const { attackProfiles, targets } = applyGoToGroundAttackEffects(
+      const smokescreenEffect = replayed.activeSmokescreenEffects.some(
+        (effect: { targetFormationId: string }) =>
+          effect.targetFormationId === declaration.targetFormationId,
+      );
+      const smokescreenAttackProfiles = applySmokescreenAttackEffects(
         snapshot.attackProfiles as Parameters<typeof simulateOrderedVolley>[0],
+        smokescreenEffect,
+      );
+      const { attackProfiles, targets } = applyGoToGroundAttackEffects(
+        smokescreenAttackProfiles,
         currentTargets,
         goToGroundEffect,
       );
@@ -2541,6 +2565,9 @@ export default function PlayMode() {
       if (replayedBeforeAttack.pendingGoToGround) {
         throw new Error("Resolve or decline Go to Ground before rolling the declared attack");
       }
+      if (replayedBeforeAttack.pendingSmokescreen) {
+        throw new Error("Resolve or decline Smokescreen before rolling the declared attack");
+      }
       if (!replayedBeforeAttack.activeActivation) {
         nextBattleState = startFormationActivation(
           nextBattleState,
@@ -2666,6 +2693,12 @@ export default function PlayMode() {
             setStatus("Target declared · defending player must resolve or decline Go to Ground");
             return;
           }
+          if (replayedBeforeAttack.pendingSmokescreen) {
+            setBattleState(nextBattleState);
+            setResult(null);
+            setStatus("Target declared · defending player must resolve or decline Smokescreen");
+            return;
+          }
         } else {
           targetEligibilityEventId = ready.triggerEventId;
         }
@@ -2679,8 +2712,20 @@ export default function PlayMode() {
         (effect: { targetFormationId: string }) =>
           effect.targetFormationId === targetBattleFormationId,
       );
+      const smokescreenEffect = replayedBeforeAttack.activeSmokescreenEffects.find(
+        (effect: { targetFormationId: string }) =>
+          effect.targetFormationId === targetBattleFormationId,
+      );
+      const smokescreenAttackProfiles = applySmokescreenAttackEffects(
+        attackProfiles,
+        Boolean(smokescreenEffect),
+      );
       const { attackProfiles: resolvedAttackProfiles, targets: resolvedTargets } =
-        applyGoToGroundAttackEffects(attackProfiles, orderedTargets, Boolean(goToGroundEffect));
+        applyGoToGroundAttackEffects(
+          smokescreenAttackProfiles,
+          orderedTargets,
+          Boolean(goToGroundEffect),
+        );
       rolled = simulateOrderedVolley(
         resolvedAttackProfiles,
         resolvedTargets,
@@ -2763,6 +2808,7 @@ export default function PlayMode() {
         battleState,
         crypto.randomUUID(),
         battleState.events.length + 1,
+        rangedReactionOrder,
       );
       const replayed = replayBattleState(next);
       setBattleState(next);
@@ -2770,7 +2816,9 @@ export default function PlayMode() {
       setStatus(
         replayed.pendingGoToGround
           ? "Targets locked · defending player must resolve or decline Go to Ground"
-          : "Targets locked · roll the first declared attack",
+          : replayed.pendingSmokescreen
+            ? "Targets locked · defending player must resolve or decline Smokescreen"
+            : "Targets locked · roll the first declared attack",
       );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Target declarations could not be closed");
@@ -3531,7 +3579,11 @@ export default function PlayMode() {
       setBattleState(next);
       setGoToGroundPassReason("");
       setResult(null);
-      setStatus("Go to Ground active · roll the first declared attack");
+      setStatus(
+        replayBattleState(next).pendingSmokescreen
+          ? "Go to Ground active · now resolve or decline Smokescreen"
+          : "Go to Ground active · roll the first declared attack",
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Go to Ground could not be resolved");
     }
@@ -3549,9 +3601,49 @@ export default function PlayMode() {
       setBattleState(next);
       setGoToGroundPassReason("");
       setResult(null);
-      setStatus("Go to Ground declined · roll the first declared attack");
+      setStatus(
+        replayBattleState(next).pendingSmokescreen
+          ? "Go to Ground declined · now resolve or decline Smokescreen"
+          : "Go to Ground declined · roll the first declared attack",
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Go to Ground could not be declined");
+    }
+  };
+
+  const useSmokescreen = () => {
+    if (!battleState || !pendingSmokescreen || !selectedSmokescreenTargetFormationId) return;
+    try {
+      const next = resolveSmokescreen(
+        battleState,
+        selectedSmokescreenTargetFormationId,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setSmokescreenPassReason("");
+      setResult(null);
+      setStatus("Smokescreen active · Benefit of Cover and Stealth apply for this phase");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Smokescreen could not be resolved");
+    }
+  };
+
+  const declineSmokescreen = () => {
+    if (!battleState || !pendingSmokescreen) return;
+    try {
+      const next = passSmokescreen(
+        battleState,
+        smokescreenPassReason.trim() || "Defending player declined Smokescreen",
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setSmokescreenPassReason("");
+      setResult(null);
+      setStatus("Smokescreen declined · roll the first declared attack");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Smokescreen could not be declined");
     }
   };
 
@@ -3912,6 +4004,7 @@ export default function PlayMode() {
         Boolean(battleState) &&
         selectedBattleActionReady &&
         !pendingGoToGround &&
+        !pendingSmokescreen &&
         (unusedSelectedWeaponCount === null ||
           (unusedSelectedWeaponCount > 0 &&
             selectedDeclaredWeaponCount <= unusedSelectedWeaponCount)) &&
@@ -3960,6 +4053,9 @@ export default function PlayMode() {
     }
     if (pendingGoToGround) {
       return "Defending player must resolve or decline Go to Ground";
+    }
+    if (pendingSmokescreen) {
+      return "Defending player must resolve or decline Smokescreen";
     }
     if (pendingCounterOffensive) {
       return "Responding player must resolve or decline Counter-offensive";
@@ -5887,9 +5983,21 @@ export default function PlayMode() {
                   )}
                 </ol>
                 {rangedDeclarationDraft.length > 0 && (
-                  <button type="button" onClick={finishRangedTargetDeclarations}>
-                    Finish target declarations
-                  </button>
+                  <>
+                    <label>
+                      If Go to Ground and Smokescreen trigger together
+                      <select
+                        value={rangedReactionOrder}
+                        onChange={(event) => setRangedReactionOrder(event.target.value)}
+                      >
+                        <option value="go_to_ground_first">Go to Ground first</option>
+                        <option value="smokescreen_first">Smokescreen first</option>
+                      </select>
+                    </label>
+                    <button type="button" onClick={finishRangedTargetDeclarations}>
+                      Finish target declarations
+                    </button>
+                  </>
                 )}
               </div>
             )}
@@ -6718,6 +6826,50 @@ export default function PlayMode() {
                   />
                   <button type="button" onClick={declineGoToGround}>
                     Decline Go to Ground
+                  </button>
+                </div>
+              </div>
+            )}
+            {battleClock.status === "active" && pendingSmokescreen && (
+              <div className="action-tracker" aria-labelledby="smokescreen-heading">
+                <strong id="smokescreen-heading">Smokescreen response</strong>
+                <span>
+                  Target selection is complete. Choose one eligible Smoke target, or decline, before
+                  any declared attacks are rolled. Smokescreen grants that unit Benefit of Cover and
+                  Stealth until the end of this phase.
+                </span>
+                <span>Available CP: {smokescreenResponderCommandPoints}</span>
+                <div className="action-buttons">
+                  <label>
+                    <span>Smoke target</span>
+                    <select
+                      value={selectedSmokescreenTargetFormationId}
+                      onChange={(event) => setSmokescreenTargetFormationId(event.target.value)}
+                    >
+                      {pendingSmokescreen.candidateTargetFormationIds.map((formationId: string) => (
+                        <option key={formationId} value={formationId}>
+                          {replayedBattle?.formations.get(formationId)?.name ?? formationId}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    disabled={
+                      smokescreenResponderCommandPoints < 1 || !selectedSmokescreenTargetFormationId
+                    }
+                    onClick={useSmokescreen}
+                  >
+                    Spend 1CP · Smokescreen
+                  </button>
+                  <input
+                    value={smokescreenPassReason}
+                    maxLength={300}
+                    placeholder="Optional reason for declining"
+                    onChange={(event) => setSmokescreenPassReason(event.target.value)}
+                  />
+                  <button type="button" onClick={declineSmokescreen}>
+                    Decline Smokescreen
                   </button>
                 </div>
               </div>

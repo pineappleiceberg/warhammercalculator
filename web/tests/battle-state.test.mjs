@@ -34,6 +34,7 @@ import {
   hazardousBearerOptions,
   passFireOverwatch,
   passGoToGround,
+  passSmokescreen,
   passHeroicIntervention,
   passFightPriority,
   passCounterOffensive,
@@ -47,6 +48,7 @@ import {
   replayBattleState,
   resolveHazardousDamage,
   resolveGoToGround,
+  resolveSmokescreen,
   resolveHeroicIntervention,
   resolveCounterOffensive,
   resolveDestroyedTransport,
@@ -62,6 +64,7 @@ import {
 import { battleAttackWindow } from "../lib/battle-clock.mjs";
 import { applyFireOverwatchAttackRules } from "../lib/fire-overwatch.mjs";
 import { applyGoToGroundAttackEffects } from "../lib/go-to-ground.mjs";
+import { applySmokescreenAttackEffects } from "../lib/smokescreen.mjs";
 import { applyBattleHealthToTargetSequence } from "../lib/formations.mjs";
 
 const targets = [
@@ -1031,7 +1034,7 @@ test("pins the official battle-state rules source", () => {
     (source) => source.id === "core-rules-updates-10e-2025-10",
   );
   assert.ok(updates);
-  assert.deepEqual(updates.pages, [7, 8, 10, 18]);
+  assert.deepEqual(updates.pages, [7, 8, 10, 18, 21]);
   assert.equal(updates.sha256, "27960a4d4affecd450af69c54d7583bcc2941b00ba5845f5786a630bdec7f4ba");
   assert.equal(
     updates.usedFor.some((usage) => /Heroic Intervention/i.test(usage)),
@@ -1040,6 +1043,19 @@ test("pins the official battle-state rules source", () => {
   assert.equal(
     battleRuleSources.sources[0].usedFor.some(
       (usage) => /Go to Ground/i.test(usage) && /6\+ invulnerable/i.test(usage),
+    ),
+    true,
+  );
+  assert.equal(
+    battleRuleSources.sources[0].usedFor.some(
+      (usage) =>
+        /Smokescreen/i.test(usage) && /Smoke target/i.test(usage) && /Stealth/i.test(usage),
+    ),
+    true,
+  );
+  assert.equal(
+    updates.usedFor.some(
+      (usage) => /duplicated Stealth/i.test(usage) && /not cumulative/i.test(usage),
     ),
     true,
   );
@@ -2757,6 +2773,194 @@ test("passes Go to Ground and binds the attack to the reviewed target declaratio
     targetEligibilityEventId: triggerEventId,
   });
   assert.equal(replayBattleState(state).goToGroundPasses.length, 1);
+});
+
+test("offers Smokescreen after Go to Ground and applies its phase effects atomically", () => {
+  const smokeInfantryTarget = { ...formation, keywords: ["Infantry", "Smoke"] };
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), attackerFormation, "smoke-register-attacker", 1),
+    smokeInfantryTarget,
+    "smoke-register-target",
+    2,
+  );
+  state = configureBattleMission(
+    state,
+    {
+      name: "Smokescreen test",
+      commandPointsPerCommandPhase: 0,
+      startingCommandPoints: { "player-1": 0, "player-2": 2 },
+      objectives: [],
+    },
+    "smoke-mission",
+    3,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "smoke-start", 4);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "smoke-to-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    attackerFormation.id,
+    "stationary",
+    "smoke-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, battleAttackWindow, "smoke-to-shooting");
+  state = startFormationActivation(
+    state,
+    attackerFormation.id,
+    {},
+    "smoke-activation",
+    state.events.length + 1,
+  );
+  state = recordVisibleRangedTarget(state, attackerFormation.id, smokeInfantryTarget.id);
+  assert.throws(
+    () =>
+      closeRangedTargetDeclarations(state, "smoke-targets-without-order", state.events.length + 1),
+    /active player must choose/i,
+  );
+  state = closeRangedTargetDeclarations(
+    state,
+    "smoke-targets-declared",
+    state.events.length + 1,
+    "go_to_ground_first",
+  );
+  let replayed = replayBattleState(state);
+  assert.equal(replayed.pendingGoToGround.targetFormationId, smokeInfantryTarget.id);
+  assert.equal(replayed.pendingSmokescreen, null);
+
+  state = passGoToGround(
+    state,
+    "Defending player saved CP for Smokescreen",
+    "smoke-pass-gtg",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.pendingGoToGround, null);
+  assert.equal(replayed.pendingSmokescreen.targetFormationId, smokeInfantryTarget.id);
+  assert.throws(() => appendZeroDamageRangedAttack(state), /Smokescreen window/i);
+
+  state = resolveSmokescreen(
+    state,
+    smokeInfantryTarget.id,
+    "smoke-resolve",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.resources.get("player-2").get("command_points").value, 1);
+  assert.equal(replayed.pendingSmokescreen, null);
+  assert.equal(replayed.readyRangedAttack.smokescreenEffectId, "smoke-resolve");
+  assert.deepEqual(replayed.activeSmokescreenEffects[0], {
+    id: "smoke-resolve",
+    name: "Smokescreen",
+    targetFormationId: smokeInfantryTarget.id,
+    ownerPlayerId: "player-2",
+    triggerEventId: "smoke-targets-declared",
+    duration: "end_of_phase",
+    appliedAt: replayed.clock,
+    benefitOfCover: true,
+    stealth: true,
+  });
+  assert.deepEqual(
+    applySmokescreenAttackEffects(
+      [
+        { targetCover: false, hitModifier: 0 },
+        { targetCover: false, hitModifier: -1 },
+      ],
+      true,
+    ),
+    [
+      { targetCover: true, hitModifier: -1 },
+      { targetCover: true, hitModifier: -1 },
+    ],
+  );
+
+  state = appendZeroDamageRangedAttack(state, {
+    id: "smoke-attack",
+    targetEligibilityEventId: replayed.readyRangedAttack.triggerEventId,
+  });
+  state = completeFormationActivation(state, "smoke-complete", state.events.length + 1);
+  state = advanceTo(state, (clock) => clock.phase !== "shooting", "smoke-expire");
+  assert.equal(replayBattleState(state).activeSmokescreenEffects.length, 0);
+
+  const tampered = structuredClone(state);
+  const resolution = tampered.events.find((event) => event.type === "smokescreen_resolved");
+  resolution.allModelsHaveStealth = false;
+  assert.throws(() => normalizeBattleState(tampered), /Smokescreen facts/i);
+});
+
+test("lets the active player sequence Smokescreen before Go to Ground", () => {
+  const smokeTarget = { ...formation, keywords: ["Infantry", "Smoke"] };
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), attackerFormation, "smoke-pass-attacker", 1),
+    smokeTarget,
+    "smoke-pass-target",
+    2,
+  );
+  state = configureBattleMission(
+    state,
+    {
+      name: "Smokescreen pass test",
+      commandPointsPerCommandPhase: 0,
+      startingCommandPoints: { "player-1": 0, "player-2": 2 },
+      objectives: [],
+    },
+    "smoke-pass-mission",
+    3,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "smoke-pass-start", 4);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "smoke-pass-to-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    attackerFormation.id,
+    "stationary",
+    "smoke-pass-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, battleAttackWindow, "smoke-pass-to-shooting");
+  state = startFormationActivation(
+    state,
+    attackerFormation.id,
+    {},
+    "smoke-pass-activation",
+    state.events.length + 1,
+  );
+  state = recordVisibleRangedTarget(state, attackerFormation.id, smokeTarget.id);
+  state = closeRangedTargetDeclarations(
+    state,
+    "smoke-pass-targets-declared",
+    state.events.length + 1,
+    "smokescreen_first",
+  );
+  assert.equal(replayBattleState(state).pendingGoToGround, null);
+  assert.equal(replayBattleState(state).pendingSmokescreen.targetFormationId, smokeTarget.id);
+  state = passSmokescreen(
+    state,
+    "Defending player declined the Stratagem",
+    "smoke-pass",
+    state.events.length + 1,
+  );
+  let replayed = replayBattleState(state);
+  assert.equal(replayed.resources.get("player-2").get("command_points").value, 2);
+  assert.equal(replayed.pendingSmokescreen, null);
+  assert.equal(replayed.pendingGoToGround.targetFormationId, smokeTarget.id);
+  assert.equal(replayed.smokescreenPasses.length, 1);
+  state = passGoToGround(
+    state,
+    "Defending player declined the second Stratagem",
+    "smoke-pass-gtg-second",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.pendingGoToGround, null);
+  assert.equal(replayed.goToGroundPasses.length, 1);
+  assert.ok(replayed.readyRangedAttack);
 });
 
 test("locks split fire activation-wide and resolves targets and profiles contiguously", () => {
