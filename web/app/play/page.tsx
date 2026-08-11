@@ -79,6 +79,7 @@ import {
 } from "../../lib/battle-state.mjs";
 import { battleClockLabel } from "../../lib/battle-clock.mjs";
 import { battleRosterRevisionsMatch, initializeBattleForLists } from "../../lib/battle-setup.mjs";
+import { loadBattleRuleCoverage } from "../../lib/battle-rule-selection.mjs";
 import {
   applyCombatPresets,
   applyTargetProfile,
@@ -132,6 +133,37 @@ type LogEntry = {
   damage: number;
   successful: number;
 };
+
+type BattleRuleSetupInputs = {
+  firstDetachment: string;
+  secondDetachment: string;
+  firstEnhancements: string;
+  secondEnhancements: string;
+  mission: string;
+  terrain: string;
+  guidedReason: string;
+};
+
+const EMPTY_BATTLE_RULE_SETUP: BattleRuleSetupInputs = {
+  firstDetachment: "",
+  secondDetachment: "",
+  firstEnhancements: "",
+  secondEnhancements: "",
+  mission: "",
+  terrain: "",
+  guidedReason: "",
+};
+
+function commaSeparatedIds(value: string) {
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
 
 type AttackCountContext = Pick<
   CombatProfile,
@@ -189,6 +221,12 @@ export default function PlayMode() {
   const [history, setHistory] = useState<LogEntry[]>([]);
   const [battleState, setBattleState] = useState<ReturnType<typeof createBattleState> | null>(null);
   const [battleSetupError, setBattleSetupError] = useState("");
+  const [ruleCoverageMatrix, setRuleCoverageMatrix] = useState<Awaited<
+    ReturnType<typeof loadBattleRuleCoverage>
+  > | null>(null);
+  const [battleRuleSetupDraft, setBattleRuleSetupDraft] = useState(EMPTY_BATTLE_RULE_SETUP);
+  const [appliedBattleRuleSetup, setAppliedBattleRuleSetup] =
+    useState<BattleRuleSetupInputs | null>(null);
   const [pendingChoiceSelections, setPendingChoiceSelections] = useState<Record<string, string[]>>(
     {},
   );
@@ -314,10 +352,11 @@ export default function PlayMode() {
   const importBattleInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    Promise.all([loadCatalogue(), fetchArmyLists()])
-      .then(([profiles, saved]) => {
+    Promise.all([loadCatalogue(), fetchArmyLists(), loadBattleRuleCoverage()])
+      .then(([profiles, saved, coverage]) => {
         setCatalogue(profiles);
         setLists(saved);
+        setRuleCoverageMatrix(coverage);
         setStatus(recovered.current ? "Recovered battle · autosave on" : "Battle console ready");
       })
       .catch(() => setStatus("Saved lists are unavailable in this deployment"));
@@ -462,6 +501,8 @@ export default function PlayMode() {
     setChargeDice([3, 4]);
     setChargeRollModifier(0);
     setChargeDistance(7);
+    setBattleRuleSetupDraft(EMPTY_BATTLE_RULE_SETUP);
+    setAppliedBattleRuleSetup(null);
     setHistory([]);
   };
 
@@ -811,6 +852,10 @@ export default function PlayMode() {
     ? selectedSourceEquipmentSegments.reduce((total, segment) => total + segment.count, 0)
     : profile.weaponCount;
   const replayedBattle = battleState ? replayBattleState(battleState) : null;
+  const battleRuleCoverageFailures =
+    replayedBattle?.ruleCoverage?.report.results.filter(
+      (entry: { permitted: boolean }) => !entry.permitted,
+    ) ?? [];
   targetFormationBaseModels = battleTargetSequence(
     targetFormationBaseModels,
     targetBattleFormationId ? replayedBattle?.formations.get(targetBattleFormationId) : null,
@@ -1101,7 +1146,7 @@ export default function PlayMode() {
     battleClock?.status === "active" ||
     battleClock?.status === "complete";
   useEffect(() => {
-    if (!recoveryReady || !catalogue || !attackerList || !targetList) return;
+    if (!recoveryReady || !catalogue || !attackerList || !targetList || !ruleCoverageMatrix) return;
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
@@ -1111,6 +1156,28 @@ export default function PlayMode() {
           firstList: attackerList,
           secondList: targetList,
           rulesSnapshot: currentRulesSnapshot,
+          ruleCoverageMatrix,
+          ruleSelectionOverrides: appliedBattleRuleSetup
+            ? {
+                guidedReason: appliedBattleRuleSetup.guidedReason,
+                players: {
+                  "player-1": {
+                    detachmentSourceId: appliedBattleRuleSetup.firstDetachment,
+                    enhancementSourceIds: commaSeparatedIds(
+                      appliedBattleRuleSetup.firstEnhancements,
+                    ),
+                  },
+                  "player-2": {
+                    detachmentSourceId: appliedBattleRuleSetup.secondDetachment,
+                    enhancementSourceIds: commaSeparatedIds(
+                      appliedBattleRuleSetup.secondEnhancements,
+                    ),
+                  },
+                },
+                missionSourceId: appliedBattleRuleSetup.mission,
+                terrainSourceId: appliedBattleRuleSetup.terrain,
+              }
+            : {},
           state: battleState,
           id: crypto.randomUUID(),
           legacyFormationEquipmentCounts: targetBattleFormationId
@@ -1131,7 +1198,9 @@ export default function PlayMode() {
     battleState,
     catalogue,
     currentRulesSnapshot,
+    appliedBattleRuleSetup,
     recoveryReady,
+    ruleCoverageMatrix,
     targetBattleFormationId,
     targetDefensiveEquipmentCounts,
     targetList,
@@ -2874,6 +2943,27 @@ export default function PlayMode() {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Battle could not start");
     }
+  };
+
+  const applyBattleRuleSetup = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalized = Object.fromEntries(
+      Object.entries(battleRuleSetupDraft).map(([key, value]) => [key, value.trim()]),
+    ) as BattleRuleSetupInputs;
+    if (
+      !normalized.firstDetachment ||
+      !normalized.secondDetachment ||
+      !normalized.mission ||
+      !normalized.terrain ||
+      !normalized.guidedReason
+    ) {
+      setStatus(
+        "Select both detachments, the mission, terrain set, and a guided-rule review reason",
+      );
+      return;
+    }
+    setAppliedBattleRuleSetup(normalized);
+    setStatus("Exact battle rule selections recorded for coverage review");
   };
 
   const confirmWeaponBearers = (
@@ -6183,13 +6273,16 @@ export default function PlayMode() {
                   type="button"
                   disabled={
                     (!replayedBattle.deploymentComplete && !battleState.migration) ||
-                    setupWeaponBearerGroups.some(({ group }) => !group.bearerAssignmentsReviewed)
+                    setupWeaponBearerGroups.some(({ group }) => !group.bearerAssignmentsReviewed) ||
+                    !replayedBattle.ruleCoverage?.report.permitted
                   }
                   onClick={startGuidedBattle}
                 >
-                  {replayedBattle.deploymentComplete || battleState.migration
-                    ? `Start battle · ${attackerList?.name ?? "current attacker"} first`
-                    : "Complete deployment to start"}
+                  {!replayedBattle.ruleCoverage?.report.permitted
+                    ? "Resolve unsupported battle rules to start"
+                    : replayedBattle.deploymentComplete || battleState.migration
+                      ? `Start battle · ${attackerList?.name ?? "current attacker"} first`
+                      : "Complete deployment to start"}
                 </button>
               )}
               {battleClock.status === "active" && (
@@ -7819,6 +7912,133 @@ export default function PlayMode() {
                   </button>
                 </div>
               )}
+            {battleClock.status === "setup" && replayedBattle?.ruleCoverage && (
+              <div className="action-tracker" data-testid="battle-rule-coverage">
+                <strong>
+                  Rule coverage ·{" "}
+                  {replayedBattle.ruleCoverage.report.permitted ? "ready" : "blocked"}
+                </strong>
+                <span>
+                  Snapshot {replayedBattle.ruleCoverage.snapshotId} records the exact factions,
+                  detachments, enhancements, datasheets, mission, terrain, Core Rules, and universal
+                  Stratagems selected for this battle.
+                </span>
+                {battleRuleCoverageFailures.length > 0 && (
+                  <ul>
+                    {battleRuleCoverageFailures.map(
+                      (entry: { id: string; name: string; status: string; reason: string }) => (
+                        <li key={entry.id}>
+                          <strong>{entry.name}</strong> · {entry.status} · {entry.reason}
+                        </li>
+                      ),
+                    )}
+                  </ul>
+                )}
+                {replayedBattle.deploymentByFormation.size === 0 && (
+                  <form className="mission-setup" onSubmit={applyBattleRuleSetup}>
+                    <label>
+                      <span>{attackerList?.name ?? "First list"} detachment ID</span>
+                      <input
+                        value={battleRuleSetupDraft.firstDetachment}
+                        maxLength={200}
+                        placeholder="Exact published detachment ID"
+                        onChange={(event) =>
+                          setBattleRuleSetupDraft((current) => ({
+                            ...current,
+                            firstDetachment: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>{targetList?.name ?? "Second list"} detachment ID</span>
+                      <input
+                        value={battleRuleSetupDraft.secondDetachment}
+                        maxLength={200}
+                        placeholder="Exact published detachment ID"
+                        onChange={(event) =>
+                          setBattleRuleSetupDraft((current) => ({
+                            ...current,
+                            secondDetachment: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>{attackerList?.name ?? "First list"} enhancement IDs</span>
+                      <input
+                        value={battleRuleSetupDraft.firstEnhancements}
+                        maxLength={500}
+                        placeholder="Optional, comma separated"
+                        onChange={(event) =>
+                          setBattleRuleSetupDraft((current) => ({
+                            ...current,
+                            firstEnhancements: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>{targetList?.name ?? "Second list"} enhancement IDs</span>
+                      <input
+                        value={battleRuleSetupDraft.secondEnhancements}
+                        maxLength={500}
+                        placeholder="Optional, comma separated"
+                        onChange={(event) =>
+                          setBattleRuleSetupDraft((current) => ({
+                            ...current,
+                            secondEnhancements: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>Mission pack or mission ID</span>
+                      <input
+                        value={battleRuleSetupDraft.mission}
+                        maxLength={200}
+                        placeholder="Exact published mission ID"
+                        onChange={(event) =>
+                          setBattleRuleSetupDraft((current) => ({
+                            ...current,
+                            mission: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>Terrain layout or rules ID</span>
+                      <input
+                        value={battleRuleSetupDraft.terrain}
+                        maxLength={200}
+                        placeholder="Exact terrain rules ID"
+                        onChange={(event) =>
+                          setBattleRuleSetupDraft((current) => ({
+                            ...current,
+                            terrain: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>Guided-rule review</span>
+                      <input
+                        value={battleRuleSetupDraft.guidedReason}
+                        maxLength={500}
+                        placeholder="How measurements and physical placements will be reviewed"
+                        onChange={(event) =>
+                          setBattleRuleSetupDraft((current) => ({
+                            ...current,
+                            guidedReason: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <button type="submit">Check exact rule selections</button>
+                  </form>
+                )}
+              </div>
+            )}
             {battleClock.status === "setup" &&
               replayedBattle &&
               replayedBattle.deploymentByFormation.size === 0 && (

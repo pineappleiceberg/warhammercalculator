@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 23 as soon as both lists are selected. Every
+creates battle-state version 24 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -1045,10 +1045,20 @@ The final mission entry is rejected because it is not yet source-locked in the
 matrix. The C predicate, WebAssembly export, JavaScript validator, API health
 check, and deployment probe share the same four-state fail-closed rule. The
 hosted coverage checker independently compares every JavaScript decision with
-the WebAssembly predicate before returning it. This is the coverage foundation,
-not a claim that faction, detachment, enhancement,
-datasheet, terrain, or mission rules are complete; battle-setup enforcement and
-source ingestion for those categories remain the next priority.
+the WebAssembly predicate before returning it.
+
+Battle-state version 24 applies that contract before a new battle starts. Its
+append-only setup event records both players' exact faction, detachment,
+enhancement, and datasheet selections plus the selected mission, terrain rules,
+known Core Rules, and universal Stratagems. Guided rules require a reason-backed
+table-review acknowledgement. Any absent, altered, stale, or unsupported entry
+keeps the start control disabled and remains visible in the setup report. The
+replay API recomputes the binding from the deployed matrix and independently
+cross-checks every result through WebAssembly. Versions 1-23 migrate with an
+explicit boundary so an already-started historical game remains replayable.
+This is enforcement, not a claim that faction, detachment, enhancement,
+datasheet, terrain, or mission rules are complete; source ingestion and exact
+catalogue mappings for those categories are now the highest priority.
 
 A catalogue matchup can use exact catalogue IDs or unambiguous names:
 

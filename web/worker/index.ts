@@ -79,6 +79,7 @@ import {
   rapidIngressFlags,
   rapidIngressIsValid,
   rapidIngressPlacementIsLegal,
+  RULE_COVERAGE_BATTLE_STATE_VERSION,
   rangedTargetEligibilityIsValid,
   replayBattleState,
   transportLoadIsValid,
@@ -87,6 +88,10 @@ import {
   weaponBearerDeclarationIsValid,
   weaponInventoryDeclarationIsValid,
 } from "../lib/battle-state.mjs";
+import {
+  battleRuleSelectionIds,
+  verifyBattleRuleCoverageBinding,
+} from "../lib/battle-rule-selection.mjs";
 import { BATTLE_PHASE_STEPS } from "../lib/battle-clock.mjs";
 import {
   RULE_COVERAGE_STATUS,
@@ -664,11 +669,40 @@ function verifyBattleClock(
   }
 }
 
-async function replayFormationHealth(candidate: unknown, requestedFormationId: unknown) {
+async function replayFormationHealth(
+  candidate: unknown,
+  requestedFormationId: unknown,
+  request: Request,
+  env: Env,
+) {
   if (typeof requestedFormationId !== "string" || !requestedFormationId) {
     throw new Error("formationId must be a non-empty string");
   }
   const state = normalizeBattleState(candidate);
+  const replayedState = replayBattleState(state);
+  if (state.version >= RULE_COVERAGE_BATTLE_STATE_VERSION) {
+    if (!replayedState.ruleCoverage) {
+      throw new Error("Battle state is missing source-locked rule selections");
+    }
+    const coverage = verifyBattleRuleCoverageBinding(
+      await loadRuleCoverage(request, env),
+      replayedState.ruleCoverage,
+    );
+    const checked = await checkedRuleCoverage(
+      request,
+      env,
+      battleRuleSelectionIds(coverage.plan).map((id) => ({
+        id,
+        acknowledgement: coverage.plan.acknowledgements[id] ?? "",
+      })),
+    );
+    if (JSON.stringify(checked) !== JSON.stringify(coverage.report)) {
+      throw new ServiceUnavailableError(
+        "Battle rule coverage diverged from the canonical engines",
+        "BATTLE_RULE_COVERAGE_DIVERGENCE",
+      );
+    }
+  }
   const registration = state.events.find(
     (event) => event.type === "formation_registered" && event.formation.id === requestedFormationId,
   );
@@ -836,7 +870,7 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         "BATTLE_REPLAY_DIVERGENCE",
       );
     }
-    const replayed = replayBattleState(state);
+    const replayed = replayedState;
     const targetEligibilityFacts = [...replayed.targetEligibilityFacts.values()]
       .map((fact) => {
         const flags =
@@ -1592,6 +1626,7 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
     return {
       schemaVersion: state.version,
       rulesSnapshot: state.rulesSnapshot,
+      ruleCoverage: replayed.ruleCoverage,
       formationId: requestedFormationId,
       health,
       activeAttackIds: replayed.activeAttackIds,
@@ -3093,7 +3128,7 @@ async function handleApi(request: Request, env: Env) {
         return apiError("battleState is required");
       }
       return json({
-        data: await replayFormationHealth(body.battleState, body.formationId),
+        data: await replayFormationHealth(body.battleState, body.formationId, request, env),
         apiVersion: "v1",
       });
     }

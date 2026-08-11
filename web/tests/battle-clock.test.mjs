@@ -21,6 +21,7 @@ import {
   startBattle,
   startFormationActivation,
 } from "../lib/battle-state.mjs";
+import { coveredBattleRuleBinding } from "./rule-coverage-fixture.mjs";
 
 function formation(id, playerId) {
   return {
@@ -62,14 +63,16 @@ function formation(id, playerId) {
 }
 
 function setupBattle() {
+  const players = [
+    { id: "player-1", listId: "list-1", listUpdatedAt: 10, name: "First" },
+    { id: "player-2", listId: "list-2", listUpdatedAt: 20, name: "Second" },
+  ];
   let state = createBattleState({
     id: "clock-battle",
     createdAt: 0,
     rulesSnapshot: "catalogue:test",
-    players: [
-      { id: "player-1", listId: "list-1", listUpdatedAt: 10, name: "First" },
-      { id: "player-2", listId: "list-2", listUpdatedAt: 20, name: "Second" },
-    ],
+    players,
+    ruleCoverage: coveredBattleRuleBinding(players),
   });
   state = registerBattleFormation(state, formation("unit-1", "player-1"), "register-1", 1);
   state = registerBattleFormation(state, formation("unit-2", "player-2"), "register-2", 2);

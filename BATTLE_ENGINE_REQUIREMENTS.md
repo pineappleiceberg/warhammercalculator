@@ -133,10 +133,12 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    geometry-backed engagement.
 6. **In progress:** the source-locked Core Rules and universal-Stratagem matrix,
    four-state coverage model, fail-closed C/WebAssembly predicate, static
-   catalogue, API checker, and deployment health check are complete. Next record
-   exact faction, detachment, enhancement, datasheet, terrain, and mission
-   selections in canonical battle setup, then expand each category with pinned
-   executable or reason-backed guided rules.
+   catalogue, API checker, deployment health check, and version-24 canonical
+   selection gate are complete. Setup records exact faction, detachment,
+   enhancement, datasheet, terrain, and mission identities and blocks every
+   absent, stale, unsupported, or unacknowledged rule before a new battle starts.
+   Next expand each category with pinned catalogue mappings and executable or
+   reason-backed guided rules.
 7. Add table geometry and player-supplied measurement and visibility facts.
 8. Deliver the complete guided battle workflow and full-game replay corpus.
 9. Add deterministic automated policies, batch battle simulation, and calibrated

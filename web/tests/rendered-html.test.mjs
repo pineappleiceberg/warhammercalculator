@@ -12,7 +12,7 @@ import {
   closeRangedTargetDeclarations,
   completeFormationActivation,
   configureBattleMission,
-  createBattleState,
+  createBattleState as createUncoveredBattleState,
   declareFormationDeployment,
   deployFormation,
   openBattleChoice,
@@ -42,6 +42,14 @@ import {
   startFormationMovement,
 } from "../lib/battle-state.mjs";
 import { rulesInteractionCases } from "./rules-interaction-corpus.mjs";
+import { coveredBattleRuleBinding, coveredRuleCoverageMatrix } from "./rule-coverage-fixture.mjs";
+
+function createBattleState(input) {
+  return createUncoveredBattleState({
+    ...input,
+    ruleCoverage: coveredBattleRuleBinding(input.players),
+  });
+}
 
 const projectRoot = new URL("../", import.meta.url);
 const goldenBattleReplay = JSON.parse(
@@ -117,6 +125,9 @@ const testEnv = {
   ASSETS: {
     fetch: async (request) => {
       const pathname = new URL(request.url).pathname.replace(/^\//, "");
+      if (pathname === "battle-rule-coverage.json") {
+        return Response.json(coveredRuleCoverageMatrix);
+      }
       try {
         return new Response(await readFile(new URL(`../public/${pathname}`, import.meta.url)));
       } catch {
@@ -270,7 +281,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const coverage = (await coverageResponse.json()).data;
   assert.equal(coverage.snapshotId, "wh40k-10e-core-2025-10-v23");
   assert.equal(coverage.sourceLocked, true);
-  assert.equal(coverage.rules.length, 15);
+  assert.equal(coverage.rules.length, coveredRuleCoverageMatrix.rules.length);
 
   const coverageCheckResponse = await worker.fetch(
     new Request("http://localhost/api/v1/rules/coverage/check", {
@@ -3059,9 +3070,29 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
   assert.equal(body.data.schemaVersion, BATTLE_STATE_VERSION);
+  assert.equal(body.data.ruleCoverage.report.permitted, true);
+  assert.equal(body.data.ruleCoverage.snapshotId, coveredRuleCoverageMatrix.snapshotId);
   assert.equal(body.data.charges[0].canonicalMovement, true);
   assert.deepEqual(body.data.charges[0].rolls, [3, 4]);
   assert.equal(body.data.charges[0].chargeDistanceThousandths, 7000);
+  const tamperedCoverageState = structuredClone(state);
+  tamperedCoverageState.events.find(
+    (event) => event.type === "rule_coverage_configured",
+  ).coverage.sourceLocks[0].sha256 = "0".repeat(64);
+  const tamperedCoverageResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: tamperedCoverageState, formationId: target.id }),
+    }),
+    testEnv,
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  assert.equal(tamperedCoverageResponse.status, 400);
+  assert.match(
+    (await tamperedCoverageResponse.json()).error.message,
+    /does not match the loaded source snapshot/,
+  );
   assert.equal(body.data.charges[0].successful, true);
   assert.equal(body.data.pendingHeroicIntervention, null);
   assert.equal(body.data.heroicInterventions.length, 1);

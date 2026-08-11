@@ -11,6 +11,7 @@ import {
   HEROIC_INTERVENTION_BATTLE_STATE_VERSION,
   RANGED_DECLARATION_BATTLE_STATE_VERSION,
   RAPID_INGRESS_BATTLE_STATE_VERSION,
+  RULE_COVERAGE_BATTLE_STATE_VERSION,
   SETUP_RULES_BATTLE_STATE_VERSION,
   SMOKESCREEN_BATTLE_STATE_VERSION,
   ROSTER_BATTLE_STATE_VERSION,
@@ -21,8 +22,15 @@ import {
   WEAPON_BEARER_BATTLE_STATE_VERSION,
   WEAPON_INVENTORY_BATTLE_STATE_VERSION,
   createBattleState,
+  configureBattleRuleCoverage,
   normalizeBattleState,
+  replayBattleState,
 } from "./battle-state.mjs";
+import {
+  bindBattleRuleSelections,
+  deriveBattleRuleSelectionPlan,
+  verifyBattleRuleCoverageBinding,
+} from "./battle-rule-selection.mjs";
 import {
   savedFormationBattleRegistration,
   savedFormationDefensiveEquipmentDefaults,
@@ -405,17 +413,38 @@ export function battleRosterRevisionsMatch(state, firstList, secondList) {
   }
 }
 
+function battleRuleSelectionIdentitiesMatch(plan, players, lists) {
+  return players.every((player, index) => {
+    const selected = plan.players.find((candidate) => candidate.playerId === player.id);
+    const list = lists[index];
+    return (
+      selected?.faction.sourceId === list.factionId &&
+      selected.datasheets.length === list.units.length &&
+      list.units.every((unit) =>
+        selected.datasheets.some(
+          (datasheet) => datasheet.savedUnitId === unit.id && datasheet.datasheetId === unit.unitId,
+        ),
+      )
+    );
+  });
+}
+
 export function initializeBattleForLists({
   catalogue,
   firstList,
   secondList,
   rulesSnapshot,
+  ruleCoverageMatrix,
+  ruleSelectionOverrides = {},
   state = null,
   id = "battle-current",
   legacyFormationEquipmentCounts = {},
 }) {
   if (!catalogue || !firstList || !secondList) {
     throw new Error("Both saved lists and the catalogue are required for battle setup");
+  }
+  if (!ruleCoverageMatrix?.sourceLocked) {
+    throw new Error("A source-locked battle rule coverage matrix is required for battle setup");
   }
   let next = state;
   if (!next) {
@@ -518,11 +547,41 @@ export function initializeBattleForLists({
             sourceVersion < RAPID_INGRESS_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyRapidIngressThroughSequence ?? 0),
+          legacyRuleCoverageThroughSequence:
+            sourceVersion < RULE_COVERAGE_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyRuleCoverageThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {
       throw new Error("A saved roster changed after this battle was set up");
     }
   }
-  return registerCompleteRosters(catalogue, next, firstList, secondList);
+  next = registerCompleteRosters(catalogue, next, firstList, secondList);
+  const lists = listsForPlayers(next, firstList, secondList);
+  const current = replayBattleState(next).ruleCoverage;
+  if (current && Object.keys(ruleSelectionOverrides).length === 0) {
+    const verified = verifyBattleRuleCoverageBinding(ruleCoverageMatrix, current);
+    if (!battleRuleSelectionIdentitiesMatch(verified.plan, next.players, lists)) {
+      throw new Error("Battle rule selections do not match the locked saved rosters");
+    }
+    return next;
+  }
+  const plan = deriveBattleRuleSelectionPlan(
+    ruleCoverageMatrix,
+    next.players,
+    lists,
+    ruleSelectionOverrides,
+  );
+  const coverage = bindBattleRuleSelections(ruleCoverageMatrix, plan);
+  verifyBattleRuleCoverageBinding(ruleCoverageMatrix, coverage);
+  if (JSON.stringify(current) !== JSON.stringify(coverage)) {
+    next = configureBattleRuleCoverage(
+      next,
+      coverage,
+      `battle-rule-coverage-${next.events.length + 1}`,
+      next.events.length + 1,
+    );
+  }
+  return next;
 }

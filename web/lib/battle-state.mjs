@@ -10,8 +10,10 @@ import {
   startBattleClock,
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
+import { normalizeBattleRuleCoverageBinding } from "./battle-rule-selection.mjs";
 
-export const BATTLE_STATE_VERSION = 23;
+export const BATTLE_STATE_VERSION = 24;
+export const RULE_COVERAGE_BATTLE_STATE_VERSION = 24;
 export const RAPID_INGRESS_BATTLE_STATE_VERSION = 23;
 export const SMOKESCREEN_BATTLE_STATE_VERSION = 22;
 export const COUNTER_OFFENSIVE_BATTLE_STATE_VERSION = 21;
@@ -1898,6 +1900,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   ) {
     throw new Error("Rapid Ingress reactions require battle-state version 23");
   }
+  if (
+    stateVersion < RULE_COVERAGE_BATTLE_STATE_VERSION &&
+    event.type === "rule_coverage_configured"
+  ) {
+    throw new Error("Rule coverage configuration requires battle-state version 24");
+  }
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation, stateVersion);
     if (!formations.players.has(formation.playerId)) throw new Error("Formation player is unknown");
@@ -1922,6 +1930,10 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     }
     normalized.formation = formation;
     formations.byId.set(formation.id, formation);
+    return normalized;
+  }
+  if (event.type === "rule_coverage_configured") {
+    normalized.coverage = normalizeBattleRuleCoverageBinding(event.coverage);
     return normalized;
   }
   if (event.type === "battle_started") {
@@ -3339,14 +3351,31 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   throw new Error(`Unsupported battle event type: ${event.type}`);
 }
 
-export function createBattleState({ id, createdAt, rulesSnapshot = "catalogue-current", players }) {
+export function createBattleState({
+  id,
+  createdAt,
+  rulesSnapshot = "catalogue-current",
+  players,
+  ruleCoverage = null,
+}) {
   return normalizeBattleState({
     version: BATTLE_STATE_VERSION,
     id,
     createdAt,
     rulesSnapshot,
     players,
-    events: [],
+    events: ruleCoverage
+      ? [
+          {
+            version: BATTLE_EVENT_VERSION,
+            id: "battle-rule-coverage-initial",
+            sequence: 1,
+            at: 0,
+            type: "rule_coverage_configured",
+            coverage: ruleCoverage,
+          },
+        ]
+      : [],
   });
 }
 
@@ -3377,6 +3406,7 @@ export function normalizeBattleState(candidate) {
       COUNTER_OFFENSIVE_BATTLE_STATE_VERSION,
       SMOKESCREEN_BATTLE_STATE_VERSION,
       RAPID_INGRESS_BATTLE_STATE_VERSION,
+      RULE_COVERAGE_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -3433,6 +3463,7 @@ export function normalizeBattleState(candidate) {
         COUNTER_OFFENSIVE_BATTLE_STATE_VERSION,
         SMOKESCREEN_BATTLE_STATE_VERSION,
         RAPID_INGRESS_BATTLE_STATE_VERSION,
+        RULE_COVERAGE_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -3570,6 +3601,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyRapidIngressThroughSequence = nonnegativeInteger(
         migration.legacyRapidIngressThroughSequence,
         "Legacy Rapid Ingress event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= RULE_COVERAGE_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyRuleCoverageThroughSequence = nonnegativeInteger(
+        migration.legacyRuleCoverageThroughSequence,
+        "Legacy rule coverage event sequence",
         events.length,
       );
     }
@@ -4342,6 +4380,7 @@ export function replayBattleState(state) {
   let activeRangedDeclarationSet = null;
   let readyRangedAttacks = [];
   let deploymentPriorityPlayerId = "";
+  let ruleCoverage = null;
   let clock = setupBattleClock();
   let mission = defaultMission(state.players);
   let resources = trackerResources(state.players, mission);
@@ -4398,6 +4437,10 @@ export function replayBattleState(state) {
     state.version < RAPID_INGRESS_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyRapidIngressThroughSequence ?? 0);
+  const legacyRuleCoverageThroughSequence =
+    state.version < RULE_COVERAGE_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyRuleCoverageThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -4891,9 +4934,31 @@ export function replayBattleState(state) {
       );
       continue;
     }
+    if (event.type === "rule_coverage_configured") {
+      if (clock.status !== "setup") {
+        throw new Error("Battle rule selections are locked after the battle starts");
+      }
+      const migratedInitialBinding =
+        state.migration &&
+        !ruleCoverage &&
+        event.sequence === legacyRuleCoverageThroughSequence + 1;
+      if (deploymentByFormation.size > 0 && !migratedInitialBinding) {
+        throw new Error("Battle rule selections are locked after deployment declarations begin");
+      }
+      ruleCoverage = event.coverage;
+      continue;
+    }
     if (event.type === "battle_started") {
       if (clock.status !== "setup") throw new Error("Battle has already started");
       if (pendingChoices.size > 0) throw new Error("Pending choices block the battle start");
+      if (
+        event.sequence > legacyRuleCoverageThroughSequence &&
+        (!ruleCoverage || !ruleCoverage.report.permitted)
+      ) {
+        throw new Error(
+          "Every selected battle rule must pass source-locked coverage before battle start",
+        );
+      }
       if (
         (state.version < DEPLOYMENT_BATTLE_STATE_VERSION || state.migration) &&
         deploymentByFormation.size === 0
@@ -7518,6 +7583,7 @@ export function replayBattleState(state) {
     formations,
     activeAttackIds,
     clock,
+    ruleCoverage,
     pendingChoices,
     resolvedChoices,
     effects,
@@ -7671,6 +7737,14 @@ export function arriveFromReserves(
 export function startBattle(state, firstPlayerId, id, at) {
   const replayed = replayBattleState(state);
   if (replayed.clock.status !== "setup") throw new Error("Battle has already started");
+  if (
+    state.version >= RULE_COVERAGE_BATTLE_STATE_VERSION &&
+    !replayed.ruleCoverage?.report.permitted
+  ) {
+    throw new Error(
+      "Every selected battle rule must pass source-locked coverage before battle start",
+    );
+  }
   const unresolved = [...replayed.formations.values()].flatMap((formation) =>
     formation.weaponBearerTracking === "exact"
       ? formation.weaponInventory.filter((group) => !group.bearerAssignmentsReviewed)
@@ -7688,6 +7762,28 @@ export function startBattle(state, firstPlayerId, id, at) {
     type: "battle_started",
     firstPlayerId,
     clock,
+  });
+}
+
+export function configureBattleRuleCoverage(state, coverage, id, at) {
+  const replayed = replayBattleState(state);
+  if (replayed.clock.status !== "setup") {
+    throw new Error("Battle rule selections are locked after the battle starts");
+  }
+  const migratedInitialBinding =
+    state.migration &&
+    !replayed.ruleCoverage &&
+    state.events.length === state.migration.legacyRuleCoverageThroughSequence;
+  if (replayed.deploymentByFormation.size > 0 && !migratedInitialBinding) {
+    throw new Error("Battle rule selections are locked after deployment declarations begin");
+  }
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "rule_coverage_configured",
+    coverage,
   });
 }
 

@@ -68,6 +68,7 @@ import { applyFireOverwatchAttackRules } from "../lib/fire-overwatch.mjs";
 import { applyGoToGroundAttackEffects } from "../lib/go-to-ground.mjs";
 import { applySmokescreenAttackEffects } from "../lib/smokescreen.mjs";
 import { applyBattleHealthToTargetSequence } from "../lib/formations.mjs";
+import { coveredBattleRuleBinding } from "./rule-coverage-fixture.mjs";
 
 const targets = [
   { wounds: 3, modelCount: 2 },
@@ -392,14 +393,16 @@ const battleRuleSources = JSON.parse(
 );
 
 function newBattle() {
+  const players = [
+    { id: "player-1", listId: "list-1", listUpdatedAt: 10, name: "Attackers" },
+    { id: "player-2", listId: "list-2", listUpdatedAt: 20, name: "Defenders" },
+  ];
   return createBattleState({
     id: "battle-1",
     createdAt: 100,
     rulesSnapshot: "catalogue:test",
-    players: [
-      { id: "player-1", listId: "list-1", listUpdatedAt: 10, name: "Attackers" },
-      { id: "player-2", listId: "list-2", listUpdatedAt: 20, name: "Defenders" },
-    ],
+    players,
+    ruleCoverage: coveredBattleRuleBinding(players),
   });
 }
 
@@ -5073,10 +5076,12 @@ test("rejects divergent replay state and non-latest undo", () => {
   falseSummary.events.find((event) => event.id === "event-attack-1").summary.damage = 2;
   assert.throws(() => normalizeBattleState(falseSummary), /summary damage/);
   const missingAttacker = JSON.parse(JSON.stringify(state));
-  missingAttacker.events = missingAttacker.events.slice(1).map((event, index) => ({
-    ...event,
-    sequence: index + 1,
-  }));
+  missingAttacker.events = missingAttacker.events
+    .filter((event) => event.id !== "event-register-attacker")
+    .map((event, index) => ({
+      ...event,
+      sequence: index + 1,
+    }));
   assert.throws(() => normalizeBattleState(missingAttacker), /formation is not registered/);
   const invalidUndo = {
     ...state,
