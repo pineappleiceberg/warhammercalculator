@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 6 as soon as both lists are selected. Every
+creates battle-state version 7 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -669,6 +669,23 @@ fail-closed behind explicit reason-bearing player confirmations until table
 geometry is executable. The official Core Rules source identity, retrieval date,
 content hash, and relevant pages are pinned in
 `data/battle-rule-sources.json`.
+Version 7 locks each legal saved Transport assignment to its exact battle
+formation and records starting occupancy during Declare Battle Formations.
+Assigned passengers can embark only after a Normal, Advance, or Fall Back move
+ends wholly within a player-confirmed 3 inches, cannot re-embark after
+disembarking in the same phase, and can disembark only if they started that
+Movement phase embarked. Transport movement determines the passenger's
+remaining movement and charge eligibility. Firing Deck choices require current
+replayed occupancy rather than a list-time assignment alone. Destroying an
+occupied Transport creates a mandatory immediate resolution that blocks every
+other transition. The player must confirm that any Deadly Demise effects were
+resolved first (or do not apply), choose the first casualty profile in a mixed
+unit, and confirm normal or Emergency Disembarkation placement. Unplaceable
+models, per-model D6 rolls, applicable Feel No Pain rolls, casualties,
+Battle-shock, and movement/charge restrictions are recorded and replayed. A
+wounded model remains the mandatory first allocation. Real rolls use
+rejection-sampled browser CSPRNG values. Version-1 through version-6 logs migrate
+with explicit provenance and assume no unrecorded occupancy.
 The guided timeline records battle round, first or second player turn, active
 and priority player, phase, and step. It covers Command, Movement, Shooting,
 Charge, and Fight through five rounds. Pending bounded choices stop both attacks
@@ -706,7 +723,7 @@ attacking. Undo appends a compensating event instead of deleting history.
 Validated JSON battle exports and imports preserve the rules snapshot and fail
 closed when the referenced saved lists or loaded catalogue do not match.
 The same version-1 flat event ABI for formation-health replay runs in native C
-and WebAssembly for version-1 through version-6 JSON battle envelopes.
+and WebAssembly for version-1 through version-7 JSON battle envelopes.
 It validates attack transitions, damage and casualty totals, the one-wounded-model
 invariant, and last-in-first-out compensating undo without modifying its output
 when an event stream is invalid. `POST /api/v1/battle/replay` accepts
@@ -718,7 +735,9 @@ current clock, pending-choice IDs, active effects, mission, per-player resources
 objective control, Battle-shocked formation IDs, categorized scoring history,
 movement and charge outcomes, current/completed activation state, deployment
 declarations and order, battlefield/off-battlefield identities, Reserve
-arrivals, and Reserves destroyed at battle end. The
+arrivals, Reserves destroyed at battle end, current Transport occupancy,
+disembarkations, mandatory destroyed-Transport state, and recorded passenger
+rolls and casualties. The
 portable ABI supports the same 32 formation segments and 10,000-event bound as
 the saved web schema.
 On narrow screens, Play Mode groups the attacker and target into guided steps,

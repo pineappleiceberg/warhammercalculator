@@ -35,7 +35,8 @@ enum whc_battle_phase {
 
 enum whc_battle_event_kind {
     WHC_BATTLE_EVENT_ATTACK = 1u,
-    WHC_BATTLE_EVENT_REVERT = 2u
+    WHC_BATTLE_EVENT_REVERT = 2u,
+    WHC_BATTLE_EVENT_TRANSPORT_DAMAGE = 3u
 };
 
 /*@ requires 1 <= segment_count && segment_count <= WHC_MAX_BATTLE_SEGMENTS;

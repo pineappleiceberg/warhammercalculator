@@ -30,11 +30,14 @@ import {
   createBattleState,
   declareFormationDeployment,
   deployFormation,
+  disembarkFormation,
+  embarkFormation,
   normalizeBattleState,
   passFightPriority,
   recordFormationCharge,
   recordFormationMovement,
   replayBattleState,
+  resolveDestroyedTransport,
   resolveBattleChoice,
   revertLatestAttack,
   scoreBattlePoints,
@@ -167,6 +170,12 @@ export default function PlayMode() {
   const [deploymentPlacementReason, setDeploymentPlacementReason] = useState("");
   const [reservePlacementConfirmed, setReservePlacementConfirmed] = useState(false);
   const [reservePlacementReason, setReservePlacementReason] = useState("");
+  const [transportPlacementConfirmed, setTransportPlacementConfirmed] = useState(false);
+  const [transportPlacementReason, setTransportPlacementReason] = useState("");
+  const [deadlyDemiseResolvedConfirmed, setDeadlyDemiseResolvedConfirmed] = useState(false);
+  const [destroyedTransportOptions, setDestroyedTransportOptions] = useState<
+    Record<string, { emergency: boolean; unplacedModels: number; firstSegmentId: string }>
+  >({});
   const [recoveryReady, setRecoveryReady] = useState(false);
   const recovered = useRef(false);
   const migrateLegacyLimitedUses = useRef(false);
@@ -421,7 +430,7 @@ export default function PlayMode() {
     catalogue && targetList
       ? transportAssignmentReport(catalogue, targetList)
       : { assignments: [], errors: [], attachedUnitIds: new Set<string>() };
-  const validFiringDeckPassengerIds = new Set(
+  const assignedFiringDeckPassengerIds = new Set(
     attackerTransportReport.assignments
       .filter((assignment) => assignment.transportUnit.id === attackerSelectionId)
       .map((assignment) => assignment.passengerUnit.id),
@@ -614,6 +623,50 @@ export default function PlayMode() {
     : "";
   const replayedBattle = battleState ? replayBattleState(battleState) : null;
   const battleClock = replayedBattle?.clock ?? null;
+  const validFiringDeckPassengerIds = new Set(
+    [...assignedFiringDeckPassengerIds].filter((savedUnitId) => {
+      if (!replayedBattle || replayedBattle.deploymentByFormation.size === 0) return true;
+      const passenger =
+        catalogue && attackerList
+          ? savedFormationForUnit(catalogue, attackerList, savedUnitId)
+          : undefined;
+      return (
+        passenger &&
+        replayedBattle.embarkedByFormation.get(`${attackerPlayerId}:${passenger.id}`) ===
+          attackerBattleFormationId
+      );
+    }),
+  );
+  const selectedEmbarkedTransportId = attackerBattleFormationId
+    ? (replayedBattle?.embarkedByFormation.get(attackerBattleFormationId) ?? "")
+    : "";
+  const selectedBattleFormation = attackerBattleFormationId
+    ? replayedBattle?.formations.get(attackerBattleFormationId)
+    : undefined;
+  const assignedTransportFormationId = selectedBattleFormation?.assignedTransportFormationId ?? "";
+  const assignedTransportOnBattlefield = Boolean(
+    assignedTransportFormationId &&
+      battleState &&
+      battleFormationIsOnBattlefield(battleState, assignedTransportFormationId),
+  );
+  const pendingDestroyedTransport = replayedBattle
+    ? [...replayedBattle.pendingTransportDestructions.values()][0]
+    : undefined;
+  const selectedDisembarkedCurrentPhase = Boolean(
+    attackerBattleFormationId &&
+      battleClock?.status === "active" &&
+      (() => {
+        const disembarkation =
+          replayedBattle?.disembarkedByFormation.get(attackerBattleFormationId);
+        return (
+          disembarkation &&
+          disembarkation.clock.battleRound === battleClock.battleRound &&
+          disembarkation.clock.turn === battleClock.turn &&
+          disembarkation.clock.phase === battleClock.phase &&
+          disembarkation.clock.activePlayerId === battleClock.activePlayerId
+        );
+      })(),
+  );
   const targetEligibilityKey = `${attackerBattleFormationId}:${targetBattleFormationId}:${weaponProfile?.id ?? ""}:${battleClock?.battleRound ?? 0}:${battleClock?.turn ?? 0}:${battleClock?.phase ?? "setup"}:${battleClock?.step ?? "setup"}`;
   const targetEligibilityConfirmed = targetEligibilityConfirmationKey === targetEligibilityKey;
   const weaponHasAssault = Boolean(
@@ -1597,6 +1650,8 @@ export default function PlayMode() {
               targetBattleFormationId,
               nextSequence,
               next,
+              battleFormation(battleState, targetBattleFormationId)?.assignedTransportFormationId ??
+                "",
             ),
             crypto.randomUUID(),
             battleState.events.length + 1,
@@ -2129,16 +2184,26 @@ export default function PlayMode() {
       let next = battleState;
       for (const formation of replayedBattle.formations.values()) {
         const location = String(data.get(`location-${formation.id}`) || "battlefield");
-        const inReserves = location !== "battlefield";
+        const transportFormationId =
+          location === "embarked" ? formation.assignedTransportFormationId : "";
+        const transportLocation = transportFormationId
+          ? String(data.get(`location-${transportFormationId}`) || "battlefield")
+          : "";
+        const inReserves =
+          ["reserves", "strategic_reserves"].includes(location) ||
+          (location === "embarked" &&
+            ["reserves", "strategic_reserves"].includes(transportLocation));
+        const countsTowardStrategicReserves =
+          location === "strategic_reserves" ||
+          (location === "embarked" && transportLocation === "strategic_reserves");
         next = declareFormationDeployment(
           next,
           formation.id,
           location,
           {
-            points:
-              location === "strategic_reserves"
-                ? Math.max(0, Number(data.get(`points-${formation.id}`)) || 0)
-                : 0,
+            points: countsTowardStrategicReserves
+              ? Math.max(0, Number(data.get(`points-${formation.id}`)) || 0)
+              : 0,
             earliestBattleRound:
               location === "strategic_reserves"
                 ? Math.max(2, Number(data.get(`round-${formation.id}`)) || 2)
@@ -2146,7 +2211,10 @@ export default function PlayMode() {
             eligibilityConfirmed: !inReserves || data.get(`eligible-${formation.id}`) === "on",
             eligibilityReason: inReserves
               ? String(data.get(`reason-${formation.id}`) || "").trim()
-              : "Battlefield deployment",
+              : location === "embarked"
+                ? "Core rules Transport declaration"
+                : "Battlefield deployment",
+            transportFormationId,
           },
           crypto.randomUUID(),
           next.events.length + 1,
@@ -2447,6 +2515,106 @@ export default function PlayMode() {
     }
   };
 
+  const recordSelectedEmbarkation = () => {
+    if (!battleState || !attackerBattleFormationId || !assignedTransportFormationId) return;
+    try {
+      const next = embarkFormation(
+        battleState,
+        attackerBattleFormationId,
+        assignedTransportFormationId,
+        {
+          rangeConfirmed: transportPlacementConfirmed,
+          rangeReason: transportPlacementReason.trim(),
+        },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setTransportPlacementConfirmed(false);
+      setTransportPlacementReason("");
+      setStatus(`${attackerFormation?.name ?? "Formation"} embarked`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Formation could not embark");
+    }
+  };
+
+  const recordSelectedDisembarkation = () => {
+    if (!battleState || !attackerBattleFormationId || !selectedEmbarkedTransportId) return;
+    try {
+      const next = disembarkFormation(
+        battleState,
+        attackerBattleFormationId,
+        selectedEmbarkedTransportId,
+        {
+          placementConfirmed: transportPlacementConfirmed,
+          placementReason: transportPlacementReason.trim(),
+        },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setTransportPlacementConfirmed(false);
+      setTransportPlacementReason("");
+      setStatus(`${attackerFormation?.name ?? "Formation"} disembarked`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Formation could not disembark");
+    }
+  };
+
+  const resolvePendingDestroyedTransport = () => {
+    if (!battleState || !pendingDestroyedTransport) return;
+    try {
+      const next = resolveDestroyedTransport(
+        battleState,
+        pendingDestroyedTransport.transportFormationId,
+        pendingDestroyedTransport.passengerFormationIds.map((formationId: string) => ({
+          formationId,
+          firstSegmentId:
+            destroyedTransportOptions[formationId]?.firstSegmentId ??
+            replayedBattle.formations
+              .get(formationId)
+              ?.segments.find(
+                (segment: { id: string }) =>
+                  replayedBattle.formations.get(formationId)?.health[segment.id].modelsRemaining >
+                  0,
+              )?.id ??
+            "",
+          emergency: destroyedTransportOptions[formationId]?.emergency ?? false,
+          unplacedModels: destroyedTransportOptions[formationId]?.unplacedModels ?? 0,
+          placementConfirmed: transportPlacementConfirmed,
+          placementReason: transportPlacementReason.trim(),
+        })),
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+        undefined,
+        {
+          deadlyDemiseResolvedConfirmed,
+          deadlyDemiseResolutionReason:
+            "Deadly Demise resolved before disembarkation, or the Transport has no such ability",
+        },
+      );
+      const resolved = next.events.at(-1);
+      setBattleState(next);
+      setTransportPlacementConfirmed(false);
+      setTransportPlacementReason("");
+      setDeadlyDemiseResolvedConfirmed(false);
+      setDestroyedTransportOptions({});
+      const mortalWounds =
+        resolved?.type === "transport_destroyed_resolved"
+          ? resolved.passengers.reduce(
+              (total: number, passenger: { summary: { damage: number } }) =>
+                total + passenger.summary.damage,
+              0,
+            )
+          : 0;
+      setStatus(`Destroyed Transport resolved · ${mortalWounds} passenger damage`);
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "Destroyed Transport could not be resolved",
+      );
+    }
+  };
+
   const recordSelectedCharge = (successful: boolean) => {
     if (!battleState || !attackerBattleFormationId || !targetBattleFormationId) return;
     try {
@@ -2567,7 +2735,7 @@ export default function PlayMode() {
     if (!attackerList) return "Choose an attacking list";
     if (!attackerUnit) return "Choose an attacking unit";
     if (firingDeckChoice && !validFiringDeckPassengerIds.has(firingDeckChoice.passengerUnitId)) {
-      return "Passenger is not legally assigned to this Transport";
+      return "Passenger is not currently embarked in this Transport";
     }
     if (firingDeckChoice && firingDeckPassengerAlreadyShot) {
       return "Passenger unit has already shot";
@@ -2587,6 +2755,9 @@ export default function PlayMode() {
         : "Finish deployment before starting the battle";
     }
     if (battleClock.status === "complete") return "The battle is complete";
+    if (pendingDestroyedTransport) {
+      return "Resolve the destroyed Transport and its passengers before continuing";
+    }
     if (
       attackerBattleFormationId &&
       !battleFormationIsOnBattlefield(battleState, attackerBattleFormationId)
@@ -4407,13 +4578,147 @@ export default function PlayMode() {
               {battleClock.status === "active" && (
                 <button
                   type="button"
-                  disabled={pendingBattleChoices.length > 0 || Boolean(activeFormationActivation)}
+                  disabled={
+                    pendingBattleChoices.length > 0 ||
+                    Boolean(activeFormationActivation) ||
+                    Boolean(pendingDestroyedTransport)
+                  }
                   onClick={advanceGuidedBattle}
                 >
                   Next step
                 </button>
               )}
             </div>
+            {replayedBattle && pendingDestroyedTransport && (
+              <div className="action-tracker" role="alert">
+                <strong>
+                  Resolve destroyed{" "}
+                  {replayedBattle.formations.get(pendingDestroyedTransport.transportFormationId)
+                    ?.name ?? "Transport"}
+                </strong>
+                <span>
+                  Every embarked unit must disembark immediately. The calculator will use secure
+                  random D6 rolls for each model and applicable Feel No Pain rolls.
+                </span>
+                {pendingDestroyedTransport.passengerFormationIds.map((formationId: string) => {
+                  const passenger = replayedBattle.formations.get(formationId);
+                  const liveModels = passenger
+                    ? Object.values(passenger.health).reduce(
+                        (total: number, health: { modelsRemaining: number }) =>
+                          total + health.modelsRemaining,
+                        0,
+                      )
+                    : 0;
+                  const options = destroyedTransportOptions[formationId] ?? {
+                    emergency: false,
+                    unplacedModels: 0,
+                    firstSegmentId:
+                      passenger?.segments.find(
+                        (segment: { id: string }) =>
+                          passenger.health[segment.id].modelsRemaining > 0,
+                      )?.id ?? "",
+                  };
+                  return (
+                    <fieldset key={formationId}>
+                      <legend>{passenger?.name ?? "Passenger unit"}</legend>
+                      {passenger && passenger.segments.length > 1 && (
+                        <label>
+                          <span>Allocate casualties to this model profile first</span>
+                          <select
+                            value={options.firstSegmentId}
+                            onChange={(event) =>
+                              setDestroyedTransportOptions((current) => ({
+                                ...current,
+                                [formationId]: {
+                                  ...options,
+                                  firstSegmentId: event.target.value,
+                                },
+                              }))
+                            }
+                          >
+                            {passenger.segments
+                              .filter(
+                                (segment: { id: string }) =>
+                                  passenger.health[segment.id].modelsRemaining > 0,
+                              )
+                              .map((segment: { id: string; name: string }) => (
+                                <option key={segment.id} value={segment.id}>
+                                  {segment.name}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                      )}
+                      <label className="confirmation-row">
+                        <input
+                          type="checkbox"
+                          checked={options.emergency}
+                          onChange={(event) =>
+                            setDestroyedTransportOptions((current) => ({
+                              ...current,
+                              [formationId]: {
+                                ...options,
+                                emergency: event.target.checked,
+                              },
+                            }))
+                          }
+                        />
+                        Emergency Disembarkation within 6 inches
+                      </label>
+                      {options.emergency && (
+                        <label>
+                          <span>Models that still cannot be set up</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max={liveModels}
+                            value={options.unplacedModels}
+                            onChange={(event) =>
+                              setDestroyedTransportOptions((current) => ({
+                                ...current,
+                                [formationId]: {
+                                  ...options,
+                                  unplacedModels: Math.min(
+                                    liveModels,
+                                    Math.max(0, Number(event.target.value) || 0),
+                                  ),
+                                },
+                              }))
+                            }
+                          />
+                        </label>
+                      )}
+                    </fieldset>
+                  );
+                })}
+                <label className="confirmation-row">
+                  <input
+                    type="checkbox"
+                    checked={deadlyDemiseResolvedConfirmed}
+                    onChange={(event) => setDeadlyDemiseResolvedConfirmed(event.target.checked)}
+                  />
+                  Any Deadly Demise roll and effects were resolved first, or this Transport has no
+                  Deadly Demise ability
+                </label>
+                <label className="confirmation-row">
+                  <input
+                    type="checkbox"
+                    checked={transportPlacementConfirmed}
+                    onChange={(event) => setTransportPlacementConfirmed(event.target.checked)}
+                  />
+                  All normal or Emergency Disembarkation placements checked on the table
+                </label>
+                <input
+                  value={transportPlacementReason}
+                  maxLength={300}
+                  placeholder="3-inch/6-inch placement and Engagement Range checked"
+                  onChange={(event) => setTransportPlacementReason(event.target.value)}
+                />
+                <button type="button" onClick={resolvePendingDestroyedTransport}>
+                  Roll and resolve passengers
+                </button>
+              </div>
+            )}
             {battleClock.status === "active" && activeFormationActivation && (
               <div className="action-tracker" role="status">
                 <strong>
@@ -4426,7 +4731,11 @@ export default function PlayMode() {
                     ? "Assault weapons only"
                     : "Resolve every selected weapon before finishing"}
                 </span>
-                <button type="button" onClick={finishFormationActivation}>
+                <button
+                  type="button"
+                  disabled={Boolean(pendingDestroyedTransport)}
+                  onClick={finishFormationActivation}
+                >
                   Finish activation
                 </button>
               </div>
@@ -4437,28 +4746,98 @@ export default function PlayMode() {
               attackerBattleFormationId &&
               attackerPlayerId === battleClock.activePlayerId && (
                 <div className="action-tracker">
-                  <strong>{attackerFormation?.name ?? "Selected formation"} movement</strong>
-                  {selectedMovementCurrent ? (
-                    <span>Recorded: {selectedMovement?.movement.replace("_", " ")}</span>
+                  <strong>
+                    {attackerFormation?.name ?? "Selected formation"}
+                    {selectedEmbarkedTransportId ? " · disembark" : " movement"}
+                  </strong>
+                  {selectedEmbarkedTransportId ? (
+                    <>
+                      <span>
+                        Embarked in{" "}
+                        {replayedBattle.formations.get(selectedEmbarkedTransportId)?.name}. It can
+                        disembark only if it started this Movement phase embarked.
+                      </span>
+                      <label className="confirmation-row">
+                        <input
+                          type="checkbox"
+                          checked={transportPlacementConfirmed}
+                          onChange={(event) => setTransportPlacementConfirmed(event.target.checked)}
+                        />
+                        Wholly within 3 inches and outside enemy Engagement Range
+                      </label>
+                      <input
+                        value={transportPlacementReason}
+                        maxLength={300}
+                        placeholder="Physical placement checked"
+                        onChange={(event) => setTransportPlacementReason(event.target.value)}
+                      />
+                      <button type="button" onClick={recordSelectedDisembarkation}>
+                        Disembark
+                      </button>
+                    </>
                   ) : (
-                    <div className="action-buttons" aria-label="Record selected formation movement">
-                      {(
-                        [
-                          ["stationary", "Remained stationary"],
-                          ["normal", "Normal move"],
-                          ["advance", "Advanced"],
-                          ["fall_back", "Fell Back"],
-                        ] as const
-                      ).map(([movement, label]) => (
-                        <button
-                          type="button"
-                          key={movement}
-                          onClick={() => recordSelectedMovement(movement)}
+                    <>
+                      {selectedMovementCurrent ? (
+                        <span>Recorded: {selectedMovement?.movement.replace("_", " ")}</span>
+                      ) : (
+                        <div
+                          className="action-buttons"
+                          aria-label="Record selected formation movement"
                         >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
+                          {(
+                            [
+                              ["stationary", "Remained stationary"],
+                              ["normal", "Normal move"],
+                              ["advance", "Advanced"],
+                              ["fall_back", "Fell Back"],
+                            ] as const
+                          )
+                            .filter(
+                              ([movement]) =>
+                                movement !== "stationary" || !selectedDisembarkedCurrentPhase,
+                            )
+                            .map(([movement, label]) => (
+                              <button
+                                type="button"
+                                key={movement}
+                                onClick={() => recordSelectedMovement(movement)}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                      {selectedMovementCurrent &&
+                        ["normal", "advance", "fall_back"].includes(
+                          selectedMovement?.movement ?? "",
+                        ) &&
+                        assignedTransportOnBattlefield &&
+                        !selectedDisembarkedCurrentPhase && (
+                          <>
+                            <label className="confirmation-row">
+                              <input
+                                type="checkbox"
+                                checked={transportPlacementConfirmed}
+                                onChange={(event) =>
+                                  setTransportPlacementConfirmed(event.target.checked)
+                                }
+                              />
+                              Every model ended the move within 3 inches of the assigned Transport
+                            </label>
+                            <input
+                              value={transportPlacementReason}
+                              maxLength={300}
+                              placeholder="Whole-unit distance checked"
+                              onChange={(event) => setTransportPlacementReason(event.target.value)}
+                            />
+                            <button type="button" onClick={recordSelectedEmbarkation}>
+                              Embark in{" "}
+                              {replayedBattle.formations.get(assignedTransportFormationId)?.name ??
+                                "Transport"}
+                            </button>
+                          </>
+                        )}
+                    </>
                   )}
                 </div>
               )}
@@ -4632,8 +5011,8 @@ export default function PlayMode() {
                   <div>
                     <strong>Declare battle formations</strong>
                     <span>
-                      Put every formation on the battlefield, in Reserves, or in Strategic Reserves
-                      before either player deploys a model.
+                      Put every formation on the battlefield, in Reserves, in Strategic Reserves, or
+                      inside its assigned Transport before either player deploys a model.
                     </span>
                   </div>
                   {[...replayedBattle.formations.values()].map((formation) => (
@@ -4647,12 +5026,19 @@ export default function PlayMode() {
                         <span>Starting location</span>
                         <select name={"location-" + formation.id} defaultValue="battlefield">
                           <option value="battlefield">Battlefield</option>
+                          {formation.assignedTransportFormationId && (
+                            <option value="embarked">
+                              Embarked in{" "}
+                              {replayedBattle.formations.get(formation.assignedTransportFormationId)
+                                ?.name ?? "assigned Transport"}
+                            </option>
+                          )}
                           <option value="reserves">Reserves (source rule)</option>
                           <option value="strategic_reserves">Strategic Reserves</option>
                         </select>
                       </label>
                       <label>
-                        <span>Points in Strategic Reserves</span>
+                        <span>Points if in Strategic Reserves</span>
                         <input
                           name={"points-" + formation.id}
                           type="number"
@@ -4673,7 +5059,8 @@ export default function PlayMode() {
                       </label>
                       <label className="confirmation-row">
                         <input type="checkbox" name={"eligible-" + formation.id} />
-                        Reserve eligibility confirmed when not deploying on the battlefield
+                        Reserve eligibility confirmed when this formation or its Transport starts in
+                        Reserves
                       </label>
                       <label>
                         <span>Reserve source rule</span>
@@ -4741,9 +5128,12 @@ export default function PlayMode() {
               <div className="action-tracker" role="status">
                 <strong>Deployment complete</strong>
                 <span>
-                  {replayedBattle.offBattlefieldFormationIds.size} formation
-                  {replayedBattle.offBattlefieldFormationIds.size === 1 ? "" : "s"} waiting in
-                  Reserves.
+                  {
+                    [...replayedBattle.deploymentByFormation.values()].filter((deployment) =>
+                      ["reserves", "strategic_reserves"].includes(deployment.location),
+                    ).length
+                  }{" "}
+                  in Reserves · {replayedBattle.embarkedByFormation.size} embarked.
                 </span>
               </div>
             )}

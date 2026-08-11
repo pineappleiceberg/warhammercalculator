@@ -7,7 +7,9 @@ import {
   activeBattleAttacks,
   advanceBattleClock,
   appendResolvedAttack,
+  battleFormationEmbarkedTransport,
   arriveFromReserves,
+  battleFormationIsOnBattlefield,
   battleFormationHealth,
   battleCanResolveAttack,
   changeBattleResource,
@@ -16,12 +18,15 @@ import {
   createBattleState,
   declareFormationDeployment,
   deployFormation,
+  disembarkFormation,
+  embarkFormation,
   normalizeBattleState,
   passFightPriority,
   registerBattleFormation,
   recordFormationCharge,
   recordFormationMovement,
   replayBattleState,
+  resolveDestroyedTransport,
   revertLatestAttack,
   scoreBattlePoints,
   setBattleObjectiveControl,
@@ -70,6 +75,71 @@ const attackerFormation = {
   playerId: "player-1",
   sourceFormationId: "formation-9",
   name: "Tank",
+};
+
+const transportFormation = {
+  id: "player-1:transport",
+  playerId: "player-1",
+  sourceFormationId: "transport",
+  name: "Transport",
+  keywords: ["Transport", "Vehicle"],
+  segments: [
+    {
+      id: "transport-model",
+      savedUnitId: "transport",
+      unitName: "Transport",
+      modelName: "Transport",
+      role: "standalone",
+      wounds: 3,
+      startingModels: 1,
+    },
+  ],
+};
+
+const passengerFormation = {
+  id: "player-1:passengers",
+  playerId: "player-1",
+  sourceFormationId: "passengers",
+  name: "Passengers",
+  assignedTransportFormationId: transportFormation.id,
+  keywords: ["Infantry"],
+  segments: [
+    {
+      id: "passenger-models",
+      savedUnitId: "passengers",
+      unitName: "Passengers",
+      modelName: "Passenger",
+      role: "standalone",
+      wounds: 2,
+      feelNoPain: 5,
+      startingModels: 2,
+    },
+  ],
+};
+
+const mixedPassengerFormation = {
+  ...passengerFormation,
+  id: "player-1:mixed-passengers",
+  sourceFormationId: "mixed-passengers",
+  name: "Mixed Passengers",
+  segments: [
+    {
+      ...passengerFormation.segments[0],
+      id: "mixed-bodyguard",
+      savedUnitId: "mixed-bodyguard",
+      modelName: "Bodyguard",
+      feelNoPain: 0,
+      startingModels: 1,
+    },
+    {
+      ...passengerFormation.segments[0],
+      id: "mixed-leader",
+      savedUnitId: "mixed-leader",
+      modelName: "Leader",
+      feelNoPain: 0,
+      startingModels: 1,
+    },
+  ],
 };
 
 const goldenReplay = JSON.parse(
@@ -162,6 +232,125 @@ function registeredBattle() {
   return state;
 }
 
+function transportBattle({
+  startEmbarked = true,
+  firstPlayerId = "player-1",
+  passenger = passengerFormation,
+} = {}) {
+  let state = registerBattleFormation(
+    registerBattleFormation(
+      registerBattleFormation(newBattle(), transportFormation, "register-transport", 1),
+      passenger,
+      "register-passengers",
+      2,
+    ),
+    formation,
+    "register-enemy",
+    3,
+  );
+  state = declareFormationDeployment(
+    state,
+    transportFormation.id,
+    "battlefield",
+    {},
+    "declare-transport",
+    4,
+  );
+  state = declareFormationDeployment(
+    state,
+    passenger.id,
+    startEmbarked ? "embarked" : "battlefield",
+    startEmbarked ? { transportFormationId: transportFormation.id } : {},
+    "declare-passengers",
+    5,
+  );
+  state = declareFormationDeployment(state, formation.id, "battlefield", {}, "declare-enemy", 6);
+  state = deployFormation(
+    state,
+    transportFormation.id,
+    { placementConfirmed: true, placementReason: "Deployment zone" },
+    "deploy-transport",
+    7,
+  );
+  if (!startEmbarked) {
+    state = deployFormation(
+      state,
+      formation.id,
+      { placementConfirmed: true, placementReason: "Deployment zone" },
+      "deploy-enemy",
+      8,
+    );
+    state = deployFormation(
+      state,
+      passenger.id,
+      { placementConfirmed: true, placementReason: "Deployment zone" },
+      "deploy-passengers",
+      9,
+    );
+  } else {
+    state = deployFormation(
+      state,
+      formation.id,
+      { placementConfirmed: true, placementReason: "Deployment zone" },
+      "deploy-enemy",
+      8,
+    );
+  }
+  return startBattle(state, firstPlayerId, "start-transport-battle", 10);
+}
+
+function advanceTo(state, predicate, prefix) {
+  let next = state;
+  while (!predicate(replayBattleState(next).clock)) {
+    next = advanceBattleClock(next, `${prefix}-${next.events.length}`, next.events.length + 1);
+  }
+  return next;
+}
+
+function battleWithDestroyedOccupiedTransport(passenger = passengerFormation) {
+  let state = transportBattle({ firstPlayerId: "player-2", passenger });
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "destroy-helper-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    formation.id,
+    "stationary",
+    "destroy-helper-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, (clock) => battleAttackWindow(clock), "destroy-helper-shooting");
+  state = startFormationActivation(
+    state,
+    formation.id,
+    {},
+    "destroy-helper-activation",
+    state.events.length + 1,
+  );
+  return appendResolvedAttack(state, {
+    id: "destroy-helper-transport",
+    at: state.events.length + 1,
+    attackerFormationId: formation.id,
+    targetFormationId: transportFormation.id,
+    segmentIds: ["transport-model"],
+    targets: [{ wounds: 3, modelCount: 1 }],
+    initialWoundsLost: 0,
+    result: { appliedDamage: 3, modelsDestroyed: 1 },
+    summary: {
+      attacker: formation.name,
+      weapon: "Anti-tank weapon",
+      target: transportFormation.name,
+      damage: 3,
+      successful: 1,
+    },
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Visible and in range",
+  });
+}
+
 test("reports exact per-segment damage state across mixed profiles", () => {
   assert.deepEqual(targetSequenceState(8, targets), [
     { segmentIndex: 0, modelsDestroyed: 2, modelsRemaining: 0, woundsLost: 0 },
@@ -176,10 +365,426 @@ test("reports exact per-segment damage state across mixed profiles", () => {
 
 test("pins the official deployment and Reserves rules source", () => {
   assert.equal(battleRuleSources.version, 1);
-  assert.deepEqual(battleRuleSources.sources[0].pages, [16, 39, 43, 57, 60]);
+  assert.deepEqual(battleRuleSources.sources[0].pages, [16, 17, 18, 23, 39, 43, 53, 57, 60]);
   assert.equal(
     battleRuleSources.sources[0].sha256,
     "4d0e8019cbfddd6f46781d5b4ed31d46fb21eb2d0d10a0f6fabefac0ce054364",
+  );
+});
+
+test("replays starting occupancy and normal embark and disembark timing", () => {
+  let state = transportBattle();
+  assert.equal(
+    battleFormationEmbarkedTransport(state, passengerFormation.id),
+    transportFormation.id,
+  );
+  assert.equal(battleFormationIsOnBattlefield(state, passengerFormation.id), false);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "to-movement",
+  );
+  state = disembarkFormation(
+    state,
+    passengerFormation.id,
+    transportFormation.id,
+    {
+      placementConfirmed: true,
+      placementReason: "Wholly within 3 inches and outside Engagement Range",
+    },
+    "disembark",
+    state.events.length + 1,
+  );
+  assert.equal(battleFormationEmbarkedTransport(state, passengerFormation.id), "");
+  assert.equal(battleFormationIsOnBattlefield(state, passengerFormation.id), true);
+  assert.throws(
+    () =>
+      recordFormationMovement(
+        state,
+        passengerFormation.id,
+        "stationary",
+        "illegal-stationary",
+        state.events.length + 1,
+      ),
+    /cannot Remain Stationary/,
+  );
+  state = recordFormationMovement(
+    state,
+    passengerFormation.id,
+    "normal",
+    "passenger-moves",
+    state.events.length + 1,
+  );
+  assert.throws(
+    () =>
+      embarkFormation(
+        state,
+        passengerFormation.id,
+        transportFormation.id,
+        { rangeConfirmed: true, rangeReason: "Every model ended within 3 inches" },
+        "same-phase-embark",
+        state.events.length + 1,
+      ),
+    /same phase/,
+  );
+
+  state = transportBattle({ startEmbarked: false });
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "to-embark",
+  );
+  state = recordFormationMovement(
+    state,
+    passengerFormation.id,
+    "advance",
+    "passenger-advances",
+    state.events.length + 1,
+  );
+  state = embarkFormation(
+    state,
+    passengerFormation.id,
+    transportFormation.id,
+    { rangeConfirmed: true, rangeReason: "Every model ended within 3 inches" },
+    "embark",
+    state.events.length + 1,
+  );
+  assert.equal(
+    battleFormationEmbarkedTransport(state, passengerFormation.id),
+    transportFormation.id,
+  );
+  assert.throws(
+    () =>
+      disembarkFormation(
+        state,
+        passengerFormation.id,
+        transportFormation.id,
+        { placementConfirmed: true, placementReason: "Within 3 inches" },
+        "same-phase-disembark",
+        state.events.length + 1,
+      ),
+    /started the Movement phase embarked/,
+  );
+});
+
+test("inherits Transport movement restrictions after disembarking", () => {
+  let state = transportBattle();
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "transport-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    transportFormation.id,
+    "normal",
+    "transport-normal",
+    state.events.length + 1,
+  );
+  state = disembarkFormation(
+    state,
+    passengerFormation.id,
+    transportFormation.id,
+    { placementConfirmed: true, placementReason: "Wholly within 3 inches" },
+    "after-normal-disembark",
+    state.events.length + 1,
+  );
+  assert.equal(
+    replayBattleState(state).movementByFormation.get(passengerFormation.id).fromMovedTransport,
+    true,
+  );
+  assert.throws(
+    () =>
+      recordFormationMovement(
+        state,
+        passengerFormation.id,
+        "normal",
+        "move-again",
+        state.events.length + 1,
+      ),
+    /already been recorded/,
+  );
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "charge" && clock.step === "charge_moves",
+    "to-charge",
+  );
+  assert.throws(
+    () =>
+      recordFormationCharge(
+        state,
+        passengerFormation.id,
+        [formation.id],
+        true,
+        7,
+        {
+          targetEligibilityConfirmed: true,
+          targetEligibilityReason: "Target in range",
+        },
+        "illegal-charge",
+        state.events.length + 1,
+      ),
+    /disembarked after movement/,
+  );
+
+  state = transportBattle();
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "transport-advance",
+  );
+  state = recordFormationMovement(
+    state,
+    transportFormation.id,
+    "advance",
+    "transport-advanced",
+    state.events.length + 1,
+  );
+  assert.throws(
+    () =>
+      disembarkFormation(
+        state,
+        passengerFormation.id,
+        transportFormation.id,
+        { placementConfirmed: true, placementReason: "Wholly within 3 inches" },
+        "after-advance-disembark",
+        state.events.length + 1,
+      ),
+    /Advanced or Fell Back/,
+  );
+});
+
+test("resolves Emergency Disembarkation thresholds and unplaceable models", () => {
+  let state = battleWithDestroyedOccupiedTransport();
+  const randomValues = [2, 0];
+  state = resolveDestroyedTransport(
+    state,
+    transportFormation.id,
+    [
+      {
+        formationId: passengerFormation.id,
+        firstSegmentId: "passenger-models",
+        emergency: true,
+        unplacedModels: 1,
+        placementConfirmed: true,
+        placementReason: "Within 6 inches; one model could not be set up",
+      },
+    ],
+    "emergency-disembark",
+    state.events.length + 1,
+    () => randomValues.shift(),
+    {
+      deadlyDemiseResolvedConfirmed: true,
+      deadlyDemiseResolutionReason: "Transport has no Deadly Demise ability",
+    },
+  );
+  const passenger = state.events.at(-1).passengers[0];
+  assert.deepEqual(passenger.rolls, [3]);
+  assert.deepEqual(passenger.feelNoPainRolls, [1]);
+  assert.deepEqual(passenger.summary, { damage: 3, modelsDestroyed: 1 });
+  assert.deepEqual(battleFormationHealth(state, passengerFormation.id), {
+    "passenger-models": { modelsRemaining: 1, woundsLost: 1 },
+  });
+
+  const pending = battleWithDestroyedOccupiedTransport();
+  assert.throws(
+    () =>
+      resolveDestroyedTransport(
+        pending,
+        transportFormation.id,
+        [
+          {
+            formationId: passengerFormation.id,
+            firstSegmentId: "passenger-models",
+            emergency: false,
+            unplacedModels: 1,
+            placementConfirmed: true,
+            placementReason: "Within 3 inches",
+          },
+        ],
+        "invalid-normal-disembark",
+        pending.events.length + 1,
+        () => 0,
+        {
+          deadlyDemiseResolvedConfirmed: true,
+          deadlyDemiseResolutionReason: "Transport has no Deadly Demise ability",
+        },
+      ),
+    /require Emergency Disembarkation/,
+  );
+});
+
+test("records mixed-unit casualty allocation and Deadly Demise ordering", () => {
+  const pending = battleWithDestroyedOccupiedTransport(mixedPassengerFormation);
+  assert.throws(
+    () =>
+      resolveDestroyedTransport(
+        pending,
+        transportFormation.id,
+        [
+          {
+            formationId: mixedPassengerFormation.id,
+            firstSegmentId: "mixed-leader",
+            emergency: false,
+            unplacedModels: 0,
+            placementConfirmed: true,
+            placementReason: "Wholly within 3 inches",
+          },
+        ],
+        "missing-deadly-demise-confirmation",
+        pending.events.length + 1,
+        () => 0,
+      ),
+    /Deadly Demise was resolved first or does not apply/,
+  );
+
+  const randomValues = [0, 5];
+  const state = resolveDestroyedTransport(
+    pending,
+    transportFormation.id,
+    [
+      {
+        formationId: mixedPassengerFormation.id,
+        firstSegmentId: "mixed-leader",
+        emergency: false,
+        unplacedModels: 0,
+        placementConfirmed: true,
+        placementReason: "Wholly within 3 inches",
+      },
+    ],
+    "mixed-allocation",
+    pending.events.length + 1,
+    () => randomValues.shift(),
+    {
+      deadlyDemiseResolvedConfirmed: true,
+      deadlyDemiseResolutionReason: "Resolved before disembarkation",
+    },
+  );
+  assert.deepEqual(battleFormationHealth(state, mixedPassengerFormation.id), {
+    "mixed-bodyguard": { modelsRemaining: 1, woundsLost: 0 },
+    "mixed-leader": { modelsRemaining: 1, woundsLost: 1 },
+  });
+  assert.equal(state.events.at(-1).passengers[0].firstSegmentId, "mixed-leader");
+
+  const emergencyPending = battleWithDestroyedOccupiedTransport(mixedPassengerFormation);
+  const emergencyState = resolveDestroyedTransport(
+    emergencyPending,
+    transportFormation.id,
+    [
+      {
+        formationId: mixedPassengerFormation.id,
+        firstSegmentId: "mixed-leader",
+        emergency: true,
+        unplacedModels: 1,
+        placementConfirmed: true,
+        placementReason: "Within 6 inches; one model could not be set up",
+      },
+    ],
+    "mixed-allocation-spill",
+    emergencyPending.events.length + 1,
+    () => 0,
+    {
+      deadlyDemiseResolvedConfirmed: true,
+      deadlyDemiseResolutionReason: "Resolved before disembarkation",
+    },
+  );
+  assert.deepEqual(battleFormationHealth(emergencyState, mixedPassengerFormation.id), {
+    "mixed-bodyguard": { modelsRemaining: 1, woundsLost: 1 },
+    "mixed-leader": { modelsRemaining: 0, woundsLost: 0 },
+  });
+});
+
+test("forces and verifies destroyed Transport disembarkation rolls", () => {
+  let state = transportBattle({ firstPlayerId: "player-2" });
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "enemy-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    formation.id,
+    "stationary",
+    "enemy-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, (clock) => battleAttackWindow(clock), "enemy-shooting");
+  state = startFormationActivation(
+    state,
+    formation.id,
+    {},
+    "enemy-activation",
+    state.events.length + 1,
+  );
+  state = appendResolvedAttack(state, {
+    id: "destroy-transport",
+    at: state.events.length + 1,
+    attackerFormationId: formation.id,
+    targetFormationId: transportFormation.id,
+    segmentIds: ["transport-model"],
+    targets: [{ wounds: 3, modelCount: 1 }],
+    initialWoundsLost: 0,
+    result: { appliedDamage: 3, modelsDestroyed: 1 },
+    summary: {
+      attacker: formation.name,
+      weapon: "Anti-tank weapon",
+      target: transportFormation.name,
+      damage: 3,
+      successful: 1,
+    },
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Visible and in range",
+  });
+  let replayed = replayBattleState(state);
+  assert.deepEqual([...replayed.pendingTransportDestructions.keys()], [transportFormation.id]);
+  assert.throws(
+    () => completeFormationActivation(state, "blocked-completion", state.events.length + 1),
+    /must disembark immediately/,
+  );
+  const randomValues = [0, 3, 4];
+  state = resolveDestroyedTransport(
+    state,
+    transportFormation.id,
+    [
+      {
+        formationId: passengerFormation.id,
+        firstSegmentId: "passenger-models",
+        emergency: false,
+        unplacedModels: 0,
+        placementConfirmed: true,
+        placementReason: "Wholly within 3 inches and outside Engagement Range",
+      },
+    ],
+    "resolve-destroyed-transport",
+    state.events.length + 1,
+    () => randomValues.shift(),
+    {
+      deadlyDemiseResolvedConfirmed: true,
+      deadlyDemiseResolutionReason: "Resolved before disembarkation",
+    },
+  );
+  replayed = replayBattleState(state);
+  const resolution = state.events.at(-1).passengers[0];
+  assert.deepEqual(resolution.rolls, [1, 4]);
+  assert.deepEqual(resolution.feelNoPainRolls, [5]);
+  assert.deepEqual(battleFormationHealth(state, passengerFormation.id), {
+    "passenger-models": { modelsRemaining: 2, woundsLost: 0 },
+  });
+  assert.equal(replayed.battleShockedFormations.has(passengerFormation.id), true);
+  assert.equal(
+    replayed.movementByFormation.get(passengerFormation.id).fromDestroyedTransport,
+    true,
+  );
+  assert.equal(replayed.pendingTransportDestructions.size, 0);
+  assert.equal(battleFormationIsOnBattlefield(state, passengerFormation.id), true);
+  assert.throws(() => revertLatestAttack(state, "undo-destruction", 99), /cannot be reverted/);
+
+  const tampered = structuredClone(state);
+  tampered.events.at(-1).passengers[0].rolls[0] = 6;
+  assert.throws(
+    () => normalizeBattleState(tampered),
+    /Feel No Pain rolls must match|does not match its recorded rolls/,
   );
 });
 
@@ -755,6 +1360,65 @@ test("replays alternating deployment and Strategic Reserves arrival", () => {
     clock: replayed.clock,
     fromReserves: true,
   });
+});
+
+test("counts embarked passengers toward their Transport's Strategic Reserves limit", () => {
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), transportFormation, "register-cap-transport", 1),
+    passengerFormation,
+    "register-cap-passenger",
+    2,
+  );
+  state = configureBattleMission(
+    state,
+    { ...replayBattleState(state).mission, pointsLimit: 1000 },
+    "configure-cap-mission",
+    3,
+  );
+  state = declareFormationDeployment(
+    state,
+    transportFormation.id,
+    "strategic_reserves",
+    {
+      points: 200,
+      earliestBattleRound: 2,
+      eligibilityConfirmed: true,
+      eligibilityReason: "Strategic Reserves",
+    },
+    "declare-cap-transport",
+    4,
+  );
+  assert.throws(
+    () =>
+      declareFormationDeployment(
+        state,
+        passengerFormation.id,
+        "embarked",
+        {
+          points: 51,
+          transportFormationId: transportFormation.id,
+          eligibilityConfirmed: true,
+          eligibilityReason: "Embarked in a Strategic Reserves Transport",
+        },
+        "declare-over-cap-passenger",
+        5,
+      ),
+    /250 point limit/,
+  );
+  state = declareFormationDeployment(
+    state,
+    passengerFormation.id,
+    "embarked",
+    {
+      points: 50,
+      transportFormationId: transportFormation.id,
+      eligibilityConfirmed: true,
+      eligibilityReason: "Embarked in a Strategic Reserves Transport",
+    },
+    "declare-cap-passenger",
+    5,
+  );
+  assert.equal(replayBattleState(state).deploymentByFormation.size, 2);
 });
 
 test("reports a Reserve formation destroyed when the battle ends off battlefield", () => {

@@ -169,7 +169,7 @@ bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_
         }
 
         memcpy(next, current, segment_count * WHC_BATTLE_HEALTH_FIELDS * sizeof(uint32_t));
-        if (kind == WHC_BATTLE_EVENT_ATTACK) {
+        if (kind == WHC_BATTLE_EVENT_ATTACK || kind == WHC_BATTLE_EVENT_TRANSPORT_DAMAGE) {
             bool seen[WHC_MAX_BATTLE_SEGMENTS] = {false};
             uint64_t damage = 0u;
             uint64_t destroyed = 0u;
@@ -223,7 +223,9 @@ bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_
             if (wounded_segments > 1u) {
                 return false;
             }
-            active_events[active_count++] = (uint16_t)event_index;
+            if (kind == WHC_BATTLE_EVENT_ATTACK) {
+                active_events[active_count++] = (uint16_t)event_index;
+            }
         } else if (kind == WHC_BATTLE_EVENT_REVERT) {
             if (allocation_count != 0u || expected_damage != 0u || expected_destroyed != 0u ||
                 active_count == 0u || reverts_event_index != active_events[active_count - 1u]) {

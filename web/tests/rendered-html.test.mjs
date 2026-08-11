@@ -5,10 +5,18 @@ import { antiWoundThreshold } from "../lib/anti.mjs";
 import { sourceEquippedWeaponCounts } from "../lib/loadout.mjs";
 import {
   advanceBattleClock,
+  appendResolvedAttack,
   applyBattleEffect,
   changeBattleResource,
+  createBattleState,
+  declareFormationDeployment,
+  deployFormation,
   openBattleChoice,
+  recordFormationMovement,
+  registerBattleFormation,
+  replayBattleState,
   resolveBattleChoice,
+  resolveDestroyedTransport,
   scoreBattlePoints,
   setBattleObjectiveControl,
   setFormationBattleShocked,
@@ -2622,6 +2630,32 @@ test("replays canonical battle health through the C and WebAssembly API", async 
   assert.deepEqual(versionSixResult.data.deployment.deployedFormationIds, ["attacker", "target"]);
   assert.equal(versionSixResult.data.deployment.declarations[0].legacyAssumed, true);
 
+  const versionSeven = {
+    ...structuredClone(versionSix),
+    version: 7,
+    migration: {
+      sourceVersion: 6,
+      legacyUntimedThroughSequence: versionSix.migration.legacyUntimedThroughSequence,
+      legacyUnactionedThroughSequence: versionSix.migration.legacyUnactionedThroughSequence,
+      legacyDeploymentThroughSequence: versionSix.migration.legacyDeploymentThroughSequence,
+      legacyTransportThroughSequence: versionSix.events.length,
+    },
+  };
+  const versionSevenResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: versionSeven, formationId: "target" }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(versionSevenResponse.status, 200);
+  const versionSevenResult = await versionSevenResponse.json();
+  assert.equal(versionSevenResult.data.schemaVersion, 7);
+  assert.deepEqual(versionSevenResult.data.transports.embarked, []);
+  assert.deepEqual(versionSevenResult.data.transports.pendingDestroyedTransportIds, []);
+
   const configuredVersionTwo = structuredClone(versionTwo);
   configuredVersionTwo.events.splice(2, 0, {
     version: 1,
@@ -2662,6 +2696,189 @@ test("replays canonical battle health through the C and WebAssembly API", async 
   );
   assert.equal(rejected.status, 400);
   assert.equal((await rejected.json()).error.code, "INVALID_REQUEST");
+});
+
+test("cross-checks destroyed Transport passenger damage through WebAssembly", async () => {
+  const transport = {
+    id: "transport",
+    playerId: "player-1",
+    sourceFormationId: "transport",
+    name: "Transport",
+    keywords: ["Transport"],
+    segments: [
+      {
+        id: "transport-model",
+        savedUnitId: "transport",
+        unitName: "Transport",
+        modelName: "Transport",
+        role: "standalone",
+        wounds: 2,
+        startingModels: 1,
+      },
+    ],
+  };
+  const passenger = {
+    id: "passenger",
+    playerId: "player-1",
+    sourceFormationId: "passenger",
+    name: "Passenger",
+    assignedTransportFormationId: "transport",
+    keywords: ["Infantry"],
+    segments: [
+      {
+        id: "passenger-model",
+        savedUnitId: "passenger",
+        unitName: "Passenger",
+        modelName: "Passenger",
+        role: "standalone",
+        wounds: 2,
+        startingModels: 1,
+      },
+    ],
+  };
+  const enemy = {
+    ...structuredClone(transport),
+    id: "enemy",
+    playerId: "player-2",
+    sourceFormationId: "enemy",
+    name: "Enemy",
+    keywords: ["Vehicle"],
+    segments: [{ ...transport.segments[0], id: "enemy-model", savedUnitId: "enemy" }],
+  };
+  let state = createBattleState({
+    id: "transport-api",
+    createdAt: 1,
+    rulesSnapshot: "catalogue:test",
+    players: [
+      { id: "player-1", listId: "list-1", listUpdatedAt: 1, name: "Passengers" },
+      { id: "player-2", listId: "list-2", listUpdatedAt: 2, name: "Attackers" },
+    ],
+  });
+  state = registerBattleFormation(state, transport, "register-transport", 1);
+  state = registerBattleFormation(state, passenger, "register-passenger", 2);
+  state = registerBattleFormation(state, enemy, "register-enemy", 3);
+  state = declareFormationDeployment(state, "transport", "battlefield", {}, "declare-transport", 4);
+  state = declareFormationDeployment(
+    state,
+    "passenger",
+    "embarked",
+    { transportFormationId: "transport" },
+    "declare-passenger",
+    5,
+  );
+  state = declareFormationDeployment(state, "enemy", "battlefield", {}, "declare-enemy", 6);
+  state = deployFormation(
+    state,
+    "transport",
+    { placementConfirmed: true, placementReason: "Deployment zone" },
+    "deploy-transport",
+    7,
+  );
+  state = deployFormation(
+    state,
+    "enemy",
+    { placementConfirmed: true, placementReason: "Deployment zone" },
+    "deploy-enemy",
+    8,
+  );
+  state = startBattle(state, "player-2", "start", 9);
+  while (
+    !(
+      replayBattleState(state).clock.phase === "movement" &&
+      replayBattleState(state).clock.step === "move_units"
+    )
+  ) {
+    state = advanceBattleClock(
+      state,
+      `advance-movement-${state.events.length}`,
+      state.events.length + 1,
+    );
+  }
+  state = recordFormationMovement(state, "enemy", "stationary", "enemy-movement", 20);
+  while (
+    !(
+      replayBattleState(state).clock.phase === "shooting" &&
+      replayBattleState(state).clock.step === "resolve_attacks"
+    )
+  ) {
+    state = advanceBattleClock(
+      state,
+      `advance-shooting-${state.events.length}`,
+      state.events.length + 1,
+    );
+  }
+  state = startFormationActivation(state, "enemy", {}, "activate-enemy", 30);
+  state = appendResolvedAttack(state, {
+    id: "destroy-transport",
+    at: 31,
+    attackerFormationId: "enemy",
+    targetFormationId: "transport",
+    segmentIds: ["transport-model"],
+    targets: [{ wounds: 2, modelCount: 1 }],
+    initialWoundsLost: 0,
+    result: { appliedDamage: 2, modelsDestroyed: 1 },
+    summary: {
+      attacker: "Enemy",
+      weapon: "Weapon",
+      target: "Transport",
+      damage: 2,
+      successful: 1,
+    },
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Visible and in range",
+  });
+  state = resolveDestroyedTransport(
+    state,
+    "transport",
+    [
+      {
+        formationId: "passenger",
+        firstSegmentId: "passenger-model",
+        emergency: false,
+        unplacedModels: 0,
+        placementConfirmed: true,
+        placementReason: "Wholly within 3 inches",
+      },
+    ],
+    "resolve-passenger",
+    32,
+    () => 0,
+    {
+      deadlyDemiseResolvedConfirmed: true,
+      deadlyDemiseResolutionReason: "Transport has no Deadly Demise ability",
+    },
+  );
+  const worker = await loadWorker();
+  const response = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: state, formationId: "passenger" }),
+    }),
+    testEnv,
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  const body = await response.json();
+  assert.equal(body.data.schemaVersion, 7);
+  assert.deepEqual(body.data.health, {
+    "passenger-model": { modelsRemaining: 1, woundsLost: 1 },
+  });
+  assert.deepEqual(body.data.transports.embarked, []);
+  assert.equal(
+    body.data.transports.destroyedTransportResolutions[0].causeEventId,
+    "destroy-transport",
+  );
+  assert.equal(
+    body.data.transports.destroyedTransportResolutions[0].deadlyDemiseResolvedConfirmed,
+    true,
+  );
+  assert.equal(
+    body.data.transports.destroyedTransportResolutions[0].passengers[0].firstSegmentId,
+    "passenger-model",
+  );
+  assert.deepEqual(body.data.transports.destroyedTransportResolutions[0].passengers[0].rolls, [1]);
 });
 
 test("API exact and seeded simulation paths match the shared rules interaction corpus", async () => {

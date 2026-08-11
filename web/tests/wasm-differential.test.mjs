@@ -229,6 +229,43 @@ test("WebAssembly matches JavaScript for the versioned golden battle replay", as
   }
 });
 
+test("WebAssembly replays destroyed Transport passenger damage", () => {
+  const profiles = new Uint32Array([2, 1]);
+  const events = new Uint32Array(166);
+  events[0] = 1;
+  events[1] = 3;
+  events[2] = 1;
+  events[4] = 1;
+  events[5] = 0;
+  events[6] = 0;
+  events[7] = 1;
+  events[8] = 0;
+  events[9] = 1;
+  events[10] = 1;
+  const profilesPointer = calculator._malloc(profiles.byteLength);
+  const eventsPointer = calculator._malloc(events.byteLength);
+  const healthPointer = calculator._malloc(8);
+  try {
+    new Uint32Array(calculator.HEAPU8.buffer, profilesPointer, profiles.length).set(profiles);
+    new Uint32Array(calculator.HEAPU8.buffer, eventsPointer, events.length).set(events);
+    assert.equal(
+      calculator._whc_replay_battle_health_events(
+        profilesPointer,
+        1,
+        eventsPointer,
+        1,
+        healthPointer,
+      ),
+      1,
+    );
+    assert.deepEqual([...new Uint32Array(calculator.HEAPU8.buffer, healthPointer, 2)], [1, 1]);
+  } finally {
+    calculator._free(profilesPointer);
+    calculator._free(eventsPointer);
+    calculator._free(healthPointer);
+  }
+});
+
 test("Firing Deck model selection scales the exact C/WebAssembly attack count", async () => {
   const catalogue = JSON.parse(
     await readFile(new URL("../public/profile-data.json", import.meta.url), "utf8"),

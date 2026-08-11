@@ -1328,6 +1328,35 @@ static void test_battle_health_replay(void) {
     assert(health[3] == 94u);
 }
 
+/*@ terminates \true; */
+static void test_transport_damage_replay(void) {
+    uint32_t profiles[WHC_BATTLE_PROFILE_FIELDS] = {2u, 2u};
+    uint32_t events[WHC_BATTLE_EVENT_FIELDS] = {0u};
+    uint32_t health[WHC_BATTLE_HEALTH_FIELDS] = {91u, 92u};
+
+    events[0] = WHC_BATTLE_EVENT_VERSION;
+    events[1] = WHC_BATTLE_EVENT_TRANSPORT_DAMAGE;
+    events[2] = 1u;
+    events[4] = 1u;
+    events[5] = 0u;
+    events[6] = 0u;
+    events[7] = 2u;
+    events[8] = 0u;
+    events[9] = 2u;
+    events[10] = 1u;
+
+    assert(whc_replay_battle_health_events(profiles, 1u, events, 1u, health));
+    assert(health[0] == 2u);
+    assert(health[1] == 1u);
+
+    events[4] = 2u;
+    health[0] = 91u;
+    health[1] = 92u;
+    assert(!whc_replay_battle_health_events(profiles, 1u, events, 1u, health));
+    assert(health[0] == 91u);
+    assert(health[1] == 92u);
+}
+
 /*@ assigns \nothing;
 */
 static void test_battle_clock(void) {
@@ -1386,6 +1415,7 @@ int main(void) {
     test_first_failed_save_damage_replacement();
     test_allocated_attack_damage_replacement();
     test_battle_health_replay();
+    test_transport_damage_replay();
     test_battle_clock();
     puts("all tests passed");
     return 0;

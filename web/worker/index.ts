@@ -536,14 +536,29 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
   const formation = battleFormation(state, requestedFormationId);
   if (!formation) throw new Error("formationId is not registered in the battle state");
   const segmentIndices = new Map(formation.segments.map((segment, index) => [segment.id, index]));
-  const selectedEvents: Array<(typeof state.events)[number]> = [];
+  const selectedEvents: Array<{
+    event: (typeof state.events)[number];
+    transportPassenger?: {
+      summary: { damage: number; modelsDestroyed: number };
+      allocations: Array<{
+        segmentId: string;
+        before: { modelsRemaining: number; woundsLost: number };
+        after: { modelsRemaining: number; woundsLost: number };
+      }>;
+    };
+  }> = [];
   const attackIndices = new Map<string, number>();
   for (const event of state.events) {
     if (event.type === "attack_resolved" && event.targetFormationId === requestedFormationId) {
       attackIndices.set(event.id, selectedEvents.length);
-      selectedEvents.push(event);
+      selectedEvents.push({ event });
     } else if (event.type === "attack_reverted" && attackIndices.has(event.revertsEventId)) {
-      selectedEvents.push(event);
+      selectedEvents.push({ event });
+    } else if (event.type === "transport_destroyed_resolved") {
+      const transportPassenger = event.passengers.find(
+        (passenger) => passenger.formationId === requestedFormationId,
+      );
+      if (transportPassenger) selectedEvents.push({ event, transportPassenger });
     }
   }
 
@@ -557,7 +572,7 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
     profiles[index * profileFields + 1] = segment.startingModels;
   });
   const events = new Uint32Array(selectedEvents.length * eventFields);
-  selectedEvents.forEach((event, index) => {
+  selectedEvents.forEach(({ event, transportPassenger }, index) => {
     const offset = index * eventFields;
     events[offset] = event.version;
     if (event.type === "attack_resolved") {
@@ -578,6 +593,23 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
     } else if (event.type === "attack_reverted") {
       events[offset + 1] = 2;
       events[offset + 3] = attackIndices.get(event.revertsEventId) ?? 0xffffffff;
+    } else if (event.type === "transport_destroyed_resolved" && transportPassenger) {
+      events[offset + 1] = 3;
+      events[offset + 2] = transportPassenger.allocations.length;
+      events[offset + 4] = transportPassenger.summary.damage;
+      events[offset + 5] = transportPassenger.summary.modelsDestroyed;
+      transportPassenger.allocations.forEach((allocation, allocationIndex) => {
+        const segmentIndex = segmentIndices.get(allocation.segmentId);
+        if (segmentIndex === undefined) {
+          throw new Error("Transport allocation segment is unknown");
+        }
+        const allocationOffset = offset + eventHeaderFields + allocationIndex * allocationFields;
+        events[allocationOffset] = segmentIndex;
+        events[allocationOffset + 1] = allocation.before.modelsRemaining;
+        events[allocationOffset + 2] = allocation.before.woundsLost;
+        events[allocationOffset + 3] = allocation.after.modelsRemaining;
+        events[allocationOffset + 4] = allocation.after.woundsLost;
+      });
     }
   });
 
@@ -712,6 +744,7 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
               earliestBattleRound,
               eligibilityConfirmed,
               eligibilityReason,
+              transportFormationId = "",
               legacyAssumed = false,
             }) => ({
               formationId,
@@ -720,6 +753,7 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
               earliestBattleRound,
               eligibilityConfirmed,
               eligibilityReason,
+              transportFormationId,
               legacyAssumed,
             }),
           )
@@ -734,6 +768,63 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
           }))
           .sort((left, right) => left.formationId.localeCompare(right.formationId)),
         destroyedAtBattleEndFormationIds: [...replayed.reserveDestroyedFormationIds].sort(),
+      },
+      transports: {
+        embarked: [...replayed.embarkedByFormation.entries()]
+          .map(([formationId, transportFormationId]) => ({
+            formationId,
+            transportFormationId,
+          }))
+          .sort((left, right) => left.formationId.localeCompare(right.formationId)),
+        disembarked: [...replayed.disembarkedByFormation.entries()]
+          .map(([formationId, event]) => ({
+            formationId,
+            transportFormationId: event.transportFormationId,
+            destroyedTransport: Boolean(event.destroyedTransport),
+            emergency: Boolean(event.emergency),
+            clock: event.clock,
+          }))
+          .sort((left, right) => left.formationId.localeCompare(right.formationId)),
+        pendingDestroyedTransportIds: [...replayed.pendingTransportDestructions.keys()].sort(),
+        destroyedTransportResolutions: [...replayed.transportDestructionResolutions.values()]
+          .map(
+            ({
+              transportFormationId,
+              causeEventId,
+              deadlyDemiseResolvedConfirmed,
+              deadlyDemiseResolutionReason,
+              passengers,
+              clock,
+            }) => ({
+              transportFormationId,
+              causeEventId,
+              deadlyDemiseResolvedConfirmed,
+              deadlyDemiseResolutionReason,
+              passengers: passengers.map(
+                ({
+                  formationId,
+                  firstSegmentId,
+                  emergency,
+                  unplacedModels,
+                  rolls,
+                  feelNoPainRolls,
+                  summary,
+                }) => ({
+                  formationId,
+                  firstSegmentId,
+                  emergency,
+                  unplacedModels,
+                  rolls,
+                  feelNoPainRolls,
+                  summary,
+                }),
+              ),
+              clock,
+            }),
+          )
+          .sort((left, right) =>
+            left.transportFormationId.localeCompare(right.transportFormationId),
+          ),
       },
       scoringEvents: replayed.scoringEvents.map(
         ({ id, playerId, category, points, before, after, reason, clock }) => ({

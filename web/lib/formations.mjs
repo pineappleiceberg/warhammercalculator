@@ -471,6 +471,7 @@ export function savedFormationBattleRegistration(
   id,
   targetSequence,
   defensiveEquipmentCounts = {},
+  assignedTransportFormationId = "",
 ) {
   const segments = targetSequence?.orderedSegments ?? [];
   if (!formation || segments.length < 1) throw new Error("Formation has no exact model segments");
@@ -479,6 +480,7 @@ export function savedFormationBattleRegistration(
     playerId,
     sourceFormationId: formation.id,
     name: formation.name,
+    assignedTransportFormationId,
     keywords: [
       ...new Set(
         formation.components.flatMap((component) =>
@@ -494,6 +496,7 @@ export function savedFormationBattleRegistration(
       modelName: segment.model.name,
       role: segment.role,
       wounds: segment.model.wounds ?? 1,
+      feelNoPain: segment.model.feelNoPain ?? 0,
       startingModels: segment.modelCount,
     })),
   };

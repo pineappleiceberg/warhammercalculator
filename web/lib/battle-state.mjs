@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 6;
+export const BATTLE_STATE_VERSION = 7;
+export const TRANSPORT_BATTLE_STATE_VERSION = 7;
 export const DEPLOYMENT_BATTLE_STATE_VERSION = 6;
 export const ACTION_BATTLE_STATE_VERSION = 5;
 export const TRACKER_BATTLE_STATE_VERSION = 4;
@@ -48,7 +49,12 @@ function boundedInteger(value, name, minimum = -1_000_000, maximum = 1_000_000) 
 
 const MOVEMENT_KINDS = Object.freeze(["stationary", "normal", "advance", "fall_back"]);
 const ACTIVATION_TYPES = Object.freeze(["shooting", "fight"]);
-const DEPLOYMENT_LOCATIONS = Object.freeze(["battlefield", "reserves", "strategic_reserves"]);
+const DEPLOYMENT_LOCATIONS = Object.freeze([
+  "battlefield",
+  "reserves",
+  "strategic_reserves",
+  "embarked",
+]);
 
 function formationDestroyed(formation) {
   return Object.values(formation?.health ?? {}).every((health) => health.modelsRemaining === 0);
@@ -62,6 +68,10 @@ function sameTurn(left, right) {
     left.turn === right.turn &&
     left.activePlayerId === right.activePlayerId
   );
+}
+
+function samePhase(left, right) {
+  return sameTurn(left, right) && left.phase === right.phase;
 }
 
 function otherPlayerId(players, playerId) {
@@ -295,6 +305,8 @@ function normalizeSegment(candidate) {
   if (wounds < 1 || startingModels < 1) {
     throw new Error("Formation segments must contain at least one model with at least one wound");
   }
+  const feelNoPain = nonnegativeInteger(segment.feelNoPain ?? 0, "Segment Feel No Pain", 6);
+  if (feelNoPain === 1) throw new Error("Segment Feel No Pain must be 0 or from 2 to 6");
   return {
     id: boundedString(segment.id, "Segment id"),
     savedUnitId: boundedString(segment.savedUnitId, "Segment saved unit id", 100),
@@ -302,6 +314,7 @@ function normalizeSegment(candidate) {
     modelName: boundedString(segment.modelName, "Segment model name"),
     role: boundedString(segment.role, "Segment role", 40),
     wounds,
+    feelNoPain,
     startingModels,
   };
 }
@@ -328,6 +341,15 @@ function normalizeFormation(candidate) {
       100,
     ),
     name: boundedString(formation.name, "Formation name"),
+    assignedTransportFormationId:
+      typeof formation.assignedTransportFormationId === "string" &&
+      formation.assignedTransportFormationId
+        ? boundedString(
+            formation.assignedTransportFormationId,
+            "Assigned Transport formation id",
+            100,
+          )
+        : "",
     keywords: normalizeStringArray(formation.keywords ?? [], "Formation keywords", 100).map(
       (keyword) => keyword.toLowerCase(),
     ),
@@ -356,6 +378,39 @@ function normalizeHealth(candidate, segment, label) {
     throw new Error(`${label} destroyed segment cannot retain wounds`);
   }
   return { modelsRemaining, woundsLost };
+}
+
+function normalizeHealthAllocations(value, formation, label) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 32) {
+    throw new Error(`${label} must contain 1 to 32 segment allocations`);
+  }
+  const segmentMap = new Map(formation.segments.map((segment) => [segment.id, segment]));
+  const allocations = value.map((candidateAllocation) => {
+    const allocation = record(candidateAllocation, `Each ${label} allocation must be an object`);
+    const segmentId = boundedString(allocation.segmentId, `${label} segment id`);
+    const segment = segmentMap.get(segmentId);
+    if (!segment) throw new Error(`${label} references an unknown segment`);
+    return {
+      segmentId,
+      before: normalizeHealth(allocation.before, segment, `${label} before`),
+      after: normalizeHealth(allocation.after, segment, `${label} after`),
+    };
+  });
+  if (new Set(allocations.map((allocation) => allocation.segmentId)).size !== allocations.length) {
+    throw new Error(`${label} allocations must reference unique segments`);
+  }
+  return allocations;
+}
+
+function normalizeDieRolls(value, name, { allowZero = false } = {}) {
+  if (
+    !Array.isArray(value) ||
+    value.length > 1000 ||
+    value.some((roll) => !Number.isSafeInteger(roll) || roll < (allowZero ? 0 : 1) || roll > 6)
+  ) {
+    throw new Error(`${name} must contain at most 1000 D6 results`);
+  }
+  return [...value];
 }
 
 function normalizeSummary(candidate) {
@@ -424,6 +479,14 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   ) {
     throw new Error("Battle deployment events require battle-state version 6");
   }
+  if (
+    stateVersion < TRANSPORT_BATTLE_STATE_VERSION &&
+    ["formation_embarked", "formation_disembarked", "transport_destroyed_resolved"].includes(
+      event.type,
+    )
+  ) {
+    throw new Error("Transport events require battle-state version 7");
+  }
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation);
     if (!formations.players.has(formation.playerId)) throw new Error("Formation player is unknown");
@@ -437,7 +500,8 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     if (!previous) throw new Error("Configured formation is not registered");
     if (
       previous.playerId !== formation.playerId ||
-      previous.sourceFormationId !== formation.sourceFormationId
+      previous.sourceFormationId !== formation.sourceFormationId ||
+      previous.assignedTransportFormationId !== formation.assignedTransportFormationId
     ) {
       throw new Error("Formation identity cannot change during battle setup");
     }
@@ -560,6 +624,13 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     if (!DEPLOYMENT_LOCATIONS.includes(normalized.location)) {
       throw new Error("Deployment location is unsupported");
     }
+    normalized.transportFormationId =
+      normalized.location === "embarked"
+        ? boundedString(event.transportFormationId, "Embarked Transport formation id", 100)
+        : "";
+    if (normalized.transportFormationId && !formations.byId.has(normalized.transportFormationId)) {
+      throw new Error("Embarked Transport formation is not registered");
+    }
     normalized.points = nonnegativeInteger(event.points, "Deployment points", 100000);
     normalized.earliestBattleRound = nonnegativeInteger(
       event.earliestBattleRound,
@@ -579,7 +650,10 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.eligibilityReason = normalized.eligibilityConfirmed
       ? boundedString(event.eligibilityReason, "Reserve eligibility confirmation", 300)
       : "";
-    if (normalized.location !== "battlefield" && !normalized.eligibilityConfirmed) {
+    if (
+      ["reserves", "strategic_reserves"].includes(normalized.location) &&
+      !normalized.eligibilityConfirmed
+    ) {
       throw new Error("A Reserves declaration requires explicit source-rule eligibility");
     }
     return normalized;
@@ -611,6 +685,159 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
       throw new Error("Reserve arrival requires explicit placement confirmation");
     }
     normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "formation_embarked") {
+    normalized.formationId = boundedString(event.formationId, "Embarking formation id", 100);
+    normalized.transportFormationId = boundedString(
+      event.transportFormationId,
+      "Embarkation Transport formation id",
+      100,
+    );
+    if (
+      !formations.byId.has(normalized.formationId) ||
+      !formations.byId.has(normalized.transportFormationId)
+    ) {
+      throw new Error("Embarkation references an unregistered formation");
+    }
+    normalized.rangeConfirmed = Boolean(event.rangeConfirmed);
+    normalized.rangeReason = normalized.rangeConfirmed
+      ? boundedString(event.rangeReason, "Embarkation range confirmation", 300)
+      : "";
+    if (!normalized.rangeConfirmed) {
+      throw new Error("Embarkation requires explicit whole-unit 3-inch range confirmation");
+    }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "formation_disembarked") {
+    normalized.formationId = boundedString(event.formationId, "Disembarking formation id", 100);
+    normalized.transportFormationId = boundedString(
+      event.transportFormationId,
+      "Disembarkation Transport formation id",
+      100,
+    );
+    if (
+      !formations.byId.has(normalized.formationId) ||
+      !formations.byId.has(normalized.transportFormationId)
+    ) {
+      throw new Error("Disembarkation references an unregistered formation");
+    }
+    normalized.placementConfirmed = Boolean(event.placementConfirmed);
+    normalized.placementReason = normalized.placementConfirmed
+      ? boundedString(event.placementReason, "Disembarkation placement confirmation", 300)
+      : "";
+    if (!normalized.placementConfirmed) {
+      throw new Error("Disembarkation requires explicit 3-inch placement confirmation");
+    }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "transport_destroyed_resolved") {
+    normalized.transportFormationId = boundedString(
+      event.transportFormationId,
+      "Destroyed Transport formation id",
+      100,
+    );
+    normalized.causeEventId = boundedString(
+      event.causeEventId,
+      "Destroyed Transport cause id",
+      100,
+    );
+    if (!formations.byId.has(normalized.transportFormationId)) {
+      throw new Error("Destroyed Transport is not registered");
+    }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    normalized.deadlyDemiseResolvedConfirmed = Boolean(event.deadlyDemiseResolvedConfirmed);
+    normalized.deadlyDemiseResolutionReason = normalized.deadlyDemiseResolvedConfirmed
+      ? boundedString(
+          event.deadlyDemiseResolutionReason,
+          "Deadly Demise resolution confirmation",
+          300,
+        )
+      : "";
+    if (!normalized.deadlyDemiseResolvedConfirmed) {
+      throw new Error(
+        "Destroyed Transport resolution requires confirmation that Deadly Demise was resolved first or does not apply",
+      );
+    }
+    if (
+      !Array.isArray(event.passengers) ||
+      event.passengers.length < 1 ||
+      event.passengers.length > 32
+    ) {
+      throw new Error("Destroyed Transport resolution must contain 1 to 32 passengers");
+    }
+    normalized.passengers = event.passengers.map((candidatePassenger) => {
+      const passenger = record(
+        candidatePassenger,
+        "Each destroyed Transport passenger must be an object",
+      );
+      const formationId = boundedString(
+        passenger.formationId,
+        "Destroyed Transport passenger id",
+        100,
+      );
+      const formation = formations.byId.get(formationId);
+      if (!formation) throw new Error("Destroyed Transport passenger is not registered");
+      const firstSegmentId = boundedString(
+        passenger.firstSegmentId,
+        "Destroyed Transport first allocation profile",
+        100,
+      );
+      if (!formation.segments.some((segment) => segment.id === firstSegmentId)) {
+        throw new Error("Destroyed Transport allocation profile is not in the passenger unit");
+      }
+      const emergency = Boolean(passenger.emergency);
+      const placementConfirmed = Boolean(passenger.placementConfirmed);
+      const placementReason = placementConfirmed
+        ? boundedString(
+            passenger.placementReason,
+            "Destroyed Transport placement confirmation",
+            300,
+          )
+        : "";
+      if (!placementConfirmed) {
+        throw new Error("Destroyed Transport disembarkation requires placement confirmation");
+      }
+      return {
+        formationId,
+        firstSegmentId,
+        emergency,
+        placementConfirmed,
+        placementReason,
+        unplacedModels: nonnegativeInteger(
+          passenger.unplacedModels,
+          "Unplaced passenger models",
+          1000,
+        ),
+        rolls: normalizeDieRolls(passenger.rolls, "Destroyed Transport rolls"),
+        feelNoPainRolls: normalizeDieRolls(
+          passenger.feelNoPainRolls,
+          "Destroyed Transport Feel No Pain rolls",
+          { allowZero: true },
+        ),
+        summary: {
+          damage: nonnegativeInteger(passenger.summary?.damage, "Destroyed Transport damage"),
+          modelsDestroyed: nonnegativeInteger(
+            passenger.summary?.modelsDestroyed,
+            "Destroyed Transport casualties",
+            1000,
+          ),
+        },
+        allocations: normalizeHealthAllocations(
+          passenger.allocations,
+          formation,
+          "Destroyed Transport",
+        ),
+      };
+    });
+    if (
+      new Set(normalized.passengers.map((passenger) => passenger.formationId)).size !==
+      normalized.passengers.length
+    ) {
+      throw new Error("Destroyed Transport passengers must be unique");
+    }
     return normalized;
   }
   if (event.type === "charge_recorded") {
@@ -758,6 +985,7 @@ export function normalizeBattleState(candidate) {
       TIMELINE_BATTLE_STATE_VERSION,
       TRACKER_BATTLE_STATE_VERSION,
       ACTION_BATTLE_STATE_VERSION,
+      DEPLOYMENT_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -796,6 +1024,7 @@ export function normalizeBattleState(candidate) {
         TIMELINE_BATTLE_STATE_VERSION,
         TRACKER_BATTLE_STATE_VERSION,
         ACTION_BATTLE_STATE_VERSION,
+        DEPLOYMENT_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -821,6 +1050,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyDeploymentThroughSequence = nonnegativeInteger(
         migration.legacyDeploymentThroughSequence,
         "Legacy deployment event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= TRANSPORT_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyTransportThroughSequence = nonnegativeInteger(
+        migration.legacyTransportThroughSequence,
+        "Legacy Transport event sequence",
         events.length,
       );
     }
@@ -935,9 +1171,144 @@ function nextDeploymentPlayer(
     : "";
 }
 
-function formationIsOnBattlefield(formationId, deploymentByFormation, deployedFormationIds) {
+function formationIsOnBattlefield(
+  formationId,
+  deploymentByFormation,
+  deployedFormationIds,
+  embarkedByFormation = new Map(),
+) {
   const deployment = deploymentByFormation.get(formationId);
-  return Boolean(deployment && deployedFormationIds.has(formationId));
+  return Boolean(
+    deployment && deployedFormationIds.has(formationId) && !embarkedByFormation.has(formationId),
+  );
+}
+
+function liveModelCount(formation) {
+  return Object.values(formation.health).reduce(
+    (total, health) => total + health.modelsRemaining,
+    0,
+  );
+}
+
+function secureRandomUint32() {
+  const value = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(value);
+  return value[0];
+}
+
+function randomDie(sides, randomUint32 = secureRandomUint32) {
+  const limit = Math.floor(0x1_0000_0000 / sides) * sides;
+  let value;
+  do {
+    value = randomUint32();
+  } while (!Number.isSafeInteger(value) || value < 0 || value >= limit);
+  return (value % sides) + 1;
+}
+
+function transportAllocationOrder(formation, health, firstSegmentId = "") {
+  const wounded = formation.segments.find((segment) => health[segment.id].woundsLost > 0);
+  if (wounded) {
+    return [wounded, ...formation.segments.filter((segment) => segment.id !== wounded.id)];
+  }
+  if (!firstSegmentId) return formation.segments;
+  const first = formation.segments.find((segment) => segment.id === firstSegmentId);
+  if (!first) throw new Error("Destroyed Transport allocation profile is unknown");
+  return [first, ...formation.segments.filter((segment) => segment.id !== first.id)];
+}
+
+function nextTransportAllocationSegment(formation, health, firstSegmentId = "") {
+  return transportAllocationOrder(formation, health, firstSegmentId).find(
+    (segment) => health[segment.id].modelsRemaining > 0,
+  );
+}
+
+function replayDestroyedPassengerResolution(formation, passenger, randomUint32 = null) {
+  const before = Object.fromEntries(
+    formation.segments.map((segment) => [segment.id, { ...formation.health[segment.id] }]),
+  );
+  const after = structuredClone(before);
+  const startingLiveModels = liveModelCount(formation);
+  const firstSegment = formation.segments.find(
+    (segment) => segment.id === passenger.firstSegmentId,
+  );
+  if (!firstSegment || before[firstSegment.id].modelsRemaining < 1) {
+    throw new Error("Destroyed Transport allocation must select a surviving model profile");
+  }
+  const wounded = formation.segments.find((segment) => before[segment.id].woundsLost > 0);
+  if (wounded && firstSegment.id !== wounded.id) {
+    throw new Error("Destroyed Transport damage must remain allocated to the wounded model");
+  }
+  if (!passenger.emergency && passenger.unplacedModels > 0) {
+    throw new Error(
+      "Models that cannot disembark within 3 inches require Emergency Disembarkation",
+    );
+  }
+  if (passenger.rolls.length + passenger.unplacedModels !== startingLiveModels) {
+    throw new Error("Destroyed Transport rolls must cover every model that disembarks");
+  }
+  let unplacedRemaining = passenger.unplacedModels;
+  while (unplacedRemaining > 0) {
+    const segment = nextTransportAllocationSegment(formation, after, passenger.firstSegmentId);
+    if (!segment) throw new Error("Unplaced passenger count exceeds the surviving unit");
+    const health = after[segment.id];
+    health.modelsRemaining -= 1;
+    health.woundsLost = 0;
+    unplacedRemaining -= 1;
+  }
+  const failedRolls = passenger.rolls.filter((roll) =>
+    passenger.emergency ? roll <= 3 : roll === 1,
+  );
+  if (!randomUint32 && passenger.feelNoPainRolls.length !== failedRolls.length) {
+    throw new Error("Destroyed Transport Feel No Pain rolls must match its mortal wounds");
+  }
+  const feelNoPainRolls = [];
+  failedRolls.forEach((_roll, index) => {
+    const segment = nextTransportAllocationSegment(formation, after, passenger.firstSegmentId);
+    const threshold = segment?.feelNoPain ?? 0;
+    const feelNoPainRoll =
+      randomUint32 && threshold > 0
+        ? randomDie(6, randomUint32)
+        : randomUint32
+          ? 0
+          : passenger.feelNoPainRolls[index];
+    feelNoPainRolls.push(feelNoPainRoll);
+    if (!segment) {
+      if (feelNoPainRoll !== 0) {
+        throw new Error("Feel No Pain cannot be rolled after the passenger unit is destroyed");
+      }
+      return;
+    }
+    if ((threshold === 0 && feelNoPainRoll !== 0) || (threshold > 0 && feelNoPainRoll === 0)) {
+      throw new Error("Destroyed Transport Feel No Pain roll does not match the allocated model");
+    }
+    if (threshold > 0 && feelNoPainRoll >= threshold) return;
+    const health = after[segment.id];
+    health.woundsLost += 1;
+    if (health.woundsLost === segment.wounds) {
+      health.modelsRemaining -= 1;
+      health.woundsLost = 0;
+    }
+  });
+  let damage = 0;
+  let modelsDestroyed = 0;
+  for (const segment of formation.segments) {
+    const previous = before[segment.id];
+    const current = after[segment.id];
+    damage +=
+      (previous.modelsRemaining - current.modelsRemaining) * segment.wounds +
+      current.woundsLost -
+      previous.woundsLost;
+    modelsDestroyed += previous.modelsRemaining - current.modelsRemaining;
+  }
+  return {
+    feelNoPainRolls,
+    summary: { damage, modelsDestroyed },
+    allocations: formation.segments.map((segment) => ({
+      segmentId: segment.id,
+      before: before[segment.id],
+      after: after[segment.id],
+    })),
+  };
 }
 
 export function replayBattleState(state) {
@@ -955,6 +1326,11 @@ export function replayBattleState(state) {
   const deploymentByFormation = new Map();
   const deployedFormationIds = new Set();
   const reserveArrivals = new Map();
+  const embarkedByFormation = new Map();
+  const disembarkedByFormation = new Map();
+  const movementPhaseStartEmbarkedFormationIds = new Set();
+  const pendingTransportDestructions = new Map();
+  const transportDestructionResolutions = new Map();
   const completedActivations = new Set();
   let activeActivation = null;
   let deploymentPriorityPlayerId = "";
@@ -971,6 +1347,9 @@ export function replayBattleState(state) {
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyUnactionedThroughSequence ?? 0);
   for (const event of state.events) {
+    if (pendingTransportDestructions.size > 0 && event.type !== "transport_destroyed_resolved") {
+      throw new Error("Destroyed Transport passengers must disembark immediately");
+    }
     if (event.type === "formation_registered") {
       if (state.version >= TIMELINE_BATTLE_STATE_VERSION && clock.status !== "setup") {
         throw new Error("Formations must be registered during battle setup");
@@ -1004,6 +1383,22 @@ export function replayBattleState(state) {
       }
       const formation = formations.get(event.formationId);
       if (!formation) throw new Error("Deployment formation is not registered");
+      if (deploymentByFormation.has(event.formationId)) {
+        throw new Error("Formation deployment has already been declared");
+      }
+      if (event.location === "embarked") {
+        const transport = formations.get(event.transportFormationId);
+        if (!transport || transport.playerId !== formation.playerId) {
+          throw new Error("A formation can start embarked only in a friendly Transport");
+        }
+        if (formation.assignedTransportFormationId !== transport.id) {
+          throw new Error("Formation is not assigned to that Transport in the locked roster");
+        }
+        if (!transport.keywords.includes("transport")) {
+          throw new Error("Assigned carrier does not have the Transport keyword");
+        }
+        embarkedByFormation.set(event.formationId, event.transportFormationId);
+      }
       if (
         event.location === "strategic_reserves" &&
         formation.keywords.some((keyword) => ["fortification", "fortifications"].includes(keyword))
@@ -1011,10 +1406,36 @@ export function replayBattleState(state) {
         throw new Error("Fortifications cannot be placed into Strategic Reserves");
       }
       deploymentByFormation.set(event.formationId, event);
+      for (const [passengerId, transportId] of embarkedByFormation) {
+        const passengerDeployment = deploymentByFormation.get(passengerId);
+        const transportDeployment = deploymentByFormation.get(transportId);
+        if (
+          passengerDeployment &&
+          transportDeployment &&
+          ["reserves", "strategic_reserves"].includes(transportDeployment.location) &&
+          !passengerDeployment.eligibilityConfirmed
+        ) {
+          throw new Error(
+            "A unit starting embarked in a Reserve Transport requires explicit Reserve eligibility",
+          );
+        }
+        if (
+          passengerDeployment &&
+          transportDeployment?.location === "strategic_reserves" &&
+          passengerDeployment.points < 1
+        ) {
+          throw new Error(
+            "A unit embarked in Strategic Reserves must include its points in the limit",
+          );
+        }
+      }
       const strategicPoints = [...deploymentByFormation.values()]
         .filter(
           (deployment) =>
-            deployment.location === "strategic_reserves" &&
+            (deployment.location === "strategic_reserves" ||
+              (deployment.location === "embarked" &&
+                deploymentByFormation.get(deployment.transportFormationId)?.location ===
+                  "strategic_reserves")) &&
             formations.get(deployment.formationId)?.playerId === formation.playerId,
         )
         .reduce((total, deployment) => total + deployment.points, 0);
@@ -1058,6 +1479,9 @@ export function replayBattleState(state) {
         throw new Error("Formation was deployed out of alternating player order");
       }
       deployedFormationIds.add(event.formationId);
+      for (const [passengerId, transportId] of embarkedByFormation) {
+        if (transportId === event.formationId) deployedFormationIds.add(passengerId);
+      }
       deploymentPriorityPlayerId = nextDeploymentPlayer(
         state.players,
         otherPlayerId(state.players, expectedPlayerId),
@@ -1098,6 +1522,17 @@ export function replayBattleState(state) {
         )
       ) {
         throw new Error("Every battlefield formation must be deployed before battle start");
+      }
+      for (const [passengerId, transportId] of embarkedByFormation) {
+        const passenger = formations.get(passengerId);
+        const transport = formations.get(transportId);
+        if (!passenger || !transport || passenger.playerId !== transport.playerId) {
+          throw new Error("Starting Transport occupancy is invalid");
+        }
+        const transportDeployment = deploymentByFormation.get(transportId);
+        if (!transportDeployment || transportDeployment.location === "embarked") {
+          throw new Error("A starting Transport cannot itself be embarked in this guided workflow");
+        }
       }
       const expected = startBattleClock(state.players, event.firstPlayerId);
       if (!sameBattleClock(event.clock, expected)) {
@@ -1140,6 +1575,18 @@ export function replayBattleState(state) {
         for (const [formationId] of battleShockedFormations) {
           if (formations.get(formationId)?.playerId === expected.activePlayerId) {
             battleShockedFormations.delete(formationId);
+          }
+        }
+      }
+      if (
+        expected.status === "active" &&
+        expected.phase === "movement" &&
+        expected.step === "start"
+      ) {
+        movementPhaseStartEmbarkedFormationIds.clear();
+        for (const formationId of embarkedByFormation.keys()) {
+          if (formations.get(formationId)?.playerId === expected.activePlayerId) {
+            movementPhaseStartEmbarkedFormationIds.add(formationId);
           }
         }
       }
@@ -1301,6 +1748,9 @@ export function replayBattleState(state) {
         );
       }
       deployedFormationIds.add(event.formationId);
+      for (const [passengerId, transportId] of embarkedByFormation) {
+        if (transportId === event.formationId) deployedFormationIds.add(passengerId);
+      }
       reserveArrivals.set(event.formationId, event);
       movementByFormation.set(event.formationId, {
         formationId: event.formationId,
@@ -1308,6 +1758,184 @@ export function replayBattleState(state) {
         clock: event.clock,
         fromReserves: true,
       });
+      continue;
+    }
+    if (event.type === "formation_embarked") {
+      if (
+        clock.status !== "active" ||
+        clock.phase !== "movement" ||
+        clock.step !== "move_units" ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("A formation can embark only in the Move Units step");
+      }
+      const formation = formations.get(event.formationId);
+      const transport = formations.get(event.transportFormationId);
+      if (
+        !formationIsOnBattlefield(
+          event.formationId,
+          deploymentByFormation,
+          deployedFormationIds,
+          embarkedByFormation,
+        ) ||
+        !formationIsOnBattlefield(
+          event.transportFormationId,
+          deploymentByFormation,
+          deployedFormationIds,
+          embarkedByFormation,
+        )
+      ) {
+        throw new Error("Both the passenger and Transport must be on the battlefield");
+      }
+      if (
+        formation.playerId !== clock.activePlayerId ||
+        transport.playerId !== formation.playerId
+      ) {
+        throw new Error("Only the active player's formation can embark in a friendly Transport");
+      }
+      if (formation.assignedTransportFormationId !== transport.id) {
+        throw new Error("Formation is not assigned to that Transport in the locked roster");
+      }
+      if (!transport.keywords.includes("transport") || formationDestroyed(transport)) {
+        throw new Error("A formation can embark only in a surviving Transport");
+      }
+      if (formationDestroyed(formation)) throw new Error("A destroyed formation cannot embark");
+      const movement = movementByFormation.get(event.formationId);
+      if (
+        !movement ||
+        !sameTurn(movement.clock, clock) ||
+        !["normal", "advance", "fall_back"].includes(movement.movement)
+      ) {
+        throw new Error("Embarkation requires a completed Normal, Advance, or Fall Back move");
+      }
+      const disembarkation = disembarkedByFormation.get(event.formationId);
+      if (disembarkation && samePhase(disembarkation.clock, clock)) {
+        throw new Error("A formation cannot embark after disembarking in the same phase");
+      }
+      embarkedByFormation.set(event.formationId, event.transportFormationId);
+      continue;
+    }
+    if (event.type === "formation_disembarked") {
+      if (
+        clock.status !== "active" ||
+        clock.phase !== "movement" ||
+        clock.step !== "move_units" ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("A formation can disembark only in the Move Units step");
+      }
+      const formation = formations.get(event.formationId);
+      const transport = formations.get(event.transportFormationId);
+      if (
+        formation.playerId !== clock.activePlayerId ||
+        transport.playerId !== formation.playerId
+      ) {
+        throw new Error("Only the active player's formation can disembark");
+      }
+      if (embarkedByFormation.get(event.formationId) !== event.transportFormationId) {
+        throw new Error("Formation is not embarked in the selected Transport");
+      }
+      if (!movementPhaseStartEmbarkedFormationIds.has(event.formationId)) {
+        throw new Error("Only a unit that started the Movement phase embarked can disembark");
+      }
+      if (formationDestroyed(transport)) {
+        throw new Error("Destroyed Transport passengers require immediate forced disembarkation");
+      }
+      const transportMovement = movementByFormation.get(event.transportFormationId);
+      const currentTransportMovement =
+        transportMovement && sameTurn(transportMovement.clock, clock) ? transportMovement : null;
+      if (["advance", "fall_back"].includes(currentTransportMovement?.movement)) {
+        throw new Error("A unit cannot disembark after its Transport Advanced or Fell Back");
+      }
+      embarkedByFormation.delete(event.formationId);
+      deployedFormationIds.add(event.formationId);
+      disembarkedByFormation.set(event.formationId, event);
+      if (currentTransportMovement?.movement === "normal") {
+        movementByFormation.set(event.formationId, {
+          formationId: event.formationId,
+          movement: "normal",
+          clock: event.clock,
+          fromMovedTransport: true,
+        });
+      }
+      continue;
+    }
+    if (event.type === "transport_destroyed_resolved") {
+      const pending = pendingTransportDestructions.get(event.transportFormationId);
+      if (
+        !pending ||
+        pending.causeEventId !== event.causeEventId ||
+        !sameBattleClock(event.clock, pending.clock)
+      ) {
+        throw new Error("Destroyed Transport resolution does not match the pending destruction");
+      }
+      const expectedPassengerIds = [...pending.passengerFormationIds].sort();
+      const recordedPassengerIds = event.passengers
+        .map((passenger) => passenger.formationId)
+        .sort();
+      if (
+        expectedPassengerIds.length !== recordedPassengerIds.length ||
+        expectedPassengerIds.some((id, index) => id !== recordedPassengerIds[index])
+      ) {
+        throw new Error("Destroyed Transport resolution does not contain every passenger");
+      }
+      pendingTransportDestructions.delete(event.transportFormationId);
+      for (const passenger of event.passengers) {
+        const formation = formations.get(passenger.formationId);
+        const expected = replayDestroyedPassengerResolution(formation, passenger);
+        if (
+          expected.summary.damage !== passenger.summary.damage ||
+          expected.summary.modelsDestroyed !== passenger.summary.modelsDestroyed ||
+          expected.allocations.some((allocation, index) => {
+            const recorded = passenger.allocations[index];
+            return (
+              !recorded ||
+              allocation.segmentId !== recorded.segmentId ||
+              !sameHealth(allocation.before, recorded.before) ||
+              !sameHealth(allocation.after, recorded.after)
+            );
+          })
+        ) {
+          throw new Error("Destroyed Transport passenger health does not match its recorded rolls");
+        }
+        for (const allocation of passenger.allocations) {
+          formation.health[allocation.segmentId] = { ...allocation.after };
+        }
+        embarkedByFormation.delete(passenger.formationId);
+        deployedFormationIds.add(passenger.formationId);
+        disembarkedByFormation.set(passenger.formationId, {
+          ...passenger,
+          transportFormationId: event.transportFormationId,
+          destroyedTransport: true,
+          clock: event.clock,
+        });
+        movementByFormation.set(passenger.formationId, {
+          formationId: passenger.formationId,
+          movement: "normal",
+          clock: event.clock,
+          fromDestroyedTransport: true,
+        });
+        if (!formationDestroyed(formation)) {
+          battleShockedFormations.set(passenger.formationId, {
+            formationId: passenger.formationId,
+            reason: "Disembarked from a destroyed Transport",
+            appliedAt: event.clock,
+          });
+        }
+        const nestedPassengers = [...embarkedByFormation]
+          .filter(([, transportId]) => transportId === passenger.formationId)
+          .map(([formationId]) => formationId)
+          .sort();
+        if (formationDestroyed(formation) && nestedPassengers.length > 0) {
+          pendingTransportDestructions.set(passenger.formationId, {
+            transportFormationId: passenger.formationId,
+            causeEventId: event.id,
+            passengerFormationIds: nestedPassengers,
+            clock: event.clock,
+          });
+        }
+      }
+      transportDestructionResolutions.set(event.transportFormationId, event);
       continue;
     }
     if (event.type === "movement_recorded") {
@@ -1321,7 +1949,12 @@ export function replayBattleState(state) {
       }
       const formation = formations.get(event.formationId);
       if (
-        !formationIsOnBattlefield(event.formationId, deploymentByFormation, deployedFormationIds)
+        !formationIsOnBattlefield(
+          event.formationId,
+          deploymentByFormation,
+          deployedFormationIds,
+          embarkedByFormation,
+        )
       ) {
         throw new Error("A formation that is not on the battlefield cannot move");
       }
@@ -1329,6 +1962,14 @@ export function replayBattleState(state) {
         throw new Error("Only the active player's formation can move");
       }
       if (formationDestroyed(formation)) throw new Error("A destroyed formation cannot move");
+      const disembarkation = disembarkedByFormation.get(event.formationId);
+      if (
+        event.movement === "stationary" &&
+        disembarkation &&
+        sameTurn(disembarkation.clock, clock)
+      ) {
+        throw new Error("A unit that disembarked this turn cannot Remain Stationary");
+      }
       const previous = movementByFormation.get(event.formationId);
       if (previous && sameTurn(previous.clock, clock)) {
         throw new Error("Formation movement has already been recorded this turn");
@@ -1347,7 +1988,12 @@ export function replayBattleState(state) {
       }
       const formation = formations.get(event.formationId);
       if (
-        !formationIsOnBattlefield(event.formationId, deploymentByFormation, deployedFormationIds)
+        !formationIsOnBattlefield(
+          event.formationId,
+          deploymentByFormation,
+          deployedFormationIds,
+          embarkedByFormation,
+        )
       ) {
         throw new Error("A formation that is not on the battlefield cannot charge");
       }
@@ -1362,7 +2008,12 @@ export function replayBattleState(state) {
       for (const targetFormationId of event.targetFormationIds) {
         const target = formations.get(targetFormationId);
         if (
-          !formationIsOnBattlefield(targetFormationId, deploymentByFormation, deployedFormationIds)
+          !formationIsOnBattlefield(
+            targetFormationId,
+            deploymentByFormation,
+            deployedFormationIds,
+            embarkedByFormation,
+          )
         ) {
           throw new Error("A formation cannot charge a target outside the battlefield");
         }
@@ -1392,6 +2043,12 @@ export function replayBattleState(state) {
           `A formation that ${currentMovement.movement === "advance" ? "Advanced" : "Fell Back"} requires an explicit charge eligibility override`,
         );
       }
+      if (
+        (currentMovement?.fromMovedTransport || currentMovement?.fromDestroyedTransport) &&
+        !event.eligibilityOverride
+      ) {
+        throw new Error("A unit that disembarked after movement cannot declare a charge this turn");
+      }
       chargeByFormation.set(event.formationId, event);
       continue;
     }
@@ -1420,7 +2077,12 @@ export function replayBattleState(state) {
       const formation = formations.get(event.formationId);
       if (formationDestroyed(formation)) throw new Error("A destroyed formation cannot activate");
       if (
-        !formationIsOnBattlefield(event.formationId, deploymentByFormation, deployedFormationIds)
+        !formationIsOnBattlefield(
+          event.formationId,
+          deploymentByFormation,
+          deployedFormationIds,
+          embarkedByFormation,
+        )
       ) {
         throw new Error("A formation outside the battlefield cannot activate");
       }
@@ -1539,12 +2201,14 @@ export function replayBattleState(state) {
       }
       const formation = formations.get(event.targetFormationId);
       if (!formation) throw new Error("Attack target formation is not registered");
+      const wasDestroyed = formationDestroyed(formation);
       if (
         event.sequence > legacyUnactionedThroughSequence &&
         !formationIsOnBattlefield(
           event.targetFormationId,
           deploymentByFormation,
           deployedFormationIds,
+          embarkedByFormation,
         )
       ) {
         throw new Error("Attack target is not on the battlefield");
@@ -1586,6 +2250,20 @@ export function replayBattleState(state) {
       attacks.set(event.id, event);
       activeAttackIds.push(event.id);
       targetedFormationIds.add(event.targetFormationId);
+      if (!wasDestroyed && formationDestroyed(formation)) {
+        const passengerFormationIds = [...embarkedByFormation]
+          .filter(([, transportId]) => transportId === event.targetFormationId)
+          .map(([formationId]) => formationId)
+          .sort();
+        if (passengerFormationIds.length > 0) {
+          pendingTransportDestructions.set(event.targetFormationId, {
+            transportFormationId: event.targetFormationId,
+            causeEventId: event.id,
+            passengerFormationIds,
+            clock,
+          });
+        }
+      }
       continue;
     }
     if (event.type !== "attack_reverted") {
@@ -1594,6 +2272,15 @@ export function replayBattleState(state) {
     const reverted = attacks.get(event.revertsEventId);
     if (!reverted || activeAttackIds.at(-1) !== reverted.id) {
       throw new Error("Only the latest unreverted attack can be reverted");
+    }
+    if (
+      [...transportDestructionResolutions.values()].some(
+        (resolution) => resolution.causeEventId === reverted.id,
+      )
+    ) {
+      throw new Error(
+        "An attack cannot be reverted after resolving destroyed Transport passengers",
+      );
     }
     const formation = formations.get(reverted.targetFormationId);
     for (const allocation of reverted.allocations) {
@@ -1607,11 +2294,31 @@ export function replayBattleState(state) {
   const offBattlefieldFormationIds = new Set(
     [...formations.keys()].filter(
       (formationId) =>
-        !formationIsOnBattlefield(formationId, deploymentByFormation, deployedFormationIds),
+        !formationIsOnBattlefield(
+          formationId,
+          deploymentByFormation,
+          deployedFormationIds,
+          embarkedByFormation,
+        ),
     ),
   );
   const reserveDestroyedFormationIds = new Set(
-    clock.status === "complete" ? offBattlefieldFormationIds : [],
+    clock.status === "complete"
+      ? [...formations.keys()].filter((formationId) => {
+          const deployment = deploymentByFormation.get(formationId);
+          if (["reserves", "strategic_reserves"].includes(deployment?.location)) {
+            return !deployedFormationIds.has(formationId);
+          }
+          if (deployment?.location === "embarked") {
+            const transportDeployment = deploymentByFormation.get(deployment.transportFormationId);
+            return (
+              ["reserves", "strategic_reserves"].includes(transportDeployment?.location) &&
+              !deployedFormationIds.has(deployment.transportFormationId)
+            );
+          }
+          return false;
+        })
+      : [],
   );
   return {
     formations,
@@ -1637,6 +2344,11 @@ export function replayBattleState(state) {
           deployment.location !== "battlefield" || deployedFormationIds.has(deployment.formationId),
       ),
     reserveArrivals,
+    embarkedByFormation,
+    disembarkedByFormation,
+    movementPhaseStartEmbarkedFormationIds,
+    pendingTransportDestructions,
+    transportDestructionResolutions,
     offBattlefieldFormationIds,
     reserveDestroyedFormationIds,
     completedActivations,
@@ -1657,6 +2369,7 @@ export function declareFormationDeployment(
     earliestBattleRound = location === "strategic_reserves" ? 2 : 1,
     eligibilityConfirmed = false,
     eligibilityReason = "",
+    transportFormationId = "",
   } = {},
   id,
   at,
@@ -1673,6 +2386,7 @@ export function declareFormationDeployment(
     earliestBattleRound,
     eligibilityConfirmed,
     eligibilityReason,
+    transportFormationId,
   });
 }
 
@@ -1932,6 +2646,7 @@ export function battleFormationIsOnBattlefield(state, formationId) {
     formationId,
     replayed.deploymentByFormation,
     replayed.deployedFormationIds,
+    replayed.embarkedByFormation,
   );
 }
 
@@ -1947,6 +2662,129 @@ export function recordFormationMovement(state, formationId, movement, id, at) {
     movement,
     clock,
   });
+}
+
+export function embarkFormation(
+  state,
+  formationId,
+  transportFormationId,
+  { rangeConfirmed = false, rangeReason = "" } = {},
+  id,
+  at,
+) {
+  const clock = replayBattleState(state).clock;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "formation_embarked",
+    formationId,
+    transportFormationId,
+    rangeConfirmed,
+    rangeReason,
+    clock,
+  });
+}
+
+export function disembarkFormation(
+  state,
+  formationId,
+  transportFormationId,
+  { placementConfirmed = false, placementReason = "" } = {},
+  id,
+  at,
+) {
+  const clock = replayBattleState(state).clock;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "formation_disembarked",
+    formationId,
+    transportFormationId,
+    placementConfirmed,
+    placementReason,
+    clock,
+  });
+}
+
+export function resolveDestroyedTransport(
+  state,
+  transportFormationId,
+  passengerOptions,
+  id,
+  at,
+  randomUint32 = secureRandomUint32,
+  { deadlyDemiseResolvedConfirmed = false, deadlyDemiseResolutionReason = "" } = {},
+) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingTransportDestructions.get(transportFormationId);
+  if (!pending) throw new Error("Transport does not have a pending destruction resolution");
+  const optionsByFormationId = new Map(
+    (passengerOptions ?? []).map((options) => [options.formationId, options]),
+  );
+  if (
+    !Array.isArray(passengerOptions) ||
+    optionsByFormationId.size !== passengerOptions.length ||
+    optionsByFormationId.size !== pending.passengerFormationIds.length
+  ) {
+    throw new Error("Destroyed Transport resolution must contain each passenger exactly once");
+  }
+  const passengers = pending.passengerFormationIds.map((formationId) => {
+    const formation = replayed.formations.get(formationId);
+    const options = optionsByFormationId.get(formationId);
+    if (!options) throw new Error("Destroyed Transport resolution is missing a passenger");
+    const firstSegmentId = boundedString(
+      options.firstSegmentId,
+      "Destroyed Transport first allocation profile",
+      100,
+    );
+    const unplacedModels = nonnegativeInteger(
+      options.unplacedModels ?? 0,
+      "Unplaced passenger models",
+      liveModelCount(formation),
+    );
+    const emergency = Boolean(options.emergency);
+    const rolls = Array.from({ length: liveModelCount(formation) - unplacedModels }, () =>
+      randomDie(6, randomUint32),
+    );
+    const resolved = replayDestroyedPassengerResolution(
+      formation,
+      { firstSegmentId, emergency, unplacedModels, rolls, feelNoPainRolls: [] },
+      randomUint32,
+    );
+    return {
+      formationId,
+      firstSegmentId,
+      emergency,
+      placementConfirmed: Boolean(options.placementConfirmed),
+      placementReason: options.placementReason ?? "",
+      unplacedModels,
+      rolls,
+      feelNoPainRolls: resolved.feelNoPainRolls,
+      summary: resolved.summary,
+      allocations: resolved.allocations,
+    };
+  });
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "transport_destroyed_resolved",
+    transportFormationId,
+    causeEventId: pending.causeEventId,
+    deadlyDemiseResolvedConfirmed,
+    deadlyDemiseResolutionReason,
+    passengers,
+    clock: pending.clock,
+  });
+}
+
+export function battleFormationEmbarkedTransport(state, formationId) {
+  return replayBattleState(state).embarkedByFormation.get(formationId) ?? "";
 }
 
 export function recordFormationCharge(
@@ -2062,6 +2900,7 @@ export function battleCanStartFormationActivation(
       attackerFormationId,
       replayed.deploymentByFormation,
       replayed.deployedFormationIds,
+      replayed.embarkedByFormation,
     ) ||
     !battleAttackWindow(replayed.clock) ||
     replayed.pendingChoices.size > 0 ||
@@ -2100,6 +2939,7 @@ export function battleCanResolveAttack(state, attackerFormationId, options = {})
       options.targetFormationId,
       replayed.deploymentByFormation,
       replayed.deployedFormationIds,
+      replayed.embarkedByFormation,
     )
   ) {
     return false;
@@ -2154,7 +2994,8 @@ export function configureUnengagedBattleFormation(state, formation, id, at) {
   const previous = state.events[index].formation;
   if (
     previous.playerId !== formation.playerId ||
-    previous.sourceFormationId !== formation.sourceFormationId
+    previous.sourceFormationId !== formation.sourceFormationId ||
+    previous.assignedTransportFormationId !== formation.assignedTransportFormationId
   ) {
     throw new Error("Formation identity cannot change during battle setup");
   }

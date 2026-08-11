@@ -27,10 +27,10 @@ state.
 
 ## Prioritized backlog
 
-1. Continue the legal-action engine with Transport embark/disembark timing,
-   target range/visibility eligibility, charge
+1. Continue the legal-action engine with target range/visibility eligibility, charge
    movement, Heroic Intervention, pile-in, consolidation, reactions, and
-   Stratagem windows.
+   Stratagem windows; then expand Transport changes beyond the roster's locked
+   assigned carrier and execute transport-specific exceptions.
 2. Build and enforce the source-locked faction, detachment, enhancement,
    Stratagem, terrain, and mission coverage matrix described by the complete
    battle requirements.
@@ -40,6 +40,23 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-10: Advanced guided play to battle-state version 7 with canonical
+  Transport occupancy. Legal saved assignments now lock exact passenger and
+  carrier formations. Declare Battle Formations supports starting embarked;
+  normal embark/disembark timing enforces completed movement, 3-inch placement,
+  start-of-phase occupancy, same-phase restrictions, Transport movement, and
+  downstream movement/charge eligibility. Firing Deck uses current occupancy.
+  Destroying an occupied Transport blocks all other transitions until every
+  passenger resolves normal or Emergency Disembarkation, CSPRNG per-model rolls,
+  applicable Feel No Pain, unplaceable models, mixed-profile casualty allocation,
+  casualties, Battle-shock, and movement/charge restrictions. Deadly Demise
+  ordering is an explicit fail-closed confirmation instead of a silently skipped
+  tabletop fact. Native C, WebAssembly, and the replay API
+  independently cross-check passenger health transitions. Version-1 through
+  version-6 logs migrate as explicitly unembarked. Core Rules pages 17, 18, 23,
+  and 53 join the pinned deployment source, with state, migration, timing,
+  tamper, UI, API, C/Wasm, fuzz, and formal regressions covering the cycle.
 
 - 2026-08-10: Advanced guided play to battle-state version 6 with replayed
   deployment and Reserves. Every formation declares battlefield, Reserves, or

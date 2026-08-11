@@ -4,6 +4,7 @@ import {
   BATTLE_STATE_VERSION,
   ROSTER_BATTLE_STATE_VERSION,
   TIMELINE_BATTLE_STATE_VERSION,
+  TRANSPORT_BATTLE_STATE_VERSION,
   createBattleState,
   normalizeBattleState,
 } from "./battle-state.mjs";
@@ -13,6 +14,7 @@ import {
   savedFormationGroups,
   savedFormationTargetSequence,
 } from "./formations.mjs";
+import { transportAssignmentReport } from "./transport.mjs";
 
 function listRevision(list) {
   if (!Number.isSafeInteger(list?.updatedAt) || list.updatedAt < 0) {
@@ -51,7 +53,7 @@ function upgradePlayers(state, firstList, secondList) {
   }));
 }
 
-function registrationFor(formation, player, equipmentOverride) {
+function registrationFor(formation, player, equipmentOverride, assignedTransportFormationId = "") {
   const equipment = equipmentOverride ?? savedFormationDefensiveEquipmentDefaults(formation);
   const targetSequence = savedFormationTargetSequence(formation, "", equipment);
   if (targetSequence.ambiguousComponents.length > 0) {
@@ -67,24 +69,57 @@ function registrationFor(formation, player, equipmentOverride) {
     `${player.id}:${formation.id}`,
     targetSequence,
     equipment,
+    assignedTransportFormationId,
   );
 }
 
 function desiredRegistrations(catalogue, state, firstList, secondList, equipmentOverrides = {}) {
   const lists = listsForPlayers(state, firstList, secondList);
-  return state.players.flatMap((player, playerIndex) =>
-    savedFormationGroups(catalogue, lists[playerIndex]).map((formation) => {
+  return state.players.flatMap((player, playerIndex) => {
+    const list = lists[playerIndex];
+    const formations = savedFormationGroups(catalogue, list);
+    const report = transportAssignmentReport(catalogue, list);
+    if (report.errors.length > 0) {
+      throw new Error(`Transport assignments are invalid: ${report.errors.join("; ")}`);
+    }
+    const formationIdBySavedUnitId = new Map(
+      formations.flatMap((formation) =>
+        formation.components.map((component) => [component.unit.id, formation.id]),
+      ),
+    );
+    const assignedTransportByFormationId = new Map();
+    for (const assignment of report.assignments) {
+      const passengerFormationId = formationIdBySavedUnitId.get(assignment.passengerUnit.id);
+      const transportFormationId = formationIdBySavedUnitId.get(assignment.transportUnit.id);
+      if (!passengerFormationId || !transportFormationId) {
+        throw new Error("Transport assignment does not map to an exact battle formation");
+      }
+      const previous = assignedTransportByFormationId.get(passengerFormationId);
+      if (previous && previous !== transportFormationId) {
+        throw new Error("An attached formation cannot be assigned to multiple Transports");
+      }
+      assignedTransportByFormationId.set(passengerFormationId, transportFormationId);
+    }
+    return formations.map((formation) => {
       const id = `${player.id}:${formation.id}`;
-      return registrationFor(formation, player, equipmentOverrides[id]);
-    }),
-  );
+      const assignedSourceId = assignedTransportByFormationId.get(formation.id);
+      return registrationFor(
+        formation,
+        player,
+        equipmentOverrides[id],
+        assignedSourceId ? `${player.id}:${assignedSourceId}` : "",
+      );
+    });
+  });
 }
 
 function sameSegments(left, right) {
   return (
     left.length === right.length &&
     left.every((segment, index) =>
-      Object.entries(segment).every(([key, value]) => value === right[index]?.[key]),
+      Object.entries(segment).every(
+        ([key, value]) => key === "feelNoPain" || value === right[index]?.[key],
+      ),
     )
   );
 }
@@ -131,6 +166,8 @@ function registerCompleteRosters(catalogue, state, firstList, secondList, equipm
             ...existing.formation,
             keywords: formation.keywords,
             defensiveEquipmentCounts: formation.defensiveEquipmentCounts,
+            assignedTransportFormationId: formation.assignedTransportFormationId,
+            segments: formation.segments,
           },
         };
       }
@@ -215,6 +252,10 @@ export function initializeBattleForLists({
               ? next.events.length
               : (next.migration?.legacyUnactionedThroughSequence ?? 0),
           legacyDeploymentThroughSequence: next.events.length,
+          legacyTransportThroughSequence:
+            sourceVersion < TRANSPORT_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyTransportThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

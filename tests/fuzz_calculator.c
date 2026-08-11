@@ -256,7 +256,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     memset(battle_events, 0, sizeof(battle_events));
     battle_damage = next_byte(&input) % battle_profiles[0];
     battle_events[0] = WHC_BATTLE_EVENT_VERSION;
-    battle_events[1] = WHC_BATTLE_EVENT_ATTACK;
+    battle_events[1] = next_byte(&input) % 2u == 0u ? WHC_BATTLE_EVENT_ATTACK
+                                                     : WHC_BATTLE_EVENT_TRANSPORT_DAMAGE;
     battle_events[2] = 1u;
     battle_events[4] = battle_damage;
     battle_events[6] = 0u;
