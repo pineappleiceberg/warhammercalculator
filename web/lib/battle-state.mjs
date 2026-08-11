@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 18;
+export const BATTLE_STATE_VERSION = 19;
+export const TRANSPORT_NESTING_BATTLE_STATE_VERSION = 19;
 export const TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION = 18;
 export const RANGED_DECLARATION_BATTLE_STATE_VERSION = 17;
 export const GO_TO_GROUND_BATTLE_STATE_VERSION = 16;
@@ -158,6 +159,34 @@ export function transportLoadIsValid(
       modeCount <= 1 &&
       ((allowanceMaximum === 0 && allowanceModels === 0) ||
         (allowanceMaximum > 0 && allowanceModels <= allowanceMaximum)),
+  );
+}
+
+const DEPLOYMENT_ROOT_LOCATION = Object.freeze({
+  battlefield: 1,
+  reserves: 2,
+  strategic_reserves: 3,
+});
+
+export function transportDeploymentChainIsValid(
+  chainLength,
+  uniqueFormationCount,
+  rootLocation,
+  reserveEligibilityCount,
+) {
+  return Boolean(
+    Number.isSafeInteger(chainLength) &&
+      chainLength >= 1 &&
+      chainLength <= 257 &&
+      uniqueFormationCount === chainLength &&
+      Number.isSafeInteger(rootLocation) &&
+      rootLocation >= DEPLOYMENT_ROOT_LOCATION.battlefield &&
+      rootLocation <= DEPLOYMENT_ROOT_LOCATION.strategic_reserves &&
+      Number.isSafeInteger(reserveEligibilityCount) &&
+      reserveEligibilityCount >= 0 &&
+      reserveEligibilityCount <= chainLength &&
+      (rootLocation === DEPLOYMENT_ROOT_LOCATION.battlefield ||
+        reserveEligibilityCount === chainLength),
   );
 }
 
@@ -2860,6 +2889,7 @@ export function normalizeBattleState(candidate) {
       HAZARDOUS_BATTLE_STATE_VERSION,
       GO_TO_GROUND_BATTLE_STATE_VERSION,
       RANGED_DECLARATION_BATTLE_STATE_VERSION,
+      TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -2910,6 +2940,7 @@ export function normalizeBattleState(candidate) {
         HAZARDOUS_BATTLE_STATE_VERSION,
         GO_TO_GROUND_BATTLE_STATE_VERSION,
         RANGED_DECLARATION_BATTLE_STATE_VERSION,
+        TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -3031,6 +3062,7 @@ export function normalizeBattleState(candidate) {
         event.formation.weaponBearerTracking === "legacy_aggregate",
     ) &&
     normalized.migration?.sourceVersion !== WEAPON_INVENTORY_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== TARGET_ELIGIBILITY_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== HEROIC_INTERVENTION_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== TRANSPORT_BATTLE_STATE_VERSION &&
@@ -3144,6 +3176,90 @@ function commandPhaseStarted(clock) {
 
 function deploymentDeclarationsComplete(formations, deploymentByFormation) {
   return formations.size > 0 && deploymentByFormation.size === formations.size;
+}
+
+function transportDeploymentChain(formationId, deploymentByFormation) {
+  const formationIds = [];
+  const seen = new Set();
+  let currentFormationId = formationId;
+  while (true) {
+    if (seen.has(currentFormationId)) {
+      return {
+        valid: false,
+        complete: true,
+        formationIds,
+        rootFormationId: "",
+        rootDeployment: null,
+        reason: "Transport deployment assignments cannot contain a cycle",
+      };
+    }
+    seen.add(currentFormationId);
+    formationIds.push(currentFormationId);
+    const deployment = deploymentByFormation.get(currentFormationId);
+    if (!deployment) {
+      return {
+        valid: true,
+        complete: false,
+        formationIds,
+        rootFormationId: currentFormationId,
+        rootDeployment: null,
+        reason: "Transport deployment chain is not fully declared",
+      };
+    }
+    if (deployment.location !== "embarked") {
+      const rootLocation = DEPLOYMENT_ROOT_LOCATION[deployment.location] ?? 0;
+      const reserveEligibilityCount = formationIds.filter(
+        (id) => deploymentByFormation.get(id)?.eligibilityConfirmed,
+      ).length;
+      const valid = transportDeploymentChainIsValid(
+        formationIds.length,
+        seen.size,
+        rootLocation,
+        reserveEligibilityCount,
+      );
+      return {
+        valid,
+        complete: true,
+        formationIds,
+        rootFormationId: currentFormationId,
+        rootDeployment: deployment,
+        reason: valid
+          ? "Transport deployment chain is valid"
+          : rootLocation === 0
+            ? "Transport deployment chain must end on the battlefield or in Reserves"
+            : rootLocation !== DEPLOYMENT_ROOT_LOCATION.battlefield &&
+                reserveEligibilityCount !== formationIds.length
+              ? "Every unit in a Reserve Transport chain requires explicit Reserve eligibility"
+              : "Transport deployment chain is invalid",
+      };
+    }
+    currentFormationId = deployment.transportFormationId;
+  }
+}
+
+function validateDeclaredTransportChains(deploymentByFormation, requireComplete = false) {
+  for (const formationId of deploymentByFormation.keys()) {
+    const chain = transportDeploymentChain(formationId, deploymentByFormation);
+    if (!chain.valid || (requireComplete && !chain.complete)) {
+      throw new Error(chain.reason);
+    }
+  }
+}
+
+function deployedFormationTree(formationId, embarkedByFormation) {
+  const deployed = new Set([formationId]);
+  const pending = [formationId];
+  while (pending.length > 0) {
+    const transportFormationId = pending.shift();
+    for (const [passengerFormationId, carrierFormationId] of embarkedByFormation) {
+      if (carrierFormationId !== transportFormationId || deployed.has(passengerFormationId)) {
+        continue;
+      }
+      deployed.add(passengerFormationId);
+      pending.push(passengerFormationId);
+    }
+  }
+  return deployed;
 }
 
 function undeployedBattlefieldFormations(
@@ -3865,9 +3981,13 @@ export function replayBattleState(state) {
         throw new Error("Fortifications cannot be placed into Strategic Reserves");
       }
       deploymentByFormation.set(event.formationId, event);
-      for (const [passengerId, transportId] of embarkedByFormation) {
+      if (state.version >= TRANSPORT_NESTING_BATTLE_STATE_VERSION) {
+        validateDeclaredTransportChains(deploymentByFormation);
+      }
+      for (const [passengerId] of embarkedByFormation) {
         const passengerDeployment = deploymentByFormation.get(passengerId);
-        const transportDeployment = deploymentByFormation.get(transportId);
+        const chain = transportDeploymentChain(passengerId, deploymentByFormation);
+        const transportDeployment = chain.complete ? chain.rootDeployment : null;
         if (
           passengerDeployment &&
           transportDeployment &&
@@ -3889,14 +4009,14 @@ export function replayBattleState(state) {
         }
       }
       const strategicPoints = [...deploymentByFormation.values()]
-        .filter(
-          (deployment) =>
-            (deployment.location === "strategic_reserves" ||
-              (deployment.location === "embarked" &&
-                deploymentByFormation.get(deployment.transportFormationId)?.location ===
-                  "strategic_reserves")) &&
-            formations.get(deployment.formationId)?.playerId === formation.playerId,
-        )
+        .filter((deployment) => {
+          const chain = transportDeploymentChain(deployment.formationId, deploymentByFormation);
+          return (
+            chain.complete &&
+            chain.rootDeployment?.location === "strategic_reserves" &&
+            formations.get(deployment.formationId)?.playerId === formation.playerId
+          );
+        })
         .reduce((total, deployment) => total + deployment.points, 0);
       if (strategicPoints > Math.floor(mission.pointsLimit / 4)) {
         throw new Error(
@@ -3937,9 +4057,17 @@ export function replayBattleState(state) {
       if (!expectedPlayerId || formation.playerId !== expectedPlayerId) {
         throw new Error("Formation was deployed out of alternating player order");
       }
-      deployedFormationIds.add(event.formationId);
-      for (const [passengerId, transportId] of embarkedByFormation) {
-        if (transportId === event.formationId) deployedFormationIds.add(passengerId);
+      const deployedTree =
+        state.version >= TRANSPORT_NESTING_BATTLE_STATE_VERSION
+          ? deployedFormationTree(event.formationId, embarkedByFormation)
+          : new Set([
+              event.formationId,
+              ...[...embarkedByFormation]
+                .filter(([, transportId]) => transportId === event.formationId)
+                .map(([passengerId]) => passengerId),
+            ]);
+      for (const deployedFormationId of deployedTree) {
+        deployedFormationIds.add(deployedFormationId);
       }
       deploymentPriorityPlayerId = nextDeploymentPlayer(
         state.players,
@@ -3973,6 +4101,9 @@ export function replayBattleState(state) {
       if (!deploymentDeclarationsComplete(formations, deploymentByFormation)) {
         throw new Error("Every formation must have a deployment declaration before battle start");
       }
+      if (state.version >= TRANSPORT_NESTING_BATTLE_STATE_VERSION) {
+        validateDeclaredTransportChains(deploymentByFormation, true);
+      }
       if (
         [...deploymentByFormation.values()].some(
           (deployment) =>
@@ -3989,7 +4120,13 @@ export function replayBattleState(state) {
           throw new Error("Starting Transport occupancy is invalid");
         }
         const transportDeployment = deploymentByFormation.get(transportId);
-        if (!transportDeployment || transportDeployment.location === "embarked") {
+        if (!transportDeployment) {
+          throw new Error("Starting Transport occupancy is invalid");
+        }
+        if (
+          state.version < TRANSPORT_NESTING_BATTLE_STATE_VERSION &&
+          transportDeployment.location === "embarked"
+        ) {
           throw new Error("A starting Transport cannot itself be embarked in this guided workflow");
         }
       }
@@ -4206,9 +4343,17 @@ export function replayBattleState(state) {
           `This Reserve formation cannot arrive before battle round ${deployment.earliestBattleRound}`,
         );
       }
-      deployedFormationIds.add(event.formationId);
-      for (const [passengerId, transportId] of embarkedByFormation) {
-        if (transportId === event.formationId) deployedFormationIds.add(passengerId);
+      const deployedTree =
+        state.version >= TRANSPORT_NESTING_BATTLE_STATE_VERSION
+          ? deployedFormationTree(event.formationId, embarkedByFormation)
+          : new Set([
+              event.formationId,
+              ...[...embarkedByFormation]
+                .filter(([, transportId]) => transportId === event.formationId)
+                .map(([passengerId]) => passengerId),
+            ]);
+      for (const deployedFormationId of deployedTree) {
+        deployedFormationIds.add(deployedFormationId);
       }
       reserveArrivals.set(event.formationId, event);
       movementByFormation.set(event.formationId, {
@@ -6218,18 +6363,12 @@ export function replayBattleState(state) {
   const reserveDestroyedFormationIds = new Set(
     clock.status === "complete"
       ? [...formations.keys()].filter((formationId) => {
-          const deployment = deploymentByFormation.get(formationId);
-          if (["reserves", "strategic_reserves"].includes(deployment?.location)) {
-            return !deployedFormationIds.has(formationId);
-          }
-          if (deployment?.location === "embarked") {
-            const transportDeployment = deploymentByFormation.get(deployment.transportFormationId);
-            return (
-              ["reserves", "strategic_reserves"].includes(transportDeployment?.location) &&
-              !deployedFormationIds.has(deployment.transportFormationId)
-            );
-          }
-          return false;
+          const chain = transportDeploymentChain(formationId, deploymentByFormation);
+          return Boolean(
+            chain.complete &&
+              ["reserves", "strategic_reserves"].includes(chain.rootDeployment?.location) &&
+              !deployedFormationIds.has(chain.rootFormationId),
+          );
         })
       : [],
   );
@@ -6794,6 +6933,28 @@ export function battleTransportOccupancy(state, transportFormationId) {
     replayed.embarkedByFormation,
     transportFormationId,
   );
+}
+
+export function battleTransportDeploymentChains(state) {
+  const replayed = replayBattleState(state);
+  return [...replayed.formations.keys()].map((formationId) => {
+    const chain = transportDeploymentChain(formationId, replayed.deploymentByFormation);
+    const rootLocation = chain.rootDeployment?.location ?? "";
+    const reserveEligibilityCount = chain.formationIds.filter(
+      (id) => replayed.deploymentByFormation.get(id)?.eligibilityConfirmed,
+    ).length;
+    return {
+      formationId,
+      formationIds: [...chain.formationIds],
+      rootFormationId: chain.rootFormationId,
+      rootLocation,
+      rootLocationCode: DEPLOYMENT_ROOT_LOCATION[rootLocation] ?? 0,
+      reserveEligibilityCount,
+      complete: chain.complete,
+      valid: chain.valid,
+      reason: chain.reason,
+    };
+  });
 }
 
 export function battleEmbarkationOptions(state, formationId) {

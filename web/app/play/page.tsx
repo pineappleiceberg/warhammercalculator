@@ -2806,24 +2806,34 @@ export default function PlayMode() {
     try {
       const data = new FormData(event.currentTarget);
       let next = battleState;
+      const locationChoices = new Map(
+        [...replayedBattle.formations.keys()].map((formationId) => [
+          formationId,
+          String(data.get(`location-${formationId}`) || "battlefield"),
+        ]),
+      );
+      const rootLocationChoice = (formationId: string) => {
+        const seen = new Set<string>();
+        let currentFormationId = formationId;
+        while (true) {
+          if (seen.has(currentFormationId)) {
+            throw new Error("Transport deployment assignments cannot contain a cycle");
+          }
+          seen.add(currentFormationId);
+          const choice = locationChoices.get(currentFormationId) || "battlefield";
+          if (!choice.startsWith("embarked:")) return choice;
+          currentFormationId = choice.slice("embarked:".length);
+        }
+      };
       for (const formation of replayedBattle.formations.values()) {
-        const locationChoice = String(data.get(`location-${formation.id}`) || "battlefield");
+        const locationChoice = locationChoices.get(formation.id) || "battlefield";
         const location = locationChoice.startsWith("embarked:") ? "embarked" : locationChoice;
         const transportFormationId =
           location === "embarked" ? locationChoice.slice("embarked:".length) : "";
-        const transportLocation = transportFormationId
-          ? String(data.get(`location-${transportFormationId}`) || "battlefield").replace(
-              /^embarked:.+$/,
-              "embarked",
-            )
-          : "";
-        const inReserves =
-          ["reserves", "strategic_reserves"].includes(location) ||
-          (location === "embarked" &&
-            ["reserves", "strategic_reserves"].includes(transportLocation));
-        const countsTowardStrategicReserves =
-          location === "strategic_reserves" ||
-          (location === "embarked" && transportLocation === "strategic_reserves");
+        const rootLocation = rootLocationChoice(formation.id);
+        const inReserves = ["reserves", "strategic_reserves"].includes(rootLocation);
+        const countsTowardStrategicReserves = rootLocation === "strategic_reserves";
+        const reserveReason = String(data.get(`reason-${formation.id}`) || "").trim();
         next = declareFormationDeployment(
           next,
           formation.id,
@@ -2838,7 +2848,10 @@ export default function PlayMode() {
                 : Math.max(1, Number(data.get(`round-${formation.id}`)) || 1),
             eligibilityConfirmed: !inReserves || data.get(`eligible-${formation.id}`) === "on",
             eligibilityReason: inReserves
-              ? String(data.get(`reason-${formation.id}`) || "").trim()
+              ? reserveReason ||
+                (location === "embarked"
+                  ? "Embarked within a Transport chain placed in Reserves"
+                  : "")
               : location === "embarked"
                 ? "Core rules Transport declaration"
                 : "Battlefield deployment",

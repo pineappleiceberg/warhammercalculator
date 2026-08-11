@@ -32,6 +32,7 @@ import {
   replayBattleState,
   weaponBearerDeclarationIsValid,
   weaponInventoryDeclarationIsValid,
+  transportDeploymentChainIsValid,
   transportLoadIsValid,
 } from "../lib/battle-state.mjs";
 import { BATTLE_PHASE_STEPS, nextBattleClock, startBattleClock } from "../lib/battle-clock.mjs";
@@ -106,6 +107,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_go_to_ground_is_valid, "function");
   assert.equal(typeof calculator._whc_ranged_declaration_is_valid, "function");
   assert.equal(typeof calculator._whc_transport_load_is_valid, "function");
+  assert.equal(typeof calculator._whc_transport_deployment_chain_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
 });
@@ -126,6 +128,25 @@ test("WebAssembly and JavaScript agree on Transport capacity boundaries", () => 
     assert.equal(
       Boolean(calculator._whc_transport_load_is_valid(...values)),
       transportLoadIsValid(...values),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on nested Transport deployment chains", () => {
+  const cases = [
+    [1, 1, 1, 0],
+    [3, 3, 1, 0],
+    [3, 3, 2, 3],
+    [3, 3, 3, 3],
+    [3, 2, 1, 0],
+    [3, 3, 2, 2],
+    [0, 0, 0, 0],
+    [258, 258, 1, 0],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_transport_deployment_chain_is_valid(...values)),
+      transportDeploymentChainIsValid(...values),
     );
   }
 });

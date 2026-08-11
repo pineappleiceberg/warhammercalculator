@@ -216,5 +216,13 @@ int main(void) {
     assert(!whc_transport_load_is_valid(4u, 6u, 2u, 1u, 1u));
     assert(!whc_transport_load_is_valid(4u, 6u, 1u, 0u, 1u));
     assert(!whc_transport_load_is_valid(4u, 6u, 0u, 0u, 2u));
+    assert(whc_transport_deployment_chain_is_valid(
+        3u, 3u, WHC_DEPLOYMENT_ROOT_BATTLEFIELD, 0u));
+    assert(whc_transport_deployment_chain_is_valid(
+        3u, 3u, WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES, 3u));
+    assert(!whc_transport_deployment_chain_is_valid(
+        3u, 2u, WHC_DEPLOYMENT_ROOT_BATTLEFIELD, 0u));
+    assert(!whc_transport_deployment_chain_is_valid(
+        3u, 3u, WHC_DEPLOYMENT_ROOT_RESERVES, 2u));
     return 0;
 }

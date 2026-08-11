@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 18 as soon as both lists are selected. Every
+creates battle-state version 19 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -696,6 +696,19 @@ composition, and nested-Transport accounting. The replay API exposes both the
 immutable compatibility facts and current pool occupancy, and cross-checks the
 same ACSL-specified boundary through C and WebAssembly. Version-17 histories
 migrate with explicit compatibility provenance.
+Version 19 makes datasheet-permitted nested Transport setup executable instead
+of rejecting every Transport that starts embarked. Deployment follows each
+passenger through its complete carrier ancestry, rejects cycles, requires every
+formation in a Reserve chain to confirm Reserve eligibility, and counts every
+nested unit toward the Strategic Reserves points limit. Deploying or arriving
+the outer carrier records all descendants as deployed while they remain
+embarked, and an unarrived Reserve carrier reports its complete nested tree as
+destroyed at battle end. A Transport can disembark from its carrier before its
+own passengers disembark when both started the Movement phase embarked. Guided
+Play resolves nested form selections to the outermost location. The replay API
+returns every resolved carrier chain and cross-checks its cycle, root-location,
+and Reserve-eligibility invariant against the same ACSL-specified C/WebAssembly
+predicate. Version-18 histories migrate without rewriting their event logs.
 Version 8 makes ranged target eligibility an executable replay fact. The
 browser catalogue preserves each weapon's published Range, while Guided Play
 records the effective Range, closest-point measured distance to one thousandth
@@ -910,7 +923,8 @@ objective control, Battle-shocked formation IDs, categorized scoring history,
 movement and charge outcomes, canonical Pile In and Consolidation facts for each
 Fight activation, current/completed activation state, deployment
 declarations and order, battlefield/off-battlefield identities, Reserve
-arrivals, Reserves destroyed at battle end, current Transport occupancy,
+arrivals, Reserves destroyed at battle end, resolved Transport deployment
+ancestry, current Transport occupancy,
 disembarkations, mandatory destroyed-Transport state, and recorded passenger
 rolls and casualties. The
 portable ABI supports the same 32 formation segments and 10,000-event bound as

@@ -80,6 +80,9 @@
 #define WHC_RANGED_DECLARATION_TARGETS_CONTIGUOUS 16u
 #define WHC_RANGED_DECLARATION_PROFILES_CONTIGUOUS 32u
 #define WHC_RANGED_DECLARATION_FLAGS_MASK 63u
+#define WHC_DEPLOYMENT_ROOT_BATTLEFIELD 1u
+#define WHC_DEPLOYMENT_ROOT_RESERVES 2u
+#define WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES 3u
 
 enum whc_fire_overwatch_trigger {
     WHC_FIRE_OVERWATCH_SET_UP = 1u,
@@ -373,6 +376,21 @@ bool whc_ranged_declaration_is_valid(uint32_t declaration_count,
 bool whc_transport_load_is_valid(uint32_t used_capacity, uint32_t capacity,
                                  uint32_t allowance_models, uint32_t allowance_maximum,
                                  uint32_t mode_count);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        chain_length >= 1 && chain_length <= 257 &&
+        unique_formation_count == chain_length &&
+        root_location >= WHC_DEPLOYMENT_ROOT_BATTLEFIELD &&
+        root_location <= WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES &&
+        reserve_eligibility_count <= chain_length &&
+        (root_location == WHC_DEPLOYMENT_ROOT_BATTLEFIELD ||
+         reserve_eligibility_count == chain_length);
+*/
+bool whc_transport_deployment_chain_is_valid(uint32_t chain_length,
+                                             uint32_t unique_formation_count,
+                                             uint32_t root_location,
+                                             uint32_t reserve_eligibility_count);
 
 /*@ requires first_player_index <= 1;
     requires \valid(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));

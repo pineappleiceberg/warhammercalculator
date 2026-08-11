@@ -222,6 +222,12 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     uint32_t transport_mode_count;
     bool transport_valid;
     bool expected_transport_valid;
+    uint32_t transport_chain_length;
+    uint32_t transport_unique_formations;
+    uint32_t transport_root_location;
+    uint32_t transport_reserve_eligibility_count;
+    bool transport_chain_valid;
+    bool expected_transport_chain_valid;
 
     while (index < weapon_count) {
         generate_weapon(&input, &weapons[index]);
@@ -530,5 +536,21 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
          (transport_allowance_maximum > 0u &&
           transport_allowance_models <= transport_allowance_maximum));
     assert(transport_valid == expected_transport_valid);
+    transport_chain_length = next_u16(&input);
+    transport_unique_formations = next_u16(&input);
+    transport_root_location = next_byte(&input);
+    transport_reserve_eligibility_count = next_u16(&input);
+    transport_chain_valid = whc_transport_deployment_chain_is_valid(
+        transport_chain_length, transport_unique_formations, transport_root_location,
+        transport_reserve_eligibility_count);
+    expected_transport_chain_valid =
+        transport_chain_length >= 1u && transport_chain_length <= 257u &&
+        transport_unique_formations == transport_chain_length &&
+        transport_root_location >= WHC_DEPLOYMENT_ROOT_BATTLEFIELD &&
+        transport_root_location <= WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES &&
+        transport_reserve_eligibility_count <= transport_chain_length &&
+        (transport_root_location == WHC_DEPLOYMENT_ROOT_BATTLEFIELD ||
+         transport_reserve_eligibility_count == transport_chain_length);
+    assert(transport_chain_valid == expected_transport_chain_valid);
     return 0;
 }
