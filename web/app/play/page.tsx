@@ -856,6 +856,24 @@ export default function PlayMode() {
     replayedBattle?.ruleCoverage?.report.results.filter(
       (entry: { permitted: boolean }) => !entry.permitted,
     ) ?? [];
+  const attackerDetachmentOptions =
+    catalogue?.detachments.filter((entry) => entry.factionId === attackerList?.factionId) ?? [];
+  const targetDetachmentOptions =
+    catalogue?.detachments.filter((entry) => entry.factionId === targetList?.factionId) ?? [];
+  const attackerDatasheetIds = new Set(attackerList?.units.map((unit) => unit.unitId) ?? []);
+  const targetDatasheetIds = new Set(targetList?.units.map((unit) => unit.unitId) ?? []);
+  const attackerEnhancementOptions =
+    catalogue?.enhancements.filter(
+      (entry) =>
+        entry.detachmentId === battleRuleSetupDraft.firstDetachment &&
+        entry.eligibleDatasheetIds.some((id) => attackerDatasheetIds.has(id)),
+    ) ?? [];
+  const targetEnhancementOptions =
+    catalogue?.enhancements.filter(
+      (entry) =>
+        entry.detachmentId === battleRuleSetupDraft.secondDetachment &&
+        entry.eligibleDatasheetIds.some((id) => targetDatasheetIds.has(id)),
+    ) ?? [];
   targetFormationBaseModels = battleTargetSequence(
     targetFormationBaseModels,
     targetBattleFormationId ? replayedBattle?.formations.get(targetBattleFormationId) : null,
@@ -7937,60 +7955,88 @@ export default function PlayMode() {
                 {replayedBattle.deploymentByFormation.size === 0 && (
                   <form className="mission-setup" onSubmit={applyBattleRuleSetup}>
                     <label>
-                      <span>{attackerList?.name ?? "First list"} detachment ID</span>
-                      <input
+                      <span>{attackerList?.name ?? "First list"} detachment</span>
+                      <select
                         value={battleRuleSetupDraft.firstDetachment}
-                        maxLength={200}
-                        placeholder="Exact published detachment ID"
                         onChange={(event) =>
                           setBattleRuleSetupDraft((current) => ({
                             ...current,
                             firstDetachment: event.target.value,
+                            firstEnhancements: "",
                           }))
                         }
-                      />
+                      >
+                        <option value="">Select source detachment</option>
+                        {attackerDetachmentOptions.map((entry) => (
+                          <option key={entry.id} value={entry.id}>
+                            {entry.name}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                     <label>
-                      <span>{targetList?.name ?? "Second list"} detachment ID</span>
-                      <input
+                      <span>{targetList?.name ?? "Second list"} detachment</span>
+                      <select
                         value={battleRuleSetupDraft.secondDetachment}
-                        maxLength={200}
-                        placeholder="Exact published detachment ID"
                         onChange={(event) =>
                           setBattleRuleSetupDraft((current) => ({
                             ...current,
                             secondDetachment: event.target.value,
+                            secondEnhancements: "",
                           }))
                         }
-                      />
+                      >
+                        <option value="">Select source detachment</option>
+                        {targetDetachmentOptions.map((entry) => (
+                          <option key={entry.id} value={entry.id}>
+                            {entry.name}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                     <label>
-                      <span>{attackerList?.name ?? "First list"} enhancement IDs</span>
-                      <input
-                        value={battleRuleSetupDraft.firstEnhancements}
-                        maxLength={500}
-                        placeholder="Optional, comma separated"
+                      <span>{attackerList?.name ?? "First list"} enhancements (optional)</span>
+                      <select
+                        multiple
+                        size={Math.min(5, Math.max(2, attackerEnhancementOptions.length))}
+                        value={commaSeparatedIds(battleRuleSetupDraft.firstEnhancements)}
                         onChange={(event) =>
                           setBattleRuleSetupDraft((current) => ({
                             ...current,
-                            firstEnhancements: event.target.value,
+                            firstEnhancements: [...event.target.selectedOptions]
+                              .map((option) => option.value)
+                              .join(","),
                           }))
                         }
-                      />
+                      >
+                        {attackerEnhancementOptions.map((entry) => (
+                          <option key={entry.id} value={entry.id}>
+                            {entry.name}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                     <label>
-                      <span>{targetList?.name ?? "Second list"} enhancement IDs</span>
-                      <input
-                        value={battleRuleSetupDraft.secondEnhancements}
-                        maxLength={500}
-                        placeholder="Optional, comma separated"
+                      <span>{targetList?.name ?? "Second list"} enhancements (optional)</span>
+                      <select
+                        multiple
+                        size={Math.min(5, Math.max(2, targetEnhancementOptions.length))}
+                        value={commaSeparatedIds(battleRuleSetupDraft.secondEnhancements)}
                         onChange={(event) =>
                           setBattleRuleSetupDraft((current) => ({
                             ...current,
-                            secondEnhancements: event.target.value,
+                            secondEnhancements: [...event.target.selectedOptions]
+                              .map((option) => option.value)
+                              .join(","),
                           }))
                         }
-                      />
+                      >
+                        {targetEnhancementOptions.map((entry) => (
+                          <option key={entry.id} value={entry.id}>
+                            {entry.name}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                     <label>
                       <span>Mission pack or mission ID</span>

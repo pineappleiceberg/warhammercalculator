@@ -429,6 +429,47 @@ function battleRuleSelectionIdentitiesMatch(plan, players, lists) {
   });
 }
 
+function validateArmyRuleCatalogueSelections(catalogue, players, lists, overrides) {
+  if (!Array.isArray(catalogue.detachments) || !Array.isArray(catalogue.enhancements)) {
+    throw new Error("The loaded catalogue does not include source-locked army rules");
+  }
+  const detachments = new Map(catalogue.detachments.map((entry) => [entry.id, entry]));
+  const enhancements = new Map(catalogue.enhancements.map((entry) => [entry.id, entry]));
+  players.forEach((player, index) => {
+    const selection = overrides.players?.[player.id] ?? {};
+    const detachmentId = selection.detachmentSourceId?.trim() ?? "";
+    const enhancementIds = Array.isArray(selection.enhancementSourceIds)
+      ? selection.enhancementSourceIds.map((id) => id.trim()).filter(Boolean)
+      : [];
+    if (
+      selection.detachmentRuleIds !== undefined &&
+      (enhancementIds.length === 0 || selection.enhancementRuleIds !== undefined)
+    ) {
+      return;
+    }
+    if (!detachmentId || detachmentId === "unselected") {
+      if (enhancementIds.length > 0) {
+        throw new Error(`${player.name} cannot select enhancements without a detachment`);
+      }
+      return;
+    }
+    const detachment = detachments.get(detachmentId);
+    if (!detachment || detachment.factionId !== lists[index].factionId) {
+      throw new Error(`${player.name} selected a detachment outside its source faction`);
+    }
+    const listDatasheetIds = new Set(lists[index].units.map((unit) => unit.unitId));
+    for (const enhancementId of enhancementIds) {
+      const enhancement = enhancements.get(enhancementId);
+      if (!enhancement || enhancement.detachmentId !== detachmentId) {
+        throw new Error(`${player.name} selected an enhancement outside its detachment`);
+      }
+      if (!enhancement.eligibleDatasheetIds.some((id) => listDatasheetIds.has(id))) {
+        throw new Error(`${player.name} has no source-eligible bearer for an enhancement`);
+      }
+    }
+  });
+}
+
 export function initializeBattleForLists({
   catalogue,
   firstList,
@@ -567,6 +608,7 @@ export function initializeBattleForLists({
     }
     return next;
   }
+  validateArmyRuleCatalogueSelections(catalogue, next.players, lists, ruleSelectionOverrides);
   const plan = deriveBattleRuleSelectionPlan(
     ruleCoverageMatrix,
     next.players,

@@ -4,6 +4,14 @@ import { abilityDiceValue, parseDice } from "./dice.mjs";
 import { applyCombatPresets as applySelectedCombatPresets } from "./combat-presets.mjs";
 
 export type CatalogueFaction = { id: string; name: string };
+export type CatalogueDetachment = { id: string; factionId: string; name: string };
+export type CatalogueEnhancement = {
+  id: string;
+  detachmentId: string;
+  name: string;
+  cost: string;
+  eligibleDatasheetIds: string[];
+};
 export type CatalogueAbility = { name: string; value: string | null };
 export type CatalogueWeapon = {
   id: number;
@@ -541,6 +549,8 @@ export type Catalogue = {
     discreteAlternativeUnitCount: number;
   };
   factions: CatalogueFaction[];
+  detachments: CatalogueDetachment[];
+  enhancements: CatalogueEnhancement[];
   units: CatalogueUnit[];
 };
 

@@ -7,29 +7,35 @@ from datasheet/profile provenance because battle timing and setup rules apply
 across every catalogue faction.
 
 `battle-rule-coverage.json` is the machine-readable coverage contract for that
-source set. The checked generator also maps every faction and datasheet in the
-pinned profile export to one exact guided rule identity. PDF-backed rules use
-page locators; structured-export entries use typed faction or datasheet record
+source set. The checked generator maps every faction, detachment, enhancement,
+and datasheet in the pinned structured export to one exact guided rule identity.
+PDF-backed rules use page locators; structured-export entries use typed record
 locators whose source-manifest checksum locks every contributing CSV checksum.
 Every listed rule is classified as `executable`, `guided`, `irrelevant`, or
 `unsupported` and records the battle-state version that introduced it. Every
-unlisted detachment, enhancement, terrain, or mission rule defaults to
-`unsupported`; a guided rule is permitted only with a non-empty player
+unlisted terrain or mission rule defaults to `unsupported`; a guided rule is
+permitted only with a non-empty player
 acknowledgement. Guided catalogue coverage means the players explicitly retain
-responsibility for non-executable faction and datasheet text; it never makes
-that text appear implemented. The published copies under `web/public/` must
+responsibility for non-executable faction, detachment, enhancement, and
+datasheet text; it never makes that text appear implemented. The published
+copies under `web/public/` must
 remain byte-equivalent to these data files and are validated in the web test
 suite. Regenerate or verify them with
 `python3 scripts/sync_battle_rule_catalogue.py` and its `--check` option.
 
 `warhammer_10e.sqlite` is generated from Wahapedia's structured 10th-edition
-CSV exports. It contains calculator-relevant profile data only: factions,
+CSV exports. It contains calculator-relevant profiles and army-rule identities:
+factions, detachments, enhancements, detachment abilities, Stratagems,
 datasheets, model defenses, weapon statlines, weapon ability tags, unit combat
 abilities, unit composition, wargear-option text, source URLs, and import
 metadata.
 
 The main tables are:
 
+- `detachments`, `detachment_abilities`, `enhancements`, and `stratagems` for
+  exact army-rule identities and source text; the three `datasheet_*` relation
+  tables preserve which datasheets each detachment ability, enhancement, or
+  detachment Stratagem can affect
 - `datasheets` and `model_profiles` for units, their published starting
   equipment, and their model statlines
 - `weapon_profiles` for attacks, skill, strength, AP, damage, and the original

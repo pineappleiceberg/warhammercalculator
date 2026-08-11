@@ -70,9 +70,11 @@ function fallbackRuleId(category, ...identity) {
   return `${category}.unselected-${identity.map(token).join("-")}`;
 }
 
-function catalogueRuleId(matrixRuleIds, category, sourceId) {
+function catalogueRuleId(matrixRuleIds, category, sourceId, ...fallbackIdentity) {
   const candidate = `${category}.catalogue-${token(sourceId)}`;
-  return matrixRuleIds.has(candidate) ? candidate : fallbackRuleId(category, sourceId);
+  return matrixRuleIds.has(candidate)
+    ? candidate
+    : fallbackRuleId(category, ...(fallbackIdentity.length ? fallbackIdentity : [sourceId]));
 }
 
 function normalizeAcknowledgements(value) {
@@ -126,6 +128,14 @@ export function normalizeBattleRuleSelectionPlan(value) {
     if (enhancements.declared !== true) {
       throw new Error("Enhancement selections must explicitly declare that the list was reviewed");
     }
+    const enhancementSourceIds = Array.isArray(enhancements.sourceIds)
+      ? enhancements.sourceIds.map((id) => string(id, "Enhancement source ids are invalid", 200))
+      : (() => {
+          throw new Error("Enhancement source ids must be an array");
+        })();
+    if (new Set(enhancementSourceIds).size !== enhancementSourceIds.length) {
+      throw new Error("Enhancement source ids must be unique");
+    }
     return {
       playerId: string(player.playerId, "Rule selection player id is required", 100),
       faction: {
@@ -138,13 +148,7 @@ export function normalizeBattleRuleSelectionPlan(value) {
       },
       enhancements: {
         declared: true,
-        sourceIds: Array.isArray(enhancements.sourceIds)
-          ? enhancements.sourceIds.map((id) =>
-              string(id, "Enhancement source ids are invalid", 200),
-            )
-          : (() => {
-              throw new Error("Enhancement source ids must be an array");
-            })(),
+        sourceIds: enhancementSourceIds,
         ruleIds: ruleIds(enhancements.ruleIds, "enhancement", "Enhancement rule ids are invalid"),
       },
       datasheets,
@@ -241,7 +245,13 @@ export function deriveBattleRuleSelectionPlan(matrix, players, lists, overrides 
         detachment: {
           sourceId: detachmentSourceId,
           ruleIds: playerOverride.detachmentRuleIds ?? [
-            fallbackRuleId("detachment", player.id, detachmentSourceId),
+            catalogueRuleId(
+              matrixRuleIds,
+              "detachment",
+              detachmentSourceId,
+              player.id,
+              detachmentSourceId,
+            ),
           ],
         },
         enhancements: {
@@ -250,7 +260,7 @@ export function deriveBattleRuleSelectionPlan(matrix, players, lists, overrides 
           ruleIds:
             playerOverride.enhancementRuleIds ??
             enhancementSourceIds.map((sourceId) =>
-              fallbackRuleId("enhancement", player.id, sourceId),
+              catalogueRuleId(matrixRuleIds, "enhancement", sourceId, player.id, sourceId),
             ),
         },
         datasheets: list.units.map((unit) => ({

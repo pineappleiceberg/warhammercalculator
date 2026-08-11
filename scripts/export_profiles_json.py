@@ -102,6 +102,38 @@ def export(database: Path, output: Path) -> None:
                 "SELECT id, name FROM factions ORDER BY name COLLATE NOCASE"
             )
         ]
+        detachments = [
+            {
+                "id": row["id"],
+                "factionId": row["faction_id"],
+                "name": row["name"],
+            }
+            for row in connection.execute(
+                """SELECT id, faction_id, name FROM detachments
+                   ORDER BY name COLLATE NOCASE, id"""
+            )
+        ]
+        enhancement_datasheets: dict[str, list[str]] = {}
+        for row in connection.execute(
+            """SELECT enhancement_id, datasheet_id FROM datasheet_enhancements
+               ORDER BY enhancement_id, datasheet_id"""
+        ):
+            enhancement_datasheets.setdefault(row["enhancement_id"], []).append(
+                row["datasheet_id"]
+            )
+        enhancements = [
+            {
+                "id": row["id"],
+                "detachmentId": row["detachment_id"],
+                "name": row["name"],
+                "cost": row["cost"],
+                "eligibleDatasheetIds": enhancement_datasheets.get(row["id"], []),
+            }
+            for row in connection.execute(
+                """SELECT id, detachment_id, name, cost FROM enhancements
+                   ORDER BY name COLLATE NOCASE, id"""
+            )
+        ]
         units = {
             row["id"]: {
                 "id": row["id"],
@@ -1768,6 +1800,8 @@ def export(database: Path, output: Path) -> None:
                 ).fetchone()[0],
             },
             "factions": factions,
+            "detachments": detachments,
+            "enhancements": enhancements,
             "units": list(units.values()),
         }
     finally:

@@ -15,7 +15,12 @@ PUBLIC_SOURCES_PATH = ROOT / "web" / "public" / "battle-rule-sources.json"
 PROFILE_PATH = ROOT / "web" / "public" / "profile-data.json"
 PROFILE_LOCK_PATH = ROOT / "data" / "profile-source-lock.json"
 SOURCE_ID = "wahapedia-profile-export-2026-06-13"
-GENERATED_PREFIXES = ("faction.catalogue-", "datasheet.catalogue-")
+GENERATED_PREFIXES = (
+    "faction.catalogue-",
+    "detachment.catalogue-",
+    "enhancement.catalogue-",
+    "datasheet.catalogue-",
+)
 
 
 def load_json(path):
@@ -56,8 +61,15 @@ def expected_documents():
         raise ValueError("Profile catalogue and source lock have different snapshots")
 
     factions = sorted(profiles.get("factions", []), key=lambda entry: entry["id"])
+    detachments = sorted(profiles.get("detachments", []), key=lambda entry: entry["id"])
+    enhancements = sorted(profiles.get("enhancements", []), key=lambda entry: entry["id"])
     datasheets = sorted(profiles.get("units", []), key=lambda entry: entry["id"])
-    for label, entries in (("faction", factions), ("datasheet", datasheets)):
+    for label, entries in (
+        ("faction", factions),
+        ("detachment", detachments),
+        ("enhancement", enhancements),
+        ("datasheet", datasheets),
+    ):
         ids = [entry["id"] for entry in entries]
         if not ids or len(ids) != len(set(ids)):
             raise ValueError(f"Profile catalogue has missing or duplicate {label} ids")
@@ -68,11 +80,16 @@ def expected_documents():
     faction_ids = {entry["id"] for entry in factions}
     if any(entry.get("factionId") not in faction_ids for entry in datasheets):
         raise ValueError("Profile catalogue contains a datasheet with an unknown faction")
+    if any(entry.get("factionId") not in faction_ids for entry in detachments):
+        raise ValueError("Rules catalogue contains a detachment with an unknown faction")
+    detachment_ids = {entry["id"] for entry in detachments}
+    if any(entry.get("detachmentId") not in detachment_ids for entry in enhancements):
+        raise ValueError("Rules catalogue contains an enhancement with an unknown detachment")
 
     lock_sha = hashlib.sha256(encode(profile_lock).encode("utf-8")).hexdigest()
     source = {
         "id": SOURCE_ID,
-        "title": "Wahapedia structured profile export source lock",
+        "title": "Wahapedia structured profile and army-rules export source lock",
         "edition": "Warhammer 40,000 10th Edition",
         "version": profile_lock["sourceUpdatedAt"],
         "url": profile_lock["baseUrl"],
@@ -80,16 +97,18 @@ def expected_documents():
         "sha256": lock_sha,
         "artifact": "profile-source-lock.json",
         "pages": [],
-        "recordTypes": ["faction", "datasheet"],
+        "recordTypes": ["faction", "detachment", "enhancement", "datasheet"],
         "usedFor": [
             "exact faction identities selected by saved lists",
+            "exact detachment identities and their complete ability and Stratagem sets",
+            "exact enhancement identities selected for each detachment",
             "exact datasheet identities and source-linked rules selected by saved units",
         ],
     }
     sources["sources"] = [entry for entry in sources["sources"] if entry["id"] != SOURCE_ID]
     sources["sources"].append(source)
 
-    coverage["snapshotId"] = "wh40k-10e-core-2025-10-catalogue-2026-06-13-v24"
+    coverage["snapshotId"] = "wh40k-10e-core-2025-10-army-rules-2026-06-13-v24"
     coverage["sourceLocks"] = [
         lock for lock in coverage["sourceLocks"] if lock["id"] != SOURCE_ID
     ]
@@ -101,6 +120,12 @@ def expected_documents():
     ]
     coverage["rules"].extend(
         generated_rule("faction", entry["id"], entry["name"]) for entry in factions
+    )
+    coverage["rules"].extend(
+        generated_rule("detachment", entry["id"], entry["name"]) for entry in detachments
+    )
+    coverage["rules"].extend(
+        generated_rule("enhancement", entry["id"], entry["name"]) for entry in enhancements
     )
     coverage["rules"].extend(
         generated_rule("datasheet", entry["id"], entry["name"]) for entry in datasheets
