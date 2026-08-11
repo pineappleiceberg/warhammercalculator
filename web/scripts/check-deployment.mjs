@@ -165,6 +165,44 @@ async function checkRuleCoverage(fetchImpl, baseUrl, timeoutMs) {
   );
 }
 
+async function checkMissionPack(fetchImpl, baseUrl, timeoutMs) {
+  return responseCheck(
+    fetchImpl,
+    new URL("chapter-approved-2025-26-v1.4.json", baseUrl),
+    timeoutMs,
+    async (response) => {
+      let body;
+      try {
+        body = await response.json();
+      } catch {
+        const error = new Error("Mission pack catalogue is not valid JSON");
+        error.code = "INVALID_MISSION_PACK_JSON";
+        throw error;
+      }
+      if (
+        body?.schemaVersion !== 1 ||
+        body?.edition !== "Warhammer 40,000 10th Edition" ||
+        body?.version !== "1.4" ||
+        typeof body?.source?.sha256 !== "string" ||
+        !Array.isArray(body?.missions) ||
+        body.missions.length !== 20 ||
+        !Array.isArray(body?.terrainLayouts) ||
+        body.terrainLayouts.length !== 8
+      ) {
+        const error = new Error("Mission pack catalogue schema is incomplete");
+        error.code = "INVALID_MISSION_PACK_SCHEMA";
+        throw error;
+      }
+      return {
+        id: body.id,
+        version: body.version,
+        missions: body.missions.length,
+        terrainLayouts: body.terrainLayouts.length,
+      };
+    },
+  );
+}
+
 async function checkWasm(fetchImpl, baseUrl, timeoutMs) {
   return responseCheck(
     fetchImpl,
@@ -241,6 +279,7 @@ export async function checkDeployment(
     check("homepage", () => checkHome(fetchImpl, baseUrl, timeoutMs)),
     check("profile-catalogue", () => checkProfiles(fetchImpl, baseUrl, timeoutMs)),
     check("rule-coverage", () => checkRuleCoverage(fetchImpl, baseUrl, timeoutMs)),
+    check("mission-pack", () => checkMissionPack(fetchImpl, baseUrl, timeoutMs)),
     check("calculator-wasm", () => checkWasm(fetchImpl, baseUrl, timeoutMs)),
     ...(surface === "api"
       ? [check("api-dependencies", () => checkApi(fetchImpl, baseUrl, timeoutMs))]

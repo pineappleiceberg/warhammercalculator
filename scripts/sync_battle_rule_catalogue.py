@@ -14,12 +14,17 @@ PUBLIC_COVERAGE_PATH = ROOT / "web" / "public" / "battle-rule-coverage.json"
 PUBLIC_SOURCES_PATH = ROOT / "web" / "public" / "battle-rule-sources.json"
 PROFILE_PATH = ROOT / "web" / "public" / "profile-data.json"
 PROFILE_LOCK_PATH = ROOT / "data" / "profile-source-lock.json"
+MISSION_PACK_PATH = ROOT / "data" / "chapter-approved-2025-26-v1.4.json"
+PUBLIC_MISSION_PACK_PATH = ROOT / "web" / "public" / "chapter-approved-2025-26-v1.4.json"
 SOURCE_ID = "wahapedia-profile-export-2026-06-13"
+MISSION_SOURCE_ID = "chapter-approved-tournament-companion-2025-26-v1.4"
 GENERATED_PREFIXES = (
     "faction.catalogue-",
     "detachment.catalogue-",
     "enhancement.catalogue-",
     "datasheet.catalogue-",
+    "mission.catalogue-",
+    "terrain.catalogue-",
 )
 
 
@@ -52,11 +57,23 @@ def generated_rule(category, source_id, name):
     }
 
 
+def generated_pdf_rule(category, source_id, name, pages):
+    return {
+        "id": f"{category}.catalogue-{token(source_id)}",
+        "category": category,
+        "name": name,
+        "status": "guided",
+        "introducedBattleStateVersion": 24,
+        "sources": [{"id": MISSION_SOURCE_ID, "pages": pages}],
+    }
+
+
 def expected_documents():
     coverage = load_json(COVERAGE_PATH)
     sources = load_json(SOURCES_PATH)
     profiles = load_json(PROFILE_PATH)
     profile_lock = load_json(PROFILE_LOCK_PATH)
+    mission_pack = load_json(MISSION_PACK_PATH)
     if profiles.get("sourceUpdatedAt") != profile_lock.get("sourceUpdatedAt"):
         raise ValueError("Profile catalogue and source lock have different snapshots")
 
@@ -86,6 +103,45 @@ def expected_documents():
     if any(entry.get("detachmentId") not in detachment_ids for entry in enhancements):
         raise ValueError("Rules catalogue contains an enhancement with an unknown detachment")
 
+    if (
+        mission_pack.get("schemaVersion") != 1
+        or mission_pack.get("edition") != "Warhammer 40,000 10th Edition"
+        or mission_pack.get("version") != "1.4"
+        or mission_pack.get("source", {}).get("id") != MISSION_SOURCE_ID
+    ):
+        raise ValueError("Mission pack identity is not the pinned 10th-edition v1.4 source")
+    mission_source = mission_pack["source"]
+    if not re.fullmatch(r"[0-9a-f]{64}", mission_source.get("sha256", "")):
+        raise ValueError("Mission pack source checksum is invalid")
+    source_pages = mission_source.get("pages")
+    if source_pages != [6, 7, 8, 9, 10, 11]:
+        raise ValueError("Mission pack source pages are not the reviewed source boundary")
+    terrain_layouts = mission_pack.get("terrainLayouts", [])
+    missions = mission_pack.get("missions", [])
+    if len(terrain_layouts) != 8 or len(missions) != 20:
+        raise ValueError("Mission pack must contain 20 missions and 8 terrain layouts")
+    terrain_ids = {entry["id"] for entry in terrain_layouts}
+    if len(terrain_ids) != len(terrain_layouts):
+        raise ValueError("Mission pack terrain ids are duplicated")
+    if [entry.get("number") for entry in terrain_layouts] != list(range(1, 9)):
+        raise ValueError("Mission pack terrain layouts are not in source order")
+    if [entry.get("code") for entry in missions] != [chr(code) for code in range(65, 85)]:
+        raise ValueError("Mission pack missions are not the exact A-T source pool")
+    if len({entry["id"] for entry in missions}) != len(missions):
+        raise ValueError("Mission pack mission ids are duplicated")
+    for mission in missions:
+        if mission.get("sourcePage") != 6:
+            raise ValueError("Mission pack mission locator is invalid")
+        compatible = mission.get("terrainLayoutIds", [])
+        if not compatible or len(compatible) != len(set(compatible)) or not set(compatible) <= terrain_ids:
+            raise ValueError("Mission pack terrain compatibility is invalid")
+    for layout in terrain_layouts:
+        pages = layout.get("sourcePages", [])
+        if not pages or not set(pages) <= set(source_pages):
+            raise ValueError("Mission pack terrain page locator is invalid")
+        if not any(layout["id"] in mission["terrainLayoutIds"] for mission in missions):
+            raise ValueError("Mission pack contains an unused terrain layout")
+
     lock_sha = hashlib.sha256(encode(profile_lock).encode("utf-8")).hexdigest()
     source = {
         "id": SOURCE_ID,
@@ -107,12 +163,40 @@ def expected_documents():
     }
     sources["sources"] = [entry for entry in sources["sources"] if entry["id"] != SOURCE_ID]
     sources["sources"].append(source)
+    mission_source_entry = {
+        "id": MISSION_SOURCE_ID,
+        "title": mission_source["title"],
+        "edition": mission_pack["edition"],
+        "version": mission_pack["version"],
+        "url": mission_source["url"],
+        "retrievedAt": mission_source["retrievedAt"],
+        "sha256": mission_source["sha256"],
+        "artifact": MISSION_PACK_PATH.name,
+        "pages": source_pages,
+        "usedFor": [
+            "exact Chapter Approved Tournament Mission A-T identities, Primary Mission names, and deployment modes",
+            "exact compatibility between each tournament mission and recommended terrain layouts",
+            "exact Terrain Layout 1-8 identities and their published measurement maps",
+        ],
+    }
+    sources["sources"] = [
+        entry for entry in sources["sources"] if entry["id"] != MISSION_SOURCE_ID
+    ]
+    sources["sources"].append(mission_source_entry)
 
-    coverage["snapshotId"] = "wh40k-10e-core-2025-10-army-rules-2026-06-13-v24"
+    coverage["snapshotId"] = (
+        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v24"
+    )
     coverage["sourceLocks"] = [
         lock for lock in coverage["sourceLocks"] if lock["id"] != SOURCE_ID
     ]
     coverage["sourceLocks"].append({"id": SOURCE_ID, "sha256": lock_sha})
+    coverage["sourceLocks"] = [
+        lock for lock in coverage["sourceLocks"] if lock["id"] != MISSION_SOURCE_ID
+    ]
+    coverage["sourceLocks"].append(
+        {"id": MISSION_SOURCE_ID, "sha256": mission_source["sha256"]}
+    )
     coverage["rules"] = [
         rule
         for rule in coverage["rules"]
@@ -130,22 +214,42 @@ def expected_documents():
     coverage["rules"].extend(
         generated_rule("datasheet", entry["id"], entry["name"]) for entry in datasheets
     )
+    coverage["rules"].extend(
+        generated_pdf_rule(
+            "mission",
+            entry["id"],
+            f"Mission {entry['code']}: {entry['primaryMission']} ({entry['deployment']})",
+            [entry["sourcePage"]],
+        )
+        for entry in missions
+    )
+    coverage["rules"].extend(
+        generated_pdf_rule(
+            "terrain",
+            entry["id"],
+            entry["name"],
+            entry["sourcePages"],
+        )
+        for entry in terrain_layouts
+    )
     rule_ids = [rule["id"] for rule in coverage["rules"]]
     if len(rule_ids) != len(set(rule_ids)):
         raise ValueError("Generated battle rule ids collide")
-    return encode(coverage), encode(sources)
+    return encode(coverage), encode(sources), encode(mission_pack)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    coverage, sources = expected_documents()
+    coverage, sources, mission_pack = expected_documents()
     outputs = {
         COVERAGE_PATH: coverage,
         PUBLIC_COVERAGE_PATH: coverage,
         SOURCES_PATH: sources,
         PUBLIC_SOURCES_PATH: sources,
+        MISSION_PACK_PATH: mission_pack,
+        PUBLIC_MISSION_PACK_PATH: mission_pack,
     }
     if args.check:
         stale = [str(path.relative_to(ROOT)) for path, content in outputs.items() if path.read_text(encoding="utf-8") != content]

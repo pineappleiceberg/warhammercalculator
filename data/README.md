@@ -15,9 +15,14 @@ Every listed rule is classified as `executable`, `guided`, `irrelevant`, or
 `unsupported` and records the battle-state version that introduced it. Every
 unlisted terrain or mission rule defaults to `unsupported`; a guided rule is
 permitted only with a non-empty player
-acknowledgement. Guided catalogue coverage means the players explicitly retain
+acknowledgement. `chapter-approved-2025-26-v1.4.json` preserves the final
+10th-edition Chapter Approved Tournament Companion's exact A-T mission pool,
+deployment modes, eight terrain layout identities, compatibility relationships,
+source pages, and PDF checksum without reproducing paid mission-card rules.
+Guided catalogue coverage means the players explicitly retain
 responsibility for non-executable faction, detachment, enhancement, and
-datasheet text; it never makes that text appear implemented. The published
+datasheet, mission, and terrain text; it never makes that text appear
+implemented. The published
 copies under `web/public/` must
 remain byte-equivalent to these data files and are validated in the web test
 suite. Regenerate or verify them with

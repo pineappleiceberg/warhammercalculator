@@ -80,6 +80,7 @@ import {
 import { battleClockLabel } from "../../lib/battle-clock.mjs";
 import { battleRosterRevisionsMatch, initializeBattleForLists } from "../../lib/battle-setup.mjs";
 import { loadBattleRuleCoverage } from "../../lib/battle-rule-selection.mjs";
+import { loadMissionPackCatalogue } from "../../lib/mission-pack.mjs";
 import {
   applyCombatPresets,
   applyTargetProfile,
@@ -224,6 +225,9 @@ export default function PlayMode() {
   const [ruleCoverageMatrix, setRuleCoverageMatrix] = useState<Awaited<
     ReturnType<typeof loadBattleRuleCoverage>
   > | null>(null);
+  const [missionPackCatalogue, setMissionPackCatalogue] = useState<Awaited<
+    ReturnType<typeof loadMissionPackCatalogue>
+  > | null>(null);
   const [battleRuleSetupDraft, setBattleRuleSetupDraft] = useState(EMPTY_BATTLE_RULE_SETUP);
   const [appliedBattleRuleSetup, setAppliedBattleRuleSetup] =
     useState<BattleRuleSetupInputs | null>(null);
@@ -352,11 +356,17 @@ export default function PlayMode() {
   const importBattleInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    Promise.all([loadCatalogue(), fetchArmyLists(), loadBattleRuleCoverage()])
-      .then(([profiles, saved, coverage]) => {
+    Promise.all([
+      loadCatalogue(),
+      fetchArmyLists(),
+      loadBattleRuleCoverage(),
+      loadMissionPackCatalogue(),
+    ])
+      .then(([profiles, saved, coverage, missionPack]) => {
         setCatalogue(profiles);
         setLists(saved);
         setRuleCoverageMatrix(coverage);
+        setMissionPackCatalogue(missionPack);
         setStatus(recovered.current ? "Recovered battle · autosave on" : "Battle console ready");
       })
       .catch(() => setStatus("Saved lists are unavailable in this deployment"));
@@ -874,6 +884,12 @@ export default function PlayMode() {
         entry.detachmentId === battleRuleSetupDraft.secondDetachment &&
         entry.eligibleDatasheetIds.some((id) => targetDatasheetIds.has(id)),
     ) ?? [];
+  const missionOptions = missionPackCatalogue?.missions ?? [];
+  const selectedMission = missionOptions.find((entry) => entry.id === battleRuleSetupDraft.mission);
+  const terrainOptions =
+    missionPackCatalogue?.terrainLayouts.filter((entry) =>
+      selectedMission?.terrainLayoutIds.includes(entry.id),
+    ) ?? [];
   targetFormationBaseModels = battleTargetSequence(
     targetFormationBaseModels,
     targetBattleFormationId ? replayedBattle?.formations.get(targetBattleFormationId) : null,
@@ -1164,7 +1180,15 @@ export default function PlayMode() {
     battleClock?.status === "active" ||
     battleClock?.status === "complete";
   useEffect(() => {
-    if (!recoveryReady || !catalogue || !attackerList || !targetList || !ruleCoverageMatrix) return;
+    if (
+      !recoveryReady ||
+      !catalogue ||
+      !attackerList ||
+      !targetList ||
+      !ruleCoverageMatrix ||
+      !missionPackCatalogue
+    )
+      return;
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
@@ -1175,6 +1199,7 @@ export default function PlayMode() {
           secondList: targetList,
           rulesSnapshot: currentRulesSnapshot,
           ruleCoverageMatrix,
+          missionPackCatalogue,
           ruleSelectionOverrides: appliedBattleRuleSetup
             ? {
                 guidedReason: appliedBattleRuleSetup.guidedReason,
@@ -1217,6 +1242,7 @@ export default function PlayMode() {
     catalogue,
     currentRulesSnapshot,
     appliedBattleRuleSetup,
+    missionPackCatalogue,
     recoveryReady,
     ruleCoverageMatrix,
     targetBattleFormationId,
@@ -8039,32 +8065,44 @@ export default function PlayMode() {
                       </select>
                     </label>
                     <label>
-                      <span>Mission pack or mission ID</span>
-                      <input
+                      <span>Chapter Approved mission</span>
+                      <select
                         value={battleRuleSetupDraft.mission}
-                        maxLength={200}
-                        placeholder="Exact published mission ID"
                         onChange={(event) =>
                           setBattleRuleSetupDraft((current) => ({
                             ...current,
                             mission: event.target.value,
+                            terrain: "",
                           }))
                         }
-                      />
+                      >
+                        <option value="">Select mission A-T</option>
+                        {missionOptions.map((entry) => (
+                          <option key={entry.id} value={entry.id}>
+                            {entry.code} · {entry.primaryMission} · {entry.deployment}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                     <label>
-                      <span>Terrain layout or rules ID</span>
-                      <input
+                      <span>Compatible terrain layout</span>
+                      <select
                         value={battleRuleSetupDraft.terrain}
-                        maxLength={200}
-                        placeholder="Exact terrain rules ID"
+                        disabled={!selectedMission}
                         onChange={(event) =>
                           setBattleRuleSetupDraft((current) => ({
                             ...current,
                             terrain: event.target.value,
                           }))
                         }
-                      />
+                      >
+                        <option value="">Select a recommended layout</option>
+                        {terrainOptions.map((entry) => (
+                          <option key={entry.id} value={entry.id}>
+                            {entry.name}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                     <label>
                       <span>Guided-rule review</span>

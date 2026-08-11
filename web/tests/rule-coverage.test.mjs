@@ -31,11 +31,23 @@ test("published coverage matrix is source-locked and identical to its data sourc
   assert.deepEqual(publicSourceManifest, sourceManifest);
   const matrix = normalizeRuleCoverageMatrix(coverageSource, sourceManifest);
   assert.equal(matrix.sourceLocked, true);
-  assert.equal(matrix.snapshotId, "wh40k-10e-core-2025-10-army-rules-2026-06-13-v24");
-  assert.equal(matrix.rules.length, 2942);
+  assert.equal(
+    matrix.snapshotId,
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v24",
+  );
+  assert.equal(matrix.rules.length, 2970);
   assert.deepEqual(
     new Set(matrix.rules.map((rule) => rule.category)),
-    new Set(["core", "stratagem", "faction", "detachment", "enhancement", "datasheet"]),
+    new Set([
+      "core",
+      "stratagem",
+      "faction",
+      "detachment",
+      "enhancement",
+      "datasheet",
+      "mission",
+      "terrain",
+    ]),
   );
   assert.deepEqual(
     matrix.rules.find((rule) => rule.id === "faction.catalogue-nec"),
@@ -98,11 +110,17 @@ test("saved list identities select exact guided catalogue rules", () => {
       },
       "player-2": { detachmentSourceId: "000000750" },
     },
+    missionSourceId: "chapter-approved-2025-26-v1.4-a",
+    terrainSourceId: "chapter-approved-2025-26-v1.4-layout-1",
   });
   assert.deepEqual(plan.players[0].faction.ruleIds, ["faction.catalogue-nec"]);
   assert.deepEqual(plan.players[0].datasheets[0].ruleIds, ["datasheet.catalogue-000000545"]);
   assert.deepEqual(plan.players[0].detachment.ruleIds, ["detachment.catalogue-000000818"]);
   assert.deepEqual(plan.players[0].enhancements.ruleIds, ["enhancement.catalogue-000008554003"]);
+  assert.deepEqual(plan.mission.ruleIds, ["mission.catalogue-chapter-approved-2025-26-v1-4-a"]);
+  assert.deepEqual(plan.terrain.ruleIds, [
+    "terrain.catalogue-chapter-approved-2025-26-v1-4-layout-1",
+  ]);
   assert.match(plan.acknowledgements["faction.catalogue-nec"], /physical table/);
   assert.match(plan.acknowledgements["datasheet.catalogue-000000545"], /physical table/);
   const binding = bindBattleRuleSelections(matrix, plan);
@@ -110,10 +128,7 @@ test("saved list identities select exact guided catalogue rules", () => {
     binding.report.results.find((result) => result.id === "faction.catalogue-nec")?.permitted,
     true,
   );
-  assert.equal(binding.report.permitted, false);
-  assert.ok(
-    binding.report.results.some((result) => result.category === "mission" && !result.sourceLocked),
-  );
+  assert.equal(binding.report.permitted, true);
 });
 
 test("coverage gate requires acknowledgement for guided rules and fails closed", () => {

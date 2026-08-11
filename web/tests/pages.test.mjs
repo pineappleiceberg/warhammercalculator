@@ -11,6 +11,7 @@ test("builds a GitHub Pages application with its calculator assets", async () =>
   assert.match(index, /\/warhammercalculator\/assets\//);
   await access(new URL("profile-data.json", output));
   await access(new URL("battle-rule-coverage.json", output));
+  await access(new URL("chapter-approved-2025-26-v1.4.json", output));
   await access(new URL("battle-rule-sources.json", output));
   await access(new URL("wasm/calculator.js", output));
   await access(new URL("wasm/calculator.wasm", output));

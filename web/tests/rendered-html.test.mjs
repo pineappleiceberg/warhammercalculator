@@ -264,6 +264,8 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.match(documented.endpoints.battleReplay, /POST \/api\/v1\/battle\/replay/);
   assert.match(documented.endpoints.ruleCoverage, /GET \/api\/v1\/rules\/coverage/);
   assert.match(documented.endpoints.checkRuleCoverage, /POST \/api\/v1\/rules\/coverage\/check/);
+  assert.match(documented.endpoints.missions, /GET \/api\/v1\/missions/);
+  assert.match(documented.endpoints.terrain, /GET \/api\/v1\/terrain/);
   assert.match(documented.endpoints.firingDeck, /GET \/api\/v1\/firing-deck/);
   assert.match(documented.endpoints.transport, /GET \/api\/v1\/transport/);
   assert.match(documented.endpoints.leader, /GET \/api\/v1\/leader/);
@@ -279,7 +281,10 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   );
   assert.equal(coverageResponse.status, 200);
   const coverage = (await coverageResponse.json()).data;
-  assert.equal(coverage.snapshotId, "wh40k-10e-core-2025-10-army-rules-2026-06-13-v24");
+  assert.equal(
+    coverage.snapshotId,
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v24",
+  );
   assert.equal(coverage.sourceLocked, true);
   assert.equal(coverage.rules.length, coveredRuleCoverageMatrix.rules.length);
 
@@ -361,6 +366,28 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
         "000004178",
       ],
     },
+  );
+
+  const missions = await worker.fetch(
+    new Request("http://localhost/api/v1/missions"),
+    testEnv,
+    context,
+  );
+  assert.equal(missions.status, 200);
+  const missionPayload = await missions.json();
+  assert.equal(missionPayload.pack.version, "1.4");
+  assert.equal(missionPayload.data.length, 20);
+  assert.equal(missionPayload.data[0].primaryMission, "Take and Hold");
+
+  const terrain = await worker.fetch(
+    new Request("http://localhost/api/v1/terrain?mission=chapter-approved-2025-26-v1.4-a"),
+    testEnv,
+    context,
+  );
+  assert.equal(terrain.status, 200);
+  assert.deepEqual(
+    (await terrain.json()).data.map((entry) => entry.number),
+    [1, 2, 4, 6, 7, 8],
   );
 
   const profiles = await worker.fetch(

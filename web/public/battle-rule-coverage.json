@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-v24",
+  "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v24",
   "edition": "Warhammer 40,000 10th Edition",
   "updatedAt": "2026-08-11",
   "sourceLocks": [
@@ -15,6 +15,10 @@
     {
       "id": "wahapedia-profile-export-2026-06-13",
       "sha256": "3e261589698f6e9e3a7b2c3f64de160055a01beffc839df22e398aff338cef17"
+    },
+    {
+      "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+      "sha256": "a71972b1b05e63c1089dd8fcc3e0b9e2c4025c0cbfdd4bc0222fb95e46ef48f8"
     }
   ],
   "statuses": [
@@ -52991,6 +52995,434 @@
               "type": "datasheet",
               "id": "000004226"
             }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-a",
+      "category": "mission",
+      "name": "Mission A: Take and Hold (Tipping Point)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-b",
+      "category": "mission",
+      "name": "Mission B: Supply Drop (Tipping Point)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-c",
+      "category": "mission",
+      "name": "Mission C: Linchpin (Tipping Point)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-d",
+      "category": "mission",
+      "name": "Mission D: Scorched Earth (Tipping Point)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-e",
+      "category": "mission",
+      "name": "Mission E: Take and Hold (Hammer and Anvil)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-f",
+      "category": "mission",
+      "name": "Mission F: Hidden Supplies (Hammer and Anvil)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-g",
+      "category": "mission",
+      "name": "Mission G: Purge the Foe (Hammer and Anvil)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-h",
+      "category": "mission",
+      "name": "Mission H: Supply Drop (Hammer and Anvil)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-i",
+      "category": "mission",
+      "name": "Mission I: Hidden Supplies (Search and Destroy)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-j",
+      "category": "mission",
+      "name": "Mission J: Linchpin (Search and Destroy)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-k",
+      "category": "mission",
+      "name": "Mission K: Scorched Earth (Search and Destroy)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-l",
+      "category": "mission",
+      "name": "Mission L: Take and Hold (Search and Destroy)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-m",
+      "category": "mission",
+      "name": "Mission M: Purge the Foe (Crucible of Battle)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-n",
+      "category": "mission",
+      "name": "Mission N: Hidden Supplies (Crucible of Battle)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-o",
+      "category": "mission",
+      "name": "Mission O: Terraform (Crucible of Battle)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-p",
+      "category": "mission",
+      "name": "Mission P: Scorched Earth (Crucible of Battle)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-q",
+      "category": "mission",
+      "name": "Mission Q: Supply Drop (Sweeping Engagement)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-r",
+      "category": "mission",
+      "name": "Mission R: Terraform (Sweeping Engagement)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-s",
+      "category": "mission",
+      "name": "Mission S: Linchpin (Dawn of War)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mission.catalogue-chapter-approved-2025-26-v1-4-t",
+      "category": "mission",
+      "name": "Mission T: Purge the Foe (Dawn of War)",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": "terrain.catalogue-chapter-approved-2025-26-v1-4-layout-1",
+      "category": "terrain",
+      "name": "Terrain Layout 1",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            7,
+            8
+          ]
+        }
+      ]
+    },
+    {
+      "id": "terrain.catalogue-chapter-approved-2025-26-v1-4-layout-2",
+      "category": "terrain",
+      "name": "Terrain Layout 2",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            7,
+            8
+          ]
+        }
+      ]
+    },
+    {
+      "id": "terrain.catalogue-chapter-approved-2025-26-v1-4-layout-3",
+      "category": "terrain",
+      "name": "Terrain Layout 3",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            7,
+            9
+          ]
+        }
+      ]
+    },
+    {
+      "id": "terrain.catalogue-chapter-approved-2025-26-v1-4-layout-4",
+      "category": "terrain",
+      "name": "Terrain Layout 4",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            7,
+            9
+          ]
+        }
+      ]
+    },
+    {
+      "id": "terrain.catalogue-chapter-approved-2025-26-v1-4-layout-5",
+      "category": "terrain",
+      "name": "Terrain Layout 5",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            7,
+            10
+          ]
+        }
+      ]
+    },
+    {
+      "id": "terrain.catalogue-chapter-approved-2025-26-v1-4-layout-6",
+      "category": "terrain",
+      "name": "Terrain Layout 6",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            7,
+            10
+          ]
+        }
+      ]
+    },
+    {
+      "id": "terrain.catalogue-chapter-approved-2025-26-v1-4-layout-7",
+      "category": "terrain",
+      "name": "Terrain Layout 7",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            7,
+            11
+          ]
+        }
+      ]
+    },
+    {
+      "id": "terrain.catalogue-chapter-approved-2025-26-v1-4-layout-8",
+      "category": "terrain",
+      "name": "Terrain Layout 8",
+      "status": "guided",
+      "introducedBattleStateVersion": 24,
+      "sources": [
+        {
+          "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+          "pages": [
+            7,
+            11
           ]
         }
       ]
