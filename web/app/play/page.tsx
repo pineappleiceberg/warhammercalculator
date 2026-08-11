@@ -44,6 +44,7 @@ import {
   embarkFormation,
   normalizeBattleState,
   passFightPriority,
+  passCounterOffensive,
   passFireOverwatch,
   passGoToGround,
   passHeroicIntervention,
@@ -61,6 +62,7 @@ import {
   resolveHeroicIntervention,
   resolveHazardousDamage,
   resolveGoToGround,
+  resolveCounterOffensive,
   revertLatestAttack,
   scoreBattlePoints,
   setBattleObjectiveControl,
@@ -223,6 +225,9 @@ export default function PlayMode() {
   const [fireOverwatchPassReason, setFireOverwatchPassReason] = useState("");
   const [goToGroundPassReason, setGoToGroundPassReason] = useState("");
   const [goToGroundTargetFormationId, setGoToGroundTargetFormationId] = useState("");
+  const [counterOffensiveFormationId, setCounterOffensiveFormationId] = useState("");
+  const [counterOffensiveEligibilityReason, setCounterOffensiveEligibilityReason] = useState("");
+  const [counterOffensivePassReason, setCounterOffensivePassReason] = useState("");
   const [hazardousBearerId, setHazardousBearerId] = useState("");
   const [hazardousSelectionReason, setHazardousSelectionReason] = useState("");
   const [heroicFormationId, setHeroicFormationId] = useState("");
@@ -923,6 +928,22 @@ export default function PlayMode() {
   const pendingBattleChoices = replayedBattle ? [...replayedBattle.pendingChoices.values()] : [];
   const pendingFireOverwatch = replayedBattle?.pendingFireOverwatch ?? null;
   const pendingGoToGround = replayedBattle?.pendingGoToGround ?? null;
+  const pendingCounterOffensive = replayedBattle?.pendingCounterOffensive ?? null;
+  const counterOffensiveFormationOptions = pendingCounterOffensive
+    ? pendingCounterOffensive.candidateFormationIds
+        .map((formationId: string) => replayedBattle?.formations.get(formationId))
+        .filter(Boolean)
+    : [];
+  const selectedCounterOffensiveFormationId = counterOffensiveFormationOptions.some(
+    (candidate) => candidate?.id === counterOffensiveFormationId,
+  )
+    ? counterOffensiveFormationId
+    : (counterOffensiveFormationOptions[0]?.id ?? "");
+  const counterOffensiveResponderCommandPoints = pendingCounterOffensive
+    ? (replayedBattle?.resources
+        .get(pendingCounterOffensive.responderPlayerId)
+        ?.get("command_points")?.value ?? 0)
+    : 0;
   const rangedDeclarationDraft = replayedBattle?.rangedDeclarationDraft ?? [];
   const readyRangedAttacks = replayedBattle?.readyRangedAttacks ?? [];
   const nextReadyRangedAttack = readyRangedAttacks[0] ?? null;
@@ -3794,6 +3815,43 @@ export default function PlayMode() {
     }
   };
 
+  const useCounterOffensive = () => {
+    if (!battleState || !pendingCounterOffensive || !selectedCounterOffensiveFormationId) return;
+    try {
+      const next = resolveCounterOffensive(
+        battleState,
+        selectedCounterOffensiveFormationId,
+        counterOffensiveEligibilityReason.trim(),
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setCounterOffensiveEligibilityReason("");
+      setCounterOffensivePassReason("");
+      setStatus("Counter-offensive spent · selected formation must fight next");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Counter-offensive could not resolve");
+    }
+  };
+
+  const declineCounterOffensive = () => {
+    if (!battleState || !pendingCounterOffensive) return;
+    try {
+      const next = passCounterOffensive(
+        battleState,
+        counterOffensivePassReason.trim() || "Responding player declined Counter-offensive",
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setCounterOffensiveEligibilityReason("");
+      setCounterOffensivePassReason("");
+      setStatus("Counter-offensive declined · continue normal Fight priority");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Counter-offensive could not be declined");
+    }
+  };
+
   const togglePendingChoice = (choiceId: string, optionId: string, maximum: number) => {
     setPendingChoiceSelections((current) => {
       const selected = current[choiceId] ?? [];
@@ -3902,6 +3960,9 @@ export default function PlayMode() {
     }
     if (pendingGoToGround) {
       return "Defending player must resolve or decline Go to Ground";
+    }
+    if (pendingCounterOffensive) {
+      return "Responding player must resolve or decline Counter-offensive";
     }
     if (
       attackerBattleFormationId &&
@@ -5941,7 +6002,8 @@ export default function PlayMode() {
                     Boolean(pendingFireOverwatch) ||
                     replayedBattle.movementStartsByFormation.size > 0 ||
                     replayedBattle.chargeDeclarationsByFormation.size > 0 ||
-                    Boolean(pendingHeroicIntervention)
+                    Boolean(pendingHeroicIntervention) ||
+                    Boolean(pendingCounterOffensive)
                   }
                   onClick={advanceGuidedBattle}
                 >
@@ -7201,9 +7263,64 @@ export default function PlayMode() {
                 </div>
               </div>
             )}
+            {battleClock.status === "active" && pendingCounterOffensive && (
+              <div className="action-tracker" aria-labelledby="counter-offensive-heading">
+                <strong id="counter-offensive-heading">Counter-offensive response</strong>
+                <span>
+                  An enemy formation has finished fighting. Spend 2CP to select one formation within
+                  Engagement Range that has not fought this phase; it must fight next.
+                </span>
+                <span>Available CP: {counterOffensiveResponderCommandPoints}</span>
+                <div className="action-buttons">
+                  <label>
+                    <span>Formation that fights next</span>
+                    <select
+                      value={selectedCounterOffensiveFormationId}
+                      onChange={(event) => setCounterOffensiveFormationId(event.target.value)}
+                    >
+                      {counterOffensiveFormationOptions.map((candidate) => (
+                        <option key={candidate?.id} value={candidate?.id}>
+                          {candidate?.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Engagement Range review</span>
+                    <input
+                      value={counterOffensiveEligibilityReason}
+                      maxLength={300}
+                      placeholder="Confirm the selected formation is within Engagement Range"
+                      onChange={(event) => setCounterOffensiveEligibilityReason(event.target.value)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={
+                      counterOffensiveResponderCommandPoints < 2 ||
+                      !selectedCounterOffensiveFormationId ||
+                      !counterOffensiveEligibilityReason.trim()
+                    }
+                    onClick={useCounterOffensive}
+                  >
+                    Spend 2CP · fight next
+                  </button>
+                  <input
+                    value={counterOffensivePassReason}
+                    maxLength={300}
+                    placeholder="Optional reason for declining"
+                    onChange={(event) => setCounterOffensivePassReason(event.target.value)}
+                  />
+                  <button type="button" onClick={declineCounterOffensive}>
+                    Decline Counter-offensive
+                  </button>
+                </div>
+              </div>
+            )}
             {battleClock.status === "active" &&
               battleClock.phase === "fight" &&
               ["fights_first", "remaining_combats"].includes(battleClock.step) &&
+              !pendingCounterOffensive &&
               !activeFormationActivation && (
                 <div className="action-tracker">
                   <strong>
@@ -7213,19 +7330,27 @@ export default function PlayMode() {
                     )?.name ?? "Player"}
                   </strong>
                   <span>
-                    Select that player’s eligible formation, or pass if none can activate.
+                    {replayedBattle.forcedFightFormationId
+                      ? `${replayedBattle.formations.get(replayedBattle.forcedFightFormationId)?.name ?? "The Counter-offensive formation"} must fight next.`
+                      : "Select that player’s eligible formation, or pass if none can activate."}
                   </span>
                   <button
                     type="button"
                     disabled={
                       !attackerBattleFormationId ||
-                      attackerPlayerId !== battleClock.priorityPlayerId
+                      attackerPlayerId !== battleClock.priorityPlayerId ||
+                      (replayedBattle.forcedFightFormationId &&
+                        attackerBattleFormationId !== replayedBattle.forcedFightFormationId)
                     }
                     onClick={beginSelectedFightActivation}
                   >
                     Begin selected Fight activation
                   </button>
-                  <button type="button" onClick={yieldFightPriority}>
+                  <button
+                    type="button"
+                    disabled={Boolean(replayedBattle.forcedFightFormationId)}
+                    onClick={yieldFightPriority}
+                  >
                     Pass Fight priority
                   </button>
                 </div>

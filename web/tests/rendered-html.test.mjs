@@ -25,6 +25,7 @@ import {
   registerBattleFormation,
   replayBattleState,
   resolveHeroicIntervention,
+  resolveCounterOffensive,
   resolveHazardousDamage,
   resolveGoToGround,
   resolveBattleChoice,
@@ -2923,6 +2924,18 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
     "resolved-heroic-intervention",
     state.events.length,
   );
+  state = changeBattleResource(
+    state,
+    {
+      playerId: "player-2",
+      resourceId: "command_points",
+      name: "Command Points",
+      delta: 2,
+      reason: "Test Counter-offensive resources",
+    },
+    "grant-counter-offensive-cp",
+    state.events.length,
+  );
   while (
     !(
       replayBattleState(state).clock.phase === "fight" &&
@@ -2979,6 +2992,14 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
     state.events.length,
   );
   state = completeFormationActivation(state, "complete-fight-activation", state.events.length);
+  assert.ok(replayBattleState(state).pendingCounterOffensive);
+  state = resolveCounterOffensive(
+    state,
+    target.id,
+    "The target remains within Engagement Range of the attacker",
+    "resolve-counter-offensive",
+    state.events.length,
+  );
   const worker = await loadWorker();
   const response = await worker.fetch(
     new Request("http://localhost/api/v1/battle/replay", {
@@ -2991,7 +3012,7 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 20);
+  assert.equal(body.data.schemaVersion, 21);
   assert.equal(body.data.charges[0].canonicalMovement, true);
   assert.deepEqual(body.data.charges[0].rolls, [3, 4]);
   assert.equal(body.data.charges[0].chargeDistanceThousandths, 7000);
@@ -3004,6 +3025,14 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
   assert.equal(body.data.heroicInterventions[0].commandPointsAfter, 0);
   assert.equal(body.data.heroicInterventions[0].receivesChargeBonus, false);
   assert.deepEqual(body.data.heroicInterventionPasses, []);
+  assert.equal(body.data.pendingCounterOffensive, null);
+  assert.equal(body.data.counterOffensives.length, 1);
+  assert.equal(body.data.counterOffensives[0].formationId, target.id);
+  assert.equal(body.data.counterOffensives[0].commandPointCost, 2);
+  assert.equal(body.data.counterOffensives[0].commandPointsBefore, 2);
+  assert.equal(body.data.counterOffensives[0].commandPointsAfter, 0);
+  assert.equal(body.data.counterOffensives[0].canonical, true);
+  assert.equal(body.data.forcedFightFormationId, target.id);
   assert.equal(body.data.fightActivations.length, 1);
   assert.equal(body.data.fightActivations[0].canonicalMovement, true);
   assert.equal(body.data.fightActivations[0].formationId, attacker.id);
@@ -3170,7 +3199,7 @@ test("cross-checks Fire Overwatch reactions through the C and WebAssembly API", 
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 20);
+  assert.equal(body.data.schemaVersion, 21);
   assert.equal(body.data.pendingFireOverwatch, null);
   assert.equal(body.data.fireOverwatches.length, 1);
   assert.equal(body.data.fireOverwatches[0].trigger, "normal_move_start");
@@ -3482,7 +3511,7 @@ test("cross-checks Go to Ground reaction and phase effect through the C and WebA
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 20);
+  assert.equal(body.data.schemaVersion, 21);
   assert.equal(body.data.pendingGoToGround, null);
   assert.equal(body.data.readyRangedAttack.triggerEventId, "gtg-target-selected");
   assert.equal(body.data.rangedDeclarations.sets.length, 1);
@@ -3764,7 +3793,7 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 20);
+  assert.equal(body.data.schemaVersion, 21);
   assert.equal(body.data.transports.compatibility.length, 1);
   assert.equal(body.data.transports.compatibility[0].formationId, "passenger");
   assert.equal(body.data.transports.compatibility[0].transportFormationId, "transport");
@@ -3948,7 +3977,7 @@ test("API replay exposes and cross-checks nested Transport deployment ancestry",
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 20);
+  assert.equal(body.data.schemaVersion, 21);
   assert.deepEqual(body.data.transports.embarked, [
     { formationId: inner.id, transportFormationId: outer.id },
     { formationId: passengers.id, transportFormationId: inner.id },

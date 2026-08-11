@@ -36,6 +36,7 @@ import {
   passGoToGround,
   passHeroicIntervention,
   passFightPriority,
+  passCounterOffensive,
   registerBattleFormation,
   recordFormationCharge,
   recordHazardousTests,
@@ -47,6 +48,7 @@ import {
   resolveHazardousDamage,
   resolveGoToGround,
   resolveHeroicIntervention,
+  resolveCounterOffensive,
   resolveDestroyedTransport,
   revertLatestAttack,
   scoreBattlePoints,
@@ -3670,6 +3672,128 @@ test("records charge eligibility and alternates replayed Fight priority", () => 
   );
   state = completeFormationActivation(state, "fight-complete", state.events.length + 1);
   assert.equal(replayBattleState(state).clock.priorityPlayerId, "player-2");
+});
+
+test("resolves Counter-offensive atomically and forces its formation to fight next", () => {
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), attackerFormation, "register-attacker", 1),
+    formation,
+    "register-target",
+    2,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "start", 3);
+  state = changeBattleResource(
+    state,
+    {
+      playerId: "player-2",
+      resourceId: "command_points",
+      name: "Command Points",
+      delta: 1,
+      reason: "Test setup",
+    },
+    "grant-cp",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, (clock) => clock.phase === "movement" && clock.step === "move_units");
+  state = recordFormationMovement(
+    state,
+    attackerFormation.id,
+    "stationary",
+    "stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, (clock) => clock.phase === "charge" && clock.step === "charge_moves");
+  state = recordFormationCharge(
+    state,
+    attackerFormation.id,
+    [formation.id],
+    successfulChargeOptions(formation.id),
+    "charge",
+    state.events.length + 1,
+  );
+  state = passHeroicIntervention(
+    state,
+    "The defending player declines Heroic Intervention",
+    "pass-heroic",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, (clock) => clock.phase === "fight" && clock.step === "fights_first");
+  state = passFightPriority(
+    state,
+    "No defending Fights First unit",
+    "pass-priority",
+    state.events.length + 1,
+  );
+  state = startFormationActivation(
+    state,
+    attackerFormation.id,
+    {},
+    "fight-start",
+    state.events.length + 1,
+  );
+  state = recordFightMove(
+    state,
+    "pile_in",
+    enemyFightMoveOptions("pile_in"),
+    "pile-in",
+    state.events.length + 1,
+  );
+  state = recordFightMove(
+    state,
+    "consolidation",
+    enemyFightMoveOptions("consolidation"),
+    "consolidation",
+    state.events.length + 1,
+  );
+  state = completeFormationActivation(state, "fight-complete", state.events.length + 1);
+  let replayed = replayBattleState(state);
+  assert.deepEqual(replayed.pendingCounterOffensive.candidateFormationIds, [formation.id]);
+  assert.throws(
+    () => passFightPriority(state, "Cannot pass", "illegal-pass", state.events.length + 1),
+    /Counter-offensive window/i,
+  );
+  const declined = passCounterOffensive(
+    state,
+    "The responding player saves their CP",
+    "decline-counter-offensive",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(declined).pendingCounterOffensive, null);
+  assert.equal(replayBattleState(declined).counterOffensivePasses.length, 1);
+  assert.equal(
+    replayBattleState(declined).resources.get("player-2").get("command_points").value,
+    2,
+  );
+  state = resolveCounterOffensive(
+    state,
+    formation.id,
+    "The formation is within Engagement Range of the enemy",
+    "counter-offensive",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.resources.get("player-2").get("command_points").value, 0);
+  assert.equal(replayed.forcedFightFormationId, formation.id);
+  assert.equal(replayed.counterOffensives.length, 1);
+  assert.equal(
+    battleCanStartFormationActivation(state, attackerFormation.id, { weaponType: "Melee" }),
+    false,
+  );
+  assert.equal(
+    battleCanStartFormationActivation(state, formation.id, {
+      weaponType: "Melee",
+      eligibilityOverride: true,
+    }),
+    true,
+  );
+  state = startFormationActivation(
+    state,
+    formation.id,
+    { eligibilityOverride: true, overrideReason: "Confirmed within Engagement Range" },
+    "counter-fight-start",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).forcedFightFormationId, "");
 });
 
 test("resolves the immediate Heroic Intervention window without granting Charge Bonus", () => {

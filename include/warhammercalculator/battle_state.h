@@ -73,6 +73,12 @@
 #define WHC_GO_TO_GROUND_SIX_PLUS_INVULNERABLE 8u
 #define WHC_GO_TO_GROUND_BENEFIT_OF_COVER 16u
 #define WHC_GO_TO_GROUND_FLAGS_MASK 31u
+#define WHC_COUNTER_OFFENSIVE_ENEMY_JUST_FOUGHT 1u
+#define WHC_COUNTER_OFFENSIVE_TARGET_IN_ENGAGEMENT_RANGE 2u
+#define WHC_COUNTER_OFFENSIVE_TARGET_NOT_FOUGHT 4u
+#define WHC_COUNTER_OFFENSIVE_RESPONDING_PLAYER 8u
+#define WHC_COUNTER_OFFENSIVE_FIGHTS_NEXT 16u
+#define WHC_COUNTER_OFFENSIVE_FLAGS_MASK 31u
 #define WHC_RANGED_DECLARATION_SAME_ACTIVATION 1u
 #define WHC_RANGED_DECLARATION_BEFORE_ATTACKS 2u
 #define WHC_RANGED_DECLARATION_ALL_ELIGIBLE 4u
@@ -352,6 +358,18 @@ bool whc_hazardous_resolution_is_valid(uint32_t initial_roll, uint32_t reroll,
 bool whc_go_to_ground_is_valid(uint32_t phase, uint32_t command_points_before,
                                uint32_t command_point_cost, uint32_t command_points_after,
                                bool already_used, bool target_battle_shocked, uint32_t flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        phase == WHC_BATTLE_PHASE_FIGHT && command_points_before >= 2 &&
+        command_points_before <= 100000 && command_point_cost == 2 &&
+        command_points_after == command_points_before - command_point_cost &&
+        !already_used && !target_battle_shocked &&
+        flags == WHC_COUNTER_OFFENSIVE_FLAGS_MASK;
+*/
+bool whc_counter_offensive_is_valid(uint32_t phase, uint32_t command_points_before,
+                                    uint32_t command_point_cost, uint32_t command_points_after,
+                                    bool already_used, bool target_battle_shocked, uint32_t flags);
 
 /*@ assigns \nothing;
     ensures \result <==>

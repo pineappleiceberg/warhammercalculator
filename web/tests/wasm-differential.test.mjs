@@ -21,6 +21,7 @@ import { parseAgentProfile } from "../lib/agent-parameters.mjs";
 import {
   battleFormationHealth,
   chargeResolutionIsValid,
+  counterOffensiveIsValid,
   fightMoveIsValid,
   fireOverwatchIsValid,
   goToGroundIsValid,
@@ -106,6 +107,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_fire_overwatch_is_valid, "function");
   assert.equal(typeof calculator._whc_hazardous_resolution_is_valid, "function");
   assert.equal(typeof calculator._whc_go_to_ground_is_valid, "function");
+  assert.equal(typeof calculator._whc_counter_offensive_is_valid, "function");
   assert.equal(typeof calculator._whc_ranged_declaration_is_valid, "function");
   assert.equal(typeof calculator._whc_transport_load_is_valid, "function");
   assert.equal(typeof calculator._whc_transport_deployment_chain_is_valid, "function");
@@ -319,6 +321,34 @@ test("WebAssembly and JavaScript agree on Go to Ground resolution", () => {
       Boolean(calculator._whc_go_to_ground_is_valid(...values)),
       goToGroundIsValid(
         values[0] === 3 ? "shooting" : "movement",
+        values[1],
+        values[2],
+        values[3],
+        values[4],
+        values[5],
+        values[6],
+      ),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on Counter-offensive resolution", () => {
+  const cases = [
+    [5, 2, 2, 0, false, false, 31],
+    [5, 3, 2, 1, false, false, 31],
+    [3, 2, 2, 0, false, false, 31],
+    [5, 1, 2, 0, false, false, 31],
+    [5, 2, 1, 1, false, false, 31],
+    [5, 2, 2, 1, false, false, 31],
+    [5, 2, 2, 0, true, false, 31],
+    [5, 2, 2, 0, false, true, 31],
+    [5, 2, 2, 0, false, false, 15],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_counter_offensive_is_valid(...values)),
+      counterOffensiveIsValid(
+        values[0] === 5 ? "fight" : "shooting",
         values[1],
         values[2],
         values[3],

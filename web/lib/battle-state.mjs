@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 20;
+export const BATTLE_STATE_VERSION = 21;
+export const COUNTER_OFFENSIVE_BATTLE_STATE_VERSION = 21;
 export const SETUP_RULES_BATTLE_STATE_VERSION = 20;
 export const TRANSPORT_NESTING_BATTLE_STATE_VERSION = 19;
 export const TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION = 18;
@@ -102,6 +103,15 @@ export const GO_TO_GROUND_FLAGS = Object.freeze({
   respondingPlayer: 4,
   sixPlusInvulnerable: 8,
   benefitOfCover: 16,
+  mask: 31,
+});
+
+export const COUNTER_OFFENSIVE_FLAGS = Object.freeze({
+  enemyJustFought: 1,
+  targetInEngagementRange: 2,
+  targetNotFought: 4,
+  respondingPlayer: 8,
+  fightsNext: 16,
   mask: 31,
 });
 
@@ -382,6 +392,38 @@ export function goToGroundFlags(event, targetIsInfantry, respondingPlayer) {
     (respondingPlayer ? GO_TO_GROUND_FLAGS.respondingPlayer : 0) |
     (event.allModelsHaveSixPlusInvulnerable ? GO_TO_GROUND_FLAGS.sixPlusInvulnerable : 0) |
     (event.allModelsHaveBenefitOfCover ? GO_TO_GROUND_FLAGS.benefitOfCover : 0)
+  );
+}
+
+export function counterOffensiveIsValid(
+  phase,
+  commandPointsBefore,
+  commandPointCost,
+  commandPointsAfter,
+  alreadyUsed,
+  targetBattleShocked,
+  flags,
+) {
+  return Boolean(
+    phase === "fight" &&
+      Number.isSafeInteger(commandPointsBefore) &&
+      commandPointsBefore >= 2 &&
+      commandPointsBefore <= 100_000 &&
+      commandPointCost === 2 &&
+      commandPointsAfter === commandPointsBefore - commandPointCost &&
+      !alreadyUsed &&
+      !targetBattleShocked &&
+      flags === COUNTER_OFFENSIVE_FLAGS.mask,
+  );
+}
+
+export function counterOffensiveFlags(event, targetNotFought, respondingPlayer) {
+  return (
+    COUNTER_OFFENSIVE_FLAGS.enemyJustFought |
+    (event.targetInEngagementRange ? COUNTER_OFFENSIVE_FLAGS.targetInEngagementRange : 0) |
+    (targetNotFought ? COUNTER_OFFENSIVE_FLAGS.targetNotFought : 0) |
+    (respondingPlayer ? COUNTER_OFFENSIVE_FLAGS.respondingPlayer : 0) |
+    (event.fightsNextConfirmed ? COUNTER_OFFENSIVE_FLAGS.fightsNext : 0)
   );
 }
 
@@ -1707,6 +1749,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   ) {
     throw new Error("Activation-wide ranged declarations require battle-state version 17");
   }
+  if (
+    stateVersion < COUNTER_OFFENSIVE_BATTLE_STATE_VERSION &&
+    ["counter_offensive_passed", "counter_offensive_resolved"].includes(event.type)
+  ) {
+    throw new Error("Counter-offensive reactions require battle-state version 21");
+  }
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation, stateVersion);
     if (!formations.players.has(formation.playerId)) throw new Error("Formation player is unknown");
@@ -2685,6 +2733,61 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
+  if (event.type === "counter_offensive_passed") {
+    normalized.triggerActivationEventId = boundedString(
+      event.triggerActivationEventId,
+      "Counter-offensive trigger activation id",
+      100,
+    );
+    normalized.playerId = boundedString(event.playerId, "Counter-offensive player id", 100);
+    if (!formations.players.has(normalized.playerId)) {
+      throw new Error("Counter-offensive player is unknown");
+    }
+    normalized.reason = boundedString(event.reason, "Counter-offensive pass reason", 300);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "counter_offensive_resolved") {
+    normalized.triggerActivationEventId = boundedString(
+      event.triggerActivationEventId,
+      "Counter-offensive trigger activation id",
+      100,
+    );
+    normalized.playerId = boundedString(event.playerId, "Counter-offensive player id", 100);
+    normalized.formationId = boundedString(
+      event.formationId,
+      "Counter-offensive formation id",
+      100,
+    );
+    if (
+      !formations.players.has(normalized.playerId) ||
+      !formations.byId.has(normalized.formationId)
+    ) {
+      throw new Error("Counter-offensive references an unknown player or formation");
+    }
+    normalized.commandPointCost = nonnegativeInteger(
+      event.commandPointCost,
+      "Counter-offensive Command Point cost",
+      5,
+    );
+    normalized.commandPointsBefore = nonnegativeInteger(
+      event.commandPointsBefore,
+      "Command Points before Counter-offensive",
+      100_000,
+    );
+    normalized.commandPointsAfter = nonnegativeInteger(
+      event.commandPointsAfter,
+      "Command Points after Counter-offensive",
+      100_000,
+    );
+    normalized.targetInEngagementRange = Boolean(event.targetInEngagementRange);
+    normalized.targetEligibilityReason = normalized.targetInEngagementRange
+      ? boundedString(event.targetEligibilityReason, "Counter-offensive eligibility reason", 300)
+      : "";
+    normalized.fightsNextConfirmed = Boolean(event.fightsNextConfirmed);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
   if (event.type === "ranged_target_eligibility_recorded") {
     normalized.attackerFormationId = boundedString(
       event.attackerFormationId,
@@ -2983,6 +3086,8 @@ export function normalizeBattleState(candidate) {
       RANGED_DECLARATION_BATTLE_STATE_VERSION,
       TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION,
       TRANSPORT_NESTING_BATTLE_STATE_VERSION,
+      SETUP_RULES_BATTLE_STATE_VERSION,
+      COUNTER_OFFENSIVE_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -3035,6 +3140,8 @@ export function normalizeBattleState(candidate) {
         RANGED_DECLARATION_BATTLE_STATE_VERSION,
         TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION,
         TRANSPORT_NESTING_BATTLE_STATE_VERSION,
+        SETUP_RULES_BATTLE_STATE_VERSION,
+        COUNTER_OFFENSIVE_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -3154,6 +3261,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= COUNTER_OFFENSIVE_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyCounterOffensiveThroughSequence = nonnegativeInteger(
+        migration.legacyCounterOffensiveThroughSequence,
+        "Legacy Counter-offensive event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -3164,6 +3278,7 @@ export function normalizeBattleState(candidate) {
     ) &&
     normalized.migration?.sourceVersion !== WEAPON_INVENTORY_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== TRANSPORT_NESTING_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== SETUP_RULES_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== TARGET_ELIGIBILITY_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== HEROIC_INTERVENTION_BATTLE_STATE_VERSION &&
@@ -3896,6 +4011,9 @@ export function replayBattleState(state) {
   const goToGrounds = [];
   const goToGroundPasses = [];
   const usedGoToGroundKeys = new Set();
+  const counterOffensives = [];
+  const counterOffensivePasses = [];
+  const usedCounterOffensiveKeys = new Set();
   const rangedDeclarationRetractions = [];
   const rangedDeclarationSets = [];
   const resolvedRangedDeclarationIds = new Set();
@@ -3904,6 +4022,8 @@ export function replayBattleState(state) {
   let pendingHeroicIntervention = null;
   let pendingHazardous = null;
   let pendingGoToGround = null;
+  let pendingCounterOffensive = null;
+  let forcedFightFormationId = "";
   let readyRangedAttack = null;
   let rangedDeclarationDraft = [];
   let activeRangedDeclarationSet = null;
@@ -3953,6 +4073,10 @@ export function replayBattleState(state) {
     state.version < RANGED_DECLARATION_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyRangedDeclarationsThroughSequence ?? 0);
+  const legacyCounterOffensiveThroughSequence =
+    state.version < COUNTER_OFFENSIVE_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyCounterOffensiveThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -4080,6 +4204,12 @@ export function replayBattleState(state) {
       !["go_to_ground_resolved", "go_to_ground_passed"].includes(event.type)
     ) {
       throw new Error("Resolve or pass the pending Go to Ground window first");
+    }
+    if (
+      pendingCounterOffensive &&
+      !["counter_offensive_resolved", "counter_offensive_passed"].includes(event.type)
+    ) {
+      throw new Error("Resolve or pass the pending Counter-offensive window first");
     }
     if (
       (readyRangedAttack || readyRangedAttacks.length > 0) &&
@@ -5354,6 +5484,66 @@ export function replayBattleState(state) {
       pendingHeroicIntervention = null;
       continue;
     }
+    if (event.type === "counter_offensive_passed") {
+      if (
+        !pendingCounterOffensive ||
+        event.triggerActivationEventId !== pendingCounterOffensive.triggerActivationEventId ||
+        event.playerId !== pendingCounterOffensive.responderPlayerId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Counter-offensive pass does not match the pending reaction window");
+      }
+      counterOffensivePasses.push({ ...event, ...pendingCounterOffensive });
+      pendingCounterOffensive = null;
+      continue;
+    }
+    if (event.type === "counter_offensive_resolved") {
+      if (
+        !pendingCounterOffensive ||
+        event.triggerActivationEventId !== pendingCounterOffensive.triggerActivationEventId ||
+        event.playerId !== pendingCounterOffensive.responderPlayerId ||
+        !pendingCounterOffensive.candidateFormationIds.includes(event.formationId) ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Counter-offensive does not match the pending reaction window");
+      }
+      const formation = formations.get(event.formationId);
+      const activationKey = `${clock.battleRound}:${clock.turn}:${clock.phase}:${event.formationId}`;
+      const targetNotFought = !completedActivations.has(activationKey);
+      const respondingPlayer = formation.playerId === pendingCounterOffensive.responderPlayerId;
+      const usageKey = `${clock.battleRound}:${clock.turn}:${clock.phase}:${event.playerId}:counter_offensive`;
+      const commandPoints = resources.get(event.playerId).get("command_points");
+      if (
+        formationDestroyed(formation) ||
+        !formationIsOnBattlefield(
+          formation.id,
+          deploymentByFormation,
+          deployedFormationIds,
+          embarkedByFormation,
+        ) ||
+        event.commandPointsBefore !== commandPoints.value ||
+        !counterOffensiveIsValid(
+          clock.phase,
+          event.commandPointsBefore,
+          event.commandPointCost,
+          event.commandPointsAfter,
+          usedCounterOffensiveKeys.has(usageKey),
+          battleShockedFormations.has(formation.id),
+          counterOffensiveFlags(event, targetNotFought, respondingPlayer),
+        )
+      ) {
+        throw new Error("Counter-offensive facts or Command Point spending are inconsistent");
+      }
+      resources.get(event.playerId).set("command_points", {
+        ...commandPoints,
+        value: event.commandPointsAfter,
+      });
+      usedCounterOffensiveKeys.add(usageKey);
+      counterOffensives.push({ ...event });
+      forcedFightFormationId = event.formationId;
+      pendingCounterOffensive = null;
+      continue;
+    }
     if (event.type === "fight_priority_passed") {
       if (
         !battleAttackWindow(clock) ||
@@ -5363,6 +5553,9 @@ export function replayBattleState(state) {
         throw new Error("Fight priority can only pass during a Fight selection step");
       }
       if (activeActivation) throw new Error("Fight priority cannot pass during an activation");
+      if (forcedFightFormationId) {
+        throw new Error("The Counter-offensive formation must fight next");
+      }
       if (pendingChoices.size > 0) throw new Error("Pending choices block Fight priority");
       if (event.playerId !== clock.priorityPlayerId) {
         throw new Error("Only the player with Fight priority can pass");
@@ -5376,6 +5569,10 @@ export function replayBattleState(state) {
       }
       if (pendingChoices.size > 0) throw new Error("Pending choices block formation activation");
       if (activeActivation) throw new Error("Another formation activation is already in progress");
+      if (forcedFightFormationId && event.formationId !== forcedFightFormationId) {
+        throw new Error("The Counter-offensive formation must fight next");
+      }
+      const counterOffensiveActivation = forcedFightFormationId === event.formationId;
       const formation = formations.get(event.formationId);
       if (formationDestroyed(formation)) throw new Error("A destroyed formation cannot activate");
       if (
@@ -5435,12 +5632,18 @@ export function replayBattleState(state) {
             "Confirm Engagement Range eligibility for a formation that did not charge",
           );
         }
-        if (clock.step === "fights_first" && !hasChargeBonus && !event.fightsFirst) {
+        if (
+          clock.step === "fights_first" &&
+          !hasChargeBonus &&
+          !event.fightsFirst &&
+          !counterOffensiveActivation
+        ) {
           throw new Error("Formation is not confirmed to have Fights First");
         }
       }
       activeActivation = {
         ...event,
+        source: counterOffensiveActivation ? "counter_offensive" : "normal",
         weaponRestriction,
         attackCount: 0,
         hazardousTestCount: 0,
@@ -5449,6 +5652,9 @@ export function replayBattleState(state) {
         pileIn: null,
         consolidation: null,
       };
+      if (event.activationType === "fight" && counterOffensiveActivation) {
+        forcedFightFormationId = "";
+      }
       rangedDeclarationDraft = [];
       activeRangedDeclarationSet = null;
       readyRangedAttacks = [];
@@ -5638,6 +5844,7 @@ export function replayBattleState(state) {
     }
     if (event.type === "activation_completed") {
       if (!activeActivation) throw new Error("No formation activation is in progress");
+      const completedActivation = activeActivation;
       if (!sameBattleClock(event.clock, clock)) {
         throw new Error("Formation activation completed outside its timing window");
       }
@@ -5695,6 +5902,45 @@ export function replayBattleState(state) {
           ...clock,
           priorityPlayerId: otherPlayerId(state.players, clock.priorityPlayerId),
         };
+        if (event.sequence > legacyCounterOffensiveThroughSequence) {
+          const responderPlayerId = otherPlayerId(
+            state.players,
+            formations.get(event.formationId).playerId,
+          );
+          const usageKey = `${clock.battleRound}:${clock.turn}:${clock.phase}:${responderPlayerId}:counter_offensive`;
+          const commandPoints = resources.get(responderPlayerId).get("command_points").value;
+          const candidateFormationIds = [...formations.values()]
+            .filter(
+              (formation) =>
+                formation.playerId === responderPlayerId &&
+                !formationDestroyed(formation) &&
+                formationIsOnBattlefield(
+                  formation.id,
+                  deploymentByFormation,
+                  deployedFormationIds,
+                  embarkedByFormation,
+                ) &&
+                !battleShockedFormations.has(formation.id) &&
+                !completedActivations.has(
+                  `${clock.battleRound}:${clock.turn}:${clock.phase}:${formation.id}`,
+                ),
+            )
+            .map((formation) => formation.id)
+            .sort();
+          if (
+            commandPoints >= 2 &&
+            candidateFormationIds.length > 0 &&
+            !usedCounterOffensiveKeys.has(usageKey)
+          ) {
+            pendingCounterOffensive = {
+              triggerActivationEventId: completedActivation.id,
+              triggerFormationId: event.formationId,
+              responderPlayerId,
+              candidateFormationIds,
+              clock: { ...clock },
+            };
+          }
+        }
       }
       continue;
     }
@@ -6645,6 +6891,10 @@ export function replayBattleState(state) {
     goToGrounds,
     goToGroundPasses,
     activeGoToGroundEffects: goToGrounds.filter((effect) => samePhase(effect.appliedAt, clock)),
+    pendingCounterOffensive,
+    counterOffensives,
+    counterOffensivePasses,
+    forcedFightFormationId,
     pendingHeroicIntervention,
     heroicInterventions,
     heroicInterventionPasses,
@@ -6767,6 +7017,12 @@ export function advanceBattleClock(state, id, at) {
   }
   if (replayed.pendingFireOverwatch) {
     throw new Error("Resolve or pass the pending Fire Overwatch window first");
+  }
+  if (replayed.pendingCounterOffensive) {
+    throw new Error("Resolve or pass the pending Counter-offensive window first");
+  }
+  if (replayed.forcedFightFormationId) {
+    throw new Error("The Counter-offensive formation must fight next");
   }
   if (replayed.movementStartsByFormation.size > 0) {
     throw new Error("Complete the started movement before advancing the battle");
@@ -7894,6 +8150,48 @@ export function passFightPriority(state, reason, id, at) {
   });
 }
 
+export function passCounterOffensive(state, reason, id, at) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingCounterOffensive;
+  if (!pending) throw new Error("No Counter-offensive window is pending");
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "counter_offensive_passed",
+    triggerActivationEventId: pending.triggerActivationEventId,
+    playerId: pending.responderPlayerId,
+    reason,
+    clock: replayed.clock,
+  });
+}
+
+export function resolveCounterOffensive(state, formationId, targetEligibilityReason, id, at) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingCounterOffensive;
+  if (!pending) throw new Error("No Counter-offensive window is pending");
+  const commandPointsBefore =
+    replayed.resources.get(pending.responderPlayerId)?.get("command_points")?.value ?? 0;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "counter_offensive_resolved",
+    triggerActivationEventId: pending.triggerActivationEventId,
+    playerId: pending.responderPlayerId,
+    formationId,
+    commandPointCost: 2,
+    commandPointsBefore,
+    commandPointsAfter: commandPointsBefore - 2,
+    targetInEngagementRange: true,
+    targetEligibilityReason,
+    fightsNextConfirmed: true,
+    clock: replayed.clock,
+  });
+}
+
 export function battleCanStartFormationActivation(
   state,
   attackerFormationId,
@@ -7920,6 +8218,7 @@ export function battleCanStartFormationActivation(
     replayed.pendingChoices.size > 0 ||
     replayed.pendingFireOverwatch ||
     replayed.pendingHeroicIntervention ||
+    replayed.pendingCounterOffensive ||
     replayed.activeActivation ||
     replayed.completedActivations.has(
       `${replayed.clock.battleRound}:${replayed.clock.turn}:${replayed.clock.phase}:${attackerFormationId}`,
@@ -7938,12 +8237,20 @@ export function battleCanStartFormationActivation(
     return true;
   }
   if (weaponType !== "Melee") return false;
+  if (replayed.forcedFightFormationId && replayed.forcedFightFormationId !== attackerFormationId) {
+    return false;
+  }
   if (formation.playerId !== replayed.clock.priorityPlayerId) return false;
   const charge = replayed.chargeByFormation.get(attackerFormationId);
   const charged = Boolean(charge?.successful && sameTurn(charge.clock, replayed.clock));
   const hasChargeBonus = charged && charge.receivesChargeBonus !== false;
   if (!charged && !eligibilityOverride) return false;
-  return replayed.clock.step !== "fights_first" || hasChargeBonus || fightsFirst;
+  return (
+    replayed.clock.step !== "fights_first" ||
+    hasChargeBonus ||
+    fightsFirst ||
+    replayed.forcedFightFormationId === attackerFormationId
+  );
 }
 
 export function battleCanResolveAttack(state, attackerFormationId, options = {}) {

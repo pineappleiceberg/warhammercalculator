@@ -722,6 +722,17 @@ each formation's setup-rule report and the formations destroyed by the empty
 Dedicated Transport rule, independently cross-checking the same ACSL-specified
 C/WebAssembly predicate. Version-19 and older histories retain their original
 setup decisions behind an explicit migration boundary.
+Version 21 makes Counter-offensive an executable Fight-phase interruption.
+After an enemy formation completes a Fight activation, replay opens a blocking
+response for the opposing player when that player has 2CP and a living,
+non-Battle-shocked formation that has not fought. Resolution records a reviewed
+Engagement Range confirmation, atomically spends 2CP, enforces once-per-phase
+use, and forces the selected formation to fight next even during the Fights
+First step; passing preserves normal Fight priority. Guided Play exposes the
+selection and decline paths. The replay API reports pending, resolved, passed,
+and forced-next state and cross-checks the ACSL-specified C/WebAssembly
+predicate. Version-20 and older histories retain their original activation
+ordering behind an explicit migration boundary.
 Version 8 makes ranged target eligibility an executable replay fact. The
 browser catalogue preserves each weapon's published Range, while Guided Play
 records the effective Range, closest-point measured distance to one thousandth
