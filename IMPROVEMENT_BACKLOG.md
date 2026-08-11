@@ -27,8 +27,8 @@ state.
 
 ## Prioritized backlog
 
-1. Continue the legal-action engine with Heroic Intervention, pile-in,
-   consolidation, reactions, cover, and Stratagem windows; then expand
+1. Continue the legal-action engine with Heroic Intervention, reactions, cover,
+   and Stratagem windows; then expand
    Transport changes beyond the roster's locked assigned carrier and execute
    transport-specific exceptions.
 2. Build and enforce the source-locked faction, detachment, enhancement,
@@ -41,6 +41,22 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-10: Advanced guided play to battle-state version 12 with canonical
+  Fight movement. Every new Fight activation records a reviewed Pile In before
+  melee attacks and a reviewed Consolidation after attacks are complete. Each
+  stage captures the longest model move, stationary base-contact models,
+  coherency, closer-model and maximum-base-contact facts, and one exact Core
+  Rules destination branch: Engagement Range, the closest objective when the
+  enemy branch is impossible, or no movement when both are impossible. Replay
+  rejects moves over 3 inches, reordered or repeated stages, unknown objectives,
+  melee attacks outside the Pile-In-to-Consolidation window, and premature
+  activation completion. Version-11 and older histories retain legacy Fight
+  behavior behind an explicit migration boundary. Guided Play presents the full
+  sequence, while an ACSL-specified native predicate is proved, exported to
+  WebAssembly, differentially checked against JavaScript, and independently
+  cross-checked by the replay API. Native, migration, tamper, UI, API, Wasm,
+  provenance, and formal regressions cover the cycle.
 
 - 2026-08-10: Advanced guided play to battle-state version 11 with canonical
   charge-roll and charge-movement facts. New attempts record both D6, modifiers,

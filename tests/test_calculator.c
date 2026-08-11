@@ -1444,6 +1444,42 @@ static void test_charge_resolution(void) {
                                           successful | WHC_CHARGE_ROLL_OVERRIDE_EXPLAINED));
 }
 
+/*@ terminates \true; */
+static void test_fight_move(void) {
+    const uint32_t enemy =
+        WHC_FIGHT_MOVE_REVIEWED_BY_PLAYER | WHC_FIGHT_MOVE_UNIT_COHERENCY |
+        WHC_FIGHT_MOVE_ENGAGEMENT_RANGE | WHC_FIGHT_MOVE_CLOSER_TO_ENEMY |
+        WHC_FIGHT_MOVE_BASE_CONTACT_MAXIMIZED | WHC_FIGHT_MOVE_BASE_CONTACT_STATIONARY;
+    const uint32_t pile_none =
+        WHC_FIGHT_MOVE_REVIEWED_BY_PLAYER | WHC_FIGHT_MOVE_BASE_CONTACT_STATIONARY |
+        WHC_FIGHT_MOVE_ENEMY_DESTINATION_IMPOSSIBLE | WHC_FIGHT_MOVE_OUTCOME_EXPLAINED;
+    const uint32_t objective =
+        WHC_FIGHT_MOVE_REVIEWED_BY_PLAYER | WHC_FIGHT_MOVE_UNIT_COHERENCY |
+        WHC_FIGHT_MOVE_BASE_CONTACT_STATIONARY |
+        WHC_FIGHT_MOVE_ENEMY_DESTINATION_IMPOSSIBLE | WHC_FIGHT_MOVE_OBJECTIVE_RANGE |
+        WHC_FIGHT_MOVE_CLOSER_TO_OBJECTIVE | WHC_FIGHT_MOVE_OUTCOME_EXPLAINED;
+    const uint32_t consolidation_none =
+        pile_none | WHC_FIGHT_MOVE_OBJECTIVE_DESTINATION_IMPOSSIBLE;
+
+    assert(whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN, WHC_FIGHT_DESTINATION_ENEMY,
+                                   3000u, enemy));
+    assert(whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN, WHC_FIGHT_DESTINATION_NONE, 0u,
+                                   pile_none));
+    assert(whc_fight_move_is_valid(WHC_FIGHT_MOVE_CONSOLIDATION,
+                                   WHC_FIGHT_DESTINATION_OBJECTIVE, 2500u, objective));
+    assert(whc_fight_move_is_valid(WHC_FIGHT_MOVE_CONSOLIDATION,
+                                   WHC_FIGHT_DESTINATION_NONE, 0u, consolidation_none));
+    assert(!whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN,
+                                    WHC_FIGHT_DESTINATION_OBJECTIVE, 1000u, objective));
+    assert(!whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN, WHC_FIGHT_DESTINATION_NONE, 1u,
+                                    pile_none));
+    assert(!whc_fight_move_is_valid(WHC_FIGHT_MOVE_CONSOLIDATION,
+                                    WHC_FIGHT_DESTINATION_ENEMY, 3001u, enemy));
+    assert(!whc_fight_move_is_valid(WHC_FIGHT_MOVE_CONSOLIDATION,
+                                    WHC_FIGHT_DESTINATION_ENEMY, 1000u,
+                                    enemy & ~WHC_FIGHT_MOVE_BASE_CONTACT_STATIONARY));
+}
+
 /*@ assigns \nothing;
  */
 static void test_battle_clock(void) {
@@ -1507,6 +1543,7 @@ int main(void) {
     test_weapon_inventory_declaration();
     test_weapon_bearer_declaration();
     test_charge_resolution();
+    test_fight_move();
     test_battle_clock();
     puts("all tests passed");
     return 0;

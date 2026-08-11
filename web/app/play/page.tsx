@@ -38,6 +38,7 @@ import {
   passFightPriority,
   recordFormationCharge,
   recordFormationMovement,
+  recordFightMove,
   recordRangedTargetEligibility,
   replayBattleState,
   rollChargeDice,
@@ -187,6 +188,23 @@ export default function PlayMode() {
     allModelsCloser: false,
     baseContactMaximized: false,
     reviewedByPlayer: false,
+  });
+  const [fightMoveDestination, setFightMoveDestination] = useState("enemy");
+  const [fightMaximumModelMove, setFightMaximumModelMove] = useState(3);
+  const [fightMovementReviewReason, setFightMovementReviewReason] = useState("");
+  const [fightOutcomeReason, setFightOutcomeReason] = useState("");
+  const [fightObjectiveId, setFightObjectiveId] = useState("");
+  const [fightMeleeAttacksComplete, setFightMeleeAttacksComplete] = useState(false);
+  const [fightMeleeAttacksCompletionReason, setFightMeleeAttacksCompletionReason] = useState("");
+  const [fightMoveFacts, setFightMoveFacts] = useState({
+    reviewedByPlayer: false,
+    baseContactModelsStationary: false,
+    unitCoherency: false,
+    endsWithinEngagementRange: false,
+    allMovedModelsCloserToEnemy: false,
+    baseContactMaximized: false,
+    endsWithinObjectiveRange: false,
+    allMovedModelsCloserToObjective: false,
   });
   const [deploymentPlacementConfirmed, setDeploymentPlacementConfirmed] = useState(false);
   const [deploymentPlacementReason, setDeploymentPlacementReason] = useState("");
@@ -351,7 +369,9 @@ export default function PlayMode() {
     setActionEligibilityOverride(false);
     setActionOverrideReason("");
     setFightsFirstOverride(false);
-    setChargeRoll(7);
+    setChargeDice([3, 4]);
+    setChargeRollModifier(0);
+    setChargeDistance(7);
     setHistory([]);
   };
 
@@ -821,6 +841,18 @@ export default function PlayMode() {
   const pendingBattleChoices = replayedBattle ? [...replayedBattle.pendingChoices.values()] : [];
   const activeBattleEffects = replayedBattle ? [...replayedBattle.effects.values()] : [];
   const battleObjectives = replayedBattle ? [...replayedBattle.objectives.values()] : [];
+  const activeFightMovement =
+    activeFormationActivation?.activationType === "fight"
+      ? replayedBattle?.fightMovementsByActivation.get(activeFormationActivation.id)
+      : null;
+  const pendingFightMoveStage =
+    activeFormationActivation?.activationType !== "fight"
+      ? ""
+      : !activeFormationActivation.pileIn
+        ? "pile_in"
+        : !activeFormationActivation.consolidation
+          ? "consolidation"
+          : "";
   const battleScoringEvents = replayedBattle?.scoringEvents ?? [];
   const attackerFormationBattleShocked = Boolean(
     attackerBattleFormationId &&
@@ -2222,7 +2254,11 @@ export default function PlayMode() {
         throw new Error("Battle state is not ready");
       }
       if (!nextBattleState) throw new Error("Battle setup is not ready");
-      if (!replayBattleState(nextBattleState).activeActivation) {
+      const replayedBeforeAttack = replayBattleState(nextBattleState);
+      if (replayedBeforeAttack.clock.phase === "fight" && !replayedBeforeAttack.activeActivation) {
+        throw new Error("Begin the Fight activation and record Pile In before attacking");
+      }
+      if (!replayedBeforeAttack.activeActivation) {
         nextBattleState = startFormationActivation(
           nextBattleState,
           attackerBattleFormationId,
@@ -2879,6 +2915,94 @@ export default function PlayMode() {
     }
   };
 
+  const beginSelectedFightActivation = () => {
+    if (!battleState || !attackerBattleFormationId) return;
+    try {
+      const next = startFormationActivation(
+        battleState,
+        attackerBattleFormationId,
+        battleActionOptions,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setFightMoveDestination("enemy");
+      setStatus("Fight activation started · record Pile In");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Fight activation could not start");
+    }
+  };
+
+  const recordSelectedFightMove = () => {
+    if (!battleState || !pendingFightMoveStage) return;
+    try {
+      const destination =
+        pendingFightMoveStage === "pile_in" && fightMoveDestination === "objective"
+          ? "none"
+          : fightMoveDestination;
+      const enemyDestination = destination === "enemy";
+      const objectiveDestination = destination === "objective";
+      const noDestination = destination === "none";
+      const next = recordFightMove(
+        battleState,
+        pendingFightMoveStage,
+        {
+          destination,
+          maximumModelMoveThousandths: noDestination ? 0 : Math.round(fightMaximumModelMove * 1000),
+          movementReviewedByPlayer: fightMoveFacts.reviewedByPlayer,
+          movementReviewReason: fightMovementReviewReason,
+          baseContactModelsStationary: fightMoveFacts.baseContactModelsStationary,
+          unitCoherencyConfirmed:
+            (enemyDestination || objectiveDestination) && fightMoveFacts.unitCoherency,
+          endsWithinEngagementRange: enemyDestination && fightMoveFacts.endsWithinEngagementRange,
+          allMovedModelsCloserToEnemy:
+            enemyDestination && fightMoveFacts.allMovedModelsCloserToEnemy,
+          baseContactMaximized: enemyDestination && fightMoveFacts.baseContactMaximized,
+          enemyDestinationImpossible: !enemyDestination,
+          objectiveId: objectiveDestination
+            ? fightObjectiveId || battleObjectives[0]?.id || ""
+            : "",
+          endsWithinObjectiveRange: objectiveDestination && fightMoveFacts.endsWithinObjectiveRange,
+          allMovedModelsCloserToObjective:
+            objectiveDestination && fightMoveFacts.allMovedModelsCloserToObjective,
+          objectiveDestinationImpossible:
+            pendingFightMoveStage === "consolidation" && noDestination,
+          outcomeReason: enemyDestination ? "" : fightOutcomeReason,
+          meleeAttacksCompleteConfirmed:
+            pendingFightMoveStage === "consolidation" && fightMeleeAttacksComplete,
+          meleeAttacksCompletionReason:
+            pendingFightMoveStage === "consolidation" ? fightMeleeAttacksCompletionReason : "",
+        },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setFightMoveDestination("enemy");
+      setFightMaximumModelMove(3);
+      setFightMovementReviewReason("");
+      setFightOutcomeReason("");
+      setFightMeleeAttacksComplete(false);
+      setFightMeleeAttacksCompletionReason("");
+      setFightMoveFacts({
+        reviewedByPlayer: false,
+        baseContactModelsStationary: false,
+        unitCoherency: false,
+        endsWithinEngagementRange: false,
+        allMovedModelsCloserToEnemy: false,
+        baseContactMaximized: false,
+        endsWithinObjectiveRange: false,
+        allMovedModelsCloserToObjective: false,
+      });
+      setStatus(
+        pendingFightMoveStage === "pile_in"
+          ? "Pile In recorded · resolve melee attacks, then Consolidate"
+          : "Consolidation recorded · finish this activation",
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Fight movement could not be recorded");
+    }
+  };
+
   const finishFormationActivation = () => {
     if (!battleState) return;
     try {
@@ -3055,6 +3179,15 @@ export default function PlayMode() {
           : "Only Assault weapons can fire after Advancing";
       }
       if (battleClock.phase === "fight") {
+        if (activeFormationActivation?.activationType === "fight") {
+          if (!activeFormationActivation.pileIn) return "Record Pile In before melee attacks";
+          if (activeFormationActivation.pileIn.destination === "none") {
+            return "No legal Pile-in endpoint · record Consolidation without attacking";
+          }
+          if (activeFormationActivation.consolidation) {
+            return "Consolidation is recorded · finish this Fight activation";
+          }
+        }
         return "Select the formation with Fight priority, or confirm its eligibility";
       }
       return `${battleClockLabel(battleClock, battleState.players)} · record movement and advance to an attack step`;
@@ -5189,19 +5322,218 @@ export default function PlayMode() {
                   · {activeFormationActivation.activationType} activation
                 </strong>
                 <span>
-                  {activeFormationActivation.weaponRestriction === "assault_only"
-                    ? "Assault weapons only"
-                    : "Resolve every selected weapon before finishing"}
+                  {activeFormationActivation.activationType === "fight"
+                    ? `${activeFightMovement?.attackCount ?? 0} melee attack events · ${
+                        activeFormationActivation.pileIn ? "Pile In recorded" : "Pile In pending"
+                      } · ${
+                        activeFormationActivation.consolidation
+                          ? "Consolidation recorded"
+                          : "Consolidation pending"
+                      }`
+                    : activeFormationActivation.weaponRestriction === "assault_only"
+                      ? "Assault weapons only"
+                      : "Resolve every selected weapon before finishing"}
                 </span>
                 <button
                   type="button"
-                  disabled={Boolean(pendingDestroyedTransport)}
+                  disabled={
+                    Boolean(pendingDestroyedTransport) ||
+                    (activeFormationActivation.activationType === "fight" &&
+                      !activeFormationActivation.consolidation)
+                  }
                   onClick={finishFormationActivation}
                 >
                   Finish activation
                 </button>
               </div>
             )}
+            {battleClock.status === "active" &&
+              activeFormationActivation?.activationType === "fight" &&
+              pendingFightMoveStage && (
+                <div className="action-tracker">
+                  <strong>
+                    {pendingFightMoveStage === "pile_in"
+                      ? "1. Record Pile In"
+                      : "3. Record Consolidation"}
+                  </strong>
+                  <span>
+                    {pendingFightMoveStage === "pile_in"
+                      ? "Complete this reviewed movement before resolving melee attacks."
+                      : "Record this only after every eligible melee attack has resolved, or none were eligible."}
+                  </span>
+                  <label>
+                    <span>Movement result</span>
+                    <select
+                      value={fightMoveDestination}
+                      onChange={(event) => setFightMoveDestination(event.target.value)}
+                    >
+                      <option value="enemy">End within Engagement Range</option>
+                      {pendingFightMoveStage === "consolidation" && (
+                        <option value="objective">Move toward closest objective</option>
+                      )}
+                      <option value="none">No legal movement</option>
+                    </select>
+                  </label>
+                  {fightMoveDestination !== "none" && (
+                    <label>
+                      <span>Longest model move (inches)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={3}
+                        step={0.001}
+                        value={fightMaximumModelMove}
+                        onChange={(event) =>
+                          setFightMaximumModelMove(
+                            Math.min(3, Math.max(0, +event.target.value || 0)),
+                          )
+                        }
+                      />
+                    </label>
+                  )}
+                  {fightMoveDestination === "objective" && (
+                    <label>
+                      <span>Closest objective marker</span>
+                      <select
+                        value={fightObjectiveId || battleObjectives[0]?.id || ""}
+                        onChange={(event) => setFightObjectiveId(event.target.value)}
+                      >
+                        <option value="">Select an objective</option>
+                        {battleObjectives.map((objective) => (
+                          <option key={objective.id} value={objective.id}>
+                            {objective.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <label className="check-line">
+                    <input
+                      type="checkbox"
+                      checked={fightMoveFacts.baseContactModelsStationary}
+                      onChange={(event) =>
+                        setFightMoveFacts((current) => ({
+                          ...current,
+                          baseContactModelsStationary: event.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Models already in base contact did not move</span>
+                  </label>
+                  {fightMoveDestination === "enemy" &&
+                    [
+                      ["unitCoherency", "Unit ends in coherency"],
+                      ["endsWithinEngagementRange", "Unit ends within Engagement Range"],
+                      [
+                        "allMovedModelsCloserToEnemy",
+                        "Every moved model ends closer to its closest enemy model",
+                      ],
+                      ["baseContactMaximized", "Base contact maximized wherever possible"],
+                    ].map(([key, label]) => (
+                      <label className="check-line" key={key}>
+                        <input
+                          type="checkbox"
+                          checked={fightMoveFacts[key as keyof typeof fightMoveFacts]}
+                          onChange={(event) =>
+                            setFightMoveFacts((current) => ({
+                              ...current,
+                              [key]: event.target.checked,
+                            }))
+                          }
+                        />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  {fightMoveDestination === "objective" &&
+                    [
+                      ["unitCoherency", "Unit ends in coherency"],
+                      ["endsWithinObjectiveRange", "Unit ends within range of the objective"],
+                      [
+                        "allMovedModelsCloserToObjective",
+                        "Every moved model moves toward the closest objective",
+                      ],
+                    ].map(([key, label]) => (
+                      <label className="check-line" key={key}>
+                        <input
+                          type="checkbox"
+                          checked={fightMoveFacts[key as keyof typeof fightMoveFacts]}
+                          onChange={(event) =>
+                            setFightMoveFacts((current) => ({
+                              ...current,
+                              [key]: event.target.checked,
+                            }))
+                          }
+                        />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  {fightMoveDestination !== "enemy" && (
+                    <label>
+                      <span>Outcome reason</span>
+                      <input
+                        value={fightOutcomeReason}
+                        maxLength={300}
+                        onChange={(event) => setFightOutcomeReason(event.target.value)}
+                        placeholder={
+                          fightMoveDestination === "objective"
+                            ? "Why no Engagement Range endpoint was possible; objective measurement"
+                            : pendingFightMoveStage === "pile_in"
+                              ? "Why no coherent Engagement Range endpoint was possible"
+                              : "Why neither an enemy nor objective endpoint was possible"
+                        }
+                      />
+                    </label>
+                  )}
+                  {pendingFightMoveStage === "consolidation" && (
+                    <>
+                      <label className="check-line">
+                        <input
+                          type="checkbox"
+                          checked={fightMeleeAttacksComplete}
+                          onChange={(event) => setFightMeleeAttacksComplete(event.target.checked)}
+                        />
+                        <span>All eligible melee attacks are complete, or none were eligible</span>
+                      </label>
+                      <label>
+                        <span>Melee attack completion</span>
+                        <input
+                          value={fightMeleeAttacksCompletionReason}
+                          maxLength={300}
+                          onChange={(event) =>
+                            setFightMeleeAttacksCompletionReason(event.target.value)
+                          }
+                          placeholder="Resolved all declared weapons, or explain why no target was eligible"
+                        />
+                      </label>
+                    </>
+                  )}
+                  <label>
+                    <span>Movement review</span>
+                    <input
+                      value={fightMovementReviewReason}
+                      maxLength={300}
+                      onChange={(event) => setFightMovementReviewReason(event.target.value)}
+                      placeholder="Tabletop endpoints, distances, coherency, and base contact checked"
+                    />
+                  </label>
+                  <label className="check-line">
+                    <input
+                      type="checkbox"
+                      checked={fightMoveFacts.reviewedByPlayer}
+                      onChange={(event) =>
+                        setFightMoveFacts((current) => ({
+                          ...current,
+                          reviewedByPlayer: event.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Player reviewed the complete movement result</span>
+                  </label>
+                  <button type="button" onClick={recordSelectedFightMove}>
+                    Record {pendingFightMoveStage === "pile_in" ? "Pile In" : "Consolidation"}
+                  </button>
+                </div>
+              )}
             {battleClock.status === "active" &&
               battleClock.phase === "movement" &&
               battleClock.step === "move_units" &&
@@ -5513,6 +5845,16 @@ export default function PlayMode() {
                   <span>
                     Select that player’s eligible formation, or pass if none can activate.
                   </span>
+                  <button
+                    type="button"
+                    disabled={
+                      !attackerBattleFormationId ||
+                      attackerPlayerId !== battleClock.priorityPlayerId
+                    }
+                    onClick={beginSelectedFightActivation}
+                  >
+                    Begin selected Fight activation
+                  </button>
                   <button type="button" onClick={yieldFightPriority}>
                     Pass Fight priority
                   </button>

@@ -8,12 +8,15 @@ import {
   appendResolvedAttack,
   applyBattleEffect,
   changeBattleResource,
+  completeFormationActivation,
   createBattleState,
   declareFormationDeployment,
   deployFormation,
   openBattleChoice,
+  passFightPriority,
   recordFormationCharge,
   recordFormationMovement,
+  recordFightMove,
   recordRangedTargetEligibility,
   registerBattleFormation,
   replayBattleState,
@@ -2853,6 +2856,62 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
     "resolved-charge",
     state.events.length,
   );
+  while (
+    !(
+      replayBattleState(state).clock.phase === "fight" &&
+      replayBattleState(state).clock.step === "fights_first"
+    )
+  ) {
+    state = advanceBattleClock(state, `to-fight-${state.events.length}`, state.events.length);
+  }
+  state = passFightPriority(
+    state,
+    "No eligible Fights First formation",
+    "pass-fight-priority",
+    state.events.length,
+  );
+  state = startFormationActivation(
+    state,
+    attacker.id,
+    {},
+    "start-fight-activation",
+    state.events.length,
+  );
+  const fightMoveOptions = (stage) => ({
+    destination: "enemy",
+    maximumModelMoveThousandths: 3000,
+    movementReviewedByPlayer: true,
+    movementReviewReason: `Player reviewed the ${stage} endpoints`,
+    baseContactModelsStationary: true,
+    unitCoherencyConfirmed: true,
+    endsWithinEngagementRange: true,
+    allMovedModelsCloserToEnemy: true,
+    baseContactMaximized: true,
+    enemyDestinationImpossible: false,
+    objectiveId: "",
+    endsWithinObjectiveRange: false,
+    allMovedModelsCloserToObjective: false,
+    objectiveDestinationImpossible: false,
+    outcomeReason: "",
+    meleeAttacksCompleteConfirmed: stage === "consolidation",
+    meleeAttacksCompletionReason:
+      stage === "consolidation" ? "All eligible melee attacks were resolved" : "",
+  });
+  state = recordFightMove(
+    state,
+    "pile_in",
+    fightMoveOptions("pile_in"),
+    "record-pile-in",
+    state.events.length,
+  );
+  state = recordFightMove(
+    state,
+    "consolidation",
+    fightMoveOptions("consolidation"),
+    "record-consolidation",
+    state.events.length,
+  );
+  state = completeFormationActivation(state, "complete-fight-activation", state.events.length);
   const worker = await loadWorker();
   const response = await worker.fetch(
     new Request("http://localhost/api/v1/battle/replay", {
@@ -2865,11 +2924,19 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 11);
+  assert.equal(body.data.schemaVersion, 12);
   assert.equal(body.data.charges[0].canonicalMovement, true);
   assert.deepEqual(body.data.charges[0].rolls, [3, 4]);
   assert.equal(body.data.charges[0].chargeDistanceThousandths, 7000);
   assert.equal(body.data.charges[0].successful, true);
+  assert.equal(body.data.fightActivations.length, 1);
+  assert.equal(body.data.fightActivations[0].canonicalMovement, true);
+  assert.equal(body.data.fightActivations[0].formationId, attacker.id);
+  assert.equal(body.data.fightActivations[0].attackCount, 0);
+  assert.equal(body.data.fightActivations[0].pileIn.stage, "pile_in");
+  assert.equal(body.data.fightActivations[0].pileIn.destination, "enemy");
+  assert.equal(body.data.fightActivations[0].consolidation.stage, "consolidation");
+  assert.equal(body.data.fightActivations[0].consolidation.destination, "enemy");
 });
 
 test("cross-checks destroyed Transport passenger damage through WebAssembly", async () => {
@@ -3082,7 +3149,7 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 11);
+  assert.equal(body.data.schemaVersion, 12);
   assert.deepEqual(body.data.weaponDeclarations, [
     {
       attackEventId: "destroy-transport",

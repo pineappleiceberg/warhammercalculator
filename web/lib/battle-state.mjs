@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 11;
+export const BATTLE_STATE_VERSION = 12;
+export const FIGHT_MOVE_BATTLE_STATE_VERSION = 12;
 export const CHARGE_MOVE_BATTLE_STATE_VERSION = 11;
 export const WEAPON_BEARER_BATTLE_STATE_VERSION = 10;
 export const WEAPON_INVENTORY_BATTLE_STATE_VERSION = 9;
@@ -151,6 +152,67 @@ export const CHARGE_RESOLUTION_FLAGS = Object.freeze({
   rollOverrideExplained: 256,
   failureExplained: 512,
 });
+
+export const FIGHT_MOVE_STAGES = Object.freeze(["pile_in", "consolidation"]);
+export const FIGHT_MOVE_DESTINATIONS = Object.freeze(["none", "enemy", "objective"]);
+export const FIGHT_MOVE_FLAGS = Object.freeze({
+  reviewedByPlayer: 1,
+  unitCoherency: 2,
+  endsWithinEngagementRange: 4,
+  allMovedModelsCloserToEnemy: 8,
+  baseContactMaximized: 16,
+  baseContactModelsStationary: 32,
+  enemyDestinationImpossible: 64,
+  endsWithinObjectiveRange: 128,
+  allMovedModelsCloserToObjective: 256,
+  objectiveDestinationImpossible: 512,
+  outcomeExplained: 1024,
+});
+
+export function fightMoveIsValid(stage, destination, maximumModelMoveThousandths, flags) {
+  if (
+    !Number.isSafeInteger(stage) ||
+    stage < 1 ||
+    stage > 2 ||
+    !Number.isSafeInteger(destination) ||
+    destination < 0 ||
+    destination > 2 ||
+    !Number.isSafeInteger(maximumModelMoveThousandths) ||
+    maximumModelMoveThousandths < 0 ||
+    maximumModelMoveThousandths > 3000 ||
+    !Number.isSafeInteger(flags) ||
+    flags < 0 ||
+    flags > 2047
+  ) {
+    return false;
+  }
+  if (destination === 1) {
+    return flags === 63;
+  }
+  if (stage === 1) {
+    return destination === 0 && maximumModelMoveThousandths === 0 && flags === 1121;
+  }
+  if (destination === 2) {
+    return flags === 1507;
+  }
+  return destination === 0 && maximumModelMoveThousandths === 0 && flags === 1633;
+}
+
+export function fightMoveFlags(event) {
+  return (
+    (event.movementReviewedByPlayer ? FIGHT_MOVE_FLAGS.reviewedByPlayer : 0) |
+    (event.unitCoherencyConfirmed ? FIGHT_MOVE_FLAGS.unitCoherency : 0) |
+    (event.endsWithinEngagementRange ? FIGHT_MOVE_FLAGS.endsWithinEngagementRange : 0) |
+    (event.allMovedModelsCloserToEnemy ? FIGHT_MOVE_FLAGS.allMovedModelsCloserToEnemy : 0) |
+    (event.baseContactMaximized ? FIGHT_MOVE_FLAGS.baseContactMaximized : 0) |
+    (event.baseContactModelsStationary ? FIGHT_MOVE_FLAGS.baseContactModelsStationary : 0) |
+    (event.enemyDestinationImpossible ? FIGHT_MOVE_FLAGS.enemyDestinationImpossible : 0) |
+    (event.endsWithinObjectiveRange ? FIGHT_MOVE_FLAGS.endsWithinObjectiveRange : 0) |
+    (event.allMovedModelsCloserToObjective ? FIGHT_MOVE_FLAGS.allMovedModelsCloserToObjective : 0) |
+    (event.objectiveDestinationImpossible ? FIGHT_MOVE_FLAGS.objectiveDestinationImpossible : 0) |
+    (event.outcomeReason ? FIGHT_MOVE_FLAGS.outcomeExplained : 0)
+  );
+}
 
 export function chargeResolutionIsValid(
   dieOne,
@@ -1003,6 +1065,9 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   ) {
     throw new Error("Structured target eligibility requires battle-state version 8");
   }
+  if (stateVersion < FIGHT_MOVE_BATTLE_STATE_VERSION && event.type === "fight_move_recorded") {
+    throw new Error("Structured Fight movement requires battle-state version 12");
+  }
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation, stateVersion);
     if (!formations.players.has(formation.playerId)) throw new Error("Formation player is unknown");
@@ -1472,6 +1537,64 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
+  if (event.type === "fight_move_recorded") {
+    normalized.formationId = boundedString(event.formationId, "Fight movement formation id", 100);
+    if (!formations.byId.has(normalized.formationId)) {
+      throw new Error("Fight movement formation is not registered");
+    }
+    normalized.activationEventId = boundedString(
+      event.activationEventId,
+      "Fight movement activation event id",
+      100,
+    );
+    normalized.stage = boundedString(event.stage, "Fight movement stage", 20);
+    if (!FIGHT_MOVE_STAGES.includes(normalized.stage)) {
+      throw new Error("Fight movement stage is unsupported");
+    }
+    normalized.destination = boundedString(event.destination, "Fight movement destination", 20);
+    if (!FIGHT_MOVE_DESTINATIONS.includes(normalized.destination)) {
+      throw new Error("Fight movement destination is unsupported");
+    }
+    if (normalized.stage === "pile_in" && normalized.destination === "objective") {
+      throw new Error("A Pile-in move cannot use an objective destination");
+    }
+    normalized.maximumModelMoveThousandths = nonnegativeInteger(
+      event.maximumModelMoveThousandths,
+      "Fight movement maximum model move",
+      3000,
+    );
+    normalized.movementReviewedByPlayer = Boolean(event.movementReviewedByPlayer);
+    normalized.movementReviewReason = normalized.movementReviewedByPlayer
+      ? boundedString(event.movementReviewReason, "Fight movement review reason", 300)
+      : "";
+    normalized.baseContactModelsStationary = Boolean(event.baseContactModelsStationary);
+    normalized.unitCoherencyConfirmed = Boolean(event.unitCoherencyConfirmed);
+    normalized.endsWithinEngagementRange = Boolean(event.endsWithinEngagementRange);
+    normalized.allMovedModelsCloserToEnemy = Boolean(event.allMovedModelsCloserToEnemy);
+    normalized.baseContactMaximized = Boolean(event.baseContactMaximized);
+    normalized.enemyDestinationImpossible = Boolean(event.enemyDestinationImpossible);
+    normalized.objectiveId =
+      normalized.destination === "objective"
+        ? boundedString(event.objectiveId, "Consolidation objective id", 100)
+        : "";
+    normalized.endsWithinObjectiveRange = Boolean(event.endsWithinObjectiveRange);
+    normalized.allMovedModelsCloserToObjective = Boolean(event.allMovedModelsCloserToObjective);
+    normalized.objectiveDestinationImpossible = Boolean(event.objectiveDestinationImpossible);
+    normalized.outcomeReason =
+      normalized.destination === "enemy"
+        ? ""
+        : boundedString(event.outcomeReason, "Fight movement outcome reason", 300);
+    normalized.meleeAttacksCompleteConfirmed =
+      normalized.stage === "consolidation" && Boolean(event.meleeAttacksCompleteConfirmed);
+    normalized.meleeAttacksCompletionReason = normalized.meleeAttacksCompleteConfirmed
+      ? boundedString(event.meleeAttacksCompletionReason, "Melee attacks completion reason", 300)
+      : "";
+    if (normalized.stage === "consolidation" && !normalized.meleeAttacksCompleteConfirmed) {
+      throw new Error("Consolidation requires confirmation that melee attacks are complete");
+    }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
   if (event.type === "activation_completed") {
     normalized.formationId = boundedString(event.formationId, "Activation formation id", 100);
     if (!formations.byId.has(normalized.formationId)) {
@@ -1698,6 +1821,7 @@ export function normalizeBattleState(candidate) {
       TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
       WEAPON_INVENTORY_BATTLE_STATE_VERSION,
       WEAPON_BEARER_BATTLE_STATE_VERSION,
+      CHARGE_MOVE_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -1741,6 +1865,7 @@ export function normalizeBattleState(candidate) {
         TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
         WEAPON_INVENTORY_BATTLE_STATE_VERSION,
         WEAPON_BEARER_BATTLE_STATE_VERSION,
+        CHARGE_MOVE_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -1801,6 +1926,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyChargeMovementThroughSequence = nonnegativeInteger(
         migration.legacyChargeMovementThroughSequence,
         "Legacy charge movement event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= FIGHT_MOVE_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyFightMovementThroughSequence = nonnegativeInteger(
+        migration.legacyFightMovementThroughSequence,
+        "Legacy Fight movement event sequence",
         events.length,
       );
     }
@@ -2134,6 +2266,7 @@ export function replayBattleState(state) {
   const pendingTransportDestructions = new Map();
   const transportDestructionResolutions = new Map();
   const targetEligibilityFacts = new Map();
+  const fightMovementsByActivation = new Map();
   const completedActivations = new Set();
   let activeActivation = null;
   let deploymentPriorityPlayerId = "";
@@ -2153,6 +2286,10 @@ export function replayBattleState(state) {
     state.version < CHARGE_MOVE_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyChargeMovementThroughSequence ?? 0);
+  const legacyFightMovementThroughSequence =
+    state.version < FIGHT_MOVE_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyFightMovementThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -2983,7 +3120,62 @@ export function replayBattleState(state) {
           throw new Error("Formation is not confirmed to have Fights First");
         }
       }
-      activeActivation = { ...event, weaponRestriction };
+      activeActivation = {
+        ...event,
+        weaponRestriction,
+        attackCount: 0,
+        pileIn: null,
+        consolidation: null,
+      };
+      continue;
+    }
+    if (event.type === "fight_move_recorded") {
+      if (
+        !activeActivation ||
+        activeActivation.activationType !== "fight" ||
+        activeActivation.id !== event.activationEventId ||
+        activeActivation.formationId !== event.formationId
+      ) {
+        throw new Error("Fight movement does not belong to the active Fight activation");
+      }
+      if (!sameBattleClock(event.clock, clock)) {
+        throw new Error("Fight movement is outside its activation timing window");
+      }
+      const stage = FIGHT_MOVE_STAGES.indexOf(event.stage) + 1;
+      const destination = FIGHT_MOVE_DESTINATIONS.indexOf(event.destination);
+      if (
+        !fightMoveIsValid(
+          stage,
+          destination,
+          event.maximumModelMoveThousandths,
+          fightMoveFlags(event),
+        )
+      ) {
+        throw new Error("Fight movement facts do not form a legal reviewed movement");
+      }
+      if (event.destination === "objective" && !objectives.has(event.objectiveId)) {
+        throw new Error("Consolidation references an unknown objective marker");
+      }
+      if (event.stage === "pile_in") {
+        if (activeActivation.pileIn || activeActivation.attackCount > 0) {
+          throw new Error("Pile In must be recorded once before melee attacks");
+        }
+        activeActivation = { ...activeActivation, pileIn: event };
+      } else {
+        if (!activeActivation.pileIn) {
+          throw new Error("Consolidation requires a recorded Pile In first");
+        }
+        if (activeActivation.consolidation) {
+          throw new Error("Consolidation has already been recorded for this activation");
+        }
+        activeActivation = { ...activeActivation, consolidation: event };
+      }
+      fightMovementsByActivation.set(event.activationEventId, {
+        formationId: event.formationId,
+        pileIn: activeActivation.pileIn,
+        consolidation: activeActivation.consolidation,
+        attackCount: activeActivation.attackCount,
+      });
       continue;
     }
     if (event.type === "activation_completed") {
@@ -2996,6 +3188,23 @@ export function replayBattleState(state) {
         event.activationType !== activeActivation.activationType
       ) {
         throw new Error("Completed activation does not match the active formation");
+      }
+      if (
+        event.activationType === "fight" &&
+        activeActivation.sequence > legacyFightMovementThroughSequence &&
+        (!activeActivation.pileIn || !activeActivation.consolidation)
+      ) {
+        throw new Error(
+          "A Fight activation must record Pile In and Consolidation before completion",
+        );
+      }
+      if (event.activationType === "fight") {
+        fightMovementsByActivation.set(activeActivation.id, {
+          formationId: activeActivation.formationId,
+          pileIn: activeActivation.pileIn,
+          consolidation: activeActivation.consolidation,
+          attackCount: activeActivation.attackCount,
+        });
       }
       completedActivations.add(
         `${clock.battleRound}:${clock.turn}:${clock.phase}:${event.formationId}`,
@@ -3106,6 +3315,20 @@ export function replayBattleState(state) {
           const expectedWeaponType = clock.phase === "shooting" ? "Ranged" : "Melee";
           if (event.weaponType !== expectedWeaponType) {
             throw new Error(`${expectedWeaponType} weapons are required in this attack step`);
+          }
+          if (
+            event.weaponType === "Melee" &&
+            activeActivation.sequence > legacyFightMovementThroughSequence
+          ) {
+            if (!activeActivation.pileIn) {
+              throw new Error("Record Pile In before resolving melee attacks");
+            }
+            if (activeActivation.pileIn.destination === "none") {
+              throw new Error("A unit with no legal Pile-in endpoint has no eligible melee target");
+            }
+            if (activeActivation.consolidation) {
+              throw new Error("Melee attacks cannot resolve after Consolidation");
+            }
           }
           if (
             event.weaponType === "Ranged" &&
@@ -3257,6 +3480,16 @@ export function replayBattleState(state) {
       attacks.set(event.id, event);
       activeAttackIds.push(event.id);
       targetedFormationIds.add(event.targetFormationId);
+      if (activeActivation?.activationType === "fight") {
+        activeActivation = { ...activeActivation, attackCount: activeActivation.attackCount + 1 };
+        const movement = fightMovementsByActivation.get(activeActivation.id);
+        if (movement) {
+          fightMovementsByActivation.set(activeActivation.id, {
+            ...movement,
+            attackCount: activeActivation.attackCount,
+          });
+        }
+      }
       if (!wasDestroyed && formationDestroyed(formation)) {
         const passengerFormationIds = [...embarkedByFormation]
           .filter(([, transportId]) => transportId === event.targetFormationId)
@@ -3297,6 +3530,19 @@ export function replayBattleState(state) {
       formation.health[allocation.segmentId] = { ...allocation.before };
     }
     activeAttackIds.pop();
+    if (activeActivation?.activationType === "fight" && reverted.weaponType === "Melee") {
+      activeActivation = {
+        ...activeActivation,
+        attackCount: Math.max(0, activeActivation.attackCount - 1),
+      };
+      const movement = fightMovementsByActivation.get(activeActivation.id);
+      if (movement) {
+        fightMovementsByActivation.set(activeActivation.id, {
+          ...movement,
+          attackCount: activeActivation.attackCount,
+        });
+      }
+    }
   }
   const offBattlefieldFormationIds = new Set(
     [...formations.keys()].filter(
@@ -3357,6 +3603,7 @@ export function replayBattleState(state) {
     pendingTransportDestructions,
     transportDestructionResolutions,
     targetEligibilityFacts,
+    fightMovementsByActivation,
     offBattlefieldFormationIds,
     reserveDestroyedFormationIds,
     completedActivations,
@@ -3954,6 +4201,65 @@ export function startFormationActivation(
   });
 }
 
+export function recordFightMove(
+  state,
+  stage,
+  {
+    destination = "enemy",
+    maximumModelMoveThousandths = 0,
+    movementReviewedByPlayer = false,
+    movementReviewReason = "",
+    baseContactModelsStationary = false,
+    unitCoherencyConfirmed = false,
+    endsWithinEngagementRange = false,
+    allMovedModelsCloserToEnemy = false,
+    baseContactMaximized = false,
+    enemyDestinationImpossible = false,
+    objectiveId = "",
+    endsWithinObjectiveRange = false,
+    allMovedModelsCloserToObjective = false,
+    objectiveDestinationImpossible = false,
+    outcomeReason = "",
+    meleeAttacksCompleteConfirmed = false,
+    meleeAttacksCompletionReason = "",
+  } = {},
+  id,
+  at,
+) {
+  const replayed = replayBattleState(state);
+  if (!replayed.activeActivation || replayed.activeActivation.activationType !== "fight") {
+    throw new Error("No Fight activation is in progress");
+  }
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "fight_move_recorded",
+    formationId: replayed.activeActivation.formationId,
+    activationEventId: replayed.activeActivation.id,
+    stage,
+    destination,
+    maximumModelMoveThousandths,
+    movementReviewedByPlayer,
+    movementReviewReason,
+    baseContactModelsStationary,
+    unitCoherencyConfirmed,
+    endsWithinEngagementRange,
+    allMovedModelsCloserToEnemy,
+    baseContactMaximized,
+    enemyDestinationImpossible,
+    objectiveId,
+    endsWithinObjectiveRange,
+    allMovedModelsCloserToObjective,
+    objectiveDestinationImpossible,
+    outcomeReason,
+    meleeAttacksCompleteConfirmed,
+    meleeAttacksCompletionReason,
+    clock: replayed.clock,
+  });
+}
+
 export function completeFormationActivation(state, id, at) {
   const replayed = replayBattleState(state);
   if (!replayed.activeActivation) throw new Error("No formation activation is in progress");
@@ -4049,12 +4355,27 @@ export function battleCanResolveAttack(state, attackerFormationId, options = {})
   }
   if (replayed.activeActivation) {
     const expectedWeaponType = replayed.clock.phase === "shooting" ? "Ranged" : "Melee";
+    if (
+      expectedWeaponType === "Melee" &&
+      replayed.activeActivation.sequence >
+        (state.version < FIGHT_MOVE_BATTLE_STATE_VERSION
+          ? Number.MAX_SAFE_INTEGER
+          : (state.migration?.legacyFightMovementThroughSequence ?? 0)) &&
+      (!replayed.activeActivation.pileIn ||
+        replayed.activeActivation.pileIn.destination === "none" ||
+        replayed.activeActivation.consolidation)
+    ) {
+      return false;
+    }
     return (
       replayed.activeActivation.formationId === attackerFormationId &&
       options.weaponType === expectedWeaponType &&
       (replayed.activeActivation.weaponRestriction !== "assault_only" ||
         Boolean(options.weaponHasAssault))
     );
+  }
+  if (replayed.clock.phase === "fight" && state.version >= FIGHT_MOVE_BATTLE_STATE_VERSION) {
+    return false;
   }
   return battleCanStartFormationActivation(state, attackerFormationId, options);
 }

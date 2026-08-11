@@ -21,6 +21,7 @@ import { parseAgentProfile } from "../lib/agent-parameters.mjs";
 import {
   battleFormationHealth,
   chargeResolutionIsValid,
+  fightMoveIsValid,
   normalizeBattleState,
   rangedTargetEligibilityIsValid,
   replayBattleState,
@@ -92,6 +93,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_weapon_inventory_declaration_is_valid, "function");
   assert.equal(typeof calculator._whc_weapon_bearer_declaration_is_valid, "function");
   assert.equal(typeof calculator._whc_charge_resolution_is_valid, "function");
+  assert.equal(typeof calculator._whc_fight_move_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
 });
@@ -128,6 +130,27 @@ test("WebAssembly and JavaScript agree on structured charge resolutions", () => 
     assert.equal(
       Boolean(calculator._whc_charge_resolution_is_valid(...values)),
       chargeResolutionIsValid(...values),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on reviewed Fight movements", () => {
+  const cases = [
+    [1, 1, 3000, 63],
+    [1, 1, 0, 63],
+    [1, 0, 0, 1121],
+    [2, 1, 3000, 63],
+    [2, 2, 2500, 1507],
+    [2, 0, 0, 1633],
+    [1, 2, 1000, 1507],
+    [1, 0, 1, 1121],
+    [2, 1, 3001, 63],
+    [2, 1, 1000, 31],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_fight_move_is_valid(...values)),
+      fightMoveIsValid(...values),
     );
   }
 });

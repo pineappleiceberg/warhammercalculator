@@ -744,6 +744,23 @@ native predicate is ACSL-specified, proved, exported to WebAssembly, and
 differentially checked by JavaScript and the replay API. Version-10 and older
 charge attempts retain their historical confirmation model behind an explicit
 migration boundary.
+Version 12 makes each Fight activation's Pile In and Consolidation executable
+replay facts. A new activation records one reviewed Pile In before any melee
+attack and one reviewed Consolidation after all eligible melee attacks are
+complete. Each movement records its longest model move, stationary base-contact
+models, unit coherency, and the exact legal destination branch: Engagement Range,
+the closest objective after an impossible enemy destination, or no movement after
+both destinations are impossible. Enemy destinations require every moved model
+to finish closer to its closest enemy and maximize base contact where possible;
+objective destinations require the corresponding closest-objective facts. Every
+non-enemy outcome and zero-attack completion is explicitly explained. Replay
+rejects movement over 3 inches, missing or reordered stages, unknown objectives,
+attacks before Pile In or after Consolidation, and activation completion before
+both stages. Guided Play exposes the sequence without making profiles immutable.
+The ACSL-specified native predicate is proved, exported to WebAssembly, and
+differentially cross-checked by JavaScript and the replay API. Version-11 and
+older Fight activations retain their historical behavior behind an explicit
+migration boundary.
 The guided timeline records battle round, first or second player turn, active
 and priority player, phase, and step. It covers Command, Movement, Shooting,
 Charge, and Fight through five rounds. Pending bounded choices stop both attacks
@@ -792,7 +809,8 @@ web replay, independently cross-checks every guided clock transition through
 the C/WebAssembly clock, and returns per-segment health, active attack IDs, the
 current clock, pending-choice IDs, active effects, mission, per-player resources,
 objective control, Battle-shocked formation IDs, categorized scoring history,
-movement and charge outcomes, current/completed activation state, deployment
+movement and charge outcomes, canonical Pile In and Consolidation facts for each
+Fight activation, current/completed activation state, deployment
 declarations and order, battlefield/off-battlefield identities, Reserve
 arrivals, Reserves destroyed at battle end, current Transport occupancy,
 disembarkations, mandatory destroyed-Transport state, and recorded passenger

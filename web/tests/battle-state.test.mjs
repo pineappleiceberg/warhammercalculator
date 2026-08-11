@@ -27,6 +27,7 @@ import {
   registerBattleFormation,
   recordFormationCharge,
   recordFormationMovement,
+  recordFightMove,
   recordRangedTargetEligibility,
   replayBattleState,
   resolveDestroyedTransport,
@@ -133,6 +134,56 @@ function successfulChargeOptions(targetFormationId, overrides = {}) {
     movementReviewReason: "Player reviewed every model endpoint",
     failureReason: "",
     ...overrides,
+  };
+}
+
+function enemyFightMoveOptions(stage, overrides = {}) {
+  return {
+    destination: "enemy",
+    maximumModelMoveThousandths: 3000,
+    movementReviewedByPlayer: true,
+    movementReviewReason: `Player reviewed the ${stage} endpoints`,
+    baseContactModelsStationary: true,
+    unitCoherencyConfirmed: true,
+    endsWithinEngagementRange: true,
+    allMovedModelsCloserToEnemy: true,
+    baseContactMaximized: true,
+    enemyDestinationImpossible: false,
+    objectiveId: "",
+    endsWithinObjectiveRange: false,
+    allMovedModelsCloserToObjective: false,
+    objectiveDestinationImpossible: false,
+    outcomeReason: "",
+    meleeAttacksCompleteConfirmed: stage === "consolidation",
+    meleeAttacksCompletionReason:
+      stage === "consolidation" ? "All eligible melee attacks were resolved" : "",
+    ...overrides,
+  };
+}
+
+function noFightMoveOptions(stage) {
+  return {
+    destination: "none",
+    maximumModelMoveThousandths: 0,
+    movementReviewedByPlayer: true,
+    movementReviewReason: `Player reviewed the ${stage} endpoints`,
+    baseContactModelsStationary: true,
+    unitCoherencyConfirmed: false,
+    endsWithinEngagementRange: false,
+    allMovedModelsCloserToEnemy: false,
+    baseContactMaximized: false,
+    enemyDestinationImpossible: true,
+    objectiveId: "",
+    endsWithinObjectiveRange: false,
+    allMovedModelsCloserToObjective: false,
+    objectiveDestinationImpossible: stage === "consolidation",
+    outcomeReason:
+      stage === "pile_in"
+        ? "No coherent endpoint within Engagement Range exists"
+        : "No enemy or objective destination is possible",
+    meleeAttacksCompleteConfirmed: stage === "consolidation",
+    meleeAttacksCompletionReason:
+      stage === "consolidation" ? "No eligible melee targets remained" : "",
   };
 }
 
@@ -514,7 +565,7 @@ test("pins the official battle-state rules source", () => {
   assert.equal(battleRuleSources.version, 1);
   assert.deepEqual(
     battleRuleSources.sources[0].pages,
-    [7, 8, 16, 17, 18, 19, 23, 26, 29, 39, 43, 53, 57, 60],
+    [7, 8, 16, 17, 18, 19, 23, 26, 29, 32, 33, 34, 35, 39, 43, 53, 57, 60],
   );
   assert.equal(
     battleRuleSources.sources[0].sha256,
@@ -1496,6 +1547,61 @@ test("records charge eligibility and alternates replayed Fight priority", () => 
     attackerFormation.id,
     {},
     "fight-start",
+    state.events.length + 1,
+  );
+  let strandedState = recordFightMove(
+    state,
+    "pile_in",
+    noFightMoveOptions("pile_in"),
+    "stranded-pile-in",
+    state.events.length + 1,
+  );
+  assert.equal(
+    battleCanResolveAttack(strandedState, attackerFormation.id, { weaponType: "Melee" }),
+    false,
+  );
+  strandedState = recordFightMove(
+    strandedState,
+    "consolidation",
+    noFightMoveOptions("consolidation"),
+    "stranded-consolidation",
+    strandedState.events.length + 1,
+  );
+  assert.doesNotThrow(() =>
+    completeFormationActivation(
+      strandedState,
+      "stranded-fight-complete",
+      strandedState.events.length + 1,
+    ),
+  );
+  assert.throws(
+    () => completeFormationActivation(state, "early-fight-complete", state.events.length + 1),
+    /Pile In and Consolidation/i,
+  );
+  assert.throws(
+    () =>
+      recordFightMove(
+        state,
+        "consolidation",
+        enemyFightMoveOptions("consolidation"),
+        "early-consolidation",
+        state.events.length + 1,
+      ),
+    /Pile In first/i,
+  );
+  state = recordFightMove(
+    state,
+    "pile_in",
+    enemyFightMoveOptions("pile_in"),
+    "pile-in",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).activeActivation.pileIn.destination, "enemy");
+  state = recordFightMove(
+    state,
+    "consolidation",
+    enemyFightMoveOptions("consolidation"),
+    "consolidation",
     state.events.length + 1,
   );
   state = completeFormationActivation(state, "fight-complete", state.events.length + 1);

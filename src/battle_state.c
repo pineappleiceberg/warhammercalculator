@@ -213,6 +213,23 @@ bool whc_charge_resolution_is_valid(uint32_t die_one, uint32_t die_two, int32_t 
            (flags & WHC_CHARGE_BASE_CONTACT_MAXIMIZED) != 0u;
 }
 
+bool whc_fight_move_is_valid(uint32_t stage, uint32_t destination,
+                             uint32_t maximum_model_move_thousandths, uint32_t flags) {
+    if (stage < WHC_FIGHT_MOVE_PILE_IN || stage > WHC_FIGHT_MOVE_CONSOLIDATION ||
+        destination > WHC_FIGHT_DESTINATION_OBJECTIVE ||
+        maximum_model_move_thousandths > 3000u || flags > WHC_FIGHT_MOVE_FLAGS_MASK) {
+        return false;
+    }
+    if (destination == WHC_FIGHT_DESTINATION_ENEMY) return flags == 63u;
+    if (stage == WHC_FIGHT_MOVE_PILE_IN) {
+        return destination == WHC_FIGHT_DESTINATION_NONE &&
+               maximum_model_move_thousandths == 0u && flags == 1121u;
+    }
+    if (destination == WHC_FIGHT_DESTINATION_OBJECTIVE) return flags == 1507u;
+    return destination == WHC_FIGHT_DESTINATION_NONE &&
+           maximum_model_move_thousandths == 0u && flags == 1633u;
+}
+
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,
                                      const uint32_t *events, uint32_t event_count,
                                      uint32_t *health) {

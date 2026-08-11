@@ -35,6 +35,23 @@
 #define WHC_CHARGE_ROLL_OVERRIDE_EXPLAINED 256u
 #define WHC_CHARGE_FAILURE_EXPLAINED 512u
 #define WHC_CHARGE_FLAGS_MASK 1023u
+#define WHC_FIGHT_MOVE_PILE_IN 1u
+#define WHC_FIGHT_MOVE_CONSOLIDATION 2u
+#define WHC_FIGHT_DESTINATION_NONE 0u
+#define WHC_FIGHT_DESTINATION_ENEMY 1u
+#define WHC_FIGHT_DESTINATION_OBJECTIVE 2u
+#define WHC_FIGHT_MOVE_REVIEWED_BY_PLAYER 1u
+#define WHC_FIGHT_MOVE_UNIT_COHERENCY 2u
+#define WHC_FIGHT_MOVE_ENGAGEMENT_RANGE 4u
+#define WHC_FIGHT_MOVE_CLOSER_TO_ENEMY 8u
+#define WHC_FIGHT_MOVE_BASE_CONTACT_MAXIMIZED 16u
+#define WHC_FIGHT_MOVE_BASE_CONTACT_STATIONARY 32u
+#define WHC_FIGHT_MOVE_ENEMY_DESTINATION_IMPOSSIBLE 64u
+#define WHC_FIGHT_MOVE_OBJECTIVE_RANGE 128u
+#define WHC_FIGHT_MOVE_CLOSER_TO_OBJECTIVE 256u
+#define WHC_FIGHT_MOVE_OBJECTIVE_DESTINATION_IMPOSSIBLE 512u
+#define WHC_FIGHT_MOVE_OUTCOME_EXPLAINED 1024u
+#define WHC_FIGHT_MOVE_FLAGS_MASK 2047u
 
 enum whc_battle_clock_status {
     WHC_BATTLE_CLOCK_SETUP = 0u,
@@ -184,6 +201,23 @@ bool whc_charge_resolution_is_valid(uint32_t die_one, uint32_t die_two, int32_t 
                                     uint32_t maximum_target_distance_thousandths,
                                     uint32_t maximum_model_move_thousandths,
                                     uint32_t target_count, bool successful, uint32_t flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        stage >= WHC_FIGHT_MOVE_PILE_IN && stage <= WHC_FIGHT_MOVE_CONSOLIDATION &&
+        destination <= WHC_FIGHT_DESTINATION_OBJECTIVE &&
+        maximum_model_move_thousandths <= 3000 && flags <= WHC_FIGHT_MOVE_FLAGS_MASK &&
+        ((destination == WHC_FIGHT_DESTINATION_ENEMY && flags == 63) ||
+         (stage == WHC_FIGHT_MOVE_PILE_IN && destination == WHC_FIGHT_DESTINATION_NONE &&
+          maximum_model_move_thousandths == 0 && flags == 1121) ||
+         (stage == WHC_FIGHT_MOVE_CONSOLIDATION &&
+          destination == WHC_FIGHT_DESTINATION_OBJECTIVE && flags == 1507) ||
+         (stage == WHC_FIGHT_MOVE_CONSOLIDATION &&
+          destination == WHC_FIGHT_DESTINATION_NONE &&
+          maximum_model_move_thousandths == 0 && flags == 1633));
+*/
+bool whc_fight_move_is_valid(uint32_t stage, uint32_t destination,
+                             uint32_t maximum_model_move_thousandths, uint32_t flags);
 
 /*@ requires first_player_index <= 1;
     requires \valid(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));

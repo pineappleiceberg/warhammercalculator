@@ -165,5 +165,13 @@ int main(void) {
                                           charge_flags));
     assert(!whc_charge_resolution_is_valid(3u, 4u, 0, 7000u, 9000u, 8000u, 1u, true,
                                            charge_flags));
+    const uint32_t fight_enemy_flags =
+        WHC_FIGHT_MOVE_REVIEWED_BY_PLAYER | WHC_FIGHT_MOVE_UNIT_COHERENCY |
+        WHC_FIGHT_MOVE_ENGAGEMENT_RANGE | WHC_FIGHT_MOVE_CLOSER_TO_ENEMY |
+        WHC_FIGHT_MOVE_BASE_CONTACT_MAXIMIZED | WHC_FIGHT_MOVE_BASE_CONTACT_STATIONARY;
+    assert(whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN, WHC_FIGHT_DESTINATION_ENEMY,
+                                   3000u, fight_enemy_flags));
+    assert(!whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN, WHC_FIGHT_DESTINATION_NONE,
+                                    3000u, fight_enemy_flags));
     return 0;
 }

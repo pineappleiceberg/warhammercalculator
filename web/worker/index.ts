@@ -55,6 +55,8 @@ import {
   battleSurvivingWeaponCount,
   chargeResolutionFlags,
   chargeResolutionIsValid,
+  fightMoveFlags,
+  fightMoveIsValid,
   normalizeBattleState,
   rangedTargetEligibilityIsValid,
   replayBattleState,
@@ -78,6 +80,28 @@ interface Env {
 interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
   passThroughOnException(): void;
+}
+
+interface CanonicalFightMoveEvent {
+  stage: "pile_in" | "consolidation";
+  destination: "none" | "enemy" | "objective";
+  maximumModelMoveThousandths: number;
+  movementReviewedByPlayer: boolean;
+  movementReviewReason: string;
+  baseContactModelsStationary: boolean;
+  unitCoherencyConfirmed: boolean;
+  endsWithinEngagementRange: boolean;
+  allMovedModelsCloserToEnemy: boolean;
+  baseContactMaximized: boolean;
+  enemyDestinationImpossible: boolean;
+  objectiveId: string;
+  endsWithinObjectiveRange: boolean;
+  allMovedModelsCloserToObjective: boolean;
+  objectiveDestinationImpossible: boolean;
+  outcomeReason: string;
+  meleeAttacksCompleteConfirmed: boolean;
+  meleeAttacksCompletionReason: string;
+  clock: unknown;
 }
 
 type Catalogue = {
@@ -285,6 +309,7 @@ type CalculatorExports = {
   whc_weapon_inventory_declaration_is_valid(...values: number[]): number;
   whc_weapon_bearer_declaration_is_valid(...values: number[]): number;
   whc_charge_resolution_is_valid(...values: number[]): number;
+  whc_fight_move_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -424,6 +449,7 @@ async function loadCalculator() {
       typeof calculator.whc_weapon_inventory_declaration_is_valid !== "function" ||
       typeof calculator.whc_weapon_bearer_declaration_is_valid !== "function" ||
       typeof calculator.whc_charge_resolution_is_valid !== "function" ||
+      typeof calculator.whc_fight_move_is_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -860,6 +886,54 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         };
       })
       .sort((left, right) => left.formationId.localeCompare(right.formationId));
+    const serializeFightMove = (event: CanonicalFightMoveEvent | null) => {
+      if (!event) return null;
+      const values = [
+        event.stage === "pile_in" ? 1 : 2,
+        event.destination === "none" ? 0 : event.destination === "enemy" ? 1 : 2,
+        event.maximumModelMoveThousandths,
+        fightMoveFlags(event),
+      ];
+      const javascriptValid = fightMoveIsValid(...values);
+      const nativeValid = Boolean(calculator.whc_fight_move_is_valid(...values));
+      if (!javascriptValid || javascriptValid !== nativeValid) {
+        throw new ServiceUnavailableError(
+          "Canonical Fight movement diverged from the C/WebAssembly predicate",
+          "FIGHT_MOVE_DIVERGENCE",
+        );
+      }
+      return {
+        stage: event.stage,
+        destination: event.destination,
+        maximumModelMoveThousandths: event.maximumModelMoveThousandths,
+        movementReviewedByPlayer: event.movementReviewedByPlayer,
+        movementReviewReason: event.movementReviewReason,
+        baseContactModelsStationary: event.baseContactModelsStationary,
+        unitCoherencyConfirmed: event.unitCoherencyConfirmed,
+        endsWithinEngagementRange: event.endsWithinEngagementRange,
+        allMovedModelsCloserToEnemy: event.allMovedModelsCloserToEnemy,
+        baseContactMaximized: event.baseContactMaximized,
+        enemyDestinationImpossible: event.enemyDestinationImpossible,
+        objectiveId: event.objectiveId,
+        endsWithinObjectiveRange: event.endsWithinObjectiveRange,
+        allMovedModelsCloserToObjective: event.allMovedModelsCloserToObjective,
+        objectiveDestinationImpossible: event.objectiveDestinationImpossible,
+        outcomeReason: event.outcomeReason,
+        meleeAttacksCompleteConfirmed: event.meleeAttacksCompleteConfirmed,
+        meleeAttacksCompletionReason: event.meleeAttacksCompletionReason,
+        clock: event.clock,
+      };
+    };
+    const fightActivations = [...replayed.fightMovementsByActivation]
+      .map(([activationEventId, movement]) => ({
+        activationEventId,
+        formationId: movement.formationId,
+        attackCount: movement.attackCount,
+        pileIn: serializeFightMove(movement.pileIn),
+        consolidation: serializeFightMove(movement.consolidation),
+        canonicalMovement: Boolean(movement.pileIn || movement.consolidation),
+      }))
+      .sort((left, right) => left.activationEventId.localeCompare(right.activationEventId));
     return {
       schemaVersion: state.version,
       rulesSnapshot: state.rulesSnapshot,
@@ -896,11 +970,20 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         }))
         .sort((left, right) => left.formationId.localeCompare(right.formationId)),
       charges,
+      fightActivations,
       activeActivation: replayed.activeActivation
         ? {
             formationId: replayed.activeActivation.formationId,
             activationType: replayed.activeActivation.activationType,
             weaponRestriction: replayed.activeActivation.weaponRestriction,
+            ...(replayed.activeActivation.activationType === "fight"
+              ? {
+                  activationEventId: replayed.activeActivation.id,
+                  attackCount: replayed.activeActivation.attackCount,
+                  pileInRecorded: Boolean(replayed.activeActivation.pileIn),
+                  consolidationRecorded: Boolean(replayed.activeActivation.consolidation),
+                }
+              : {}),
           }
         : null,
       completedActivationKeys: [...replayed.completedActivations].sort(),
