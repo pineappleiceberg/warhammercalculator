@@ -2991,7 +2991,7 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 18);
+  assert.equal(body.data.schemaVersion, 19);
   assert.equal(body.data.charges[0].canonicalMovement, true);
   assert.deepEqual(body.data.charges[0].rolls, [3, 4]);
   assert.equal(body.data.charges[0].chargeDistanceThousandths, 7000);
@@ -3170,7 +3170,7 @@ test("cross-checks Fire Overwatch reactions through the C and WebAssembly API", 
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 18);
+  assert.equal(body.data.schemaVersion, 19);
   assert.equal(body.data.pendingFireOverwatch, null);
   assert.equal(body.data.fireOverwatches.length, 1);
   assert.equal(body.data.fireOverwatches[0].trigger, "normal_move_start");
@@ -3482,7 +3482,7 @@ test("cross-checks Go to Ground reaction and phase effect through the C and WebA
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 18);
+  assert.equal(body.data.schemaVersion, 19);
   assert.equal(body.data.pendingGoToGround, null);
   assert.equal(body.data.readyRangedAttack.triggerEventId, "gtg-target-selected");
   assert.equal(body.data.rangedDeclarations.sets.length, 1);
@@ -3764,7 +3764,7 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 18);
+  assert.equal(body.data.schemaVersion, 19);
   assert.equal(body.data.transports.compatibility.length, 1);
   assert.equal(body.data.transports.compatibility[0].formationId, "passenger");
   assert.equal(body.data.transports.compatibility[0].transportFormationId, "transport");
@@ -3806,6 +3806,167 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
     "passenger-model",
   );
   assert.deepEqual(body.data.transports.destroyedTransportResolutions[0].passengers[0].rolls, [1]);
+});
+
+test("API replay exposes and cross-checks nested Transport deployment ancestry", async () => {
+  const segment = (id, savedUnitId, name) => ({
+    id,
+    savedUnitId,
+    unitName: name,
+    modelName: name,
+    role: "standalone",
+    wounds: 3,
+    startingModels: 1,
+  });
+  const transportOption = (transportFormationId, sourceSavedUnitId, capacity) => ({
+    transportFormationId,
+    assignments: [
+      {
+        sourceSavedUnitId,
+        modelCost: 1,
+        poolPosition: 0,
+        poolKind: "primary",
+        poolCapacity: capacity,
+        poolLabel: "Transport capacity",
+        sharedAllowancePosition: null,
+        sharedAllowanceMaximumModels: null,
+        sharedAllowancePrimaryCapacityWhileUsed: null,
+        sharedAllowanceNestedPassengerPolicy: null,
+      },
+    ],
+  });
+  const outer = {
+    id: "nested-outer",
+    playerId: "player-1",
+    sourceFormationId: "nested-outer",
+    name: "Nested Outer",
+    keywords: ["Transport"],
+    segments: [segment("nested-outer-model", "nested-outer", "Nested Outer")],
+  };
+  const inner = {
+    id: "nested-inner",
+    playerId: "player-1",
+    sourceFormationId: "nested-inner",
+    name: "Nested Inner",
+    keywords: ["Transport"],
+    assignedTransportFormationId: outer.id,
+    transportOptions: [transportOption(outer.id, "nested-inner", 1)],
+    segments: [segment("nested-inner-model", "nested-inner", "Nested Inner")],
+  };
+  const passengers = {
+    id: "nested-passengers",
+    playerId: "player-1",
+    sourceFormationId: "nested-passengers",
+    name: "Nested Passengers",
+    keywords: ["Infantry"],
+    assignedTransportFormationId: inner.id,
+    transportOptions: [transportOption(inner.id, "nested-passengers", 12)],
+    segments: [segment("nested-passenger-model", "nested-passengers", "Nested Passenger")],
+  };
+  const enemy = {
+    id: "nested-enemy",
+    playerId: "player-2",
+    sourceFormationId: "nested-enemy",
+    name: "Nested Enemy",
+    keywords: ["Infantry"],
+    segments: [segment("nested-enemy-model", "nested-enemy", "Nested Enemy")],
+  };
+  let state = createBattleState({
+    id: "nested-transport-api",
+    createdAt: 1,
+    rulesSnapshot: "catalogue:test",
+    players: [
+      { id: "player-1", listId: "list-1", listUpdatedAt: 1, name: "Nested Transports" },
+      { id: "player-2", listId: "list-2", listUpdatedAt: 2, name: "Enemy" },
+    ],
+  });
+  for (const formation of [outer, inner, passengers, enemy]) {
+    state = registerBattleFormation(
+      state,
+      formation,
+      `register-${formation.id}`,
+      state.events.length + 1,
+    );
+  }
+  state = declareFormationDeployment(
+    state,
+    passengers.id,
+    "embarked",
+    { transportFormationId: inner.id },
+    "declare-api-nested-passengers",
+    state.events.length + 1,
+  );
+  state = declareFormationDeployment(
+    state,
+    inner.id,
+    "embarked",
+    { transportFormationId: outer.id },
+    "declare-api-nested-inner",
+    state.events.length + 1,
+  );
+  state = declareFormationDeployment(
+    state,
+    outer.id,
+    "battlefield",
+    {},
+    "declare-api-nested-outer",
+    state.events.length + 1,
+  );
+  state = declareFormationDeployment(
+    state,
+    enemy.id,
+    "battlefield",
+    {},
+    "declare-api-nested-enemy",
+    state.events.length + 1,
+  );
+  state = deployFormation(
+    state,
+    outer.id,
+    { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
+    "deploy-api-nested-outer",
+    state.events.length + 1,
+  );
+  state = deployFormation(
+    state,
+    enemy.id,
+    { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
+    "deploy-api-nested-enemy",
+    state.events.length + 1,
+  );
+  state = startBattle(state, "player-1", "start-api-nested", state.events.length + 1);
+
+  const worker = await loadWorker();
+  const response = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: state, formationId: passengers.id }),
+    }),
+    testEnv,
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  const body = await response.json();
+  assert.equal(body.data.schemaVersion, 19);
+  assert.deepEqual(body.data.transports.embarked, [
+    { formationId: inner.id, transportFormationId: outer.id },
+    { formationId: passengers.id, transportFormationId: inner.id },
+  ]);
+  const passengerChain = body.data.deployment.transportChains.find(
+    (chain) => chain.formationId === passengers.id,
+  );
+  assert.deepEqual(passengerChain.formationIds, [passengers.id, inner.id, outer.id]);
+  assert.equal(passengerChain.rootFormationId, outer.id);
+  assert.equal(passengerChain.rootLocation, "battlefield");
+  assert.equal(passengerChain.complete, true);
+  assert.equal(passengerChain.valid, true);
+  assert.deepEqual(body.data.deployment.deployedFormationIds, [
+    enemy.id,
+    inner.id,
+    outer.id,
+    passengers.id,
+  ]);
 });
 
 test("API exact and seeded simulation paths match the shared rules interaction corpus", async () => {

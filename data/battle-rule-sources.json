@@ -27,7 +27,7 @@
         "Deep Strike placement confirmation",
         "Strategic Reserves points, round, edge, distance, and Fortification restrictions",
         "undeployed Reserves destroyed at battle end",
-        "compatible friendly Transport capacity and starting embarked declarations",
+        "compatible friendly Transport capacity and starting embarked declarations, including datasheet-permitted nested carrier chains",
         "normal embark and disembark timing with live occupancy",
         "Firing Deck occupancy",
         "destroyed and Emergency Disembarkation",

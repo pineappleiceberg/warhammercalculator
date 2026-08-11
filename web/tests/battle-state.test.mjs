@@ -326,6 +326,56 @@ const mixedPassengerFormation = {
   ],
 };
 
+function nestedTransportFixtures() {
+  const outer = {
+    ...transportFormation,
+    id: "player-1:outer-transport",
+    sourceFormationId: "outer-transport",
+    name: "Outer Transport",
+    weaponInventory: testWeaponInventory("outer-transport"),
+    segments: [
+      {
+        ...transportFormation.segments[0],
+        id: "outer-transport-model",
+        savedUnitId: "outer-transport",
+      },
+    ],
+  };
+  const inner = {
+    ...transportFormation,
+    id: "player-1:inner-transport",
+    sourceFormationId: "inner-transport",
+    name: "Inner Transport",
+    assignedTransportFormationId: outer.id,
+    transportOptions: [testTransportOption(outer.id, ["inner-transport"], 1)],
+    weaponInventory: testWeaponInventory("inner-transport"),
+    segments: [
+      {
+        ...transportFormation.segments[0],
+        id: "inner-transport-model",
+        savedUnitId: "inner-transport",
+      },
+    ],
+  };
+  const passengers = {
+    ...passengerFormation,
+    id: "player-1:nested-passengers",
+    sourceFormationId: "nested-passengers",
+    name: "Nested Passengers",
+    assignedTransportFormationId: inner.id,
+    transportOptions: [testTransportOption(inner.id, ["nested-passengers"], 12)],
+    weaponInventory: testWeaponInventory("nested-passengers"),
+    segments: [
+      {
+        ...passengerFormation.segments[0],
+        id: "nested-passenger-models",
+        savedUnitId: "nested-passengers",
+      },
+    ],
+  };
+  return { outer, inner, passengers };
+}
+
 const goldenReplay = JSON.parse(
   await readFile(new URL("./fixtures/battle-replay-v1.json", import.meta.url), "utf8"),
 );
@@ -1156,6 +1206,264 @@ test("replays starting occupancy and normal embark and disembark timing", () => 
         state.events.length + 1,
       ),
     /started the Movement phase embarked/,
+  );
+});
+
+test("deploys and disembarks a source-compatible nested Transport chain", () => {
+  const { outer, inner, passengers } = nestedTransportFixtures();
+  let state = newBattle();
+  for (const [registered, id] of [
+    [outer, "register-outer"],
+    [inner, "register-inner"],
+    [passengers, "register-nested-passengers"],
+    [formation, "register-nested-enemy"],
+  ]) {
+    state = registerBattleFormation(state, registered, id, state.events.length + 1);
+  }
+  state = declareFormationDeployment(
+    state,
+    passengers.id,
+    "embarked",
+    { transportFormationId: inner.id },
+    "declare-nested-passengers",
+    state.events.length + 1,
+  );
+  state = declareFormationDeployment(
+    state,
+    inner.id,
+    "embarked",
+    { transportFormationId: outer.id },
+    "declare-inner",
+    state.events.length + 1,
+  );
+  state = declareFormationDeployment(
+    state,
+    outer.id,
+    "battlefield",
+    {},
+    "declare-outer",
+    state.events.length + 1,
+  );
+  state = declareFormationDeployment(
+    state,
+    formation.id,
+    "battlefield",
+    {},
+    "declare-nested-enemy",
+    state.events.length + 1,
+  );
+  state = deployFormation(
+    state,
+    outer.id,
+    { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
+    "deploy-outer",
+    state.events.length + 1,
+  );
+  state = deployFormation(
+    state,
+    formation.id,
+    { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
+    "deploy-nested-enemy",
+    state.events.length + 1,
+  );
+  let replayed = replayBattleState(state);
+  assert.equal(replayed.deploymentComplete, true);
+  assert.equal(replayed.deployedFormationIds.has(inner.id), true);
+  assert.equal(replayed.deployedFormationIds.has(passengers.id), true);
+  state = startBattle(state, "player-1", "start-nested-battle", state.events.length + 1);
+  assert.equal(battleFormationEmbarkedTransport(state, inner.id), outer.id);
+  assert.equal(battleFormationEmbarkedTransport(state, passengers.id), inner.id);
+  assert.equal(battleFormationIsOnBattlefield(state, outer.id), true);
+  assert.equal(battleFormationIsOnBattlefield(state, inner.id), false);
+  assert.equal(battleFormationIsOnBattlefield(state, passengers.id), false);
+
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "nested-to-movement",
+  );
+  state = disembarkFormation(
+    state,
+    inner.id,
+    outer.id,
+    { placementConfirmed: true, placementReason: "Wholly within 3 inches" },
+    "disembark-inner",
+    state.events.length + 1,
+  );
+  state = passFireOverwatch(
+    state,
+    "No eligible response",
+    "pass-inner-overwatch",
+    state.events.length + 1,
+  );
+  state = disembarkFormation(
+    state,
+    passengers.id,
+    inner.id,
+    { placementConfirmed: true, placementReason: "Wholly within 3 inches" },
+    "disembark-nested-passengers",
+    state.events.length + 1,
+  );
+  state = passFireOverwatch(
+    state,
+    "No eligible response",
+    "pass-nested-passenger-overwatch",
+    state.events.length + 1,
+  );
+  assert.equal(battleFormationIsOnBattlefield(state, inner.id), true);
+  assert.equal(battleFormationIsOnBattlefield(state, passengers.id), true);
+});
+
+test("follows nested Transport ancestry for Reserves limits and arrival", () => {
+  const { outer, inner, passengers } = nestedTransportFixtures();
+  let state = newBattle();
+  for (const [registered, id] of [
+    [outer, "register-reserve-outer"],
+    [inner, "register-reserve-inner"],
+    [passengers, "register-reserve-passengers"],
+    [formation, "register-reserve-enemy"],
+  ]) {
+    state = registerBattleFormation(state, registered, id, state.events.length + 1);
+  }
+  state = configureBattleMission(
+    state,
+    { ...replayBattleState(state).mission, pointsLimit: 1000 },
+    "configure-nested-reserve-mission",
+    state.events.length + 1,
+  );
+  state = declareFormationDeployment(
+    state,
+    passengers.id,
+    "embarked",
+    {
+      points: 51,
+      transportFormationId: inner.id,
+      eligibilityConfirmed: true,
+      eligibilityReason: "Embarked in a Reserve Transport chain",
+    },
+    "declare-reserve-passengers",
+    state.events.length + 1,
+  );
+  state = declareFormationDeployment(
+    state,
+    inner.id,
+    "embarked",
+    {
+      points: 50,
+      transportFormationId: outer.id,
+      eligibilityConfirmed: true,
+      eligibilityReason: "Embarked in a Reserve Transport chain",
+    },
+    "declare-reserve-inner",
+    state.events.length + 1,
+  );
+  assert.throws(
+    () =>
+      declareFormationDeployment(
+        state,
+        outer.id,
+        "strategic_reserves",
+        {
+          points: 150,
+          earliestBattleRound: 2,
+          eligibilityConfirmed: true,
+          eligibilityReason: "Strategic Reserves",
+        },
+        "declare-over-limit-outer",
+        state.events.length + 1,
+      ),
+    /250 point limit/,
+  );
+  state = declareFormationDeployment(
+    state,
+    outer.id,
+    "strategic_reserves",
+    {
+      points: 149,
+      earliestBattleRound: 2,
+      eligibilityConfirmed: true,
+      eligibilityReason: "Strategic Reserves",
+    },
+    "declare-reserve-outer",
+    state.events.length + 1,
+  );
+  state = declareFormationDeployment(
+    state,
+    formation.id,
+    "battlefield",
+    {},
+    "declare-reserve-enemy",
+    state.events.length + 1,
+  );
+  state = deployFormation(
+    state,
+    formation.id,
+    { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
+    "deploy-reserve-enemy",
+    state.events.length + 1,
+  );
+  state = startBattle(state, "player-1", "start-nested-reserves", state.events.length + 1);
+  let replayed = replayBattleState(state);
+  assert.equal(replayed.offBattlefieldFormationIds.has(outer.id), true);
+  assert.equal(replayed.offBattlefieldFormationIds.has(inner.id), true);
+  assert.equal(replayed.offBattlefieldFormationIds.has(passengers.id), true);
+  state = advanceTo(
+    state,
+    (clock) =>
+      clock.battleRound === 2 &&
+      clock.activePlayerId === "player-1" &&
+      clock.phase === "movement" &&
+      clock.step === "reinforcements",
+    "nested-reserves-arrival",
+  );
+  state = arriveFromReserves(
+    state,
+    outer.id,
+    { placementConfirmed: true, placementReason: "Legal Strategic Reserves position" },
+    "arrive-reserve-outer",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.deployedFormationIds.has(outer.id), true);
+  assert.equal(replayed.deployedFormationIds.has(inner.id), true);
+  assert.equal(replayed.deployedFormationIds.has(passengers.id), true);
+  assert.equal(battleFormationIsOnBattlefield(state, outer.id), true);
+  assert.equal(battleFormationIsOnBattlefield(state, inner.id), false);
+  assert.equal(battleFormationIsOnBattlefield(state, passengers.id), false);
+});
+
+test("rejects cyclic nested Transport deployment assignments", () => {
+  const { outer, inner } = nestedTransportFixtures();
+  const cyclicOuter = {
+    ...outer,
+    assignedTransportFormationId: inner.id,
+    transportOptions: [testTransportOption(inner.id, ["outer-transport"], 1)],
+  };
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), cyclicOuter, "register-cycle-outer", 1),
+    inner,
+    "register-cycle-inner",
+    2,
+  );
+  state = declareFormationDeployment(
+    state,
+    inner.id,
+    "embarked",
+    { transportFormationId: cyclicOuter.id },
+    "declare-cycle-inner",
+    3,
+  );
+  assert.throws(
+    () =>
+      declareFormationDeployment(
+        state,
+        cyclicOuter.id,
+        "embarked",
+        { transportFormationId: inner.id },
+        "declare-cycle-outer",
+        4,
+      ),
+    /cannot contain a cycle/,
   );
 });
 

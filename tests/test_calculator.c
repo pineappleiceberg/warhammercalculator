@@ -1608,6 +1608,24 @@ static void test_transport_load(void) {
 
 /*@ assigns \nothing;
  */
+static void test_transport_deployment_chain(void) {
+    assert(whc_transport_deployment_chain_is_valid(
+        1u, 1u, WHC_DEPLOYMENT_ROOT_BATTLEFIELD, 0u));
+    assert(whc_transport_deployment_chain_is_valid(
+        3u, 3u, WHC_DEPLOYMENT_ROOT_BATTLEFIELD, 0u));
+    assert(whc_transport_deployment_chain_is_valid(
+        3u, 3u, WHC_DEPLOYMENT_ROOT_RESERVES, 3u));
+    assert(whc_transport_deployment_chain_is_valid(
+        3u, 3u, WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES, 3u));
+    assert(!whc_transport_deployment_chain_is_valid(
+        3u, 2u, WHC_DEPLOYMENT_ROOT_BATTLEFIELD, 0u));
+    assert(!whc_transport_deployment_chain_is_valid(
+        3u, 3u, WHC_DEPLOYMENT_ROOT_RESERVES, 2u));
+    assert(!whc_transport_deployment_chain_is_valid(0u, 0u, 0u, 0u));
+}
+
+/*@ assigns \nothing;
+ */
 static void test_battle_clock(void) {
     uint32_t current[WHC_BATTLE_CLOCK_FIELDS] = {0u};
     uint32_t next[WHC_BATTLE_CLOCK_FIELDS] = {0u};
@@ -1676,6 +1694,7 @@ int main(void) {
     test_go_to_ground();
     test_ranged_declaration();
     test_transport_load();
+    test_transport_deployment_chain();
     test_battle_clock();
     puts("all tests passed");
     return 0;

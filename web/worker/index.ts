@@ -51,6 +51,7 @@ import {
 } from "../lib/combat-presets.mjs";
 import {
   battleTransportOccupancy,
+  battleTransportDeploymentChains,
   battleFormation,
   battleFormationHealth,
   battleSurvivingWeaponCount,
@@ -73,6 +74,7 @@ import {
   rangedTargetEligibilityIsValid,
   replayBattleState,
   transportLoadIsValid,
+  transportDeploymentChainIsValid,
   weaponBearerDeclarationIsValid,
   weaponInventoryDeclarationIsValid,
 } from "../lib/battle-state.mjs";
@@ -329,6 +331,7 @@ type CalculatorExports = {
   whc_go_to_ground_is_valid(...values: number[]): number;
   whc_ranged_declaration_is_valid(...values: number[]): number;
   whc_transport_load_is_valid(...values: number[]): number;
+  whc_transport_deployment_chain_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -475,6 +478,7 @@ async function loadCalculator() {
       typeof calculator.whc_go_to_ground_is_valid !== "function" ||
       typeof calculator.whc_ranged_declaration_is_valid !== "function" ||
       typeof calculator.whc_transport_load_is_valid !== "function" ||
+      typeof calculator.whc_transport_deployment_chain_is_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -1297,6 +1301,29 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         return { transportFormationId: formation.id, ...occupancy };
       })
       .sort((left, right) => left.transportFormationId.localeCompare(right.transportFormationId));
+    const transportDeploymentChains = battleTransportDeploymentChains(state)
+      .map((chain) => {
+        if (chain.complete) {
+          const values = [
+            chain.formationIds.length,
+            new Set(chain.formationIds).size,
+            chain.rootLocationCode,
+            chain.reserveEligibilityCount,
+          ];
+          const javascriptValid = transportDeploymentChainIsValid(...values);
+          const nativeValid = Boolean(
+            calculator.whc_transport_deployment_chain_is_valid(...values),
+          );
+          if (javascriptValid !== nativeValid || javascriptValid !== chain.valid) {
+            throw new ServiceUnavailableError(
+              "Transport deployment ancestry diverged from the C/WebAssembly predicate",
+              "TRANSPORT_DEPLOYMENT_DIVERGENCE",
+            );
+          }
+        }
+        return chain;
+      })
+      .sort((left, right) => left.formationId.localeCompare(right.formationId));
     return {
       schemaVersion: state.version,
       rulesSnapshot: state.rulesSnapshot,
@@ -1455,6 +1482,7 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
           }))
           .sort((left, right) => left.formationId.localeCompare(right.formationId)),
         destroyedAtBattleEndFormationIds: [...replayed.reserveDestroyedFormationIds].sort(),
+        transportChains: transportDeploymentChains,
       },
       transports: {
         compatibility: [...replayed.formations.values()]

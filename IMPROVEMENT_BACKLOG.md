@@ -27,8 +27,8 @@ state.
 
 ## Prioritized backlog
 
-1. Execute remaining Transport-specific exceptions, then continue the remaining
-   reactions, cover, and Stratagem windows.
+1. Execute the empty Dedicated Transport and Aircraft/Hover setup exceptions,
+   then continue the remaining reactions, cover, and Stratagem windows.
 2. Build and enforce the source-locked faction, detachment, enhancement,
    Stratagem, terrain, and mission coverage matrix described by the complete
    battle requirements.
@@ -39,6 +39,23 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced guided play to battle-state version 19 with executable
+  datasheet-permitted nested Transport deployment. The event replay now follows
+  complete passenger-to-carrier ancestry, rejects cycles, applies Reserve
+  eligibility and Strategic Reserves points to every nested formation, marks
+  the full tree deployed when the outer carrier deploys or arrives, and reports
+  every descendant destroyed if its Reserve root never arrives. A transported
+  Transport can disembark before its own phase-start passengers disembark, while
+  normal movement, setup, and forced-destruction timing remain enforced.
+  Guided Play resolves nested form choices to the outermost location. The replay
+  API exposes each resolved chain and independently cross-checks an
+  ACSL-specified ancestry predicate through C/WebAssembly. Native, migration,
+  cycle, battlefield, Strategic Reserves, API, Wasm differential, fuzz, formal,
+  and rendered workflow regressions cover the rule. Version-18 histories
+  migrate without rewriting their event logs. The Core Rules pages 17 and 43
+  and locked Stormbird/Thunderhawk datasheet Transport text provide the source
+  boundary.
 
 - 2026-08-11: Advanced guided play to battle-state version 18 with immutable
   source-compatible Transport choices instead of treating a roster preset as a
