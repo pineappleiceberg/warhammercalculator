@@ -210,6 +210,13 @@ int main(void) {
     assert(!whc_counter_offensive_is_valid(
         WHC_BATTLE_PHASE_FIGHT, 2u, 2u, 0u, false, false,
         WHC_COUNTER_OFFENSIVE_FLAGS_MASK & ~WHC_COUNTER_OFFENSIVE_FIGHTS_NEXT));
+    assert(whc_smokescreen_is_valid(WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, false, false,
+                                    WHC_SMOKESCREEN_FLAGS_MASK));
+    assert(!whc_smokescreen_is_valid(WHC_BATTLE_PHASE_SHOOTING, 0u, 1u, 0u, false, false,
+                                     WHC_SMOKESCREEN_FLAGS_MASK));
+    assert(!whc_smokescreen_is_valid(
+        WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, false, false,
+        WHC_SMOKESCREEN_FLAGS_MASK & ~WHC_SMOKESCREEN_BENEFIT_OF_COVER));
     assert(whc_ranged_declaration_is_valid(3u, 3u, 2u, 2u, 3u, 3u,
                                            WHC_RANGED_DECLARATION_FLAGS_MASK));
     assert(!whc_ranged_declaration_is_valid(3u, 3u, 3u, 2u, 3u, 3u,

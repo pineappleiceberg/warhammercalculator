@@ -28,6 +28,7 @@ import {
   resolveCounterOffensive,
   resolveHazardousDamage,
   resolveGoToGround,
+  resolveSmokescreen,
   resolveBattleChoice,
   resolveDestroyedTransport,
   scoreBattlePoints,
@@ -3012,7 +3013,7 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 21);
+  assert.equal(body.data.schemaVersion, 22);
   assert.equal(body.data.charges[0].canonicalMovement, true);
   assert.deepEqual(body.data.charges[0].rolls, [3, 4]);
   assert.equal(body.data.charges[0].chargeDistanceThousandths, 7000);
@@ -3199,7 +3200,7 @@ test("cross-checks Fire Overwatch reactions through the C and WebAssembly API", 
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 21);
+  assert.equal(body.data.schemaVersion, 22);
   assert.equal(body.data.pendingFireOverwatch, null);
   assert.equal(body.data.fireOverwatches.length, 1);
   assert.equal(body.data.fireOverwatches[0].trigger, "normal_move_start");
@@ -3337,7 +3338,7 @@ test("cross-checks Fire Overwatch reactions through the C and WebAssembly API", 
   assert.equal(declinedBody.data.fireOverwatchPasses[0].trigger, "normal_move_start");
 });
 
-test("cross-checks Go to Ground reaction and phase effect through the C and WebAssembly API", async () => {
+test("cross-checks Go to Ground and Smokescreen through the C and WebAssembly API", async () => {
   const attacker = {
     id: "gtg-attacker",
     playerId: "player-1",
@@ -3380,7 +3381,7 @@ test("cross-checks Go to Ground reaction and phase effect through the C and WebA
     playerId: "player-2",
     sourceFormationId: "gtg-target",
     name: "Go to Ground target",
-    keywords: ["Infantry"],
+    keywords: ["Infantry", "Smoke"],
     segments: [
       {
         id: "gtg-target-model",
@@ -3388,7 +3389,7 @@ test("cross-checks Go to Ground reaction and phase effect through the C and WebA
         unitName: "Go to Ground target",
         modelName: "Go to Ground target",
         role: "standalone",
-        keywords: ["Infantry"],
+        keywords: ["Infantry", "Smoke"],
         wounds: 2,
         startingModels: 5,
       },
@@ -3410,7 +3411,7 @@ test("cross-checks Go to Ground reaction and phase effect through the C and WebA
     {
       name: "API Go to Ground",
       commandPointsPerCommandPhase: 0,
-      startingCommandPoints: { "player-1": 0, "player-2": 1 },
+      startingCommandPoints: { "player-1": 0, "player-2": 2 },
       objectives: [],
     },
     "gtg-mission",
@@ -3495,9 +3496,16 @@ test("cross-checks Go to Ground reaction and phase effect through the C and WebA
     "gtg-target-selected",
     state.events.length,
   );
-  state = closeRangedTargetDeclarations(state, "gtg-targets-declared", state.events.length);
+  state = closeRangedTargetDeclarations(
+    state,
+    "gtg-targets-declared",
+    state.events.length,
+    "go_to_ground_first",
+  );
   assert.equal(replayBattleState(state).pendingGoToGround.targetFormationId, target.id);
   state = resolveGoToGround(state, target.id, "gtg-resolved", state.events.length);
+  assert.equal(replayBattleState(state).pendingSmokescreen.targetFormationId, target.id);
+  state = resolveSmokescreen(state, target.id, "smokescreen-resolved", state.events.length);
 
   const worker = await loadWorker();
   const response = await worker.fetch(
@@ -3511,11 +3519,12 @@ test("cross-checks Go to Ground reaction and phase effect through the C and WebA
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 21);
+  assert.equal(body.data.schemaVersion, 22);
   assert.equal(body.data.pendingGoToGround, null);
   assert.equal(body.data.readyRangedAttack.triggerEventId, "gtg-target-selected");
   assert.equal(body.data.rangedDeclarations.sets.length, 1);
   assert.equal(body.data.rangedDeclarations.sets[0].eventId, "gtg-targets-declared");
+  assert.equal(body.data.rangedDeclarations.sets[0].reactionOrder, "go_to_ground_first");
   assert.deepEqual(body.data.rangedDeclarations.sets[0].declarationEventIds, [
     "gtg-target-selected",
   ]);
@@ -3523,12 +3532,21 @@ test("cross-checks Go to Ground reaction and phase effect through the C and WebA
   assert.deepEqual(body.data.rangedDeclarations.draft, []);
   assert.equal(body.data.goToGrounds.length, 1);
   assert.equal(body.data.goToGrounds[0].canonical, true);
-  assert.equal(body.data.goToGrounds[0].commandPointsBefore, 1);
-  assert.equal(body.data.goToGrounds[0].commandPointsAfter, 0);
+  assert.equal(body.data.goToGrounds[0].commandPointsBefore, 2);
+  assert.equal(body.data.goToGrounds[0].commandPointsAfter, 1);
   assert.equal(body.data.goToGrounds[0].effect.invulnerableSave, 6);
   assert.equal(body.data.goToGrounds[0].effect.benefitOfCover, true);
   assert.equal(body.data.activeGoToGroundEffects.length, 1);
   assert.deepEqual(body.data.goToGroundPasses, []);
+  assert.equal(body.data.pendingSmokescreen, null);
+  assert.equal(body.data.smokescreens.length, 1);
+  assert.equal(body.data.smokescreens[0].canonical, true);
+  assert.equal(body.data.smokescreens[0].commandPointsBefore, 1);
+  assert.equal(body.data.smokescreens[0].commandPointsAfter, 0);
+  assert.equal(body.data.smokescreens[0].effect.benefitOfCover, true);
+  assert.equal(body.data.smokescreens[0].effect.stealth, true);
+  assert.equal(body.data.activeSmokescreenEffects.length, 1);
+  assert.deepEqual(body.data.smokescreenPasses, []);
 });
 
 test("cross-checks destroyed Transport passenger damage through WebAssembly", async () => {
@@ -3793,7 +3811,7 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 21);
+  assert.equal(body.data.schemaVersion, 22);
   assert.equal(body.data.transports.compatibility.length, 1);
   assert.equal(body.data.transports.compatibility[0].formationId, "passenger");
   assert.equal(body.data.transports.compatibility[0].transportFormationId, "transport");
@@ -3977,7 +3995,7 @@ test("API replay exposes and cross-checks nested Transport deployment ancestry",
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 21);
+  assert.equal(body.data.schemaVersion, 22);
   assert.deepEqual(body.data.transports.embarked, [
     { formationId: inner.id, transportFormationId: outer.id },
     { formationId: passengers.id, transportFormationId: inner.id },

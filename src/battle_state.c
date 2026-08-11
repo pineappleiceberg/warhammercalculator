@@ -309,6 +309,15 @@ bool whc_counter_offensive_is_valid(uint32_t phase, uint32_t command_points_befo
            !target_battle_shocked && flags == WHC_COUNTER_OFFENSIVE_FLAGS_MASK;
 }
 
+bool whc_smokescreen_is_valid(uint32_t phase, uint32_t command_points_before,
+                              uint32_t command_point_cost, uint32_t command_points_after,
+                              bool already_used, bool target_battle_shocked, uint32_t flags) {
+    return phase == WHC_BATTLE_PHASE_SHOOTING && command_points_before >= 1u &&
+           command_points_before <= 100000u && command_point_cost == 1u &&
+           command_points_after == command_points_before - command_point_cost && !already_used &&
+           !target_battle_shocked && flags == WHC_SMOKESCREEN_FLAGS_MASK;
+}
+
 bool whc_ranged_declaration_is_valid(uint32_t declaration_count,
                                      uint32_t unique_declaration_count,
                                      uint32_t target_run_count, uint32_t unique_target_count,

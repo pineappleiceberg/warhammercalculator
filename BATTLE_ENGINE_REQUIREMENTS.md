@@ -120,8 +120,11 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    in Reserves, and source-locked Hover Aircraft can instead deploy normally or
    enter Strategic Reserves. Counter-offensive now opens after an enemy Fight
    activation, spends 2CP atomically, and forces an eligible reviewed formation
-   to fight next. Remaining work includes Smokescreen and other reaction or
-   Stratagem windows, full geometry-backed target eligibility, and
+   to fight next. Smokescreen now pauses activation-wide target declarations,
+   lets the active player order simultaneous defensive Stratagems, spends 1CP
+   atomically, and applies phase-long Benefit of Cover and Stealth to an
+   eligible Smoke target. Remaining work includes other reaction and Stratagem
+   windows, full geometry-backed target eligibility, and
    geometry-backed engagement.
 6. Normalize complete faction, detachment, enhancement, Stratagem, and mission
    coverage with source-locked executable rules and a fail-closed coverage gate.
