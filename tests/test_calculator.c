@@ -1404,6 +1404,21 @@ static void test_weapon_inventory_declaration(void) {
                                                       WHC_WEAPON_INDIRECT));
 }
 
+/*@ terminates \true; */
+static void test_weapon_bearer_declaration(void) {
+    const uint32_t assault_indirect = WHC_WEAPON_ASSAULT | WHC_WEAPON_INDIRECT;
+
+    assert(whc_weapon_bearer_declaration_is_valid(3u, 2u, 0u, 2u, assault_indirect,
+                                                  WHC_WEAPON_INDIRECT));
+    assert(whc_weapon_bearer_declaration_is_valid(3u, 1u, 0u, 1u, WHC_WEAPON_ASSAULT,
+                                                  WHC_WEAPON_ASSAULT));
+    assert(!whc_weapon_bearer_declaration_is_valid(3u, 4u, 0u, 1u, 0u, 0u));
+    assert(!whc_weapon_bearer_declaration_is_valid(3u, 1u, 1u, 1u, 0u, 0u));
+    assert(!whc_weapon_bearer_declaration_is_valid(3u, 2u, 1u, 2u, 0u, 0u));
+    assert(!whc_weapon_bearer_declaration_is_valid(3u, 2u, 0u, 1u, WHC_WEAPON_ASSAULT,
+                                                   WHC_WEAPON_INDIRECT));
+}
+
 /*@ assigns \nothing;
  */
 static void test_battle_clock(void) {
@@ -1465,6 +1480,7 @@ int main(void) {
     test_transport_damage_replay();
     test_ranged_target_eligibility();
     test_weapon_inventory_declaration();
+    test_weapon_bearer_declaration();
     test_battle_clock();
     puts("all tests passed");
     return 0;

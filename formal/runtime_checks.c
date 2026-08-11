@@ -150,5 +150,11 @@ int main(void) {
                                                       WHC_WEAPON_ASSAULT));
     assert(!whc_weapon_inventory_declaration_is_valid(2u, 1u, 0u, 1u, WHC_WEAPON_ASSAULT,
                                                       WHC_WEAPON_INDIRECT));
+    assert(whc_weapon_bearer_declaration_is_valid(
+        2u, 1u, 0u, 1u, WHC_WEAPON_ASSAULT | WHC_WEAPON_INDIRECT, WHC_WEAPON_INDIRECT));
+    assert(!whc_weapon_bearer_declaration_is_valid(2u, 1u, 1u, 1u, WHC_WEAPON_ASSAULT,
+                                                   WHC_WEAPON_ASSAULT));
+    assert(!whc_weapon_bearer_declaration_is_valid(2u, 3u, 0u, 1u, WHC_WEAPON_ASSAULT,
+                                                   WHC_WEAPON_ASSAULT));
     return 0;
 }

@@ -52,9 +52,11 @@ import {
 import {
   battleFormation,
   battleFormationHealth,
+  battleSurvivingWeaponCount,
   normalizeBattleState,
   rangedTargetEligibilityIsValid,
   replayBattleState,
+  weaponBearerDeclarationIsValid,
   weaponInventoryDeclarationIsValid,
 } from "../lib/battle-state.mjs";
 import { BATTLE_PHASE_STEPS } from "../lib/battle-clock.mjs";
@@ -279,6 +281,7 @@ type CalculatorExports = {
   whc_replay_battle_health_events(...values: number[]): number;
   whc_ranged_target_eligibility_is_valid(...values: number[]): number;
   whc_weapon_inventory_declaration_is_valid(...values: number[]): number;
+  whc_weapon_bearer_declaration_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -416,6 +419,7 @@ async function loadCalculator() {
       typeof calculator.whc_replay_battle_health_events !== "function" ||
       typeof calculator.whc_ranged_target_eligibility_is_valid !== "function" ||
       typeof calculator.whc_weapon_inventory_declaration_is_valid !== "function" ||
+      typeof calculator.whc_weapon_bearer_declaration_is_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -702,7 +706,7 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
       .sort((left, right) => left.id.localeCompare(right.id));
     const activeAttackIds = new Set(replayed.activeAttackIds);
     const weaponUses = new Map<string, number>();
-    const weaponDeclarations = state.events.flatMap((event) => {
+    const weaponDeclarations = state.events.flatMap((event, eventIndex) => {
       if (
         event.type !== "attack_resolved" ||
         event.weaponType !== "Ranged" ||
@@ -731,23 +735,37 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
       const usedBefore = weaponUses.get(key) ?? 0;
       const inventoryFlags = (profile.hasAssault ? 1 : 0) | (profile.hasIndirect ? 2 : 0);
       const declaredFlags = (event.weaponHasAssault ? 1 : 0) | (event.indirectFire ? 2 : 0);
-      const javascriptEligible = weaponInventoryDeclarationIsValid(
+      const exactBearers = source.weaponBearerTracking === "exact";
+      const survivingBearerCount = exactBearers
+        ? battleSurvivingWeaponCount(
+            { ...state, events: state.events.slice(0, eventIndex) },
+            event.weaponSourceFormationId,
+            event.sourceSavedUnitId,
+            event.weaponGroupId,
+          )
+        : group.count;
+      const declarationValues = [
         group.count,
-        1,
+        exactBearers ? survivingBearerCount : 1,
         usedBefore,
         event.declaredWeaponCount,
         inventoryFlags,
         declaredFlags,
-      );
+      ];
+      const javascriptEligible = exactBearers
+        ? weaponBearerDeclarationIsValid(...declarationValues)
+        : weaponInventoryDeclarationIsValid(...declarationValues);
       const nativeEligible = Boolean(
-        calculator.whc_weapon_inventory_declaration_is_valid(
-          group.count,
-          1,
-          usedBefore,
-          event.declaredWeaponCount,
-          inventoryFlags,
-          declaredFlags,
-        ),
+        exactBearers
+          ? calculator.whc_weapon_bearer_declaration_is_valid(...declarationValues)
+          : calculator.whc_weapon_inventory_declaration_is_valid(
+              group.count,
+              1,
+              usedBefore,
+              event.declaredWeaponCount,
+              inventoryFlags,
+              declaredFlags,
+            ),
       );
       if (!javascriptEligible || javascriptEligible !== nativeEligible) {
         throw new ServiceUnavailableError(
@@ -764,6 +782,8 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
           weaponGroupId: event.weaponGroupId,
           weaponId: event.weaponId,
           inventoryCount: group.count,
+          bearerTracking: source.weaponBearerTracking,
+          survivingBearerCount: exactBearers ? survivingBearerCount : null,
           usedBefore,
           declaredWeaponCount: event.declaredWeaponCount,
           eligible: true,

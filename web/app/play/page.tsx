@@ -26,6 +26,7 @@ import {
   battleFormationWasTargeted,
   changeBattleResource,
   completeFormationActivation,
+  configureBattleWeaponBearers,
   configureBattleMission,
   configureUnengagedBattleFormation,
   createBattleState,
@@ -82,6 +83,7 @@ import {
   savedFormationTargetSequence,
   savedFormationBattleRegistration,
   applyBattleHealthToTargetSequence,
+  battleTargetSequence,
   savedUnitDefensiveEquipmentWarnings,
   savedUnitCombatPresetIds,
 } from "../../lib/formations.mjs";
@@ -637,7 +639,7 @@ export default function PlayMode() {
       }),
     ) ?? [];
   const targetBaseModels = savedFormationModelSegments(targetFormation);
-  const targetFormationBaseModels = savedFormationTargetSequence(
+  let targetFormationBaseModels = savedFormationTargetSequence(
     targetFormation,
     targetModelId,
     targetDefensiveEquipmentCounts,
@@ -680,7 +682,23 @@ export default function PlayMode() {
     ? selectedSourceEquipmentSegments.reduce((total, segment) => total + segment.count, 0)
     : profile.weaponCount;
   const replayedBattle = battleState ? replayBattleState(battleState) : null;
+  targetFormationBaseModels = battleTargetSequence(
+    targetFormationBaseModels,
+    targetBattleFormationId ? replayedBattle?.formations.get(targetBattleFormationId) : null,
+    targetModelId,
+  );
   const battleClock = replayedBattle?.clock ?? null;
+  const setupWeaponBearerGroups = replayedBattle
+    ? [...replayedBattle.formations.values()].flatMap((formation) =>
+        formation.weaponBearerTracking === "exact"
+          ? formation.weaponInventory
+              .filter((group) =>
+                ["setup_required", "player_reviewed"].includes(group.bearerAssignmentSource),
+              )
+              .map((group) => ({ formation, group }))
+          : [],
+      )
+    : [];
   const validFiringDeckPassengerIds = new Set(
     [...assignedFiringDeckPassengerIds].filter((savedUnitId) => {
       if (!replayedBattle || replayedBattle.deploymentByFormation.size === 0) return true;
@@ -1714,25 +1732,27 @@ export default function PlayMode() {
     if (count > 0) next[key] = count;
     else delete next[key];
     const nextSequence = savedFormationTargetSequence(targetFormation, targetModelId, next);
-    const nextTargetModelId = nextSequence.first?.id ?? "";
+    let nextTargetModelId = nextSequence.first?.id ?? "";
     if (battleState && targetFormation && targetBattleFormationId) {
       try {
-        setBattleState(
-          configureUnengagedBattleFormation(
-            battleState,
-            savedFormationBattleRegistration(
-              targetFormation,
-              targetPlayerId,
-              targetBattleFormationId,
-              nextSequence,
-              next,
-              battleFormation(battleState, targetBattleFormationId)?.assignedTransportFormationId ??
-                "",
-            ),
-            crypto.randomUUID(),
-            battleState.events.length + 1,
+        const updated = configureUnengagedBattleFormation(
+          battleState,
+          savedFormationBattleRegistration(
+            targetFormation,
+            targetPlayerId,
+            targetBattleFormationId,
+            nextSequence,
+            next,
+            battleFormation(battleState, targetBattleFormationId)?.assignedTransportFormationId ??
+              "",
           ),
+          crypto.randomUUID(),
+          battleState.events.length + 1,
         );
+        const configured = battleFormation(updated, targetBattleFormationId);
+        nextTargetModelId =
+          battleTargetSequence(nextSequence, configured, targetModelId).first?.id ?? "";
+        setBattleState(updated);
       } catch (error) {
         setStatus(error instanceof Error ? error.message : "Target equipment could not be changed");
         return;
@@ -1770,10 +1790,10 @@ export default function PlayMode() {
     const nextTargetDefensiveEquipmentCounts = nextRegistration
       ? nextRegistration.defensiveEquipmentCounts
       : savedFormationDefensiveEquipmentDefaults(nextFormation);
-    const nextTargetSequence = savedFormationTargetSequence(
-      nextFormation,
+    const nextTargetSequence = battleTargetSequence(
+      savedFormationTargetSequence(nextFormation, "", nextTargetDefensiveEquipmentCounts),
+      nextRegistration,
       "",
-      nextTargetDefensiveEquipmentCounts,
     );
     const firstSegment = nextTargetSequence.first;
     const model = firstSegment?.model ?? nextTargetCatalogueUnit?.models[0];
@@ -2291,6 +2311,30 @@ export default function PlayMode() {
       setStatus(`${attackerList?.name ?? "Attacker"} has the first turn`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Battle could not start");
+    }
+  };
+
+  const confirmWeaponBearers = (
+    formationId: string,
+    sourceSavedUnitId: string,
+    groupId: string,
+    bearerModelIds: string[],
+  ) => {
+    if (!battleState) return;
+    try {
+      const next = configureBattleWeaponBearers(
+        battleState,
+        formationId,
+        sourceSavedUnitId,
+        groupId,
+        bearerModelIds,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setStatus("Weapon bearer assignments confirmed");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Weapon bearers could not be configured");
     }
   };
 
@@ -3546,6 +3590,14 @@ export default function PlayMode() {
                     {targetAllocationOptions.map((segment) => (
                       <option key={segment.id} value={segment.id}>
                         {segment.unitName} · {segment.model.name} × {segment.modelCount}
+                        {segment.weaponCopies?.length
+                          ? ` · ${segment.weaponCopies
+                              .map(
+                                (copy: { name: string; count: number }) =>
+                                  `${copy.name}${copy.count > 1 ? ` ×${copy.count}` : ""}`,
+                              )
+                              .join(", ")}`
+                          : ""}
                       </option>
                     ))}
                   </select>
@@ -4831,7 +4883,10 @@ export default function PlayMode() {
               {battleClock.status === "setup" && (
                 <button
                   type="button"
-                  disabled={!replayedBattle.deploymentComplete && !battleState.migration}
+                  disabled={
+                    (!replayedBattle.deploymentComplete && !battleState.migration) ||
+                    setupWeaponBearerGroups.some(({ group }) => !group.bearerAssignmentsReviewed)
+                  }
                   onClick={startGuidedBattle}
                 >
                   {replayedBattle.deploymentComplete || battleState.migration
@@ -4853,6 +4908,76 @@ export default function PlayMode() {
                 </button>
               )}
             </div>
+            {battleClock.status === "setup" && setupWeaponBearerGroups.length > 0 && (
+              <div className="action-tracker" aria-labelledby="weapon-bearer-heading">
+                <strong id="weapon-bearer-heading">Confirm optional weapon bearers</strong>
+                <span>
+                  Each copy is tied to a model. Casualties allocated to that loadout remove its
+                  weapons from later attacks.
+                </span>
+                {setupWeaponBearerGroups.map(({ formation, group }) => {
+                  const candidates = formation.modelInstances.filter(
+                    (model: { savedUnitId: string }) =>
+                      model.savedUnitId === group.sourceSavedUnitId,
+                  );
+                  return (
+                    <fieldset key={`${formation.id}:${group.sourceSavedUnitId}:${group.groupId}`}>
+                      <legend>
+                        {formation.name} · {group.name}
+                      </legend>
+                      {group.bearerModelIds.map((modelId: string, copyIndex: number) => (
+                        <label key={`${group.groupId}:${copyIndex}`}>
+                          <span>Copy {copyIndex + 1} bearer</span>
+                          <select
+                            value={modelId}
+                            onChange={(event) => {
+                              const next = [...group.bearerModelIds];
+                              next[copyIndex] = event.target.value;
+                              confirmWeaponBearers(
+                                formation.id,
+                                group.sourceSavedUnitId,
+                                group.groupId,
+                                next,
+                              );
+                            }}
+                          >
+                            {candidates.map(
+                              (model: {
+                                id: string;
+                                unitName: string;
+                                modelName: string;
+                                ordinal: number;
+                              }) => (
+                                <option key={model.id} value={model.id}>
+                                  {model.unitName} · {model.modelName} #{model.ordinal}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        </label>
+                      ))}
+                      {!group.bearerAssignmentsReviewed ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            confirmWeaponBearers(
+                              formation.id,
+                              group.sourceSavedUnitId,
+                              group.groupId,
+                              group.bearerModelIds,
+                            )
+                          }
+                        >
+                          Confirm these bearers
+                        </button>
+                      ) : (
+                        <small>Bearer assignments reviewed.</small>
+                      )}
+                    </fieldset>
+                  );
+                })}
+              </div>
+            )}
             {replayedBattle && pendingDestroyedTransport && (
               <div className="action-tracker" role="alert">
                 <strong>

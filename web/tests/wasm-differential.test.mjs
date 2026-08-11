@@ -23,6 +23,7 @@ import {
   normalizeBattleState,
   rangedTargetEligibilityIsValid,
   replayBattleState,
+  weaponBearerDeclarationIsValid,
   weaponInventoryDeclarationIsValid,
 } from "../lib/battle-state.mjs";
 import { BATTLE_PHASE_STEPS, nextBattleClock, startBattleClock } from "../lib/battle-clock.mjs";
@@ -88,8 +89,26 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_replay_battle_health_events, "function");
   assert.equal(typeof calculator._whc_ranged_target_eligibility_is_valid, "function");
   assert.equal(typeof calculator._whc_weapon_inventory_declaration_is_valid, "function");
+  assert.equal(typeof calculator._whc_weapon_bearer_declaration_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
+});
+
+test("WebAssembly and JavaScript agree on exact weapon-bearer declarations", () => {
+  const cases = [
+    [3, 2, 0, 2, 3, 2],
+    [3, 1, 0, 1, 1, 1],
+    [3, 4, 0, 1, 0, 0],
+    [3, 1, 1, 1, 0, 0],
+    [3, 2, 1, 2, 0, 0],
+    [3, 2, 0, 1, 1, 2],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_weapon_bearer_declaration_is_valid(...values)),
+      weaponBearerDeclarationIsValid(...values),
+    );
+  }
 });
 
 test("WebAssembly and JavaScript agree on locked weapon declarations", () => {

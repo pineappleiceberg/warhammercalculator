@@ -123,6 +123,23 @@ bool whc_weapon_inventory_declaration_is_valid(uint32_t inventory_count,
                                                uint32_t used_count, uint32_t declared_count,
                                                uint32_t inventory_flags, uint32_t declared_flags);
 
+/*@ assigns \nothing;
+    ensures \result <==>
+        inventory_count > 0 && surviving_bearer_count > 0 &&
+        surviving_bearer_count <= inventory_count && used_count <= surviving_bearer_count &&
+        declared_count > 0 && declared_count <= surviving_bearer_count - used_count &&
+        inventory_flags <= (WHC_WEAPON_ASSAULT | WHC_WEAPON_INDIRECT) &&
+        declared_flags <= (WHC_WEAPON_ASSAULT | WHC_WEAPON_INDIRECT) &&
+        ((declared_flags & WHC_WEAPON_ASSAULT) == 0 ||
+         (inventory_flags & WHC_WEAPON_ASSAULT) != 0) &&
+        ((declared_flags & WHC_WEAPON_INDIRECT) == 0 ||
+         (inventory_flags & WHC_WEAPON_INDIRECT) != 0);
+*/
+bool whc_weapon_bearer_declaration_is_valid(uint32_t inventory_count,
+                                            uint32_t surviving_bearer_count,
+                                            uint32_t used_count, uint32_t declared_count,
+                                            uint32_t inventory_flags, uint32_t declared_flags);
+
 /*@ requires first_player_index <= 1;
     requires \valid(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));
     assigns clock[0 .. WHC_BATTLE_CLOCK_FIELDS - 1];

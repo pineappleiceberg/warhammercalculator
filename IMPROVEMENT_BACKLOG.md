@@ -27,26 +27,37 @@ state.
 
 ## Prioritized backlog
 
-1. Add exact per-model weapon-bearer assignments for source choices that do not
-   already resolve to distinct model segments, and require casualty allocation
-   to identify which optional weapon bearers remain. Version 9 currently fails
-   closed when every model in the source saved unit is destroyed, but an
-   optional weapon on one model still needs an explicit bearer identity before
-   other models in that same saved unit can be distinguished after casualties.
-2. Continue the legal-action engine with charge distance and movement, Heroic
+1. Continue the legal-action engine with charge distance and movement, Heroic
    Intervention, pile-in, consolidation, reactions, cover, and Stratagem
    windows; then expand Transport changes beyond the roster's locked assigned
    carrier and execute transport-specific exceptions.
-3. Build and enforce the source-locked faction, detachment, enhancement,
+2. Build and enforce the source-locked faction, detachment, enhancement,
    Stratagem, terrain, and mission coverage matrix described by the complete
    battle requirements.
-4. Expand reviewable table geometry beyond the version-8 ranged measurement to
+3. Expand reviewable table geometry beyond the version-8 ranged measurement to
    movement paths, charge endpoints, cover, coherency, Engagement Range,
    terrain, and objective facts.
-5. Deliver full guided-game replay scenarios before adding deterministic
+4. Deliver full guided-game replay scenarios before adding deterministic
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-10: Advanced guided play to battle-state version 10 with exact
+  weapon-bearer identity. Every saved formation now has stable model instances,
+  and each equipped weapon copy is assigned to one of those instances. Optional
+  assignments require player review before battle start. Models with identical
+  profiles are grouped only when their complete bearer loadouts match, so
+  casualty allocation removes the exact weapon copies carried by the destroyed
+  loadout. Target allocation exposes those loadout groups, setup equipment
+  corrections preserve reviewed assignments, and new attacks cannot declare
+  more copies than the surviving bearers. Version-1 through version-9 logs
+  retain their historical aggregate behavior behind explicit migration
+  provenance. A new ACSL-specified native predicate is proved and exported to
+  WebAssembly; the replay API reports bearer tracking and event-time surviving
+  copies and cross-checks JavaScript against C/Wasm. Exact splitting fails
+  closed before exceeding the native 16-segment allocation limit. Native, web,
+  UI, API, migration, tamper, Wasm differential, and formal regressions cover
+  the cycle.
 
 - 2026-08-10: Advanced guided play to battle-state version 9 with immutable
   weapon provenance. Every formation registration now freezes equipped group

@@ -2932,7 +2932,7 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 9);
+  assert.equal(body.data.schemaVersion, 10);
   assert.deepEqual(body.data.weaponDeclarations, [
     {
       attackEventId: "destroy-transport",
@@ -2941,6 +2941,8 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
       weaponGroupId: "anti-transport-group",
       weaponId: "anti-transport-weapon",
       inventoryCount: 1,
+      bearerTracking: "exact",
+      survivingBearerCount: 1,
       usedBefore: 0,
       declaredWeaponCount: 1,
       eligible: true,

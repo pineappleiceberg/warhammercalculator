@@ -6,6 +6,7 @@ import {
   TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
   TIMELINE_BATTLE_STATE_VERSION,
   TRANSPORT_BATTLE_STATE_VERSION,
+  WEAPON_BEARER_BATTLE_STATE_VERSION,
   WEAPON_INVENTORY_BATTLE_STATE_VERSION,
   createBattleState,
   normalizeBattleState,
@@ -126,6 +127,16 @@ function sameSegments(left, right) {
   );
 }
 
+function weaponInventoryProfileIdentity(inventory = []) {
+  return inventory.map(({ sourceSavedUnitId, groupId, name, count, profiles }) => ({
+    sourceSavedUnitId,
+    groupId,
+    name,
+    count,
+    profiles,
+  }));
+}
+
 function uniqueSetupEventId(used, playerIndex, formationIndex) {
   const base = `battle-setup-${playerIndex + 1}-${formationIndex + 1}`;
   let id = base;
@@ -133,6 +144,33 @@ function uniqueSetupEventId(used, playerIndex, formationIndex) {
   while (used.has(id)) id = `${base}-${suffix++}`;
   used.add(id);
   return id;
+}
+
+function legacyAggregateBearerFormation(existing, desired) {
+  const historicalInventory = existing.weaponInventory?.length
+    ? existing.weaponInventory
+    : desired.weaponInventory;
+  return {
+    ...existing,
+    keywords: desired.keywords,
+    defensiveEquipmentCounts: existing.defensiveEquipmentCounts ?? desired.defensiveEquipmentCounts,
+    assignedTransportFormationId: desired.assignedTransportFormationId,
+    weaponBearerTracking: "legacy_aggregate",
+    modelInstances: [],
+    weaponInventory: historicalInventory.map((group) => ({
+      ...group,
+      bearerModelIds: [],
+      bearerAssignmentsReviewed: true,
+      bearerAssignmentSource: "legacy",
+    })),
+    segments: existing.segments.map((segment) => {
+      const legacy = { ...segment };
+      delete legacy.baseSegmentId;
+      delete legacy.modelIds;
+      delete legacy.weaponCopies;
+      return legacy;
+    }),
+  };
 }
 
 function registerCompleteRosters(catalogue, state, firstList, secondList, equipmentOverrides = {}) {
@@ -146,14 +184,24 @@ function registerCompleteRosters(catalogue, state, firstList, secondList, equipm
   }
   const existingById = new Map(existingEvents.map((event) => [event.formation.id, event]));
   const registrationPrefix = state.events.slice(0, desired.length);
+  const inventoryMismatch = desired.some(
+    (formation) =>
+      existingById.has(formation.id) &&
+      JSON.stringify(
+        weaponInventoryProfileIdentity(existingById.get(formation.id).formation.weaponInventory),
+      ) !== JSON.stringify(weaponInventoryProfileIdentity(formation.weaponInventory)),
+  );
+  const lockedInventoryVersion = state.migration?.sourceVersion ?? state.version;
+  if (inventoryMismatch && lockedInventoryVersion >= WEAPON_INVENTORY_BATTLE_STATE_VERSION) {
+    throw new Error("Saved roster weapon inventory no longer matches its locked battle formation");
+  }
   const needsEventRewrite =
     existingEvents.length !== desired.length ||
     registrationPrefix.some(
       (event, index) =>
         event.type !== "formation_registered" ||
         event.formation.id !== desired[index]?.id ||
-        JSON.stringify(event.formation.weaponInventory ?? []) !==
-          JSON.stringify(desired[index]?.weaponInventory ?? []),
+        inventoryMismatch,
     );
   if (!needsEventRewrite && state.version >= BATTLE_STATE_VERSION) return state;
   const usedEventIds = new Set(state.events.map((event) => event.id));
@@ -161,6 +209,15 @@ function registerCompleteRosters(catalogue, state, firstList, secondList, equipm
   const registrations = desired.map((formation) => {
     const existing = existingById.get(formation.id);
     if (existing) {
+      if (
+        state.version < WEAPON_BEARER_BATTLE_STATE_VERSION ||
+        state.migration?.sourceVersion < WEAPON_BEARER_BATTLE_STATE_VERSION
+      ) {
+        return {
+          ...existing,
+          formation: legacyAggregateBearerFormation(existing.formation, formation),
+        };
+      }
       if (
         (state.version < BATTLE_STATE_VERSION ||
           state.migration?.sourceVersion < BATTLE_STATE_VERSION) &&
@@ -190,7 +247,23 @@ function registerCompleteRosters(catalogue, state, firstList, secondList, equipm
       formation,
     };
   });
-  const combatEvents = state.events.filter((event) => event.type !== "formation_registered");
+  const desiredById = new Map(desired.map((formation) => [formation.id, formation]));
+  const combatEvents = state.events
+    .filter((event) => event.type !== "formation_registered")
+    .map((event) => {
+      if (
+        state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION ||
+        event.type !== "formation_configured"
+      ) {
+        return event;
+      }
+      const desiredFormation = desiredById.get(event.formation.id);
+      if (!desiredFormation) return event;
+      return {
+        ...event,
+        formation: legacyAggregateBearerFormation(event.formation, desiredFormation),
+      };
+    });
   const events = [...registrations, ...combatEvents].map((event, index) => ({
     ...event,
     sequence: index + 1,
@@ -271,6 +344,7 @@ export function initializeBattleForLists({
             sourceVersion < WEAPON_INVENTORY_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyWeaponInventoryThroughSequence ?? 0),
+          legacyWeaponBearersThroughSequence: next.events.length,
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

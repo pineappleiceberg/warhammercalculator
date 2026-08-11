@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 9 as soon as both lists are selected. Every
+creates battle-state version 10 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -715,6 +715,20 @@ number of locked copies still available. The declaration predicate is shared
 and differentially tested across JavaScript, native C, WebAssembly, and the
 worker API. Version-1 through version-8 histories migrate with an explicit
 boundary instead of inventing weapon provenance for preserved attacks.
+Version 10 assigns every equipped weapon copy to a stable model instance.
+Groups with an optional or otherwise ambiguous bearer must be reviewed during
+setup before the battle can start. Exact battle segments combine models only
+when their profile and complete weapon loadout are identical, so allocating a
+casualty to a loadout removes the copies carried by that model group. Guided
+Play labels loadouts in the allocation menu and disables declarations beyond
+the surviving bearer count. Setup-only defensive-equipment corrections retain
+reviewed weapon assignments. The replay API reports exact or legacy tracking
+and the event-time surviving copy count, while a separately contracted native
+predicate is proved and differentially checked through WebAssembly. Histories
+from version 9 and earlier preserve aggregate bearer behavior behind explicit
+migration provenance rather than inventing model identities. Exact loadout
+splitting fails closed if it would exceed the native 16-segment damage
+allocation limit.
 The guided timeline records battle round, first or second player turn, active
 and priority player, phase, and step. It covers Command, Movement, Shooting,
 Charge, and Fight through five rounds. Pending bounded choices stop both attacks

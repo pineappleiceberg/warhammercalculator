@@ -11,10 +11,12 @@ import {
   arriveFromReserves,
   battleFormationIsOnBattlefield,
   battleFormationHealth,
+  battleUnusedWeaponCount,
   battleCanResolveAttack,
   changeBattleResource,
   completeFormationActivation,
   configureBattleMission,
+  configureBattleWeaponBearers,
   createBattleState,
   declareFormationDeployment,
   deployFormation,
@@ -672,6 +674,108 @@ test("replays reviewed range, visibility, Indirect Fire, and eligible weapon cou
       ),
     /override must name/i,
   );
+});
+
+test("requires exact optional bearers and reshapes casualties by reviewed loadout", () => {
+  const optional = {
+    id: "player-2:optional-bearers",
+    playerId: "player-2",
+    sourceFormationId: "optional-bearers",
+    name: "Optional Bearers",
+    weaponInventory: [
+      {
+        ...testWeaponInventory("optional-unit")[0],
+        count: 1,
+      },
+    ],
+    segments: [
+      {
+        id: "optional-models",
+        savedUnitId: "optional-unit",
+        unitName: "Optional Bearers",
+        modelName: "Warrior",
+        role: "standalone",
+        wounds: 2,
+        startingModels: 3,
+      },
+    ],
+  };
+  let state = registerBattleFormation(newBattle(), optional, "register-optional", 1);
+  let replayed = replayBattleState(state);
+  const initial = replayed.formations.get(optional.id);
+  const group = initial.weaponInventory[0];
+  assert.equal(group.bearerAssignmentsReviewed, false);
+  assert.equal(initial.segments.length, 2);
+
+  state = deployAllOnBattlefield(state);
+  assert.throws(
+    () => startBattle(state, "player-2", "blocked-start", 2),
+    /confirm every optional weapon bearer/i,
+  );
+
+  const selectedBearer = initial.modelInstances[1].id;
+  state = configureBattleWeaponBearers(
+    state,
+    optional.id,
+    "optional-unit",
+    "test-ranged-group",
+    [selectedBearer],
+    "confirm-bearer",
+    3,
+  );
+  replayed = replayBattleState(state);
+  const configured = replayed.formations.get(optional.id);
+  assert.equal(configured.weaponInventory[0].bearerAssignmentsReviewed, true);
+  assert.deepEqual(
+    configured.segments.find((segment) => segment.weaponCopies.length > 0).modelIds,
+    [selectedBearer],
+  );
+  assert.doesNotThrow(() => startBattle(state, "player-2", "start-exact", 4));
+  assert.throws(
+    () =>
+      configureBattleWeaponBearers(
+        state,
+        optional.id,
+        "optional-unit",
+        "test-ranged-group",
+        ["foreign-model"],
+        "bad-bearer",
+        5,
+      ),
+    /must belong to its source saved unit/i,
+  );
+});
+
+test("removes exact weapon copies with their casualty loadout", () => {
+  let state = registeredBattle();
+  state = recordVisibleRangedTarget(state, attackerFormation.id, formation.id);
+  state = appendResolvedAttack(state, {
+    id: "destroy-one-bearer",
+    at: state.events.length + 1,
+    attackerFormationId: attackerFormation.id,
+    targetFormationId: formation.id,
+    segmentIds: ["bodyguard", "leader"],
+    targets,
+    initialWoundsLost: 0,
+    result: { appliedDamage: 3, modelsDestroyed: 1 },
+    summary: {
+      attacker: attackerFormation.name,
+      weapon: "Test ranged weapon",
+      target: formation.name,
+      damage: 3,
+      successful: 1,
+    },
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Reviewed structured target facts",
+    targetEligibilityEventId: state.events.at(-1).id,
+    weaponId: "test-ranged-weapon",
+    declaredWeaponCount: 1,
+    weaponSourceFormationId: attackerFormation.id,
+    sourceSavedUnitId: "unit-1",
+    weaponGroupId: "test-ranged-group",
+  });
+  assert.equal(battleUnusedWeaponCount(state, formation.id, "unit-1", "test-ranged-group"), 1);
 });
 
 test("replays starting occupancy and normal embark and disembark timing", () => {

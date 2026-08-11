@@ -162,6 +162,21 @@ bool whc_weapon_inventory_declaration_is_valid(uint32_t inventory_count,
             (inventory_flags & WHC_WEAPON_INDIRECT) != 0u);
 }
 
+bool whc_weapon_bearer_declaration_is_valid(uint32_t inventory_count,
+                                            uint32_t surviving_bearer_count,
+                                            uint32_t used_count, uint32_t declared_count,
+                                            uint32_t inventory_flags, uint32_t declared_flags) {
+    return inventory_count > 0u && surviving_bearer_count > 0u &&
+           surviving_bearer_count <= inventory_count && used_count <= surviving_bearer_count &&
+           declared_count > 0u && declared_count <= surviving_bearer_count - used_count &&
+           inventory_flags <= (WHC_WEAPON_ASSAULT | WHC_WEAPON_INDIRECT) &&
+           declared_flags <= (WHC_WEAPON_ASSAULT | WHC_WEAPON_INDIRECT) &&
+           ((declared_flags & WHC_WEAPON_ASSAULT) == 0u ||
+            (inventory_flags & WHC_WEAPON_ASSAULT) != 0u) &&
+           ((declared_flags & WHC_WEAPON_INDIRECT) == 0u ||
+            (inventory_flags & WHC_WEAPON_INDIRECT) != 0u);
+}
+
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,
                                      const uint32_t *events, uint32_t event_count,
                                      uint32_t *health) {

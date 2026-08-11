@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 9;
+export const BATTLE_STATE_VERSION = 10;
+export const WEAPON_BEARER_BATTLE_STATE_VERSION = 10;
 export const WEAPON_INVENTORY_BATTLE_STATE_VERSION = 9;
 export const TARGET_ELIGIBILITY_BATTLE_STATE_VERSION = 8;
 export const TRANSPORT_BATTLE_STATE_VERSION = 7;
@@ -109,6 +110,31 @@ export function weaponInventoryDeclarationIsValid(
       declaredFlags <= 3 &&
       ((declaredFlags & 1) === 0 || (inventoryFlags & 1) !== 0) &&
       ((declaredFlags & 2) === 0 || (inventoryFlags & 2) !== 0),
+  );
+}
+
+export function weaponBearerDeclarationIsValid(
+  inventoryCount,
+  survivingBearerCount,
+  usedCount,
+  declaredCount,
+  inventoryFlags,
+  declaredFlags,
+) {
+  return Boolean(
+    weaponInventoryDeclarationIsValid(
+      inventoryCount,
+      1,
+      usedCount,
+      declaredCount,
+      inventoryFlags,
+      declaredFlags,
+    ) &&
+      Number.isSafeInteger(survivingBearerCount) &&
+      survivingBearerCount > 0 &&
+      survivingBearerCount <= inventoryCount &&
+      usedCount <= survivingBearerCount &&
+      declaredCount <= survivingBearerCount - usedCount,
   );
 }
 
@@ -363,7 +389,7 @@ function normalizeSegment(candidate) {
   }
   const feelNoPain = nonnegativeInteger(segment.feelNoPain ?? 0, "Segment Feel No Pain", 6);
   if (feelNoPain === 1) throw new Error("Segment Feel No Pain must be 0 or from 2 to 6");
-  return {
+  const normalized = {
     id: boundedString(segment.id, "Segment id"),
     savedUnitId: boundedString(segment.savedUnitId, "Segment saved unit id", 100),
     unitName: boundedString(segment.unitName, "Segment unit name"),
@@ -373,6 +399,66 @@ function normalizeSegment(candidate) {
     feelNoPain,
     startingModels,
   };
+  if (segment.baseSegmentId !== undefined || segment.modelIds !== undefined) {
+    normalized.baseSegmentId = boundedString(segment.baseSegmentId, "Segment base id");
+    normalized.modelIds = normalizeStringArray(segment.modelIds, "Segment model ids", 1000);
+    if (
+      normalized.modelIds.length !== startingModels ||
+      new Set(normalized.modelIds).size !== normalized.modelIds.length
+    ) {
+      throw new Error("Exact battle segments require one unique model id per starting model");
+    }
+    if (!Array.isArray(segment.weaponCopies) || segment.weaponCopies.length > 256) {
+      throw new Error("Segment weapon copies must contain at most 256 groups");
+    }
+    normalized.weaponCopies = segment.weaponCopies.map((candidateCopy) => {
+      const copy = record(candidateCopy, "Each segment weapon copy must be an object");
+      return {
+        groupId: boundedString(copy.groupId, "Segment weapon group id", 200),
+        name: boundedString(copy.name, "Segment weapon name", 200),
+        count: nonnegativeInteger(copy.count, "Segment weapon copies per model", 1000),
+      };
+    });
+    if (
+      normalized.weaponCopies.some((copy) => copy.count < 1) ||
+      new Set(normalized.weaponCopies.map((copy) => copy.groupId)).size !==
+        normalized.weaponCopies.length
+    ) {
+      throw new Error("Segment weapon copies must be positive and unique");
+    }
+  }
+  return normalized;
+}
+
+function normalizeModelInstances(value) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 1000) {
+    throw new Error("Exact battle formation must contain 1 to 1000 model instances");
+  }
+  const models = value.map((candidate) => {
+    const model = record(candidate, "Each battle model instance must be an object");
+    return {
+      id: boundedString(model.id, "Battle model instance id"),
+      baseSegmentId: boundedString(model.baseSegmentId, "Battle model base segment id"),
+      savedUnitId: boundedString(model.savedUnitId, "Battle model saved unit id", 100),
+      unitName: boundedString(model.unitName, "Battle model unit name"),
+      modelName: boundedString(model.modelName, "Battle model name"),
+      ordinal: nonnegativeInteger(model.ordinal, "Battle model ordinal", 1000),
+    };
+  });
+  if (
+    models.some((model) => model.ordinal < 1) ||
+    new Set(models.map((model) => model.id)).size !== models.length
+  ) {
+    throw new Error("Battle model instances require positive ordinals and unique ids");
+  }
+  return models;
+}
+
+function normalizeRepeatedStringArray(value, name, maximum = 1000) {
+  if (!Array.isArray(value) || value.length > maximum) {
+    throw new Error(`${name} must contain at most ${maximum} strings`);
+  }
+  return value.map((entry) => boundedString(entry, name, 200));
 }
 
 function normalizeWeaponProfile(candidate) {
@@ -402,7 +488,7 @@ function normalizeWeaponProfile(candidate) {
   };
 }
 
-function normalizeWeaponInventory(value, segments, stateVersion) {
+function normalizeWeaponInventory(value, segments, stateVersion, modelInstances, tracking) {
   if (stateVersion < WEAPON_INVENTORY_BATTLE_STATE_VERSION) return [];
   if (!Array.isArray(value) || value.length > 256) {
     throw new Error("Formation weapon inventory must contain at most 256 weapon groups");
@@ -425,13 +511,43 @@ function normalizeWeaponInventory(value, segments, stateVersion) {
     if (new Set(profiles.map((profile) => profile.weaponId)).size !== profiles.length) {
       throw new Error("Weapon inventory profile ids must be unique within a group");
     }
-    return {
+    const normalized = {
       sourceSavedUnitId,
       groupId: boundedString(group.groupId, "Weapon inventory group id", 200),
       name: boundedString(group.name, "Weapon inventory group name", 200),
       count: nonnegativeInteger(group.count, "Weapon inventory equipped count", 1000),
       profiles,
     };
+    if (stateVersion >= WEAPON_BEARER_BATTLE_STATE_VERSION) {
+      normalized.bearerModelIds = normalizeRepeatedStringArray(
+        group.bearerModelIds ?? [],
+        "Weapon bearer model ids",
+        1000,
+      );
+      normalized.bearerAssignmentsReviewed = Boolean(group.bearerAssignmentsReviewed);
+      normalized.bearerAssignmentSource = boundedString(
+        group.bearerAssignmentSource ??
+          (tracking === "legacy_aggregate" ? "legacy" : "setup_required"),
+        "Weapon bearer assignment source",
+        40,
+      );
+      if (tracking === "exact") {
+        if (normalized.bearerModelIds.length !== normalized.count) {
+          throw new Error("Every equipped weapon copy requires an exact bearer model id");
+        }
+        const models = new Map(modelInstances.map((model) => [model.id, model]));
+        if (
+          normalized.bearerModelIds.some(
+            (modelId) => models.get(modelId)?.savedUnitId !== sourceSavedUnitId,
+          )
+        ) {
+          throw new Error("Weapon bearers must belong to the weapon source saved unit");
+        }
+      } else if (normalized.bearerModelIds.length > 0) {
+        throw new Error("Legacy aggregate weapon inventory cannot claim exact bearer ids");
+      }
+    }
+    return normalized;
   });
   if (inventory.some((group) => group.count < 1)) {
     throw new Error("Weapon inventory groups must contain at least one equipped copy");
@@ -456,6 +572,21 @@ function normalizeFormation(candidate, stateVersion) {
   if (new Set(segments.map((segment) => segment.id)).size !== segments.length) {
     throw new Error("Formation segment ids must be unique");
   }
+  const tracking =
+    stateVersion >= WEAPON_BEARER_BATTLE_STATE_VERSION
+      ? boundedString(
+          formation.weaponBearerTracking ?? "legacy_aggregate",
+          "Weapon bearer tracking mode",
+          30,
+        )
+      : "legacy_aggregate";
+  if (tracking !== "exact" && tracking !== "legacy_aggregate") {
+    throw new Error("Weapon bearer tracking mode must be exact or legacy_aggregate");
+  }
+  const modelInstances =
+    stateVersion >= WEAPON_BEARER_BATTLE_STATE_VERSION && tracking === "exact"
+      ? normalizeModelInstances(formation.modelInstances)
+      : [];
   const normalized = {
     id: boundedString(formation.id, "Formation id"),
     playerId: boundedString(formation.playerId, "Formation player id", 100),
@@ -479,16 +610,179 @@ function normalizeFormation(candidate, stateVersion) {
     ),
     segments,
   };
+  if (stateVersion >= WEAPON_BEARER_BATTLE_STATE_VERSION) {
+    normalized.weaponBearerTracking = tracking;
+    normalized.modelInstances = modelInstances;
+  }
   normalized.weaponInventory = normalizeWeaponInventory(
     formation.weaponInventory ?? [],
     segments,
     stateVersion,
+    modelInstances,
+    tracking,
   );
   normalized.defensiveEquipmentCounts = normalizeDefensiveEquipmentCounts(
     formation.defensiveEquipmentCounts ?? {},
     "Formation defensiveEquipmentCounts",
   );
+  if (tracking === "exact") {
+    const instances = new Map(modelInstances.map((model) => [model.id, model]));
+    const assignedModels = segments.flatMap((segment) => segment.modelIds ?? []);
+    if (
+      assignedModels.length !== modelInstances.length ||
+      new Set(assignedModels).size !== modelInstances.length ||
+      assignedModels.some((modelId) => !instances.has(modelId))
+    ) {
+      throw new Error("Exact battle segments must partition every registered model instance");
+    }
+    for (const segment of segments) {
+      if (!segment.baseSegmentId || !segment.modelIds || !segment.weaponCopies) {
+        throw new Error("Exact weapon bearer tracking requires exact battle segments");
+      }
+      if (
+        segment.modelIds.some(
+          (modelId) => instances.get(modelId)?.baseSegmentId !== segment.baseSegmentId,
+        )
+      ) {
+        throw new Error("Exact battle segment contains a model from another base profile");
+      }
+      const expected = normalized.weaponInventory.flatMap((group) => {
+        const count = group.bearerModelIds.filter(
+          (modelId) => modelId === segment.modelIds[0],
+        ).length;
+        return count > 0 ? [{ groupId: group.groupId, name: group.name, count }] : [];
+      });
+      if (
+        segment.modelIds.some((modelId) =>
+          normalized.weaponInventory.some(
+            (group) =>
+              group.bearerModelIds.filter((candidate) => candidate === modelId).length !==
+              (expected.find((copy) => copy.groupId === group.groupId)?.count ?? 0),
+          ),
+        ) ||
+        JSON.stringify(segment.weaponCopies) !== JSON.stringify(expected)
+      ) {
+        throw new Error(
+          "Exact battle segment weapon signature does not match its bearer assignments",
+        );
+      }
+    }
+  }
   return normalized;
+}
+
+function weaponInventoryProfileIdentity(inventory) {
+  return inventory.map(({ sourceSavedUnitId, groupId, name, count, profiles }) => ({
+    sourceSavedUnitId,
+    groupId,
+    name,
+    count,
+    profiles,
+  }));
+}
+
+function segmentsForBearerAssignments(formation, weaponInventory) {
+  const existingByModelId = new Map(
+    formation.segments.flatMap((segment) =>
+      (segment.modelIds ?? []).map((modelId) => [modelId, segment]),
+    ),
+  );
+  const grouped = new Map();
+  for (const model of formation.modelInstances) {
+    const source = existingByModelId.get(model.id);
+    if (!source) throw new Error("Battle model is absent from its exact health segments");
+    const weaponCopies = weaponInventory.flatMap((group) => {
+      const count = group.bearerModelIds.filter((modelId) => modelId === model.id).length;
+      return count > 0 ? [{ groupId: group.groupId, name: group.name, count }] : [];
+    });
+    const key = `${model.baseSegmentId}\u0000${JSON.stringify(
+      weaponCopies.map(({ groupId, count }) => [groupId, count]),
+    )}`;
+    const entry = grouped.get(key) ?? { source, model, weaponCopies, modelIds: [] };
+    entry.modelIds.push(model.id);
+    grouped.set(key, entry);
+  }
+  const perBaseIndex = new Map();
+  return [...grouped.values()].map(({ source, model, weaponCopies, modelIds }) => {
+    const index = (perBaseIndex.get(model.baseSegmentId) ?? 0) + 1;
+    perBaseIndex.set(model.baseSegmentId, index);
+    return {
+      id: `${model.baseSegmentId}:loadout:${index}`,
+      baseSegmentId: model.baseSegmentId,
+      savedUnitId: source.savedUnitId,
+      unitName: source.unitName,
+      modelName: source.modelName,
+      role: source.role,
+      wounds: source.wounds,
+      feelNoPain: source.feelNoPain,
+      startingModels: modelIds.length,
+      modelIds,
+      weaponCopies,
+    };
+  });
+}
+
+function prepareExactFormationRegistration(formation) {
+  if (formation.weaponBearerTracking) return formation;
+  const modelInstances = formation.segments.flatMap((segment) =>
+    Array.from({ length: segment.startingModels }, (_, index) => ({
+      id: `${segment.id}:model:${index + 1}`,
+      baseSegmentId: segment.id,
+      savedUnitId: segment.savedUnitId,
+      unitName: segment.unitName,
+      modelName: segment.modelName,
+      ordinal: index + 1,
+    })),
+  );
+  const weaponInventory = (formation.weaponInventory ?? []).map((group) => {
+    const candidates = modelInstances.filter(
+      (model) => model.savedUnitId === group.sourceSavedUnitId,
+    );
+    if (candidates.length < 1) {
+      throw new Error("Weapon inventory source has no registered model bearer");
+    }
+    const exact = candidates.length === 1 || group.count === candidates.length;
+    const bearerModelIds =
+      candidates.length === 1
+        ? Array.from({ length: group.count }, () => candidates[0].id)
+        : Array.from(
+            { length: group.count },
+            (_, index) => candidates[index % candidates.length].id,
+          );
+    return {
+      ...group,
+      bearerModelIds,
+      bearerAssignmentsReviewed: exact,
+      bearerAssignmentSource:
+        candidates.length === 1 ? "single_model" : exact ? "one_per_model" : "setup_required",
+    };
+  });
+  const provisional = {
+    ...formation,
+    weaponBearerTracking: "exact",
+    modelInstances,
+    weaponInventory,
+    segments: formation.segments.map((segment) => ({
+      ...segment,
+      baseSegmentId: segment.id,
+      modelIds: modelInstances
+        .filter((model) => model.baseSegmentId === segment.id)
+        .map((model) => model.id),
+      weaponCopies: [],
+    })),
+  };
+  const split = segmentsForBearerAssignments(provisional, weaponInventory);
+  const countsByBase = new Map();
+  for (const segment of split) {
+    countsByBase.set(segment.baseSegmentId, (countsByBase.get(segment.baseSegmentId) ?? 0) + 1);
+  }
+  return {
+    ...provisional,
+    segments: split.map((segment) => ({
+      ...segment,
+      id: countsByBase.get(segment.baseSegmentId) === 1 ? segment.baseSegmentId : segment.id,
+    })),
+  };
 }
 
 function normalizeHealth(candidate, segment, label) {
@@ -637,7 +931,8 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
       previous.playerId !== formation.playerId ||
       previous.sourceFormationId !== formation.sourceFormationId ||
       previous.assignedTransportFormationId !== formation.assignedTransportFormationId ||
-      JSON.stringify(previous.weaponInventory) !== JSON.stringify(formation.weaponInventory)
+      JSON.stringify(weaponInventoryProfileIdentity(previous.weaponInventory)) !==
+        JSON.stringify(weaponInventoryProfileIdentity(formation.weaponInventory))
     ) {
       throw new Error("Formation identity cannot change during battle setup");
     }
@@ -1248,6 +1543,7 @@ export function normalizeBattleState(candidate) {
       DEPLOYMENT_BATTLE_STATE_VERSION,
       TRANSPORT_BATTLE_STATE_VERSION,
       TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
+      WEAPON_INVENTORY_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -1289,6 +1585,7 @@ export function normalizeBattleState(candidate) {
         DEPLOYMENT_BATTLE_STATE_VERSION,
         TRANSPORT_BATTLE_STATE_VERSION,
         TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
+        WEAPON_INVENTORY_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -1338,6 +1635,32 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyWeaponBearersThroughSequence = nonnegativeInteger(
+        migration.legacyWeaponBearersThroughSequence,
+        "Legacy weapon bearer event sequence",
+        events.length,
+      );
+    }
+  }
+  if (
+    state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
+    events.some(
+      (event) =>
+        ["formation_registered", "formation_configured"].includes(event.type) &&
+        event.formation.weaponBearerTracking === "legacy_aggregate",
+    ) &&
+    normalized.migration?.sourceVersion !== WEAPON_INVENTORY_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== TARGET_ELIGIBILITY_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== TRANSPORT_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== DEPLOYMENT_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== ACTION_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== TRACKER_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== TIMELINE_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== ROSTER_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== LEGACY_BATTLE_STATE_VERSION
+  ) {
+    throw new Error("Legacy aggregate weapon bearers require explicit migration provenance");
   }
   replayBattleState(normalized);
   return normalized;
@@ -1356,6 +1679,22 @@ function formationSourceModelsRemaining(formation, sourceSavedUnitId) {
   return formation.segments
     .filter((segment) => segment.savedUnitId === sourceSavedUnitId)
     .reduce((total, segment) => total + formation.health[segment.id].modelsRemaining, 0);
+}
+
+function formationSurvivingWeaponCount(formation, sourceSavedUnitId, groupId) {
+  const group = formation.weaponInventory.find(
+    (candidate) =>
+      candidate.sourceSavedUnitId === sourceSavedUnitId && candidate.groupId === groupId,
+  );
+  if (!group) return 0;
+  if (formation.weaponBearerTracking !== "exact") {
+    return formationSourceModelsRemaining(formation, sourceSavedUnitId) > 0 ? group.count : 0;
+  }
+  return formation.segments.reduce((total, segment) => {
+    if (segment.savedUnitId !== sourceSavedUnitId) return total;
+    const copies = segment.weaponCopies.find((copy) => copy.groupId === groupId)?.count ?? 0;
+    return total + copies * formation.health[segment.id].modelsRemaining;
+  }, 0);
 }
 
 function formationWeaponProfile(formation, sourceSavedUnitId, groupId, weaponId) {
@@ -2526,8 +2865,9 @@ export function replayBattleState(state) {
           throw new Error("Target eligibility weapon facts differ from the locked inventory");
         }
         if (
-          formationSourceModelsRemaining(source, event.sourceSavedUnitId) < 1 ||
-          event.eligibleWeaponCount > inventory.group.count
+          formationSurvivingWeaponCount(source, event.sourceSavedUnitId, event.weaponGroupId) < 1 ||
+          event.eligibleWeaponCount >
+            formationSurvivingWeaponCount(source, event.sourceSavedUnitId, event.weaponGroupId)
         ) {
           throw new Error("Target eligibility exceeds the surviving locked weapon inventory");
         }
@@ -2617,15 +2957,34 @@ export function replayBattleState(state) {
                 .reduce((total, attack) => total + attack.declaredWeaponCount, 0);
               const declaredFlags = (event.weaponHasAssault ? 1 : 0) | (event.indirectFire ? 2 : 0);
               if (
-                !weaponInventoryDeclarationIsValid(
-                  inventory.group.count,
-                  formationSourceModelsRemaining(source, event.sourceSavedUnitId),
-                  usedCount,
-                  event.declaredWeaponCount,
-                  weaponProfileFlags(inventory.profile),
-                  declaredFlags,
-                ) ||
-                eligibility.eligibleWeaponCount > inventory.group.count - usedCount
+                !(source.weaponBearerTracking === "exact"
+                  ? weaponBearerDeclarationIsValid(
+                      inventory.group.count,
+                      formationSurvivingWeaponCount(
+                        source,
+                        event.sourceSavedUnitId,
+                        event.weaponGroupId,
+                      ),
+                      usedCount,
+                      event.declaredWeaponCount,
+                      weaponProfileFlags(inventory.profile),
+                      declaredFlags,
+                    )
+                  : weaponInventoryDeclarationIsValid(
+                      inventory.group.count,
+                      formationSourceModelsRemaining(source, event.sourceSavedUnitId),
+                      usedCount,
+                      event.declaredWeaponCount,
+                      weaponProfileFlags(inventory.profile),
+                      declaredFlags,
+                    )) ||
+                eligibility.eligibleWeaponCount >
+                  formationSurvivingWeaponCount(
+                    source,
+                    event.sourceSavedUnitId,
+                    event.weaponGroupId,
+                  ) -
+                    usedCount
               ) {
                 throw new Error("Ranged attack exceeds its surviving unused weapon inventory");
               }
@@ -2880,6 +3239,14 @@ export function arriveFromReserves(
 export function startBattle(state, firstPlayerId, id, at) {
   const replayed = replayBattleState(state);
   if (replayed.clock.status !== "setup") throw new Error("Battle has already started");
+  const unresolved = [...replayed.formations.values()].flatMap((formation) =>
+    formation.weaponBearerTracking === "exact"
+      ? formation.weaponInventory.filter((group) => !group.bearerAssignmentsReviewed)
+      : [],
+  );
+  if (unresolved.length > 0) {
+    throw new Error("Confirm every optional weapon bearer before starting the battle");
+  }
   const clock = startBattleClock(state.players, firstPlayerId);
   return appendEvent(state, {
     version: BATTLE_EVENT_VERSION,
@@ -3462,13 +3829,14 @@ export function battleCanResolveAttack(state, attackerFormationId, options = {})
 export function registerBattleFormation(state, formation, id, at) {
   const replayed = replayBattleState(state);
   if (replayed.formations.has(formation.id)) return state;
+  const prepared = prepareExactFormationRegistration(formation);
   return appendEvent(state, {
     version: BATTLE_EVENT_VERSION,
     id,
     sequence: state.events.length + 1,
     at,
     type: "formation_registered",
-    formation,
+    formation: prepared,
   });
 }
 
@@ -3494,7 +3862,7 @@ export function configureUnengagedBattleFormation(state, formation, id, at) {
     (event) => event.type === "formation_registered" && event.formation.id === formation.id,
   );
   if (index < 0) throw new Error("Formation is not registered for this battle");
-  const previous = state.events[index].formation;
+  const previous = replayBattleState(state).formations.get(formation.id);
   if (
     previous.playerId !== formation.playerId ||
     previous.sourceFormationId !== formation.sourceFormationId ||
@@ -3502,13 +3870,96 @@ export function configureUnengagedBattleFormation(state, formation, id, at) {
   ) {
     throw new Error("Formation identity cannot change during battle setup");
   }
+  let configured = formation;
+  if (
+    previous.weaponBearerTracking === "exact" &&
+    formation.weaponBearerTracking === "exact" &&
+    JSON.stringify(weaponInventoryProfileIdentity(previous.weaponInventory)) ===
+      JSON.stringify(weaponInventoryProfileIdentity(formation.weaponInventory))
+  ) {
+    const preservedInventory = formation.weaponInventory.map((group) => {
+      const current = previous.weaponInventory.find(
+        (candidate) =>
+          candidate.sourceSavedUnitId === group.sourceSavedUnitId &&
+          candidate.groupId === group.groupId,
+      );
+      return current
+        ? {
+            ...group,
+            bearerModelIds: current.bearerModelIds,
+            bearerAssignmentsReviewed: current.bearerAssignmentsReviewed,
+            bearerAssignmentSource: current.bearerAssignmentSource,
+          }
+        : group;
+    });
+    configured = {
+      ...formation,
+      weaponInventory: preservedInventory,
+      segments: segmentsForBearerAssignments(formation, preservedInventory),
+    };
+  }
   return appendEvent(state, {
     version: BATTLE_EVENT_VERSION,
     id,
     sequence: state.events.length + 1,
     at,
     type: "formation_configured",
-    formation,
+    formation: configured,
+  });
+}
+
+export function configureBattleWeaponBearers(
+  state,
+  formationId,
+  sourceSavedUnitId,
+  groupId,
+  bearerModelIds,
+  id,
+  at,
+) {
+  const replayed = replayBattleState(state);
+  if (replayed.clock.status !== "setup") {
+    throw new Error("Weapon bearer assignments are locked after the battle starts");
+  }
+  const formation = replayed.formations.get(formationId);
+  if (!formation || formation.weaponBearerTracking !== "exact") {
+    throw new Error("Formation does not support exact weapon bearer assignments");
+  }
+  const group = formation.weaponInventory.find(
+    (candidate) =>
+      candidate.sourceSavedUnitId === sourceSavedUnitId && candidate.groupId === groupId,
+  );
+  if (!group) throw new Error("Weapon group is absent from the locked formation inventory");
+  if (!Array.isArray(bearerModelIds) || bearerModelIds.length !== group.count) {
+    throw new Error("Assign every equipped weapon copy to a bearer model");
+  }
+  const models = new Map(formation.modelInstances.map((model) => [model.id, model]));
+  if (bearerModelIds.some((modelId) => models.get(modelId)?.savedUnitId !== sourceSavedUnitId)) {
+    throw new Error("Every weapon bearer must belong to its source saved unit");
+  }
+  const weaponInventory = formation.weaponInventory.map((candidate) =>
+    candidate === group
+      ? {
+          ...candidate,
+          bearerModelIds: [...bearerModelIds],
+          bearerAssignmentsReviewed: true,
+          bearerAssignmentSource: "player_reviewed",
+        }
+      : candidate,
+  );
+  const configured = {
+    ...formation,
+    weaponInventory,
+    segments: segmentsForBearerAssignments(formation, weaponInventory),
+  };
+  delete configured.health;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "formation_configured",
+    formation: configured,
   });
 }
 
@@ -3620,7 +4071,9 @@ export function battleUnusedWeaponCount(
     (candidate) =>
       candidate.sourceSavedUnitId === sourceSavedUnitId && candidate.groupId === weaponGroupId,
   );
-  if (!source || !group || formationSourceModelsRemaining(source, sourceSavedUnitId) < 1) return 0;
+  if (!source || !group) return 0;
+  const surviving = formationSurvivingWeaponCount(source, sourceSavedUnitId, weaponGroupId);
+  if (surviving < 1) return 0;
   const active = new Set(replayed.activeAttackIds);
   const used = state.events
     .filter(
@@ -3634,5 +4087,17 @@ export function battleUnusedWeaponCount(
         sameBattleClock(event.clock, replayed.clock),
     )
     .reduce((total, event) => total + event.declaredWeaponCount, 0);
-  return Math.max(0, group.count - used);
+  return Math.max(0, surviving - used);
+}
+
+export function battleSurvivingWeaponCount(
+  state,
+  weaponSourceFormationId,
+  sourceSavedUnitId,
+  weaponGroupId,
+) {
+  const replayed = replayBattleState(state);
+  const source = replayed.formations.get(weaponSourceFormationId);
+  if (!source) return 0;
+  return formationSurvivingWeaponCount(source, sourceSavedUnitId, weaponGroupId);
 }

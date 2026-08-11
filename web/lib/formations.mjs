@@ -12,6 +12,8 @@ import {
   sourceEquipmentCombatPresetIds,
 } from "./combat-presets.mjs";
 
+export const MAX_DAMAGE_ALLOCATION_SEGMENTS = 16;
+
 export function catalogueModelSegments(unit, modelCount, loadoutSubjectCounts = {}) {
   const composition = catalogueModelComposition(unit, modelCount, loadoutSubjectCounts);
   return {
@@ -466,6 +468,139 @@ export function savedFormationTargetSequence(
   };
 }
 
+function battleModelInstances(segments) {
+  return segments.flatMap((segment) =>
+    Array.from({ length: segment.modelCount }, (_, index) => ({
+      id: `${segment.id}:model:${index + 1}`,
+      baseSegmentId: segment.id,
+      savedUnitId: segment.savedUnitId,
+      unitName: segment.unitName,
+      modelName: segment.model.name,
+      ordinal: index + 1,
+    })),
+  );
+}
+
+function defaultWeaponBearerModelIds(group, modelInstances) {
+  const candidates = modelInstances.filter(
+    (model) => model.savedUnitId === group.sourceSavedUnitId,
+  );
+  if (candidates.length === 1) {
+    return {
+      bearerModelIds: Array.from({ length: group.count }, () => candidates[0].id),
+      bearerAssignmentsReviewed: true,
+      bearerAssignmentSource: "single_model",
+    };
+  }
+  if (group.count === candidates.length) {
+    return {
+      bearerModelIds: candidates.map((model) => model.id),
+      bearerAssignmentsReviewed: true,
+      bearerAssignmentSource: "one_per_model",
+    };
+  }
+  return {
+    bearerModelIds: Array.from(
+      { length: group.count },
+      (_, index) => candidates[index % candidates.length]?.id ?? "",
+    ),
+    bearerAssignmentsReviewed: false,
+    bearerAssignmentSource: "setup_required",
+  };
+}
+
+function modelWeaponSignature(modelId, weaponInventory) {
+  return weaponInventory.flatMap((group) => {
+    const count = group.bearerModelIds.filter((candidate) => candidate === modelId).length;
+    return count > 0 ? [{ groupId: group.groupId, name: group.name, count }] : [];
+  });
+}
+
+export function battleSegmentsForWeaponBearers(modelInstances, weaponInventory, baseSegments) {
+  const baseById = new Map(baseSegments.map((segment) => [segment.id, segment]));
+  const grouped = new Map();
+  for (const model of modelInstances) {
+    const weaponCopies = modelWeaponSignature(model.id, weaponInventory);
+    const signature = JSON.stringify(weaponCopies.map(({ groupId, count }) => [groupId, count]));
+    const key = `${model.baseSegmentId}\u0000${signature}`;
+    const entry = grouped.get(key) ?? { model, weaponCopies, modelIds: [] };
+    entry.modelIds.push(model.id);
+    grouped.set(key, entry);
+  }
+  const perBaseIndex = new Map();
+  return [...grouped.values()].map(({ model, weaponCopies, modelIds }) => {
+    const base = baseById.get(model.baseSegmentId);
+    if (!base) throw new Error("Weapon bearer references an unknown model segment");
+    const index = (perBaseIndex.get(base.id) ?? 0) + 1;
+    perBaseIndex.set(base.id, index);
+    return {
+      id: `${base.id}:loadout:${index}`,
+      baseSegmentId: base.id,
+      savedUnitId: base.savedUnitId,
+      unitName: base.unitName,
+      modelName: base.model.name,
+      role: base.role,
+      wounds: base.model.wounds ?? 1,
+      feelNoPain: base.model.feelNoPain ?? 0,
+      startingModels: modelIds.length,
+      modelIds,
+      weaponCopies,
+    };
+  });
+}
+
+export function battleTargetSequence(targetSequence, battleFormation, firstSegmentId = "") {
+  if (!battleFormation || battleFormation.weaponBearerTracking !== "exact") return targetSequence;
+  if (battleFormation.segments.length > MAX_DAMAGE_ALLOCATION_SEGMENTS) {
+    throw new Error(
+      `Exact weapon bearer assignments exceed the ${MAX_DAMAGE_ALLOCATION_SEGMENTS}-segment damage allocation limit`,
+    );
+  }
+  const sourceById = new Map(
+    targetSequence.orderedSegments.map((segment, index) => [
+      segment.id,
+      { segment, target: targetSequence.targets[index] },
+    ]),
+  );
+  const expanded = battleFormation.segments.map((registration) => {
+    const source = sourceById.get(registration.baseSegmentId);
+    if (!source) throw new Error("Battle weapon bearer composition changed after setup");
+    return {
+      segment: {
+        ...source.segment,
+        id: registration.id,
+        baseSegmentId: registration.baseSegmentId,
+        modelCount: registration.startingModels,
+        weaponCopies: registration.weaponCopies,
+      },
+      target: { ...source.target, modelCount: registration.startingModels },
+    };
+  });
+  const hasProtectedLeader = expanded.some(({ segment }) => segment.role !== "leader");
+  const allocationOptions = expanded
+    .filter(({ segment }) => !hasProtectedLeader || segment.role !== "leader")
+    .map(({ segment }) => segment);
+  const requested = allocationOptions.find((segment) => segment.id === firstSegmentId);
+  const baseFirst = allocationOptions.find(
+    (segment) => segment.baseSegmentId === targetSequence.first?.id,
+  );
+  const first = requested ?? baseFirst ?? allocationOptions[0];
+  const ordered = first
+    ? [
+        expanded.find(({ segment }) => segment.id === first.id),
+        ...expanded.filter(({ segment }) => segment.id !== first.id),
+      ]
+    : [];
+  return {
+    ...targetSequence,
+    segments: expanded.map(({ segment }) => segment),
+    allocationOptions,
+    first,
+    orderedSegments: ordered.map(({ segment }) => segment),
+    targets: ordered.map(({ target }) => target),
+  };
+}
+
 export function savedFormationBattleRegistration(
   formation,
   playerId,
@@ -476,21 +611,9 @@ export function savedFormationBattleRegistration(
 ) {
   const segments = targetSequence?.orderedSegments ?? [];
   if (!formation || segments.length < 1) throw new Error("Formation has no exact model segments");
-  return {
-    id,
-    playerId,
-    sourceFormationId: formation.id,
-    name: formation.name,
-    assignedTransportFormationId,
-    keywords: [
-      ...new Set(
-        formation.components.flatMap((component) =>
-          (component.catalogueUnit?.models ?? []).flatMap((model) => model.keywords ?? []),
-        ),
-      ),
-    ],
-    defensiveEquipmentCounts: { ...defensiveEquipmentCounts },
-    weaponInventory: formation.components.flatMap((component) => {
+  const modelInstances = battleModelInstances(segments);
+  const weaponInventory = formation.components
+    .flatMap((component) => {
       const groups = groupWeaponProfiles(component.catalogueUnit?.weapons ?? []);
       return (component.unit.weapons ?? []).flatMap((savedWeapon) => {
         if (!Number.isSafeInteger(savedWeapon.count) || savedWeapon.count < 1) return [];
@@ -527,17 +650,35 @@ export function savedFormationBattleRegistration(
           },
         ];
       });
-    }),
-    segments: segments.map((segment) => ({
-      id: segment.id,
-      savedUnitId: segment.savedUnitId,
-      unitName: segment.unitName,
-      modelName: segment.model.name,
-      role: segment.role,
-      wounds: segment.model.wounds ?? 1,
-      feelNoPain: segment.model.feelNoPain ?? 0,
-      startingModels: segment.modelCount,
-    })),
+    })
+    .map((group) => ({
+      ...group,
+      ...defaultWeaponBearerModelIds(group, modelInstances),
+    }));
+  const battleSegments = battleSegmentsForWeaponBearers(modelInstances, weaponInventory, segments);
+  if (battleSegments.length > MAX_DAMAGE_ALLOCATION_SEGMENTS) {
+    throw new Error(
+      `Exact weapon bearer assignments exceed the ${MAX_DAMAGE_ALLOCATION_SEGMENTS}-segment damage allocation limit`,
+    );
+  }
+  return {
+    id,
+    playerId,
+    sourceFormationId: formation.id,
+    name: formation.name,
+    assignedTransportFormationId,
+    keywords: [
+      ...new Set(
+        formation.components.flatMap((component) =>
+          (component.catalogueUnit?.models ?? []).flatMap((model) => model.keywords ?? []),
+        ),
+      ),
+    ],
+    defensiveEquipmentCounts: { ...defensiveEquipmentCounts },
+    weaponBearerTracking: "exact",
+    modelInstances,
+    weaponInventory,
+    segments: battleSegments,
   };
 }
 
