@@ -13,6 +13,7 @@ import {
   type OrderedVolleyRollResult,
   type RollResult,
 } from "../../lib/combat";
+import { applyFireOverwatchAttackRules } from "../../lib/fire-overwatch.mjs";
 import {
   activeBattleAttacks,
   advanceBattleClock,
@@ -25,20 +26,22 @@ import {
   battleFormationHealth,
   battleFormationWasTargeted,
   changeBattleResource,
+  completeFormationMovement,
   completeFormationActivation,
   configureBattleWeaponBearers,
   configureBattleMission,
   configureUnengagedBattleFormation,
   createBattleState,
+  declareFormationCharge,
   declareFormationDeployment,
   deployFormation,
   disembarkFormation,
   embarkFormation,
   normalizeBattleState,
   passFightPriority,
+  passFireOverwatch,
   passHeroicIntervention,
   recordFormationCharge,
-  recordFormationMovement,
   recordFightMove,
   recordRangedTargetEligibility,
   replayBattleState,
@@ -51,6 +54,8 @@ import {
   setBattleObjectiveControl,
   setFormationBattleShocked,
   startBattle,
+  startFireOverwatch,
+  startFormationMovement,
   startFormationActivation,
 } from "../../lib/battle-state.mjs";
 import { battleClockLabel } from "../../lib/battle-clock.mjs";
@@ -191,6 +196,19 @@ export default function PlayMode() {
     baseContactMaximized: false,
     reviewedByPlayer: false,
   });
+  const [fireOverwatchFormationId, setFireOverwatchFormationId] = useState("");
+  const [fireOverwatchDistance, setFireOverwatchDistance] = useState(24);
+  const [fireOverwatchCommandPointCost, setFireOverwatchCommandPointCost] = useState(1);
+  const [fireOverwatchCostOverrideReason, setFireOverwatchCostOverrideReason] = useState("");
+  const [fireOverwatchUsageOverrideReason, setFireOverwatchUsageOverrideReason] = useState("");
+  const [fireOverwatchEligibilityOverrideReason, setFireOverwatchEligibilityOverrideReason] =
+    useState("");
+  const [fireOverwatchTargetVisible, setFireOverwatchTargetVisible] = useState(false);
+  const [fireOverwatchEligibilityConfirmed, setFireOverwatchEligibilityConfirmed] = useState(false);
+  const [fireOverwatchEligibilityReason, setFireOverwatchEligibilityReason] = useState("");
+  const [fireOverwatchOutOfPhaseConfirmed, setFireOverwatchOutOfPhaseConfirmed] = useState(false);
+  const [fireOverwatchOutOfPhaseReason, setFireOverwatchOutOfPhaseReason] = useState("");
+  const [fireOverwatchPassReason, setFireOverwatchPassReason] = useState("");
   const [heroicFormationId, setHeroicFormationId] = useState("");
   const [heroicDice, setHeroicDice] = useState<[number, number]>([3, 4]);
   const [heroicRollModifier, setHeroicRollModifier] = useState(0);
@@ -824,8 +842,12 @@ export default function PlayMode() {
       (effectiveWeaponRange === weaponProfile.range || rangeOverrideReason.trim()) &&
       targetEligibilityReviewed,
   );
+  const activeFormationActivation = replayedBattle?.activeActivation ?? null;
+  const resolvingFireOverwatch = activeFormationActivation?.source === "fire_overwatch";
   const targetEligibilityConfirmed =
-    battleClock?.phase === "shooting" ? rangedTargetEligibilityReady : targetEligibilityReviewed;
+    battleClock?.phase === "shooting" || resolvingFireOverwatch
+      ? rangedTargetEligibilityReady
+      : targetEligibilityReviewed;
   const weaponHasAssault = Boolean(
     weaponProfile?.abilities.some((ability) => ability.name.toLowerCase() === "assault"),
   );
@@ -843,12 +865,17 @@ export default function PlayMode() {
       actionOverrideReason.trim() || "Player confirmed a rule or physical-table eligibility fact",
     fightsFirst: fightsFirstOverride,
   };
-  const activeFormationActivation = replayedBattle?.activeActivation ?? null;
   const selectedMovement = attackerBattleFormationId
     ? replayedBattle?.movementByFormation.get(attackerBattleFormationId)
     : null;
+  const selectedMovementStart = attackerBattleFormationId
+    ? replayedBattle?.movementStartsByFormation.get(attackerBattleFormationId)
+    : null;
   const selectedCharge = attackerBattleFormationId
     ? replayedBattle?.chargeByFormation.get(attackerBattleFormationId)
+    : null;
+  const selectedChargeDeclaration = attackerBattleFormationId
+    ? replayedBattle?.chargeDeclarationsByFormation.get(attackerBattleFormationId)
     : null;
   const selectedMovementCurrent = Boolean(
     selectedMovement &&
@@ -865,6 +892,32 @@ export default function PlayMode() {
       selectedCharge.clock.activePlayerId === battleClock.activePlayerId,
   );
   const pendingBattleChoices = replayedBattle ? [...replayedBattle.pendingChoices.values()] : [];
+  const pendingFireOverwatch = replayedBattle?.pendingFireOverwatch ?? null;
+  const fireOverwatchFormationOptions = pendingFireOverwatch
+    ? [...replayedBattle.formations.values()].filter((candidate) => {
+        const keywords = candidate.keywords.map((keyword: string) => keyword.toLowerCase());
+        return (
+          candidate.playerId === pendingFireOverwatch.responderPlayerId &&
+          battleFormationIsOnBattlefield(battleState, candidate.id) &&
+          candidate.segments.some(
+            (segment: { id: string }) => candidate.health[segment.id].modelsRemaining > 0,
+          ) &&
+          candidate.weaponInventory.some((group) =>
+            group.profiles.some((weapon: { type: string }) => weapon.type === "Ranged"),
+          ) &&
+          !keywords.includes("titanic")
+        );
+      })
+    : [];
+  const selectedFireOverwatchFormationId = fireOverwatchFormationOptions.some(
+    (candidate) => candidate.id === fireOverwatchFormationId,
+  )
+    ? fireOverwatchFormationId
+    : (fireOverwatchFormationOptions[0]?.id ?? "");
+  const fireOverwatchResponderCommandPoints = pendingFireOverwatch
+    ? (replayedBattle?.resources.get(pendingFireOverwatch.responderPlayerId)?.get("command_points")
+        ?.value ?? 0)
+    : 0;
   const pendingHeroicIntervention = replayedBattle?.pendingHeroicIntervention ?? null;
   const heroicFormationOptions = pendingHeroicIntervention
     ? [...replayedBattle.formations.values()].filter((candidate) => {
@@ -2183,6 +2236,14 @@ export default function PlayMode() {
     let rolled: RollResult | OrderedVolleyRollResult;
     let declaredWeaponCount = 0;
     try {
+      if (
+        resolvingFireOverwatch &&
+        weaponProfile.abilities.some((ability) => ability.name.toLowerCase() === "hazardous")
+      ) {
+        throw new Error(
+          "Hazardous Fire Overwatch is fail-closed until its self-damage and Charge-phase deferral are replayed",
+        );
+      }
       if (targetFormationModels.ambiguousComponents.length > 0) {
         throw new Error(
           `Set an exact model composition for ${targetFormationModels.ambiguousComponents.join(
@@ -2256,9 +2317,9 @@ export default function PlayMode() {
           selectedSourceEquipmentSegments.length <= 1 ||
           !(segment.sourceEquipmentPresetIds ?? []).length
         ) {
-          return base;
+          return resolvingFireOverwatch ? applyFireOverwatchAttackRules(base) : base;
         }
-        return applyCombatPresets(
+        const applied = applyCombatPresets(
           base,
           selectedCombatPresets(
             segment.sourceEquipmentPresetIds ?? [],
@@ -2283,6 +2344,7 @@ export default function PlayMode() {
             attackKeywords,
           },
         );
+        return resolvingFireOverwatch ? applyFireOverwatchAttackRules(applied) : applied;
       });
       declaredWeaponCount = attackProfiles.reduce(
         (total, attackProfile) => total + attackProfile.weaponCount,
@@ -2754,13 +2816,24 @@ export default function PlayMode() {
   const recordSelectedMovement = (movement: "stationary" | "normal" | "advance" | "fall_back") => {
     if (!battleState || !attackerBattleFormationId) return;
     try {
-      const next = recordFormationMovement(
-        battleState,
-        attackerBattleFormationId,
-        movement,
-        crypto.randomUUID(),
-        battleState.events.length + 1,
-      );
+      const movementStarted =
+        replayBattleState(battleState).movementStartsByFormation.get(attackerBattleFormationId);
+      const next =
+        movement === "stationary" || movementStarted
+          ? completeFormationMovement(
+              battleState,
+              attackerBattleFormationId,
+              movement,
+              crypto.randomUUID(),
+              battleState.events.length + 1,
+            )
+          : startFormationMovement(
+              battleState,
+              attackerBattleFormationId,
+              movement,
+              crypto.randomUUID(),
+              battleState.events.length + 1,
+            );
       setBattleState(next);
       refreshProfile(
         weaponId,
@@ -2775,7 +2848,13 @@ export default function PlayMode() {
         profile.targetStrengthState,
         movement === "stationary",
       );
-      setStatus(`${attackerFormation?.name ?? "Formation"} · ${movement.replace("_", " ")}`);
+      setStatus(
+        movement === "stationary"
+          ? `${attackerFormation?.name ?? "Formation"} · remained stationary`
+          : movementStarted
+            ? `${attackerFormation?.name ?? "Formation"} · ${movement.replace("_", " ")} complete · Fire Overwatch response`
+            : `${attackerFormation?.name ?? "Formation"} · ${movement.replace("_", " ")} started · Fire Overwatch response`,
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Movement could not be recorded");
     }
@@ -2913,6 +2992,33 @@ export default function PlayMode() {
   const recordSelectedCharge = (successful: boolean) => {
     if (!battleState || !attackerBattleFormationId || !targetBattleFormationId) return;
     try {
+      const chargeDeclaration =
+        replayBattleState(battleState).chargeDeclarationsByFormation.get(attackerBattleFormationId);
+      if (!chargeDeclaration) {
+        const declared = declareFormationCharge(
+          battleState,
+          attackerBattleFormationId,
+          [targetBattleFormationId],
+          {
+            targetFacts: [
+              {
+                formationId: targetBattleFormationId,
+                startDistanceThousandths: Math.round(chargeTargetDistance * 1000),
+              },
+            ],
+            phaseStartEligibilityConfirmed: chargeFacts.phaseStartEligible,
+            phaseStartEligibilityReason: battleActionOptions.targetEligibilityReason,
+            startedOutsideEngagementRange: chargeFacts.startedOutsideEngagementRange,
+            eligibilityOverride: battleActionOptions.eligibilityOverride,
+            overrideReason: battleActionOptions.overrideReason,
+          },
+          crypto.randomUUID(),
+          battleState.events.length + 1,
+        );
+        setBattleState(declared);
+        setStatus("Charge declared · resolve or pass Fire Overwatch before rolling the charge");
+        return;
+      }
       const next = recordFormationCharge(
         battleState,
         attackerBattleFormationId,
@@ -2964,6 +3070,71 @@ export default function PlayMode() {
       );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Charge could not be recorded");
+    }
+  };
+
+  const beginFireOverwatch = () => {
+    if (!battleState || !pendingFireOverwatch || !selectedFireOverwatchFormationId) return;
+    try {
+      const before = replayBattleState(battleState);
+      const shooter = before.formations.get(selectedFireOverwatchFormationId);
+      const target = before.formations.get(pendingFireOverwatch.targetFormationId);
+      if (!shooter || !target) throw new Error("Fire Overwatch formations are unavailable");
+      const next = startFireOverwatch(
+        battleState,
+        selectedFireOverwatchFormationId,
+        {
+          commandPointCost: fireOverwatchCommandPointCost,
+          costOverrideReason: fireOverwatchCostOverrideReason.trim(),
+          usageOverrideReason: fireOverwatchUsageOverrideReason.trim(),
+          stratagemEligibilityOverrideReason: fireOverwatchEligibilityOverrideReason.trim(),
+          distanceThousandths: Math.round(fireOverwatchDistance * 1000),
+          targetVisible: fireOverwatchTargetVisible,
+          shootingEligibilityConfirmed: fireOverwatchEligibilityConfirmed,
+          shootingEligibilityReason: fireOverwatchEligibilityReason.trim(),
+          outOfPhaseRestrictionsConfirmed: fireOverwatchOutOfPhaseConfirmed,
+          outOfPhaseRestrictionsReason: fireOverwatchOutOfPhaseReason.trim(),
+        },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      const shooterPlayer = next.players.find((player) => player.id === shooter.playerId);
+      const targetPlayer = next.players.find((player) => player.id === target.playerId);
+      if (!shooterPlayer || !targetPlayer)
+        throw new Error("Fire Overwatch players are unavailable");
+      setBattleState(next);
+      setAttackerListId(shooterPlayer.listId);
+      setTargetListId(targetPlayer.listId);
+      setAttackerUnitId(shooter.segments[0]?.savedUnitId ?? "");
+      setTargetUnitId(target.segments[0]?.savedUnitId ?? "");
+      setWeaponId("");
+      setProfileId("");
+      setTargetModelId("");
+      setActiveAttackerPresetIds([]);
+      setActiveTargetPresetIds([]);
+      setResult(null);
+      setStatus(
+        `Fire Overwatch started · ${shooter.name} must shoot only ${target.name} · unmodified 6s hit`,
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Fire Overwatch could not start");
+    }
+  };
+
+  const declineFireOverwatch = () => {
+    if (!battleState || !pendingFireOverwatch) return;
+    try {
+      const next = passFireOverwatch(
+        battleState,
+        fireOverwatchPassReason.trim() || "Responding player declined Fire Overwatch",
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setFireOverwatchPassReason("");
+      setStatus("Fire Overwatch declined · continue the triggering action");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Fire Overwatch could not be declined");
     }
   };
 
@@ -3141,13 +3312,19 @@ export default function PlayMode() {
   const finishFormationActivation = () => {
     if (!battleState) return;
     try {
+      const finishingFireOverwatch =
+        replayBattleState(battleState).activeActivation?.source === "fire_overwatch";
       const next = completeFormationActivation(
         battleState,
         crypto.randomUUID(),
         battleState.events.length + 1,
       );
       setBattleState(next);
-      setStatus("Formation activation completed");
+      setStatus(
+        finishingFireOverwatch
+          ? "Fire Overwatch complete · continue the interrupted action"
+          : "Formation activation completed",
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Activation could not be completed");
     }
@@ -3279,12 +3456,15 @@ export default function PlayMode() {
     if (pendingBattleChoices.length > 0) {
       return "Resolve the pending choice before attacking";
     }
-    if (battleClock.activePlayerId !== attackerPlayerId) {
+    if (battleClock.activePlayerId !== attackerPlayerId && !resolvingFireOverwatch) {
       if (battleClock.phase !== "fight") {
         return `${battleClockLabel(battleClock, battleState.players)} · swap sides to attack`;
       }
     }
-    if (battleClock.phase === "shooting" && !targetEligibilityConfirmed) {
+    if (
+      (battleClock.phase === "shooting" || resolvingFireOverwatch) &&
+      !targetEligibilityConfirmed
+    ) {
       if (weaponProfile?.range === null) return "Published weapon range is unavailable";
       if (effectiveWeaponRange <= 0) return "Enter the effective weapon range";
       if (profile.targetDistance <= 0) return "Enter the measured target distance";
@@ -3298,7 +3478,7 @@ export default function PlayMode() {
       }
       return "Review and accept the recorded target facts";
     }
-    if (battleClock.phase === "fight" && !targetEligibilityConfirmed) {
+    if (battleClock.phase === "fight" && !resolvingFireOverwatch && !targetEligibilityConfirmed) {
       return "Confirm Engagement Range and target eligibility";
     }
     if (!battleAttackReady) {
@@ -5242,6 +5422,9 @@ export default function PlayMode() {
                     pendingBattleChoices.length > 0 ||
                     Boolean(activeFormationActivation) ||
                     Boolean(pendingDestroyedTransport) ||
+                    Boolean(pendingFireOverwatch) ||
+                    replayedBattle.movementStartsByFormation.size > 0 ||
+                    replayedBattle.chargeDeclarationsByFormation.size > 0 ||
                     Boolean(pendingHeroicIntervention)
                   }
                   onClick={advanceGuidedBattle}
@@ -5455,7 +5638,10 @@ export default function PlayMode() {
                 <strong>
                   {battleFormation(battleState, activeFormationActivation.formationId)?.name ??
                     "Formation"}{" "}
-                  · {activeFormationActivation.activationType} activation
+                  ·{" "}
+                  {activeFormationActivation.source === "fire_overwatch"
+                    ? "Fire Overwatch"
+                    : `${activeFormationActivation.activationType} activation`}
                 </strong>
                 <span>
                   {activeFormationActivation.activationType === "fight"
@@ -5466,9 +5652,11 @@ export default function PlayMode() {
                           ? "Consolidation recorded"
                           : "Consolidation pending"
                       }`
-                    : activeFormationActivation.weaponRestriction === "assault_only"
-                      ? "Assault weapons only"
-                      : "Resolve every selected weapon before finishing"}
+                    : activeFormationActivation.source === "fire_overwatch"
+                      ? "Only the visible triggering unit can be targeted · unmodified 6s hit · critical hits only on 6s"
+                      : activeFormationActivation.weaponRestriction === "assault_only"
+                        ? "Assault weapons only"
+                        : "Resolve every selected weapon before finishing"}
                 </span>
                 <button
                   type="button"
@@ -5673,6 +5861,7 @@ export default function PlayMode() {
             {battleClock.status === "active" &&
               battleClock.phase === "movement" &&
               battleClock.step === "move_units" &&
+              !pendingFireOverwatch &&
               attackerBattleFormationId &&
               attackerPlayerId === battleClock.activePlayerId && (
                 <div className="action-tracker">
@@ -5724,7 +5913,9 @@ export default function PlayMode() {
                           )
                             .filter(
                               ([movement]) =>
-                                movement !== "stationary" || !selectedDisembarkedCurrentPhase,
+                                (!selectedMovementStart ||
+                                  movement === selectedMovementStart.movement) &&
+                                (movement !== "stationary" || !selectedDisembarkedCurrentPhase),
                             )
                             .map(([movement, label]) => (
                               <button
@@ -5732,7 +5923,7 @@ export default function PlayMode() {
                                 key={movement}
                                 onClick={() => recordSelectedMovement(movement)}
                               >
-                                {label}
+                                {selectedMovementStart ? `Complete ${label.toLowerCase()}` : label}
                               </button>
                             ))}
                         </div>
@@ -5774,6 +5965,7 @@ export default function PlayMode() {
             {battleClock.status === "active" &&
               battleClock.phase === "movement" &&
               battleClock.step === "reinforcements" &&
+              !pendingFireOverwatch &&
               attackerBattleFormationId &&
               attackerPlayerId === battleClock.activePlayerId &&
               replayedBattle.offBattlefieldFormationIds.has(attackerBattleFormationId) &&
@@ -5805,9 +5997,154 @@ export default function PlayMode() {
                   </button>
                 </div>
               )}
+            {battleClock.status === "active" && pendingFireOverwatch && (
+              <div className="action-tracker" aria-labelledby="fire-overwatch-heading">
+                <strong id="fire-overwatch-heading">Fire Overwatch response</strong>
+                <span>
+                  {pendingFireOverwatch.trigger.replaceAll("_", " ")} · the responding player may
+                  spend 1CP and select one eligible non-Titanic unit within 24″. The triggering unit
+                  must be visible; attacks hit only on unmodified 6s and critical hits occur only on
+                  6s.
+                </span>
+                <div className="action-buttons">
+                  <label>
+                    <span>Overwatch formation</span>
+                    <select
+                      value={selectedFireOverwatchFormationId}
+                      onChange={(event) => setFireOverwatchFormationId(event.target.value)}
+                    >
+                      {fireOverwatchFormationOptions.map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>
+                          {candidate.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <span>Available CP: {fireOverwatchResponderCommandPoints}</span>
+                  <label>
+                    <span>CP cost</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={5}
+                      value={fireOverwatchCommandPointCost}
+                      onChange={(event) =>
+                        setFireOverwatchCommandPointCost(
+                          Math.min(5, Math.max(0, +event.target.value || 0)),
+                        )
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Closest distance to triggering unit (inches)</span>
+                    <input
+                      type="number"
+                      min={0.001}
+                      max={24}
+                      step={0.001}
+                      value={fireOverwatchDistance}
+                      onChange={(event) =>
+                        setFireOverwatchDistance(
+                          Math.min(24, Math.max(0.001, +event.target.value || 0.001)),
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="check-line">
+                    <input
+                      type="checkbox"
+                      checked={fireOverwatchTargetVisible}
+                      onChange={(event) => setFireOverwatchTargetVisible(event.target.checked)}
+                    />
+                    <span>Triggering enemy unit is visible to the selected unit</span>
+                  </label>
+                  <label className="check-line">
+                    <input
+                      type="checkbox"
+                      checked={fireOverwatchEligibilityConfirmed}
+                      onChange={(event) =>
+                        setFireOverwatchEligibilityConfirmed(event.target.checked)
+                      }
+                    />
+                    <span>Unit would be eligible to shoot if it were its Shooting phase</span>
+                  </label>
+                  <input
+                    value={fireOverwatchEligibilityReason}
+                    maxLength={300}
+                    placeholder="Visibility, Engagement Range, eligible weapon and target checked"
+                    onChange={(event) => setFireOverwatchEligibilityReason(event.target.value)}
+                  />
+                  <label className="check-line">
+                    <input
+                      type="checkbox"
+                      checked={fireOverwatchOutOfPhaseConfirmed}
+                      onChange={(event) =>
+                        setFireOverwatchOutOfPhaseConfirmed(event.target.checked)
+                      }
+                    />
+                    <span>No Shooting-phase-only rule or Firing Deck effect will be applied</span>
+                  </label>
+                  <input
+                    value={fireOverwatchOutOfPhaseReason}
+                    maxLength={300}
+                    placeholder="Out-of-phase effects reviewed"
+                    onChange={(event) => setFireOverwatchOutOfPhaseReason(event.target.value)}
+                  />
+                  {fireOverwatchCommandPointCost !== 1 && (
+                    <input
+                      value={fireOverwatchCostOverrideReason}
+                      maxLength={300}
+                      placeholder="Source rule changing the 1CP cost"
+                      onChange={(event) => setFireOverwatchCostOverrideReason(event.target.value)}
+                    />
+                  )}
+                  <input
+                    value={fireOverwatchUsageOverrideReason}
+                    maxLength={300}
+                    placeholder="Source rule allowing another use this turn, if applicable"
+                    onChange={(event) => setFireOverwatchUsageOverrideReason(event.target.value)}
+                  />
+                  <input
+                    value={fireOverwatchEligibilityOverrideReason}
+                    maxLength={300}
+                    placeholder="Source rule overriding Stratagem eligibility, if applicable"
+                    onChange={(event) =>
+                      setFireOverwatchEligibilityOverrideReason(event.target.value)
+                    }
+                  />
+                  <button
+                    type="button"
+                    disabled={
+                      !selectedFireOverwatchFormationId ||
+                      fireOverwatchCommandPointCost > fireOverwatchResponderCommandPoints ||
+                      !fireOverwatchTargetVisible ||
+                      !fireOverwatchEligibilityConfirmed ||
+                      !fireOverwatchEligibilityReason.trim() ||
+                      !fireOverwatchOutOfPhaseConfirmed ||
+                      !fireOverwatchOutOfPhaseReason.trim() ||
+                      (fireOverwatchCommandPointCost !== 1 &&
+                        !fireOverwatchCostOverrideReason.trim())
+                    }
+                    onClick={beginFireOverwatch}
+                  >
+                    Spend CP and begin Fire Overwatch
+                  </button>
+                  <input
+                    value={fireOverwatchPassReason}
+                    maxLength={300}
+                    placeholder="Optional reason for declining"
+                    onChange={(event) => setFireOverwatchPassReason(event.target.value)}
+                  />
+                  <button type="button" onClick={declineFireOverwatch}>
+                    Decline Fire Overwatch
+                  </button>
+                </div>
+              </div>
+            )}
             {battleClock.status === "active" &&
               battleClock.phase === "charge" &&
               battleClock.step === "charge_moves" &&
+              !pendingFireOverwatch &&
               !pendingHeroicIntervention &&
               attackerBattleFormationId &&
               targetBattleFormationId &&
@@ -5858,7 +6195,11 @@ export default function PlayMode() {
                           onChange={(event) => updateChargeRollModifier(+event.target.value)}
                         />
                       </label>
-                      <button type="button" onClick={rollSelectedCharge}>
+                      <button
+                        type="button"
+                        disabled={!selectedChargeDeclaration}
+                        onClick={rollSelectedCharge}
+                      >
                         Roll 2D6 securely
                       </button>
                       <label>
@@ -5959,11 +6300,13 @@ export default function PlayMode() {
                         />
                       </label>
                       <button type="button" onClick={() => recordSelectedCharge(true)}>
-                        Record successful move
+                        {selectedChargeDeclaration ? "Record successful move" : "Declare charge"}
                       </button>
-                      <button type="button" onClick={() => recordSelectedCharge(false)}>
-                        Record failed charge
-                      </button>
+                      {selectedChargeDeclaration && (
+                        <button type="button" onClick={() => recordSelectedCharge(false)}>
+                          Record failed charge
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

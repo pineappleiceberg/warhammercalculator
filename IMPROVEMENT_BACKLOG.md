@@ -27,8 +27,9 @@ state.
 
 ## Prioritized backlog
 
-1. Continue the legal-action engine with Fire Overwatch and the remaining
-   reactions, cover, and Stratagem windows; then expand
+1. Add replayed Hazardous self-damage, including Fire Overwatch's Charge-phase
+   deferral, then continue the legal-action engine with the remaining reactions,
+   cover, and Stratagem windows; then expand
    Transport changes beyond the roster's locked assigned carrier and execute
    transport-specific exceptions.
 2. Build and enforce the source-locked faction, detachment, enhancement,
@@ -41,6 +42,25 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced guided play to battle-state version 14 with canonical
+  Fire Overwatch. Enemy setup, Normal/Advance/Fall Back starts and ends, and
+  charge declarations now open immediate responder windows that block the
+  interrupted action until resolved or declined. Resolution enforces the
+  October 2025 Core Rules Update boundary: 1CP by default, once per turn, one
+  living non-Titanic responding formation with a surviving ranged weapon, a
+  visible triggering formation within 24 inches, reviewed Shooting eligibility,
+  and explicit exclusion of Shooting-phase-only rules and Firing Deck. The
+  resulting activation is target-locked and forces unmodified 6s for Hit and
+  Critical Hit rolls while preserving applicable weapon rules. CP spending,
+  activation identity, weapon use, attack undo, trigger resumption, and target
+  destruction are replay invariants. Hazardous use fails closed until deferred
+  self-damage is executable. Version-13 and older histories migrate behind an
+  explicit boundary. Guided Play exposes begin and decline paths; the replay
+  API returns pending, active, resolved, and declined state and independently
+  cross-checks an ACSL-specified native predicate exported to WebAssembly.
+  Native, migration, timing, UI, API, Wasm differential, provenance, fuzz, and
+  568-goal formal regressions cover the cycle.
 
 - 2026-08-11: Advanced guided play to battle-state version 13 with canonical
   Heroic Intervention. Every successful enemy Charge now opens an immediate

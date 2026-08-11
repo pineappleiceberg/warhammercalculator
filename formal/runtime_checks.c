@@ -178,5 +178,17 @@ int main(void) {
     assert(
         !whc_heroic_intervention_is_valid(3u, 4u, 0, 7000u, 5500u, 5500u, true, charge_flags,
                                           WHC_HEROIC_FLAGS_MASK & ~WHC_HEROIC_SOLE_TRIGGER_TARGET));
+    assert(whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_NORMAL_MOVE_START,
+                                       WHC_BATTLE_PHASE_MOVEMENT, 24000u,
+                                       WHC_FIRE_OVERWATCH_FLAGS_MASK));
+    assert(whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_CHARGE_DECLARED,
+                                       WHC_BATTLE_PHASE_CHARGE, 12000u,
+                                       WHC_FIRE_OVERWATCH_FLAGS_MASK));
+    assert(!whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_CHARGE_DECLARED,
+                                        WHC_BATTLE_PHASE_MOVEMENT, 12000u,
+                                        WHC_FIRE_OVERWATCH_FLAGS_MASK));
+    assert(!whc_fire_overwatch_is_valid(
+        WHC_FIRE_OVERWATCH_SET_UP, WHC_BATTLE_PHASE_MOVEMENT, 24001u,
+        WHC_FIRE_OVERWATCH_FLAGS_MASK));
     return 0;
 }

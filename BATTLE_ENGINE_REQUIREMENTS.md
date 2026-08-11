@@ -99,9 +99,14 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    canonical Pile In and Consolidation sequencing, explicit fail-closed
    eligibility confirmations, plus the immediate Heroic Intervention window,
    audited CP cost, legal charge target/movement, Walker restriction, and
-   suppressed Charge Bonus are complete. Remaining work
+   suppressed Charge Bonus are complete. Fire Overwatch now has executable
+   setup, movement-start, movement-end, and charge-declaration windows; audited
+   CP and once-per-turn use; non-Titanic, range, visibility, surviving-weapon,
+   target-lock, and unmodified-6 enforcement; out-of-phase review; and explicit
+   decline paths. Hazardous Fire Overwatch remains fail-closed until deferred
+   self-damage is replayable. Remaining work
    includes compatible unassigned Transport changes, transport-specific
-   exceptions, other reactions and Stratagem windows, full geometry-backed
+   exceptions, remaining reactions and Stratagem windows, full geometry-backed
    target eligibility, and geometry-backed engagement.
 6. Normalize complete faction, detachment, enhancement, Stratagem, and mission
    coverage with source-locked executable rules and a fail-closed coverage gate.

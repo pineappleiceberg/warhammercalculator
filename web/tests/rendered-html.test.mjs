@@ -9,11 +9,13 @@ import {
   applyBattleEffect,
   changeBattleResource,
   completeFormationActivation,
+  configureBattleMission,
   createBattleState,
   declareFormationDeployment,
   deployFormation,
   openBattleChoice,
   passFightPriority,
+  passFireOverwatch,
   recordFormationCharge,
   recordFormationMovement,
   recordFightMove,
@@ -27,7 +29,9 @@ import {
   setBattleObjectiveControl,
   setFormationBattleShocked,
   startBattle,
+  startFireOverwatch,
   startFormationActivation,
+  startFormationMovement,
 } from "../lib/battle-state.mjs";
 import { rulesInteractionCases } from "./rules-interaction-corpus.mjs";
 
@@ -2603,6 +2607,9 @@ test("replays canonical battle health through the C and WebAssembly API", async 
     formationId: "attacker",
     activationType: "shooting",
     weaponRestriction: "all",
+    source: "normal",
+    targetFormationId: null,
+    attackCount: 0,
   });
 
   const versionSix = {
@@ -2980,7 +2987,7 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 13);
+  assert.equal(body.data.schemaVersion, 14);
   assert.equal(body.data.charges[0].canonicalMovement, true);
   assert.deepEqual(body.data.charges[0].rolls, [3, 4]);
   assert.equal(body.data.charges[0].chargeDistanceThousandths, 7000);
@@ -3001,6 +3008,208 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
   assert.equal(body.data.fightActivations[0].pileIn.destination, "enemy");
   assert.equal(body.data.fightActivations[0].consolidation.stage, "consolidation");
   assert.equal(body.data.fightActivations[0].consolidation.destination, "enemy");
+});
+
+test("cross-checks Fire Overwatch reactions through the C and WebAssembly API", async () => {
+  const mover = {
+    id: "overwatch-mover",
+    playerId: "player-1",
+    sourceFormationId: "overwatch-mover",
+    name: "Overwatch target",
+    keywords: ["Vehicle"],
+    segments: [
+      {
+        id: "overwatch-mover-model",
+        savedUnitId: "overwatch-mover",
+        unitName: "Overwatch target",
+        modelName: "Overwatch target",
+        role: "standalone",
+        wounds: 10,
+        startingModels: 1,
+      },
+    ],
+  };
+  const shooter = {
+    id: "overwatch-shooter",
+    playerId: "player-2",
+    sourceFormationId: "overwatch-shooter",
+    name: "Overwatch shooter",
+    keywords: ["Infantry"],
+    weaponInventory: [
+      {
+        sourceSavedUnitId: "overwatch-shooter",
+        groupId: "overwatch-gun-group",
+        name: "Overwatch gun",
+        count: 1,
+        profiles: [
+          {
+            weaponId: "overwatch-gun",
+            name: "Overwatch gun",
+            type: "Ranged",
+            publishedRangeThousandths: 24000,
+            hasAssault: false,
+            hasIndirect: false,
+          },
+        ],
+      },
+    ],
+    segments: [
+      {
+        id: "overwatch-shooter-model",
+        savedUnitId: "overwatch-shooter",
+        unitName: "Overwatch shooter",
+        modelName: "Overwatch shooter",
+        role: "standalone",
+        wounds: 3,
+        startingModels: 1,
+      },
+    ],
+  };
+  let state = createBattleState({
+    id: "api-overwatch-battle",
+    createdAt: 1,
+    rulesSnapshot: "catalogue:test",
+    players: [
+      { id: "player-1", listId: "overwatch-list-1", listUpdatedAt: 1, name: "Mover" },
+      { id: "player-2", listId: "overwatch-list-2", listUpdatedAt: 1, name: "Shooter" },
+    ],
+  });
+  state = registerBattleFormation(state, mover, "overwatch-register-mover", 1);
+  state = registerBattleFormation(state, shooter, "overwatch-register-shooter", 2);
+  state = configureBattleMission(
+    state,
+    {
+      name: "API Fire Overwatch",
+      commandPointsPerCommandPhase: 0,
+      startingCommandPoints: { "player-1": 0, "player-2": 1 },
+      objectives: [],
+    },
+    "overwatch-configure-mission",
+    3,
+  );
+  state = declareFormationDeployment(
+    state,
+    mover.id,
+    "battlefield",
+    {},
+    "overwatch-declare-mover",
+    4,
+  );
+  state = declareFormationDeployment(
+    state,
+    shooter.id,
+    "battlefield",
+    {},
+    "overwatch-declare-shooter",
+    5,
+  );
+  state = deployFormation(
+    state,
+    mover.id,
+    { placementConfirmed: true, placementReason: "Deployment zone" },
+    "overwatch-deploy-mover",
+    6,
+  );
+  state = deployFormation(
+    state,
+    shooter.id,
+    { placementConfirmed: true, placementReason: "Deployment zone" },
+    "overwatch-deploy-shooter",
+    7,
+  );
+  state = startBattle(state, "player-1", "overwatch-start-battle", 8);
+  while (
+    !(
+      replayBattleState(state).clock.phase === "movement" &&
+      replayBattleState(state).clock.step === "move_units"
+    )
+  ) {
+    state = advanceBattleClock(
+      state,
+      `overwatch-advance-${state.events.length}`,
+      state.events.length,
+    );
+  }
+  const pendingState = startFormationMovement(
+    state,
+    mover.id,
+    "normal",
+    "overwatch-normal-start",
+    state.events.length,
+  );
+  state = startFireOverwatch(
+    pendingState,
+    shooter.id,
+    {
+      distanceThousandths: 12000,
+      targetVisible: true,
+      shootingEligibilityConfirmed: true,
+      shootingEligibilityReason: "Eligible to shoot in the Shooting phase",
+      outOfPhaseRestrictionsConfirmed: true,
+      outOfPhaseRestrictionsReason: "Shooting-phase-only rules and Firing Deck excluded",
+    },
+    "overwatch-started",
+    pendingState.events.length,
+  );
+  const worker = await loadWorker();
+  const context = { waitUntil() {}, passThroughOnException() {} };
+  const response = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: state, formationId: mover.id }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  const body = await response.json();
+  assert.equal(body.data.schemaVersion, 14);
+  assert.equal(body.data.pendingFireOverwatch, null);
+  assert.equal(body.data.fireOverwatches.length, 1);
+  assert.equal(body.data.fireOverwatches[0].trigger, "normal_move_start");
+  assert.equal(body.data.fireOverwatches[0].formationId, shooter.id);
+  assert.equal(body.data.fireOverwatches[0].targetFormationId, mover.id);
+  assert.equal(body.data.fireOverwatches[0].commandPointsBefore, 1);
+  assert.equal(body.data.fireOverwatches[0].commandPointsAfter, 0);
+  assert.equal(body.data.fireOverwatches[0].hitsOnUnmodifiedSixConfirmed, true);
+  assert.equal(body.data.fireOverwatches[0].criticalHitsOnSixConfirmed, true);
+  assert.deepEqual(body.data.activeActivation, {
+    formationId: shooter.id,
+    activationType: "shooting",
+    weaponRestriction: "all",
+    source: "fire_overwatch",
+    targetFormationId: mover.id,
+    attackCount: 0,
+  });
+  assert.equal(
+    body.data.players
+      .find((player) => player.id === "player-2")
+      .resources.find((resource) => resource.id === "command_points").value,
+    0,
+  );
+
+  const declined = passFireOverwatch(
+    pendingState,
+    "The responding player declined Fire Overwatch",
+    "overwatch-declined",
+    pendingState.events.length,
+  );
+  const declinedResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: declined, formationId: mover.id }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(declinedResponse.status, 200);
+  const declinedBody = await declinedResponse.json();
+  assert.equal(declinedBody.data.pendingFireOverwatch, null);
+  assert.equal(declinedBody.data.fireOverwatches.length, 0);
+  assert.equal(declinedBody.data.fireOverwatchPasses.length, 1);
+  assert.equal(declinedBody.data.fireOverwatchPasses[0].trigger, "normal_move_start");
 });
 
 test("cross-checks destroyed Transport passenger damage through WebAssembly", async () => {
@@ -3213,7 +3422,7 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 13);
+  assert.equal(body.data.schemaVersion, 14);
   assert.deepEqual(body.data.weaponDeclarations, [
     {
       attackEventId: "destroy-transport",

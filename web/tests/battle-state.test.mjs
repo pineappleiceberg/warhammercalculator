@@ -15,15 +15,18 @@ import {
   battleCanResolveAttack,
   battleCanStartFormationActivation,
   changeBattleResource,
+  completeFormationMovement,
   completeFormationActivation,
   configureBattleMission,
   configureBattleWeaponBearers,
   createBattleState,
+  declareFormationCharge,
   declareFormationDeployment,
   deployFormation,
   disembarkFormation,
   embarkFormation,
   normalizeBattleState,
+  passFireOverwatch,
   passHeroicIntervention,
   passFightPriority,
   registerBattleFormation,
@@ -39,9 +42,12 @@ import {
   setBattleObjectiveControl,
   setFormationBattleShocked,
   startBattle,
+  startFireOverwatch,
+  startFormationMovement,
   startFormationActivation,
 } from "../lib/battle-state.mjs";
 import { battleAttackWindow } from "../lib/battle-clock.mjs";
+import { applyFireOverwatchAttackRules } from "../lib/fire-overwatch.mjs";
 import { applyBattleHealthToTargetSequence } from "../lib/formations.mjs";
 
 const targets = [
@@ -584,6 +590,13 @@ test("pins the official battle-state rules source", () => {
     updates.usedFor.some((usage) => /Heroic Intervention/i.test(usage)),
     true,
   );
+  assert.equal(
+    updates.usedFor.some(
+      (usage) =>
+        /Fire Overwatch/i.test(usage) && /unmodified 6/i.test(usage) && /Firing Deck/i.test(usage),
+    ),
+    true,
+  );
 });
 
 test("replays reviewed range, visibility, Indirect Fire, and eligible weapon counts", () => {
@@ -893,6 +906,12 @@ test("replays starting occupancy and normal embark and disembark timing", () => 
     "disembark",
     state.events.length + 1,
   );
+  state = passFireOverwatch(
+    state,
+    "No eligible Overwatch response",
+    "disembark-overwatch-pass",
+    state.events.length + 1,
+  );
   assert.equal(battleFormationEmbarkedTransport(state, passengerFormation.id), "");
   assert.equal(battleFormationIsOnBattlefield(state, passengerFormation.id), true);
   assert.throws(
@@ -985,6 +1004,12 @@ test("inherits Transport movement restrictions after disembarking", () => {
     transportFormation.id,
     { placementConfirmed: true, placementReason: "Wholly within 3 inches" },
     "after-normal-disembark",
+    state.events.length + 1,
+  );
+  state = passFireOverwatch(
+    state,
+    "No eligible Overwatch response",
+    "moved-disembark-overwatch-pass",
     state.events.length + 1,
   );
   assert.equal(
@@ -1443,6 +1468,324 @@ test("replays movement and enforces one weapon-scoped Shooting activation", () =
   );
 });
 
+test("resolves Fire Overwatch at a move trigger with atomic CP and target locking", () => {
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), attackerFormation, "overwatch-register-mover", 1),
+    formation,
+    "overwatch-register-shooter",
+    2,
+  );
+  state = configureBattleMission(
+    state,
+    {
+      name: "Fire Overwatch test",
+      commandPointsPerCommandPhase: 0,
+      startingCommandPoints: { "player-1": 0, "player-2": 2 },
+      objectives: [],
+    },
+    "overwatch-mission",
+    3,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "overwatch-start", 4);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "overwatch-to-movement",
+  );
+  state = startFormationMovement(
+    state,
+    attackerFormation.id,
+    "normal",
+    "overwatch-move-start",
+    state.events.length + 1,
+  );
+  let replayed = replayBattleState(state);
+  assert.deepEqual(
+    {
+      trigger: replayed.pendingFireOverwatch.trigger,
+      targetFormationId: replayed.pendingFireOverwatch.targetFormationId,
+      responderPlayerId: replayed.pendingFireOverwatch.responderPlayerId,
+    },
+    {
+      trigger: "normal_move_start",
+      targetFormationId: attackerFormation.id,
+      responderPlayerId: "player-2",
+    },
+  );
+  assert.throws(
+    () =>
+      completeFormationMovement(
+        state,
+        attackerFormation.id,
+        "normal",
+        "overwatch-move-too-early",
+        state.events.length + 1,
+      ),
+    /Fire Overwatch (response|window)/i,
+  );
+  assert.throws(
+    () =>
+      startFireOverwatch(
+        state,
+        formation.id,
+        {
+          distanceThousandths: 12000,
+          targetVisible: false,
+          shootingEligibilityConfirmed: true,
+          shootingEligibilityReason: "Eligible to shoot in the Shooting phase",
+          outOfPhaseRestrictionsConfirmed: true,
+          outOfPhaseRestrictionsReason: "Shooting-phase-only rules and Firing Deck excluded",
+        },
+        "overwatch-hidden",
+        state.events.length + 1,
+      ),
+    /legal reviewed reaction/i,
+  );
+  state = startFireOverwatch(
+    state,
+    formation.id,
+    {
+      distanceThousandths: 12000,
+      targetVisible: true,
+      shootingEligibilityConfirmed: true,
+      shootingEligibilityReason: "Eligible to shoot in the Shooting phase",
+      outOfPhaseRestrictionsConfirmed: true,
+      outOfPhaseRestrictionsReason: "Shooting-phase-only rules and Firing Deck excluded",
+    },
+    "overwatch-activation",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.resources.get("player-2").get("command_points").value, 1);
+  assert.equal(replayed.activeActivation.source, "fire_overwatch");
+  assert.equal(replayed.activeActivation.targetFormationId, attackerFormation.id);
+  assert.equal(
+    battleCanResolveAttack(state, formation.id, {
+      weaponType: "Ranged",
+      targetEligibilityConfirmed: true,
+      targetFormationId: attackerFormation.id,
+    }),
+    true,
+  );
+  state = recordVisibleRangedTarget(state, formation.id, attackerFormation.id);
+  const eligibilityId = state.events.at(-1).id;
+  state = appendResolvedAttack(state, {
+    id: "overwatch-attack",
+    at: state.events.length + 1,
+    attackerFormationId: formation.id,
+    targetFormationId: attackerFormation.id,
+    segmentIds: ["bodyguard", "leader"],
+    targets,
+    initialWoundsLost: 0,
+    result: { appliedDamage: 0, modelsDestroyed: 0 },
+    summary: {
+      attacker: formation.name,
+      weapon: "Test ranged weapon",
+      target: attackerFormation.name,
+      damage: 0,
+      successful: 0,
+    },
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Visible triggering unit within 24 inches",
+    targetEligibilityEventId: eligibilityId,
+    weaponId: "test-ranged-weapon",
+    declaredWeaponCount: 1,
+    weaponSourceFormationId: formation.id,
+    sourceSavedUnitId: "unit-1",
+    weaponGroupId: "test-ranged-group",
+  });
+  assert.equal(replayBattleState(state).activeActivation.attackCount, 1);
+  state = completeFormationActivation(state, "overwatch-complete", state.events.length + 1);
+  state = completeFormationMovement(
+    state,
+    attackerFormation.id,
+    "normal",
+    "overwatch-move-end",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).pendingFireOverwatch.trigger, "normal_move_end");
+  assert.throws(
+    () =>
+      startFireOverwatch(
+        state,
+        formation.id,
+        {
+          distanceThousandths: 10000,
+          targetVisible: true,
+          shootingEligibilityConfirmed: true,
+          shootingEligibilityReason: "Eligible to shoot in the Shooting phase",
+          outOfPhaseRestrictionsConfirmed: true,
+          outOfPhaseRestrictionsReason: "Out-of-phase restrictions reviewed",
+        },
+        "overwatch-repeat",
+        state.events.length + 1,
+      ),
+    /already been used this turn/i,
+  );
+  state = passFireOverwatch(
+    state,
+    "Fire Overwatch was already used this turn",
+    "overwatch-end-pass",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).pendingFireOverwatch, null);
+});
+
+test("rejects Fire Overwatch when the selected unit has no surviving ranged weapon", () => {
+  const unarmed = {
+    ...formation,
+    id: "player-2:unarmed",
+    sourceFormationId: "unarmed",
+    name: "Unarmed formation",
+    weaponInventory: [],
+  };
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), attackerFormation, "unarmed-register-mover", 1),
+    unarmed,
+    "unarmed-register-responder",
+    2,
+  );
+  state = configureBattleMission(
+    state,
+    {
+      name: "Unarmed Overwatch test",
+      commandPointsPerCommandPhase: 0,
+      startingCommandPoints: { "player-1": 0, "player-2": 1 },
+      objectives: [],
+    },
+    "unarmed-mission",
+    3,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "unarmed-start", 4);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "unarmed-to-movement",
+  );
+  state = startFormationMovement(
+    state,
+    attackerFormation.id,
+    "normal",
+    "unarmed-move-start",
+    state.events.length + 1,
+  );
+  assert.throws(
+    () =>
+      startFireOverwatch(
+        state,
+        unarmed.id,
+        {
+          distanceThousandths: 12000,
+          targetVisible: true,
+          shootingEligibilityConfirmed: true,
+          shootingEligibilityReason: "Claimed eligibility",
+          outOfPhaseRestrictionsConfirmed: true,
+          outOfPhaseRestrictionsReason: "Restrictions reviewed",
+        },
+        "unarmed-overwatch",
+        state.events.length + 1,
+      ),
+    /surviving ranged weapon/i,
+  );
+});
+
+test("opens Fire Overwatch immediately after a reviewed charge declaration", () => {
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), attackerFormation, "charge-window-attacker", 1),
+    formation,
+    "charge-window-target",
+    2,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "charge-window-start", 3);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "charge-window-to-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    attackerFormation.id,
+    "stationary",
+    "charge-window-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "charge" && clock.step === "charge_moves",
+    "charge-window-to-charge",
+  );
+  state = declareFormationCharge(
+    state,
+    attackerFormation.id,
+    [formation.id],
+    {
+      targetFacts: [{ formationId: formation.id, startDistanceThousandths: 8000 }],
+      phaseStartEligibilityConfirmed: true,
+      phaseStartEligibilityReason: "Eligible at the start of the Charge phase",
+      startedOutsideEngagementRange: true,
+    },
+    "charge-window-declared",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).pendingFireOverwatch.trigger, "charge_declared");
+  assert.throws(
+    () =>
+      recordFormationCharge(
+        state,
+        attackerFormation.id,
+        [formation.id],
+        successfulChargeOptions(formation.id),
+        "charge-window-premature-roll",
+        state.events.length + 1,
+      ),
+    /Fire Overwatch (response|window)/i,
+  );
+  state = passFireOverwatch(
+    state,
+    "The responding player declined Fire Overwatch",
+    "charge-window-pass",
+    state.events.length + 1,
+  );
+  state = recordFormationCharge(
+    state,
+    attackerFormation.id,
+    [formation.id],
+    successfulChargeOptions(formation.id),
+    "charge-window-resolved",
+    state.events.length + 1,
+  );
+  assert.equal(
+    replayBattleState(state).chargeByFormation.get(attackerFormation.id).successful,
+    true,
+  );
+});
+
+test("forces Fire Overwatch hit and critical thresholds without discarding weapon rules", () => {
+  const profile = applyFireOverwatchAttackRules({
+    hitOn: 2,
+    hitModifier: 1,
+    heavyActive: true,
+    indirect: true,
+    criticalHits: 5,
+    sustainedHits: 2,
+    lethalHits: true,
+    rerollHits: "ones",
+    torrent: false,
+  });
+  assert.deepEqual(profile, {
+    hitOn: 6,
+    hitModifier: 0,
+    heavyActive: false,
+    indirect: false,
+    criticalHits: 6,
+    sustainedHits: 2,
+    lethalHits: true,
+    rerollHits: "ones",
+    torrent: false,
+  });
+});
+
 test("records charge eligibility and alternates replayed Fight priority", () => {
   let state = registerBattleFormation(
     registerBattleFormation(newBattle(), attackerFormation, "register-attacker", 1),
@@ -1493,7 +1836,11 @@ test("records charge eligibility and alternates replayed Fight priority", () => 
         state,
         attackerFormation.id,
         [formation.id],
-        successfulChargeOptions(formation.id, { maximumModelMoveThousandths: 8000 }),
+        successfulChargeOptions(formation.id, {
+          maximumModelMoveThousandths: 8000,
+          eligibilityOverride: true,
+          overrideReason: "Army rule permits charging after Advance",
+        }),
         "overlong-charge",
         state.events.length + 1,
       ),

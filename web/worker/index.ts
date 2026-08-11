@@ -57,6 +57,9 @@ import {
   chargeResolutionIsValid,
   fightMoveFlags,
   fightMoveIsValid,
+  fireOverwatchFlags,
+  fireOverwatchIsValid,
+  FIRE_OVERWATCH_TRIGGERS,
   heroicInterventionChargeFlags,
   heroicInterventionFlags,
   heroicInterventionIsValid,
@@ -314,6 +317,7 @@ type CalculatorExports = {
   whc_charge_resolution_is_valid(...values: number[]): number;
   whc_fight_move_is_valid(...values: number[]): number;
   whc_heroic_intervention_is_valid(...values: number[]): number;
+  whc_fire_overwatch_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -455,6 +459,7 @@ async function loadCalculator() {
       typeof calculator.whc_charge_resolution_is_valid !== "function" ||
       typeof calculator.whc_fight_move_is_valid !== "function" ||
       typeof calculator.whc_heroic_intervention_is_valid !== "function" ||
+      typeof calculator.whc_fire_overwatch_is_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -955,6 +960,50 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         clock: event.clock,
       };
     });
+    const fireOverwatches = replayed.fireOverwatches.map((event) => {
+      const values = [
+        FIRE_OVERWATCH_TRIGGERS.indexOf(event.trigger) + 1,
+        event.clock.phase === "movement" ? 2 : 4,
+        event.distanceThousandths,
+        fireOverwatchFlags(event),
+      ];
+      const javascriptValid = fireOverwatchIsValid(
+        event.trigger,
+        event.clock.phase,
+        event.distanceThousandths,
+        values[3],
+      );
+      const nativeValid = Boolean(calculator.whc_fire_overwatch_is_valid(...values));
+      if (!javascriptValid || javascriptValid !== nativeValid) {
+        throw new ServiceUnavailableError(
+          "Fire Overwatch diverged from the C/WebAssembly predicate",
+          "FIRE_OVERWATCH_DIVERGENCE",
+        );
+      }
+      return {
+        eventId: event.id,
+        triggerEventId: event.triggerEventId,
+        trigger: event.trigger,
+        formationId: event.formationId,
+        targetFormationId: event.targetFormationId,
+        commandPointCost: event.commandPointCost,
+        commandPointsBefore: event.commandPointsBefore,
+        commandPointsAfter: event.commandPointsAfter,
+        costOverrideReason: event.costOverrideReason,
+        usageOverrideReason: event.usageOverrideReason,
+        stratagemEligibilityOverrideReason: event.stratagemEligibilityOverrideReason,
+        distanceThousandths: event.distanceThousandths,
+        targetVisible: event.targetVisible,
+        shootingEligibilityConfirmed: event.shootingEligibilityConfirmed,
+        shootingEligibilityReason: event.shootingEligibilityReason,
+        outOfPhaseRestrictionsConfirmed: event.outOfPhaseRestrictionsConfirmed,
+        outOfPhaseRestrictionsReason: event.outOfPhaseRestrictionsReason,
+        hitsOnUnmodifiedSixConfirmed: event.hitsOnUnmodifiedSixConfirmed,
+        criticalHitsOnSixConfirmed: event.criticalHitsOnSixConfirmed,
+        titanicRestrictionSatisfied: event.titanicRestrictionSatisfied,
+        clock: event.clock,
+      };
+    });
     const serializeFightMove = (event: CanonicalFightMoveEvent | null) => {
       if (!event) return null;
       const values = [
@@ -1039,6 +1088,19 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         }))
         .sort((left, right) => left.formationId.localeCompare(right.formationId)),
       charges,
+      pendingFireOverwatch: replayed.pendingFireOverwatch
+        ? { ...replayed.pendingFireOverwatch }
+        : null,
+      fireOverwatches,
+      fireOverwatchPasses: replayed.fireOverwatchPasses.map((event) => ({
+        eventId: event.id,
+        triggerEventId: event.triggerEventId,
+        trigger: event.trigger,
+        targetFormationId: event.targetFormationId,
+        playerId: event.playerId,
+        reason: event.reason,
+        clock: event.clock,
+      })),
       pendingHeroicIntervention: replayed.pendingHeroicIntervention
         ? { ...replayed.pendingHeroicIntervention }
         : null,
@@ -1056,10 +1118,12 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
             formationId: replayed.activeActivation.formationId,
             activationType: replayed.activeActivation.activationType,
             weaponRestriction: replayed.activeActivation.weaponRestriction,
+            source: replayed.activeActivation.source ?? "normal",
+            targetFormationId: replayed.activeActivation.targetFormationId ?? null,
+            attackCount: replayed.activeActivation.attackCount,
             ...(replayed.activeActivation.activationType === "fight"
               ? {
                   activationEventId: replayed.activeActivation.id,
-                  attackCount: replayed.activeActivation.attackCount,
                   pileInRecorded: Boolean(replayed.activeActivation.pileIn),
                   consolidationRecorded: Boolean(replayed.activeActivation.consolidation),
                 }

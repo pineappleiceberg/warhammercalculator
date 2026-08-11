@@ -22,6 +22,7 @@ import {
   battleFormationHealth,
   chargeResolutionIsValid,
   fightMoveIsValid,
+  fireOverwatchIsValid,
   heroicInterventionIsValid,
   normalizeBattleState,
   rangedTargetEligibilityIsValid,
@@ -96,6 +97,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_charge_resolution_is_valid, "function");
   assert.equal(typeof calculator._whc_fight_move_is_valid, "function");
   assert.equal(typeof calculator._whc_heroic_intervention_is_valid, "function");
+  assert.equal(typeof calculator._whc_fire_overwatch_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
 });
@@ -171,6 +173,37 @@ test("WebAssembly and JavaScript agree on Heroic Intervention resolutions", () =
     assert.equal(
       Boolean(calculator._whc_heroic_intervention_is_valid(...values)),
       heroicInterventionIsValid(...values),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on Fire Overwatch eligibility", () => {
+  const cases = [
+    ["set_up", "movement", 24000, 63],
+    ["set_up", "charge", 1, 63],
+    ["normal_move_start", "movement", 12000, 63],
+    ["advance_end", "movement", 6000, 63],
+    ["charge_declared", "charge", 9000, 63],
+    ["charge_declared", "movement", 9000, 63],
+    ["normal_move_end", "charge", 9000, 63],
+    ["fall_back_start", "movement", 24001, 63],
+    ["set_up", "movement", 12000, 62],
+  ];
+  const triggers = [
+    "set_up",
+    "normal_move_start",
+    "normal_move_end",
+    "advance_start",
+    "advance_end",
+    "fall_back_start",
+    "fall_back_end",
+    "charge_declared",
+  ];
+  for (const [trigger, phase, distance, flags] of cases) {
+    const values = [triggers.indexOf(trigger) + 1, phase === "movement" ? 2 : 4, distance, flags];
+    assert.equal(
+      Boolean(calculator._whc_fire_overwatch_is_valid(...values)),
+      fireOverwatchIsValid(trigger, phase, distance, flags),
     );
   }
 });

@@ -42,7 +42,8 @@
       "sha256": "27960a4d4affecd450af69c54d7583bcc2941b00ba5845f5786a630bdec7f4ba",
       "pages": [10],
       "usedFor": [
-        "Heroic Intervention timing, target eligibility, 6-inch range, 1CP cost, Walker restriction, sole target, out-of-phase Charge resolution, and suppressed Charge bonus"
+        "Heroic Intervention timing, target eligibility, 6-inch range, 1CP cost, Walker restriction, sole target, out-of-phase Charge resolution, and suppressed Charge bonus",
+        "Fire Overwatch timing after setup, move starts and ends, and charge declarations; 24-inch visible-target eligibility; 1CP cost; once-per-turn limit; Titanic exclusion; unmodified 6 Hit and Critical Hit thresholds; out-of-phase rule and Firing Deck exclusions; and delayed Charge-phase Hazardous resolution"
       ]
     }
   ]

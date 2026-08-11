@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 13;
+export const BATTLE_STATE_VERSION = 14;
+export const FIRE_OVERWATCH_BATTLE_STATE_VERSION = 14;
 export const HEROIC_INTERVENTION_BATTLE_STATE_VERSION = 13;
 export const FIGHT_MOVE_BATTLE_STATE_VERSION = 12;
 export const CHARGE_MOVE_BATTLE_STATE_VERSION = 11;
@@ -62,6 +63,53 @@ const DEPLOYMENT_LOCATIONS = Object.freeze([
   "embarked",
 ]);
 const TARGET_MEASUREMENT_METHODS = Object.freeze(["manual", "uwb", "camera", "imported"]);
+export const FIRE_OVERWATCH_TRIGGERS = Object.freeze([
+  "set_up",
+  "normal_move_start",
+  "normal_move_end",
+  "advance_start",
+  "advance_end",
+  "fall_back_start",
+  "fall_back_end",
+  "charge_declared",
+]);
+
+export const FIRE_OVERWATCH_FLAGS = Object.freeze({
+  targetVisible: 1,
+  eligibleToShoot: 2,
+  nonTitanic: 4,
+  outOfPhaseRestrictions: 8,
+  hitsOnUnmodifiedSix: 16,
+  criticalHitsOnSix: 32,
+});
+
+export function fireOverwatchFlags(event) {
+  return (
+    (event.targetVisible ? FIRE_OVERWATCH_FLAGS.targetVisible : 0) |
+    (event.shootingEligibilityConfirmed ? FIRE_OVERWATCH_FLAGS.eligibleToShoot : 0) |
+    (event.titanicRestrictionSatisfied ? FIRE_OVERWATCH_FLAGS.nonTitanic : 0) |
+    (event.outOfPhaseRestrictionsConfirmed ? FIRE_OVERWATCH_FLAGS.outOfPhaseRestrictions : 0) |
+    (event.hitsOnUnmodifiedSixConfirmed ? FIRE_OVERWATCH_FLAGS.hitsOnUnmodifiedSix : 0) |
+    (event.criticalHitsOnSixConfirmed ? FIRE_OVERWATCH_FLAGS.criticalHitsOnSix : 0)
+  );
+}
+
+export function fireOverwatchIsValid(trigger, phase, distanceThousandths, flags) {
+  const triggerIndex = FIRE_OVERWATCH_TRIGGERS.indexOf(trigger) + 1;
+  if (
+    triggerIndex < 1 ||
+    !["movement", "charge"].includes(phase) ||
+    !Number.isSafeInteger(distanceThousandths) ||
+    distanceThousandths < 1 ||
+    distanceThousandths > 24_000 ||
+    flags !== 63
+  ) {
+    return false;
+  }
+  if (trigger === "set_up") return true;
+  if (trigger === "charge_declared") return phase === "charge";
+  return phase === "movement";
+}
 
 export function rangedTargetEligibilityIsValid(fact, declaredWeaponCount) {
   return Boolean(
@@ -1142,6 +1190,17 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   ) {
     throw new Error("Heroic Intervention reactions require battle-state version 13");
   }
+  if (
+    stateVersion < FIRE_OVERWATCH_BATTLE_STATE_VERSION &&
+    [
+      "movement_started",
+      "charge_declared",
+      "fire_overwatch_passed",
+      "fire_overwatch_started",
+    ].includes(event.type)
+  ) {
+    throw new Error("Fire Overwatch reactions require battle-state version 14");
+  }
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation, stateVersion);
     if (!formations.players.has(formation.playerId)) throw new Error("Formation player is unknown");
@@ -1260,6 +1319,18 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
+  if (event.type === "movement_started") {
+    normalized.formationId = boundedString(event.formationId, "Moving formation id", 100);
+    if (!formations.byId.has(normalized.formationId)) {
+      throw new Error("Moving formation is not registered");
+    }
+    normalized.movement = boundedString(event.movement, "Movement kind", 20);
+    if (!["normal", "advance", "fall_back"].includes(normalized.movement)) {
+      throw new Error("Only a Normal, Advance, or Fall Back move has a start trigger");
+    }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
   if (event.type === "movement_recorded") {
     normalized.formationId = boundedString(event.formationId, "Movement formation id", 100);
     if (!formations.byId.has(normalized.formationId)) {
@@ -1269,6 +1340,67 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     if (!MOVEMENT_KINDS.includes(normalized.movement)) {
       throw new Error("Movement kind is unsupported");
     }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "charge_declared") {
+    normalized.formationId = boundedString(event.formationId, "Charging formation id", 100);
+    if (!formations.byId.has(normalized.formationId)) {
+      throw new Error("Charging formation is not registered");
+    }
+    normalized.targetFormationIds = normalizeStringArray(
+      event.targetFormationIds,
+      "Charge declaration target formation ids",
+      12,
+    );
+    if (normalized.targetFormationIds.length < 1) {
+      throw new Error("A charge declaration must name at least one target formation");
+    }
+    if (normalized.targetFormationIds.some((id) => !formations.byId.has(id))) {
+      throw new Error("Charge declaration target formation is not registered");
+    }
+    if (!Array.isArray(event.targetFacts) || event.targetFacts.length < 1) {
+      throw new Error("A charge declaration requires target distance facts");
+    }
+    normalized.targetFacts = event.targetFacts.map((candidate) => {
+      const fact = record(candidate, "Each charge declaration target fact must be an object");
+      return {
+        formationId: boundedString(
+          fact.formationId,
+          "Charge declaration target fact formation id",
+          100,
+        ),
+        startDistanceThousandths: nonnegativeInteger(
+          fact.startDistanceThousandths,
+          "Charge declaration target starting distance",
+          12000,
+        ),
+      };
+    });
+    if (
+      normalized.targetFacts.some((fact) => fact.startDistanceThousandths < 1) ||
+      normalized.targetFacts.length !== normalized.targetFormationIds.length ||
+      new Set(normalized.targetFacts.map((fact) => fact.formationId)).size !==
+        normalized.targetFacts.length ||
+      normalized.targetFormationIds.some(
+        (formationId) => !normalized.targetFacts.some((fact) => fact.formationId === formationId),
+      )
+    ) {
+      throw new Error("Charge declaration target facts must cover each target exactly once");
+    }
+    normalized.phaseStartEligibilityConfirmed = Boolean(event.phaseStartEligibilityConfirmed);
+    normalized.phaseStartEligibilityReason = normalized.phaseStartEligibilityConfirmed
+      ? boundedString(
+          event.phaseStartEligibilityReason,
+          "Charge declaration phase-start eligibility reason",
+          300,
+        )
+      : "";
+    normalized.startedOutsideEngagementRange = Boolean(event.startedOutsideEngagementRange);
+    normalized.eligibilityOverride = Boolean(event.eligibilityOverride);
+    normalized.overrideReason = normalized.eligibilityOverride
+      ? boundedString(event.overrideReason, "Charge declaration eligibility override reason", 300)
+      : "";
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
@@ -1716,6 +1848,94 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
+  if (event.type === "fire_overwatch_passed") {
+    normalized.triggerEventId = boundedString(
+      event.triggerEventId,
+      "Fire Overwatch trigger event id",
+      100,
+    );
+    normalized.playerId = boundedString(event.playerId, "Fire Overwatch player id", 100);
+    if (!formations.players.has(normalized.playerId)) {
+      throw new Error("Fire Overwatch player is unknown");
+    }
+    normalized.reason = boundedString(event.reason, "Fire Overwatch pass reason", 300);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "fire_overwatch_started") {
+    normalized.triggerEventId = boundedString(
+      event.triggerEventId,
+      "Fire Overwatch trigger event id",
+      100,
+    );
+    normalized.formationId = boundedString(event.formationId, "Fire Overwatch formation id", 100);
+    normalized.targetFormationId = boundedString(
+      event.targetFormationId,
+      "Fire Overwatch target id",
+      100,
+    );
+    if (
+      !formations.byId.has(normalized.formationId) ||
+      !formations.byId.has(normalized.targetFormationId)
+    ) {
+      throw new Error("Fire Overwatch references an unregistered formation");
+    }
+    normalized.commandPointCost = nonnegativeInteger(
+      event.commandPointCost,
+      "Fire Overwatch Command Point cost",
+      5,
+    );
+    normalized.commandPointsBefore = nonnegativeInteger(
+      event.commandPointsBefore,
+      "Command Points before Fire Overwatch",
+      100000,
+    );
+    normalized.commandPointsAfter = nonnegativeInteger(
+      event.commandPointsAfter,
+      "Command Points after Fire Overwatch",
+      100000,
+    );
+    normalized.costOverrideReason = event.costOverrideReason
+      ? boundedString(event.costOverrideReason, "Fire Overwatch cost override reason", 300)
+      : "";
+    normalized.usageOverrideReason = event.usageOverrideReason
+      ? boundedString(event.usageOverrideReason, "Fire Overwatch usage override reason", 300)
+      : "";
+    normalized.stratagemEligibilityOverrideReason = event.stratagemEligibilityOverrideReason
+      ? boundedString(
+          event.stratagemEligibilityOverrideReason,
+          "Fire Overwatch eligibility override reason",
+          300,
+        )
+      : "";
+    normalized.distanceThousandths = nonnegativeInteger(
+      event.distanceThousandths,
+      "Fire Overwatch distance",
+      24000,
+    );
+    normalized.targetVisible = Boolean(event.targetVisible);
+    normalized.shootingEligibilityConfirmed = Boolean(event.shootingEligibilityConfirmed);
+    normalized.shootingEligibilityReason = normalized.shootingEligibilityConfirmed
+      ? boundedString(
+          event.shootingEligibilityReason,
+          "Fire Overwatch shooting eligibility reason",
+          300,
+        )
+      : "";
+    normalized.outOfPhaseRestrictionsConfirmed = Boolean(event.outOfPhaseRestrictionsConfirmed);
+    normalized.outOfPhaseRestrictionsReason = normalized.outOfPhaseRestrictionsConfirmed
+      ? boundedString(
+          event.outOfPhaseRestrictionsReason,
+          "Fire Overwatch out-of-phase review reason",
+          300,
+        )
+      : "";
+    normalized.hitsOnUnmodifiedSixConfirmed = Boolean(event.hitsOnUnmodifiedSixConfirmed);
+    normalized.criticalHitsOnSixConfirmed = Boolean(event.criticalHitsOnSixConfirmed);
+    normalized.titanicRestrictionSatisfied = Boolean(event.titanicRestrictionSatisfied);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
   if (event.type === "activation_started") {
     normalized.formationId = boundedString(event.formationId, "Activation formation id", 100);
     if (!formations.byId.has(normalized.formationId)) {
@@ -1959,6 +2179,11 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
         ? normalizeClock(event.clock, formations.players)
         : setupBattleClock();
     }
+    if (stateVersion >= FIRE_OVERWATCH_BATTLE_STATE_VERSION) {
+      normalized.activationEventId = event.activationEventId
+        ? boundedString(event.activationEventId, "Attack activation event id", 100)
+        : "";
+    }
     if (
       !Array.isArray(event.allocations) ||
       event.allocations.length < 1 ||
@@ -2020,6 +2245,7 @@ export function normalizeBattleState(candidate) {
       WEAPON_BEARER_BATTLE_STATE_VERSION,
       CHARGE_MOVE_BATTLE_STATE_VERSION,
       FIGHT_MOVE_BATTLE_STATE_VERSION,
+      HEROIC_INTERVENTION_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -2065,6 +2291,7 @@ export function normalizeBattleState(candidate) {
         WEAPON_BEARER_BATTLE_STATE_VERSION,
         CHARGE_MOVE_BATTLE_STATE_VERSION,
         FIGHT_MOVE_BATTLE_STATE_VERSION,
+        HEROIC_INTERVENTION_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -2142,6 +2369,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= FIRE_OVERWATCH_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyFireOverwatchThroughSequence = nonnegativeInteger(
+        migration.legacyFireOverwatchThroughSequence,
+        "Legacy Fire Overwatch event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -2152,6 +2386,7 @@ export function normalizeBattleState(candidate) {
     ) &&
     normalized.migration?.sourceVersion !== WEAPON_INVENTORY_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== TARGET_ELIGIBILITY_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== HEROIC_INTERVENTION_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== TRANSPORT_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== DEPLOYMENT_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== ACTION_BATTLE_STATE_VERSION &&
@@ -2473,11 +2708,17 @@ export function replayBattleState(state) {
   const transportDestructionResolutions = new Map();
   const targetEligibilityFacts = new Map();
   const fightMovementsByActivation = new Map();
+  const movementStartsByFormation = new Map();
+  const chargeDeclarationsByFormation = new Map();
+  const fireOverwatches = [];
+  const fireOverwatchPasses = [];
+  const usedFireOverwatchKeys = new Set();
   const heroicInterventions = [];
   const heroicInterventionPasses = [];
   const usedHeroicInterventionKeys = new Set();
   const completedActivations = new Set();
   let activeActivation = null;
+  let pendingFireOverwatch = null;
   let pendingHeroicIntervention = null;
   let deploymentPriorityPlayerId = "";
   let clock = setupBattleClock();
@@ -2504,6 +2745,10 @@ export function replayBattleState(state) {
     state.version < HEROIC_INTERVENTION_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyHeroicInterventionThroughSequence ?? 0);
+  const legacyFireOverwatchThroughSequence =
+    state.version < FIRE_OVERWATCH_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyFireOverwatchThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -2521,6 +2766,24 @@ export function replayBattleState(state) {
       !["heroic_intervention_resolved", "heroic_intervention_passed"].includes(event.type)
     ) {
       throw new Error("Resolve or pass the pending Heroic Intervention window first");
+    }
+    if (
+      pendingFireOverwatch &&
+      !["fire_overwatch_started", "fire_overwatch_passed"].includes(event.type)
+    ) {
+      throw new Error("Resolve or pass the pending Fire Overwatch window first");
+    }
+    if (
+      activeActivation?.source === "fire_overwatch" &&
+      ![
+        "ranged_target_eligibility_recorded",
+        "attack_resolved",
+        "attack_reverted",
+        "transport_destroyed_resolved",
+        "activation_completed",
+      ].includes(event.type)
+    ) {
+      throw new Error("Finish the Fire Overwatch activation before continuing the trigger");
     }
     if (event.type === "formation_registered") {
       if (state.version >= TIMELINE_BATTLE_STATE_VERSION && clock.status !== "setup") {
@@ -2930,6 +3193,15 @@ export function replayBattleState(state) {
         clock: event.clock,
         fromReserves: true,
       });
+      if (event.sequence > legacyFireOverwatchThroughSequence) {
+        pendingFireOverwatch = {
+          triggerEventId: event.id,
+          trigger: "set_up",
+          targetFormationId: event.formationId,
+          responderPlayerId: otherPlayerId(state.players, clock.activePlayerId),
+          clock: { ...clock },
+        };
+      }
       continue;
     }
     if (event.type === "formation_embarked") {
@@ -3030,6 +3302,15 @@ export function replayBattleState(state) {
           fromMovedTransport: true,
         });
       }
+      if (event.sequence > legacyFireOverwatchThroughSequence) {
+        pendingFireOverwatch = {
+          triggerEventId: event.id,
+          trigger: "set_up",
+          targetFormationId: event.formationId,
+          responderPlayerId: otherPlayerId(state.players, clock.activePlayerId),
+          clock: { ...clock },
+        };
+      }
       continue;
     }
     if (event.type === "transport_destroyed_resolved") {
@@ -3110,6 +3391,48 @@ export function replayBattleState(state) {
       transportDestructionResolutions.set(event.transportFormationId, event);
       continue;
     }
+    if (event.type === "movement_started") {
+      if (
+        clock.status !== "active" ||
+        clock.phase !== "movement" ||
+        clock.step !== "move_units" ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Movement started outside the Move Units step");
+      }
+      const formation = formations.get(event.formationId);
+      if (
+        !formationIsOnBattlefield(
+          event.formationId,
+          deploymentByFormation,
+          deployedFormationIds,
+          embarkedByFormation,
+        ) ||
+        formation.playerId !== clock.activePlayerId ||
+        formationDestroyed(formation)
+      ) {
+        throw new Error(
+          "Only a living active-player formation on the battlefield can start a move",
+        );
+      }
+      const previous = movementByFormation.get(event.formationId);
+      if (previous && sameTurn(previous.clock, clock)) {
+        throw new Error("Formation movement has already been recorded this turn");
+      }
+      const started = movementStartsByFormation.get(event.formationId);
+      if (started && sameTurn(started.clock, clock)) {
+        throw new Error("Formation movement has already started this turn");
+      }
+      movementStartsByFormation.set(event.formationId, event);
+      pendingFireOverwatch = {
+        triggerEventId: event.id,
+        trigger: `${event.movement === "normal" ? "normal_move" : event.movement}_start`,
+        targetFormationId: event.formationId,
+        responderPlayerId: otherPlayerId(state.players, clock.activePlayerId),
+        clock: { ...clock },
+      };
+      continue;
+    }
     if (event.type === "movement_recorded") {
       if (
         clock.status !== "active" ||
@@ -3146,7 +3469,112 @@ export function replayBattleState(state) {
       if (previous && sameTurn(previous.clock, clock)) {
         throw new Error("Formation movement has already been recorded this turn");
       }
+      if (event.sequence > legacyFireOverwatchThroughSequence && event.movement !== "stationary") {
+        const started = movementStartsByFormation.get(event.formationId);
+        if (
+          !started ||
+          started.movement !== event.movement ||
+          !sameBattleClock(started.clock, clock)
+        ) {
+          throw new Error("Complete the declared move after its start Fire Overwatch window");
+        }
+        movementStartsByFormation.delete(event.formationId);
+      }
       movementByFormation.set(event.formationId, event);
+      if (event.sequence > legacyFireOverwatchThroughSequence && event.movement !== "stationary") {
+        pendingFireOverwatch = {
+          triggerEventId: event.id,
+          trigger: `${event.movement === "normal" ? "normal_move" : event.movement}_end`,
+          targetFormationId: event.formationId,
+          responderPlayerId: otherPlayerId(state.players, clock.activePlayerId),
+          clock: { ...clock },
+        };
+      }
+      continue;
+    }
+    if (event.type === "charge_declared") {
+      if (
+        clock.status !== "active" ||
+        clock.phase !== "charge" ||
+        clock.step !== "charge_moves" ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Charge was declared outside the Charge Moves step");
+      }
+      const formation = formations.get(event.formationId);
+      if (
+        !formationIsOnBattlefield(
+          event.formationId,
+          deploymentByFormation,
+          deployedFormationIds,
+          embarkedByFormation,
+        ) ||
+        formation.playerId !== clock.activePlayerId ||
+        formationDestroyed(formation)
+      ) {
+        throw new Error(
+          "Only a living active-player formation on the battlefield can declare a charge",
+        );
+      }
+      const priorCharge = chargeByFormation.get(event.formationId);
+      const priorDeclaration = chargeDeclarationsByFormation.get(event.formationId);
+      if (
+        (priorCharge && sameTurn(priorCharge.clock, clock)) ||
+        (priorDeclaration && sameTurn(priorDeclaration.clock, clock))
+      ) {
+        throw new Error("Formation has already declared or attempted a charge this turn");
+      }
+      for (const targetFormationId of event.targetFormationIds) {
+        const target = formations.get(targetFormationId);
+        if (
+          !formationIsOnBattlefield(
+            targetFormationId,
+            deploymentByFormation,
+            deployedFormationIds,
+            embarkedByFormation,
+          ) ||
+          target.playerId === formation.playerId ||
+          formationDestroyed(target)
+        ) {
+          throw new Error("A charge declaration requires a living enemy target on the battlefield");
+        }
+      }
+      if (!event.phaseStartEligibilityConfirmed || !event.startedOutsideEngagementRange) {
+        throw new Error(
+          "Charge declaration requires reviewed phase-start and Engagement Range eligibility",
+        );
+      }
+      if (
+        formation.keywords.some((keyword) => keyword.toLowerCase() === "aircraft") &&
+        !event.eligibilityOverride
+      ) {
+        throw new Error("An Aircraft formation requires an explicit rule override to charge");
+      }
+      const movement = movementByFormation.get(event.formationId);
+      const currentMovement = movement && sameTurn(movement.clock, clock) ? movement : null;
+      if (!currentMovement && !event.eligibilityOverride) {
+        throw new Error("Record this formation's movement before declaring a charge");
+      }
+      if (
+        ["advance", "fall_back"].includes(currentMovement?.movement) &&
+        !event.eligibilityOverride
+      ) {
+        throw new Error("A formation that Advanced or Fell Back requires a charge rule override");
+      }
+      if (
+        (currentMovement?.fromMovedTransport || currentMovement?.fromDestroyedTransport) &&
+        !event.eligibilityOverride
+      ) {
+        throw new Error("A unit that disembarked after movement cannot declare a charge this turn");
+      }
+      chargeDeclarationsByFormation.set(event.formationId, event);
+      pendingFireOverwatch = {
+        triggerEventId: event.id,
+        trigger: "charge_declared",
+        targetFormationId: event.formationId,
+        responderPlayerId: otherPlayerId(state.players, clock.activePlayerId),
+        clock: { ...clock },
+      };
       continue;
     }
     if (event.type === "charge_recorded") {
@@ -3173,6 +3601,29 @@ export function replayBattleState(state) {
         throw new Error("Only the active player's formation can charge");
       }
       if (formationDestroyed(formation)) throw new Error("A destroyed formation cannot charge");
+      if (event.sequence > legacyFireOverwatchThroughSequence) {
+        const declaration = chargeDeclarationsByFormation.get(event.formationId);
+        if (
+          !declaration ||
+          !sameBattleClock(declaration.clock, clock) ||
+          declaration.targetFormationIds.length !== event.targetFormationIds.length ||
+          declaration.targetFormationIds.some(
+            (targetId, index) => targetId !== event.targetFormationIds[index],
+          ) ||
+          declaration.targetFacts.some((declaredFact) => {
+            const resolvedFact = event.targetFacts.find(
+              (candidate) => candidate.formationId === declaredFact.formationId,
+            );
+            return (
+              !resolvedFact ||
+              resolvedFact.startDistanceThousandths !== declaredFact.startDistanceThousandths
+            );
+          })
+        ) {
+          throw new Error("Resolve the declared charge's Fire Overwatch window before rolling");
+        }
+        chargeDeclarationsByFormation.delete(event.formationId);
+      }
       if (
         formation.keywords.some((keyword) => keyword.toLowerCase() === "aircraft") &&
         !event.eligibilityOverride
@@ -3262,6 +3713,114 @@ export function replayBattleState(state) {
           clock: { ...clock },
         };
       }
+      continue;
+    }
+    if (event.type === "fire_overwatch_passed") {
+      if (
+        !pendingFireOverwatch ||
+        event.triggerEventId !== pendingFireOverwatch.triggerEventId ||
+        event.playerId !== pendingFireOverwatch.responderPlayerId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Fire Overwatch pass does not match the pending reaction window");
+      }
+      fireOverwatchPasses.push({ ...event, ...pendingFireOverwatch });
+      pendingFireOverwatch = null;
+      continue;
+    }
+    if (event.type === "fire_overwatch_started") {
+      if (
+        !pendingFireOverwatch ||
+        event.triggerEventId !== pendingFireOverwatch.triggerEventId ||
+        event.targetFormationId !== pendingFireOverwatch.targetFormationId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Fire Overwatch does not match the pending reaction window");
+      }
+      const formation = formations.get(event.formationId);
+      const target = formations.get(event.targetFormationId);
+      if (
+        formation.playerId !== pendingFireOverwatch.responderPlayerId ||
+        target.playerId === formation.playerId
+      ) {
+        throw new Error("Fire Overwatch must use the responding player's formation");
+      }
+      if (
+        !formationIsOnBattlefield(
+          formation.id,
+          deploymentByFormation,
+          deployedFormationIds,
+          embarkedByFormation,
+        ) ||
+        formationDestroyed(formation) ||
+        formationDestroyed(target)
+      ) {
+        throw new Error("Fire Overwatch requires living formations on the battlefield");
+      }
+      const hasSurvivingRangedWeapon = formation.weaponInventory.some(
+        (group) =>
+          group.profiles.some((profile) => profile.type === "Ranged") &&
+          formationSurvivingWeaponCount(formation, group.sourceSavedUnitId, group.groupId) > 0,
+      );
+      if (!hasSurvivingRangedWeapon) {
+        throw new Error("Fire Overwatch requires a surviving ranged weapon");
+      }
+      const lowerKeywords = formation.keywords.map((keyword) => keyword.toLowerCase());
+      const titanicRestrictionSatisfied = !lowerKeywords.includes("titanic");
+      if (!titanicRestrictionSatisfied || !event.titanicRestrictionSatisfied) {
+        throw new Error("A Titanic formation cannot be selected for Fire Overwatch");
+      }
+      if (battleShockedFormations.has(formation.id) && !event.stratagemEligibilityOverrideReason) {
+        throw new Error(
+          "A Battle-shocked formation cannot use Fire Overwatch without a source override",
+        );
+      }
+      if (
+        !fireOverwatchIsValid(
+          pendingFireOverwatch.trigger,
+          clock.phase,
+          event.distanceThousandths,
+          fireOverwatchFlags(event),
+        )
+      ) {
+        throw new Error("Fire Overwatch facts do not form a legal reviewed reaction");
+      }
+      if (event.commandPointCost !== 1 && !event.costOverrideReason) {
+        throw new Error("A non-canonical Fire Overwatch cost requires a source-rule reason");
+      }
+      const usageKey = `${clock.battleRound}:${clock.turn}:fire_overwatch`;
+      if (usedFireOverwatchKeys.has(usageKey) && !event.usageOverrideReason) {
+        throw new Error("Fire Overwatch has already been used this turn");
+      }
+      const commandPoints = resources.get(formation.playerId).get("command_points");
+      if (
+        event.commandPointsBefore !== commandPoints.value ||
+        event.commandPointsAfter !== event.commandPointsBefore - event.commandPointCost ||
+        event.commandPointsAfter < 0
+      ) {
+        throw new Error("Fire Overwatch Command Point spending is inconsistent");
+      }
+      resources.get(formation.playerId).set("command_points", {
+        ...commandPoints,
+        value: event.commandPointsAfter,
+      });
+      usedFireOverwatchKeys.add(usageKey);
+      const overwatch = {
+        ...event,
+        trigger: pendingFireOverwatch.trigger,
+        responderPlayerId: pendingFireOverwatch.responderPlayerId,
+        source: "fire_overwatch",
+      };
+      fireOverwatches.push(overwatch);
+      activeActivation = {
+        ...overwatch,
+        activationType: "shooting",
+        weaponRestriction: "all",
+        attackCount: 0,
+        pileIn: null,
+        consolidation: null,
+      };
+      pendingFireOverwatch = null;
       continue;
     }
     if (event.type === "heroic_intervention_passed") {
@@ -3556,6 +4115,13 @@ export function replayBattleState(state) {
       completedActivations.add(
         `${clock.battleRound}:${clock.turn}:${clock.phase}:${event.formationId}`,
       );
+      if (activeActivation.source === "fire_overwatch") {
+        const target = formations.get(activeActivation.targetFormationId);
+        if (formationDestroyed(target)) {
+          movementStartsByFormation.delete(activeActivation.targetFormationId);
+          chargeDeclarationsByFormation.delete(activeActivation.targetFormationId);
+        }
+      }
       activeActivation = null;
       if (event.activationType === "fight") {
         clock = {
@@ -3566,9 +4132,9 @@ export function replayBattleState(state) {
       continue;
     }
     if (event.type === "ranged_target_eligibility_recorded") {
+      const resolvingFireOverwatch = activeActivation?.source === "fire_overwatch";
       if (
-        !battleAttackWindow(clock) ||
-        clock.phase !== "shooting" ||
+        (!resolvingFireOverwatch && (!battleAttackWindow(clock) || clock.phase !== "shooting")) ||
         !sameBattleClock(event.clock, clock)
       ) {
         throw new Error("Ranged target eligibility must be recorded in a Shooting attack step");
@@ -3600,9 +4166,21 @@ export function replayBattleState(state) {
       if (formationDestroyed(attacker) || formationDestroyed(target)) {
         throw new Error("Ranged target eligibility cannot reference a destroyed formation");
       }
+      if (
+        resolvingFireOverwatch &&
+        (event.targetFormationId !== activeActivation.targetFormationId ||
+          !event.visible ||
+          event.indirectFire ||
+          event.measuredDistanceThousandths > 24000)
+      ) {
+        throw new Error("Fire Overwatch requires its visible triggering target within 24 inches");
+      }
       if (event.sequence > legacyWeaponInventoryThroughSequence) {
         const source = formations.get(event.weaponSourceFormationId);
         if (!source) throw new Error("Target eligibility weapon source is not registered");
+        if (resolvingFireOverwatch && source.id !== attacker.id) {
+          throw new Error("Firing Deck cannot be used for out-of-phase Fire Overwatch shooting");
+        }
         if (source.id !== attacker.id && embarkedByFormation.get(source.id) !== attacker.id) {
           throw new Error("Target eligibility weapon source is not the attacker or its passenger");
         }
@@ -3634,11 +4212,12 @@ export function replayBattleState(state) {
       continue;
     }
     if (event.type === "attack_resolved") {
+      const resolvingFireOverwatch = activeActivation?.source === "fire_overwatch";
       if (
         state.version >= TIMELINE_BATTLE_STATE_VERSION &&
         event.sequence > legacyUntimedThroughSequence
       ) {
-        if (!battleAttackWindow(clock)) {
+        if (!battleAttackWindow(clock) && !resolvingFireOverwatch) {
           throw new Error("Attacks can only resolve in a Shooting or Fight attack step");
         }
         if (pendingChoices.size > 0) {
@@ -3653,13 +4232,26 @@ export function replayBattleState(state) {
             throw new Error("Attack does not belong to the active formation");
           }
           if (
+            state.version >= FIRE_OVERWATCH_BATTLE_STATE_VERSION &&
+            event.activationEventId !== activeActivation.id
+          ) {
+            throw new Error("Attack does not reference its active formation activation");
+          }
+          if (
+            resolvingFireOverwatch &&
+            event.targetFormationId !== activeActivation.targetFormationId
+          ) {
+            throw new Error("Fire Overwatch can attack only the triggering enemy formation");
+          }
+          if (
             clock.phase === "shooting" &&
             activeActivation.weaponRestriction === "assault_only" &&
             !event.weaponHasAssault
           ) {
             throw new Error("Only Assault weapons can fire after this formation Advanced");
           }
-          const expectedWeaponType = clock.phase === "shooting" ? "Ranged" : "Melee";
+          const expectedWeaponType =
+            activeActivation.activationType === "shooting" ? "Ranged" : "Melee";
           if (event.weaponType !== expectedWeaponType) {
             throw new Error(`${expectedWeaponType} weapons are required in this attack step`);
           }
@@ -3724,7 +4316,9 @@ export function replayBattleState(state) {
                     attack.weaponSourceFormationId === event.weaponSourceFormationId &&
                     attack.sourceSavedUnitId === event.sourceSavedUnitId &&
                     attack.weaponGroupId === event.weaponGroupId &&
-                    sameBattleClock(attack.clock ?? eligibility.clock, clock),
+                    (state.version >= FIRE_OVERWATCH_BATTLE_STATE_VERSION
+                      ? attack.activationEventId === activeActivation.id
+                      : sameBattleClock(attack.clock ?? eligibility.clock, clock)),
                 )
                 .reduce((total, attack) => total + attack.declaredWeaponCount, 0);
               const declaredFlags = (event.weaponHasAssault ? 1 : 0) | (event.indirectFire ? 2 : 0);
@@ -3827,14 +4421,16 @@ export function replayBattleState(state) {
       attacks.set(event.id, event);
       activeAttackIds.push(event.id);
       targetedFormationIds.add(event.targetFormationId);
-      if (activeActivation?.activationType === "fight") {
+      if (activeActivation) {
         activeActivation = { ...activeActivation, attackCount: activeActivation.attackCount + 1 };
-        const movement = fightMovementsByActivation.get(activeActivation.id);
-        if (movement) {
-          fightMovementsByActivation.set(activeActivation.id, {
-            ...movement,
-            attackCount: activeActivation.attackCount,
-          });
+        if (activeActivation.activationType === "fight") {
+          const movement = fightMovementsByActivation.get(activeActivation.id);
+          if (movement) {
+            fightMovementsByActivation.set(activeActivation.id, {
+              ...movement,
+              attackCount: activeActivation.attackCount,
+            });
+          }
         }
       }
       if (!wasDestroyed && formationDestroyed(formation)) {
@@ -3877,17 +4473,24 @@ export function replayBattleState(state) {
       formation.health[allocation.segmentId] = { ...allocation.before };
     }
     activeAttackIds.pop();
-    if (activeActivation?.activationType === "fight" && reverted.weaponType === "Melee") {
+    if (
+      activeActivation &&
+      (state.version < FIRE_OVERWATCH_BATTLE_STATE_VERSION
+        ? activeActivation.activationType === "fight" && reverted.weaponType === "Melee"
+        : reverted.activationEventId === activeActivation.id)
+    ) {
       activeActivation = {
         ...activeActivation,
         attackCount: Math.max(0, activeActivation.attackCount - 1),
       };
-      const movement = fightMovementsByActivation.get(activeActivation.id);
-      if (movement) {
-        fightMovementsByActivation.set(activeActivation.id, {
-          ...movement,
-          attackCount: activeActivation.attackCount,
-        });
+      if (activeActivation.activationType === "fight") {
+        const movement = fightMovementsByActivation.get(activeActivation.id);
+        if (movement) {
+          fightMovementsByActivation.set(activeActivation.id, {
+            ...movement,
+            attackCount: activeActivation.attackCount,
+          });
+        }
       }
     }
   }
@@ -3951,6 +4554,11 @@ export function replayBattleState(state) {
     transportDestructionResolutions,
     targetEligibilityFacts,
     fightMovementsByActivation,
+    movementStartsByFormation,
+    chargeDeclarationsByFormation,
+    pendingFireOverwatch,
+    fireOverwatches,
+    fireOverwatchPasses,
     pendingHeroicIntervention,
     heroicInterventions,
     heroicInterventionPasses,
@@ -4068,6 +4676,15 @@ export function advanceBattleClock(state, id, at) {
   }
   if (replayed.pendingHeroicIntervention) {
     throw new Error("Resolve or pass the pending Heroic Intervention window first");
+  }
+  if (replayed.pendingFireOverwatch) {
+    throw new Error("Resolve or pass the pending Fire Overwatch window first");
+  }
+  if (replayed.movementStartsByFormation.size > 0) {
+    throw new Error("Complete the started movement before advancing the battle");
+  }
+  if (replayed.chargeDeclarationsByFormation.size > 0) {
+    throw new Error("Resolve the declared charge before advancing the battle");
   }
   const from = replayed.clock;
   const to = nextBattleClock(from, state.players);
@@ -4266,7 +4883,7 @@ export function battleFormationIsOnBattlefield(state, formationId) {
   );
 }
 
-export function recordFormationMovement(state, formationId, movement, id, at) {
+export function completeFormationMovement(state, formationId, movement, id, at) {
   const clock = replayBattleState(state).clock;
   return appendEvent(state, {
     version: BATTLE_EVENT_VERSION,
@@ -4274,6 +4891,44 @@ export function recordFormationMovement(state, formationId, movement, id, at) {
     sequence: state.events.length + 1,
     at,
     type: "movement_recorded",
+    formationId,
+    movement,
+    clock,
+  });
+}
+
+export function recordFormationMovement(state, formationId, movement, id, at) {
+  if (state.version < FIRE_OVERWATCH_BATTLE_STATE_VERSION || movement === "stationary") {
+    return completeFormationMovement(state, formationId, movement, id, at);
+  }
+  const replayed = replayBattleState(state);
+  if (replayed.movementStartsByFormation.has(formationId)) {
+    return completeFormationMovement(state, formationId, movement, id, at);
+  }
+  let next = startFormationMovement(state, formationId, movement, `${id}-start`, at);
+  next = passFireOverwatch(
+    next,
+    "Compatibility movement helper explicitly declined Fire Overwatch at move start",
+    `${id}-start-pass`,
+    at,
+  );
+  next = completeFormationMovement(next, formationId, movement, id, at);
+  return passFireOverwatch(
+    next,
+    "Compatibility movement helper explicitly declined Fire Overwatch at move end",
+    `${id}-end-pass`,
+    at,
+  );
+}
+
+export function startFormationMovement(state, formationId, movement, id, at) {
+  const clock = replayBattleState(state).clock;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "movement_started",
     formationId,
     movement,
     clock,
@@ -4490,11 +5145,49 @@ export function recordFormationCharge(
   id,
   at,
 ) {
-  const clock = replayBattleState(state).clock;
-  return appendEvent(state, {
+  if (
+    state.version >= CHARGE_MOVE_BATTLE_STATE_VERSION &&
+    (!Array.isArray(rolls) || rolls.length !== 2)
+  ) {
+    throw new Error("A Charge roll must contain two D6 rolls");
+  }
+  let next = state;
+  let replayed = replayBattleState(next);
+  if (
+    state.version >= FIRE_OVERWATCH_BATTLE_STATE_VERSION &&
+    !replayed.chargeDeclarationsByFormation.has(formationId)
+  ) {
+    next = declareFormationCharge(
+      next,
+      formationId,
+      targetFormationIds,
+      {
+        targetFacts: targetFacts.map((fact) => ({
+          formationId: fact.formationId,
+          startDistanceThousandths: fact.startDistanceThousandths,
+        })),
+        phaseStartEligibilityConfirmed,
+        phaseStartEligibilityReason,
+        startedOutsideEngagementRange,
+        eligibilityOverride,
+        overrideReason,
+      },
+      `${id}-declared`,
+      at,
+    );
+    next = passFireOverwatch(
+      next,
+      "Compatibility charge helper explicitly declined Fire Overwatch at declaration",
+      `${id}-overwatch-pass`,
+      at,
+    );
+    replayed = replayBattleState(next);
+  }
+  const clock = replayed.clock;
+  return appendEvent(next, {
     version: BATTLE_EVENT_VERSION,
     id,
-    sequence: state.events.length + 1,
+    sequence: next.events.length + 1,
     at,
     type: "charge_recorded",
     formationId,
@@ -4521,6 +5214,111 @@ export function recordFormationCharge(
     eligibilityOverride,
     overrideReason,
     clock,
+  });
+}
+
+export function declareFormationCharge(
+  state,
+  formationId,
+  targetFormationIds,
+  {
+    targetFacts = [],
+    phaseStartEligibilityConfirmed = false,
+    phaseStartEligibilityReason = "",
+    startedOutsideEngagementRange = false,
+    eligibilityOverride = false,
+    overrideReason = "",
+  } = {},
+  id,
+  at,
+) {
+  const clock = replayBattleState(state).clock;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "charge_declared",
+    formationId,
+    targetFormationIds,
+    targetFacts,
+    phaseStartEligibilityConfirmed,
+    phaseStartEligibilityReason,
+    startedOutsideEngagementRange,
+    eligibilityOverride,
+    overrideReason,
+    clock,
+  });
+}
+
+export function passFireOverwatch(state, reason, id, at) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingFireOverwatch;
+  if (!pending) throw new Error("No Fire Overwatch window is pending");
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "fire_overwatch_passed",
+    triggerEventId: pending.triggerEventId,
+    playerId: pending.responderPlayerId,
+    reason,
+    clock: replayed.clock,
+  });
+}
+
+export function startFireOverwatch(
+  state,
+  formationId,
+  {
+    commandPointCost = 1,
+    costOverrideReason = "",
+    usageOverrideReason = "",
+    stratagemEligibilityOverrideReason = "",
+    distanceThousandths = 0,
+    targetVisible = false,
+    shootingEligibilityConfirmed = false,
+    shootingEligibilityReason = "",
+    outOfPhaseRestrictionsConfirmed = false,
+    outOfPhaseRestrictionsReason = "",
+  } = {},
+  id,
+  at,
+) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingFireOverwatch;
+  if (!pending) throw new Error("No Fire Overwatch window is pending");
+  const formation = replayed.formations.get(formationId);
+  if (!formation) throw new Error("Fire Overwatch formation is unknown");
+  const lowerKeywords = formation.keywords.map((keyword) => keyword.toLowerCase());
+  const commandPointsBefore =
+    replayed.resources.get(formation.playerId)?.get("command_points")?.value ?? 0;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "fire_overwatch_started",
+    triggerEventId: pending.triggerEventId,
+    formationId,
+    targetFormationId: pending.targetFormationId,
+    commandPointCost,
+    commandPointsBefore,
+    commandPointsAfter: commandPointsBefore - commandPointCost,
+    costOverrideReason,
+    usageOverrideReason,
+    stratagemEligibilityOverrideReason,
+    distanceThousandths,
+    targetVisible,
+    shootingEligibilityConfirmed,
+    shootingEligibilityReason,
+    outOfPhaseRestrictionsConfirmed,
+    outOfPhaseRestrictionsReason,
+    hitsOnUnmodifiedSixConfirmed: true,
+    criticalHitsOnSixConfirmed: true,
+    titanicRestrictionSatisfied: !lowerKeywords.includes("titanic"),
+    clock: replayed.clock,
   });
 }
 
@@ -4763,6 +5561,7 @@ export function battleCanStartFormationActivation(
     ) ||
     !battleAttackWindow(replayed.clock) ||
     replayed.pendingChoices.size > 0 ||
+    replayed.pendingFireOverwatch ||
     replayed.pendingHeroicIntervention ||
     replayed.activeActivation ||
     replayed.completedActivations.has(
@@ -4806,7 +5605,14 @@ export function battleCanResolveAttack(state, attackerFormationId, options = {})
     return false;
   }
   if (replayed.activeActivation) {
-    const expectedWeaponType = replayed.clock.phase === "shooting" ? "Ranged" : "Melee";
+    const expectedWeaponType =
+      replayed.activeActivation.activationType === "shooting" ? "Ranged" : "Melee";
+    if (
+      replayed.activeActivation.source === "fire_overwatch" &&
+      options.targetFormationId !== replayed.activeActivation.targetFormationId
+    ) {
+      return false;
+    }
     if (
       expectedWeaponType === "Melee" &&
       replayed.activeActivation.sequence >
@@ -5040,6 +5846,7 @@ export function appendResolvedAttack(
     weaponSourceFormationId,
     sourceSavedUnitId,
     weaponGroupId,
+    activationEventId: replayed.activeActivation?.id ?? "",
     clock: replayed.clock,
     allocations,
   });
@@ -5090,7 +5897,9 @@ export function battleUnusedWeaponCount(
         event.weaponSourceFormationId === weaponSourceFormationId &&
         event.sourceSavedUnitId === sourceSavedUnitId &&
         event.weaponGroupId === weaponGroupId &&
-        sameBattleClock(event.clock, replayed.clock),
+        (state.version >= FIRE_OVERWATCH_BATTLE_STATE_VERSION && replayed.activeActivation
+          ? event.activationEventId === replayed.activeActivation.id
+          : sameBattleClock(event.clock, replayed.clock)),
     )
     .reduce((total, event) => total + event.declaredWeaponCount, 0);
   return Math.max(0, surviving - used);

@@ -4,6 +4,7 @@ import {
   BATTLE_STATE_VERSION,
   CHARGE_MOVE_BATTLE_STATE_VERSION,
   FIGHT_MOVE_BATTLE_STATE_VERSION,
+  FIRE_OVERWATCH_BATTLE_STATE_VERSION,
   HEROIC_INTERVENTION_BATTLE_STATE_VERSION,
   ROSTER_BATTLE_STATE_VERSION,
   TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
@@ -363,6 +364,10 @@ export function initializeBattleForLists({
             sourceVersion < HEROIC_INTERVENTION_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyHeroicInterventionThroughSequence ?? 0),
+          legacyFireOverwatchThroughSequence:
+            sourceVersion < FIRE_OVERWATCH_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyFireOverwatchThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

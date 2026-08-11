@@ -243,6 +243,23 @@ bool whc_heroic_intervention_is_valid(uint32_t die_one, uint32_t die_two, int32_
                                           charge_flags);
 }
 
+bool whc_fire_overwatch_is_valid(uint32_t trigger, uint32_t phase,
+                                 uint32_t distance_thousandths, uint32_t flags) {
+    if (trigger < WHC_FIRE_OVERWATCH_SET_UP || trigger > WHC_FIRE_OVERWATCH_CHARGE_DECLARED ||
+        (phase != WHC_BATTLE_PHASE_MOVEMENT && phase != WHC_BATTLE_PHASE_CHARGE) ||
+        distance_thousandths == 0u || distance_thousandths > 24000u ||
+        flags != WHC_FIRE_OVERWATCH_FLAGS_MASK) {
+        return false;
+    }
+    if (trigger == WHC_FIRE_OVERWATCH_SET_UP) {
+        return true;
+    }
+    if (trigger == WHC_FIRE_OVERWATCH_CHARGE_DECLARED) {
+        return phase == WHC_BATTLE_PHASE_CHARGE;
+    }
+    return phase == WHC_BATTLE_PHASE_MOVEMENT;
+}
+
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,
                                      const uint32_t *events, uint32_t event_count,
                                      uint32_t *health) {

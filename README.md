@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 11 as soon as both lists are selected. Every
+creates battle-state version 14 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -776,6 +776,24 @@ secure roll, physical-table confirmations, failure path, and pass path. The
 replay API returns pending, resolved, and declined reactions and independently
 cross-checks the ACSL-specified C/WebAssembly predicate. Version-12 and older
 histories retain their prior behavior behind an explicit migration boundary.
+Version 14 makes Fire Overwatch an executable immediate reaction in the
+opponent's Movement and Charge phases. Replay opens a responder window just
+after an enemy formation is set up, starts or ends a Normal, Advance, or Fall
+Back move, or declares a charge, and blocks the interrupted action until the
+window is resolved or declined. Resolution requires a living non-Titanic
+formation with a surviving ranged weapon, the visible triggering formation
+within 24 inches, reviewed normal Shooting eligibility, and confirmation that
+Shooting-phase-only rules and Firing Deck are excluded. The standard cost is
+1CP and use is limited to once per turn; nonstandard costs, additional uses,
+and Battle-shock exceptions require source-rule reasons. The activation can
+target only the triggering formation, forces Hit rolls and Critical Hits to an
+unmodified 6 while preserving rules such as Torrent, re-rolls, Sustained Hits,
+and Lethal Hits, and records every attack against the interrupted action.
+Guided Play exposes the decision and physical-table review, while the replay
+API independently checks the reviewed reaction against an ACSL-specified
+C/WebAssembly predicate. Version-13 and older histories retain an explicit
+migration boundary. Hazardous Fire Overwatch currently fails closed until its
+Charge-phase deferred self-damage can be represented in the event log.
 The guided timeline records battle round, first or second player turn, active
 and priority player, phase, and step. It covers Command, Movement, Shooting,
 Charge, and Fight through five rounds. Pending bounded choices stop both attacks

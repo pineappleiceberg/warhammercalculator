@@ -57,6 +57,24 @@
 #define WHC_HEROIC_SOLE_TRIGGER_TARGET 4u
 #define WHC_HEROIC_CHARGE_BONUS_SUPPRESSED 8u
 #define WHC_HEROIC_FLAGS_MASK 15u
+#define WHC_FIRE_OVERWATCH_TARGET_VISIBLE 1u
+#define WHC_FIRE_OVERWATCH_ELIGIBLE_TO_SHOOT 2u
+#define WHC_FIRE_OVERWATCH_NON_TITANIC 4u
+#define WHC_FIRE_OVERWATCH_OUT_OF_PHASE_RESTRICTIONS 8u
+#define WHC_FIRE_OVERWATCH_HITS_ON_UNMODIFIED_SIX 16u
+#define WHC_FIRE_OVERWATCH_CRITICAL_HITS_ON_SIX 32u
+#define WHC_FIRE_OVERWATCH_FLAGS_MASK 63u
+
+enum whc_fire_overwatch_trigger {
+    WHC_FIRE_OVERWATCH_SET_UP = 1u,
+    WHC_FIRE_OVERWATCH_NORMAL_MOVE_START = 2u,
+    WHC_FIRE_OVERWATCH_NORMAL_MOVE_END = 3u,
+    WHC_FIRE_OVERWATCH_ADVANCE_START = 4u,
+    WHC_FIRE_OVERWATCH_ADVANCE_END = 5u,
+    WHC_FIRE_OVERWATCH_FALL_BACK_START = 6u,
+    WHC_FIRE_OVERWATCH_FALL_BACK_END = 7u,
+    WHC_FIRE_OVERWATCH_CHARGE_DECLARED = 8u
+};
 
 enum whc_battle_clock_status {
     WHC_BATTLE_CLOCK_SETUP = 0u,
@@ -257,6 +275,21 @@ bool whc_heroic_intervention_is_valid(uint32_t die_one, uint32_t die_two, int32_
                                       uint32_t start_distance_thousandths,
                                       uint32_t maximum_model_move_thousandths, bool successful,
                                       uint32_t charge_flags, uint32_t heroic_flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        trigger >= WHC_FIRE_OVERWATCH_SET_UP &&
+        trigger <= WHC_FIRE_OVERWATCH_CHARGE_DECLARED &&
+        (phase == WHC_BATTLE_PHASE_MOVEMENT || phase == WHC_BATTLE_PHASE_CHARGE) &&
+        distance_thousandths > 0 && distance_thousandths <= 24000 &&
+        flags == WHC_FIRE_OVERWATCH_FLAGS_MASK &&
+        ((trigger == WHC_FIRE_OVERWATCH_SET_UP) ||
+         (trigger == WHC_FIRE_OVERWATCH_CHARGE_DECLARED
+              ? phase == WHC_BATTLE_PHASE_CHARGE
+              : phase == WHC_BATTLE_PHASE_MOVEMENT));
+*/
+bool whc_fire_overwatch_is_valid(uint32_t trigger, uint32_t phase,
+                                 uint32_t distance_thousandths, uint32_t flags);
 
 /*@ requires first_player_index <= 1;
     requires \valid(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));

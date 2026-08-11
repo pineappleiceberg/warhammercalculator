@@ -179,6 +179,12 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     uint32_t heroic_flags;
     bool heroic_valid;
     bool expected_heroic_valid;
+    uint32_t overwatch_trigger;
+    uint32_t overwatch_phase;
+    uint32_t overwatch_distance;
+    uint32_t overwatch_flags;
+    bool overwatch_valid;
+    bool expected_overwatch_valid;
 
     while (index < weapon_count) {
         generate_weapon(&input, &weapons[index]);
@@ -366,5 +372,23 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
                                        charge_distance, heroic_start_distance, maximum_model_move,
                                        1u, charge_successful, charge_flags);
     assert(heroic_valid == expected_heroic_valid);
+    overwatch_trigger = next_byte(&input);
+    overwatch_phase = next_byte(&input);
+    overwatch_distance = next_u16(&input);
+    overwatch_flags = next_byte(&input);
+    overwatch_valid = whc_fire_overwatch_is_valid(overwatch_trigger, overwatch_phase,
+                                                  overwatch_distance, overwatch_flags);
+    expected_overwatch_valid =
+        overwatch_trigger >= WHC_FIRE_OVERWATCH_SET_UP &&
+        overwatch_trigger <= WHC_FIRE_OVERWATCH_CHARGE_DECLARED &&
+        (overwatch_phase == WHC_BATTLE_PHASE_MOVEMENT ||
+         overwatch_phase == WHC_BATTLE_PHASE_CHARGE) &&
+        overwatch_distance > 0u && overwatch_distance <= 24000u &&
+        overwatch_flags == WHC_FIRE_OVERWATCH_FLAGS_MASK &&
+        (overwatch_trigger == WHC_FIRE_OVERWATCH_SET_UP ||
+         (overwatch_trigger == WHC_FIRE_OVERWATCH_CHARGE_DECLARED
+              ? overwatch_phase == WHC_BATTLE_PHASE_CHARGE
+              : overwatch_phase == WHC_BATTLE_PHASE_MOVEMENT));
+    assert(overwatch_valid == expected_overwatch_valid);
     return 0;
 }

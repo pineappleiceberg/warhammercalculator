@@ -1493,6 +1493,34 @@ static void test_heroic_intervention(void) {
                                              WHC_HEROIC_FLAGS_MASK));
 }
 
+/*@ terminates \true; */
+static void test_fire_overwatch(void) {
+    assert(whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_SET_UP,
+                                       WHC_BATTLE_PHASE_MOVEMENT, 24000u,
+                                       WHC_FIRE_OVERWATCH_FLAGS_MASK));
+    assert(whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_SET_UP,
+                                       WHC_BATTLE_PHASE_CHARGE, 1u,
+                                       WHC_FIRE_OVERWATCH_FLAGS_MASK));
+    assert(whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_NORMAL_MOVE_START,
+                                       WHC_BATTLE_PHASE_MOVEMENT, 12000u,
+                                       WHC_FIRE_OVERWATCH_FLAGS_MASK));
+    assert(whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_CHARGE_DECLARED,
+                                       WHC_BATTLE_PHASE_CHARGE, 6000u,
+                                       WHC_FIRE_OVERWATCH_FLAGS_MASK));
+    assert(!whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_CHARGE_DECLARED,
+                                        WHC_BATTLE_PHASE_MOVEMENT, 6000u,
+                                        WHC_FIRE_OVERWATCH_FLAGS_MASK));
+    assert(!whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_NORMAL_MOVE_END,
+                                        WHC_BATTLE_PHASE_CHARGE, 6000u,
+                                        WHC_FIRE_OVERWATCH_FLAGS_MASK));
+    assert(!whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_ADVANCE_END,
+                                        WHC_BATTLE_PHASE_MOVEMENT, 24001u,
+                                        WHC_FIRE_OVERWATCH_FLAGS_MASK));
+    assert(!whc_fire_overwatch_is_valid(
+        WHC_FIRE_OVERWATCH_FALL_BACK_START, WHC_BATTLE_PHASE_MOVEMENT, 6000u,
+        WHC_FIRE_OVERWATCH_FLAGS_MASK & ~WHC_FIRE_OVERWATCH_TARGET_VISIBLE));
+}
+
 /*@ assigns \nothing;
  */
 static void test_battle_clock(void) {
@@ -1558,6 +1586,7 @@ int main(void) {
     test_charge_resolution();
     test_fight_move();
     test_heroic_intervention();
+    test_fire_overwatch();
     test_battle_clock();
     puts("all tests passed");
     return 0;
