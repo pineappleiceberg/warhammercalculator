@@ -8,7 +8,9 @@
       "url": "https://assets.warhammer-community.com/warhammer40000_core%26key_corerules_eng_24.09-5xfayxjekm.pdf",
       "retrievedAt": "2026-08-10",
       "sha256": "4d0e8019cbfddd6f46781d5b4ed31d46fb21eb2d0d10a0f6fabefac0ce054364",
-      "pages": [7, 8, 16, 17, 18, 19, 23, 26, 29, 32, 33, 34, 35, 39, 43, 53, 57, 60],
+      "pages": [
+        7, 8, 16, 17, 18, 19, 23, 26, 29, 32, 33, 34, 35, 39, 43, 53, 57, 60
+      ],
       "usedFor": [
         "measuring distances between the closest base or hull points",
         "model, unit, and full visibility",
@@ -28,6 +30,19 @@
         "destroyed and Emergency Disembarkation",
         "mortal wounds and Feel No Pain",
         "Aircraft Transport Reserve restrictions"
+      ]
+    },
+    {
+      "id": "core-rules-updates-10e-2025-10",
+      "title": "Warhammer 40,000 Core Rules Updates",
+      "edition": "10th Edition",
+      "version": "October 2025",
+      "url": "https://assets.warhammer-community.com/eng_22-10_warhammer40000_core_rules_updates-kikyythcsl-5iydvuj9w6.pdf",
+      "retrievedAt": "2026-08-10",
+      "sha256": "27960a4d4affecd450af69c54d7583bcc2941b00ba5845f5786a630bdec7f4ba",
+      "pages": [10],
+      "usedFor": [
+        "Heroic Intervention timing, target eligibility, 6-inch range, 1CP cost, Walker restriction, sole target, out-of-phase Charge resolution, and suppressed Charge bonus"
       ]
     }
   ]

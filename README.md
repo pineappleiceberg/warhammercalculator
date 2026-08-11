@@ -761,6 +761,21 @@ The ACSL-specified native predicate is proved, exported to WebAssembly, and
 differentially cross-checked by JavaScript and the replay API. Version-11 and
 older Fight activations retain their historical behavior behind an explicit
 migration boundary.
+Version 13 makes Heroic Intervention an executable immediate reaction after
+each successful enemy Charge move. Replay opens one responder window and blocks
+all unrelated events and clock advancement until that player resolves or
+declines it. A resolution records the triggering charge, intervening formation,
+sole target, both D6, modifiers, effective distance, a reviewed starting
+distance no greater than 6 inches, the canonical Charge movement facts, and an
+audited Command Point deduction. The standard cost is 1CP; different costs,
+additional same-phase uses, and otherwise ineligible Battle-shocked or Aircraft
+formations require an explicit source-rule reason. Non-Walker Vehicles are
+rejected. A successful intervention remains eligible to fight later that turn
+but never receives Charge Bonus. Guided Play exposes the complete decision,
+secure roll, physical-table confirmations, failure path, and pass path. The
+replay API returns pending, resolved, and declined reactions and independently
+cross-checks the ACSL-specified C/WebAssembly predicate. Version-12 and older
+histories retain their prior behavior behind an explicit migration boundary.
 The guided timeline records battle round, first or second player turn, active
 and priority player, phase, and step. It covers Command, Movement, Shooting,
 Charge, and Fight through five rounds. Pending bounded choices stop both attacks

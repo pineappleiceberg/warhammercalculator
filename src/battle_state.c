@@ -163,9 +163,9 @@ bool whc_weapon_inventory_declaration_is_valid(uint32_t inventory_count,
 }
 
 bool whc_weapon_bearer_declaration_is_valid(uint32_t inventory_count,
-                                            uint32_t surviving_bearer_count,
-                                            uint32_t used_count, uint32_t declared_count,
-                                            uint32_t inventory_flags, uint32_t declared_flags) {
+                                            uint32_t surviving_bearer_count, uint32_t used_count,
+                                            uint32_t declared_count, uint32_t inventory_flags,
+                                            uint32_t declared_flags) {
     return inventory_count > 0u && surviving_bearer_count > 0u &&
            surviving_bearer_count <= inventory_count && used_count <= surviving_bearer_count &&
            declared_count > 0u && declared_count <= surviving_bearer_count - used_count &&
@@ -180,29 +180,27 @@ bool whc_weapon_bearer_declaration_is_valid(uint32_t inventory_count,
 bool whc_charge_resolution_is_valid(uint32_t die_one, uint32_t die_two, int32_t roll_modifier,
                                     uint32_t charge_distance_thousandths,
                                     uint32_t maximum_target_distance_thousandths,
-                                    uint32_t maximum_model_move_thousandths,
-                                    uint32_t target_count, bool successful, uint32_t flags) {
-    if (die_one < 1u || die_one > 6u || die_two < 1u || die_two > 6u ||
-        roll_modifier < -12 || roll_modifier > 12) {
+                                    uint32_t maximum_model_move_thousandths, uint32_t target_count,
+                                    bool successful, uint32_t flags) {
+    if (die_one < 1u || die_one > 6u || die_two < 1u || die_two > 6u || roll_modifier < -12 ||
+        roll_modifier > 12) {
         return false;
     }
     const int32_t modified_roll = (int32_t)(die_one + die_two) + roll_modifier;
-    const uint32_t canonical_distance =
-        modified_roll > 0 ? (uint32_t)modified_roll * 1000u : 0u;
+    const uint32_t canonical_distance = modified_roll > 0 ? (uint32_t)modified_roll * 1000u : 0u;
     const bool common =
         charge_distance_thousandths <= 24000u && maximum_target_distance_thousandths > 0u &&
-        maximum_target_distance_thousandths <= 12000u &&
-        maximum_model_move_thousandths <= 24000u && target_count > 0u &&
-        target_count <= 12u && flags <= WHC_CHARGE_FLAGS_MASK &&
+        maximum_target_distance_thousandths <= 12000u && maximum_model_move_thousandths <= 24000u &&
+        target_count > 0u && target_count <= 12u && flags <= WHC_CHARGE_FLAGS_MASK &&
         (flags & WHC_CHARGE_REVIEWED_BY_PLAYER) != 0u &&
         (flags & WHC_CHARGE_PHASE_START_ELIGIBLE) != 0u &&
         (flags & WHC_CHARGE_STARTED_OUTSIDE_ENGAGEMENT) != 0u &&
         (charge_distance_thousandths == canonical_distance ||
          (flags & WHC_CHARGE_ROLL_OVERRIDE_EXPLAINED) != 0u);
-    if (!common) return false;
+    if (!common)
+        return false;
     if (!successful) {
-        return maximum_model_move_thousandths == 0u &&
-               (flags & WHC_CHARGE_FAILURE_EXPLAINED) != 0u;
+        return maximum_model_move_thousandths == 0u && (flags & WHC_CHARGE_FAILURE_EXPLAINED) != 0u;
     }
     return maximum_model_move_thousandths > 0u &&
            maximum_model_move_thousandths <= charge_distance_thousandths &&
@@ -216,18 +214,33 @@ bool whc_charge_resolution_is_valid(uint32_t die_one, uint32_t die_two, int32_t 
 bool whc_fight_move_is_valid(uint32_t stage, uint32_t destination,
                              uint32_t maximum_model_move_thousandths, uint32_t flags) {
     if (stage < WHC_FIGHT_MOVE_PILE_IN || stage > WHC_FIGHT_MOVE_CONSOLIDATION ||
-        destination > WHC_FIGHT_DESTINATION_OBJECTIVE ||
-        maximum_model_move_thousandths > 3000u || flags > WHC_FIGHT_MOVE_FLAGS_MASK) {
+        destination > WHC_FIGHT_DESTINATION_OBJECTIVE || maximum_model_move_thousandths > 3000u ||
+        flags > WHC_FIGHT_MOVE_FLAGS_MASK) {
         return false;
     }
-    if (destination == WHC_FIGHT_DESTINATION_ENEMY) return flags == 63u;
+    if (destination == WHC_FIGHT_DESTINATION_ENEMY)
+        return flags == 63u;
     if (stage == WHC_FIGHT_MOVE_PILE_IN) {
-        return destination == WHC_FIGHT_DESTINATION_NONE &&
-               maximum_model_move_thousandths == 0u && flags == 1121u;
+        return destination == WHC_FIGHT_DESTINATION_NONE && maximum_model_move_thousandths == 0u &&
+               flags == 1121u;
     }
-    if (destination == WHC_FIGHT_DESTINATION_OBJECTIVE) return flags == 1507u;
-    return destination == WHC_FIGHT_DESTINATION_NONE &&
-           maximum_model_move_thousandths == 0u && flags == 1633u;
+    if (destination == WHC_FIGHT_DESTINATION_OBJECTIVE)
+        return flags == 1507u;
+    return destination == WHC_FIGHT_DESTINATION_NONE && maximum_model_move_thousandths == 0u &&
+           flags == 1633u;
+}
+
+bool whc_heroic_intervention_is_valid(uint32_t die_one, uint32_t die_two, int32_t roll_modifier,
+                                      uint32_t charge_distance_thousandths,
+                                      uint32_t start_distance_thousandths,
+                                      uint32_t maximum_model_move_thousandths, bool successful,
+                                      uint32_t charge_flags, uint32_t heroic_flags) {
+    return start_distance_thousandths > 0u && start_distance_thousandths <= 6000u &&
+           heroic_flags == WHC_HEROIC_FLAGS_MASK &&
+           whc_charge_resolution_is_valid(die_one, die_two, roll_modifier,
+                                          charge_distance_thousandths, start_distance_thousandths,
+                                          maximum_model_move_thousandths, 1u, successful,
+                                          charge_flags);
 }
 
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,

@@ -168,6 +168,17 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     uint32_t target_flags;
     bool target_eligible;
     bool expected_target_eligible;
+    uint32_t charge_die_one;
+    uint32_t charge_die_two;
+    int32_t charge_modifier;
+    uint32_t charge_distance;
+    uint32_t heroic_start_distance;
+    uint32_t maximum_model_move;
+    bool charge_successful;
+    uint32_t charge_flags;
+    uint32_t heroic_flags;
+    bool heroic_valid;
+    bool expected_heroic_valid;
 
     while (index < weapon_count) {
         generate_weapon(&input, &weapons[index]);
@@ -264,8 +275,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     memset(battle_events, 0, sizeof(battle_events));
     battle_damage = next_byte(&input) % battle_profiles[0];
     battle_events[0] = WHC_BATTLE_EVENT_VERSION;
-    battle_events[1] = next_byte(&input) % 2u == 0u ? WHC_BATTLE_EVENT_ATTACK
-                                                     : WHC_BATTLE_EVENT_TRANSPORT_DAMAGE;
+    battle_events[1] =
+        next_byte(&input) % 2u == 0u ? WHC_BATTLE_EVENT_ATTACK : WHC_BATTLE_EVENT_TRANSPORT_DAMAGE;
     battle_events[2] = 1u;
     battle_events[4] = battle_damage;
     battle_events[6] = 0u;
@@ -336,5 +347,24 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
                                (published_range == effective_range ||
                                 (target_flags & WHC_TARGET_RANGE_OVERRIDE_EXPLAINED) != 0u);
     assert(target_eligible == expected_target_eligible);
+    charge_die_one = next_byte(&input);
+    charge_die_two = next_byte(&input);
+    charge_modifier = (int32_t)next_byte(&input) - 128;
+    charge_distance = next_u16(&input);
+    heroic_start_distance = next_u16(&input);
+    maximum_model_move = next_u16(&input);
+    charge_successful = next_byte(&input) % 2u != 0u;
+    charge_flags = next_u16(&input);
+    heroic_flags = next_byte(&input);
+    heroic_valid = whc_heroic_intervention_is_valid(
+        charge_die_one, charge_die_two, charge_modifier, charge_distance, heroic_start_distance,
+        maximum_model_move, charge_successful, charge_flags, heroic_flags);
+    expected_heroic_valid =
+        heroic_start_distance > 0u && heroic_start_distance <= 6000u &&
+        heroic_flags == WHC_HEROIC_FLAGS_MASK &&
+        whc_charge_resolution_is_valid(charge_die_one, charge_die_two, charge_modifier,
+                                       charge_distance, heroic_start_distance, maximum_model_move,
+                                       1u, charge_successful, charge_flags);
+    assert(heroic_valid == expected_heroic_valid);
     return 0;
 }

@@ -22,6 +22,7 @@ import {
   battleFormationHealth,
   chargeResolutionIsValid,
   fightMoveIsValid,
+  heroicInterventionIsValid,
   normalizeBattleState,
   rangedTargetEligibilityIsValid,
   replayBattleState,
@@ -94,6 +95,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_weapon_bearer_declaration_is_valid, "function");
   assert.equal(typeof calculator._whc_charge_resolution_is_valid, "function");
   assert.equal(typeof calculator._whc_fight_move_is_valid, "function");
+  assert.equal(typeof calculator._whc_heroic_intervention_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
 });
@@ -151,6 +153,24 @@ test("WebAssembly and JavaScript agree on reviewed Fight movements", () => {
     assert.equal(
       Boolean(calculator._whc_fight_move_is_valid(...values)),
       fightMoveIsValid(...values),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on Heroic Intervention resolutions", () => {
+  const successfulChargeFlags = 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128;
+  const failedChargeFlags = 1 | 2 | 4 | 512;
+  const cases = [
+    [3, 4, 0, 7000, 6000, 5000, 1, successfulChargeFlags, 15],
+    [1, 2, 0, 3000, 6000, 0, 0, failedChargeFlags, 15],
+    [3, 4, 0, 7000, 6001, 5000, 1, successfulChargeFlags, 15],
+    [3, 4, 0, 7000, 6000, 5000, 1, successfulChargeFlags, 13],
+    [3, 4, 0, 7000, 6000, 8000, 1, successfulChargeFlags, 15],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_heroic_intervention_is_valid(...values)),
+      heroicInterventionIsValid(...values),
     );
   }
 });

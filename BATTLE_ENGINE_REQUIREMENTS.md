@@ -96,11 +96,13 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    assigned-Transport embark/disembark/destruction timing, destroyed-passenger
    allocation and Deadly Demise ordering, exact optional weapon-bearer identity
    through casualties, canonical charge rolls and reviewed charge movement,
-   canonical Pile In and Consolidation sequencing, and explicit fail-closed
-   eligibility confirmations are complete. Remaining work
+   canonical Pile In and Consolidation sequencing, explicit fail-closed
+   eligibility confirmations, plus the immediate Heroic Intervention window,
+   audited CP cost, legal charge target/movement, Walker restriction, and
+   suppressed Charge Bonus are complete. Remaining work
    includes compatible unassigned Transport changes, transport-specific
-   exceptions, reactions, full geometry-backed target eligibility, Heroic
-   Intervention, and geometry-backed engagement.
+   exceptions, other reactions and Stratagem windows, full geometry-backed
+   target eligibility, and geometry-backed engagement.
 6. Normalize complete faction, detachment, enhancement, Stratagem, and mission
    coverage with source-locked executable rules and a fail-closed coverage gate.
 7. Add table geometry and player-supplied measurement and visibility facts.

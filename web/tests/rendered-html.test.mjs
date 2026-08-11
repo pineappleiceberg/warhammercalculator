@@ -20,6 +20,7 @@ import {
   recordRangedTargetEligibility,
   registerBattleFormation,
   replayBattleState,
+  resolveHeroicIntervention,
   resolveBattleChoice,
   resolveDestroyedTransport,
   scoreBattlePoints,
@@ -2761,6 +2762,21 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
       },
     ],
   };
+  const intervenor = {
+    ...structuredClone(target),
+    id: "heroic-intervenor",
+    sourceFormationId: "heroic-intervenor",
+    name: "Heroic intervenor",
+    segments: [
+      {
+        ...target.segments[0],
+        id: "heroic-intervenor-model",
+        savedUnitId: "heroic-intervenor",
+        unitName: "Heroic intervenor",
+        modelName: "Heroic intervenor",
+      },
+    ],
+  };
   let state = createBattleState({
     id: "charge-api",
     createdAt: 1,
@@ -2772,6 +2788,7 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
   });
   state = registerBattleFormation(state, attacker, "register-charge-attacker", 1);
   state = registerBattleFormation(state, target, "register-charge-target", 2);
+  state = registerBattleFormation(state, intervenor, "register-heroic-intervenor", 3);
   state = declareFormationDeployment(
     state,
     attacker.id,
@@ -2788,6 +2805,14 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
     "declare-charge-target",
     4,
   );
+  state = declareFormationDeployment(
+    state,
+    intervenor.id,
+    "battlefield",
+    {},
+    "declare-heroic-intervenor",
+    5,
+  );
   state = deployFormation(
     state,
     attacker.id,
@@ -2801,6 +2826,13 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
     { placementConfirmed: true, placementReason: "Deployment zone" },
     "deploy-charge-target",
     6,
+  );
+  state = deployFormation(
+    state,
+    intervenor.id,
+    { placementConfirmed: true, placementReason: "Deployment zone" },
+    "deploy-heroic-intervenor",
+    7,
   );
   state = startBattle(state, "player-1", "start-charge", 7);
   while (
@@ -2854,6 +2886,30 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
       movementReviewReason: "Player reviewed every model endpoint",
     },
     "resolved-charge",
+    state.events.length,
+  );
+  state = resolveHeroicIntervention(
+    state,
+    intervenor.id,
+    {
+      successful: true,
+      rolls: [3, 4],
+      rollModifier: 0,
+      chargeDistanceThousandths: 7000,
+      startDistanceThousandths: 6000,
+      targetEligibilityConfirmed: true,
+      targetEligibilityReason: "Within 6 inches and eligible to charge the triggering unit",
+      startedOutsideEngagementRange: true,
+      maximumModelMoveThousandths: 5000,
+      endsWithinEngagementRange: true,
+      unitCoherencyConfirmed: true,
+      nonTargetEngagementRangeAvoided: true,
+      allModelsCloserToTarget: true,
+      baseContactMaximized: true,
+      movementReviewedByPlayer: true,
+      movementReviewReason: "Player reviewed every model endpoint",
+    },
+    "resolved-heroic-intervention",
     state.events.length,
   );
   while (
@@ -2924,11 +2980,19 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 12);
+  assert.equal(body.data.schemaVersion, 13);
   assert.equal(body.data.charges[0].canonicalMovement, true);
   assert.deepEqual(body.data.charges[0].rolls, [3, 4]);
   assert.equal(body.data.charges[0].chargeDistanceThousandths, 7000);
   assert.equal(body.data.charges[0].successful, true);
+  assert.equal(body.data.pendingHeroicIntervention, null);
+  assert.equal(body.data.heroicInterventions.length, 1);
+  assert.equal(body.data.heroicInterventions[0].formationId, intervenor.id);
+  assert.equal(body.data.heroicInterventions[0].targetFormationId, attacker.id);
+  assert.equal(body.data.heroicInterventions[0].commandPointsBefore, 1);
+  assert.equal(body.data.heroicInterventions[0].commandPointsAfter, 0);
+  assert.equal(body.data.heroicInterventions[0].receivesChargeBonus, false);
+  assert.deepEqual(body.data.heroicInterventionPasses, []);
   assert.equal(body.data.fightActivations.length, 1);
   assert.equal(body.data.fightActivations[0].canonicalMovement, true);
   assert.equal(body.data.fightActivations[0].formationId, attacker.id);
@@ -3149,7 +3213,7 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 12);
+  assert.equal(body.data.schemaVersion, 13);
   assert.deepEqual(body.data.weaponDeclarations, [
     {
       attackEventId: "destroy-transport",

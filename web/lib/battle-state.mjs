@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 12;
+export const BATTLE_STATE_VERSION = 13;
+export const HEROIC_INTERVENTION_BATTLE_STATE_VERSION = 13;
 export const FIGHT_MOVE_BATTLE_STATE_VERSION = 12;
 export const CHARGE_MOVE_BATTLE_STATE_VERSION = 11;
 export const WEAPON_BEARER_BATTLE_STATE_VERSION = 10;
@@ -168,6 +169,73 @@ export const FIGHT_MOVE_FLAGS = Object.freeze({
   objectiveDestinationImpossible: 512,
   outcomeExplained: 1024,
 });
+
+export const HEROIC_INTERVENTION_FLAGS = Object.freeze({
+  targetEligibilityReviewed: 1,
+  vehicleRestrictionSatisfied: 2,
+  soleTriggerTarget: 4,
+  chargeBonusSuppressed: 8,
+});
+
+export function heroicInterventionFlags(event) {
+  return (
+    (event.targetEligibilityConfirmed ? HEROIC_INTERVENTION_FLAGS.targetEligibilityReviewed : 0) |
+    (event.vehicleRestrictionSatisfied
+      ? HEROIC_INTERVENTION_FLAGS.vehicleRestrictionSatisfied
+      : 0) |
+    (event.soleTriggerTargetConfirmed ? HEROIC_INTERVENTION_FLAGS.soleTriggerTarget : 0) |
+    (event.chargeBonusSuppressedConfirmed ? HEROIC_INTERVENTION_FLAGS.chargeBonusSuppressed : 0)
+  );
+}
+
+export function heroicInterventionChargeFlags(event) {
+  return (
+    (event.movementReviewedByPlayer ? CHARGE_RESOLUTION_FLAGS.reviewedByPlayer : 0) |
+    (event.targetEligibilityConfirmed ? CHARGE_RESOLUTION_FLAGS.phaseStartEligible : 0) |
+    (event.startedOutsideEngagementRange
+      ? CHARGE_RESOLUTION_FLAGS.startedOutsideEngagementRange
+      : 0) |
+    (event.successful && event.endsWithinEngagementRange
+      ? CHARGE_RESOLUTION_FLAGS.allTargetsEngaged
+      : 0) |
+    (event.unitCoherencyConfirmed ? CHARGE_RESOLUTION_FLAGS.unitCoherency : 0) |
+    (event.nonTargetEngagementRangeAvoided ? CHARGE_RESOLUTION_FLAGS.nonTargetsAvoided : 0) |
+    (event.allModelsCloserToTarget ? CHARGE_RESOLUTION_FLAGS.allModelsCloser : 0) |
+    (event.baseContactMaximized ? CHARGE_RESOLUTION_FLAGS.baseContactMaximized : 0) |
+    (event.rollOverrideReason ? CHARGE_RESOLUTION_FLAGS.rollOverrideExplained : 0) |
+    (event.failureReason ? CHARGE_RESOLUTION_FLAGS.failureExplained : 0)
+  );
+}
+
+export function heroicInterventionIsValid(
+  dieOne,
+  dieTwo,
+  rollModifier,
+  chargeDistanceThousandths,
+  startDistanceThousandths,
+  maximumModelMoveThousandths,
+  successful,
+  chargeFlags,
+  heroicFlags,
+) {
+  return (
+    Number.isSafeInteger(startDistanceThousandths) &&
+    startDistanceThousandths > 0 &&
+    startDistanceThousandths <= 6000 &&
+    heroicFlags === 15 &&
+    chargeResolutionIsValid(
+      dieOne,
+      dieTwo,
+      rollModifier,
+      chargeDistanceThousandths,
+      startDistanceThousandths,
+      maximumModelMoveThousandths,
+      1,
+      successful,
+      chargeFlags,
+    )
+  );
+}
 
 export function fightMoveIsValid(stage, destination, maximumModelMoveThousandths, flags) {
   if (
@@ -1068,6 +1136,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   if (stateVersion < FIGHT_MOVE_BATTLE_STATE_VERSION && event.type === "fight_move_recorded") {
     throw new Error("Structured Fight movement requires battle-state version 12");
   }
+  if (
+    stateVersion < HEROIC_INTERVENTION_BATTLE_STATE_VERSION &&
+    ["heroic_intervention_resolved", "heroic_intervention_passed"].includes(event.type)
+  ) {
+    throw new Error("Heroic Intervention reactions require battle-state version 13");
+  }
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation, stateVersion);
     if (!formations.players.has(formation.playerId)) throw new Error("Formation player is unknown");
@@ -1519,6 +1593,129 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
+  if (event.type === "heroic_intervention_passed") {
+    normalized.triggerChargeEventId = boundedString(
+      event.triggerChargeEventId,
+      "Heroic Intervention trigger charge id",
+      100,
+    );
+    normalized.playerId = boundedString(event.playerId, "Heroic Intervention player id", 100);
+    if (!formations.players.has(normalized.playerId)) {
+      throw new Error("Heroic Intervention player is unknown");
+    }
+    normalized.reason = boundedString(event.reason, "Heroic Intervention pass reason", 300);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "heroic_intervention_resolved") {
+    normalized.triggerChargeEventId = boundedString(
+      event.triggerChargeEventId,
+      "Heroic Intervention trigger charge id",
+      100,
+    );
+    normalized.formationId = boundedString(
+      event.formationId,
+      "Heroic Intervention formation id",
+      100,
+    );
+    normalized.targetFormationId = boundedString(
+      event.targetFormationId,
+      "Heroic Intervention target id",
+      100,
+    );
+    if (
+      !formations.byId.has(normalized.formationId) ||
+      !formations.byId.has(normalized.targetFormationId)
+    ) {
+      throw new Error("Heroic Intervention references an unregistered formation");
+    }
+    normalized.commandPointCost = nonnegativeInteger(
+      event.commandPointCost,
+      "Heroic Intervention Command Point cost",
+      5,
+    );
+    normalized.commandPointsBefore = nonnegativeInteger(
+      event.commandPointsBefore,
+      "Command Points before Heroic Intervention",
+      100000,
+    );
+    normalized.commandPointsAfter = nonnegativeInteger(
+      event.commandPointsAfter,
+      "Command Points after Heroic Intervention",
+      100000,
+    );
+    normalized.costOverrideReason = event.costOverrideReason
+      ? boundedString(event.costOverrideReason, "Heroic Intervention cost override reason", 300)
+      : "";
+    normalized.usageOverrideReason = event.usageOverrideReason
+      ? boundedString(event.usageOverrideReason, "Heroic Intervention usage override reason", 300)
+      : "";
+    normalized.stratagemEligibilityOverrideReason = event.stratagemEligibilityOverrideReason
+      ? boundedString(
+          event.stratagemEligibilityOverrideReason,
+          "Heroic Intervention eligibility override reason",
+          300,
+        )
+      : "";
+    normalized.rolls = normalizeDieRolls(event.rolls, "Heroic Intervention charge dice");
+    if (normalized.rolls.length !== 2) {
+      throw new Error("A Heroic Intervention Charge roll must contain two D6 rolls");
+    }
+    normalized.rollModifier = boundedInteger(
+      event.rollModifier,
+      "Heroic Intervention roll modifier",
+      -12,
+      12,
+    );
+    normalized.chargeDistanceThousandths = nonnegativeInteger(
+      event.chargeDistanceThousandths,
+      "Heroic Intervention Charge distance",
+      24000,
+    );
+    normalized.rollOverrideReason = event.rollOverrideReason
+      ? boundedString(event.rollOverrideReason, "Heroic Intervention roll override reason", 300)
+      : "";
+    normalized.startDistanceThousandths = nonnegativeInteger(
+      event.startDistanceThousandths,
+      "Heroic Intervention starting distance",
+      6000,
+    );
+    if (normalized.startDistanceThousandths < 1) {
+      throw new Error("Heroic Intervention starting distance must be positive");
+    }
+    normalized.targetEligibilityConfirmed = Boolean(event.targetEligibilityConfirmed);
+    normalized.targetEligibilityReason = normalized.targetEligibilityConfirmed
+      ? boundedString(
+          event.targetEligibilityReason,
+          "Heroic Intervention target eligibility reason",
+          300,
+        )
+      : "";
+    normalized.startedOutsideEngagementRange = Boolean(event.startedOutsideEngagementRange);
+    normalized.maximumModelMoveThousandths = nonnegativeInteger(
+      event.maximumModelMoveThousandths,
+      "Heroic Intervention maximum Charge move",
+      24000,
+    );
+    normalized.endsWithinEngagementRange = Boolean(event.endsWithinEngagementRange);
+    normalized.unitCoherencyConfirmed = Boolean(event.unitCoherencyConfirmed);
+    normalized.nonTargetEngagementRangeAvoided = Boolean(event.nonTargetEngagementRangeAvoided);
+    normalized.allModelsCloserToTarget = Boolean(event.allModelsCloserToTarget);
+    normalized.baseContactMaximized = Boolean(event.baseContactMaximized);
+    normalized.movementReviewedByPlayer = Boolean(event.movementReviewedByPlayer);
+    normalized.movementReviewReason = normalized.movementReviewedByPlayer
+      ? boundedString(event.movementReviewReason, "Heroic Intervention movement review", 300)
+      : "";
+    normalized.vehicleRestrictionSatisfied = Boolean(event.vehicleRestrictionSatisfied);
+    normalized.soleTriggerTargetConfirmed = Boolean(event.soleTriggerTargetConfirmed);
+    normalized.chargeBonusSuppressedConfirmed = Boolean(event.chargeBonusSuppressedConfirmed);
+    normalized.successful = Boolean(event.successful);
+    normalized.failureReason = normalized.successful
+      ? ""
+      : boundedString(event.failureReason, "Heroic Intervention failure reason", 300);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
   if (event.type === "activation_started") {
     normalized.formationId = boundedString(event.formationId, "Activation formation id", 100);
     if (!formations.byId.has(normalized.formationId)) {
@@ -1822,6 +2019,7 @@ export function normalizeBattleState(candidate) {
       WEAPON_INVENTORY_BATTLE_STATE_VERSION,
       WEAPON_BEARER_BATTLE_STATE_VERSION,
       CHARGE_MOVE_BATTLE_STATE_VERSION,
+      FIGHT_MOVE_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -1866,6 +2064,7 @@ export function normalizeBattleState(candidate) {
         WEAPON_INVENTORY_BATTLE_STATE_VERSION,
         WEAPON_BEARER_BATTLE_STATE_VERSION,
         CHARGE_MOVE_BATTLE_STATE_VERSION,
+        FIGHT_MOVE_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -1933,6 +2132,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyFightMovementThroughSequence = nonnegativeInteger(
         migration.legacyFightMovementThroughSequence,
         "Legacy Fight movement event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= HEROIC_INTERVENTION_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyHeroicInterventionThroughSequence = nonnegativeInteger(
+        migration.legacyHeroicInterventionThroughSequence,
+        "Legacy Heroic Intervention event sequence",
         events.length,
       );
     }
@@ -2267,8 +2473,12 @@ export function replayBattleState(state) {
   const transportDestructionResolutions = new Map();
   const targetEligibilityFacts = new Map();
   const fightMovementsByActivation = new Map();
+  const heroicInterventions = [];
+  const heroicInterventionPasses = [];
+  const usedHeroicInterventionKeys = new Set();
   const completedActivations = new Set();
   let activeActivation = null;
+  let pendingHeroicIntervention = null;
   let deploymentPriorityPlayerId = "";
   let clock = setupBattleClock();
   let mission = defaultMission(state.players);
@@ -2290,6 +2500,10 @@ export function replayBattleState(state) {
     state.version < FIGHT_MOVE_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyFightMovementThroughSequence ?? 0);
+  const legacyHeroicInterventionThroughSequence =
+    state.version < HEROIC_INTERVENTION_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyHeroicInterventionThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -2301,6 +2515,12 @@ export function replayBattleState(state) {
   for (const event of state.events) {
     if (pendingTransportDestructions.size > 0 && event.type !== "transport_destroyed_resolved") {
       throw new Error("Destroyed Transport passengers must disembark immediately");
+    }
+    if (
+      pendingHeroicIntervention &&
+      !["heroic_intervention_resolved", "heroic_intervention_passed"].includes(event.type)
+    ) {
+      throw new Error("Resolve or pass the pending Heroic Intervention window first");
     }
     if (event.type === "formation_registered") {
       if (state.version >= TIMELINE_BATTLE_STATE_VERSION && clock.status !== "setup") {
@@ -3034,6 +3254,132 @@ export function replayBattleState(state) {
         throw new Error("A unit that disembarked after movement cannot declare a charge this turn");
       }
       chargeByFormation.set(event.formationId, event);
+      if (event.successful && event.sequence > legacyHeroicInterventionThroughSequence) {
+        pendingHeroicIntervention = {
+          triggerChargeEventId: event.id,
+          chargingFormationId: event.formationId,
+          responderPlayerId: otherPlayerId(state.players, clock.activePlayerId),
+          clock: { ...clock },
+        };
+      }
+      continue;
+    }
+    if (event.type === "heroic_intervention_passed") {
+      if (
+        !pendingHeroicIntervention ||
+        event.triggerChargeEventId !== pendingHeroicIntervention.triggerChargeEventId ||
+        event.playerId !== pendingHeroicIntervention.responderPlayerId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Heroic Intervention pass does not match the pending reaction window");
+      }
+      heroicInterventionPasses.push(event);
+      pendingHeroicIntervention = null;
+      continue;
+    }
+    if (event.type === "heroic_intervention_resolved") {
+      if (
+        !pendingHeroicIntervention ||
+        event.triggerChargeEventId !== pendingHeroicIntervention.triggerChargeEventId ||
+        event.targetFormationId !== pendingHeroicIntervention.chargingFormationId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Heroic Intervention does not match the pending reaction window");
+      }
+      const formation = formations.get(event.formationId);
+      const target = formations.get(event.targetFormationId);
+      if (
+        formation.playerId !== pendingHeroicIntervention.responderPlayerId ||
+        target.playerId === formation.playerId
+      ) {
+        throw new Error("Heroic Intervention must use the responding player's formation");
+      }
+      if (
+        !formationIsOnBattlefield(
+          formation.id,
+          deploymentByFormation,
+          deployedFormationIds,
+          embarkedByFormation,
+        ) ||
+        formationDestroyed(formation)
+      ) {
+        throw new Error("Heroic Intervention requires a living formation on the battlefield");
+      }
+      const lowerKeywords = formation.keywords.map((keyword) => keyword.toLowerCase());
+      const vehicleRestrictionSatisfied =
+        !lowerKeywords.includes("vehicle") || lowerKeywords.includes("walker");
+      if (!vehicleRestrictionSatisfied || !event.vehicleRestrictionSatisfied) {
+        throw new Error("Only a Walker Vehicle can use Heroic Intervention");
+      }
+      if (
+        (lowerKeywords.includes("aircraft") || battleShockedFormations.has(formation.id)) &&
+        !event.stratagemEligibilityOverrideReason
+      ) {
+        throw new Error(
+          "This formation requires an explicit source-rule override for Heroic Intervention",
+        );
+      }
+      const chargeFlags = heroicInterventionChargeFlags(event);
+      const heroicFlags = heroicInterventionFlags(event);
+      if (
+        !heroicInterventionIsValid(
+          event.rolls[0],
+          event.rolls[1],
+          event.rollModifier,
+          event.chargeDistanceThousandths,
+          event.startDistanceThousandths,
+          event.maximumModelMoveThousandths,
+          event.successful,
+          chargeFlags,
+          heroicFlags,
+        )
+      ) {
+        throw new Error("Heroic Intervention facts do not form a legal reviewed reaction");
+      }
+      if (event.commandPointCost !== 1 && !event.costOverrideReason) {
+        throw new Error("A non-canonical Heroic Intervention cost requires a source-rule reason");
+      }
+      const usageKey = `${clock.battleRound}:${clock.turn}:${clock.phase}:${formation.playerId}:heroic_intervention`;
+      if (usedHeroicInterventionKeys.has(usageKey) && !event.usageOverrideReason) {
+        throw new Error("Heroic Intervention has already been used by this player this phase");
+      }
+      const commandPoints = resources.get(formation.playerId).get("command_points");
+      if (
+        event.commandPointsBefore !== commandPoints.value ||
+        event.commandPointsAfter !== event.commandPointsBefore - event.commandPointCost ||
+        event.commandPointsAfter < 0
+      ) {
+        throw new Error("Heroic Intervention Command Point spending is inconsistent");
+      }
+      const priorCharge = chargeByFormation.get(formation.id);
+      if (priorCharge && sameTurn(priorCharge.clock, clock)) {
+        throw new Error("The intervening formation has already attempted a charge this turn");
+      }
+      resources.get(formation.playerId).set("command_points", {
+        ...commandPoints,
+        value: event.commandPointsAfter,
+      });
+      usedHeroicInterventionKeys.add(usageKey);
+      const chargeEvent = {
+        ...event,
+        source: "heroic_intervention",
+        receivesChargeBonus: false,
+        targetFormationIds: [event.targetFormationId],
+        targetFacts: [
+          {
+            formationId: event.targetFormationId,
+            startDistanceThousandths: event.startDistanceThousandths,
+            endsWithinEngagementRange: event.successful && event.endsWithinEngagementRange,
+          },
+        ],
+        phaseStartEligibilityConfirmed: event.targetEligibilityConfirmed,
+        phaseStartEligibilityReason: event.targetEligibilityReason,
+        eligibilityOverride: Boolean(event.stratagemEligibilityOverrideReason),
+        overrideReason: event.stratagemEligibilityOverrideReason,
+      };
+      chargeByFormation.set(formation.id, chargeEvent);
+      heroicInterventions.push(chargeEvent);
+      pendingHeroicIntervention = null;
       continue;
     }
     if (event.type === "fight_priority_passed") {
@@ -3111,12 +3457,13 @@ export function replayBattleState(state) {
         }
         const charge = chargeByFormation.get(event.formationId);
         const charged = Boolean(charge?.successful && sameTurn(charge.clock, clock));
+        const hasChargeBonus = charged && charge.receivesChargeBonus !== false;
         if (!charged && !event.eligibilityOverride) {
           throw new Error(
             "Confirm Engagement Range eligibility for a formation that did not charge",
           );
         }
-        if (clock.step === "fights_first" && !charged && !event.fightsFirst) {
+        if (clock.step === "fights_first" && !hasChargeBonus && !event.fightsFirst) {
           throw new Error("Formation is not confirmed to have Fights First");
         }
       }
@@ -3604,6 +3951,9 @@ export function replayBattleState(state) {
     transportDestructionResolutions,
     targetEligibilityFacts,
     fightMovementsByActivation,
+    pendingHeroicIntervention,
+    heroicInterventions,
+    heroicInterventionPasses,
     offBattlefieldFormationIds,
     reserveDestroyedFormationIds,
     completedActivations,
@@ -3715,6 +4065,9 @@ export function advanceBattleClock(state, id, at) {
   }
   if (replayed.activeActivation) {
     throw new Error("The active formation must finish its activation before advancing");
+  }
+  if (replayed.pendingHeroicIntervention) {
+    throw new Error("Resolve or pass the pending Heroic Intervention window first");
   }
   const from = replayed.clock;
   const to = nextBattleClock(from, state.players);
@@ -4171,6 +4524,103 @@ export function recordFormationCharge(
   });
 }
 
+export function passHeroicIntervention(state, reason, id, at) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingHeroicIntervention;
+  if (!pending) throw new Error("No Heroic Intervention window is pending");
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "heroic_intervention_passed",
+    triggerChargeEventId: pending.triggerChargeEventId,
+    playerId: pending.responderPlayerId,
+    reason,
+    clock: replayed.clock,
+  });
+}
+
+export function resolveHeroicIntervention(
+  state,
+  formationId,
+  {
+    commandPointCost = 1,
+    costOverrideReason = "",
+    usageOverrideReason = "",
+    stratagemEligibilityOverrideReason = "",
+    successful = false,
+    rolls = [],
+    rollModifier = 0,
+    chargeDistanceThousandths = Math.max(0, (rolls[0] ?? 0) + (rolls[1] ?? 0) + rollModifier) *
+      1000,
+    rollOverrideReason = "",
+    startDistanceThousandths = 0,
+    targetEligibilityConfirmed = false,
+    targetEligibilityReason = "",
+    startedOutsideEngagementRange = false,
+    maximumModelMoveThousandths = 0,
+    endsWithinEngagementRange = false,
+    unitCoherencyConfirmed = false,
+    nonTargetEngagementRangeAvoided = false,
+    allModelsCloserToTarget = false,
+    baseContactMaximized = false,
+    movementReviewedByPlayer = false,
+    movementReviewReason = "",
+    failureReason = "",
+  } = {},
+  id,
+  at,
+) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingHeroicIntervention;
+  if (!pending) throw new Error("No Heroic Intervention window is pending");
+  const formation = replayed.formations.get(formationId);
+  if (!formation) throw new Error("Heroic Intervention formation is unknown");
+  const lowerKeywords = formation.keywords.map((keyword) => keyword.toLowerCase());
+  const commandPointsBefore =
+    replayed.resources.get(formation.playerId)?.get("command_points")?.value ?? 0;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "heroic_intervention_resolved",
+    triggerChargeEventId: pending.triggerChargeEventId,
+    formationId,
+    targetFormationId: pending.chargingFormationId,
+    commandPointCost,
+    commandPointsBefore,
+    commandPointsAfter: commandPointsBefore - commandPointCost,
+    costOverrideReason,
+    usageOverrideReason,
+    stratagemEligibilityOverrideReason,
+    successful,
+    rolls,
+    rollModifier,
+    chargeDistanceThousandths,
+    rollOverrideReason,
+    startDistanceThousandths,
+    targetEligibilityConfirmed,
+    targetEligibilityReason,
+    startedOutsideEngagementRange,
+    maximumModelMoveThousandths,
+    endsWithinEngagementRange,
+    unitCoherencyConfirmed,
+    nonTargetEngagementRangeAvoided,
+    allModelsCloserToTarget,
+    baseContactMaximized,
+    movementReviewedByPlayer,
+    movementReviewReason,
+    vehicleRestrictionSatisfied:
+      !lowerKeywords.includes("vehicle") || lowerKeywords.includes("walker"),
+    soleTriggerTargetConfirmed: true,
+    chargeBonusSuppressedConfirmed: true,
+    failureReason,
+    clock: replayed.clock,
+  });
+}
+
 export function startFormationActivation(
   state,
   formationId,
@@ -4313,6 +4763,7 @@ export function battleCanStartFormationActivation(
     ) ||
     !battleAttackWindow(replayed.clock) ||
     replayed.pendingChoices.size > 0 ||
+    replayed.pendingHeroicIntervention ||
     replayed.activeActivation ||
     replayed.completedActivations.has(
       `${replayed.clock.battleRound}:${replayed.clock.turn}:${replayed.clock.phase}:${attackerFormationId}`,
@@ -4334,8 +4785,9 @@ export function battleCanStartFormationActivation(
   if (formation.playerId !== replayed.clock.priorityPlayerId) return false;
   const charge = replayed.chargeByFormation.get(attackerFormationId);
   const charged = Boolean(charge?.successful && sameTurn(charge.clock, replayed.clock));
+  const hasChargeBonus = charged && charge.receivesChargeBonus !== false;
   if (!charged && !eligibilityOverride) return false;
-  return replayed.clock.step !== "fights_first" || charged || fightsFirst;
+  return replayed.clock.step !== "fights_first" || hasChargeBonus || fightsFirst;
 }
 
 export function battleCanResolveAttack(state, attackerFormationId, options = {}) {

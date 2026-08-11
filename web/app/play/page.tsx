@@ -36,6 +36,7 @@ import {
   embarkFormation,
   normalizeBattleState,
   passFightPriority,
+  passHeroicIntervention,
   recordFormationCharge,
   recordFormationMovement,
   recordFightMove,
@@ -44,6 +45,7 @@ import {
   rollChargeDice,
   resolveDestroyedTransport,
   resolveBattleChoice,
+  resolveHeroicIntervention,
   revertLatestAttack,
   scoreBattlePoints,
   setBattleObjectiveControl,
@@ -188,6 +190,30 @@ export default function PlayMode() {
     allModelsCloser: false,
     baseContactMaximized: false,
     reviewedByPlayer: false,
+  });
+  const [heroicFormationId, setHeroicFormationId] = useState("");
+  const [heroicDice, setHeroicDice] = useState<[number, number]>([3, 4]);
+  const [heroicRollModifier, setHeroicRollModifier] = useState(0);
+  const [heroicDistance, setHeroicDistance] = useState(7);
+  const [heroicStartDistance, setHeroicStartDistance] = useState(6);
+  const [heroicMaximumModelMove, setHeroicMaximumModelMove] = useState(5);
+  const [heroicCommandPointCost, setHeroicCommandPointCost] = useState(1);
+  const [heroicCostOverrideReason, setHeroicCostOverrideReason] = useState("");
+  const [heroicUsageOverrideReason, setHeroicUsageOverrideReason] = useState("");
+  const [heroicEligibilityOverrideReason, setHeroicEligibilityOverrideReason] = useState("");
+  const [heroicRollOverrideReason, setHeroicRollOverrideReason] = useState("");
+  const [heroicFailureReason, setHeroicFailureReason] = useState("");
+  const [heroicMovementReviewReason, setHeroicMovementReviewReason] = useState("");
+  const [heroicPassReason, setHeroicPassReason] = useState("");
+  const [heroicFacts, setHeroicFacts] = useState({
+    targetEligibilityConfirmed: false,
+    startedOutsideEngagementRange: false,
+    endsWithinEngagementRange: false,
+    unitCoherencyConfirmed: false,
+    nonTargetEngagementRangeAvoided: false,
+    allModelsCloserToTarget: false,
+    baseContactMaximized: false,
+    movementReviewedByPlayer: false,
   });
   const [fightMoveDestination, setFightMoveDestination] = useState("enemy");
   const [fightMaximumModelMove, setFightMaximumModelMove] = useState(3);
@@ -839,6 +865,30 @@ export default function PlayMode() {
       selectedCharge.clock.activePlayerId === battleClock.activePlayerId,
   );
   const pendingBattleChoices = replayedBattle ? [...replayedBattle.pendingChoices.values()] : [];
+  const pendingHeroicIntervention = replayedBattle?.pendingHeroicIntervention ?? null;
+  const heroicFormationOptions = pendingHeroicIntervention
+    ? [...replayedBattle.formations.values()].filter((candidate) => {
+        const keywords = candidate.keywords.map((keyword: string) => keyword.toLowerCase());
+        return (
+          candidate.playerId === pendingHeroicIntervention.responderPlayerId &&
+          battleFormationIsOnBattlefield(battleState, candidate.id) &&
+          candidate.segments.some(
+            (segment: { id: string }) => candidate.health[segment.id].modelsRemaining > 0,
+          ) &&
+          (!keywords.includes("vehicle") || keywords.includes("walker"))
+        );
+      })
+    : [];
+  const selectedHeroicFormationId = heroicFormationOptions.some(
+    (candidate) => candidate.id === heroicFormationId,
+  )
+    ? heroicFormationId
+    : (heroicFormationOptions[0]?.id ?? "");
+  const heroicResponderCommandPoints = pendingHeroicIntervention
+    ? (replayedBattle?.resources
+        .get(pendingHeroicIntervention.responderPlayerId)
+        ?.get("command_points")?.value ?? 0)
+    : 0;
   const activeBattleEffects = replayedBattle ? [...replayedBattle.effects.values()] : [];
   const battleObjectives = replayedBattle ? [...replayedBattle.objectives.values()] : [];
   const activeFightMovement =
@@ -2908,10 +2958,95 @@ export default function PlayMode() {
         successful,
       );
       setStatus(
-        `${successful ? "Successful" : "Failed"} charge · ${chargeDice.join(" + ")} · ${chargeDistance.toFixed(3)}″`,
+        successful
+          ? `Successful charge · ${chargeDice.join(" + ")} · Heroic Intervention response required`
+          : `Failed charge · ${chargeDice.join(" + ")} · ${chargeDistance.toFixed(3)}″`,
       );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Charge could not be recorded");
+    }
+  };
+
+  const rollHeroicIntervention = () => {
+    const dice = rollChargeDice() as [number, number];
+    const distance = Math.max(0, dice[0] + dice[1] + heroicRollModifier);
+    setHeroicDice(dice);
+    setHeroicDistance(distance);
+    setHeroicMaximumModelMove(Math.min(6, distance));
+    setHeroicRollOverrideReason("");
+    setStatus(`Heroic Intervention roll · ${dice.join(" + ")} · ${distance}″`);
+  };
+
+  const updateHeroicDie = (index: 0 | 1, value: number) => {
+    const dice: [number, number] = [...heroicDice];
+    dice[index] = Math.min(6, Math.max(1, value || 1));
+    const distance = Math.max(0, dice[0] + dice[1] + heroicRollModifier);
+    setHeroicDice(dice);
+    setHeroicDistance(distance);
+    setHeroicMaximumModelMove(Math.min(6, distance));
+    setHeroicRollOverrideReason("");
+  };
+
+  const recordHeroicIntervention = (successful: boolean) => {
+    if (!battleState || !selectedHeroicFormationId || !pendingHeroicIntervention) return;
+    try {
+      const next = resolveHeroicIntervention(
+        battleState,
+        selectedHeroicFormationId,
+        {
+          commandPointCost: heroicCommandPointCost,
+          costOverrideReason: heroicCostOverrideReason.trim(),
+          usageOverrideReason: heroicUsageOverrideReason.trim(),
+          stratagemEligibilityOverrideReason: heroicEligibilityOverrideReason.trim(),
+          successful,
+          rolls: heroicDice,
+          rollModifier: heroicRollModifier,
+          chargeDistanceThousandths: Math.round(heroicDistance * 1000),
+          rollOverrideReason: heroicRollOverrideReason.trim(),
+          startDistanceThousandths: Math.round(heroicStartDistance * 1000),
+          targetEligibilityConfirmed: heroicFacts.targetEligibilityConfirmed,
+          targetEligibilityReason:
+            "Within 6 inches and eligible to charge only the unit that triggered this reaction",
+          startedOutsideEngagementRange: heroicFacts.startedOutsideEngagementRange,
+          maximumModelMoveThousandths: successful ? Math.round(heroicMaximumModelMove * 1000) : 0,
+          endsWithinEngagementRange: successful && heroicFacts.endsWithinEngagementRange,
+          unitCoherencyConfirmed: successful && heroicFacts.unitCoherencyConfirmed,
+          nonTargetEngagementRangeAvoided:
+            successful && heroicFacts.nonTargetEngagementRangeAvoided,
+          allModelsCloserToTarget: successful && heroicFacts.allModelsCloserToTarget,
+          baseContactMaximized: successful && heroicFacts.baseContactMaximized,
+          movementReviewedByPlayer: heroicFacts.movementReviewedByPlayer,
+          movementReviewReason: heroicMovementReviewReason.trim(),
+          failureReason: successful ? "" : heroicFailureReason.trim(),
+        },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setStatus(
+        successful
+          ? "Heroic Intervention resolved · no Charge Bonus granted"
+          : "Heroic Intervention spent and failed",
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Heroic Intervention could not resolve");
+    }
+  };
+
+  const passPendingHeroicIntervention = () => {
+    if (!battleState || !pendingHeroicIntervention) return;
+    try {
+      const next = passHeroicIntervention(
+        battleState,
+        heroicPassReason.trim() || "Responding player declined Heroic Intervention",
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setHeroicPassReason("");
+      setStatus("Heroic Intervention declined");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Reaction could not be passed");
     }
   };
 
@@ -5106,7 +5241,8 @@ export default function PlayMode() {
                   disabled={
                     pendingBattleChoices.length > 0 ||
                     Boolean(activeFormationActivation) ||
-                    Boolean(pendingDestroyedTransport)
+                    Boolean(pendingDestroyedTransport) ||
+                    Boolean(pendingHeroicIntervention)
                   }
                   onClick={advanceGuidedBattle}
                 >
@@ -5672,6 +5808,7 @@ export default function PlayMode() {
             {battleClock.status === "active" &&
               battleClock.phase === "charge" &&
               battleClock.step === "charge_moves" &&
+              !pendingHeroicIntervention &&
               attackerBattleFormationId &&
               targetBattleFormationId &&
               attackerPlayerId === battleClock.activePlayerId && (
@@ -5831,6 +5968,233 @@ export default function PlayMode() {
                   )}
                 </div>
               )}
+            {battleClock.status === "active" && pendingHeroicIntervention && (
+              <div className="action-tracker" aria-labelledby="heroic-intervention-heading">
+                <strong id="heroic-intervention-heading">Heroic Intervention response</strong>
+                <span>
+                  The responding player may spend 1CP. Select an eligible unit within 6″ of the
+                  charging unit, resolve a Charge move against only that unit, and do not grant a
+                  Charge Bonus.
+                </span>
+                <div className="action-buttons">
+                  <label>
+                    <span>Intervening formation</span>
+                    <select
+                      value={selectedHeroicFormationId}
+                      onChange={(event) => setHeroicFormationId(event.target.value)}
+                    >
+                      {heroicFormationOptions.map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>
+                          {candidate.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <span>Available CP: {heroicResponderCommandPoints}</span>
+                  <label>
+                    <span>CP cost</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={5}
+                      value={heroicCommandPointCost}
+                      onChange={(event) =>
+                        setHeroicCommandPointCost(
+                          Math.min(5, Math.max(0, +event.target.value || 0)),
+                        )
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Cost override source</span>
+                    <input
+                      value={heroicCostOverrideReason}
+                      maxLength={300}
+                      placeholder="Required unless the cost is 1CP"
+                      onChange={(event) => setHeroicCostOverrideReason(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>First D6</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={6}
+                      value={heroicDice[0]}
+                      onChange={(event) => updateHeroicDie(0, +event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>Second D6</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={6}
+                      value={heroicDice[1]}
+                      onChange={(event) => updateHeroicDie(1, +event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>Roll modifier</span>
+                    <input
+                      type="number"
+                      min={-12}
+                      max={12}
+                      value={heroicRollModifier}
+                      onChange={(event) => {
+                        const modifier = Math.min(12, Math.max(-12, +event.target.value || 0));
+                        const distance = Math.max(0, heroicDice[0] + heroicDice[1] + modifier);
+                        setHeroicRollModifier(modifier);
+                        setHeroicDistance(distance);
+                        setHeroicMaximumModelMove(Math.min(6, distance));
+                        setHeroicRollOverrideReason("");
+                      }}
+                    />
+                  </label>
+                  <button type="button" onClick={rollHeroicIntervention}>
+                    Roll 2D6 securely
+                  </button>
+                  <label>
+                    <span>Effective Charge distance (inches)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={24}
+                      step={0.001}
+                      value={heroicDistance}
+                      onChange={(event) =>
+                        setHeroicDistance(Math.min(24, Math.max(0, +event.target.value || 0)))
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Starting distance (inches)</span>
+                    <input
+                      type="number"
+                      min={0.001}
+                      max={6}
+                      step={0.001}
+                      value={heroicStartDistance}
+                      onChange={(event) =>
+                        setHeroicStartDistance(
+                          Math.min(6, Math.max(0.001, +event.target.value || 0.001)),
+                        )
+                      }
+                    />
+                  </label>
+                  <label>
+                    <span>Longest model move (inches)</span>
+                    <input
+                      type="number"
+                      min={0.001}
+                      max={24}
+                      step={0.001}
+                      value={heroicMaximumModelMove}
+                      onChange={(event) =>
+                        setHeroicMaximumModelMove(
+                          Math.min(24, Math.max(0.001, +event.target.value || 0.001)),
+                        )
+                      }
+                    />
+                  </label>
+                  {[
+                    ["targetEligibilityConfirmed", "Within 6″ and otherwise eligible to charge"],
+                    ["startedOutsideEngagementRange", "Started outside Engagement Range"],
+                    ["endsWithinEngagementRange", "Ends in Engagement Range of the charger"],
+                    ["unitCoherencyConfirmed", "Move ends in Unit Coherency"],
+                    ["nonTargetEngagementRangeAvoided", "No other Engagement Range entered"],
+                    ["allModelsCloserToTarget", "Every moved model ends closer"],
+                    ["baseContactMaximized", "Base contact maximized where possible"],
+                    ["movementReviewedByPlayer", "Player reviewed the complete move"],
+                  ].map(([key, label]) => (
+                    <label className="check-line" key={key}>
+                      <input
+                        type="checkbox"
+                        checked={heroicFacts[key as keyof typeof heroicFacts]}
+                        onChange={(event) =>
+                          setHeroicFacts((current) => ({
+                            ...current,
+                            [key]: event.target.checked,
+                          }))
+                        }
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                  <label>
+                    <span>Movement review</span>
+                    <input
+                      value={heroicMovementReviewReason}
+                      maxLength={300}
+                      onChange={(event) => setHeroicMovementReviewReason(event.target.value)}
+                      placeholder="Physical-table endpoint review"
+                    />
+                  </label>
+                  <label>
+                    <span>Roll override source</span>
+                    <input
+                      value={heroicRollOverrideReason}
+                      maxLength={300}
+                      onChange={(event) => setHeroicRollOverrideReason(event.target.value)}
+                      placeholder="Required if distance differs from dice plus modifier"
+                    />
+                  </label>
+                  <label>
+                    <span>Stratagem eligibility override</span>
+                    <input
+                      value={heroicEligibilityOverrideReason}
+                      maxLength={300}
+                      onChange={(event) => setHeroicEligibilityOverrideReason(event.target.value)}
+                      placeholder="Required for Battle-shocked or Aircraft formations"
+                    />
+                  </label>
+                  <label>
+                    <span>Once-per-phase override</span>
+                    <input
+                      value={heroicUsageOverrideReason}
+                      maxLength={300}
+                      onChange={(event) => setHeroicUsageOverrideReason(event.target.value)}
+                      placeholder="Only when a source rule permits another use"
+                    />
+                  </label>
+                  <label>
+                    <span>Failure reason</span>
+                    <input
+                      value={heroicFailureReason}
+                      maxLength={300}
+                      onChange={(event) => setHeroicFailureReason(event.target.value)}
+                      placeholder="Required for a failed Charge roll or move"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={!selectedHeroicFormationId}
+                    onClick={() => recordHeroicIntervention(true)}
+                  >
+                    Resolve successful intervention
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!selectedHeroicFormationId}
+                    onClick={() => recordHeroicIntervention(false)}
+                  >
+                    Resolve failed intervention
+                  </button>
+                  <label>
+                    <span>Pass reason</span>
+                    <input
+                      value={heroicPassReason}
+                      maxLength={300}
+                      onChange={(event) => setHeroicPassReason(event.target.value)}
+                      placeholder="Optional note"
+                    />
+                  </label>
+                  <button type="button" onClick={passPendingHeroicIntervention}>
+                    Decline Heroic Intervention
+                  </button>
+                </div>
+              </div>
+            )}
             {battleClock.status === "active" &&
               battleClock.phase === "fight" &&
               ["fights_first", "remaining_combats"].includes(battleClock.step) &&

@@ -27,8 +27,8 @@ state.
 
 ## Prioritized backlog
 
-1. Continue the legal-action engine with Heroic Intervention, reactions, cover,
-   and Stratagem windows; then expand
+1. Continue the legal-action engine with Fire Overwatch and the remaining
+   reactions, cover, and Stratagem windows; then expand
    Transport changes beyond the roster's locked assigned carrier and execute
    transport-specific exceptions.
 2. Build and enforce the source-locked faction, detachment, enhancement,
@@ -41,6 +41,22 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced guided play to battle-state version 13 with canonical
+  Heroic Intervention. Every successful enemy Charge now opens an immediate
+  responder window that blocks unrelated events and clock advancement until it
+  is resolved or declined. Resolution enforces the October 2025 10th-edition
+  Core Rules Update boundary: 1CP by default, one eligible responding formation
+  within 6 inches, only the triggering charger as a target, a reviewed Charge
+  roll and move, Walker-only Vehicle use, and no Charge Bonus. CP spending is an
+  atomic replay invariant; nonstandard costs, repeat uses, Battle-shocked or
+  Aircraft eligibility require source-rule reasons. Guided Play presents the
+  decision, CSPRNG roll, physical-table confirmations, success/failure, and pass
+  paths. Version-12 and older histories migrate behind an explicit reaction
+  boundary. The replay API returns pending, resolved, and declined reactions and
+  independently cross-checks an ACSL-specified native predicate exported to
+  WebAssembly. Native, migration, timing, tamper, UI, API, Wasm differential,
+  provenance, fuzz, and formal regressions cover the cycle.
 
 - 2026-08-10: Advanced guided play to battle-state version 12 with canonical
   Fight movement. Every new Fight activation records a reviewed Pile In before

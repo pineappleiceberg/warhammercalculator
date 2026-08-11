@@ -156,22 +156,27 @@ int main(void) {
                                                    WHC_WEAPON_ASSAULT));
     assert(!whc_weapon_bearer_declaration_is_valid(2u, 3u, 0u, 1u, WHC_WEAPON_ASSAULT,
                                                    WHC_WEAPON_ASSAULT));
-    const uint32_t charge_flags =
-        WHC_CHARGE_REVIEWED_BY_PLAYER | WHC_CHARGE_PHASE_START_ELIGIBLE |
-        WHC_CHARGE_STARTED_OUTSIDE_ENGAGEMENT | WHC_CHARGE_ALL_TARGETS_ENGAGED |
-        WHC_CHARGE_UNIT_COHERENCY | WHC_CHARGE_NON_TARGETS_AVOIDED |
-        WHC_CHARGE_ALL_MODELS_CLOSER | WHC_CHARGE_BASE_CONTACT_MAXIMIZED;
-    assert(whc_charge_resolution_is_valid(3u, 4u, 0, 7000u, 9000u, 6500u, 1u, true,
-                                          charge_flags));
-    assert(!whc_charge_resolution_is_valid(3u, 4u, 0, 7000u, 9000u, 8000u, 1u, true,
-                                           charge_flags));
+    const uint32_t charge_flags = WHC_CHARGE_REVIEWED_BY_PLAYER | WHC_CHARGE_PHASE_START_ELIGIBLE |
+                                  WHC_CHARGE_STARTED_OUTSIDE_ENGAGEMENT |
+                                  WHC_CHARGE_ALL_TARGETS_ENGAGED | WHC_CHARGE_UNIT_COHERENCY |
+                                  WHC_CHARGE_NON_TARGETS_AVOIDED | WHC_CHARGE_ALL_MODELS_CLOSER |
+                                  WHC_CHARGE_BASE_CONTACT_MAXIMIZED;
+    assert(whc_charge_resolution_is_valid(3u, 4u, 0, 7000u, 9000u, 6500u, 1u, true, charge_flags));
+    assert(!whc_charge_resolution_is_valid(3u, 4u, 0, 7000u, 9000u, 8000u, 1u, true, charge_flags));
     const uint32_t fight_enemy_flags =
         WHC_FIGHT_MOVE_REVIEWED_BY_PLAYER | WHC_FIGHT_MOVE_UNIT_COHERENCY |
         WHC_FIGHT_MOVE_ENGAGEMENT_RANGE | WHC_FIGHT_MOVE_CLOSER_TO_ENEMY |
         WHC_FIGHT_MOVE_BASE_CONTACT_MAXIMIZED | WHC_FIGHT_MOVE_BASE_CONTACT_STATIONARY;
-    assert(whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN, WHC_FIGHT_DESTINATION_ENEMY,
-                                   3000u, fight_enemy_flags));
-    assert(!whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN, WHC_FIGHT_DESTINATION_NONE,
-                                    3000u, fight_enemy_flags));
+    assert(whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN, WHC_FIGHT_DESTINATION_ENEMY, 3000u,
+                                   fight_enemy_flags));
+    assert(!whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN, WHC_FIGHT_DESTINATION_NONE, 3000u,
+                                    fight_enemy_flags));
+    assert(whc_heroic_intervention_is_valid(3u, 4u, 0, 7000u, 5500u, 5500u, true, charge_flags,
+                                            WHC_HEROIC_FLAGS_MASK));
+    assert(!whc_heroic_intervention_is_valid(3u, 4u, 0, 7000u, 6001u, 5500u, true, charge_flags,
+                                             WHC_HEROIC_FLAGS_MASK));
+    assert(
+        !whc_heroic_intervention_is_valid(3u, 4u, 0, 7000u, 5500u, 5500u, true, charge_flags,
+                                          WHC_HEROIC_FLAGS_MASK & ~WHC_HEROIC_SOLE_TRIGGER_TARGET));
     return 0;
 }

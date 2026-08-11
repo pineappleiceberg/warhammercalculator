@@ -13,6 +13,7 @@ import {
   battleFormationHealth,
   battleUnusedWeaponCount,
   battleCanResolveAttack,
+  battleCanStartFormationActivation,
   changeBattleResource,
   completeFormationActivation,
   configureBattleMission,
@@ -23,6 +24,7 @@ import {
   disembarkFormation,
   embarkFormation,
   normalizeBattleState,
+  passHeroicIntervention,
   passFightPriority,
   registerBattleFormation,
   recordFormationCharge,
@@ -30,6 +32,7 @@ import {
   recordFightMove,
   recordRangedTargetEligibility,
   replayBattleState,
+  resolveHeroicIntervention,
   resolveDestroyedTransport,
   revertLatestAttack,
   scoreBattlePoints,
@@ -570,6 +573,16 @@ test("pins the official battle-state rules source", () => {
   assert.equal(
     battleRuleSources.sources[0].sha256,
     "4d0e8019cbfddd6f46781d5b4ed31d46fb21eb2d0d10a0f6fabefac0ce054364",
+  );
+  const updates = battleRuleSources.sources.find(
+    (source) => source.id === "core-rules-updates-10e-2025-10",
+  );
+  assert.ok(updates);
+  assert.deepEqual(updates.pages, [10]);
+  assert.equal(updates.sha256, "27960a4d4affecd450af69c54d7583bcc2941b00ba5845f5786a630bdec7f4ba");
+  assert.equal(
+    updates.usedFor.some((usage) => /Heroic Intervention/i.test(usage)),
+    true,
   );
 });
 
@@ -1526,6 +1539,12 @@ test("records charge eligibility and alternates replayed Fight priority", () => 
     "charge",
     state.events.length + 1,
   );
+  state = passHeroicIntervention(
+    state,
+    "The defending player declines Heroic Intervention",
+    "pass-heroic-intervention",
+    state.events.length + 1,
+  );
   while (
     !(
       replayBattleState(state).clock.phase === "fight" &&
@@ -1606,6 +1625,161 @@ test("records charge eligibility and alternates replayed Fight priority", () => 
   );
   state = completeFormationActivation(state, "fight-complete", state.events.length + 1);
   assert.equal(replayBattleState(state).clock.priorityPlayerId, "player-2");
+});
+
+test("resolves the immediate Heroic Intervention window without granting Charge Bonus", () => {
+  const intervenor = {
+    ...formation,
+    id: "player-2:intervenor",
+    sourceFormationId: "intervenor",
+    name: "Intervening unit",
+    keywords: ["Infantry"],
+  };
+  const nonWalkerVehicle = {
+    ...intervenor,
+    id: "player-2:non-walker-vehicle",
+    sourceFormationId: "non-walker-vehicle",
+    name: "Non-Walker Vehicle",
+    keywords: ["Vehicle"],
+  };
+  let state = registerBattleFormation(
+    registerBattleFormation(
+      registerBattleFormation(newBattle(), attackerFormation, "register-attacker", 1),
+      formation,
+      "register-target",
+      2,
+    ),
+    intervenor,
+    "register-intervenor",
+    3,
+  );
+  state = registerBattleFormation(state, nonWalkerVehicle, "register-non-walker", 4);
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "start", 4);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "to-heroic-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    attackerFormation.id,
+    "stationary",
+    "heroic-trigger-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "charge" && clock.step === "charge_moves",
+    "to-heroic-window",
+  );
+  state = setFormationBattleShocked(
+    state,
+    intervenor.id,
+    true,
+    "Failed Battle-shock test",
+    "battle-shock-intervenor",
+    state.events.length + 1,
+  );
+  state = recordFormationCharge(
+    state,
+    attackerFormation.id,
+    [formation.id],
+    successfulChargeOptions(formation.id),
+    "trigger-charge",
+    state.events.length + 1,
+  );
+  const pending = replayBattleState(state).pendingHeroicIntervention;
+  assert.equal(pending.triggerChargeEventId, "trigger-charge");
+  assert.equal(pending.chargingFormationId, attackerFormation.id);
+  assert.equal(pending.responderPlayerId, "player-2");
+  assert.throws(
+    () => advanceBattleClock(state, "blocked-clock", state.events.length + 1),
+    /Heroic Intervention window/i,
+  );
+  assert.throws(
+    () =>
+      recordFormationCharge(
+        state,
+        intervenor.id,
+        [attackerFormation.id],
+        successfulChargeOptions(attackerFormation.id),
+        "ordinary-charge-during-window",
+        state.events.length + 1,
+      ),
+    /Heroic Intervention/i,
+  );
+  const heroicOptions = {
+    successful: true,
+    rolls: [3, 4],
+    rollModifier: 0,
+    chargeDistanceThousandths: 7000,
+    startDistanceThousandths: 6000,
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Within 6 inches and eligible to charge the triggering unit",
+    startedOutsideEngagementRange: true,
+    maximumModelMoveThousandths: 5000,
+    endsWithinEngagementRange: true,
+    unitCoherencyConfirmed: true,
+    nonTargetEngagementRangeAvoided: true,
+    allModelsCloserToTarget: true,
+    baseContactMaximized: true,
+    movementReviewedByPlayer: true,
+    movementReviewReason: "Player reviewed every model endpoint",
+  };
+  assert.throws(
+    () =>
+      resolveHeroicIntervention(
+        state,
+        nonWalkerVehicle.id,
+        heroicOptions,
+        "non-walker-intervention",
+        state.events.length + 1,
+      ),
+    /Walker Vehicle/i,
+  );
+  assert.throws(
+    () =>
+      resolveHeroicIntervention(
+        state,
+        intervenor.id,
+        heroicOptions,
+        "battle-shocked-without-override",
+        state.events.length + 1,
+      ),
+    /source-rule override/i,
+  );
+  state = resolveHeroicIntervention(
+    state,
+    intervenor.id,
+    {
+      ...heroicOptions,
+      stratagemEligibilityOverrideReason: "Source rule permits this Battle-shocked unit to use it",
+    },
+    "resolve-heroic-intervention",
+    state.events.length + 1,
+  );
+  let replayed = replayBattleState(state);
+  assert.equal(replayed.pendingHeroicIntervention, null);
+  assert.equal(replayed.resources.get("player-2").get("command_points").value, 0);
+  assert.equal(replayed.heroicInterventions.length, 1);
+  assert.equal(replayed.heroicInterventions[0].source, "heroic_intervention");
+  assert.equal(replayed.heroicInterventions[0].receivesChargeBonus, false);
+  assert.equal(replayed.chargeByFormation.get(intervenor.id).successful, true);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "fight" && clock.step === "fights_first",
+    "to-heroic-fight",
+  );
+  assert.equal(
+    battleCanStartFormationActivation(state, intervenor.id, { weaponType: "Melee" }),
+    false,
+  );
+  state = advanceBattleClock(state, "to-remaining-combat", state.events.length + 1);
+  assert.equal(replayBattleState(state).clock.step, "remaining_combats");
+  assert.equal(
+    battleCanStartFormationActivation(state, intervenor.id, { weaponType: "Melee" }),
+    true,
+  );
 });
 
 test("rejects an Aircraft charge without an explicit rules override", () => {

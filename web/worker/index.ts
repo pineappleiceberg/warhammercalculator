@@ -57,6 +57,9 @@ import {
   chargeResolutionIsValid,
   fightMoveFlags,
   fightMoveIsValid,
+  heroicInterventionChargeFlags,
+  heroicInterventionFlags,
+  heroicInterventionIsValid,
   normalizeBattleState,
   rangedTargetEligibilityIsValid,
   replayBattleState,
@@ -310,6 +313,7 @@ type CalculatorExports = {
   whc_weapon_bearer_declaration_is_valid(...values: number[]): number;
   whc_charge_resolution_is_valid(...values: number[]): number;
   whc_fight_move_is_valid(...values: number[]): number;
+  whc_heroic_intervention_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -450,6 +454,7 @@ async function loadCalculator() {
       typeof calculator.whc_weapon_bearer_declaration_is_valid !== "function" ||
       typeof calculator.whc_charge_resolution_is_valid !== "function" ||
       typeof calculator.whc_fight_move_is_valid !== "function" ||
+      typeof calculator.whc_heroic_intervention_is_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -883,9 +888,73 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
           overrideReason: event.overrideReason,
           clock: event.clock,
           canonicalMovement: true,
+          ...(event.source
+            ? {
+                source: event.source,
+                receivesChargeBonus: event.receivesChargeBonus !== false,
+              }
+            : {}),
         };
       })
       .sort((left, right) => left.formationId.localeCompare(right.formationId));
+    const heroicInterventions = replayed.heroicInterventions.map((event) => {
+      const chargeFlags = heroicInterventionChargeFlags(event);
+      const heroicFlags = heroicInterventionFlags(event);
+      const values = [
+        event.rolls[0],
+        event.rolls[1],
+        event.rollModifier,
+        event.chargeDistanceThousandths,
+        event.targetFacts[0].startDistanceThousandths,
+        event.maximumModelMoveThousandths,
+        event.successful ? 1 : 0,
+        chargeFlags,
+        heroicFlags,
+      ];
+      const javascriptValid = heroicInterventionIsValid(...values);
+      const nativeValid = Boolean(calculator.whc_heroic_intervention_is_valid(...values));
+      if (!javascriptValid || javascriptValid !== nativeValid) {
+        throw new ServiceUnavailableError(
+          "Heroic Intervention diverged from the C/WebAssembly predicate",
+          "HEROIC_INTERVENTION_DIVERGENCE",
+        );
+      }
+      return {
+        eventId: event.id,
+        triggerChargeEventId: event.triggerChargeEventId,
+        formationId: event.formationId,
+        targetFormationId: event.targetFormationIds[0],
+        commandPointCost: event.commandPointCost,
+        commandPointsBefore: event.commandPointsBefore,
+        commandPointsAfter: event.commandPointsAfter,
+        costOverrideReason: event.costOverrideReason,
+        usageOverrideReason: event.usageOverrideReason,
+        stratagemEligibilityOverrideReason: event.stratagemEligibilityOverrideReason,
+        rolls: event.rolls,
+        rollModifier: event.rollModifier,
+        chargeDistanceThousandths: event.chargeDistanceThousandths,
+        rollOverrideReason: event.rollOverrideReason,
+        startDistanceThousandths: event.targetFacts[0].startDistanceThousandths,
+        targetEligibilityConfirmed: event.targetEligibilityConfirmed,
+        targetEligibilityReason: event.targetEligibilityReason,
+        startedOutsideEngagementRange: event.startedOutsideEngagementRange,
+        maximumModelMoveThousandths: event.maximumModelMoveThousandths,
+        endsWithinEngagementRangeOfTarget: event.targetFacts[0].endsWithinEngagementRange,
+        unitCoherencyConfirmed: event.unitCoherencyConfirmed,
+        nonTargetEngagementRangeAvoided: event.nonTargetEngagementRangeAvoided,
+        allModelsCloserToTarget: event.allModelsCloserToTarget,
+        baseContactMaximized: event.baseContactMaximized,
+        movementReviewedByPlayer: event.movementReviewedByPlayer,
+        movementReviewReason: event.movementReviewReason,
+        vehicleRestrictionSatisfied: event.vehicleRestrictionSatisfied,
+        soleTriggerTargetConfirmed: event.soleTriggerTargetConfirmed,
+        chargeBonusSuppressedConfirmed: event.chargeBonusSuppressedConfirmed,
+        successful: event.successful,
+        failureReason: event.failureReason,
+        receivesChargeBonus: false,
+        clock: event.clock,
+      };
+    });
     const serializeFightMove = (event: CanonicalFightMoveEvent | null) => {
       if (!event) return null;
       const values = [
@@ -970,6 +1039,17 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         }))
         .sort((left, right) => left.formationId.localeCompare(right.formationId)),
       charges,
+      pendingHeroicIntervention: replayed.pendingHeroicIntervention
+        ? { ...replayed.pendingHeroicIntervention }
+        : null,
+      heroicInterventions,
+      heroicInterventionPasses: replayed.heroicInterventionPasses.map((event) => ({
+        eventId: event.id,
+        triggerChargeEventId: event.triggerChargeEventId,
+        playerId: event.playerId,
+        reason: event.reason,
+        clock: event.clock,
+      })),
       fightActivations,
       activeActivation: replayed.activeActivation
         ? {
