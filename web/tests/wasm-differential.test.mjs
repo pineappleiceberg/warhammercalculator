@@ -32,6 +32,7 @@ import {
   replayBattleState,
   weaponBearerDeclarationIsValid,
   weaponInventoryDeclarationIsValid,
+  transportLoadIsValid,
 } from "../lib/battle-state.mjs";
 import { BATTLE_PHASE_STEPS, nextBattleClock, startBattleClock } from "../lib/battle-clock.mjs";
 import {
@@ -104,8 +105,29 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_hazardous_resolution_is_valid, "function");
   assert.equal(typeof calculator._whc_go_to_ground_is_valid, "function");
   assert.equal(typeof calculator._whc_ranged_declaration_is_valid, "function");
+  assert.equal(typeof calculator._whc_transport_load_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
+});
+
+test("WebAssembly and JavaScript agree on Transport capacity boundaries", () => {
+  const cases = [
+    [0, 12, 0, 0, 0],
+    [12, 12, 0, 0, 1],
+    [13, 12, 0, 0, 1],
+    [4, 6, 1, 1, 1],
+    [4, 6, 2, 1, 1],
+    [4, 6, 0, 1, 1],
+    [4, 6, 1, 0, 1],
+    [4, 6, 0, 0, 2],
+    [0, 0, 0, 0, 0],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_transport_load_is_valid(...values)),
+      transportLoadIsValid(...values),
+    );
+  }
 });
 
 test("WebAssembly and JavaScript agree on exact weapon-bearer declarations", () => {

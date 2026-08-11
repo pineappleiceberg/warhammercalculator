@@ -93,7 +93,8 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    Reserves limits, Reserve arrival timing, target and weapon-type selection,
    replayed movement outcomes, charge attempts, once-per-phase Shooting/Fight
    activations, Assault-after-Advance restrictions, alternating Fight priority,
-   assigned-Transport embark/disembark/destruction timing, destroyed-passenger
+   source-compatible Transport selection, embark/disembark/destruction timing,
+   live-model and compound-pool capacity, destroyed-passenger
    allocation and Deadly Demise ordering, exact optional weapon-bearer identity
    through casualties, canonical charge rolls and reviewed charge movement,
    canonical Pile In and Consolidation sequencing, explicit fail-closed
@@ -114,8 +115,8 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    ends its Charge move. When deferred Hazardous damage and Heroic Intervention
    become due together, the active player chooses their resolution order and
    both remain mandatory until resolved. Remaining work
-   includes compatible unassigned Transport changes, transport-specific
-   exceptions, remaining reactions and Stratagem windows, full geometry-backed
+   includes transport-specific exceptions, remaining reactions and Stratagem
+   windows, full geometry-backed
    target eligibility, and geometry-backed engagement.
 6. Normalize complete faction, detachment, enhancement, Stratagem, and mission
    coverage with source-locked executable rules and a fail-closed coverage gate.

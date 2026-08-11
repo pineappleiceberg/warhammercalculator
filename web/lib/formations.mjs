@@ -610,6 +610,7 @@ export function savedFormationBattleRegistration(
   targetSequence,
   defensiveEquipmentCounts = {},
   assignedTransportFormationId = "",
+  transportOptions = [],
 ) {
   const segments = targetSequence?.orderedSegments ?? [];
   if (!formation || segments.length < 1) throw new Error("Formation has no exact model segments");
@@ -670,6 +671,7 @@ export function savedFormationBattleRegistration(
     sourceFormationId: formation.id,
     name: formation.name,
     assignedTransportFormationId,
+    transportOptions,
     keywords: [
       ...new Set(
         formation.components.flatMap((component) =>

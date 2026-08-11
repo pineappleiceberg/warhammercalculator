@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 17 as soon as both lists are selected. Every
+creates battle-state version 18 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -686,6 +686,16 @@ Battle-shock, and movement/charge restrictions are recorded and replayed. A
 wounded model remains the mandatory first allocation. Real rolls use
 rejection-sampled browser CSPRNG values. Version-1 through version-6 logs migrate
 with explicit provenance and assume no unrecorded occupancy.
+Version 18 replaces the old assigned-carrier-only runtime restriction with every
+source-compatible friendly Transport locked during setup. The saved assignment
+remains a convenient preset, but deployment and Movement-phase embarkation can
+select another compatible carrier. Capacity is recalculated from surviving
+models at each transition and enforces independent pools, mutually exclusive
+modes, shared allowances, primary-capacity reductions, complete Attached-unit
+composition, and nested-Transport accounting. The replay API exposes both the
+immutable compatibility facts and current pool occupancy, and cross-checks the
+same ACSL-specified boundary through C and WebAssembly. Version-17 histories
+migrate with explicit compatibility provenance.
 Version 8 makes ranged target eligibility an executable replay fact. The
 browser catalogue preserves each weapon's published Range, while Guided Play
 records the effective Range, closest-point measured distance to one thousandth

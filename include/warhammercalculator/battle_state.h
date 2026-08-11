@@ -363,6 +363,17 @@ bool whc_ranged_declaration_is_valid(uint32_t declaration_count,
                                      uint32_t profile_run_count,
                                      uint32_t unique_target_profile_count, uint32_t flags);
 
+/*@ assigns \nothing;
+    ensures \result <==>
+        capacity > 0 && used_capacity <= capacity &&
+        mode_count <= 1 &&
+        ((allowance_maximum == 0 && allowance_models == 0) ||
+         (allowance_maximum > 0 && allowance_models <= allowance_maximum));
+*/
+bool whc_transport_load_is_valid(uint32_t used_capacity, uint32_t capacity,
+                                 uint32_t allowance_models, uint32_t allowance_maximum,
+                                 uint32_t mode_count);
+
 /*@ requires first_player_index <= 1;
     requires \valid(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));
     assigns clock[0 .. WHC_BATTLE_CLOCK_FIELDS - 1];

@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 17;
+export const BATTLE_STATE_VERSION = 18;
+export const TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION = 18;
 export const RANGED_DECLARATION_BATTLE_STATE_VERSION = 17;
 export const GO_TO_GROUND_BATTLE_STATE_VERSION = 16;
 export const HAZARDOUS_BATTLE_STATE_VERSION = 15;
@@ -132,6 +133,31 @@ export function rangedDeclarationIsValid(
       uniqueTargetProfileCount >= uniqueTargetCount &&
       uniqueTargetProfileCount <= declarationCount &&
       flags === RANGED_DECLARATION_FLAGS.mask,
+  );
+}
+
+export function transportLoadIsValid(
+  usedCapacity,
+  capacity,
+  allowanceModels,
+  allowanceMaximum,
+  modeCount,
+) {
+  return Boolean(
+    Number.isSafeInteger(usedCapacity) &&
+      usedCapacity >= 0 &&
+      Number.isSafeInteger(capacity) &&
+      capacity > 0 &&
+      usedCapacity <= capacity &&
+      Number.isSafeInteger(allowanceModels) &&
+      allowanceModels >= 0 &&
+      Number.isSafeInteger(allowanceMaximum) &&
+      allowanceMaximum >= 0 &&
+      Number.isSafeInteger(modeCount) &&
+      modeCount >= 0 &&
+      modeCount <= 1 &&
+      ((allowanceMaximum === 0 && allowanceModels === 0) ||
+        (allowanceMaximum > 0 && allowanceModels <= allowanceMaximum)),
   );
 }
 
@@ -1073,6 +1099,102 @@ function normalizeWeaponInventory(value, segments, stateVersion, modelInstances,
   return inventory;
 }
 
+function normalizeTransportOptions(value, segments, stateVersion) {
+  if (stateVersion < TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION) return [];
+  if (!Array.isArray(value) || value.length > 256) {
+    throw new Error("Formation Transport options must contain at most 256 entries");
+  }
+  const savedUnitIds = new Set(segments.map((segment) => segment.savedUnitId));
+  const options = value.map((candidate) => {
+    const option = record(candidate, "Each formation Transport option must be an object");
+    if (!Array.isArray(option.assignments) || option.assignments.length < 1) {
+      throw new Error("Each formation Transport option requires component assignments");
+    }
+    const assignments = option.assignments.map((candidateAssignment) => {
+      const assignment = record(
+        candidateAssignment,
+        "Each Transport component assignment must be an object",
+      );
+      const sourceSavedUnitId = boundedString(
+        assignment.sourceSavedUnitId,
+        "Transport component saved unit id",
+        100,
+      );
+      if (!savedUnitIds.has(sourceSavedUnitId)) {
+        throw new Error("Transport component assignment is not part of its formation");
+      }
+      const poolKind = boundedString(assignment.poolKind, "Transport pool kind", 20);
+      if (!new Set(["primary", "additional", "alternative"]).has(poolKind)) {
+        throw new Error("Transport pool kind is unsupported");
+      }
+      const nullableInteger = (candidateValue, name) =>
+        candidateValue === null ? null : nonnegativeInteger(candidateValue, name, 100000);
+      const nestedPassengerPolicy =
+        assignment.sharedAllowanceNestedPassengerPolicy === null
+          ? null
+          : boundedString(
+              assignment.sharedAllowanceNestedPassengerPolicy,
+              "Nested Transport passenger policy",
+              40,
+            );
+      if (
+        nestedPassengerPolicy !== null &&
+        !["included_in_fixed_cost", "excluded_from_capacity"].includes(nestedPassengerPolicy)
+      ) {
+        throw new Error("Nested Transport passenger policy is unsupported");
+      }
+      return {
+        sourceSavedUnitId,
+        modelCost: nonnegativeInteger(assignment.modelCost, "Transport model cost", 100000),
+        poolPosition: nonnegativeInteger(assignment.poolPosition, "Transport pool position", 1000),
+        poolKind,
+        poolCapacity: nonnegativeInteger(
+          assignment.poolCapacity,
+          "Transport pool capacity",
+          100000,
+        ),
+        poolLabel: boundedString(assignment.poolLabel, "Transport pool label", 200),
+        sharedAllowancePosition: nullableInteger(
+          assignment.sharedAllowancePosition,
+          "Transport shared allowance position",
+        ),
+        sharedAllowanceMaximumModels: nullableInteger(
+          assignment.sharedAllowanceMaximumModels,
+          "Transport shared allowance model limit",
+        ),
+        sharedAllowancePrimaryCapacityWhileUsed: nullableInteger(
+          assignment.sharedAllowancePrimaryCapacityWhileUsed,
+          "Transport shared allowance primary capacity",
+        ),
+        sharedAllowanceNestedPassengerPolicy: nestedPassengerPolicy,
+      };
+    });
+    const assignmentIds = assignments.map((assignment) => assignment.sourceSavedUnitId);
+    if (
+      new Set(assignmentIds).size !== assignments.length ||
+      assignments.length !== savedUnitIds.size ||
+      [...savedUnitIds].some((savedUnitId) => !assignmentIds.includes(savedUnitId))
+    ) {
+      throw new Error("Transport option must assign every formation component exactly once");
+    }
+    if (assignments.some((assignment) => assignment.modelCost < 1 || assignment.poolCapacity < 1)) {
+      throw new Error("Transport option costs and capacities must be positive");
+    }
+    return {
+      transportFormationId: boundedString(
+        option.transportFormationId,
+        "Compatible Transport formation id",
+        100,
+      ),
+      assignments,
+    };
+  });
+  if (new Set(options.map((option) => option.transportFormationId)).size !== options.length) {
+    throw new Error("Compatible Transport formation ids must be unique");
+  }
+  return options;
+}
+
 function normalizeFormation(candidate, stateVersion) {
   const formation = record(candidate, "Formation registration must be an object");
   if (
@@ -1124,6 +1246,11 @@ function normalizeFormation(candidate, stateVersion) {
     ),
     segments,
   };
+  normalized.transportOptions = normalizeTransportOptions(
+    formation.transportOptions ?? [],
+    segments,
+    stateVersion,
+  );
   if (stateVersion >= WEAPON_BEARER_BATTLE_STATE_VERSION) {
     normalized.weaponBearerTracking = tracking;
     normalized.modelInstances = modelInstances;
@@ -1485,6 +1612,7 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
       previous.playerId !== formation.playerId ||
       previous.sourceFormationId !== formation.sourceFormationId ||
       previous.assignedTransportFormationId !== formation.assignedTransportFormationId ||
+      JSON.stringify(previous.transportOptions) !== JSON.stringify(formation.transportOptions) ||
       JSON.stringify(weaponInventoryProfileIdentity(previous.weaponInventory)) !==
         JSON.stringify(weaponInventoryProfileIdentity(formation.weaponInventory))
     ) {
@@ -2731,6 +2859,7 @@ export function normalizeBattleState(candidate) {
       FIRE_OVERWATCH_BATTLE_STATE_VERSION,
       HAZARDOUS_BATTLE_STATE_VERSION,
       GO_TO_GROUND_BATTLE_STATE_VERSION,
+      RANGED_DECLARATION_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -2780,6 +2909,7 @@ export function normalizeBattleState(candidate) {
         FIRE_OVERWATCH_BATTLE_STATE_VERSION,
         HAZARDOUS_BATTLE_STATE_VERSION,
         GO_TO_GROUND_BATTLE_STATE_VERSION,
+        RANGED_DECLARATION_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -2812,6 +2942,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyTransportThroughSequence = nonnegativeInteger(
         migration.legacyTransportThroughSequence,
         "Legacy Transport event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyTransportCompatibilityThroughSequence = nonnegativeInteger(
+        migration.legacyTransportCompatibilityThroughSequence,
+        "Legacy Transport compatibility event sequence",
         events.length,
       );
     }
@@ -3068,6 +3205,153 @@ function liveModelCount(formation) {
     (total, health) => total + health.modelsRemaining,
     0,
   );
+}
+
+function liveSavedUnitModelCount(formation, savedUnitId) {
+  return formation.segments
+    .filter((segment) => segment.savedUnitId === savedUnitId)
+    .reduce((total, segment) => total + formation.health[segment.id].modelsRemaining, 0);
+}
+
+function transportOptionFor(formation, transportFormationId) {
+  return formation.transportOptions.find(
+    (option) => option.transportFormationId === transportFormationId,
+  );
+}
+
+function transportOccupancyReport(
+  formations,
+  embarkedByFormation,
+  transportFormationId,
+  candidateFormationId = "",
+) {
+  const transport = formations.get(transportFormationId);
+  if (!transport || !transport.keywords.includes("transport") || formationDestroyed(transport)) {
+    return { valid: false, reason: "Selected carrier is not a surviving Transport" };
+  }
+  const occupantFormationIds = [
+    ...new Set([
+      ...[...embarkedByFormation.entries()]
+        .filter(([, carrierId]) => carrierId === transportFormationId)
+        .map(([formationId]) => formationId),
+      ...(candidateFormationId ? [candidateFormationId] : []),
+    ]),
+  ];
+  const pools = new Map();
+  const allowances = new Map();
+  const modes = new Set();
+  for (const formationId of occupantFormationIds) {
+    const formation = formations.get(formationId);
+    if (!formation || formation.playerId !== transport.playerId) {
+      return { valid: false, reason: "Transport occupants must be friendly registered formations" };
+    }
+    const option = transportOptionFor(formation, transportFormationId);
+    if (!option) {
+      return {
+        valid: false,
+        reason: `${formation.name} is not source-compatible with ${transport.name}`,
+      };
+    }
+    for (const assignment of option.assignments) {
+      const models = liveSavedUnitModelCount(formation, assignment.sourceSavedUnitId);
+      if (models < 1) continue;
+      const used = models * assignment.modelCost;
+      const poolKey =
+        assignment.poolKind === "alternative"
+          ? `alternative:${assignment.poolPosition}`
+          : String(assignment.poolPosition);
+      const previousPool = pools.get(poolKey);
+      if (
+        previousPool &&
+        (previousPool.capacity !== assignment.poolCapacity ||
+          previousPool.kind !== assignment.poolKind)
+      ) {
+        return { valid: false, reason: "Transport source contains inconsistent capacity facts" };
+      }
+      pools.set(poolKey, {
+        position: assignment.poolPosition,
+        kind: assignment.poolKind,
+        label: assignment.poolLabel,
+        capacity: assignment.poolCapacity,
+        used: (previousPool?.used ?? 0) + used,
+      });
+      modes.add(
+        assignment.poolKind === "alternative"
+          ? `alternative:${assignment.poolPosition}`
+          : "primary",
+      );
+      if (assignment.sharedAllowancePosition !== null) {
+        const allowanceKey = String(assignment.sharedAllowancePosition);
+        const previousAllowance = allowances.get(allowanceKey);
+        if (
+          previousAllowance &&
+          (previousAllowance.maximumModels !== assignment.sharedAllowanceMaximumModels ||
+            previousAllowance.primaryCapacityWhileUsed !==
+              assignment.sharedAllowancePrimaryCapacityWhileUsed)
+        ) {
+          return { valid: false, reason: "Transport source contains inconsistent allowance facts" };
+        }
+        allowances.set(allowanceKey, {
+          position: assignment.sharedAllowancePosition,
+          maximumModels: assignment.sharedAllowanceMaximumModels,
+          primaryCapacityWhileUsed: assignment.sharedAllowancePrimaryCapacityWhileUsed,
+          models: (previousAllowance?.models ?? 0) + models,
+        });
+      }
+    }
+  }
+  const primaryCapacityLimit = [...allowances.values()].reduce(
+    (capacity, allowance) =>
+      allowance.models > 0 && allowance.primaryCapacityWhileUsed !== null
+        ? Math.min(capacity, allowance.primaryCapacityWhileUsed)
+        : capacity,
+    Number.MAX_SAFE_INTEGER,
+  );
+  const poolLoads = [...pools.values()].map((pool) => ({
+    ...pool,
+    capacity:
+      pool.kind === "primary" ? Math.min(pool.capacity, primaryCapacityLimit) : pool.capacity,
+  }));
+  const allowanceLoads = [...allowances.values()];
+  const modeCount = modes.size;
+  const invalidPool = poolLoads.find(
+    (pool) => !transportLoadIsValid(pool.used, pool.capacity, 0, 0, modeCount),
+  );
+  if (invalidPool) {
+    return {
+      valid: false,
+      reason:
+        modeCount > 1
+          ? `${transport.name} cannot mix mutually exclusive Transport modes`
+          : `${transport.name} would use ${invalidPool.used} of ${invalidPool.capacity} spaces in its ${invalidPool.label} pool`,
+      occupantFormationIds,
+      poolLoads,
+      allowanceLoads,
+      modeCount,
+    };
+  }
+  const invalidAllowance = allowanceLoads.find(
+    (allowance) =>
+      !transportLoadIsValid(0, 1, allowance.models, allowance.maximumModels ?? 0, modeCount),
+  );
+  if (invalidAllowance) {
+    return {
+      valid: false,
+      reason: `${transport.name} would carry ${invalidAllowance.models} models in an allowance limited to ${invalidAllowance.maximumModels}`,
+      occupantFormationIds,
+      poolLoads,
+      allowanceLoads,
+      modeCount,
+    };
+  }
+  return {
+    valid: true,
+    reason: "",
+    occupantFormationIds,
+    poolLoads,
+    allowanceLoads,
+    modeCount,
+  };
 }
 
 function secureRandomUint32() {
@@ -3558,11 +3842,19 @@ export function replayBattleState(state) {
         if (!transport || transport.playerId !== formation.playerId) {
           throw new Error("A formation can start embarked only in a friendly Transport");
         }
-        if (formation.assignedTransportFormationId !== transport.id) {
-          throw new Error("Formation is not assigned to that Transport in the locked roster");
-        }
         if (!transport.keywords.includes("transport")) {
-          throw new Error("Assigned carrier does not have the Transport keyword");
+          throw new Error("Selected carrier does not have the Transport keyword");
+        }
+        if (state.version >= TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION) {
+          const occupancy = transportOccupancyReport(
+            formations,
+            embarkedByFormation,
+            transport.id,
+            formation.id,
+          );
+          if (!occupancy.valid) throw new Error(occupancy.reason);
+        } else if (formation.assignedTransportFormationId !== transport.id) {
+          throw new Error("Formation is not assigned to that Transport in the locked roster");
         }
         embarkedByFormation.set(event.formationId, event.transportFormationId);
       }
@@ -3969,13 +4261,21 @@ export function replayBattleState(state) {
       ) {
         throw new Error("Only the active player's formation can embark in a friendly Transport");
       }
-      if (formation.assignedTransportFormationId !== transport.id) {
-        throw new Error("Formation is not assigned to that Transport in the locked roster");
-      }
       if (!transport.keywords.includes("transport") || formationDestroyed(transport)) {
         throw new Error("A formation can embark only in a surviving Transport");
       }
       if (formationDestroyed(formation)) throw new Error("A destroyed formation cannot embark");
+      if (state.version >= TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION) {
+        const occupancy = transportOccupancyReport(
+          formations,
+          embarkedByFormation,
+          transport.id,
+          formation.id,
+        );
+        if (!occupancy.valid) throw new Error(occupancy.reason);
+      } else if (formation.assignedTransportFormationId !== transport.id) {
+        throw new Error("Formation is not assigned to that Transport in the locked roster");
+      }
       const movement = movementByFormation.get(event.formationId);
       if (
         !movement ||
@@ -6487,6 +6787,44 @@ export function battleFormationEmbarkedTransport(state, formationId) {
   return replayBattleState(state).embarkedByFormation.get(formationId) ?? "";
 }
 
+export function battleTransportOccupancy(state, transportFormationId) {
+  const replayed = replayBattleState(state);
+  return transportOccupancyReport(
+    replayed.formations,
+    replayed.embarkedByFormation,
+    transportFormationId,
+  );
+}
+
+export function battleEmbarkationOptions(state, formationId) {
+  const replayed = replayBattleState(state);
+  const formation = replayed.formations.get(formationId);
+  if (!formation || formationDestroyed(formation)) return [];
+  return formation.transportOptions.map((option) => {
+    const transport = replayed.formations.get(option.transportFormationId);
+    const onBattlefield = formationIsOnBattlefield(
+      option.transportFormationId,
+      replayed.deploymentByFormation,
+      replayed.deployedFormationIds,
+      replayed.embarkedByFormation,
+    );
+    const occupancy = transportOccupancyReport(
+      replayed.formations,
+      replayed.embarkedByFormation,
+      option.transportFormationId,
+      formationId,
+    );
+    return {
+      transportFormationId: option.transportFormationId,
+      name: transport?.name ?? option.transportFormationId,
+      assigned: formation.assignedTransportFormationId === option.transportFormationId,
+      available: onBattlefield && occupancy.valid,
+      reason: onBattlefield ? occupancy.reason : "Transport is not on the battlefield",
+      occupancy,
+    };
+  });
+}
+
 export function recordRangedTargetEligibility(
   state,
   {
@@ -7363,7 +7701,8 @@ export function configureUnengagedBattleFormation(state, formation, id, at) {
   if (
     previous.playerId !== formation.playerId ||
     previous.sourceFormationId !== formation.sourceFormationId ||
-    previous.assignedTransportFormationId !== formation.assignedTransportFormationId
+    previous.assignedTransportFormationId !== formation.assignedTransportFormationId ||
+    JSON.stringify(previous.transportOptions) !== JSON.stringify(formation.transportOptions)
   ) {
     throw new Error("Formation identity cannot change during battle setup");
   }

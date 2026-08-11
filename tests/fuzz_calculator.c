@@ -215,6 +215,13 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     uint32_t declaration_flags;
     bool declaration_valid;
     bool expected_declaration_valid;
+    uint32_t transport_used_capacity;
+    uint32_t transport_capacity;
+    uint32_t transport_allowance_models;
+    uint32_t transport_allowance_maximum;
+    uint32_t transport_mode_count;
+    bool transport_valid;
+    bool expected_transport_valid;
 
     while (index < weapon_count) {
         generate_weapon(&input, &weapons[index]);
@@ -508,5 +515,20 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         unique_target_profile_count <= declaration_count &&
         declaration_flags == WHC_RANGED_DECLARATION_FLAGS_MASK;
     assert(declaration_valid == expected_declaration_valid);
+    transport_used_capacity = next_u16(&input);
+    transport_capacity = next_u16(&input);
+    transport_allowance_models = next_u16(&input);
+    transport_allowance_maximum = next_u16(&input);
+    transport_mode_count = next_byte(&input);
+    transport_valid = whc_transport_load_is_valid(
+        transport_used_capacity, transport_capacity, transport_allowance_models,
+        transport_allowance_maximum, transport_mode_count);
+    expected_transport_valid =
+        transport_capacity > 0u && transport_used_capacity <= transport_capacity &&
+        transport_mode_count <= 1u &&
+        ((transport_allowance_maximum == 0u && transport_allowance_models == 0u) ||
+         (transport_allowance_maximum > 0u &&
+          transport_allowance_models <= transport_allowance_maximum));
+    assert(transport_valid == expected_transport_valid);
     return 0;
 }

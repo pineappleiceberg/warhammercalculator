@@ -210,5 +210,11 @@ int main(void) {
     assert(!whc_ranged_declaration_is_valid(
         3u, 3u, 2u, 2u, 3u, 3u,
         WHC_RANGED_DECLARATION_FLAGS_MASK & ~WHC_RANGED_DECLARATION_PROFILES_CONTIGUOUS));
+    assert(whc_transport_load_is_valid(12u, 12u, 0u, 0u, 1u));
+    assert(whc_transport_load_is_valid(4u, 6u, 1u, 1u, 1u));
+    assert(!whc_transport_load_is_valid(13u, 12u, 0u, 0u, 1u));
+    assert(!whc_transport_load_is_valid(4u, 6u, 2u, 1u, 1u));
+    assert(!whc_transport_load_is_valid(4u, 6u, 1u, 0u, 1u));
+    assert(!whc_transport_load_is_valid(4u, 6u, 0u, 0u, 2u));
     return 0;
 }

@@ -50,6 +50,7 @@ import {
   unavailableSourceEquipmentCombatPresetIds,
 } from "../lib/combat-presets.mjs";
 import {
+  battleTransportOccupancy,
   battleFormation,
   battleFormationHealth,
   battleSurvivingWeaponCount,
@@ -71,6 +72,7 @@ import {
   rangedDeclarationIsValid,
   rangedTargetEligibilityIsValid,
   replayBattleState,
+  transportLoadIsValid,
   weaponBearerDeclarationIsValid,
   weaponInventoryDeclarationIsValid,
 } from "../lib/battle-state.mjs";
@@ -326,6 +328,7 @@ type CalculatorExports = {
   whc_hazardous_resolution_is_valid(...values: number[]): number;
   whc_go_to_ground_is_valid(...values: number[]): number;
   whc_ranged_declaration_is_valid(...values: number[]): number;
+  whc_transport_load_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -471,6 +474,7 @@ async function loadCalculator() {
       typeof calculator.whc_hazardous_resolution_is_valid !== "function" ||
       typeof calculator.whc_go_to_ground_is_valid !== "function" ||
       typeof calculator.whc_ranged_declaration_is_valid !== "function" ||
+      typeof calculator.whc_transport_load_is_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -1258,6 +1262,41 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         canonicalMovement: Boolean(movement.pileIn || movement.consolidation),
       }))
       .sort((left, right) => left.activationEventId.localeCompare(right.activationEventId));
+    const transportOccupancy = [...replayed.formations.values()]
+      .filter((formation) => formation.keywords.includes("transport"))
+      .map((formation) => {
+        const occupancy = battleTransportOccupancy(state, formation.id);
+        for (const pool of occupancy.poolLoads ?? []) {
+          const values = [pool.used, pool.capacity, 0, 0, occupancy.modeCount];
+          const javascriptValid = transportLoadIsValid(...values);
+          const nativeValid = Boolean(calculator.whc_transport_load_is_valid(...values));
+          if (javascriptValid !== nativeValid) {
+            throw new ServiceUnavailableError(
+              "Transport capacity diverged from the C/WebAssembly predicate",
+              "TRANSPORT_CAPACITY_DIVERGENCE",
+            );
+          }
+        }
+        for (const allowance of occupancy.allowanceLoads ?? []) {
+          const values = [
+            0,
+            1,
+            allowance.models,
+            allowance.maximumModels ?? 0,
+            occupancy.modeCount,
+          ];
+          const javascriptValid = transportLoadIsValid(...values);
+          const nativeValid = Boolean(calculator.whc_transport_load_is_valid(...values));
+          if (javascriptValid !== nativeValid) {
+            throw new ServiceUnavailableError(
+              "Transport allowance diverged from the C/WebAssembly predicate",
+              "TRANSPORT_CAPACITY_DIVERGENCE",
+            );
+          }
+        }
+        return { transportFormationId: formation.id, ...occupancy };
+      })
+      .sort((left, right) => left.transportFormationId.localeCompare(right.transportFormationId));
     return {
       schemaVersion: state.version,
       rulesSnapshot: state.rulesSnapshot,
@@ -1418,6 +1457,21 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         destroyedAtBattleEndFormationIds: [...replayed.reserveDestroyedFormationIds].sort(),
       },
       transports: {
+        compatibility: [...replayed.formations.values()]
+          .flatMap((formation) =>
+            formation.transportOptions.map((option) => ({
+              formationId: formation.id,
+              assigned: formation.assignedTransportFormationId === option.transportFormationId,
+              transportFormationId: option.transportFormationId,
+              assignments: option.assignments.map((assignment) => ({ ...assignment })),
+            })),
+          )
+          .sort((left, right) =>
+            `${left.formationId}\u0000${left.transportFormationId}`.localeCompare(
+              `${right.formationId}\u0000${right.transportFormationId}`,
+            ),
+          ),
+        occupancy: transportOccupancy,
         embarked: [...replayed.embarkedByFormation.entries()]
           .map(([formationId, transportFormationId]) => ({
             formationId,
