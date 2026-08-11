@@ -58,6 +58,8 @@ import {
   battleSurvivingWeaponCount,
   chargeResolutionFlags,
   chargeResolutionIsValid,
+  counterOffensiveFlags,
+  counterOffensiveIsValid,
   fightMoveFlags,
   fightMoveIsValid,
   fireOverwatchFlags,
@@ -331,6 +333,7 @@ type CalculatorExports = {
   whc_fire_overwatch_is_valid(...values: number[]): number;
   whc_hazardous_resolution_is_valid(...values: number[]): number;
   whc_go_to_ground_is_valid(...values: number[]): number;
+  whc_counter_offensive_is_valid(...values: number[]): number;
   whc_ranged_declaration_is_valid(...values: number[]): number;
   whc_transport_load_is_valid(...values: number[]): number;
   whc_transport_deployment_chain_is_valid(...values: number[]): number;
@@ -479,6 +482,7 @@ async function loadCalculator() {
       typeof calculator.whc_fire_overwatch_is_valid !== "function" ||
       typeof calculator.whc_hazardous_resolution_is_valid !== "function" ||
       typeof calculator.whc_go_to_ground_is_valid !== "function" ||
+      typeof calculator.whc_counter_offensive_is_valid !== "function" ||
       typeof calculator.whc_ranged_declaration_is_valid !== "function" ||
       typeof calculator.whc_transport_load_is_valid !== "function" ||
       typeof calculator.whc_transport_deployment_chain_is_valid !== "function" ||
@@ -1148,6 +1152,48 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
           canonical: true,
         };
       });
+    const counterOffensives = replayed.counterOffensives.map((event) => {
+      const flags = counterOffensiveFlags(event, true, true);
+      const values = [
+        5,
+        event.commandPointsBefore,
+        event.commandPointCost,
+        event.commandPointsAfter,
+        0,
+        0,
+        flags,
+      ];
+      const javascriptValid = counterOffensiveIsValid(
+        "fight",
+        event.commandPointsBefore,
+        event.commandPointCost,
+        event.commandPointsAfter,
+        false,
+        false,
+        flags,
+      );
+      const nativeValid = Boolean(calculator.whc_counter_offensive_is_valid(...values));
+      if (!javascriptValid || javascriptValid !== nativeValid) {
+        throw new ServiceUnavailableError(
+          "Counter-offensive diverged from the C/WebAssembly predicate",
+          "COUNTER_OFFENSIVE_DIVERGENCE",
+        );
+      }
+      return {
+        eventId: event.id,
+        triggerActivationEventId: event.triggerActivationEventId,
+        playerId: event.playerId,
+        formationId: event.formationId,
+        commandPointCost: event.commandPointCost,
+        commandPointsBefore: event.commandPointsBefore,
+        commandPointsAfter: event.commandPointsAfter,
+        targetInEngagementRange: event.targetInEngagementRange,
+        targetEligibilityReason: event.targetEligibilityReason,
+        fightsNextConfirmed: event.fightsNextConfirmed,
+        clock: event.clock,
+        canonical: true,
+      };
+    });
     const hazardousTestsById = new Map(replayed.hazardousTests.map((event) => [event.id, event]));
     const hazardousDamageResolutions = replayed.hazardousDamageResolutions.map((event) => {
       if (!event.allocation) {
@@ -1395,6 +1441,18 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         clock: event.clock,
       })),
       pendingGoToGround: replayed.pendingGoToGround ? { ...replayed.pendingGoToGround } : null,
+      pendingCounterOffensive: replayed.pendingCounterOffensive
+        ? { ...replayed.pendingCounterOffensive }
+        : null,
+      counterOffensives,
+      counterOffensivePasses: replayed.counterOffensivePasses.map((event) => ({
+        eventId: event.id,
+        triggerActivationEventId: event.triggerActivationEventId,
+        playerId: event.playerId,
+        reason: event.reason,
+        clock: event.clock,
+      })),
+      forcedFightFormationId: replayed.forcedFightFormationId || null,
       readyRangedAttack: replayed.readyRangedAttack ? { ...replayed.readyRangedAttack } : null,
       rangedDeclarations: {
         draft: replayed.rangedDeclarationDraft.map((declaration) => ({ ...declaration })),

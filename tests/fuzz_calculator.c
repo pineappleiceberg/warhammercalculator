@@ -206,6 +206,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     uint32_t go_to_ground_flags;
     bool go_to_ground_valid;
     bool expected_go_to_ground_valid;
+    bool counter_offensive_valid;
+    bool expected_counter_offensive_valid;
     uint32_t declaration_count;
     uint32_t unique_declaration_count;
     uint32_t target_run_count;
@@ -509,6 +511,17 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         !go_to_ground_already_used && !go_to_ground_battle_shocked &&
         go_to_ground_flags == WHC_GO_TO_GROUND_FLAGS_MASK;
     assert(go_to_ground_valid == expected_go_to_ground_valid);
+    counter_offensive_valid = whc_counter_offensive_is_valid(
+        go_to_ground_phase, go_to_ground_cp_before, go_to_ground_cost,
+        go_to_ground_cp_after, go_to_ground_already_used, go_to_ground_battle_shocked,
+        go_to_ground_flags);
+    expected_counter_offensive_valid =
+        go_to_ground_phase == WHC_BATTLE_PHASE_FIGHT && go_to_ground_cp_before >= 2u &&
+        go_to_ground_cp_before <= 100000u && go_to_ground_cost == 2u &&
+        go_to_ground_cp_after == go_to_ground_cp_before - go_to_ground_cost &&
+        !go_to_ground_already_used && !go_to_ground_battle_shocked &&
+        go_to_ground_flags == WHC_COUNTER_OFFENSIVE_FLAGS_MASK;
+    assert(counter_offensive_valid == expected_counter_offensive_valid);
     declaration_count = next_u16(&input);
     unique_declaration_count = next_u16(&input);
     target_run_count = next_u16(&input);

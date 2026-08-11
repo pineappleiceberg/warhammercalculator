@@ -3,6 +3,7 @@ import {
   BATTLE_EVENT_VERSION,
   BATTLE_STATE_VERSION,
   CHARGE_MOVE_BATTLE_STATE_VERSION,
+  COUNTER_OFFENSIVE_BATTLE_STATE_VERSION,
   FIGHT_MOVE_BATTLE_STATE_VERSION,
   FIRE_OVERWATCH_BATTLE_STATE_VERSION,
   GO_TO_GROUND_BATTLE_STATE_VERSION,
@@ -503,6 +504,10 @@ export function initializeBattleForLists({
             sourceVersion < SETUP_RULES_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacySetupRulesThroughSequence ?? 0),
+          legacyCounterOffensiveThroughSequence:
+            sourceVersion < COUNTER_OFFENSIVE_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyCounterOffensiveThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

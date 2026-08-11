@@ -35,6 +35,7 @@
         "Aircraft mandatory Reserve setup, Aircraft Transport Reserve restrictions, and Hover declarations",
         "empty Dedicated Transport non-deployment and first-round destruction",
         "Stratagem Command Point payment and once-per-phase reuse restriction",
+        "Counter-offensive timing after an enemy unit fights, 2CP cost, Engagement Range and not-yet-fought target restrictions, and fights-next interruption",
         "Go to Ground timing, Infantry target, 1CP cost, 6+ invulnerable save, Benefit of Cover, and phase duration",
         "Benefit of Cover save modifier, AP 0 restriction for 3+ or better saves, non-cumulative effect, and Ignores Cover interaction"
       ]

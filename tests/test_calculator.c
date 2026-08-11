@@ -1576,6 +1576,25 @@ static void test_go_to_ground(void) {
         WHC_GO_TO_GROUND_FLAGS_MASK & ~WHC_GO_TO_GROUND_BENEFIT_OF_COVER));
 }
 
+static void test_counter_offensive(void) {
+    assert(whc_counter_offensive_is_valid(WHC_BATTLE_PHASE_FIGHT, 2u, 2u, 0u, false, false,
+                                           WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
+    assert(whc_counter_offensive_is_valid(WHC_BATTLE_PHASE_FIGHT, 3u, 2u, 1u, false, false,
+                                           WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
+    assert(!whc_counter_offensive_is_valid(WHC_BATTLE_PHASE_SHOOTING, 2u, 2u, 0u, false, false,
+                                            WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
+    assert(!whc_counter_offensive_is_valid(WHC_BATTLE_PHASE_FIGHT, 1u, 2u, 0u, false, false,
+                                            WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
+    assert(!whc_counter_offensive_is_valid(WHC_BATTLE_PHASE_FIGHT, 2u, 2u, 1u, false, false,
+                                            WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
+    assert(!whc_counter_offensive_is_valid(WHC_BATTLE_PHASE_FIGHT, 2u, 2u, 0u, true, false,
+                                            WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
+    assert(!whc_counter_offensive_is_valid(WHC_BATTLE_PHASE_FIGHT, 2u, 2u, 0u, false, true,
+                                            WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
+    assert(!whc_counter_offensive_is_valid(WHC_BATTLE_PHASE_FIGHT, 2u, 2u, 0u, false, false,
+                                            WHC_COUNTER_OFFENSIVE_FLAGS_MASK - 1u));
+}
+
 static void test_ranged_declaration(void) {
     assert(whc_ranged_declaration_is_valid(3u, 3u, 2u, 2u, 3u, 3u,
                                            WHC_RANGED_DECLARATION_FLAGS_MASK));
@@ -1726,6 +1745,7 @@ int main(void) {
     test_fire_overwatch();
     test_hazardous_resolution();
     test_go_to_ground();
+    test_counter_offensive();
     test_ranged_declaration();
     test_transport_load();
     test_transport_deployment_chain();
