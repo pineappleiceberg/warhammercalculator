@@ -216,6 +216,11 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     bool rapid_ingress_first_round_allowed;
     bool rapid_ingress_valid;
     bool expected_rapid_ingress_valid;
+    uint32_t rule_coverage_status;
+    bool rule_coverage_source_locked;
+    bool rule_coverage_acknowledged;
+    bool rule_coverage_permitted;
+    bool expected_rule_coverage_permitted;
     uint32_t declaration_count;
     uint32_t unique_declaration_count;
     uint32_t target_run_count;
@@ -563,6 +568,17 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         !go_to_ground_already_used && !go_to_ground_battle_shocked &&
         go_to_ground_flags == WHC_RAPID_INGRESS_FLAGS_MASK;
     assert(rapid_ingress_valid == expected_rapid_ingress_valid);
+    rule_coverage_status = next_byte(&input);
+    rule_coverage_source_locked = next_byte(&input) % 2u != 0u;
+    rule_coverage_acknowledged = next_byte(&input) % 2u != 0u;
+    rule_coverage_permitted = whc_rule_coverage_is_permitted(
+        rule_coverage_status, rule_coverage_source_locked, rule_coverage_acknowledged);
+    expected_rule_coverage_permitted =
+        rule_coverage_source_locked &&
+        (rule_coverage_status == WHC_RULE_COVERAGE_EXECUTABLE ||
+         rule_coverage_status == WHC_RULE_COVERAGE_IRRELEVANT ||
+         (rule_coverage_status == WHC_RULE_COVERAGE_GUIDED && rule_coverage_acknowledged));
+    assert(rule_coverage_permitted == expected_rule_coverage_permitted);
     declaration_count = next_u16(&input);
     unique_declaration_count = next_u16(&input);
     target_run_count = next_u16(&input);

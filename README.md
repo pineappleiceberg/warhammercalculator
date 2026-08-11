@@ -1015,6 +1015,41 @@ AI agents and automation. It runs entirely in the browser against the same
 C/WebAssembly engine and profile catalogue as the interactive calculator, so it
 does not require an API server, Worker, database connection, or secret.
 
+## Source-locked rule coverage
+
+`data/battle-rule-coverage.json` now defines the initial machine-readable rules
+coverage snapshot. It distinguishes rules the engine resolves itself from rules
+that require reviewed physical-table facts and from rules that are explicitly
+unsupported. Unknown rule IDs fail closed. A guided rule also fails closed until
+the caller supplies a non-empty acknowledgement describing how the players will
+resolve its physical-table facts.
+
+The static site publishes the same matrix at `/battle-rule-coverage.json`. The
+hosted worker exposes `GET /api/v1/rules/coverage` and accepts a bounded list of
+rule IDs at `POST /api/v1/rules/coverage/check`. For example:
+
+```json
+{
+  "rules": [
+    "core.attack-sequence",
+    {
+      "id": "core.charge-resolution",
+      "acknowledgement": "Players will review the measured charge move"
+    },
+    "mission.pariah-nexus"
+  ]
+}
+```
+
+The final mission entry is rejected because it is not yet source-locked in the
+matrix. The C predicate, WebAssembly export, JavaScript validator, API health
+check, and deployment probe share the same four-state fail-closed rule. The
+hosted coverage checker independently compares every JavaScript decision with
+the WebAssembly predicate before returning it. This is the coverage foundation,
+not a claim that faction, detachment, enhancement,
+datasheet, terrain, or mission rules are complete; battle-setup enforcement and
+source ingestion for those categories remain the next priority.
+
 A catalogue matchup can use exact catalogue IDs or unambiguous names:
 
 ```text

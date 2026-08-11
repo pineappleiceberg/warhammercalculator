@@ -1659,6 +1659,17 @@ static void test_rapid_ingress(void) {
         WHC_RAPID_INGRESS_FLAGS_MASK & ~WHC_RAPID_INGRESS_PLACEMENT_LEGAL));
 }
 
+static void test_rule_coverage(void) {
+    assert(whc_rule_coverage_is_permitted(WHC_RULE_COVERAGE_EXECUTABLE, true, false));
+    assert(whc_rule_coverage_is_permitted(WHC_RULE_COVERAGE_IRRELEVANT, true, false));
+    assert(whc_rule_coverage_is_permitted(WHC_RULE_COVERAGE_GUIDED, true, true));
+    assert(!whc_rule_coverage_is_permitted(WHC_RULE_COVERAGE_GUIDED, true, false));
+    assert(!whc_rule_coverage_is_permitted(WHC_RULE_COVERAGE_UNSUPPORTED, true, true));
+    assert(!whc_rule_coverage_is_permitted(WHC_RULE_COVERAGE_EXECUTABLE, false, true));
+    assert(!whc_rule_coverage_is_permitted(0u, true, true));
+    assert(!whc_rule_coverage_is_permitted(5u, true, true));
+}
+
 static void test_ranged_declaration(void) {
     assert(whc_ranged_declaration_is_valid(3u, 3u, 2u, 2u, 3u, 3u,
                                            WHC_RANGED_DECLARATION_FLAGS_MASK));
@@ -1812,6 +1823,7 @@ int main(void) {
     test_counter_offensive();
     test_smokescreen();
     test_rapid_ingress();
+    test_rule_coverage();
     test_ranged_declaration();
     test_transport_load();
     test_transport_deployment_chain();

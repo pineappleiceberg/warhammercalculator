@@ -92,6 +92,11 @@
 #define WHC_RAPID_INGRESS_PLACEMENT_LEGAL 8u
 #define WHC_RAPID_INGRESS_PASSENGERS_REMAIN_EMBARKED 16u
 #define WHC_RAPID_INGRESS_FLAGS_MASK 31u
+
+#define WHC_RULE_COVERAGE_EXECUTABLE 1u
+#define WHC_RULE_COVERAGE_GUIDED 2u
+#define WHC_RULE_COVERAGE_IRRELEVANT 3u
+#define WHC_RULE_COVERAGE_UNSUPPORTED 4u
 #define WHC_RANGED_DECLARATION_SAME_ACTIVATION 1u
 #define WHC_RANGED_DECLARATION_BEFORE_ATTACKS 2u
 #define WHC_RANGED_DECLARATION_ALL_ELIGIBLE 4u
@@ -425,6 +430,15 @@ bool whc_rapid_ingress_is_valid(uint32_t phase, uint32_t step, uint32_t battle_r
                                 uint32_t command_points_after, bool already_used,
                                 bool target_battle_shocked,
                                 bool first_round_out_of_phase_allowed, uint32_t flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        source_locked &&
+        (status == WHC_RULE_COVERAGE_EXECUTABLE ||
+         status == WHC_RULE_COVERAGE_IRRELEVANT ||
+         (status == WHC_RULE_COVERAGE_GUIDED && acknowledged));
+*/
+bool whc_rule_coverage_is_permitted(uint32_t status, bool source_locked, bool acknowledged);
 
 /*@ assigns \nothing;
     ensures \result <==>

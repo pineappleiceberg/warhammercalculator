@@ -78,6 +78,7 @@ import {
   weaponLimitMaximum,
 } from "../lib/loadout.mjs";
 import { resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
+import { ruleCoverageIsPermitted } from "../lib/rule-coverage.mjs";
 
 globalThis.require = createRequire(import.meta.url);
 globalThis.__dirname = dirname(fileURLToPath(import.meta.url));
@@ -111,6 +112,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_go_to_ground_is_valid, "function");
   assert.equal(typeof calculator._whc_smokescreen_is_valid, "function");
   assert.equal(typeof calculator._whc_rapid_ingress_is_valid, "function");
+  assert.equal(typeof calculator._whc_rule_coverage_is_permitted, "function");
   assert.equal(typeof calculator._whc_counter_offensive_is_valid, "function");
   assert.equal(typeof calculator._whc_ranged_declaration_is_valid, "function");
   assert.equal(typeof calculator._whc_transport_load_is_valid, "function");
@@ -396,6 +398,25 @@ test("WebAssembly and JavaScript agree on Rapid Ingress resolution", () => {
         values[9],
         values[10],
       ),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on the fail-closed rule coverage gate", () => {
+  const cases = [
+    [1, true, false],
+    [2, true, true],
+    [2, true, false],
+    [3, true, false],
+    [4, true, true],
+    [1, false, true],
+    [0, true, true],
+    [255, true, true],
+  ];
+  for (const [status, sourceLocked, acknowledged] of cases) {
+    assert.equal(
+      Boolean(calculator._whc_rule_coverage_is_permitted(status, sourceLocked, acknowledged)),
+      ruleCoverageIsPermitted(status, sourceLocked, acknowledged ? "reviewed" : ""),
     );
   }
 });

@@ -123,6 +123,48 @@ async function checkProfiles(fetchImpl, baseUrl, timeoutMs) {
   );
 }
 
+async function checkRuleCoverage(fetchImpl, baseUrl, timeoutMs) {
+  return responseCheck(
+    fetchImpl,
+    new URL("battle-rule-coverage.json", baseUrl),
+    timeoutMs,
+    async (response) => {
+      let body;
+      try {
+        body = await response.json();
+      } catch {
+        const error = new Error("Rule coverage catalogue is not valid JSON");
+        error.code = "INVALID_RULE_COVERAGE_JSON";
+        throw error;
+      }
+      if (
+        body?.schemaVersion !== 1 ||
+        typeof body?.snapshotId !== "string" ||
+        !Array.isArray(body?.sourceLocks) ||
+        body.sourceLocks.length === 0 ||
+        !Array.isArray(body?.rules) ||
+        body.rules.length === 0 ||
+        !body.rules.every(
+          (rule) =>
+            typeof rule?.id === "string" &&
+            typeof rule?.status === "string" &&
+            Array.isArray(rule?.sources) &&
+            rule.sources.length > 0,
+        )
+      ) {
+        const error = new Error("Rule coverage catalogue schema is incomplete");
+        error.code = "INVALID_RULE_COVERAGE_SCHEMA";
+        throw error;
+      }
+      return {
+        snapshotId: body.snapshotId,
+        rules: body.rules.length,
+        sourceLocks: body.sourceLocks.length,
+      };
+    },
+  );
+}
+
 async function checkWasm(fetchImpl, baseUrl, timeoutMs) {
   return responseCheck(
     fetchImpl,
@@ -198,6 +240,7 @@ export async function checkDeployment(
   const checks = await Promise.all([
     check("homepage", () => checkHome(fetchImpl, baseUrl, timeoutMs)),
     check("profile-catalogue", () => checkProfiles(fetchImpl, baseUrl, timeoutMs)),
+    check("rule-coverage", () => checkRuleCoverage(fetchImpl, baseUrl, timeoutMs)),
     check("calculator-wasm", () => checkWasm(fetchImpl, baseUrl, timeoutMs)),
     ...(surface === "api"
       ? [check("api-dependencies", () => checkApi(fetchImpl, baseUrl, timeoutMs))]

@@ -335,6 +335,13 @@ bool whc_rapid_ingress_is_valid(uint32_t phase, uint32_t step, uint32_t battle_r
            !target_battle_shocked && flags == WHC_RAPID_INGRESS_FLAGS_MASK;
 }
 
+bool whc_rule_coverage_is_permitted(uint32_t status, bool source_locked, bool acknowledged) {
+    return source_locked &&
+           (status == WHC_RULE_COVERAGE_EXECUTABLE ||
+            status == WHC_RULE_COVERAGE_IRRELEVANT ||
+            (status == WHC_RULE_COVERAGE_GUIDED && acknowledged));
+}
+
 bool whc_ranged_declaration_is_valid(uint32_t declaration_count,
                                      uint32_t unique_declaration_count,
                                      uint32_t target_run_count, uint32_t unique_target_count,
