@@ -85,6 +85,9 @@ import {
   modelPlacementFlags,
   modelPlacementSetFacts,
   modelPlacementSetIsValid,
+  modelPositionFlags,
+  modelPositionSetFacts,
+  modelPositionSetIsValid,
   tableGeometryFlags,
   tableGeometryIsValid,
   terrainFootprintFlags,
@@ -368,6 +371,7 @@ type CalculatorExports = {
   whc_table_geometry_is_valid(...values: number[]): number;
   whc_terrain_footprint_set_is_valid(...values: number[]): number;
   whc_model_placement_set_is_valid(...values: number[]): number;
+  whc_model_position_set_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -599,6 +603,7 @@ async function loadCalculator() {
       typeof calculator.whc_table_geometry_is_valid !== "function" ||
       typeof calculator.whc_terrain_footprint_set_is_valid !== "function" ||
       typeof calculator.whc_model_placement_set_is_valid !== "function" ||
+      typeof calculator.whc_model_position_set_is_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -956,6 +961,54 @@ async function replayFormationHealth(
         throw new ServiceUnavailableError(
           "Model placement diverged from the C/WebAssembly predicate",
           "MODEL_PLACEMENT_DIVERGENCE",
+        );
+      }
+    }
+    for (const [formationId, position] of replayedState.currentModelPositionsByFormation) {
+      if (
+        position.context === "deployment" ||
+        replayedState.geometryStaleFormationIds.has(formationId)
+      ) {
+        continue;
+      }
+      const formation = replayedState.formations.get(formationId);
+      const history = replayedState.modelPositionHistoryByFormation.get(formationId) ?? [];
+      const previous = history.length > 1 ? history.at(-2) : null;
+      if (!formation) {
+        throw new ServiceUnavailableError(
+          "Model position references an absent formation",
+          "MODEL_POSITION_DIVERGENCE",
+        );
+      }
+      const facts = modelPositionSetFacts(position, formation, previous);
+      const values = [
+        facts.liveModelCount,
+        facts.placementCount,
+        facts.uniqueModelCount,
+        facts.recognizedModelCount,
+        facts.positionedModelCount,
+        facts.inBoundsModelCount,
+        facts.dimensionedModelCount,
+        facts.supportedShapeCount,
+        facts.basedModelCount,
+        facts.baselessModelCount,
+        formation.segments.length,
+        facts.matchedLiveSegmentCount,
+        facts.pathModelCount,
+        facts.pathStartCount,
+        facts.pathEndpointCount,
+        facts.pathInBoundsCount,
+        facts.footprintMatchCount,
+        facts.distanceWithinLimitCount,
+        facts.distanceCoversPathCount,
+        modelPositionFlags(position, true),
+      ];
+      const javascriptValid = modelPositionSetIsValid(position, formation, previous, true);
+      const nativeValid = Boolean(calculator.whc_model_position_set_is_valid(...values));
+      if (!javascriptValid || javascriptValid !== nativeValid) {
+        throw new ServiceUnavailableError(
+          "Model position diverged from the C/WebAssembly predicate",
+          "MODEL_POSITION_DIVERGENCE",
         );
       }
     }
@@ -1754,6 +1807,10 @@ async function replayFormationHealth(
       tableGeometry: replayed.tableGeometry,
       terrainFootprints: replayed.terrainFootprints,
       modelPlacements: Object.fromEntries(replayed.modelPlacementsByFormation),
+      currentModelPositions: Object.fromEntries(replayed.currentModelPositionsByFormation),
+      modelPositionHistory: Object.fromEntries(replayed.modelPositionHistoryByFormation),
+      geometryStaleFormationIds: [...replayed.geometryStaleFormationIds].sort(),
+      pendingModelPosition: replayed.pendingModelPosition,
       formationId: requestedFormationId,
       health,
       activeAttackIds: replayed.activeAttackIds,

@@ -39,6 +39,9 @@ import {
   modelPlacementFlags,
   modelPlacementSetFacts,
   modelPlacementSetIsValid,
+  modelPositionFlags,
+  modelPositionSetFacts,
+  modelPositionSetIsValid,
   normalizeBattleState,
   rangedDeclarationIsValid,
   rangedTargetEligibilityIsValid,
@@ -130,6 +133,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_table_geometry_is_valid, "function");
   assert.equal(typeof calculator._whc_terrain_footprint_set_is_valid, "function");
   assert.equal(typeof calculator._whc_model_placement_set_is_valid, "function");
+  assert.equal(typeof calculator._whc_model_position_set_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
 });
@@ -381,6 +385,160 @@ test("WebAssembly and JavaScript agree on exact-model placement sets", () => {
     assert.equal(
       Boolean(calculator._whc_model_placement_set_is_valid(...values)),
       modelPlacementSetIsValid(placement, expectedModelIds, true),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on live per-model movement invariants", () => {
+  const formation = {
+    segments: [
+      { id: "body", modelIds: ["model-1", "model-2"] },
+      { id: "leader", modelIds: ["model-3"] },
+    ],
+    health: {
+      body: { modelsRemaining: 1, woundsLost: 0 },
+      leader: { modelsRemaining: 1, woundsLost: 0 },
+    },
+  };
+  const footprint = (modelId, centerXThousandths) => ({
+    modelId,
+    measurementBasis: "base",
+    shape: "circle",
+    widthThousandths: 1_000,
+    depthThousandths: 1_000,
+    centerXThousandths,
+    centerYThousandths: 10_000,
+    elevationThousandths: 0,
+    rotationMilliDegrees: 0,
+  });
+  const previous = {
+    models: [
+      footprint("model-1", 10_000),
+      footprint("model-2", 12_000),
+      footprint("model-3", 14_000),
+    ],
+  };
+  const base = {
+    context: "movement",
+    models: [footprint("model-2", 13_000), footprint("model-3", 15_000)].map((model) => {
+      const start = previous.models.find((candidate) => candidate.modelId === model.modelId);
+      const point = (candidate) => ({
+        centerXThousandths: candidate.centerXThousandths,
+        centerYThousandths: candidate.centerYThousandths,
+        elevationThousandths: candidate.elevationThousandths,
+        rotationMilliDegrees: candidate.rotationMilliDegrees,
+      });
+      return {
+        ...model,
+        path: [point(start), point(model)],
+        distanceMovedThousandths: 1_000,
+        maximumDistanceThousandths: 6_000,
+      };
+    }),
+    reviewedByPlayer: true,
+    measurementBoundariesReviewed: true,
+    positionsReviewed: true,
+    noModelOverlapReviewed: true,
+    objectiveClearanceReviewed: true,
+    pathsReviewed: true,
+    terrainClearanceReviewed: true,
+    coherencyReviewed: true,
+    engagementRangeReviewed: true,
+    reconcilesStaleStart: false,
+  };
+  const cases = [
+    base,
+    { ...base, pathsReviewed: false },
+    {
+      ...base,
+      models: base.models.map((model, index) =>
+        index === 0 ? { ...model, maximumDistanceThousandths: 999 } : model,
+      ),
+    },
+    {
+      ...base,
+      reconcilesStaleStart: true,
+      models: base.models.map((model) => ({
+        ...model,
+        path: [
+          { ...model.path[0], centerYThousandths: model.path[0].centerYThousandths + 1_000 },
+          { ...model.path[1], centerYThousandths: model.path[1].centerYThousandths + 1_000 },
+        ],
+        centerYThousandths: model.centerYThousandths + 1_000,
+        distanceMovedThousandths: 1_000,
+      })),
+    },
+    {
+      ...base,
+      models: base.models.map((model, index) =>
+        index === 0 ? { ...model, distanceMovedThousandths: 0 } : model,
+      ),
+    },
+    {
+      ...base,
+      models: base.models.map((model, index) =>
+        index === 0 ? { ...model, widthThousandths: 2_000 } : model,
+      ),
+    },
+    {
+      ...base,
+      models: base.models.map((model, index) =>
+        index === 0
+          ? {
+              ...model,
+              path: [
+                { ...model.path[0], centerXThousandths: model.path[0].centerXThousandths + 1 },
+                model.path[1],
+              ],
+            }
+          : model,
+      ),
+    },
+    {
+      ...base,
+      models: base.models.map((model, index) =>
+        index === 0
+          ? { ...model, path: [model.path[0], { ...model.path[1], centerYThousandths: 10_001 }] }
+          : model,
+      ),
+    },
+    {
+      ...base,
+      models: base.models.map((model, index) =>
+        index === 0
+          ? { ...model, path: [{ ...model.path[0], centerXThousandths: 0 }, model.path[1]] }
+          : model,
+      ),
+    },
+    { ...base, models: [base.models[0]] },
+  ];
+  for (const position of cases) {
+    const facts = modelPositionSetFacts(position, formation, previous);
+    const values = [
+      facts.liveModelCount,
+      facts.placementCount,
+      facts.uniqueModelCount,
+      facts.recognizedModelCount,
+      facts.positionedModelCount,
+      facts.inBoundsModelCount,
+      facts.dimensionedModelCount,
+      facts.supportedShapeCount,
+      facts.basedModelCount,
+      facts.baselessModelCount,
+      formation.segments.length,
+      facts.matchedLiveSegmentCount,
+      facts.pathModelCount,
+      facts.pathStartCount,
+      facts.pathEndpointCount,
+      facts.pathInBoundsCount,
+      facts.footprintMatchCount,
+      facts.distanceWithinLimitCount,
+      facts.distanceCoversPathCount,
+      modelPositionFlags(position, true),
+    ];
+    assert.equal(
+      Boolean(calculator._whc_model_position_set_is_valid(...values)),
+      modelPositionSetIsValid(position, formation, previous, true),
     );
   }
 });

@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 27 as soon as both lists are selected. Every
+creates battle-state version 28 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -679,13 +679,29 @@ elevation, and rotation. Rotated footprint extents must remain inside the table;
 missing, duplicate, unrecognized, unsupported, or out-of-bounds models fail
 closed. Because flat coordinates cannot safely prove multilevel or irregular
 physical clearance, model/model and model/objective non-overlap are retained as
-explicit player-reviewed facts. Version-25 games migrate without invented terrain
-footprints, and version-26 games migrate without invented model positions; both
-can append the missing reviewed records. Custom missions keep the existing
-confirmation-based workflow. Movement paths, Reserve-arrival positions,
-board-edge and enemy-distance checks, Deep Strike, and source-rule eligibility
-remain fail-closed behind explicit reason-bearing player confirmations until
-those geometry layers are executable. The official Core Rules source identity, retrieval date,
+explicit player-reviewed facts. Version 28 extends that stable identity through
+Normal, Advance, and Fall Back moves and through Reserves or Rapid Ingress setup.
+Each exact action pauses before its end-of-move or set-up reaction window until
+the event log contains every surviving model's locked footprint, endpoint,
+optional intermediate path points, measured farthest-part distance, and reviewed
+maximum distance. The engine rejects missing or duplicate live identities,
+wrong per-segment survivor counts, changed footprints, mismatched path starts or
+endpoints, paths outside the table, distances shorter than the centre path, and
+distances above the reviewed allowance. Terrain clearance, model overlap,
+objective clearance, coherency, and Engagement Range remain explicit
+reason-bearing tabletop reviews rather than inferred facts. Casualties mark the
+last position snapshot stale until the next snapshot identifies the surviving
+models; undo restores freshness when the identities match again. If a Charge,
+Pile In, Consolidation, or other reviewed physical move made the saved start
+stale, the next movement event explicitly records that reconciliation and each
+model's verified start instead of silently treating old coordinates as current.
+Version-25
+games migrate without invented terrain footprints, version-26 games migrate
+without invented deployment positions, and version-27 games migrate without
+invented movement history. Custom missions keep the existing confirmation-based
+workflow. Board-edge and enemy-distance checks, Deep Strike, and source-rule
+eligibility remain fail-closed behind explicit reason-bearing player
+confirmations until those geometry layers are executable. The official Core Rules source identity, retrieval date,
 content hash, and relevant pages are pinned in
 `data/battle-rule-sources.json`.
 Version 7 locks each legal saved Transport assignment to its exact battle
@@ -984,7 +1000,7 @@ attacking. Undo appends a compensating event instead of deleting history.
 Validated JSON battle exports and imports preserve the rules snapshot and fail
 closed when the referenced saved lists or loaded catalogue do not match.
 The same version-1 flat event ABI for formation-health replay runs in native C
-and WebAssembly for version-1 through version-7 JSON battle envelopes.
+and WebAssembly for version-1 through version-28 JSON battle envelopes.
 It validates attack transitions, damage and casualty totals, the one-wounded-model
 invariant, and last-in-first-out compensating undo without modifying its output
 when an event stream is invalid. `POST /api/v1/battle/replay` accepts
@@ -998,7 +1014,8 @@ movement and charge outcomes, canonical Pile In and Consolidation facts for each
 Fight activation, current/completed activation state, deployment
 declarations and order, battlefield/off-battlefield identities, Reserve
 arrivals, Reserves destroyed at battle end, reviewed per-model deployment
-placements, resolved Transport deployment
+placements, current per-model positions, replayable position history, stale
+casualty-identity warnings, pending movement or arrival snapshots, resolved Transport deployment
 ancestry, per-formation Dedicated Transport and Aircraft/Hover setup reports,
 empty Dedicated Transports destroyed in round one, current Transport occupancy,
 disembarkations, mandatory destroyed-Transport state, and recorded passenger

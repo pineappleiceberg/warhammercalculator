@@ -27,10 +27,11 @@ state.
 
 ## Prioritized backlog
 
-1. Extend the canonical version-27 deployment snapshots into replayable movement
-   paths, Advance and charge endpoints, Reserve arrivals, casualty-aware model
-   identity, terrain height and Ruin-wall subgeometry, cover, visibility,
-   coherency, objective range, and Engagement Range.
+1. Extend canonical version-28 position history through Charge, Pile In,
+   Consolidation, disembarkation, Emergency Disembarkation, and embarkation;
+   then make terrain height and Ruin-wall subgeometry, cover, visibility,
+   coherency, objective range, and Engagement Range executable from those exact
+   footprints instead of review-only facts.
 2. Implement source-locked mission scoring and secondary-card/action tracking
    for the selected Chapter Approved combination while keeping unavailable card
    text fail-closed.
@@ -38,6 +39,28 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced exact guided geometry to battle-state version 28 with
+  replayable per-model movement and Reinforcement positions. Normal, Advance,
+  and Fall Back actions in source-locked Chapter Approved games now pause before
+  their end reaction until every surviving stable model identity records its
+  locked footprint, full reviewed path, endpoint, measured farthest-part
+  distance, and reviewed maximum. Reserves and Rapid Ingress record the same
+  formation's first exact positions before play continues, and Fire Overwatch
+  set-up/end windows open only after the snapshot exists. Replay rejects wrong
+  per-segment survivor counts, changed footprints, mismatched starts or
+  endpoints, paths outside the battlefield, measured distances shorter than
+  the centre path, over-limit movement, and incomplete physical reviews.
+  Casualties explicitly mark prior geometry stale until a later snapshot names
+  the surviving models; compensating attack undo restores freshness when the
+  snapshot matches again. A later move from geometry made stale by Charge or
+  Fight movement now carries an explicit reconciliation flag and verified
+  per-model starting points instead of overwriting the earlier snapshot.
+  Version-27 games migrate without invented paths, and
+  custom games preserve their existing confirmation workflow. Guided Play,
+  replay/API output, JavaScript, and an ACSL-specified C/WebAssembly predicate
+  share movement, arrival, casualty, migration, malformed-input, and
+  differential coverage.
 
 - 2026-08-11: Advanced canonical battle setup to version 27 with replayable
   exact-model deployment snapshots. After each battlefield formation is placed
