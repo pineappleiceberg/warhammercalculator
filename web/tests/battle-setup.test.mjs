@@ -362,7 +362,7 @@ function reviewedModelPositions(state, formationId, context, referenceEventId, o
       shape: "circle",
       widthThousandths: 1_000,
       depthThousandths: 1_000,
-      centerXThousandths: 35_000 + index * 2_000,
+      centerXThousandths: 35_000 + index * 1_000,
       centerYThousandths: 35_000,
       elevationThousandths: 0,
       rotationMilliDegrees: 0,
@@ -1255,10 +1255,39 @@ test("records exact disembarkation positions before the set-up reaction window",
       ),
     /per-model position snapshot/i,
   );
+  const coherentPositions = reviewedModelPositions(
+    state,
+    "player-1:boyz",
+    "disembarkation",
+    "exact-boyz-disembarked",
+  );
+  const incoherentPositions = {
+    ...coherentPositions,
+    models: coherentPositions.models.map((model, index) =>
+      index === coherentPositions.models.length - 1
+        ? {
+            ...model,
+            centerYThousandths: 20_000,
+            path: [{ ...model.path[0], centerYThousandths: 20_000 }],
+          }
+        : model,
+    ),
+  };
+  assert.throws(
+    () =>
+      recordModelPositions(
+        state,
+        "player-1:boyz",
+        incoherentPositions,
+        "incoherent-boyz-positioned",
+        state.events.length + 1,
+      ),
+    /executable unit coherency/i,
+  );
   state = recordModelPositions(
     state,
     "player-1:boyz",
-    reviewedModelPositions(state, "player-1:boyz", "disembarkation", "exact-boyz-disembarked"),
+    coherentPositions,
     "exact-boyz-positioned",
     state.events.length + 1,
   );
@@ -2360,6 +2389,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacyModelPositionsThroughSequence: 3,
     legacyExtendedModelPositionsThroughSequence: 3,
     legacyTransportModelLocationsThroughSequence: 3,
+    legacySpatialFactsThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -2400,6 +2430,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacyModelPositionsThroughSequence: 3,
     legacyExtendedModelPositionsThroughSequence: 3,
     legacyTransportModelLocationsThroughSequence: 3,
+    legacySpatialFactsThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -2445,6 +2476,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacyModelPositionsThroughSequence: 2,
     legacyExtendedModelPositionsThroughSequence: 2,
     legacyTransportModelLocationsThroughSequence: 2,
+    legacySpatialFactsThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -2483,6 +2515,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacyModelPositionsThroughSequence: 2,
     legacyExtendedModelPositionsThroughSequence: 2,
     legacyTransportModelLocationsThroughSequence: 2,
+    legacySpatialFactsThroughSequence: 2,
   });
 });
 
@@ -2520,6 +2553,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacyModelPositionsThroughSequence: 2,
     legacyExtendedModelPositionsThroughSequence: 2,
     legacyTransportModelLocationsThroughSequence: 2,
+    legacySpatialFactsThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -2563,6 +2597,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacyModelPositionsThroughSequence: 2,
     legacyExtendedModelPositionsThroughSequence: 2,
     legacyTransportModelLocationsThroughSequence: 2,
+    legacySpatialFactsThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -2601,6 +2636,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacyModelPositionsThroughSequence: 2,
     legacyExtendedModelPositionsThroughSequence: 2,
     legacyTransportModelLocationsThroughSequence: 2,
+    legacySpatialFactsThroughSequence: 2,
   });
 });
 
@@ -2638,6 +2674,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacyModelPositionsThroughSequence: 2,
     legacyExtendedModelPositionsThroughSequence: 2,
     legacyTransportModelLocationsThroughSequence: 2,
+    legacySpatialFactsThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -3154,6 +3191,62 @@ test("migrates version-29 geometry without inventing Transport location transiti
   assert.equal(replayed.pendingModelPosition, null);
   assert.equal(replayed.modelLocationHistoryByFormation.size, 0);
   assert.equal(replayed.modelPositionHistoryByFormation.get("player-2:brutalis").length, 1);
+});
+
+test("migrates version-30 positions without inventing baseless vertical extents", () => {
+  let versionThirty = exactMissionSetup("version-30-spatial-facts");
+  versionThirty = configureBattleTableGeometry(
+    versionThirty,
+    reviewedTableGeometry(versionThirty),
+    "version-30-table-geometry",
+    versionThirty.events.length + 1,
+  );
+  versionThirty = configureBattleTerrainFootprints(
+    versionThirty,
+    reviewedTerrainFootprints(versionThirty),
+    "version-30-terrain-footprints",
+    versionThirty.events.length + 1,
+  );
+  versionThirty = deployAllOnBattlefield(versionThirty);
+  versionThirty.version = 30;
+  delete versionThirty.migration;
+  versionThirty.events = versionThirty.events.map((event) =>
+    event.type === "model_placements_recorded"
+      ? {
+          ...event,
+          placement: {
+            ...event.placement,
+            models: event.placement.models.map((model) => {
+              const legacyModel = { ...model };
+              delete legacyModel.verticalExtentThousandths;
+              return legacyModel;
+            }),
+          },
+        }
+      : event,
+  );
+  const legacyEventCount = versionThirty.events.length;
+  const migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: normalizeBattleState(versionThirty),
+    id: versionThirty.id,
+  });
+  const replayed = replayBattleState(migrated);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 30);
+  assert.equal(migrated.migration.legacySpatialFactsThroughSequence, legacyEventCount);
+  assert.ok(
+    [...replayed.currentModelPositionsByFormation.values()].every((position) =>
+      position.models.every((model) => model.verticalExtentThousandths === 0),
+    ),
+  );
+  assert.ok([...replayed.spatialFactsByFormation.values()].every((fact) => fact.executable));
 });
 
 test("marks exact geometry stale when casualties change live model identities and clears on undo", () => {

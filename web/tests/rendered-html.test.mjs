@@ -3027,6 +3027,7 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
       shape: "rectangle",
       widthThousandths: 3_000,
       depthThousandths: 2_000,
+      verticalExtentThousandths: 3_000,
       centerXThousandths: 30_000,
       centerYThousandths: 22_000,
       elevationThousandths: 0,
@@ -3156,6 +3157,9 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
     ],
   });
   assert.deepEqual(body.data.geometryStaleFormationIds, []);
+  assert.equal(body.data.spatialFacts[target.id].executable, true);
+  assert.equal(body.data.spatialFacts[target.id].coherency.status, "coherent");
+  assert.equal(body.data.spatialFacts[target.id].engagementRange.status, "clear");
   assert.equal(body.data.pendingModelPosition, null);
   assert.deepEqual(body.data.pendingModelPositions, []);
 });

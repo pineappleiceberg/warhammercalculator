@@ -36,6 +36,7 @@ import {
   unitStartingSizeStatus,
 } from "../lib/loadout.mjs";
 import type { Catalogue, CatalogueCombatPreset } from "../lib/catalogue";
+import { spatialFactValues, spatialFactValuesAreValid } from "../lib/spatial-facts.mjs";
 import { resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
 import {
   bodyguardJoinEligibility,
@@ -372,6 +373,7 @@ type CalculatorExports = {
   whc_terrain_footprint_set_is_valid(...values: number[]): number;
   whc_model_placement_set_is_valid(...values: number[]): number;
   whc_model_position_set_is_valid(...values: number[]): number;
+  whc_spatial_facts_are_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -604,6 +606,7 @@ async function loadCalculator() {
       typeof calculator.whc_terrain_footprint_set_is_valid !== "function" ||
       typeof calculator.whc_model_placement_set_is_valid !== "function" ||
       typeof calculator.whc_model_position_set_is_valid !== "function" ||
+      typeof calculator.whc_spatial_facts_are_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -1009,6 +1012,18 @@ async function replayFormationHealth(
         throw new ServiceUnavailableError(
           "Model position diverged from the C/WebAssembly predicate",
           "MODEL_POSITION_DIVERGENCE",
+        );
+      }
+    }
+    for (const fact of replayedState.spatialFactsByFormation.values()) {
+      if (!fact.executable) continue;
+      const values = spatialFactValues(fact);
+      const javascriptValid = spatialFactValuesAreValid(...values);
+      const nativeValid = Boolean(calculator.whc_spatial_facts_are_valid(...values));
+      if (!javascriptValid || javascriptValid !== nativeValid) {
+        throw new ServiceUnavailableError(
+          "Executable spatial facts diverged from the C/WebAssembly predicate",
+          "SPATIAL_FACTS_DIVERGENCE",
         );
       }
     }
@@ -1811,6 +1826,7 @@ async function replayFormationHealth(
       modelPositionHistory: Object.fromEntries(replayed.modelPositionHistoryByFormation),
       modelLocationHistory: Object.fromEntries(replayed.modelLocationHistoryByFormation),
       geometryStaleFormationIds: [...replayed.geometryStaleFormationIds].sort(),
+      spatialFacts: Object.fromEntries(replayed.spatialFactsByFormation),
       pendingModelPosition: replayed.pendingModelPosition,
       pendingModelPositions: replayed.pendingModelPositions,
       formationId: requestedFormationId,

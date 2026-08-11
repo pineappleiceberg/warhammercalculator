@@ -490,6 +490,19 @@ bool whc_model_position_set_is_valid(
            flags == WHC_MODEL_POSITION_FLAGS_MASK;
 }
 
+bool whc_spatial_facts_are_valid(uint32_t model_count, uint32_t ready_model_count,
+                                 uint32_t required_neighbour_count,
+                                 uint32_t coherent_model_count,
+                                 uint32_t enemy_model_pair_count, uint32_t objective_count,
+                                 uint32_t objective_in_range_count, uint32_t flags) {
+    const uint32_t expected_neighbours = model_count <= 1u ? 0u : (model_count <= 6u ? 1u : 2u);
+
+    return model_count > 0u && model_count <= 1000u && ready_model_count == model_count &&
+           required_neighbour_count == expected_neighbours && coherent_model_count <= model_count &&
+           enemy_model_pair_count <= 1000000u && objective_count <= 12u &&
+           objective_in_range_count <= objective_count && flags == WHC_SPATIAL_FACTS_FLAGS_MASK;
+}
+
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,
                                      const uint32_t *events, uint32_t event_count,
                                      uint32_t *health) {

@@ -923,6 +923,12 @@ export default function PlayMode() {
   const pendingModelPositionPrevious = pendingModelPosition
     ? replayedBattle?.currentModelPositionsByFormation.get(pendingModelPosition.formationId)
     : null;
+  const attackerSpatialFacts = attackerBattleFormationId
+    ? replayedBattle?.spatialFactsByFormation.get(attackerBattleFormationId)
+    : null;
+  const targetSpatialFacts = targetBattleFormationId
+    ? replayedBattle?.spatialFactsByFormation.get(targetBattleFormationId)
+    : null;
   targetFormationBaseModels = battleTargetSequence(
     targetFormationBaseModels,
     targetBattleFormationId ? replayedBattle?.formations.get(targetBattleFormationId) : null,
@@ -3236,25 +3242,37 @@ export default function PlayMode() {
         battlefieldWidthThousandths: table.battlefieldWidthThousandths,
         battlefieldHeightThousandths: table.battlefieldHeightThousandths,
         origin: table.origin,
-        models: formation.modelInstances.map((model: { id: string }) => ({
-          modelId: model.id,
-          measurementBasis: String(data.get(`model-basis-${model.id}`) || "base"),
-          shape: String(data.get(`model-shape-${model.id}`) || "circle"),
-          widthThousandths: measurement(`model-width-${model.id}`, 30),
-          depthThousandths: measurement(`model-depth-${model.id}`, 30),
-          centerXThousandths: measurement(
-            `model-x-${model.id}`,
-            table.battlefieldWidthThousandths / 1000,
+        models: formation.modelInstances.map((model: { id: string }) => {
+          const measurementBasis = String(data.get(`model-basis-${model.id}`) || "base");
+          const verticalExtentThousandths = measurement(
+            `model-vertical-extent-${model.id}`,
+            30,
             true,
-          ),
-          centerYThousandths: measurement(
-            `model-y-${model.id}`,
-            table.battlefieldHeightThousandths / 1000,
-            true,
-          ),
-          elevationThousandths: measurement(`model-z-${model.id}`, 24, true),
-          rotationMilliDegrees: rotation(`model-rotation-${model.id}`),
-        })),
+          );
+          if (measurementBasis === "model" && verticalExtentThousandths === 0) {
+            throw new Error("A baseless model requires its measured hull height");
+          }
+          return {
+            modelId: model.id,
+            measurementBasis,
+            shape: String(data.get(`model-shape-${model.id}`) || "circle"),
+            widthThousandths: measurement(`model-width-${model.id}`, 30),
+            depthThousandths: measurement(`model-depth-${model.id}`, 30),
+            verticalExtentThousandths,
+            centerXThousandths: measurement(
+              `model-x-${model.id}`,
+              table.battlefieldWidthThousandths / 1000,
+              true,
+            ),
+            centerYThousandths: measurement(
+              `model-y-${model.id}`,
+              table.battlefieldHeightThousandths / 1000,
+              true,
+            ),
+            elevationThousandths: measurement(`model-z-${model.id}`, 24, true),
+            rotationMilliDegrees: rotation(`model-rotation-${model.id}`),
+          };
+        }),
         measurementBoundariesReviewed: data.get("model-boundaries-reviewed") === "on",
         positionsReviewed: data.get("model-positions-reviewed") === "on",
         noModelOverlapReviewed: data.get("model-overlap-reviewed") === "on",
@@ -3391,11 +3409,20 @@ export default function PlayMode() {
                 rotationMilliDegrees: Math.round(values[3] * 1000),
               };
             });
+          const measurementBasis = pathMovement
+            ? prior.measurementBasis
+            : String(data.get(`position-basis-${modelId}`) || "base");
+          const verticalExtentThousandths = pathMovement
+            ? prior.measurementBasis === "model" && prior.verticalExtentThousandths === 0
+              ? measurement(`position-vertical-extent-${modelId}`, 30)
+              : prior.verticalExtentThousandths
+            : measurement(`position-vertical-extent-${modelId}`, 30, true);
+          if (measurementBasis === "model" && verticalExtentThousandths === 0) {
+            throw new Error("A baseless model requires its measured hull height");
+          }
           return {
             modelId,
-            measurementBasis: pathMovement
-              ? prior.measurementBasis
-              : String(data.get(`position-basis-${modelId}`) || "base"),
+            measurementBasis,
             shape: pathMovement
               ? prior.shape
               : String(data.get(`position-shape-${modelId}`) || "circle"),
@@ -3405,6 +3432,7 @@ export default function PlayMode() {
             depthThousandths: pathMovement
               ? prior.depthThousandths
               : measurement(`position-depth-${modelId}`, 30),
+            verticalExtentThousandths,
             ...endpoint,
             path: pathMovement ? [start, ...intermediatePath, endpoint] : [endpoint],
             distanceMovedThousandths: pathMovement
@@ -6117,6 +6145,39 @@ export default function PlayMode() {
                 </label>
               </fieldset>
             </div>
+            {(attackerSpatialFacts || targetSpatialFacts) && (
+              <div className="loadout-warnings" data-testid="executable-spatial-facts">
+                <strong>Measured battlefield facts</strong>
+                {[attackerSpatialFacts, targetSpatialFacts].filter(Boolean).map((fact) => {
+                  const formation = replayedBattle?.formations.get(fact.formationId);
+                  if (!fact.executable) {
+                    return (
+                      <span key={fact.formationId}>
+                        {formation?.name ?? fact.formationId}: unknown (
+                        {fact.unavailableReasons
+                          .map((reason: string) => reason.replaceAll("_", " "))
+                          .join(", ")}
+                        )
+                      </span>
+                    );
+                  }
+                  const objectiveCount = fact.objectives.filter(
+                    (objective: { status: string }) => objective.status === "in_range",
+                  ).length;
+                  return (
+                    <span key={fact.formationId}>
+                      {formation?.name ?? fact.formationId}: {fact.coherency.status} ·{" "}
+                      {fact.engagementRange.status} · {objectiveCount} objective
+                      {objectiveCount === 1 ? "" : "s"} in range
+                    </span>
+                  );
+                })}
+                <small>
+                  Derived from closest base or hull boundaries. Visibility and cover still require
+                  tabletop review.
+                </small>
+              </div>
+            )}
             <div className="play-ability-selectors">
               {attackerFormationCatalogueUnit && (
                 <CombatPresetSelector
@@ -7296,6 +7357,7 @@ export default function PlayMode() {
                       shape?: string;
                       widthThousandths?: number;
                       depthThousandths?: number;
+                      verticalExtentThousandths?: number;
                       centerXThousandths?: number;
                       centerYThousandths?: number;
                       elevationThousandths?: number;
@@ -7339,6 +7401,20 @@ export default function PlayMode() {
                                 saved {((candidate.centerXThousandths ?? 0) / 1000).toFixed(3)},{" "}
                                 {((candidate.centerYThousandths ?? 0) / 1000).toFixed(3)}
                               </span>
+                              {candidate.measurementBasis === "model" &&
+                                (candidate.verticalExtentThousandths ?? 0) === 0 && (
+                                  <label>
+                                    <span>Measured hull height (inches)</span>
+                                    <input
+                                      name={`position-vertical-extent-${modelId}`}
+                                      type="number"
+                                      min="0.001"
+                                      max="30"
+                                      step="0.001"
+                                      required
+                                    />
+                                  </label>
+                                )}
                               {pendingModelPosition.reconcilesStaleStart && (
                                 <>
                                   <label>
@@ -7431,6 +7507,18 @@ export default function PlayMode() {
                                   step="0.001"
                                 />
                               </label>
+                              <label>
+                                <span>Boundary height (0 for a base; hull height if baseless)</span>
+                                <input
+                                  name={`position-vertical-extent-${modelId}`}
+                                  type="number"
+                                  min="0"
+                                  max="30"
+                                  step="0.001"
+                                  defaultValue="0"
+                                  required
+                                />
+                              </label>
                             </>
                           )}
                           <label>
@@ -7464,7 +7552,7 @@ export default function PlayMode() {
                             />
                           </label>
                           <label>
-                            <span>Endpoint elevation (inches)</span>
+                            <span>Endpoint boundary-bottom elevation (inches)</span>
                             <input
                               name={`position-z-${modelId}`}
                               type="number"
@@ -9355,6 +9443,18 @@ export default function PlayMode() {
                               />
                             </label>
                             <label>
+                              <span>Boundary height (0 for a base; hull height if baseless)</span>
+                              <input
+                                name={`model-vertical-extent-${model.id}`}
+                                type="number"
+                                min="0"
+                                max="30"
+                                step="0.001"
+                                defaultValue="0"
+                                required
+                              />
+                            </label>
+                            <label>
                               <span>Centre X (inches)</span>
                               <input
                                 name={`model-x-${model.id}`}
@@ -9381,7 +9481,7 @@ export default function PlayMode() {
                               />
                             </label>
                             <label>
-                              <span>Elevation (inches)</span>
+                              <span>Boundary-bottom elevation (inches)</span>
                               <input
                                 name={`model-z-${model.id}`}
                                 type="number"
