@@ -440,6 +440,8 @@ async function loadCatalogue(request: Request, env: Env) {
         !catalogue ||
         typeof catalogue.sourceUpdatedAt !== "string" ||
         !Array.isArray(catalogue.factions) ||
+        !Array.isArray(catalogue.detachments) ||
+        !Array.isArray(catalogue.enhancements) ||
         !Array.isArray(catalogue.units)
       ) {
         throw new ServiceUnavailableError(
@@ -2444,6 +2446,9 @@ async function handleApi(request: Request, env: Env) {
           ruleCoverage: "GET /api/v1/rules/coverage",
           checkRuleCoverage: "POST /api/v1/rules/coverage/check",
           factions: "GET /api/v1/factions",
+          detachments: "GET /api/v1/detachments?faction={factionId}",
+          enhancements:
+            "GET /api/v1/enhancements?detachment={detachmentId}&unit={optionalDatasheetId}",
           units: "GET /api/v1/units?faction={factionId}&kind={attacker|target|all}",
           weapons: "GET /api/v1/weapons?unit={datasheetId}",
           loadout: "GET /api/v1/loadout?unit={datasheetId}",
@@ -2482,6 +2487,8 @@ async function handleApi(request: Request, env: Env) {
           return {
             sourceUpdatedAt: catalogue.sourceUpdatedAt,
             factions: catalogue.factions.length,
+            detachments: catalogue.detachments.length,
+            enhancements: catalogue.enhancements.length,
             units: catalogue.units.length,
           };
         }),
@@ -2540,6 +2547,31 @@ async function handleApi(request: Request, env: Env) {
     if (url.pathname === "/api/v1/factions" && request.method === "GET") {
       const catalogue = await loadCatalogue(request, env);
       return json({ data: catalogue.factions, sourceUpdatedAt: catalogue.sourceUpdatedAt });
+    }
+
+    if (url.pathname === "/api/v1/detachments" && request.method === "GET") {
+      const faction = url.searchParams.get("faction");
+      if (!faction) return apiError("Missing required faction query parameter");
+      const catalogue = await loadCatalogue(request, env);
+      return json({
+        data: catalogue.detachments.filter((entry) => entry.factionId === faction),
+        sourceUpdatedAt: catalogue.sourceUpdatedAt,
+      });
+    }
+
+    if (url.pathname === "/api/v1/enhancements" && request.method === "GET") {
+      const detachment = url.searchParams.get("detachment");
+      if (!detachment) return apiError("Missing required detachment query parameter");
+      const unit = url.searchParams.get("unit");
+      const catalogue = await loadCatalogue(request, env);
+      return json({
+        data: catalogue.enhancements.filter(
+          (entry) =>
+            entry.detachmentId === detachment &&
+            (!unit || entry.eligibleDatasheetIds.includes(unit)),
+        ),
+        sourceUpdatedAt: catalogue.sourceUpdatedAt,
+      });
     }
 
     if (url.pathname === "/api/v1/units" && request.method === "GET") {

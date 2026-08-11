@@ -2261,7 +2261,39 @@ class ProfileDataTests(unittest.TestCase):
                 connection.execute(
                     "SELECT value FROM metadata WHERE key = 'schema_version'"
                 ).fetchone()[0],
-                "77",
+                "78",
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT faction_id, name FROM detachments WHERE id = '000000818'"
+                ).fetchone(),
+                ("NEC", "Hypercrypt Legion"),
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT count(*) FROM enhancements WHERE detachment_id = '000000818'"
+                ).fetchone()[0],
+                4,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT name FROM stratagems
+                       WHERE id = '000010748005'"""
+                ).fetchone()[0],
+                "THREAT‑COGITATION TARGETERS",
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT row_count FROM source_files WHERE filename = 'Stratagems.csv'"
+                ).fetchone()[0],
+                1481,
+            )
+            self.assertEqual(
+                connection.execute(
+                    """SELECT count(*) FROM datasheet_enhancements
+                       WHERE enhancement_id = '000008554003'"""
+                ).fetchone()[0],
+                13,
             )
             cadian_ranges = connection.execute(
                 """SELECT minimum_models, maximum_models
@@ -4897,6 +4929,25 @@ class ProfileDataTests(unittest.TestCase):
 
     def test_browser_catalogue_exposes_editable_necron_loadout_guidance(self):
         catalogue = json.loads(CATALOGUE.read_text(encoding="utf-8"))
+        self.assertEqual(len(catalogue["detachments"]), 262)
+        self.assertEqual(len(catalogue["enhancements"]), 927)
+        hypercrypt = next(
+            entry
+            for entry in catalogue["detachments"]
+            if entry["id"] == "000000818"
+        )
+        self.assertEqual(
+            hypercrypt,
+            {"id": "000000818", "factionId": "NEC", "name": "Hypercrypt Legion"},
+        )
+        arisen_tyrant = next(
+            entry
+            for entry in catalogue["enhancements"]
+            if entry["id"] == "000008554003"
+        )
+        self.assertEqual(arisen_tyrant["detachmentId"], hypercrypt["id"])
+        self.assertEqual(arisen_tyrant["cost"], "25")
+        self.assertEqual(len(arisen_tyrant["eligibleDatasheetIds"]), 13)
         warriors = next(
             unit for unit in catalogue["units"] if unit["name"] == "Necron Warriors"
         )

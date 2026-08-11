@@ -93,20 +93,24 @@
     },
     {
       "id": "wahapedia-profile-export-2026-06-13",
-      "title": "Wahapedia structured profile export source lock",
+      "title": "Wahapedia structured profile and army-rules export source lock",
       "edition": "Warhammer 40,000 10th Edition",
       "version": "2026-06-13 12:02:41",
       "url": "https://wahapedia.ru/wh40k10ed",
       "retrievedAt": "2026-08-11",
-      "sha256": "623fd089d1825d9e2e126d814c4ff1d0948da867bbd8407b9867d4ad482bd686",
+      "sha256": "3e261589698f6e9e3a7b2c3f64de160055a01beffc839df22e398aff338cef17",
       "artifact": "profile-source-lock.json",
       "pages": [],
       "recordTypes": [
         "faction",
+        "detachment",
+        "enhancement",
         "datasheet"
       ],
       "usedFor": [
         "exact faction identities selected by saved lists",
+        "exact detachment identities and their complete ability and Stratagem sets",
+        "exact enhancement identities selected for each detachment",
         "exact datasheet identities and source-linked rules selected by saved units"
       ]
     }

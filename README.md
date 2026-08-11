@@ -1017,7 +1017,7 @@ does not require an API server, Worker, database connection, or secret.
 
 ## Source-locked rule coverage
 
-`data/battle-rule-coverage.json` now defines the initial machine-readable rules
+`data/battle-rule-coverage.json` defines the machine-readable rules
 coverage snapshot. It distinguishes rules the engine resolves itself from rules
 that require reviewed physical-table facts and from rules that are explicitly
 unsupported. Unknown rule IDs fail closed. A guided rule also fails closed until
@@ -1056,12 +1056,18 @@ keeps the start control disabled and remains visible in the setup report. The
 replay API recomputes the binding from the deployed matrix and independently
 cross-checks every result through WebAssembly. Versions 1-23 migrate with an
 explicit boundary so an already-started historical game remains replayable.
-Every one of the pinned profile catalogue's 26 factions and 1,712 datasheets
-now has an exact guided identity selected automatically from saved lists. The
-guided-review reason records that players will resolve their non-executable
-text at the physical table; it does not label that text executable. Unknown
-catalogue IDs still fail closed. Detachment, enhancement, terrain, and mission
-rules remain explicit blockers until their own source sets are ingested.
+Every one of the pinned catalogue's 26 factions, 262 exact detachment
+identities, 927 enhancements, and 1,712 datasheets now has an exact guided rule
+identity. Guided Play filters detachments by the saved list's faction and
+enhancements by both detachment and eligible datasheets, while canonical setup
+rejects cross-faction, cross-detachment, bearer-ineligible, and duplicate
+selections. The hosted API exposes the same discovery data through
+`GET /api/v1/detachments?faction=...` and
+`GET /api/v1/enhancements?detachment=...&unit=...`. The guided-review reason
+records that players will resolve non-executable text at the physical table; it
+does not label that text executable. Unknown catalogue IDs still fail closed.
+Terrain and mission rules remain explicit blockers until their source sets are
+ingested.
 
 A catalogue matchup can use exact catalogue IDs or unambiguous names:
 

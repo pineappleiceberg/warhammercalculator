@@ -257,6 +257,89 @@ test("records exact battle rule identities and blocks absent coverage before bat
   );
 });
 
+test("locks source detachment and enhancement identities to faction and eligible bearers", () => {
+  const overlordList = list("list-overlord", 21, "Hypercrypt", "Overlord", "overlord");
+  const validOverrides = {
+    guidedReason: "Players will resolve source-locked guided rules at the table",
+    players: {
+      "player-1": {
+        detachmentSourceId: "000000818",
+        enhancementSourceIds: ["000008554003"],
+      },
+      "player-2": { detachmentSourceId: "000000750" },
+    },
+  };
+  const state = initializeBattleForLists({
+    catalogue,
+    firstList: overlordList,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    ruleSelectionOverrides: validOverrides,
+    id: "battle-army-rule-identities",
+  });
+  const selected = replayBattleState(state).ruleCoverage.plan.players[0];
+  assert.equal(selected.detachment.sourceId, "000000818");
+  assert.deepEqual(selected.detachment.ruleIds, ["detachment.catalogue-000000818"]);
+  assert.deepEqual(selected.enhancements.sourceIds, ["000008554003"]);
+  assert.deepEqual(selected.enhancements.ruleIds, ["enhancement.catalogue-000008554003"]);
+
+  const initializeWithPlayerOne = (selection, firstList = overlordList) =>
+    initializeBattleForLists({
+      catalogue,
+      firstList,
+      secondList: defenders,
+      rulesSnapshot: "catalogue:test",
+      ruleCoverageMatrix,
+      ruleSelectionOverrides: {
+        ...validOverrides,
+        players: { ...validOverrides.players, "player-1": selection },
+      },
+      id: "battle-invalid-army-rule-identities",
+    });
+  assert.throws(
+    () => initializeWithPlayerOne({ detachmentSourceId: "000000750" }),
+    /outside its source faction/,
+  );
+  const otherNecronEnhancement = catalogue.enhancements.find(
+    (enhancement) =>
+      enhancement.detachmentId !== "000000818" &&
+      catalogue.detachments.some(
+        (detachment) =>
+          detachment.id === enhancement.detachmentId && detachment.factionId === "NEC",
+      ),
+  );
+  assert.ok(otherNecronEnhancement);
+  assert.throws(
+    () =>
+      initializeWithPlayerOne({
+        detachmentSourceId: "000000818",
+        enhancementSourceIds: [otherNecronEnhancement.id],
+      }),
+    /outside its detachment/,
+  );
+  assert.throws(
+    () =>
+      initializeWithPlayerOne(
+        { detachmentSourceId: "000000818", enhancementSourceIds: ["000008554003"] },
+        attackers,
+      ),
+    /no source-eligible bearer/,
+  );
+  assert.throws(
+    () => initializeWithPlayerOne({ enhancementSourceIds: ["000008554003"] }),
+    /without a detachment/,
+  );
+  assert.throws(
+    () =>
+      initializeWithPlayerOne({
+        detachmentSourceId: "000000818",
+        enhancementSourceIds: ["000008554003", "000008554003"],
+      }),
+    /must be unique/,
+  );
+});
+
 test("registers every formation on both rosters before combat with stable ids", () => {
   const state = setup();
   assert.equal(state.version, BATTLE_STATE_VERSION);

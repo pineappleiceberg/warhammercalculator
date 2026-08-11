@@ -59,8 +59,12 @@ LEADER_GLOBAL_RULE_SOURCE_SHA256 = (
 LEADER_GLOBAL_RULE_SOURCE_VERSION = "Core Rules Updates 1.2 / Rules Commentary 1.4"
 FILES = (
     "Abilities.csv",
+    "Detachment_abilities.csv",
+    "Enhancements.csv",
     "Last_update.csv",
     "Factions.csv",
+    "Source.csv",
+    "Stratagems.csv",
     "Datasheets.csv",
     "Datasheets_models.csv",
     "Datasheets_keywords.csv",
@@ -68,7 +72,10 @@ FILES = (
     "Datasheets_unit_composition.csv",
     "Datasheets_options.csv",
     "Datasheets_abilities.csv",
+    "Datasheets_detachment_abilities.csv",
+    "Datasheets_enhancements.csv",
     "Datasheets_leader.csv",
+    "Datasheets_stratagems.csv",
 )
 
 SCHEMA = (
@@ -93,6 +100,41 @@ CREATE TABLE factions (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     source_url TEXT NOT NULL
+) WITHOUT ROWID;
+
+CREATE TABLE detachments (
+    id TEXT PRIMARY KEY,
+    faction_id TEXT NOT NULL REFERENCES factions(id),
+    name TEXT NOT NULL
+) WITHOUT ROWID;
+
+CREATE TABLE detachment_abilities (
+    id TEXT PRIMARY KEY,
+    detachment_id TEXT NOT NULL REFERENCES detachments(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    legend_text TEXT NOT NULL DEFAULT '',
+    description_text TEXT NOT NULL DEFAULT ''
+) WITHOUT ROWID;
+
+CREATE TABLE enhancements (
+    id TEXT PRIMARY KEY,
+    detachment_id TEXT NOT NULL REFERENCES detachments(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    cost TEXT NOT NULL DEFAULT '',
+    legend_text TEXT NOT NULL DEFAULT '',
+    description_text TEXT NOT NULL DEFAULT ''
+) WITHOUT ROWID;
+
+CREATE TABLE stratagems (
+    id TEXT PRIMARY KEY,
+    detachment_id TEXT NOT NULL REFERENCES detachments(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    stratagem_type TEXT NOT NULL DEFAULT '',
+    cp_cost TEXT NOT NULL DEFAULT '',
+    legend_text TEXT NOT NULL DEFAULT '',
+    turn_text TEXT NOT NULL DEFAULT '',
+    phase_text TEXT NOT NULL DEFAULT '',
+    description_text TEXT NOT NULL DEFAULT ''
 ) WITHOUT ROWID;
 
 CREATE TABLE datasheets (
@@ -280,6 +322,25 @@ CREATE TABLE datasheet_abilities (
     ability_type TEXT NOT NULL,
     parameter TEXT,
     PRIMARY KEY (datasheet_id, position)
+) WITHOUT ROWID;
+
+CREATE TABLE datasheet_detachment_abilities (
+    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    detachment_ability_id TEXT NOT NULL
+        REFERENCES detachment_abilities(id) ON DELETE CASCADE,
+    PRIMARY KEY (datasheet_id, detachment_ability_id)
+) WITHOUT ROWID;
+
+CREATE TABLE datasheet_enhancements (
+    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    enhancement_id TEXT NOT NULL REFERENCES enhancements(id) ON DELETE CASCADE,
+    PRIMARY KEY (datasheet_id, enhancement_id)
+) WITHOUT ROWID;
+
+CREATE TABLE datasheet_stratagems (
+    datasheet_id TEXT NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
+    stratagem_id TEXT NOT NULL REFERENCES stratagems(id) ON DELETE CASCADE,
+    PRIMARY KEY (datasheet_id, stratagem_id)
 ) WITHOUT ROWID;
 
 CREATE TABLE unit_combat_presets (
@@ -959,7 +1020,26 @@ def fetch(url: str) -> bytes:
 
 def read_rows(data: bytes) -> list[dict[str, str]]:
     text = data.decode("utf-8-sig")
-    return list(csv.DictReader(io.StringIO(text), delimiter="|"))
+    physical_lines = text.splitlines()
+    if not physical_lines:
+        return []
+    separators = physical_lines[0].count("|")
+    logical_lines = [physical_lines[0]]
+    pending = ""
+    for line in physical_lines[1:]:
+        pending = f"{pending} {line}".strip() if pending else line
+        if pending.count("|") < separators:
+            continue
+        if pending.count("|") != separators:
+            raise RuntimeError("Wahapedia pipe export contains an unescaped delimiter")
+        logical_lines.append(pending)
+        pending = ""
+    if pending:
+        raise RuntimeError("Wahapedia pipe export ends inside a record")
+    rows = list(csv.DictReader(io.StringIO("\n".join(logical_lines)), delimiter="|"))
+    if any(None in row or any(value is None for value in row.values()) for row in rows):
+        raise RuntimeError("Wahapedia pipe export has an invalid record width")
+    return rows
 
 
 def integer(text: str | None) -> int | None:
@@ -5714,7 +5794,72 @@ def create_database(
 ) -> dict[str, int]:
     exports, source_updated_at, fetched_at = export_bundle or download_exports()
     rows = {name: read_rows(data) for name, data in exports.items()}
+    faction_ids = {row["id"] for row in rows["Factions.csv"]}
     datasheet_ids = {row["id"] for row in rows["Datasheets.csv"]}
+    detachment_rows: dict[str, tuple[str, str]] = {}
+    for filename in ("Detachment_abilities.csv", "Enhancements.csv", "Stratagems.csv"):
+        for row in rows[filename]:
+            detachment_id = row.get("detachment_id", "").strip()
+            faction_id = row.get("faction_id", "").strip()
+            name = row.get("detachment", "").strip()
+            if not detachment_id or not faction_id or not name:
+                continue
+            if faction_id not in faction_ids:
+                raise RuntimeError(
+                    f"{filename} detachment {detachment_id} has unknown faction {faction_id}"
+                )
+            identity = (faction_id, name)
+            previous = detachment_rows.setdefault(detachment_id, identity)
+            if previous != identity:
+                raise RuntimeError(
+                    f"detachment {detachment_id} has conflicting identities {previous!r} and {identity!r}"
+                )
+    detachment_ability_rows = [
+        row
+        for row in rows["Detachment_abilities.csv"]
+        if row["id"].strip() and row["detachment_id"].strip() in detachment_rows
+    ]
+    enhancement_rows = [
+        row
+        for row in rows["Enhancements.csv"]
+        if row["id"].strip() and row["detachment_id"].strip() in detachment_rows
+    ]
+    stratagem_rows = [
+        row
+        for row in rows["Stratagems.csv"]
+        if row["id"].strip() and row["detachment_id"].strip() in detachment_rows
+    ]
+    detachment_ability_ids = {row["id"] for row in detachment_ability_rows}
+    enhancement_ids = {row["id"] for row in enhancement_rows}
+    stratagem_ids = {row["id"] for row in stratagem_rows}
+    if len(detachment_ability_ids) != len(detachment_ability_rows):
+        raise RuntimeError("duplicate detachment ability ids")
+    if len(enhancement_ids) != len(enhancement_rows):
+        raise RuntimeError("duplicate enhancement ids")
+    if len(stratagem_ids) != len(stratagem_rows):
+        raise RuntimeError("duplicate Stratagem ids")
+    datasheet_detachment_abilities = sorted(
+        {
+            (row["datasheet_id"], row["detachment_ability_id"])
+            for row in rows["Datasheets_detachment_abilities.csv"]
+            if row["datasheet_id"] in datasheet_ids
+            and row["detachment_ability_id"] in detachment_ability_ids
+        }
+    )
+    datasheet_enhancements = sorted(
+        {
+            (row["datasheet_id"], row["enhancement_id"])
+            for row in rows["Datasheets_enhancements.csv"]
+            if row["datasheet_id"] in datasheet_ids and row["enhancement_id"] in enhancement_ids
+        }
+    )
+    datasheet_stratagems = sorted(
+        {
+            (row["datasheet_id"], row["stratagem_id"])
+            for row in rows["Datasheets_stratagems.csv"]
+            if row["datasheet_id"] in datasheet_ids and row["stratagem_id"] in stratagem_ids
+        }
+    )
     model_rows = [
         row
         for row in rows["Datasheets_models.csv"]
@@ -5805,7 +5950,7 @@ def create_database(
                     ("source_base_url", BASE_URL),
                     ("source_updated_at", source_updated_at),
                     ("generated_at", fetched_at),
-                    ("schema_version", "77"),
+                    ("schema_version", "78"),
                     ("leader_global_maximum", "2"),
                     ("leader_global_rule_source_url", LEADER_GLOBAL_RULE_SOURCE_URL),
                     (
@@ -5835,6 +5980,14 @@ def create_database(
                         str(sum(len(rule["bodyguardNames"]) for _, rule in bodyguard_join_rules)),
                     ),
                     ("unclassified_leader_footer_rows", "0"),
+                    ("detachment_rows", str(len(detachment_rows))),
+                    ("detachment_ability_rows", str(len(detachment_ability_rows))),
+                    ("enhancement_rows", str(len(enhancement_rows))),
+                    ("stratagem_rows", str(len(stratagem_rows))),
+                    (
+                        "skipped_non_detachment_stratagem_rows",
+                        str(len(rows["Stratagems.csv"]) - len(stratagem_rows)),
+                    ),
                 ),
             )
             connection.executemany(
@@ -5856,6 +6009,64 @@ def create_database(
             connection.executemany(
                 "INSERT INTO factions(id, name, source_url) VALUES (?, ?, ?)",
                 ((row["id"], row["name"], row["link"]) for row in rows["Factions.csv"]),
+            )
+            connection.executemany(
+                "INSERT INTO detachments(id, faction_id, name) VALUES (?, ?, ?)",
+                (
+                    (detachment_id, faction_id, name)
+                    for detachment_id, (faction_id, name) in sorted(detachment_rows.items())
+                ),
+            )
+            connection.executemany(
+                """INSERT INTO detachment_abilities
+                   (id, detachment_id, name, legend_text, description_text)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (
+                    (
+                        row["id"].strip(),
+                        row["detachment_id"].strip(),
+                        row["name"].strip(),
+                        plain_text(row["legend"]),
+                        plain_text(row["description"]),
+                    )
+                    for row in detachment_ability_rows
+                ),
+            )
+            connection.executemany(
+                """INSERT INTO enhancements
+                   (id, detachment_id, name, cost, legend_text, description_text)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    (
+                        row["id"].strip(),
+                        row["detachment_id"].strip(),
+                        row["name"].strip(),
+                        row["cost"].strip(),
+                        plain_text(row["legend"]),
+                        plain_text(row["description"]),
+                    )
+                    for row in enhancement_rows
+                ),
+            )
+            connection.executemany(
+                """INSERT INTO stratagems
+                   (id, detachment_id, name, stratagem_type, cp_cost, legend_text,
+                    turn_text, phase_text, description_text)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    (
+                        row["id"].strip(),
+                        row["detachment_id"].strip(),
+                        row["name"].strip(),
+                        row["type"].strip(),
+                        row["cp_cost"].strip(),
+                        plain_text(row["legend"]),
+                        row["turn"].strip(),
+                        row["phase"].strip(),
+                        plain_text(row["description"]),
+                    )
+                    for row in stratagem_rows
+                ),
             )
             connection.executemany(
                 """INSERT INTO datasheets
@@ -5880,6 +6091,19 @@ def create_database(
                     )
                     for row in rows["Datasheets.csv"]
                 ),
+            )
+            connection.executemany(
+                """INSERT INTO datasheet_detachment_abilities
+                   (datasheet_id, detachment_ability_id) VALUES (?, ?)""",
+                datasheet_detachment_abilities,
+            )
+            connection.executemany(
+                "INSERT INTO datasheet_enhancements(datasheet_id, enhancement_id) VALUES (?, ?)",
+                datasheet_enhancements,
+            )
+            connection.executemany(
+                "INSERT INTO datasheet_stratagems(datasheet_id, stratagem_id) VALUES (?, ?)",
+                datasheet_stratagems,
             )
             connection.executemany(
                 """INSERT INTO unit_leader_eligibility
@@ -6316,7 +6540,14 @@ def create_database(
             table: connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
             for table in (
                 "factions",
+                "detachments",
+                "detachment_abilities",
+                "enhancements",
+                "stratagems",
                 "datasheets",
+                "datasheet_detachment_abilities",
+                "datasheet_enhancements",
+                "datasheet_stratagems",
                 "unit_leader_eligibility",
                 "leader_attachment_conditions",
                 "unit_bodyguard_joins",

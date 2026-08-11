@@ -279,7 +279,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   );
   assert.equal(coverageResponse.status, 200);
   const coverage = (await coverageResponse.json()).data;
-  assert.equal(coverage.snapshotId, "wh40k-10e-core-2025-10-catalogue-2026-06-13-v24");
+  assert.equal(coverage.snapshotId, "wh40k-10e-core-2025-10-army-rules-2026-06-13-v24");
   assert.equal(coverage.sourceLocked, true);
   assert.equal(coverage.rules.length, coveredRuleCoverageMatrix.rules.length);
 
@@ -320,6 +320,48 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   );
   assert.equal(factions.status, 200);
   assert.ok((await factions.json()).data.length > 20);
+
+  const detachments = await worker.fetch(
+    new Request("http://localhost/api/v1/detachments?faction=NEC"),
+    testEnv,
+    context,
+  );
+  assert.equal(detachments.status, 200);
+  assert.deepEqual(
+    (await detachments.json()).data.find((entry) => entry.id === "000000818"),
+    { id: "000000818", factionId: "NEC", name: "Hypercrypt Legion" },
+  );
+
+  const enhancements = await worker.fetch(
+    new Request("http://localhost/api/v1/enhancements?detachment=000000818&unit=000000523"),
+    testEnv,
+    context,
+  );
+  assert.equal(enhancements.status, 200);
+  assert.deepEqual(
+    (await enhancements.json()).data.find((entry) => entry.id === "000008554003"),
+    {
+      id: "000008554003",
+      detachmentId: "000000818",
+      name: "Arisen Tyrant",
+      cost: "25",
+      eligibleDatasheetIds: [
+        "000000523",
+        "000000524",
+        "000000533",
+        "000002108",
+        "000002109",
+        "000002350",
+        "000002351",
+        "000002352",
+        "000002353",
+        "000002354",
+        "000002355",
+        "000003693",
+        "000004178",
+      ],
+    },
+  );
 
   const profiles = await worker.fetch(
     new Request("http://localhost/api/v1/profiles"),
@@ -4384,6 +4426,17 @@ test("reports dependency health, retryable outages, and request diagnostics", as
     recoveredBody.checks.map((entry) => entry.name),
     ["profile-catalogue", "calculator-engine", "rule-coverage", "list-storage"],
   );
+  const { name, status, latencyMs, ...profileHealth } = recoveredBody.checks[0];
+  assert.equal(name, "profile-catalogue");
+  assert.equal(status, "ok");
+  assert.ok(Number.isInteger(latencyMs));
+  assert.deepEqual(profileHealth, {
+    sourceUpdatedAt: "2026-06-13 12:02:41",
+    factions: 26,
+    detachments: 262,
+    enhancements: 927,
+    units: 1712,
+  });
 
   const storageFailure = await worker.fetch(
     new Request("http://localhost/api/v1/lists"),

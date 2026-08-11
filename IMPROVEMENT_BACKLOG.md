@@ -27,11 +27,11 @@ state.
 
 ## Prioritized backlog
 
-1. Pin detachment, enhancement, terrain, and mission sources and exact
-   catalogue-to-rule mappings, then add executable handlers or reason-backed
-   guided fallbacks so supported real lists can pass the version-24 setup gate.
-   Faction and datasheet identities are now exact and guided, but the remaining
-   categories still fail closed.
+1. Pin one coherent tournament mission pack and its terrain layouts, then add
+   exact mission and terrain selectors plus reason-backed guided coverage so a
+   real matchup can pass the version-24 setup gate. Faction, detachment,
+   enhancement, and datasheet identities are now exact and guided; mission and
+   terrain remain the setup blockers.
 2. Expand reviewable table geometry beyond the version-8 ranged measurement to
    movement paths, charge endpoints, cover, coherency, Engagement Range,
    terrain, and objective facts.
@@ -39,6 +39,20 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Ingested the pinned 10th-edition army-rule export into SQLite
+  schema 78: 262 exact detachment identities, 284 detachment abilities, 927
+  enhancements, 1,453 detachment Stratagems, and their datasheet applicability
+  relations. The source lock now covers all seven contributing rule exports and
+  the importer repairs the export's single embedded physical newline while
+  still failing closed on malformed record widths. The generated version-24
+  coverage matrix now contains 2,942 source-locked entries, including every
+  detachment and enhancement as guided rather than falsely executable. Guided
+  Play uses faction-filtered detachment and eligible-bearer enhancement menus;
+  canonical setup rejects invalid relationships and duplicate selections. The
+  API publishes equivalent detachment and enhancement discovery endpoints.
+  Mission-pack and terrain-layout ingestion is now the highest-priority setup
+  blocker.
 
 - 2026-08-11: Connected every one of the pinned profile catalogue's 26 factions
   and 1,712 datasheets to canonical battle setup. A deterministic generator
