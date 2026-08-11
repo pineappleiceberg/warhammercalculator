@@ -1388,8 +1388,24 @@ static void test_ranged_target_eligibility(void) {
         !whc_ranged_target_eligibility_is_valid(24000u, 30000u, 25000u, 1u, 1u, reviewed_visible));
 }
 
+/*@ terminates \true; */
+static void test_weapon_inventory_declaration(void) {
+    const uint32_t assault_indirect = WHC_WEAPON_ASSAULT | WHC_WEAPON_INDIRECT;
+
+    assert(whc_weapon_inventory_declaration_is_valid(3u, 5u, 0u, 3u, assault_indirect,
+                                                     WHC_WEAPON_INDIRECT));
+    assert(whc_weapon_inventory_declaration_is_valid(3u, 1u, 2u, 1u, WHC_WEAPON_ASSAULT,
+                                                     WHC_WEAPON_ASSAULT));
+    assert(!whc_weapon_inventory_declaration_is_valid(0u, 5u, 0u, 1u, 0u, 0u));
+    assert(!whc_weapon_inventory_declaration_is_valid(3u, 0u, 0u, 1u, 0u, 0u));
+    assert(!whc_weapon_inventory_declaration_is_valid(3u, 5u, 3u, 1u, 0u, 0u));
+    assert(!whc_weapon_inventory_declaration_is_valid(3u, 5u, 2u, 2u, 0u, 0u));
+    assert(!whc_weapon_inventory_declaration_is_valid(3u, 5u, 0u, 1u, WHC_WEAPON_ASSAULT,
+                                                      WHC_WEAPON_INDIRECT));
+}
+
 /*@ assigns \nothing;
-*/
+ */
 static void test_battle_clock(void) {
     uint32_t current[WHC_BATTLE_CLOCK_FIELDS] = {0u};
     uint32_t next[WHC_BATTLE_CLOCK_FIELDS] = {0u};
@@ -1448,6 +1464,7 @@ int main(void) {
     test_battle_health_replay();
     test_transport_damage_replay();
     test_ranged_target_eligibility();
+    test_weapon_inventory_declaration();
     test_battle_clock();
     puts("all tests passed");
     return 0;

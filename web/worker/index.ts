@@ -55,6 +55,7 @@ import {
   normalizeBattleState,
   rangedTargetEligibilityIsValid,
   replayBattleState,
+  weaponInventoryDeclarationIsValid,
 } from "../lib/battle-state.mjs";
 import { BATTLE_PHASE_STEPS } from "../lib/battle-clock.mjs";
 
@@ -277,6 +278,7 @@ type CalculatorExports = {
   whc_estimate_ordered_volley_complexity(...values: number[]): number;
   whc_replay_battle_health_events(...values: number[]): number;
   whc_ranged_target_eligibility_is_valid(...values: number[]): number;
+  whc_weapon_inventory_declaration_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -413,6 +415,7 @@ async function loadCalculator() {
       typeof calculator.whc_estimate_ordered_volley_complexity !== "function" ||
       typeof calculator.whc_replay_battle_health_events !== "function" ||
       typeof calculator.whc_ranged_target_eligibility_is_valid !== "function" ||
+      typeof calculator.whc_weapon_inventory_declaration_is_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -697,6 +700,76 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         return { ...fact, eligible: javascriptEligible };
       })
       .sort((left, right) => left.id.localeCompare(right.id));
+    const activeAttackIds = new Set(replayed.activeAttackIds);
+    const weaponUses = new Map<string, number>();
+    const weaponDeclarations = state.events.flatMap((event) => {
+      if (
+        event.type !== "attack_resolved" ||
+        event.weaponType !== "Ranged" ||
+        !activeAttackIds.has(event.id) ||
+        !event.weaponSourceFormationId ||
+        !event.sourceSavedUnitId ||
+        !event.weaponGroupId ||
+        !event.clock
+      ) {
+        return [];
+      }
+      const source = replayed.formations.get(event.weaponSourceFormationId);
+      const group = source?.weaponInventory.find(
+        (candidate) =>
+          candidate.sourceSavedUnitId === event.sourceSavedUnitId &&
+          candidate.groupId === event.weaponGroupId,
+      );
+      const profile = group?.profiles.find((candidate) => candidate.weaponId === event.weaponId);
+      if (!group || !profile) {
+        throw new ServiceUnavailableError(
+          "Canonical weapon declaration lost its locked inventory",
+          "WEAPON_INVENTORY_DIVERGENCE",
+        );
+      }
+      const key = `${event.clock.battleRound}:${event.clock.turn}:${event.clock.phase}:${event.weaponSourceFormationId}:${event.sourceSavedUnitId}:${event.weaponGroupId}`;
+      const usedBefore = weaponUses.get(key) ?? 0;
+      const inventoryFlags = (profile.hasAssault ? 1 : 0) | (profile.hasIndirect ? 2 : 0);
+      const declaredFlags = (event.weaponHasAssault ? 1 : 0) | (event.indirectFire ? 2 : 0);
+      const javascriptEligible = weaponInventoryDeclarationIsValid(
+        group.count,
+        1,
+        usedBefore,
+        event.declaredWeaponCount,
+        inventoryFlags,
+        declaredFlags,
+      );
+      const nativeEligible = Boolean(
+        calculator.whc_weapon_inventory_declaration_is_valid(
+          group.count,
+          1,
+          usedBefore,
+          event.declaredWeaponCount,
+          inventoryFlags,
+          declaredFlags,
+        ),
+      );
+      if (!javascriptEligible || javascriptEligible !== nativeEligible) {
+        throw new ServiceUnavailableError(
+          "Canonical weapon declaration diverged from the C/WebAssembly predicate",
+          "WEAPON_INVENTORY_DIVERGENCE",
+        );
+      }
+      weaponUses.set(key, usedBefore + event.declaredWeaponCount);
+      return [
+        {
+          attackEventId: event.id,
+          weaponSourceFormationId: event.weaponSourceFormationId,
+          sourceSavedUnitId: event.sourceSavedUnitId,
+          weaponGroupId: event.weaponGroupId,
+          weaponId: event.weaponId,
+          inventoryCount: group.count,
+          usedBefore,
+          declaredWeaponCount: event.declaredWeaponCount,
+          eligible: true,
+        },
+      ];
+    });
     return {
       schemaVersion: state.version,
       rulesSnapshot: state.rulesSnapshot,
@@ -766,6 +839,7 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         : null,
       completedActivationKeys: [...replayed.completedActivations].sort(),
       targetEligibilityFacts,
+      weaponDeclarations,
       deployment: {
         complete: replayed.deploymentComplete,
         priorityPlayerId: replayed.deploymentPriorityPlayerId || null,

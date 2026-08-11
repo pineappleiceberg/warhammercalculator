@@ -27,6 +27,24 @@ function formation(id, playerId) {
     sourceFormationId: `source-${id}`,
     name: id,
     defensiveEquipmentCounts: {},
+    weaponInventory: [
+      {
+        sourceSavedUnitId: `saved-${id}`,
+        groupId: "test-group",
+        name: "Test weapon",
+        count: 1,
+        profiles: [
+          {
+            weaponId: "test-weapon",
+            name: "Test weapon",
+            type: "Ranged",
+            publishedRangeThousandths: 24000,
+            hasAssault: false,
+            hasIndirect: false,
+          },
+        ],
+      },
+    ],
     segments: [
       {
         id: `${id}-model`,
@@ -242,6 +260,9 @@ test("allows attacks only for the active player in Shooting or Fight attack step
       targetFormationId: "unit-2",
       weaponId: "test-weapon",
       weaponName: "Test weapon",
+      weaponSourceFormationId: "unit-1",
+      sourceSavedUnitId: "saved-unit-1",
+      weaponGroupId: "test-group",
       publishedRangeThousandths: 24000,
       effectiveRangeThousandths: 24000,
       measuredDistanceThousandths: 12000,
@@ -262,6 +283,9 @@ test("allows attacks only for the active player in Shooting or Fight attack step
     targetEligibilityEventId: "target-eligibility",
     weaponId: "test-weapon",
     declaredWeaponCount: 1,
+    weaponSourceFormationId: "unit-1",
+    sourceSavedUnitId: "saved-unit-1",
+    weaponGroupId: "test-group",
     id: "attack-1",
     at: state.events.length + 1,
     attackerFormationId: "unit-1",

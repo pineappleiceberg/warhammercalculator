@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 8;
+export const BATTLE_STATE_VERSION = 9;
+export const WEAPON_INVENTORY_BATTLE_STATE_VERSION = 9;
 export const TARGET_ELIGIBILITY_BATTLE_STATE_VERSION = 8;
 export const TRANSPORT_BATTLE_STATE_VERSION = 7;
 export const DEPLOYMENT_BATTLE_STATE_VERSION = 6;
@@ -78,6 +79,36 @@ export function rangedTargetEligibilityIsValid(fact, declaredWeaponCount) {
         (!fact.visible && fact.indirectFire && fact.weaponHasIndirect)) &&
       (fact.publishedRangeThousandths === fact.effectiveRangeThousandths ||
         Boolean(fact.rangeOverrideReason?.trim())),
+  );
+}
+
+export function weaponInventoryDeclarationIsValid(
+  inventoryCount,
+  sourceModelsRemaining,
+  usedCount,
+  declaredCount,
+  inventoryFlags,
+  declaredFlags,
+) {
+  return Boolean(
+    Number.isSafeInteger(inventoryCount) &&
+      inventoryCount > 0 &&
+      Number.isSafeInteger(sourceModelsRemaining) &&
+      sourceModelsRemaining > 0 &&
+      Number.isSafeInteger(usedCount) &&
+      usedCount >= 0 &&
+      usedCount <= inventoryCount &&
+      Number.isSafeInteger(declaredCount) &&
+      declaredCount > 0 &&
+      declaredCount <= inventoryCount - usedCount &&
+      Number.isSafeInteger(inventoryFlags) &&
+      inventoryFlags >= 0 &&
+      inventoryFlags <= 3 &&
+      Number.isSafeInteger(declaredFlags) &&
+      declaredFlags >= 0 &&
+      declaredFlags <= 3 &&
+      ((declaredFlags & 1) === 0 || (inventoryFlags & 1) !== 0) &&
+      ((declaredFlags & 2) === 0 || (inventoryFlags & 2) !== 0),
   );
 }
 
@@ -344,7 +375,75 @@ function normalizeSegment(candidate) {
   };
 }
 
-function normalizeFormation(candidate) {
+function normalizeWeaponProfile(candidate) {
+  const profile = record(candidate, "Each weapon inventory profile must be an object");
+  const type = boundedString(profile.type, "Weapon inventory profile type", 20);
+  if (type !== "Ranged" && type !== "Melee") {
+    throw new Error("Weapon inventory profile type must be Ranged or Melee");
+  }
+  const publishedRangeThousandths = nonnegativeInteger(
+    profile.publishedRangeThousandths,
+    "Weapon inventory published Range",
+    1_000_000,
+  );
+  if (
+    (type === "Ranged" && publishedRangeThousandths < 1) ||
+    (type === "Melee" && publishedRangeThousandths !== 0)
+  ) {
+    throw new Error("Weapon inventory profile Range does not match its type");
+  }
+  return {
+    weaponId: boundedString(profile.weaponId, "Weapon inventory profile id", 100),
+    name: boundedString(profile.name, "Weapon inventory profile name", 200),
+    type,
+    publishedRangeThousandths,
+    hasAssault: Boolean(profile.hasAssault),
+    hasIndirect: Boolean(profile.hasIndirect),
+  };
+}
+
+function normalizeWeaponInventory(value, segments, stateVersion) {
+  if (stateVersion < WEAPON_INVENTORY_BATTLE_STATE_VERSION) return [];
+  if (!Array.isArray(value) || value.length > 256) {
+    throw new Error("Formation weapon inventory must contain at most 256 weapon groups");
+  }
+  const savedUnitIds = new Set(segments.map((segment) => segment.savedUnitId));
+  const inventory = value.map((candidate) => {
+    const group = record(candidate, "Each weapon inventory group must be an object");
+    const sourceSavedUnitId = boundedString(
+      group.sourceSavedUnitId,
+      "Weapon inventory source saved unit id",
+      100,
+    );
+    if (!savedUnitIds.has(sourceSavedUnitId)) {
+      throw new Error("Weapon inventory source is not part of its formation");
+    }
+    if (!Array.isArray(group.profiles) || group.profiles.length < 1 || group.profiles.length > 16) {
+      throw new Error("Weapon inventory group must contain 1 to 16 profiles");
+    }
+    const profiles = group.profiles.map(normalizeWeaponProfile);
+    if (new Set(profiles.map((profile) => profile.weaponId)).size !== profiles.length) {
+      throw new Error("Weapon inventory profile ids must be unique within a group");
+    }
+    return {
+      sourceSavedUnitId,
+      groupId: boundedString(group.groupId, "Weapon inventory group id", 200),
+      name: boundedString(group.name, "Weapon inventory group name", 200),
+      count: nonnegativeInteger(group.count, "Weapon inventory equipped count", 1000),
+      profiles,
+    };
+  });
+  if (inventory.some((group) => group.count < 1)) {
+    throw new Error("Weapon inventory groups must contain at least one equipped copy");
+  }
+  const keys = inventory.map((group) => `${group.sourceSavedUnitId}\u0000${group.groupId}`);
+  if (new Set(keys).size !== keys.length) {
+    throw new Error("Formation weapon inventory groups must be unique per source unit");
+  }
+  return inventory;
+}
+
+function normalizeFormation(candidate, stateVersion) {
   const formation = record(candidate, "Formation registration must be an object");
   if (
     !Array.isArray(formation.segments) ||
@@ -380,6 +479,11 @@ function normalizeFormation(candidate) {
     ),
     segments,
   };
+  normalized.weaponInventory = normalizeWeaponInventory(
+    formation.weaponInventory ?? [],
+    segments,
+    stateVersion,
+  );
   normalized.defensiveEquipmentCounts = normalizeDefensiveEquipmentCounts(
     formation.defensiveEquipmentCounts ?? {},
     "Formation defensiveEquipmentCounts",
@@ -519,20 +623,21 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     throw new Error("Structured target eligibility requires battle-state version 8");
   }
   if (event.type === "formation_registered") {
-    const formation = normalizeFormation(event.formation);
+    const formation = normalizeFormation(event.formation, stateVersion);
     if (!formations.players.has(formation.playerId)) throw new Error("Formation player is unknown");
     normalized.formation = formation;
     formations.byId.set(formation.id, formation);
     return normalized;
   }
   if (event.type === "formation_configured") {
-    const formation = normalizeFormation(event.formation);
+    const formation = normalizeFormation(event.formation, stateVersion);
     const previous = formations.byId.get(formation.id);
     if (!previous) throw new Error("Configured formation is not registered");
     if (
       previous.playerId !== formation.playerId ||
       previous.sourceFormationId !== formation.sourceFormationId ||
-      previous.assignedTransportFormationId !== formation.assignedTransportFormationId
+      previous.assignedTransportFormationId !== formation.assignedTransportFormationId ||
+      JSON.stringify(previous.weaponInventory) !== JSON.stringify(formation.weaponInventory)
     ) {
       throw new Error("Formation identity cannot change during battle setup");
     }
@@ -959,6 +1064,26 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     }
     normalized.weaponId = boundedString(event.weaponId, "Target measurement weapon id", 100);
     normalized.weaponName = boundedString(event.weaponName, "Target measurement weapon name", 200);
+    if (stateVersion >= WEAPON_INVENTORY_BATTLE_STATE_VERSION) {
+      normalized.weaponSourceFormationId = event.weaponSourceFormationId
+        ? boundedString(
+            event.weaponSourceFormationId,
+            "Target measurement weapon source formation id",
+            100,
+          )
+        : "";
+      normalized.sourceSavedUnitId = event.sourceSavedUnitId
+        ? boundedString(
+            event.sourceSavedUnitId,
+            "Target measurement weapon source saved unit id",
+            100,
+          )
+        : "";
+      normalized.weaponGroupId = event.weaponGroupId
+        ? boundedString(event.weaponGroupId, "Target measurement weapon group id", 200)
+        : "";
+      normalized.clock = normalizeClock(event.clock, formations.players);
+    }
     normalized.publishedRangeThousandths = nonnegativeInteger(
       event.publishedRangeThousandths,
       "Published weapon range thousandths",
@@ -1052,6 +1177,20 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
       );
       normalized.indirectFire = Boolean(event.indirectFire);
     }
+    if (stateVersion >= WEAPON_INVENTORY_BATTLE_STATE_VERSION) {
+      normalized.weaponSourceFormationId = event.weaponSourceFormationId
+        ? boundedString(event.weaponSourceFormationId, "Attack weapon source formation id", 100)
+        : "";
+      normalized.sourceSavedUnitId = event.sourceSavedUnitId
+        ? boundedString(event.sourceSavedUnitId, "Attack weapon source saved unit id", 100)
+        : "";
+      normalized.weaponGroupId = event.weaponGroupId
+        ? boundedString(event.weaponGroupId, "Attack weapon group id", 200)
+        : "";
+      normalized.clock = event.clock
+        ? normalizeClock(event.clock, formations.players)
+        : setupBattleClock();
+    }
     if (
       !Array.isArray(event.allocations) ||
       event.allocations.length < 1 ||
@@ -1108,6 +1247,7 @@ export function normalizeBattleState(candidate) {
       ACTION_BATTLE_STATE_VERSION,
       DEPLOYMENT_BATTLE_STATE_VERSION,
       TRANSPORT_BATTLE_STATE_VERSION,
+      TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -1148,6 +1288,7 @@ export function normalizeBattleState(candidate) {
         ACTION_BATTLE_STATE_VERSION,
         DEPLOYMENT_BATTLE_STATE_VERSION,
         TRANSPORT_BATTLE_STATE_VERSION,
+        TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -1190,6 +1331,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= WEAPON_INVENTORY_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyWeaponInventoryThroughSequence = nonnegativeInteger(
+        migration.legacyWeaponInventoryThroughSequence,
+        "Legacy weapon inventory event sequence",
+        events.length,
+      );
+    }
   }
   replayBattleState(normalized);
   return normalized;
@@ -1202,6 +1350,25 @@ function initialHealth(formation) {
       { modelsRemaining: segment.startingModels, woundsLost: 0 },
     ]),
   );
+}
+
+function formationSourceModelsRemaining(formation, sourceSavedUnitId) {
+  return formation.segments
+    .filter((segment) => segment.savedUnitId === sourceSavedUnitId)
+    .reduce((total, segment) => total + formation.health[segment.id].modelsRemaining, 0);
+}
+
+function formationWeaponProfile(formation, sourceSavedUnitId, groupId, weaponId) {
+  const group = formation.weaponInventory.find(
+    (candidate) =>
+      candidate.sourceSavedUnitId === sourceSavedUnitId && candidate.groupId === groupId,
+  );
+  const profile = group?.profiles.find((candidate) => candidate.weaponId === weaponId);
+  return group && profile ? { group, profile } : null;
+}
+
+function weaponProfileFlags(profile) {
+  return (profile.hasAssault ? 1 : 0) | (profile.hasIndirect ? 2 : 0);
 }
 
 function sameHealth(left, right) {
@@ -1481,6 +1648,10 @@ export function replayBattleState(state) {
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyTargetEligibilityThroughSequence ?? 0);
+  const legacyWeaponInventoryThroughSequence =
+    state.version < WEAPON_INVENTORY_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyWeaponInventoryThroughSequence ?? 0);
   for (const event of state.events) {
     if (pendingTransportDestructions.size > 0 && event.type !== "transport_destroyed_resolved") {
       throw new Error("Destroyed Transport passengers must disembark immediately");
@@ -2332,6 +2503,35 @@ export function replayBattleState(state) {
       if (formationDestroyed(attacker) || formationDestroyed(target)) {
         throw new Error("Ranged target eligibility cannot reference a destroyed formation");
       }
+      if (event.sequence > legacyWeaponInventoryThroughSequence) {
+        const source = formations.get(event.weaponSourceFormationId);
+        if (!source) throw new Error("Target eligibility weapon source is not registered");
+        if (source.id !== attacker.id && embarkedByFormation.get(source.id) !== attacker.id) {
+          throw new Error("Target eligibility weapon source is not the attacker or its passenger");
+        }
+        const inventory = formationWeaponProfile(
+          source,
+          event.sourceSavedUnitId,
+          event.weaponGroupId,
+          event.weaponId,
+        );
+        if (!inventory || inventory.profile.type !== "Ranged") {
+          throw new Error("Target eligibility weapon is absent from the locked ranged inventory");
+        }
+        if (
+          inventory.profile.name !== event.weaponName ||
+          inventory.profile.publishedRangeThousandths !== event.publishedRangeThousandths ||
+          inventory.profile.hasIndirect !== event.weaponHasIndirect
+        ) {
+          throw new Error("Target eligibility weapon facts differ from the locked inventory");
+        }
+        if (
+          formationSourceModelsRemaining(source, event.sourceSavedUnitId) < 1 ||
+          event.eligibleWeaponCount > inventory.group.count
+        ) {
+          throw new Error("Target eligibility exceeds the surviving locked weapon inventory");
+        }
+      }
       targetEligibilityFacts.set(event.id, event);
       continue;
     }
@@ -2380,6 +2580,55 @@ export function replayBattleState(state) {
               !sameBattleClock(eligibility.clock, clock)
             ) {
               throw new Error("Ranged attack does not match its target eligibility measurement");
+            }
+            if (event.sequence > legacyWeaponInventoryThroughSequence) {
+              if (!sameBattleClock(event.clock, clock)) {
+                throw new Error("Ranged attack weapon declaration is outside its recorded phase");
+              }
+              if (
+                eligibility.weaponSourceFormationId !== event.weaponSourceFormationId ||
+                eligibility.sourceSavedUnitId !== event.sourceSavedUnitId ||
+                eligibility.weaponGroupId !== event.weaponGroupId
+              ) {
+                throw new Error("Ranged attack does not match its locked weapon source");
+              }
+              const source = formations.get(event.weaponSourceFormationId);
+              const inventory = source
+                ? formationWeaponProfile(
+                    source,
+                    event.sourceSavedUnitId,
+                    event.weaponGroupId,
+                    event.weaponId,
+                  )
+                : null;
+              if (!source || !inventory || inventory.profile.type !== "Ranged") {
+                throw new Error("Ranged attack weapon is absent from the locked inventory");
+              }
+              const usedCount = activeAttackIds
+                .map((id) => attacks.get(id))
+                .filter(
+                  (attack) =>
+                    attack?.weaponType === "Ranged" &&
+                    attack.weaponSourceFormationId === event.weaponSourceFormationId &&
+                    attack.sourceSavedUnitId === event.sourceSavedUnitId &&
+                    attack.weaponGroupId === event.weaponGroupId &&
+                    sameBattleClock(attack.clock ?? eligibility.clock, clock),
+                )
+                .reduce((total, attack) => total + attack.declaredWeaponCount, 0);
+              const declaredFlags = (event.weaponHasAssault ? 1 : 0) | (event.indirectFire ? 2 : 0);
+              if (
+                !weaponInventoryDeclarationIsValid(
+                  inventory.group.count,
+                  formationSourceModelsRemaining(source, event.sourceSavedUnitId),
+                  usedCount,
+                  event.declaredWeaponCount,
+                  weaponProfileFlags(inventory.profile),
+                  declaredFlags,
+                ) ||
+                eligibility.eligibleWeaponCount > inventory.group.count - usedCount
+              ) {
+                throw new Error("Ranged attack exceeds its surviving unused weapon inventory");
+              }
             }
             if (eligibility.indirectFire !== event.indirectFire) {
               throw new Error("Ranged attack Indirect Fire state does not match its measurement");
@@ -2992,6 +3241,9 @@ export function recordRangedTargetEligibility(
     targetFormationId,
     weaponId,
     weaponName,
+    weaponSourceFormationId,
+    sourceSavedUnitId,
+    weaponGroupId,
     publishedRangeThousandths,
     effectiveRangeThousandths,
     measuredDistanceThousandths,
@@ -3019,6 +3271,9 @@ export function recordRangedTargetEligibility(
     targetFormationId,
     weaponId,
     weaponName,
+    weaponSourceFormationId,
+    sourceSavedUnitId,
+    weaponGroupId,
     publishedRangeThousandths,
     effectiveRangeThousandths,
     measuredDistanceThousandths,
@@ -3277,6 +3532,9 @@ export function appendResolvedAttack(
     weaponId = "",
     declaredWeaponCount = 0,
     indirectFire = false,
+    weaponSourceFormationId = "",
+    sourceSavedUnitId = "",
+    weaponGroupId = "",
   },
 ) {
   const replayed = replayBattleState(state);
@@ -3322,6 +3580,10 @@ export function appendResolvedAttack(
     weaponId,
     declaredWeaponCount,
     indirectFire,
+    weaponSourceFormationId,
+    sourceSavedUnitId,
+    weaponGroupId,
+    clock: replayed.clock,
     allocations,
   });
 }
@@ -3344,4 +3606,33 @@ export function activeBattleAttacks(state) {
   const replayed = replayBattleState(state);
   const active = new Set(replayed.activeAttackIds);
   return state.events.filter((event) => event.type === "attack_resolved" && active.has(event.id));
+}
+
+export function battleUnusedWeaponCount(
+  state,
+  weaponSourceFormationId,
+  sourceSavedUnitId,
+  weaponGroupId,
+) {
+  const replayed = replayBattleState(state);
+  const source = replayed.formations.get(weaponSourceFormationId);
+  const group = source?.weaponInventory.find(
+    (candidate) =>
+      candidate.sourceSavedUnitId === sourceSavedUnitId && candidate.groupId === weaponGroupId,
+  );
+  if (!source || !group || formationSourceModelsRemaining(source, sourceSavedUnitId) < 1) return 0;
+  const active = new Set(replayed.activeAttackIds);
+  const used = state.events
+    .filter(
+      (event) =>
+        event.type === "attack_resolved" &&
+        active.has(event.id) &&
+        event.weaponType === "Ranged" &&
+        event.weaponSourceFormationId === weaponSourceFormationId &&
+        event.sourceSavedUnitId === sourceSavedUnitId &&
+        event.weaponGroupId === weaponGroupId &&
+        sameBattleClock(event.clock, replayed.clock),
+    )
+    .reduce((total, event) => total + event.declaredWeaponCount, 0);
+  return Math.max(0, group.count - used);
 }

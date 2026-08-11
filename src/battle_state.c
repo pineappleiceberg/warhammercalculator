@@ -35,10 +35,9 @@ static bool whc_battle_clock_is_active_valid(const uint32_t *clock) {
     uint32_t steps;
     uint32_t expected_active;
 
-    if (clock == NULL || clock[0] != WHC_BATTLE_CLOCK_ACTIVE || clock[1] < 1u ||
-        clock[1] > 5u || clock[2] < 1u || clock[2] > 2u ||
-        clock[3] < WHC_BATTLE_PHASE_COMMAND || clock[3] > WHC_BATTLE_PHASE_FIGHT ||
-        clock[5] > 1u) {
+    if (clock == NULL || clock[0] != WHC_BATTLE_CLOCK_ACTIVE || clock[1] < 1u || clock[1] > 5u ||
+        clock[2] < 1u || clock[2] > 2u || clock[3] < WHC_BATTLE_PHASE_COMMAND ||
+        clock[3] > WHC_BATTLE_PHASE_FIGHT || clock[5] > 1u) {
         return false;
     }
     steps = whc_battle_phase_step_count(clock[3]);
@@ -79,8 +78,7 @@ bool whc_next_battle_clock(const uint32_t *current, uint32_t *next) {
     steps = whc_battle_phase_step_count(candidate[3]);
     if (candidate[4] + 1u < steps) {
         candidate[4]++;
-        if (candidate[3] == WHC_BATTLE_PHASE_FIGHT &&
-            (candidate[4] == 1u || candidate[4] == 2u)) {
+        if (candidate[3] == WHC_BATTLE_PHASE_FIGHT && (candidate[4] == 1u || candidate[4] == 2u)) {
             candidate[7] = 1u - candidate[6];
         }
     } else if (candidate[3] < WHC_BATTLE_PHASE_FIGHT) {
@@ -150,6 +148,20 @@ bool whc_ranged_target_eligibility_is_valid(uint32_t published_range_thousandths
            (published_range_thousandths == effective_range_thousandths || range_override_explained);
 }
 
+bool whc_weapon_inventory_declaration_is_valid(uint32_t inventory_count,
+                                               uint32_t source_models_remaining,
+                                               uint32_t used_count, uint32_t declared_count,
+                                               uint32_t inventory_flags, uint32_t declared_flags) {
+    return inventory_count > 0u && source_models_remaining > 0u && declared_count > 0u &&
+           used_count <= inventory_count && declared_count <= inventory_count - used_count &&
+           inventory_flags <= (WHC_WEAPON_ASSAULT | WHC_WEAPON_INDIRECT) &&
+           declared_flags <= (WHC_WEAPON_ASSAULT | WHC_WEAPON_INDIRECT) &&
+           ((declared_flags & WHC_WEAPON_ASSAULT) == 0u ||
+            (inventory_flags & WHC_WEAPON_ASSAULT) != 0u) &&
+           ((declared_flags & WHC_WEAPON_INDIRECT) == 0u ||
+            (inventory_flags & WHC_WEAPON_INDIRECT) != 0u);
+}
+
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,
                                      const uint32_t *events, uint32_t event_count,
                                      uint32_t *health) {
@@ -199,9 +211,8 @@ bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_
                 return false;
             }
             for (uint32_t allocation = 0u; allocation < allocation_count; ++allocation) {
-                const uint32_t allocation_offset =
-                    event_offset + WHC_BATTLE_EVENT_HEADER_FIELDS +
-                    allocation * WHC_BATTLE_ALLOCATION_FIELDS;
+                const uint32_t allocation_offset = event_offset + WHC_BATTLE_EVENT_HEADER_FIELDS +
+                                                   allocation * WHC_BATTLE_ALLOCATION_FIELDS;
                 const uint32_t segment = events[allocation_offset];
                 const uint32_t before_models = events[allocation_offset + 1u];
                 const uint32_t before_wounds = events[allocation_offset + 2u];
@@ -258,9 +269,9 @@ bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_
                 return false;
             }
             for (uint32_t allocation = 0u; allocation < reverted_allocations; ++allocation) {
-                const uint32_t allocation_offset =
-                    reverted_offset + WHC_BATTLE_EVENT_HEADER_FIELDS +
-                    allocation * WHC_BATTLE_ALLOCATION_FIELDS;
+                const uint32_t allocation_offset = reverted_offset +
+                                                   WHC_BATTLE_EVENT_HEADER_FIELDS +
+                                                   allocation * WHC_BATTLE_ALLOCATION_FIELDS;
                 const uint32_t segment = events[allocation_offset];
                 const uint32_t health_offset = segment * WHC_BATTLE_HEALTH_FIELDS;
                 if (current[health_offset] != events[allocation_offset + 3u] ||

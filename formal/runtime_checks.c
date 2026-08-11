@@ -144,5 +144,11 @@ int main(void) {
     assert(whc_ranged_target_eligibility_is_valid(
         48000u, 48000u, 32000u, 1u, 1u,
         WHC_TARGET_INDIRECT_FIRE | WHC_TARGET_WEAPON_HAS_INDIRECT | WHC_TARGET_REVIEWED_BY_PLAYER));
+    assert(whc_weapon_inventory_declaration_is_valid(
+        2u, 1u, 1u, 1u, WHC_WEAPON_ASSAULT | WHC_WEAPON_INDIRECT, WHC_WEAPON_INDIRECT));
+    assert(!whc_weapon_inventory_declaration_is_valid(2u, 1u, 2u, 1u, WHC_WEAPON_ASSAULT,
+                                                      WHC_WEAPON_ASSAULT));
+    assert(!whc_weapon_inventory_declaration_is_valid(2u, 1u, 0u, 1u, WHC_WEAPON_ASSAULT,
+                                                      WHC_WEAPON_INDIRECT));
     return 0;
 }

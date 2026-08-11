@@ -6,6 +6,7 @@ import {
   TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
   TIMELINE_BATTLE_STATE_VERSION,
   TRANSPORT_BATTLE_STATE_VERSION,
+  WEAPON_INVENTORY_BATTLE_STATE_VERSION,
   createBattleState,
   normalizeBattleState,
 } from "./battle-state.mjs";
@@ -149,7 +150,10 @@ function registerCompleteRosters(catalogue, state, firstList, secondList, equipm
     existingEvents.length !== desired.length ||
     registrationPrefix.some(
       (event, index) =>
-        event.type !== "formation_registered" || event.formation.id !== desired[index]?.id,
+        event.type !== "formation_registered" ||
+        event.formation.id !== desired[index]?.id ||
+        JSON.stringify(event.formation.weaponInventory ?? []) !==
+          JSON.stringify(desired[index]?.weaponInventory ?? []),
     );
   if (!needsEventRewrite && state.version >= BATTLE_STATE_VERSION) return state;
   const usedEventIds = new Set(state.events.map((event) => event.id));
@@ -158,7 +162,8 @@ function registerCompleteRosters(catalogue, state, firstList, secondList, equipm
     const existing = existingById.get(formation.id);
     if (existing) {
       if (
-        state.version < BATTLE_STATE_VERSION &&
+        (state.version < BATTLE_STATE_VERSION ||
+          state.migration?.sourceVersion < BATTLE_STATE_VERSION) &&
         sameSegments(existing.formation.segments, formation.segments)
       ) {
         return {
@@ -167,6 +172,7 @@ function registerCompleteRosters(catalogue, state, firstList, secondList, equipm
             ...existing.formation,
             keywords: formation.keywords,
             defensiveEquipmentCounts: formation.defensiveEquipmentCounts,
+            weaponInventory: formation.weaponInventory,
             assignedTransportFormationId: formation.assignedTransportFormationId,
             segments: formation.segments,
           },
@@ -261,6 +267,10 @@ export function initializeBattleForLists({
             sourceVersion < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyTargetEligibilityThroughSequence ?? 0),
+          legacyWeaponInventoryThroughSequence:
+            sourceVersion < WEAPON_INVENTORY_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyWeaponInventoryThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

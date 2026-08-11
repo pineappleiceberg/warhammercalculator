@@ -6,6 +6,7 @@ import {
   defensiveEquipmentSelectionKey,
 } from "./defensive-equipment.mjs";
 import { catalogueModelComposition } from "./catalogue-models.mjs";
+import { groupWeaponProfiles } from "./loadout.mjs";
 import {
   combatPresetSourceEquipmentActive,
   sourceEquipmentCombatPresetIds,
@@ -489,6 +490,44 @@ export function savedFormationBattleRegistration(
       ),
     ],
     defensiveEquipmentCounts: { ...defensiveEquipmentCounts },
+    weaponInventory: formation.components.flatMap((component) => {
+      const groups = groupWeaponProfiles(component.catalogueUnit?.weapons ?? []);
+      return (component.unit.weapons ?? []).flatMap((savedWeapon) => {
+        if (!Number.isSafeInteger(savedWeapon.count) || savedWeapon.count < 1) return [];
+        const group = groups.find(
+          (candidate) =>
+            candidate.id === savedWeapon.groupId ||
+            candidate.profiles.some((profile) => profile.id === savedWeapon.weaponId),
+        );
+        if (!group) {
+          throw new Error(`${component.unit.name} has an equipped weapon absent from its source`);
+        }
+        return [
+          {
+            sourceSavedUnitId: component.unit.id,
+            groupId: group.id,
+            name: group.name,
+            count: savedWeapon.count,
+            profiles: group.profiles.map((profile) => {
+              const abilities = new Set(
+                (profile.abilities ?? []).map((ability) => ability.name.toLowerCase()),
+              );
+              return {
+                weaponId: String(profile.id),
+                name: profile.name,
+                type: profile.type,
+                publishedRangeThousandths:
+                  Number.isFinite(profile.range) && profile.range > 0
+                    ? Math.round(profile.range * 1000)
+                    : 0,
+                hasAssault: abilities.has("assault"),
+                hasIndirect: abilities.has("indirect fire"),
+              };
+            }),
+          },
+        ];
+      });
+    }),
     segments: segments.map((segment) => ({
       id: segment.id,
       savedUnitId: segment.savedUnitId,

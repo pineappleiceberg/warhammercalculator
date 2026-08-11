@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 8 as soon as both lists are selected. Every
+creates battle-state version 9 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -702,6 +702,19 @@ predicate. Version-1 through version-7 logs migrate with an explicit boundary
 for attacks that predate structured measurements. Editable attack profiles are
 preserved, but catalogue-mode agent URLs now fail closed when a positive
 distance exceeds the selected weapon's published Range.
+Version 9 freezes every saved formation's equipped weapon groups, profile IDs,
+published Range, Assault and Indirect Fire abilities, copy counts, and source
+saved-unit bearer identity. Each new attack references that immutable source.
+Replay rejects invented profiles, changed weapon facts, abilities absent from
+the locked profile, a source whose models are all destroyed, and declarations
+that reuse copies already fired in the current phase. Mutually exclusive
+profiles consume the same group allowance, while reverting the latest attack
+restores its copies. An embarked Firing Deck source must remain a passenger of
+the attacking Transport. Guided Play disables exhausted groups and reports the
+number of locked copies still available. The declaration predicate is shared
+and differentially tested across JavaScript, native C, WebAssembly, and the
+worker API. Version-1 through version-8 histories migrate with an explicit
+boundary instead of inventing weapon provenance for preserved attacks.
 The guided timeline records battle round, first or second player turn, active
 and priority player, phase, and step. It covers Command, Movement, Shooting,
 Charge, and Fight through five rounds. Pending bounded choices stop both attacks
@@ -719,7 +732,7 @@ completed activations, and can be explicitly passed when that player has no
 eligible formation.
 Target legality remains fail closed. Charges and Fight attacks retain explicit
 player confirmation for current table and Engagement Range facts; ranged
-attacks use the structured version-8 measurement above. A confirmation never
+attacks use the structured version-8 measurement and version-9 inventory above. A confirmation never
 grants a rules exception; exceptions use a separate reason-bearing override
 until the corresponding rule is executable.
 Battle-state version 4 adds mission setup and replayed game accounting. Mission

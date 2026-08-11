@@ -21,6 +21,7 @@ import {
   battleCanResolveAttack,
   battleFormation,
   battleFormationIsOnBattlefield,
+  battleUnusedWeaponCount,
   battleFormationHealth,
   battleFormationWasTargeted,
   changeBattleResource,
@@ -655,6 +656,29 @@ export default function PlayMode() {
   const attackerBattleFormationId = attackerFormation
     ? `${attackerPlayerId}:${attackerFormation.id}`
     : "";
+  const weaponSourceFormation =
+    catalogue && attackerList && weaponSourceArmyUnit
+      ? savedFormationForUnit(catalogue, attackerList, weaponSourceArmyUnit.id)
+      : undefined;
+  const weaponSourceBattleFormationId = weaponSourceFormation
+    ? `${attackerPlayerId}:${weaponSourceFormation.id}`
+    : "";
+  const unusedSelectedWeaponCount =
+    battleState &&
+    weaponSourceBattleFormationId &&
+    weaponSourceArmyUnit &&
+    selectedWeaponGroup &&
+    weaponProfile?.type === "Ranged"
+      ? battleUnusedWeaponCount(
+          battleState,
+          weaponSourceBattleFormationId,
+          weaponSourceArmyUnit.id,
+          selectedWeaponGroup.id,
+        )
+      : null;
+  const selectedDeclaredWeaponCount = selectedSourceEquipmentSegments.length
+    ? selectedSourceEquipmentSegments.reduce((total, segment) => total + segment.count, 0)
+    : profile.weaponCount;
   const replayedBattle = battleState ? replayBattleState(battleState) : null;
   const battleClock = replayedBattle?.clock ?? null;
   const validFiringDeckPassengerIds = new Set(
@@ -2179,6 +2203,9 @@ export default function PlayMode() {
             targetFormationId: targetBattleFormationId,
             weaponId: String(weaponProfile.id),
             weaponName: weaponProfile.name,
+            weaponSourceFormationId,
+            sourceSavedUnitId: weaponSourceArmyUnit?.id ?? "",
+            weaponGroupId: selectedWeaponGroup?.id ?? "",
             publishedRangeThousandths: Math.round((weaponProfile.range ?? 0) * 1000),
             effectiveRangeThousandths: Math.round(effectiveWeaponRange * 1000),
             measuredDistanceThousandths: Math.round(profile.targetDistance * 1000),
@@ -2213,6 +2240,9 @@ export default function PlayMode() {
         weaponId: String(weaponProfile.id),
         declaredWeaponCount,
         indirectFire: weaponProfile.type === "Ranged" && !targetVisible && profile.indirect,
+        weaponSourceFormationId,
+        sourceSavedUnitId: weaponSourceArmyUnit?.id ?? "",
+        weaponGroupId: selectedWeaponGroup?.id ?? "",
         summary: {
           attacker: attackerFormation.name,
           weapon: weaponProfile.name,
@@ -2815,6 +2845,9 @@ export default function PlayMode() {
       !battleSetupError &&
       Boolean(battleState) &&
       battleAttackReady &&
+      (unusedSelectedWeaponCount === null ||
+        (unusedSelectedWeaponCount > 0 &&
+          selectedDeclaredWeaponCount <= unusedSelectedWeaponCount)) &&
       targetFormationModels.ambiguousComponents.length === 0 &&
       !(firingDeckChoice && !validFiringDeckPassengerIds.has(firingDeckChoice.passengerUnitId)) &&
       !(firingDeckChoice && firingDeckPassengerAlreadyShot),
@@ -2829,6 +2862,15 @@ export default function PlayMode() {
       return "Passenger unit has already shot";
     }
     if (!selectedWeapon) return "Choose a weapon";
+    if (unusedSelectedWeaponCount === 0) {
+      return "Every locked copy of this weapon group has already fired this phase";
+    }
+    if (
+      unusedSelectedWeaponCount !== null &&
+      selectedDeclaredWeaponCount > unusedSelectedWeaponCount
+    ) {
+      return `Only ${unusedSelectedWeaponCount} locked weapon ${unusedSelectedWeaponCount === 1 ? "copy remains" : "copies remain"} unused this phase`;
+    }
     if (!targetList) return "Choose a target list";
     if (!targetUnit) return "Choose a target unit";
     if (!targetModelId) return "Choose a target profile";

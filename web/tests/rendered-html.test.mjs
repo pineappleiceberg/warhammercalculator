@@ -2768,6 +2768,24 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
     name: "Enemy",
     keywords: ["Vehicle"],
     segments: [{ ...transport.segments[0], id: "enemy-model", savedUnitId: "enemy" }],
+    weaponInventory: [
+      {
+        sourceSavedUnitId: "enemy",
+        groupId: "anti-transport-group",
+        name: "Anti-transport weapon",
+        count: 1,
+        profiles: [
+          {
+            weaponId: "anti-transport-weapon",
+            name: "Anti-transport weapon",
+            type: "Ranged",
+            publishedRangeThousandths: 24000,
+            hasAssault: false,
+            hasIndirect: false,
+          },
+        ],
+      },
+    ],
   };
   let state = createBattleState({
     id: "transport-api",
@@ -2839,6 +2857,9 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
       targetFormationId: "transport",
       weaponId: "anti-transport-weapon",
       weaponName: "Anti-transport weapon",
+      weaponSourceFormationId: "enemy",
+      sourceSavedUnitId: "enemy",
+      weaponGroupId: "anti-transport-group",
       publishedRangeThousandths: 24000,
       effectiveRangeThousandths: 24000,
       measuredDistanceThousandths: 12000,
@@ -2874,6 +2895,9 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
     targetEligibilityEventId: "target-eligibility",
     weaponId: "anti-transport-weapon",
     declaredWeaponCount: 1,
+    weaponSourceFormationId: "enemy",
+    sourceSavedUnitId: "enemy",
+    weaponGroupId: "anti-transport-group",
   });
   state = resolveDestroyedTransport(
     state,
@@ -2908,7 +2932,20 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 8);
+  assert.equal(body.data.schemaVersion, 9);
+  assert.deepEqual(body.data.weaponDeclarations, [
+    {
+      attackEventId: "destroy-transport",
+      weaponSourceFormationId: "enemy",
+      sourceSavedUnitId: "enemy",
+      weaponGroupId: "anti-transport-group",
+      weaponId: "anti-transport-weapon",
+      inventoryCount: 1,
+      usedBefore: 0,
+      declaredWeaponCount: 1,
+      eligible: true,
+    },
+  ]);
   assert.equal(body.data.targetEligibilityFacts.length, 1);
   assert.equal(body.data.targetEligibilityFacts[0].id, "target-eligibility");
   assert.equal(body.data.targetEligibilityFacts[0].measuredDistanceThousandths, 12000);

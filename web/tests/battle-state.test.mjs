@@ -43,11 +43,39 @@ const targets = [
   { wounds: 5, modelCount: 1 },
 ];
 
+function testWeaponInventory(sourceSavedUnitId) {
+  return [
+    {
+      sourceSavedUnitId,
+      groupId: "test-ranged-group",
+      name: "Test ranged weapon",
+      count: 2,
+      profiles: [
+        ["test-ranged-weapon", "Test ranged weapon", 24000, false, false],
+        ["indirect-weapon", "Indirect weapon", 48000, false, true],
+        ["short-weapon", "Short weapon", 12000, false, false],
+        ["unreviewed-weapon", "Unreviewed weapon", 24000, false, false],
+        ["override-weapon", "Override weapon", 24000, false, false],
+        ["assault-cannon", "Test ranged weapon", 24000, true, false],
+        ["cannon", "Test ranged weapon", 24000, false, false],
+      ].map(([weaponId, name, publishedRangeThousandths, hasAssault, hasIndirect]) => ({
+        weaponId,
+        name,
+        type: "Ranged",
+        publishedRangeThousandths,
+        hasAssault,
+        hasIndirect,
+      })),
+    },
+  ];
+}
+
 const formation = {
   id: "player-2:formation-1",
   playerId: "player-2",
   sourceFormationId: "formation-1",
   name: "Bodyguard + Leader",
+  weaponInventory: testWeaponInventory("unit-1"),
   segments: [
     {
       id: "bodyguard",
@@ -83,6 +111,7 @@ const transportFormation = {
   playerId: "player-1",
   sourceFormationId: "transport",
   name: "Transport",
+  weaponInventory: testWeaponInventory("transport"),
   keywords: ["Transport", "Vehicle"],
   segments: [
     {
@@ -102,6 +131,7 @@ const passengerFormation = {
   playerId: "player-1",
   sourceFormationId: "passengers",
   name: "Passengers",
+  weaponInventory: testWeaponInventory("passengers"),
   assignedTransportFormationId: transportFormation.id,
   keywords: ["Infantry"],
   segments: [
@@ -123,6 +153,7 @@ const mixedPassengerFormation = {
   id: "player-1:mixed-passengers",
   sourceFormationId: "mixed-passengers",
   name: "Mixed Passengers",
+  weaponInventory: testWeaponInventory("mixed-bodyguard"),
   segments: [
     {
       ...passengerFormation.segments[0],
@@ -314,6 +345,11 @@ function recordVisibleRangedTarget(
   targetFormationId,
   { weaponId = "test-ranged-weapon", eligibleWeaponCount = 1 } = {},
 ) {
+  const attacker = replayBattleState(state).formations.get(attackerFormationId);
+  const inventory = attacker.weaponInventory.find((group) =>
+    group.profiles.some((profile) => profile.weaponId === weaponId),
+  );
+  assert.ok(inventory, `Missing test inventory for ${weaponId}`);
   return recordRangedTargetEligibility(
     state,
     {
@@ -321,6 +357,9 @@ function recordVisibleRangedTarget(
       targetFormationId,
       weaponId,
       weaponName: "Test ranged weapon",
+      weaponSourceFormationId: attackerFormationId,
+      sourceSavedUnitId: inventory.sourceSavedUnitId,
+      weaponGroupId: inventory.groupId,
       publishedRangeThousandths: 24000,
       effectiveRangeThousandths: 24000,
       measuredDistanceThousandths: 12000,
@@ -348,6 +387,7 @@ function appendZeroDamageRangedAttack(
     indirectFire = false,
   } = {},
 ) {
+  const eligibility = replayBattleState(state).targetEligibilityFacts.get(targetEligibilityEventId);
   return appendResolvedAttack(state, {
     id,
     at: state.events.length + 1,
@@ -371,6 +411,9 @@ function appendZeroDamageRangedAttack(
     weaponId,
     declaredWeaponCount,
     indirectFire,
+    weaponSourceFormationId: eligibility?.weaponSourceFormationId ?? attackerFormation.id,
+    sourceSavedUnitId: eligibility?.sourceSavedUnitId ?? "unit-1",
+    weaponGroupId: eligibility?.weaponGroupId ?? "test-ranged-group",
   });
 }
 
@@ -419,6 +462,9 @@ function battleWithDestroyedOccupiedTransport(passenger = passengerFormation) {
     targetEligibilityEventId: state.events.at(-1).id,
     weaponId: "test-ranged-weapon",
     declaredWeaponCount: 1,
+    weaponSourceFormationId: formation.id,
+    sourceSavedUnitId: "unit-1",
+    weaponGroupId: "test-ranged-group",
   });
 }
 
@@ -455,6 +501,9 @@ test("replays reviewed range, visibility, Indirect Fire, and eligible weapon cou
       targetFormationId: formation.id,
       weaponId: "indirect-weapon",
       weaponName: "Indirect weapon",
+      weaponSourceFormationId: attackerFormation.id,
+      sourceSavedUnitId: "unit-1",
+      weaponGroupId: "test-ranged-group",
       publishedRangeThousandths: 48000,
       effectiveRangeThousandths: 48000,
       measuredDistanceThousandths: 32000,
@@ -480,6 +529,54 @@ test("replays reviewed range, visibility, Indirect Fire, and eligible weapon cou
   assert.equal(fact.method, "uwb");
   assert.equal(fact.measuredDistanceThousandths, 32000);
 
+  const forgedAbility = structuredClone(state);
+  forgedAbility.events.find((event) => event.id === "indirect-eligibility").weaponHasIndirect =
+    false;
+  assert.throws(
+    () => normalizeBattleState(forgedAbility),
+    /weapon facts differ from the locked inventory/i,
+  );
+
+  const forgedPhase = structuredClone(state);
+  forgedPhase.events.find((event) => event.id === "test-ranged-attack").clock.battleRound = 2;
+  assert.throws(
+    () => normalizeBattleState(forgedPhase),
+    /weapon declaration is outside its recorded phase/i,
+  );
+
+  let exhausted = recordVisibleRangedTarget(state, attackerFormation.id, formation.id);
+  assert.throws(
+    () => appendZeroDamageRangedAttack(exhausted, { id: "exhausted-weapon-attack" }),
+    /exceeds its surviving unused weapon inventory/i,
+  );
+
+  assert.throws(
+    () =>
+      recordRangedTargetEligibility(
+        registeredBattle(),
+        {
+          attackerFormationId: attackerFormation.id,
+          targetFormationId: formation.id,
+          weaponId: "invented-weapon",
+          weaponName: "Invented weapon",
+          weaponSourceFormationId: attackerFormation.id,
+          sourceSavedUnitId: "unit-1",
+          weaponGroupId: "test-ranged-group",
+          publishedRangeThousandths: 24000,
+          effectiveRangeThousandths: 24000,
+          measuredDistanceThousandths: 12000,
+          visible: true,
+          eligibleWeaponCount: 1,
+          method: "manual",
+          reviewedByPlayer: true,
+          reviewReason: "Closest points and line of sight checked",
+        },
+        "invented-eligibility",
+        999,
+      ),
+    /absent from the locked ranged inventory/i,
+  );
+
   let outsideRange = registeredBattle();
   outsideRange = recordRangedTargetEligibility(
     outsideRange,
@@ -488,6 +585,9 @@ test("replays reviewed range, visibility, Indirect Fire, and eligible weapon cou
       targetFormationId: formation.id,
       weaponId: "short-weapon",
       weaponName: "Short weapon",
+      weaponSourceFormationId: attackerFormation.id,
+      sourceSavedUnitId: "unit-1",
+      weaponGroupId: "test-ranged-group",
       publishedRangeThousandths: 12000,
       effectiveRangeThousandths: 12000,
       measuredDistanceThousandths: 12001,
@@ -528,6 +628,9 @@ test("replays reviewed range, visibility, Indirect Fire, and eligible weapon cou
           targetFormationId: formation.id,
           weaponId: "unreviewed-weapon",
           weaponName: "Unreviewed weapon",
+          weaponSourceFormationId: attackerFormation.id,
+          sourceSavedUnitId: "unit-1",
+          weaponGroupId: "test-ranged-group",
           publishedRangeThousandths: 24000,
           effectiveRangeThousandths: 24000,
           measuredDistanceThousandths: 12000,
@@ -551,6 +654,9 @@ test("replays reviewed range, visibility, Indirect Fire, and eligible weapon cou
           targetFormationId: formation.id,
           weaponId: "override-weapon",
           weaponName: "Override weapon",
+          weaponSourceFormationId: attackerFormation.id,
+          sourceSavedUnitId: "unit-1",
+          weaponGroupId: "test-ranged-group",
           publishedRangeThousandths: 24000,
           effectiveRangeThousandths: 30000,
           measuredDistanceThousandths: 25000,
@@ -935,6 +1041,9 @@ test("forces and verifies destroyed Transport disembarkation rolls", () => {
     targetEligibilityEventId: state.events.at(-1).id,
     weaponId: "test-ranged-weapon",
     declaredWeaponCount: 1,
+    weaponSourceFormationId: formation.id,
+    sourceSavedUnitId: "unit-1",
+    weaponGroupId: "test-ranged-group",
   });
   let replayed = replayBattleState(state);
   assert.deepEqual([...replayed.pendingTransportDestructions.keys()], [transportFormation.id]);
@@ -1117,6 +1226,9 @@ test("replays movement and enforces one weapon-scoped Shooting activation", () =
     targetEligibilityEventId: state.events.at(-1).id,
     weaponId: "assault-cannon",
     declaredWeaponCount: 1,
+    weaponSourceFormationId: attackerFormation.id,
+    sourceSavedUnitId: "unit-1",
+    weaponGroupId: "test-ranged-group",
   });
   state = completeFormationActivation(state, "shooting-complete", state.events.length + 1);
   assert.equal(
@@ -1240,6 +1352,9 @@ test("replays persistent mixed-profile casualties and compensating undo", () => 
     targetEligibilityEventId: state.events.at(-1).id,
     weaponId: "cannon",
     declaredWeaponCount: 1,
+    weaponSourceFormationId: attackerFormation.id,
+    sourceSavedUnitId: "unit-1",
+    weaponGroupId: "test-ranged-group",
     id: "event-attack-1",
     at: 102,
     attackerFormationId: "player-1:formation-9",
@@ -1722,6 +1837,9 @@ test("rejects divergent replay state and non-latest undo", () => {
     targetEligibilityEventId: state.events.at(-1).id,
     weaponId: "cannon",
     declaredWeaponCount: 1,
+    weaponSourceFormationId: attackerFormation.id,
+    sourceSavedUnitId: "unit-1",
+    weaponGroupId: "test-ranged-group",
     id: "event-attack-1",
     at: 102,
     attackerFormationId: "player-1:formation-9",

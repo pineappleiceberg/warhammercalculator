@@ -27,10 +27,12 @@ state.
 
 ## Prioritized backlog
 
-1. Bind each battle formation's source-backed weapon inventory and abilities to
-   its immutable registration snapshot, then enforce bearer eligibility and
-   once-per-phase weapon use so a replay cannot claim Indirect Fire or fire the
-   same weapon copies twice by tampering with attack facts.
+1. Add exact per-model weapon-bearer assignments for source choices that do not
+   already resolve to distinct model segments, and require casualty allocation
+   to identify which optional weapon bearers remain. Version 9 currently fails
+   closed when every model in the source saved unit is destroyed, but an
+   optional weapon on one model still needs an explicit bearer identity before
+   other models in that same saved unit can be distinguished after casualties.
 2. Continue the legal-action engine with charge distance and movement, Heroic
    Intervention, pile-in, consolidation, reactions, cover, and Stratagem
    windows; then expand Transport changes beyond the roster's locked assigned
@@ -45,6 +47,20 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-10: Advanced guided play to battle-state version 9 with immutable
+  weapon provenance. Every formation registration now freezes equipped group
+  counts, mutually exclusive profile IDs, published Range, Assault and Indirect
+  Fire abilities, and the exact source saved unit. New measurements and attacks
+  reference that locked identity. Replay rejects invented weapons, changed
+  names or Range, forged abilities, destroyed source units, unrelated Firing
+  Deck sources, and reuse beyond the remaining group copies; reverting an
+  attack restores its allowance. Guided Play disables exhausted groups and
+  reports remaining copies. A new ACSL-specified native predicate is exported
+  to WebAssembly and differentially tested against JavaScript, while version-1
+  through version-8 histories migrate behind an explicit legacy boundary.
+  Native, web, migration, tamper, API, Wasm, and formal regressions cover the
+  cycle.
 
 - 2026-08-10: Advanced guided play to battle-state version 8 with canonical
   ranged target measurements. Browser catalogue exports now preserve Range text
