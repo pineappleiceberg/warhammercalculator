@@ -5,6 +5,7 @@ import { antiWoundThreshold } from "../lib/anti.mjs";
 import { sourceEquippedWeaponCounts } from "../lib/loadout.mjs";
 import {
   BATTLE_STATE_VERSION,
+  TABLE_GEOMETRY_CONSTANTS,
   advanceBattleClock,
   appendResolvedAttack,
   applyBattleEffect,
@@ -12,6 +13,7 @@ import {
   closeRangedTargetDeclarations,
   completeFormationActivation,
   configureBattleMission,
+  configureBattleTableGeometry,
   createBattleState as createUncoveredBattleState,
   declareFormationDeployment,
   deployFormation,
@@ -42,7 +44,11 @@ import {
   startFormationMovement,
 } from "../lib/battle-state.mjs";
 import { rulesInteractionCases } from "./rules-interaction-corpus.mjs";
-import { coveredBattleRuleBinding, coveredRuleCoverageMatrix } from "./rule-coverage-fixture.mjs";
+import {
+  coveredBattleRuleBinding,
+  coveredExactBattleRuleBinding,
+  coveredRuleCoverageMatrix,
+} from "./rule-coverage-fixture.mjs";
 
 function createBattleState(input) {
   return createUncoveredBattleState({
@@ -2863,6 +2869,96 @@ test("replays canonical battle health through the C and WebAssembly API", async 
   );
   assert.equal(rejected.status, 400);
   assert.equal((await rejected.json()).error.code, "INVALID_REQUEST");
+});
+
+test("replays source-locked table geometry through the JavaScript and C/WebAssembly API", async () => {
+  const players = [
+    { id: "player-1", listId: "list-1", listUpdatedAt: 1, name: "Attackers" },
+    { id: "player-2", listId: "list-2", listUpdatedAt: 1, name: "Defenders" },
+  ];
+  let state = createUncoveredBattleState({
+    id: "table-geometry-api",
+    createdAt: 1,
+    rulesSnapshot: "catalogue:test",
+    players,
+    ruleCoverage: coveredExactBattleRuleBinding(players),
+  });
+  const target = {
+    id: "table-geometry-target",
+    playerId: "player-2",
+    sourceFormationId: "table-geometry-target",
+    name: "Geometry target",
+    keywords: ["Vehicle"],
+    segments: [
+      {
+        id: "table-geometry-target-model",
+        savedUnitId: "table-geometry-target",
+        unitName: "Geometry target",
+        modelName: "Geometry target",
+        role: "standalone",
+        wounds: 10,
+        startingModels: 1,
+      },
+    ],
+  };
+  state = registerBattleFormation(state, target, "register-table-geometry-target", 1);
+  state = configureBattleMission(
+    state,
+    {
+      name: "A · Take and Hold · Tipping Point",
+      pointsLimit: 2000,
+      deploymentFirstPlayerId: "player-1",
+      commandPointsPerCommandPhase: 1,
+      startingCommandPoints: { "player-1": 0, "player-2": 0 },
+      objectives: [
+        { id: "objective-1", name: "Objective 1" },
+        { id: "objective-2", name: "Objective 2" },
+      ],
+    },
+    "configure-table-geometry-mission",
+    2,
+  );
+  const geometry = {
+    missionSourceId: "chapter-approved-2025-26-v1.4-a",
+    terrainSourceId: "chapter-approved-2025-26-v1.4-layout-1",
+    deploymentName: "Tipping Point",
+    battlefieldWidthThousandths: TABLE_GEOMETRY_CONSTANTS.widthThousandths,
+    battlefieldHeightThousandths: TABLE_GEOMETRY_CONSTANTS.heightThousandths,
+    origin: "attacker-left-near",
+    objectivePositions: [
+      { objectiveId: "objective-1", xThousandths: 12_000, yThousandths: 11_000 },
+      { objectiveId: "objective-2", xThousandths: 48_000, yThousandths: 33_000 },
+    ],
+    terrainProfile: {
+      sectionCount: TABLE_GEOMETRY_CONSTANTS.terrainSectionCount,
+      sixByFourCount: TABLE_GEOMETRY_CONSTANTS.sixByFourCount,
+      tenByFiveCount: TABLE_GEOMETRY_CONSTANTS.tenByFiveCount,
+      twelveBySixCount: TABLE_GEOMETRY_CONSTANTS.twelveBySixCount,
+      sourcePage: 8,
+    },
+    terrainLayoutReviewed: true,
+    deploymentZonesReviewed: true,
+    objectivePositionsReviewed: true,
+    reviewedByPlayer: true,
+    method: "manual",
+    reviewReason: "Players checked the mission card, terrain, zones, and objective centres",
+  };
+  state = configureBattleTableGeometry(state, geometry, "record-table-geometry", 3);
+
+  const worker = await loadWorker();
+  const response = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: state, formationId: target.id }),
+    }),
+    testEnv,
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  const body = await response.json();
+  assert.equal(body.data.schemaVersion, BATTLE_STATE_VERSION);
+  assert.deepEqual(body.data.tableGeometry, geometry);
 });
 
 test("cross-checks structured charge movement through the C and WebAssembly API", async () => {

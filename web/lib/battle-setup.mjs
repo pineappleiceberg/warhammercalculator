@@ -16,6 +16,7 @@ import {
   SMOKESCREEN_BATTLE_STATE_VERSION,
   ROSTER_BATTLE_STATE_VERSION,
   TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
+  TABLE_GEOMETRY_BATTLE_STATE_VERSION,
   TIMELINE_BATTLE_STATE_VERSION,
   TRANSPORT_BATTLE_STATE_VERSION,
   TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION,
@@ -608,6 +609,10 @@ export function initializeBattleForLists({
             sourceVersion < RULE_COVERAGE_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyRuleCoverageThroughSequence ?? 0),
+          legacyTableGeometryThroughSequence:
+            sourceVersion < TABLE_GEOMETRY_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyTableGeometryThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

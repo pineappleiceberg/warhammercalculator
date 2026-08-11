@@ -11,8 +11,10 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 import { normalizeBattleRuleCoverageBinding } from "./battle-rule-selection.mjs";
+import { chapterApprovedTableBinding } from "./mission-pack.mjs";
 
-export const BATTLE_STATE_VERSION = 24;
+export const BATTLE_STATE_VERSION = 25;
+export const TABLE_GEOMETRY_BATTLE_STATE_VERSION = 25;
 export const RULE_COVERAGE_BATTLE_STATE_VERSION = 24;
 export const RAPID_INGRESS_BATTLE_STATE_VERSION = 23;
 export const SMOKESCREEN_BATTLE_STATE_VERSION = 22;
@@ -75,6 +77,81 @@ const DEPLOYMENT_LOCATIONS = Object.freeze([
   "embarked",
 ]);
 const TARGET_MEASUREMENT_METHODS = Object.freeze(["manual", "uwb", "camera", "imported"]);
+const TABLE_GEOMETRY_METHODS = Object.freeze(["manual", "uwb", "camera", "imported"]);
+export const TABLE_GEOMETRY_FLAGS = Object.freeze({
+  reviewedByPlayer: 1,
+  sourceLocked: 2,
+  terrainReviewed: 4,
+  deploymentZonesReviewed: 8,
+  objectivesReviewed: 16,
+  mask: 31,
+});
+export const TABLE_GEOMETRY_CONSTANTS = Object.freeze({
+  widthThousandths: 60_000,
+  heightThousandths: 44_000,
+  terrainSectionCount: 12,
+  sixByFourCount: 4,
+  tenByFiveCount: 2,
+  twelveBySixCount: 6,
+});
+
+export function tableGeometryFlags(geometry, sourceLocked = true) {
+  return (
+    (geometry?.reviewedByPlayer ? TABLE_GEOMETRY_FLAGS.reviewedByPlayer : 0) |
+    (sourceLocked ? TABLE_GEOMETRY_FLAGS.sourceLocked : 0) |
+    (geometry?.terrainLayoutReviewed ? TABLE_GEOMETRY_FLAGS.terrainReviewed : 0) |
+    (geometry?.deploymentZonesReviewed ? TABLE_GEOMETRY_FLAGS.deploymentZonesReviewed : 0) |
+    (geometry?.objectivePositionsReviewed ? TABLE_GEOMETRY_FLAGS.objectivesReviewed : 0)
+  );
+}
+
+export function tableGeometryIsValid(geometry, sourceLocked = true) {
+  const profile = geometry?.terrainProfile;
+  const objectiveCount = Array.isArray(geometry?.objectivePositions)
+    ? geometry.objectivePositions.length
+    : 0;
+  const positionedObjectiveCount = Array.isArray(geometry?.objectivePositions)
+    ? geometry.objectivePositions.filter(
+        (objective) =>
+          Number.isSafeInteger(objective?.xThousandths) &&
+          objective.xThousandths >= 0 &&
+          objective.xThousandths <= TABLE_GEOMETRY_CONSTANTS.widthThousandths &&
+          Number.isSafeInteger(objective?.yThousandths) &&
+          objective.yThousandths >= 0 &&
+          objective.yThousandths <= TABLE_GEOMETRY_CONSTANTS.heightThousandths,
+      ).length
+    : 0;
+  const uniquePositionCount = Array.isArray(geometry?.objectivePositions)
+    ? new Set(
+        geometry.objectivePositions.map(
+          (objective) => `${objective?.xThousandths}:${objective?.yThousandths}`,
+        ),
+      ).size
+    : 0;
+  return Boolean(
+    geometry?.battlefieldWidthThousandths === TABLE_GEOMETRY_CONSTANTS.widthThousandths &&
+      geometry?.battlefieldHeightThousandths === TABLE_GEOMETRY_CONSTANTS.heightThousandths &&
+      objectiveCount >= 1 &&
+      objectiveCount <= 12 &&
+      positionedObjectiveCount === objectiveCount &&
+      uniquePositionCount === objectiveCount &&
+      profile?.sectionCount === TABLE_GEOMETRY_CONSTANTS.terrainSectionCount &&
+      profile?.sixByFourCount === TABLE_GEOMETRY_CONSTANTS.sixByFourCount &&
+      profile?.tenByFiveCount === TABLE_GEOMETRY_CONSTANTS.tenByFiveCount &&
+      profile?.twelveBySixCount === TABLE_GEOMETRY_CONSTANTS.twelveBySixCount &&
+      profile.sixByFourCount + profile.tenByFiveCount + profile.twelveBySixCount ===
+        profile.sectionCount &&
+      tableGeometryFlags(geometry, sourceLocked) === TABLE_GEOMETRY_FLAGS.mask,
+  );
+}
+
+function battleRuleCoverageRequiresTableGeometry(ruleCoverage) {
+  return Boolean(
+    ruleCoverage?.report.permitted &&
+      ruleCoverage.plan.mission.sourceId.startsWith("chapter-approved-2025-26-v1.4-") &&
+      ruleCoverage.plan.terrain.sourceId.startsWith("chapter-approved-2025-26-v1.4-layout-"),
+  );
+}
 export const FIRE_OVERWATCH_TRIGGERS = Object.freeze([
   "set_up",
   "normal_move_start",
@@ -1016,6 +1093,85 @@ function normalizeMission(candidate, players) {
   };
 }
 
+function normalizeTableGeometry(candidate) {
+  const geometry = record(candidate, "Table geometry must be an object");
+  if (
+    !Array.isArray(geometry.objectivePositions) ||
+    geometry.objectivePositions.length < 1 ||
+    geometry.objectivePositions.length > 12
+  ) {
+    throw new Error("Table geometry must position 1 to 12 objective markers");
+  }
+  const objectivePositions = geometry.objectivePositions.map((candidateObjective) => {
+    const objective = record(candidateObjective, "Each objective position must be an object");
+    return {
+      objectiveId: boundedString(objective.objectiveId, "Geometry objective id", 100),
+      xThousandths: nonnegativeInteger(
+        objective.xThousandths,
+        "Objective x-coordinate thousandths",
+        TABLE_GEOMETRY_CONSTANTS.widthThousandths,
+      ),
+      yThousandths: nonnegativeInteger(
+        objective.yThousandths,
+        "Objective y-coordinate thousandths",
+        TABLE_GEOMETRY_CONSTANTS.heightThousandths,
+      ),
+    };
+  });
+  if (
+    new Set(objectivePositions.map((objective) => objective.objectiveId)).size !==
+    objectivePositions.length
+  ) {
+    throw new Error("Table geometry objective ids must be unique");
+  }
+  const profile = record(geometry.terrainProfile, "Table terrain profile must be an object");
+  const normalized = {
+    missionSourceId: boundedString(geometry.missionSourceId, "Geometry mission source id", 200),
+    terrainSourceId: boundedString(geometry.terrainSourceId, "Geometry terrain source id", 200),
+    deploymentName: boundedString(geometry.deploymentName, "Geometry deployment name", 100),
+    battlefieldWidthThousandths: nonnegativeInteger(
+      geometry.battlefieldWidthThousandths,
+      "Battlefield width thousandths",
+      100_000,
+    ),
+    battlefieldHeightThousandths: nonnegativeInteger(
+      geometry.battlefieldHeightThousandths,
+      "Battlefield height thousandths",
+      100_000,
+    ),
+    origin: boundedString(geometry.origin, "Table coordinate origin", 60),
+    objectivePositions,
+    terrainProfile: {
+      sectionCount: nonnegativeInteger(profile.sectionCount, "Terrain section count", 100),
+      sixByFourCount: nonnegativeInteger(profile.sixByFourCount, "6 by 4 terrain count", 100),
+      tenByFiveCount: nonnegativeInteger(profile.tenByFiveCount, "10 by 5 terrain count", 100),
+      twelveBySixCount: nonnegativeInteger(profile.twelveBySixCount, "12 by 6 terrain count", 100),
+      sourcePage: nonnegativeInteger(profile.sourcePage, "Terrain layout source page", 1000),
+    },
+    terrainLayoutReviewed: Boolean(geometry.terrainLayoutReviewed),
+    deploymentZonesReviewed: Boolean(geometry.deploymentZonesReviewed),
+    objectivePositionsReviewed: Boolean(geometry.objectivePositionsReviewed),
+    reviewedByPlayer: Boolean(geometry.reviewedByPlayer),
+    method: boundedString(geometry.method, "Table geometry method", 20),
+    reviewReason: geometry.reviewedByPlayer
+      ? boundedString(geometry.reviewReason, "Table geometry review", 500).trim()
+      : "",
+  };
+  if (normalized.origin !== "attacker-left-near") {
+    throw new Error("Table geometry coordinate origin is unsupported");
+  }
+  if (!TABLE_GEOMETRY_METHODS.includes(normalized.method)) {
+    throw new Error("Table geometry method is unsupported");
+  }
+  if (!normalized.reviewReason) {
+    throw new Error("Table geometry review must explain the checked tabletop facts");
+  }
+  if (!tableGeometryIsValid(normalized, true)) {
+    throw new Error("Table geometry does not match the source-locked tournament frame");
+  }
+  return normalized;
+}
+
 function normalizePlayers(players, stateVersion) {
   if (!Array.isArray(players) || players.length !== 2) {
     throw new Error("Battle state must contain exactly two players");
@@ -1905,6 +2061,16 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     event.type === "rule_coverage_configured"
   ) {
     throw new Error("Rule coverage configuration requires battle-state version 24");
+  }
+  if (
+    stateVersion < TABLE_GEOMETRY_BATTLE_STATE_VERSION &&
+    event.type === "table_geometry_recorded"
+  ) {
+    throw new Error("Table geometry requires battle-state version 25");
+  }
+  if (event.type === "table_geometry_recorded") {
+    normalized.geometry = normalizeTableGeometry(event.geometry);
+    return normalized;
   }
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation, stateVersion);
@@ -3611,6 +3777,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= TABLE_GEOMETRY_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyTableGeometryThroughSequence = nonnegativeInteger(
+        migration.legacyTableGeometryThroughSequence,
+        "Legacy table geometry event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -4381,6 +4554,7 @@ export function replayBattleState(state) {
   let readyRangedAttacks = [];
   let deploymentPriorityPlayerId = "";
   let ruleCoverage = null;
+  let tableGeometry = null;
   let clock = setupBattleClock();
   let mission = defaultMission(state.players);
   let resources = trackerResources(state.players, mission);
@@ -4441,6 +4615,10 @@ export function replayBattleState(state) {
     state.version < RULE_COVERAGE_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyRuleCoverageThroughSequence ?? 0);
+  const legacyTableGeometryThroughSequence =
+    state.version < TABLE_GEOMETRY_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyTableGeometryThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -4797,9 +4975,55 @@ export function replayBattleState(state) {
       });
       continue;
     }
+    if (event.type === "table_geometry_recorded") {
+      if (clock.status !== "setup") {
+        throw new Error("Table geometry is locked after the battle starts");
+      }
+      if (tableGeometry) throw new Error("Table geometry has already been recorded");
+      const migratedInitialGeometry =
+        state.migration && event.sequence === legacyTableGeometryThroughSequence + 1;
+      if (deploymentByFormation.size > 0 && !migratedInitialGeometry) {
+        throw new Error("Table geometry is locked after deployment declarations begin");
+      }
+      if (!ruleCoverage?.report.permitted) {
+        throw new Error("Source-locked rule selections are required before table geometry");
+      }
+      if (
+        event.geometry.missionSourceId !== ruleCoverage.plan.mission.sourceId ||
+        event.geometry.terrainSourceId !== ruleCoverage.plan.terrain.sourceId
+      ) {
+        throw new Error("Table geometry does not match the selected mission and terrain layout");
+      }
+      const sourceBinding = chapterApprovedTableBinding(
+        event.geometry.missionSourceId,
+        event.geometry.terrainSourceId,
+      );
+      if (!sourceBinding || event.geometry.deploymentName !== sourceBinding.deploymentName) {
+        throw new Error("Table geometry does not match the source-locked deployment map");
+      }
+      const objectiveIds = mission.objectives.map((objective) => objective.id).sort();
+      const positionedIds = event.geometry.objectivePositions
+        .map((objective) => objective.objectiveId)
+        .sort();
+      if (JSON.stringify(positionedIds) !== JSON.stringify(objectiveIds)) {
+        throw new Error(
+          "Table geometry must position every configured mission objective exactly once",
+        );
+      }
+      tableGeometry = event.geometry;
+      continue;
+    }
     if (event.type === "deployment_declared") {
       if (clock.status !== "setup") {
         throw new Error("Deployment declarations are locked after the battle starts");
+      }
+      if (
+        state.version >= TABLE_GEOMETRY_BATTLE_STATE_VERSION &&
+        event.sequence > legacyTableGeometryThroughSequence &&
+        battleRuleCoverageRequiresTableGeometry(ruleCoverage) &&
+        !tableGeometry
+      ) {
+        throw new Error("Record reviewed table geometry before declaring deployment");
       }
       if (deployedFormationIds.size > 0) {
         throw new Error("Deployment declarations are locked after deployment begins");
@@ -4945,6 +5169,15 @@ export function replayBattleState(state) {
       if (deploymentByFormation.size > 0 && !migratedInitialBinding) {
         throw new Error("Battle rule selections are locked after deployment declarations begin");
       }
+      if (
+        battleRuleCoverageRequiresTableGeometry(event.coverage) &&
+        !chapterApprovedTableBinding(
+          event.coverage.plan.mission.sourceId,
+          event.coverage.plan.terrain.sourceId,
+        )
+      ) {
+        throw new Error("The selected mission and terrain layout are not source-compatible");
+      }
       ruleCoverage = event.coverage;
       continue;
     }
@@ -4958,6 +5191,13 @@ export function replayBattleState(state) {
         throw new Error(
           "Every selected battle rule must pass source-locked coverage before battle start",
         );
+      }
+      if (
+        event.sequence > legacyTableGeometryThroughSequence &&
+        battleRuleCoverageRequiresTableGeometry(ruleCoverage) &&
+        !tableGeometry
+      ) {
+        throw new Error("Reviewed table geometry is required before battle start");
       }
       if (
         (state.version < DEPLOYMENT_BATTLE_STATE_VERSION || state.migration) &&
@@ -5126,6 +5366,9 @@ export function replayBattleState(state) {
     }
     if (event.type === "mission_configured") {
       if (clock.status !== "setup") throw new Error("Mission setup is locked after battle start");
+      if (tableGeometry) {
+        throw new Error("Mission setup is locked after table geometry is recorded");
+      }
       if (deploymentByFormation.size > 0) {
         throw new Error("Mission setup is locked after deployment declarations begin");
       }
@@ -7584,6 +7827,7 @@ export function replayBattleState(state) {
     activeAttackIds,
     clock,
     ruleCoverage,
+    tableGeometry,
     pendingChoices,
     resolvedChoices,
     effects,
@@ -7660,6 +7904,28 @@ export function replayBattleState(state) {
 
 function appendEvent(state, event) {
   return normalizeBattleState({ ...state, events: [...state.events, event] });
+}
+
+export function configureBattleTableGeometry(state, geometry, id, at) {
+  const replayed = replayBattleState(state);
+  if (replayed.clock.status !== "setup") {
+    throw new Error("Table geometry is locked after the battle starts");
+  }
+  if (replayed.tableGeometry) throw new Error("Table geometry has already been recorded");
+  const migratedInitialGeometry =
+    state.migration &&
+    state.events.length === (state.migration.legacyTableGeometryThroughSequence ?? -1);
+  if (replayed.deploymentByFormation.size > 0 && !migratedInitialGeometry) {
+    throw new Error("Table geometry is locked after deployment declarations begin");
+  }
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "table_geometry_recorded",
+    geometry,
+  });
 }
 
 export function declareFormationDeployment(
