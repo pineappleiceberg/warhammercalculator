@@ -12,6 +12,7 @@ import {
   normalizeBattleState,
   openBattleChoice,
   recordFormationMovement,
+  recordRangedTargetEligibility,
   registerBattleFormation,
   replayBattleState,
   resolveBattleChoice,
@@ -234,10 +235,33 @@ test("allows attacks only for the active player in Shooting or Fight attack step
   );
   assert.equal(battleCanResolveAttack(state, "unit-2"), false);
   state = startFormationActivation(state, "unit-1", {}, "start-shooting", state.events.length + 1);
+  state = recordRangedTargetEligibility(
+    state,
+    {
+      attackerFormationId: "unit-1",
+      targetFormationId: "unit-2",
+      weaponId: "test-weapon",
+      weaponName: "Test weapon",
+      publishedRangeThousandths: 24000,
+      effectiveRangeThousandths: 24000,
+      measuredDistanceThousandths: 12000,
+      visible: true,
+      fullyVisible: true,
+      eligibleWeaponCount: 1,
+      method: "manual",
+      reviewedByPlayer: true,
+      reviewReason: "Range and line of sight checked",
+    },
+    "target-eligibility",
+    state.events.length + 1,
+  );
   state = appendResolvedAttack(state, {
     weaponType: "Ranged",
     targetEligibilityConfirmed: true,
     targetEligibilityReason: "Target is visible and in range",
+    targetEligibilityEventId: "target-eligibility",
+    weaponId: "test-weapon",
+    declaredWeaponCount: 1,
     id: "attack-1",
     at: state.events.length + 1,
     attackerFormationId: "unit-1",

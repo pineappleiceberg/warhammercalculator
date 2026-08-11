@@ -5821,6 +5821,25 @@ class ProfileDataTests(unittest.TestCase):
             export(DATABASE, exported)
             self.assertEqual(exported.read_bytes(), CATALOGUE.read_bytes())
 
+    def test_browser_catalogue_preserves_published_weapon_ranges(self):
+        catalogue = json.loads(CATALOGUE.read_text(encoding="utf-8"))
+        weapons = [weapon for unit in catalogue["units"] for weapon in unit["weapons"]]
+        ranged = [weapon for weapon in weapons if weapon["type"] == "Ranged"]
+        melee = [weapon for weapon in weapons if weapon["type"] == "Melee"]
+        self.assertEqual(len(ranged), 6245)
+        self.assertEqual(sum(weapon["range"] is None for weapon in ranged), 2)
+        self.assertTrue(
+            all(
+                weapon["range"] is None
+                or (isinstance(weapon["range"], int) and weapon["range"] >= 1)
+                for weapon in ranged
+            )
+        )
+        self.assertTrue(all(weapon["rangeText"] for weapon in ranged))
+        self.assertTrue(
+            all(weapon["range"] is None and weapon["rangeText"] == "Melee" for weapon in melee)
+        )
+
     def test_grouped_weapon_profiles_are_mutually_identifiable(self):
         catalogue = json.loads(CATALOGUE.read_text(encoding="utf-8"))
         grouped = {

@@ -8,6 +8,16 @@ import { catalogueModelCandidates, catalogueModelsRequireSelection } from "./cat
 
 export const AGENT_SCHEMA_VERSION = 1;
 
+export function catalogueWeaponRangeError(weapon, distance) {
+  if (weapon?.type !== "Ranged" || !(distance > 0)) return "";
+  if (!Number.isFinite(weapon.range) || weapon.range <= 0) {
+    return "Published weapon range is unavailable for this catalogue profile";
+  }
+  return distance > weapon.range
+    ? `Target distance exceeds this weapon's ${weapon.range}-inch range`
+    : "";
+}
+
 const catalogueParameters = new Set([
   "attacker",
   "weapon",

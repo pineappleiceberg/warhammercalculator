@@ -21,6 +21,7 @@ import { parseAgentProfile } from "../lib/agent-parameters.mjs";
 import {
   battleFormationHealth,
   normalizeBattleState,
+  rangedTargetEligibilityIsValid,
   replayBattleState,
 } from "../lib/battle-state.mjs";
 import { BATTLE_PHASE_STEPS, nextBattleClock, startBattleClock } from "../lib/battle-clock.mjs";
@@ -84,8 +85,96 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._attack_plan_is_valid, "function");
   assert.equal(typeof calculator._whc_estimate_ordered_volley_complexity, "function");
   assert.equal(typeof calculator._whc_replay_battle_health_events, "function");
+  assert.equal(typeof calculator._whc_ranged_target_eligibility_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
+});
+
+test("WebAssembly and JavaScript agree on ranged target eligibility", () => {
+  const cases = [
+    {
+      fact: {
+        publishedRangeThousandths: 24000,
+        effectiveRangeThousandths: 24000,
+        measuredDistanceThousandths: 18000,
+        eligibleWeaponCount: 3,
+        visible: true,
+        fullyVisible: false,
+        indirectFire: false,
+        weaponHasIndirect: false,
+        reviewedByPlayer: true,
+        rangeOverrideReason: "",
+      },
+      declaredWeaponCount: 3,
+    },
+    {
+      fact: {
+        publishedRangeThousandths: 48000,
+        effectiveRangeThousandths: 48000,
+        measuredDistanceThousandths: 32000,
+        eligibleWeaponCount: 1,
+        visible: false,
+        fullyVisible: false,
+        indirectFire: true,
+        weaponHasIndirect: true,
+        reviewedByPlayer: true,
+        rangeOverrideReason: "",
+      },
+      declaredWeaponCount: 1,
+    },
+    {
+      fact: {
+        publishedRangeThousandths: 24000,
+        effectiveRangeThousandths: 30000,
+        measuredDistanceThousandths: 25000,
+        eligibleWeaponCount: 1,
+        visible: true,
+        fullyVisible: true,
+        indirectFire: false,
+        weaponHasIndirect: false,
+        reviewedByPlayer: true,
+        rangeOverrideReason: "Detachment rule",
+      },
+      declaredWeaponCount: 1,
+    },
+    {
+      fact: {
+        publishedRangeThousandths: 24000,
+        effectiveRangeThousandths: 24000,
+        measuredDistanceThousandths: 24001,
+        eligibleWeaponCount: 2,
+        visible: true,
+        fullyVisible: false,
+        indirectFire: false,
+        weaponHasIndirect: false,
+        reviewedByPlayer: true,
+        rangeOverrideReason: "",
+      },
+      declaredWeaponCount: 2,
+    },
+  ];
+  for (const { fact, declaredWeaponCount } of cases) {
+    const flags =
+      (fact.visible ? 1 : 0) |
+      (fact.fullyVisible ? 2 : 0) |
+      (fact.indirectFire ? 4 : 0) |
+      (fact.weaponHasIndirect ? 8 : 0) |
+      (fact.reviewedByPlayer ? 16 : 0) |
+      (fact.rangeOverrideReason ? 32 : 0);
+    assert.equal(
+      Boolean(
+        calculator._whc_ranged_target_eligibility_is_valid(
+          fact.publishedRangeThousandths,
+          fact.effectiveRangeThousandths,
+          fact.measuredDistanceThousandths,
+          fact.eligibleWeaponCount,
+          declaredWeaponCount,
+          flags,
+        ),
+      ),
+      rangedTargetEligibilityIsValid(fact, declaredWeaponCount),
+    );
+  }
 });
 
 test("WebAssembly and JavaScript battle clocks match every transition", () => {

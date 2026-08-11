@@ -1357,6 +1357,37 @@ static void test_transport_damage_replay(void) {
     assert(health[1] == 92u);
 }
 
+/*@ terminates \true; */
+static void test_ranged_target_eligibility(void) {
+    const uint32_t reviewed_visible = WHC_TARGET_VISIBLE | WHC_TARGET_REVIEWED_BY_PLAYER;
+    const uint32_t reviewed_indirect =
+        WHC_TARGET_INDIRECT_FIRE | WHC_TARGET_WEAPON_HAS_INDIRECT | WHC_TARGET_REVIEWED_BY_PLAYER;
+
+    assert(
+        whc_ranged_target_eligibility_is_valid(24000u, 24000u, 18000u, 3u, 3u, reviewed_visible));
+    assert(whc_ranged_target_eligibility_is_valid(24000u, 24000u, 24000u, 3u, 1u,
+                                                  reviewed_visible | WHC_TARGET_FULLY_VISIBLE));
+    assert(
+        whc_ranged_target_eligibility_is_valid(48000u, 48000u, 32000u, 2u, 2u, reviewed_indirect));
+    assert(whc_ranged_target_eligibility_is_valid(
+        24000u, 30000u, 25000u, 1u, 1u, reviewed_visible | WHC_TARGET_RANGE_OVERRIDE_EXPLAINED));
+    assert(!whc_ranged_target_eligibility_is_valid(0u, 24000u, 18000u, 3u, 3u, reviewed_visible));
+    assert(
+        !whc_ranged_target_eligibility_is_valid(24000u, 24000u, 24001u, 3u, 3u, reviewed_visible));
+    assert(
+        !whc_ranged_target_eligibility_is_valid(24000u, 24000u, 18000u, 3u, 0u, reviewed_visible));
+    assert(
+        !whc_ranged_target_eligibility_is_valid(24000u, 24000u, 18000u, 3u, 4u, reviewed_visible));
+    assert(!whc_ranged_target_eligibility_is_valid(24000u, 24000u, 18000u, 3u, 3u,
+                                                   WHC_TARGET_VISIBLE));
+    assert(!whc_ranged_target_eligibility_is_valid(
+        24000u, 24000u, 18000u, 3u, 3u, WHC_TARGET_FULLY_VISIBLE | WHC_TARGET_REVIEWED_BY_PLAYER));
+    assert(!whc_ranged_target_eligibility_is_valid(
+        24000u, 24000u, 18000u, 3u, 3u, WHC_TARGET_INDIRECT_FIRE | WHC_TARGET_REVIEWED_BY_PLAYER));
+    assert(
+        !whc_ranged_target_eligibility_is_valid(24000u, 30000u, 25000u, 1u, 1u, reviewed_visible));
+}
+
 /*@ assigns \nothing;
 */
 static void test_battle_clock(void) {
@@ -1416,6 +1447,7 @@ int main(void) {
     test_allocated_attack_damage_replacement();
     test_battle_health_replay();
     test_transport_damage_replay();
+    test_ranged_target_eligibility();
     test_battle_clock();
     puts("all tests passed");
     return 0;

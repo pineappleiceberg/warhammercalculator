@@ -13,6 +13,7 @@ import {
   normalizeBattleState,
   replayBattleState,
   recordFormationMovement,
+  recordRangedTargetEligibility,
   startBattle,
   startFormationActivation,
 } from "../lib/battle-state.mjs";
@@ -104,7 +105,7 @@ function deployAllOnBattlefield(state) {
 
 test("registers every formation on both rosters before combat with stable ids", () => {
   const state = setup();
-  assert.equal(state.version, 7);
+  assert.equal(state.version, 8);
   assert.deepEqual(
     state.players.map((player) => [player.listId, player.listUpdatedAt]),
     [
@@ -252,10 +253,33 @@ test("allows equipment correction during setup, then freezes it when battle star
     wounds: segment.wounds,
     modelCount: segment.startingModels,
   }));
+  state = recordRangedTargetEligibility(
+    state,
+    {
+      attackerFormationId: "player-1:doom-scythe",
+      targetFormationId: targetId,
+      weaponId: "death-ray",
+      weaponName: "Death ray",
+      publishedRangeThousandths: 36000,
+      effectiveRangeThousandths: 36000,
+      measuredDistanceThousandths: 18000,
+      visible: true,
+      fullyVisible: true,
+      eligibleWeaponCount: 1,
+      method: "manual",
+      reviewedByPlayer: true,
+      reviewReason: "Range and line of sight checked",
+    },
+    "death-ray-eligibility",
+    state.events.length + 1,
+  );
   state = appendResolvedAttack(state, {
     weaponType: "Ranged",
     targetEligibilityConfirmed: true,
     targetEligibilityReason: "Target is visible and in range",
+    targetEligibilityEventId: "death-ray-eligibility",
+    weaponId: "death-ray",
+    declaredWeaponCount: 1,
     id: "attack-1",
     at: state.events.length + 1,
     attackerFormationId: "player-1:doom-scythe",
@@ -284,13 +308,14 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
   versionTwo.players[0].listUpdatedAt = attackers.updatedAt;
   versionTwo.players[1].listUpdatedAt = defenders.updatedAt;
   const migrated = setup(normalizeBattleState(versionTwo));
-  assert.equal(migrated.version, 7);
+  assert.equal(migrated.version, 8);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 2,
     legacyUntimedThroughSequence: 3,
     legacyUnactionedThroughSequence: 3,
     legacyDeploymentThroughSequence: 3,
     legacyTransportThroughSequence: 3,
+    legacyTargetEligibilityThroughSequence: 3,
   });
   assert.equal(migrated.events.at(-1).id, "legacy-attack");
 });
@@ -302,13 +327,14 @@ test("migrates a partial version-1 log without changing attack ids or health", (
   const legacy = normalizeBattleState(legacySetup);
 
   const migrated = setup(legacy);
-  assert.equal(migrated.version, 7);
+  assert.equal(migrated.version, 8);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 1,
     legacyUntimedThroughSequence: 3,
     legacyUnactionedThroughSequence: 3,
     legacyDeploymentThroughSequence: 3,
     legacyTransportThroughSequence: 3,
+    legacyTargetEligibilityThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -325,13 +351,14 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
   versionThree.version = 3;
   delete versionThree.migration;
   const migrated = setup(normalizeBattleState(versionThree));
-  assert.equal(migrated.version, 7);
+  assert.equal(migrated.version, 8);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 3,
     legacyUntimedThroughSequence: 0,
     legacyUnactionedThroughSequence: 2,
     legacyDeploymentThroughSequence: 2,
     legacyTransportThroughSequence: 2,
+    legacyTargetEligibilityThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -341,13 +368,14 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
   versionFour.version = 4;
   delete versionFour.migration;
   const migrated = setup(normalizeBattleState(versionFour));
-  assert.equal(migrated.version, 7);
+  assert.equal(migrated.version, 8);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 4,
     legacyUntimedThroughSequence: 0,
     legacyUnactionedThroughSequence: 2,
     legacyDeploymentThroughSequence: 2,
     legacyTransportThroughSequence: 2,
+    legacyTargetEligibilityThroughSequence: 2,
   });
 });
 
@@ -356,13 +384,14 @@ test("migrates a version-5 action battle as already deployed without rewriting i
   versionFive.version = 5;
   delete versionFive.migration;
   let migrated = setup(normalizeBattleState(versionFive));
-  assert.equal(migrated.version, 7);
+  assert.equal(migrated.version, 8);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 5,
     legacyUntimedThroughSequence: 0,
     legacyUnactionedThroughSequence: 0,
     legacyDeploymentThroughSequence: 2,
     legacyTransportThroughSequence: 2,
+    legacyTargetEligibilityThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 2);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -377,13 +406,30 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
   versionSix.version = 6;
   delete versionSix.migration;
   const migrated = setup(normalizeBattleState(versionSix));
-  assert.equal(migrated.version, 7);
+  assert.equal(migrated.version, 8);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 6,
     legacyUntimedThroughSequence: 0,
     legacyUnactionedThroughSequence: 0,
     legacyDeploymentThroughSequence: 2,
     legacyTransportThroughSequence: 2,
+    legacyTargetEligibilityThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
+});
+
+test("migrates a version-7 Transport battle with explicit legacy target provenance", () => {
+  const versionSeven = structuredClone(setup());
+  versionSeven.version = 7;
+  delete versionSeven.migration;
+  const migrated = setup(normalizeBattleState(versionSeven));
+  assert.equal(migrated.version, 8);
+  assert.deepEqual(migrated.migration, {
+    sourceVersion: 7,
+    legacyUntimedThroughSequence: 0,
+    legacyUnactionedThroughSequence: 0,
+    legacyDeploymentThroughSequence: 2,
+    legacyTransportThroughSequence: 0,
+    legacyTargetEligibilityThroughSequence: 2,
+  });
 });

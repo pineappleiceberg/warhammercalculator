@@ -16,6 +16,12 @@
 #define WHC_BATTLE_HEALTH_FIELDS 2u
 #define WHC_BATTLE_CLOCK_FIELDS 8u
 #define WHC_BATTLE_PLAYER_NONE 2u
+#define WHC_TARGET_VISIBLE 1u
+#define WHC_TARGET_FULLY_VISIBLE 2u
+#define WHC_TARGET_INDIRECT_FIRE 4u
+#define WHC_TARGET_WEAPON_HAS_INDIRECT 8u
+#define WHC_TARGET_REVIEWED_BY_PLAYER 16u
+#define WHC_TARGET_RANGE_OVERRIDE_EXPLAINED 32u
 
 enum whc_battle_clock_status {
     WHC_BATTLE_CLOCK_SETUP = 0u,
@@ -74,6 +80,29 @@ enum whc_battle_event_kind {
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,
                                      const uint32_t *events, uint32_t event_count,
                                      uint32_t *health);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        published_range_thousandths > 0 && effective_range_thousandths > 0 &&
+        measured_distance_thousandths > 0 &&
+        measured_distance_thousandths <= effective_range_thousandths &&
+        declared_weapon_count > 0 && declared_weapon_count <= eligible_weapon_count &&
+        (flags & WHC_TARGET_REVIEWED_BY_PLAYER) != 0 &&
+        (((flags & WHC_TARGET_FULLY_VISIBLE) == 0) ||
+         ((flags & WHC_TARGET_VISIBLE) != 0)) &&
+        (((flags & WHC_TARGET_VISIBLE) != 0 &&
+          (flags & WHC_TARGET_INDIRECT_FIRE) == 0) ||
+         ((flags & WHC_TARGET_VISIBLE) == 0 &&
+          (flags & WHC_TARGET_INDIRECT_FIRE) != 0 &&
+          (flags & WHC_TARGET_WEAPON_HAS_INDIRECT) != 0)) &&
+        (published_range_thousandths == effective_range_thousandths ||
+         (flags & WHC_TARGET_RANGE_OVERRIDE_EXPLAINED) != 0);
+*/
+bool whc_ranged_target_eligibility_is_valid(uint32_t published_range_thousandths,
+                                            uint32_t effective_range_thousandths,
+                                            uint32_t measured_distance_thousandths,
+                                            uint32_t eligible_weapon_count,
+                                            uint32_t declared_weapon_count, uint32_t flags);
 
 /*@ requires first_player_index <= 1;
     requires \valid(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));

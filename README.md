@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 7 as soon as both lists are selected. Every
+creates battle-state version 8 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -686,6 +686,22 @@ Battle-shock, and movement/charge restrictions are recorded and replayed. A
 wounded model remains the mandatory first allocation. Real rolls use
 rejection-sampled browser CSPRNG values. Version-1 through version-6 logs migrate
 with explicit provenance and assume no unrecorded occupancy.
+Version 8 makes ranged target eligibility an executable replay fact. The
+browser catalogue preserves each weapon's published Range, while Guided Play
+records the effective Range, closest-point measured distance to one thousandth
+of an inch, model/unit visibility and full visibility, direct or Indirect Fire
+state, the number of eligible selected weapon copies, and whether the source was
+a manual, UWB, camera, or imported measurement. A player must review every fact
+and explain both the tabletop check and any override of the published Range.
+Each ranged attack references the exact fact, formation pair, weapon, battle
+clock, firing mode, and declared weapon count; replay rejects unknown ranges,
+zero distances, out-of-range targets, invalid non-visible attacks, stale facts,
+and excessive weapon counts. The replay API exposes these facts and independently
+cross-checks their eligibility through the formally specified C/WebAssembly
+predicate. Version-1 through version-7 logs migrate with an explicit boundary
+for attacks that predate structured measurements. Editable attack profiles are
+preserved, but catalogue-mode agent URLs now fail closed when a positive
+distance exceeds the selected weapon's published Range.
 The guided timeline records battle round, first or second player turn, active
 and priority player, phase, and step. It covers Command, Movement, Shooting,
 Charge, and Fight through five rounds. Pending bounded choices stop both attacks
@@ -701,10 +717,11 @@ recorded, and ranged/melee weapon types are enforced by phase. Fight priority
 begins with the non-active player in each selection step, alternates after
 completed activations, and can be explicitly passed when that player has no
 eligible formation.
-Target legality is a separate fail-closed fact: each charge and attack records
-the player's confirmation of range, visibility, Engagement Range, and current
-table state. That confirmation never grants a rules exception; exceptions use a
-separate reason-bearing override until the corresponding rule is executable.
+Target legality remains fail closed. Charges and Fight attacks retain explicit
+player confirmation for current table and Engagement Range facts; ranged
+attacks use the structured version-8 measurement above. A confirmation never
+grants a rules exception; exceptions use a separate reason-bearing override
+until the corresponding rule is executable.
 Battle-state version 4 adds mission setup and replayed game accounting. Mission
 setup records the mission name, objective-marker count, starting Command Points,
 and the amount both players gain at the start of every Command phase. Play Mode

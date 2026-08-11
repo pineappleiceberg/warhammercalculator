@@ -53,6 +53,7 @@ import {
   battleFormation,
   battleFormationHealth,
   normalizeBattleState,
+  rangedTargetEligibilityIsValid,
   replayBattleState,
 } from "../lib/battle-state.mjs";
 import { BATTLE_PHASE_STEPS } from "../lib/battle-clock.mjs";
@@ -275,6 +276,7 @@ type CalculatorExports = {
   whc_calculate_ordered_volley_summary(...values: number[]): number;
   whc_estimate_ordered_volley_complexity(...values: number[]): number;
   whc_replay_battle_health_events(...values: number[]): number;
+  whc_ranged_target_eligibility_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -410,6 +412,7 @@ async function loadCalculator() {
       typeof calculator.whc_calculate_ordered_volley_summary !== "function" ||
       typeof calculator.whc_estimate_ordered_volley_complexity !== "function" ||
       typeof calculator.whc_replay_battle_health_events !== "function" ||
+      typeof calculator.whc_ranged_target_eligibility_is_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -664,6 +667,36 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
       );
     }
     const replayed = replayBattleState(state);
+    const targetEligibilityFacts = [...replayed.targetEligibilityFacts.values()]
+      .map((fact) => {
+        const flags =
+          (fact.visible ? 1 : 0) |
+          (fact.fullyVisible ? 2 : 0) |
+          (fact.indirectFire ? 4 : 0) |
+          (fact.weaponHasIndirect ? 8 : 0) |
+          (fact.reviewedByPlayer ? 16 : 0) |
+          (fact.rangeOverrideReason ? 32 : 0);
+        const declaredWeaponCount = fact.eligibleWeaponCount;
+        const javascriptEligible = rangedTargetEligibilityIsValid(fact, declaredWeaponCount);
+        const nativeEligible = Boolean(
+          calculator.whc_ranged_target_eligibility_is_valid(
+            fact.publishedRangeThousandths,
+            fact.effectiveRangeThousandths,
+            fact.measuredDistanceThousandths,
+            fact.eligibleWeaponCount,
+            declaredWeaponCount,
+            flags,
+          ),
+        );
+        if (javascriptEligible !== nativeEligible) {
+          throw new ServiceUnavailableError(
+            "Canonical ranged target eligibility diverged from the web replay",
+            "TARGET_ELIGIBILITY_DIVERGENCE",
+          );
+        }
+        return { ...fact, eligible: javascriptEligible };
+      })
+      .sort((left, right) => left.id.localeCompare(right.id));
     return {
       schemaVersion: state.version,
       rulesSnapshot: state.rulesSnapshot,
@@ -732,6 +765,7 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
           }
         : null,
       completedActivationKeys: [...replayed.completedActivations].sort(),
+      targetEligibilityFacts,
       deployment: {
         complete: replayed.deploymentComplete,
         priorityPlayerId: replayed.deploymentPriorityPlayerId || null,

@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 7;
+export const BATTLE_STATE_VERSION = 8;
+export const TARGET_ELIGIBILITY_BATTLE_STATE_VERSION = 8;
 export const TRANSPORT_BATTLE_STATE_VERSION = 7;
 export const DEPLOYMENT_BATTLE_STATE_VERSION = 6;
 export const ACTION_BATTLE_STATE_VERSION = 5;
@@ -55,6 +56,30 @@ const DEPLOYMENT_LOCATIONS = Object.freeze([
   "strategic_reserves",
   "embarked",
 ]);
+const TARGET_MEASUREMENT_METHODS = Object.freeze(["manual", "uwb", "camera", "imported"]);
+
+export function rangedTargetEligibilityIsValid(fact, declaredWeaponCount) {
+  return Boolean(
+    fact &&
+      Number.isSafeInteger(fact.publishedRangeThousandths) &&
+      fact.publishedRangeThousandths > 0 &&
+      Number.isSafeInteger(fact.effectiveRangeThousandths) &&
+      fact.effectiveRangeThousandths > 0 &&
+      Number.isSafeInteger(fact.measuredDistanceThousandths) &&
+      fact.measuredDistanceThousandths > 0 &&
+      fact.measuredDistanceThousandths <= fact.effectiveRangeThousandths &&
+      Number.isSafeInteger(fact.eligibleWeaponCount) &&
+      Number.isSafeInteger(declaredWeaponCount) &&
+      declaredWeaponCount > 0 &&
+      declaredWeaponCount <= fact.eligibleWeaponCount &&
+      fact.reviewedByPlayer &&
+      (!fact.fullyVisible || fact.visible) &&
+      ((fact.visible && !fact.indirectFire) ||
+        (!fact.visible && fact.indirectFire && fact.weaponHasIndirect)) &&
+      (fact.publishedRangeThousandths === fact.effectiveRangeThousandths ||
+        Boolean(fact.rangeOverrideReason?.trim())),
+  );
+}
 
 function formationDestroyed(formation) {
   return Object.values(formation?.health ?? {}).every((health) => health.modelsRemaining === 0);
@@ -487,6 +512,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   ) {
     throw new Error("Transport events require battle-state version 7");
   }
+  if (
+    stateVersion < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION &&
+    event.type === "ranged_target_eligibility_recorded"
+  ) {
+    throw new Error("Structured target eligibility requires battle-state version 8");
+  }
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation);
     if (!formations.players.has(formation.playerId)) throw new Error("Formation player is unknown");
@@ -909,6 +940,82 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
+  if (event.type === "ranged_target_eligibility_recorded") {
+    normalized.attackerFormationId = boundedString(
+      event.attackerFormationId,
+      "Target measurement attacker formation id",
+      100,
+    );
+    normalized.targetFormationId = boundedString(
+      event.targetFormationId,
+      "Target measurement target formation id",
+      100,
+    );
+    if (
+      !formations.byId.has(normalized.attackerFormationId) ||
+      !formations.byId.has(normalized.targetFormationId)
+    ) {
+      throw new Error("Target measurement references an unregistered formation");
+    }
+    normalized.weaponId = boundedString(event.weaponId, "Target measurement weapon id", 100);
+    normalized.weaponName = boundedString(event.weaponName, "Target measurement weapon name", 200);
+    normalized.publishedRangeThousandths = nonnegativeInteger(
+      event.publishedRangeThousandths,
+      "Published weapon range thousandths",
+      1_000_000,
+    );
+    normalized.effectiveRangeThousandths = nonnegativeInteger(
+      event.effectiveRangeThousandths,
+      "Effective weapon range thousandths",
+      1_000_000,
+    );
+    normalized.measuredDistanceThousandths = nonnegativeInteger(
+      event.measuredDistanceThousandths,
+      "Measured target distance thousandths",
+      1_000_000,
+    );
+    normalized.visible = Boolean(event.visible);
+    normalized.fullyVisible = Boolean(event.fullyVisible);
+    if (normalized.fullyVisible && !normalized.visible) {
+      throw new Error("A fully visible target must also be visible");
+    }
+    normalized.indirectFire = Boolean(event.indirectFire);
+    normalized.weaponHasIndirect = Boolean(event.weaponHasIndirect);
+    if (normalized.indirectFire && normalized.visible) {
+      throw new Error("Indirect Fire state applies only when the target is not visible");
+    }
+    normalized.eligibleWeaponCount = nonnegativeInteger(
+      event.eligibleWeaponCount,
+      "Eligible weapon count",
+      1000,
+    );
+    normalized.method = boundedString(event.method, "Target measurement method", 20);
+    if (!TARGET_MEASUREMENT_METHODS.includes(normalized.method)) {
+      throw new Error("Target measurement method is unsupported");
+    }
+    normalized.reviewedByPlayer = Boolean(event.reviewedByPlayer);
+    normalized.reviewReason = normalized.reviewedByPlayer
+      ? boundedString(event.reviewReason, "Target measurement review", 300).trim()
+      : "";
+    if (!normalized.reviewedByPlayer) {
+      throw new Error("Target measurement must be reviewed by a player");
+    }
+    if (!normalized.reviewReason) {
+      throw new Error("Target measurement review must explain the checked tabletop facts");
+    }
+    normalized.rangeOverrideReason =
+      normalized.effectiveRangeThousandths !== normalized.publishedRangeThousandths
+        ? boundedString(event.rangeOverrideReason, "Weapon range override reason", 300).trim()
+        : "";
+    if (
+      normalized.effectiveRangeThousandths !== normalized.publishedRangeThousandths &&
+      !normalized.rangeOverrideReason
+    ) {
+      throw new Error("Weapon range override must name the rule or effect changing Range");
+    }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
   if (event.type === "attack_resolved") {
     normalized.attackerFormationId = boundedString(
       event.attackerFormationId,
@@ -931,6 +1038,20 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.targetEligibilityReason = normalized.targetEligibilityConfirmed
       ? boundedString(event.targetEligibilityReason, "Target eligibility confirmation", 300)
       : "";
+    if (stateVersion >= TARGET_ELIGIBILITY_BATTLE_STATE_VERSION) {
+      normalized.targetEligibilityEventId = event.targetEligibilityEventId
+        ? boundedString(event.targetEligibilityEventId, "Target eligibility event id", 100)
+        : "";
+      normalized.weaponId = event.weaponId
+        ? boundedString(event.weaponId, "Attack weapon id", 100)
+        : "";
+      normalized.declaredWeaponCount = nonnegativeInteger(
+        event.declaredWeaponCount ?? 0,
+        "Declared attacking weapon count",
+        1000,
+      );
+      normalized.indirectFire = Boolean(event.indirectFire);
+    }
     if (
       !Array.isArray(event.allocations) ||
       event.allocations.length < 1 ||
@@ -986,6 +1107,7 @@ export function normalizeBattleState(candidate) {
       TRACKER_BATTLE_STATE_VERSION,
       ACTION_BATTLE_STATE_VERSION,
       DEPLOYMENT_BATTLE_STATE_VERSION,
+      TRANSPORT_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -1025,6 +1147,7 @@ export function normalizeBattleState(candidate) {
         TRACKER_BATTLE_STATE_VERSION,
         ACTION_BATTLE_STATE_VERSION,
         DEPLOYMENT_BATTLE_STATE_VERSION,
+        TRANSPORT_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -1057,6 +1180,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyTransportThroughSequence = nonnegativeInteger(
         migration.legacyTransportThroughSequence,
         "Legacy Transport event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= TARGET_ELIGIBILITY_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyTargetEligibilityThroughSequence = nonnegativeInteger(
+        migration.legacyTargetEligibilityThroughSequence,
+        "Legacy target eligibility event sequence",
         events.length,
       );
     }
@@ -1331,6 +1461,7 @@ export function replayBattleState(state) {
   const movementPhaseStartEmbarkedFormationIds = new Set();
   const pendingTransportDestructions = new Map();
   const transportDestructionResolutions = new Map();
+  const targetEligibilityFacts = new Map();
   const completedActivations = new Set();
   let activeActivation = null;
   let deploymentPriorityPlayerId = "";
@@ -1346,6 +1477,10 @@ export function replayBattleState(state) {
     state.version < ACTION_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyUnactionedThroughSequence ?? 0);
+  const legacyTargetEligibilityThroughSequence =
+    state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyTargetEligibilityThroughSequence ?? 0);
   for (const event of state.events) {
     if (pendingTransportDestructions.size > 0 && event.type !== "transport_destroyed_resolved") {
       throw new Error("Destroyed Transport passengers must disembark immediately");
@@ -2162,6 +2297,44 @@ export function replayBattleState(state) {
       }
       continue;
     }
+    if (event.type === "ranged_target_eligibility_recorded") {
+      if (
+        !battleAttackWindow(clock) ||
+        clock.phase !== "shooting" ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Ranged target eligibility must be recorded in a Shooting attack step");
+      }
+      if (!activeActivation || activeActivation.formationId !== event.attackerFormationId) {
+        throw new Error("Target eligibility does not belong to the active formation");
+      }
+      const attacker = formations.get(event.attackerFormationId);
+      const target = formations.get(event.targetFormationId);
+      if (attacker.playerId === target.playerId) {
+        throw new Error("A ranged target must be an enemy formation");
+      }
+      if (
+        !formationIsOnBattlefield(
+          event.attackerFormationId,
+          deploymentByFormation,
+          deployedFormationIds,
+          embarkedByFormation,
+        ) ||
+        !formationIsOnBattlefield(
+          event.targetFormationId,
+          deploymentByFormation,
+          deployedFormationIds,
+          embarkedByFormation,
+        )
+      ) {
+        throw new Error("Ranged target eligibility requires both formations on the battlefield");
+      }
+      if (formationDestroyed(attacker) || formationDestroyed(target)) {
+        throw new Error("Ranged target eligibility cannot reference a destroyed formation");
+      }
+      targetEligibilityFacts.set(event.id, event);
+      continue;
+    }
     if (event.type === "attack_resolved") {
       if (
         state.version >= TIMELINE_BATTLE_STATE_VERSION &&
@@ -2192,7 +2365,31 @@ export function replayBattleState(state) {
           if (event.weaponType !== expectedWeaponType) {
             throw new Error(`${expectedWeaponType} weapons are required in this attack step`);
           }
-          if (!event.targetEligibilityConfirmed) {
+          if (
+            event.weaponType === "Ranged" &&
+            event.sequence > legacyTargetEligibilityThroughSequence
+          ) {
+            const eligibility = targetEligibilityFacts.get(event.targetEligibilityEventId);
+            if (!eligibility) {
+              throw new Error("Ranged attack requires a replayed target eligibility measurement");
+            }
+            if (
+              eligibility.attackerFormationId !== event.attackerFormationId ||
+              eligibility.targetFormationId !== event.targetFormationId ||
+              eligibility.weaponId !== event.weaponId ||
+              !sameBattleClock(eligibility.clock, clock)
+            ) {
+              throw new Error("Ranged attack does not match its target eligibility measurement");
+            }
+            if (eligibility.indirectFire !== event.indirectFire) {
+              throw new Error("Ranged attack Indirect Fire state does not match its measurement");
+            }
+            if (!rangedTargetEligibilityIsValid(eligibility, event.declaredWeaponCount)) {
+              throw new Error(
+                "Ranged attack does not satisfy its reviewed target eligibility facts",
+              );
+            }
+          } else if (!event.targetEligibilityConfirmed) {
             throw new Error(
               "Attack target eligibility requires explicit range, visibility, and table-state confirmation",
             );
@@ -2349,6 +2546,7 @@ export function replayBattleState(state) {
     movementPhaseStartEmbarkedFormationIds,
     pendingTransportDestructions,
     transportDestructionResolutions,
+    targetEligibilityFacts,
     offBattlefieldFormationIds,
     reserveDestroyedFormationIds,
     completedActivations,
@@ -2787,6 +2985,56 @@ export function battleFormationEmbarkedTransport(state, formationId) {
   return replayBattleState(state).embarkedByFormation.get(formationId) ?? "";
 }
 
+export function recordRangedTargetEligibility(
+  state,
+  {
+    attackerFormationId,
+    targetFormationId,
+    weaponId,
+    weaponName,
+    publishedRangeThousandths,
+    effectiveRangeThousandths,
+    measuredDistanceThousandths,
+    visible = false,
+    fullyVisible = false,
+    indirectFire = false,
+    weaponHasIndirect = false,
+    eligibleWeaponCount = 0,
+    method = "manual",
+    reviewedByPlayer = false,
+    reviewReason = "",
+    rangeOverrideReason = "",
+  },
+  id,
+  at,
+) {
+  const clock = replayBattleState(state).clock;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "ranged_target_eligibility_recorded",
+    attackerFormationId,
+    targetFormationId,
+    weaponId,
+    weaponName,
+    publishedRangeThousandths,
+    effectiveRangeThousandths,
+    measuredDistanceThousandths,
+    visible,
+    fullyVisible,
+    indirectFire,
+    weaponHasIndirect,
+    eligibleWeaponCount,
+    method,
+    reviewedByPlayer,
+    reviewReason,
+    rangeOverrideReason,
+    clock,
+  });
+}
+
 export function recordFormationCharge(
   state,
   formationId,
@@ -3025,6 +3273,10 @@ export function appendResolvedAttack(
     weaponType = "",
     targetEligibilityConfirmed = false,
     targetEligibilityReason = "",
+    targetEligibilityEventId = "",
+    weaponId = "",
+    declaredWeaponCount = 0,
+    indirectFire = false,
   },
 ) {
   const replayed = replayBattleState(state);
@@ -3066,6 +3318,10 @@ export function appendResolvedAttack(
     weaponType,
     targetEligibilityConfirmed,
     targetEligibilityReason,
+    targetEligibilityEventId,
+    weaponId,
+    declaredWeaponCount,
+    indirectFire,
     allocations,
   });
 }

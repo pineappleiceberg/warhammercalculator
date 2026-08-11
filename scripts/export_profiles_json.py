@@ -1601,7 +1601,7 @@ def export(database: Path, output: Path) -> None:
 
         weapon_rows = list(
             connection.execute(
-                """SELECT id, datasheet_id, name, weapon_type, attacks,
+                """SELECT id, datasheet_id, name, weapon_type, range_text, range_inches, attacks,
                           skill_target, strength, armour_penetration, damage,
                           abilities_text, source_line, profile_line
                    FROM weapon_profiles
@@ -1648,6 +1648,8 @@ def export(database: Path, output: Path) -> None:
                     "id": row["id"],
                     "name": row["name"],
                     "type": row["weapon_type"],
+                    "rangeText": row["range_text"],
+                    "range": row["range_inches"],
                     "attacks": row["attacks"],
                     "skill": row["skill_target"],
                     "strength": row["strength"],

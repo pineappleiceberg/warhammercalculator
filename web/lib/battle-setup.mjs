@@ -3,6 +3,7 @@ import {
   BATTLE_EVENT_VERSION,
   BATTLE_STATE_VERSION,
   ROSTER_BATTLE_STATE_VERSION,
+  TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
   TIMELINE_BATTLE_STATE_VERSION,
   TRANSPORT_BATTLE_STATE_VERSION,
   createBattleState,
@@ -256,6 +257,10 @@ export function initializeBattleForLists({
             sourceVersion < TRANSPORT_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyTransportThroughSequence ?? 0),
+          legacyTargetEligibilityThroughSequence:
+            sourceVersion < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyTargetEligibilityThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

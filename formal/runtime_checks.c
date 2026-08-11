@@ -137,5 +137,12 @@ int main(void) {
     assert(whc_next_battle_clock(battle_clock, next_battle_clock));
     assert(next_battle_clock[3] == WHC_BATTLE_PHASE_COMMAND);
     assert(next_battle_clock[4] == 1u);
+    assert(whc_ranged_target_eligibility_is_valid(
+        24000u, 24000u, 12000u, 2u, 2u, WHC_TARGET_VISIBLE | WHC_TARGET_REVIEWED_BY_PLAYER));
+    assert(!whc_ranged_target_eligibility_is_valid(
+        24000u, 24000u, 25000u, 2u, 2u, WHC_TARGET_VISIBLE | WHC_TARGET_REVIEWED_BY_PLAYER));
+    assert(whc_ranged_target_eligibility_is_valid(
+        48000u, 48000u, 32000u, 1u, 1u,
+        WHC_TARGET_INDIRECT_FIRE | WHC_TARGET_WEAPON_HAS_INDIRECT | WHC_TARGET_REVIEWED_BY_PLAYER));
     return 0;
 }

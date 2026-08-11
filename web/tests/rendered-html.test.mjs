@@ -13,6 +13,7 @@ import {
   deployFormation,
   openBattleChoice,
   recordFormationMovement,
+  recordRangedTargetEligibility,
   registerBattleFormation,
   replayBattleState,
   resolveBattleChoice,
@@ -2656,6 +2657,29 @@ test("replays canonical battle health through the C and WebAssembly API", async 
   assert.deepEqual(versionSevenResult.data.transports.embarked, []);
   assert.deepEqual(versionSevenResult.data.transports.pendingDestroyedTransportIds, []);
 
+  const versionEight = {
+    ...structuredClone(versionSeven),
+    version: 8,
+    migration: {
+      ...versionSeven.migration,
+      sourceVersion: 7,
+      legacyTargetEligibilityThroughSequence: versionSeven.events.length,
+    },
+  };
+  const versionEightResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: versionEight, formationId: "target" }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(versionEightResponse.status, 200);
+  const versionEightResult = await versionEightResponse.json();
+  assert.equal(versionEightResult.data.schemaVersion, 8);
+  assert.deepEqual(versionEightResult.data.targetEligibilityFacts, []);
+
   const configuredVersionTwo = structuredClone(versionTwo);
   configuredVersionTwo.events.splice(2, 0, {
     version: 1,
@@ -2808,9 +2832,29 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
     );
   }
   state = startFormationActivation(state, "enemy", {}, "activate-enemy", 30);
+  state = recordRangedTargetEligibility(
+    state,
+    {
+      attackerFormationId: "enemy",
+      targetFormationId: "transport",
+      weaponId: "anti-transport-weapon",
+      weaponName: "Anti-transport weapon",
+      publishedRangeThousandths: 24000,
+      effectiveRangeThousandths: 24000,
+      measuredDistanceThousandths: 12000,
+      visible: true,
+      fullyVisible: true,
+      eligibleWeaponCount: 1,
+      method: "manual",
+      reviewedByPlayer: true,
+      reviewReason: "Range and line of sight checked",
+    },
+    "target-eligibility",
+    31,
+  );
   state = appendResolvedAttack(state, {
     id: "destroy-transport",
-    at: 31,
+    at: 32,
     attackerFormationId: "enemy",
     targetFormationId: "transport",
     segmentIds: ["transport-model"],
@@ -2827,6 +2871,9 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
     weaponType: "Ranged",
     targetEligibilityConfirmed: true,
     targetEligibilityReason: "Visible and in range",
+    targetEligibilityEventId: "target-eligibility",
+    weaponId: "anti-transport-weapon",
+    declaredWeaponCount: 1,
   });
   state = resolveDestroyedTransport(
     state,
@@ -2842,7 +2889,7 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
       },
     ],
     "resolve-passenger",
-    32,
+    33,
     () => 0,
     {
       deadlyDemiseResolvedConfirmed: true,
@@ -2861,7 +2908,11 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 7);
+  assert.equal(body.data.schemaVersion, 8);
+  assert.equal(body.data.targetEligibilityFacts.length, 1);
+  assert.equal(body.data.targetEligibilityFacts[0].id, "target-eligibility");
+  assert.equal(body.data.targetEligibilityFacts[0].measuredDistanceThousandths, 12000);
+  assert.equal(body.data.targetEligibilityFacts[0].eligible, true);
   assert.deepEqual(body.data.health, {
     "passenger-model": { modelsRemaining: 1, woundsLost: 1 },
   });

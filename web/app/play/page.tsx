@@ -36,6 +36,7 @@ import {
   passFightPriority,
   recordFormationCharge,
   recordFormationMovement,
+  recordRangedTargetEligibility,
   replayBattleState,
   resolveDestroyedTransport,
   resolveBattleChoice,
@@ -578,6 +579,39 @@ export default function PlayMode() {
   const weaponProfile =
     selectedWeaponGroup?.profiles.find((weapon) => String(weapon.id) === profileId) ??
     selectedWeaponGroup?.profiles[0];
+  const targetEligibilityDraftKey = `${attackerUnitId}:${targetUnitId}:${weaponProfile?.id ?? ""}`;
+  const defaultTargetEligibilityDraft = {
+    key: targetEligibilityDraftKey,
+    targetVisible: false,
+    targetFullyVisible: false,
+    targetMeasurementMethod: "manual",
+    targetMeasurementReason: "",
+    effectiveWeaponRange: weaponProfile?.range ?? 0,
+    rangeOverrideReason: "",
+  };
+  const [storedTargetEligibilityDraft, setStoredTargetEligibilityDraft] = useState(
+    defaultTargetEligibilityDraft,
+  );
+  const targetEligibilityDraft =
+    storedTargetEligibilityDraft.key === targetEligibilityDraftKey
+      ? storedTargetEligibilityDraft
+      : defaultTargetEligibilityDraft;
+  const {
+    targetVisible,
+    targetFullyVisible,
+    targetMeasurementMethod,
+    targetMeasurementReason,
+    effectiveWeaponRange,
+    rangeOverrideReason,
+  } = targetEligibilityDraft;
+  const updateTargetEligibilityDraft = (
+    patch: Partial<Omit<typeof defaultTargetEligibilityDraft, "key">>,
+  ) =>
+    setStoredTargetEligibilityDraft((current) => ({
+      ...(current.key === targetEligibilityDraftKey ? current : defaultTargetEligibilityDraft),
+      ...patch,
+      key: targetEligibilityDraftKey,
+    }));
   const selectedSourceEquipmentSegments = weaponProfile
     ? sourceEquipmentWeaponLineSegments(
         weaponSourceCatalogueUnit,
@@ -667,8 +701,25 @@ export default function PlayMode() {
         );
       })(),
   );
-  const targetEligibilityKey = `${attackerBattleFormationId}:${targetBattleFormationId}:${weaponProfile?.id ?? ""}:${battleClock?.battleRound ?? 0}:${battleClock?.turn ?? 0}:${battleClock?.phase ?? "setup"}:${battleClock?.step ?? "setup"}`;
-  const targetEligibilityConfirmed = targetEligibilityConfirmationKey === targetEligibilityKey;
+  const weaponHasIndirect = Boolean(
+    weaponProfile?.abilities.some((ability) => ability.name.toLowerCase() === "indirect fire"),
+  );
+  const targetEligibilityKey = `${attackerBattleFormationId}:${targetBattleFormationId}:${weaponProfile?.id ?? ""}:${battleClock?.battleRound ?? 0}:${battleClock?.turn ?? 0}:${battleClock?.phase ?? "setup"}:${battleClock?.step ?? "setup"}:${profile.targetDistance}:${effectiveWeaponRange}:${profile.weaponCount}:${targetVisible}:${targetFullyVisible}:${profile.indirect}:${targetMeasurementMethod}:${targetMeasurementReason}:${rangeOverrideReason}`;
+  const targetEligibilityReviewed = targetEligibilityConfirmationKey === targetEligibilityKey;
+  const rangedTargetEligibilityReady = Boolean(
+    weaponProfile?.type === "Ranged" &&
+      weaponProfile.range !== null &&
+      effectiveWeaponRange > 0 &&
+      profile.targetDistance > 0 &&
+      profile.targetDistance <= effectiveWeaponRange &&
+      profile.weaponCount > 0 &&
+      (targetVisible ? !profile.indirect : profile.indirect && weaponHasIndirect) &&
+      targetMeasurementReason.trim() &&
+      (effectiveWeaponRange === weaponProfile.range || rangeOverrideReason.trim()) &&
+      targetEligibilityReviewed,
+  );
+  const targetEligibilityConfirmed =
+    battleClock?.phase === "shooting" ? rangedTargetEligibilityReady : targetEligibilityReviewed;
   const weaponHasAssault = Boolean(
     weaponProfile?.abilities.some((ability) => ability.name.toLowerCase() === "assault"),
   );
@@ -679,8 +730,9 @@ export default function PlayMode() {
     eligibilityOverride: actionEligibilityOverride,
     targetEligibilityConfirmed,
     targetEligibilityReason:
+      targetMeasurementReason.trim() ||
       actionOverrideReason.trim() ||
-      "Player confirmed range, visibility, Engagement Range, and target eligibility",
+      "Player confirmed Engagement Range and target eligibility",
     overrideReason:
       actionOverrideReason.trim() || "Player confirmed a rule or physical-table eligibility fact",
     fightsFirst: fightsFirstOverride,
@@ -1985,6 +2037,7 @@ export default function PlayMode() {
     const resolvedTargetBattleShocked =
       battleClock?.status === "active" ? targetFormationBattleShocked : profile.targetBattleShocked;
     let rolled: RollResult | OrderedVolleyRollResult;
+    let declaredWeaponCount = 0;
     try {
       if (targetFormationModels.ambiguousComponents.length > 0) {
         throw new Error(
@@ -2087,6 +2140,10 @@ export default function PlayMode() {
           },
         );
       });
+      declaredWeaponCount = attackProfiles.reduce(
+        (total, attackProfile) => total + attackProfile.weaponCount,
+        0,
+      );
       rolled = simulateOrderedVolley(
         attackProfiles,
         orderedTargets,
@@ -2112,6 +2169,33 @@ export default function PlayMode() {
           nextBattleState.events.length + 1,
         );
       }
+      let targetEligibilityEventId = "";
+      if (weaponProfile.type === "Ranged") {
+        targetEligibilityEventId = crypto.randomUUID();
+        nextBattleState = recordRangedTargetEligibility(
+          nextBattleState,
+          {
+            attackerFormationId: `${attackerPlayerId}:${attackerFormation.id}`,
+            targetFormationId: targetBattleFormationId,
+            weaponId: String(weaponProfile.id),
+            weaponName: weaponProfile.name,
+            publishedRangeThousandths: Math.round((weaponProfile.range ?? 0) * 1000),
+            effectiveRangeThousandths: Math.round(effectiveWeaponRange * 1000),
+            measuredDistanceThousandths: Math.round(profile.targetDistance * 1000),
+            visible: targetVisible,
+            fullyVisible: targetFullyVisible,
+            indirectFire: !targetVisible && profile.indirect,
+            weaponHasIndirect,
+            eligibleWeaponCount: declaredWeaponCount,
+            method: targetMeasurementMethod,
+            reviewedByPlayer: targetEligibilityReviewed,
+            reviewReason: targetMeasurementReason.trim(),
+            rangeOverrideReason: rangeOverrideReason.trim(),
+          },
+          targetEligibilityEventId,
+          nextBattleState.events.length + 1,
+        );
+      }
       nextBattleState = appendResolvedAttack(nextBattleState, {
         id: attackId,
         at: nextBattleState.events.length + 1,
@@ -2125,6 +2209,10 @@ export default function PlayMode() {
         weaponType: weaponProfile.type,
         targetEligibilityConfirmed: battleActionOptions.targetEligibilityConfirmed,
         targetEligibilityReason: battleActionOptions.targetEligibilityReason,
+        targetEligibilityEventId,
+        weaponId: String(weaponProfile.id),
+        declaredWeaponCount,
+        indirectFire: weaponProfile.type === "Ranged" && !targetVisible && profile.indirect,
         summary: {
           attacker: attackerFormation.name,
           weapon: weaponProfile.name,
@@ -2778,8 +2866,22 @@ export default function PlayMode() {
         return `${battleClockLabel(battleClock, battleState.players)} · swap sides to attack`;
       }
     }
-    if (["shooting", "fight"].includes(battleClock.phase) && !targetEligibilityConfirmed) {
-      return "Confirm range, visibility, Engagement Range, and target eligibility";
+    if (battleClock.phase === "shooting" && !targetEligibilityConfirmed) {
+      if (weaponProfile?.range === null) return "Published weapon range is unavailable";
+      if (effectiveWeaponRange <= 0) return "Enter the effective weapon range";
+      if (profile.targetDistance <= 0) return "Enter the measured target distance";
+      if (profile.targetDistance > effectiveWeaponRange) return "Target is outside weapon range";
+      if (!targetVisible && !(profile.indirect && weaponHasIndirect)) {
+        return "Confirm visibility or use an eligible Indirect Fire weapon";
+      }
+      if (!targetMeasurementReason.trim()) return "Describe how the tabletop facts were checked";
+      if (effectiveWeaponRange !== weaponProfile?.range && !rangeOverrideReason.trim()) {
+        return "Name the rule changing the published weapon range";
+      }
+      return "Review and accept the recorded target facts";
+    }
+    if (battleClock.phase === "fight" && !targetEligibilityConfirmed) {
+      return "Confirm Engagement Range and target eligibility";
     }
     if (!battleAttackReady) {
       if (
@@ -3449,6 +3551,7 @@ export default function PlayMode() {
                     type="number"
                     min={0}
                     max={1000}
+                    step="0.001"
                     value={profile.targetDistance}
                     onChange={(event) =>
                       refreshProfile(
@@ -4439,21 +4542,140 @@ export default function PlayMode() {
             </details>
             {battleClock?.status === "active" && (
               <div className="action-eligibility">
-                <label className="inline-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={targetEligibilityConfirmed}
-                    onChange={(event) =>
-                      setTargetEligibilityConfirmationKey(
-                        event.target.checked ? targetEligibilityKey : "",
-                      )
-                    }
-                  />
-                  <span>
-                    Confirm the selected target is legal (range, visibility, Engagement Range, and
-                    table state)
-                  </span>
-                </label>
+                {battleClock.phase === "shooting" ? (
+                  <fieldset>
+                    <legend>Ranged target measurement</legend>
+                    <label>
+                      <span>Effective weapon range</span>
+                      <input
+                        aria-label="Effective weapon range in inches"
+                        type="number"
+                        min={0}
+                        max={1000}
+                        step="0.001"
+                        value={effectiveWeaponRange}
+                        onChange={(event) =>
+                          updateTargetEligibilityDraft({
+                            effectiveWeaponRange: Math.min(
+                              1000,
+                              Math.max(0, Number(event.target.value) || 0),
+                            ),
+                          })
+                        }
+                      />
+                      <small>
+                        Published: {weaponProfile?.rangeText ?? "unavailable"}; measured distance:{" "}
+                        {profile.targetDistance || "unknown"} inches
+                      </small>
+                    </label>
+                    {weaponProfile?.range !== null &&
+                      effectiveWeaponRange !== weaponProfile?.range && (
+                        <input
+                          aria-label="Effective range override reason"
+                          value={rangeOverrideReason}
+                          maxLength={300}
+                          placeholder="Rule or effect changing the published Range"
+                          onChange={(event) =>
+                            updateTargetEligibilityDraft({
+                              rangeOverrideReason: event.target.value,
+                            })
+                          }
+                        />
+                      )}
+                    <label className="inline-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={targetVisible}
+                        onChange={(event) => {
+                          updateTargetEligibilityDraft({
+                            targetVisible: event.target.checked,
+                            ...(!event.target.checked ? { targetFullyVisible: false } : {}),
+                          });
+                          if (event.target.checked) {
+                            setProfile((current) => ({ ...current, indirect: false }));
+                          }
+                        }}
+                      />
+                      <span>At least one target model is visible to each selected bearer</span>
+                    </label>
+                    <label className="inline-checkbox">
+                      <input
+                        type="checkbox"
+                        disabled={!targetVisible}
+                        checked={targetFullyVisible}
+                        onChange={(event) =>
+                          updateTargetEligibilityDraft({ targetFullyVisible: event.target.checked })
+                        }
+                      />
+                      <span>Target unit is fully visible</span>
+                    </label>
+                    <label className="inline-checkbox">
+                      <input
+                        type="checkbox"
+                        disabled={targetVisible || !weaponHasIndirect}
+                        checked={!targetVisible && profile.indirect}
+                        onChange={(event) =>
+                          setProfile((current) => ({ ...current, indirect: event.target.checked }))
+                        }
+                      />
+                      <span>Use Indirect Fire against a non-visible target</span>
+                    </label>
+                    <label>
+                      <span>Measurement source</span>
+                      <select
+                        value={targetMeasurementMethod}
+                        onChange={(event) =>
+                          updateTargetEligibilityDraft({
+                            targetMeasurementMethod: event.target.value,
+                          })
+                        }
+                      >
+                        <option value="manual">Manual tabletop measurement</option>
+                        <option value="uwb">UWB measurement</option>
+                        <option value="camera">Camera measurement</option>
+                        <option value="imported">Imported measurement</option>
+                      </select>
+                    </label>
+                    <input
+                      aria-label="Target measurement review reason"
+                      value={targetMeasurementReason}
+                      maxLength={300}
+                      placeholder="Closest base or hull points and line of sight checked"
+                      onChange={(event) =>
+                        updateTargetEligibilityDraft({
+                          targetMeasurementReason: event.target.value,
+                        })
+                      }
+                    />
+                    <label className="inline-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={targetEligibilityReviewed}
+                        onChange={(event) =>
+                          setTargetEligibilityConfirmationKey(
+                            event.target.checked ? targetEligibilityKey : "",
+                          )
+                        }
+                      />
+                      <span>
+                        Review and accept this distance, visibility, and selected weapon count
+                      </span>
+                    </label>
+                  </fieldset>
+                ) : (
+                  <label className="inline-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={targetEligibilityReviewed}
+                      onChange={(event) =>
+                        setTargetEligibilityConfirmationKey(
+                          event.target.checked ? targetEligibilityKey : "",
+                        )
+                      }
+                    />
+                    <span>Confirm Engagement Range and target eligibility</span>
+                  </label>
+                )}
                 <label className="inline-checkbox">
                   <input
                     type="checkbox"

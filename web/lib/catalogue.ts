@@ -9,6 +9,8 @@ export type CatalogueWeapon = {
   id: number;
   name: string;
   type: "Ranged" | "Melee";
+  rangeText: string;
+  range: number | null;
   attacks: string;
   skill: number | null;
   strength: string;

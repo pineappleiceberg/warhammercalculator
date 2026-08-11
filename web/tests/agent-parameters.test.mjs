@@ -5,10 +5,23 @@ import test from "node:test";
 import {
   AGENT_SCHEMA_VERSION,
   canonicalAgentParameters,
+  catalogueWeaponRangeError,
   isCatalogueAgentQuery,
   parseAgentProfile,
   resolveAgentCatalogueSelection,
 } from "../lib/agent-parameters.mjs";
+
+test("catalogue agent rejects known out-of-range attacks and fails closed without Range", () => {
+  const ranged = { type: "Ranged", range: 24 };
+  assert.equal(catalogueWeaponRangeError(ranged, 0), "");
+  assert.equal(catalogueWeaponRangeError(ranged, 24), "");
+  assert.match(catalogueWeaponRangeError(ranged, 24.001), /exceeds.*24-inch range/i);
+  assert.match(
+    catalogueWeaponRangeError({ type: "Ranged", range: null }, 1),
+    /range is unavailable/i,
+  );
+  assert.equal(catalogueWeaponRangeError({ type: "Melee", range: null }, 1), "");
+});
 import {
   applyCombatPresets,
   attackKeywordsForWeapon,

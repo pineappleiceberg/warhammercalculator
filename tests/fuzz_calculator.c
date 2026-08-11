@@ -160,6 +160,14 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     uint32_t battle_clock[WHC_BATTLE_CLOCK_FIELDS];
     uint32_t next_battle_clock[WHC_BATTLE_CLOCK_FIELDS];
     uint32_t battle_clock_advances;
+    uint32_t published_range;
+    uint32_t effective_range;
+    uint32_t measured_distance;
+    uint32_t eligible_weapon_count;
+    uint32_t declared_weapon_count;
+    uint32_t target_flags;
+    bool target_eligible;
+    bool expected_target_eligible;
 
     while (index < weapon_count) {
         generate_weapon(&input, &weapons[index]);
@@ -304,5 +312,29 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     }
     assert(battle_clock[0] == WHC_BATTLE_CLOCK_ACTIVE ||
            battle_clock[0] == WHC_BATTLE_CLOCK_COMPLETE);
+    published_range = next_u16(&input);
+    effective_range = next_u16(&input);
+    measured_distance = next_u16(&input);
+    eligible_weapon_count = next_byte(&input);
+    declared_weapon_count = next_byte(&input);
+    target_flags = next_byte(&input);
+    target_eligible = whc_ranged_target_eligibility_is_valid(
+        published_range, effective_range, measured_distance, eligible_weapon_count,
+        declared_weapon_count, target_flags);
+    expected_target_eligible = published_range > 0u && effective_range > 0u &&
+                               measured_distance > 0u && measured_distance <= effective_range &&
+                               declared_weapon_count > 0u &&
+                               declared_weapon_count <= eligible_weapon_count &&
+                               (target_flags & WHC_TARGET_REVIEWED_BY_PLAYER) != 0u &&
+                               ((target_flags & WHC_TARGET_FULLY_VISIBLE) == 0u ||
+                                (target_flags & WHC_TARGET_VISIBLE) != 0u) &&
+                               (((target_flags & WHC_TARGET_VISIBLE) != 0u &&
+                                 (target_flags & WHC_TARGET_INDIRECT_FIRE) == 0u) ||
+                                ((target_flags & WHC_TARGET_VISIBLE) == 0u &&
+                                 (target_flags & WHC_TARGET_INDIRECT_FIRE) != 0u &&
+                                 (target_flags & WHC_TARGET_WEAPON_HAS_INDIRECT) != 0u)) &&
+                               (published_range == effective_range ||
+                                (target_flags & WHC_TARGET_RANGE_OVERRIDE_EXPLAINED) != 0u);
+    assert(target_eligible == expected_target_eligible);
     return 0;
 }

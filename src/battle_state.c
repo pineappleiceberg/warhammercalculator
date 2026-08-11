@@ -129,6 +129,27 @@ static bool whc_battle_health_is_valid(uint32_t wounds, uint32_t starting_models
            wounds_lost < wounds && (models_remaining > 0u || wounds_lost == 0u);
 }
 
+bool whc_ranged_target_eligibility_is_valid(uint32_t published_range_thousandths,
+                                            uint32_t effective_range_thousandths,
+                                            uint32_t measured_distance_thousandths,
+                                            uint32_t eligible_weapon_count,
+                                            uint32_t declared_weapon_count, uint32_t flags) {
+    const bool visible = (flags & WHC_TARGET_VISIBLE) != 0u;
+    const bool fully_visible = (flags & WHC_TARGET_FULLY_VISIBLE) != 0u;
+    const bool indirect_fire = (flags & WHC_TARGET_INDIRECT_FIRE) != 0u;
+    const bool weapon_has_indirect = (flags & WHC_TARGET_WEAPON_HAS_INDIRECT) != 0u;
+    const bool reviewed_by_player = (flags & WHC_TARGET_REVIEWED_BY_PLAYER) != 0u;
+    const bool range_override_explained = (flags & WHC_TARGET_RANGE_OVERRIDE_EXPLAINED) != 0u;
+
+    return published_range_thousandths > 0u && effective_range_thousandths > 0u &&
+           measured_distance_thousandths > 0u &&
+           measured_distance_thousandths <= effective_range_thousandths &&
+           declared_weapon_count > 0u && declared_weapon_count <= eligible_weapon_count &&
+           reviewed_by_player && (!fully_visible || visible) &&
+           ((visible && !indirect_fire) || (!visible && indirect_fire && weapon_has_indirect)) &&
+           (published_range_thousandths == effective_range_thousandths || range_override_explained);
+}
+
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,
                                      const uint32_t *events, uint32_t event_count,
                                      uint32_t *health) {

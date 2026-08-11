@@ -27,19 +27,41 @@ state.
 
 ## Prioritized backlog
 
-1. Continue the legal-action engine with target range/visibility eligibility, charge
-   movement, Heroic Intervention, pile-in, consolidation, reactions, and
-   Stratagem windows; then expand Transport changes beyond the roster's locked
-   assigned carrier and execute transport-specific exceptions.
-2. Build and enforce the source-locked faction, detachment, enhancement,
+1. Bind each battle formation's source-backed weapon inventory and abilities to
+   its immutable registration snapshot, then enforce bearer eligibility and
+   once-per-phase weapon use so a replay cannot claim Indirect Fire or fire the
+   same weapon copies twice by tampering with attack facts.
+2. Continue the legal-action engine with charge distance and movement, Heroic
+   Intervention, pile-in, consolidation, reactions, cover, and Stratagem
+   windows; then expand Transport changes beyond the roster's locked assigned
+   carrier and execute transport-specific exceptions.
+3. Build and enforce the source-locked faction, detachment, enhancement,
    Stratagem, terrain, and mission coverage matrix described by the complete
    battle requirements.
-3. Add reviewable table geometry and player-entered movement, range, visibility,
-   cover, coherency, Engagement Range, terrain, and objective facts.
-4. Deliver full guided-game replay scenarios before adding deterministic
+4. Expand reviewable table geometry beyond the version-8 ranged measurement to
+   movement paths, charge endpoints, cover, coherency, Engagement Range,
+   terrain, and objective facts.
+5. Deliver full guided-game replay scenarios before adding deterministic
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-10: Advanced guided play to battle-state version 8 with canonical
+  ranged target measurements. Browser catalogue exports now preserve Range text
+  for all 9,163 weapon profiles and numeric Range for every supported ranged
+  profile (retaining two explicit unavailable values), and
+  catalogue-mode agent URLs reject positive distances beyond the selected
+  weapon's Range. Guided Play records published and effective Range, measured
+  closest-point distance to thousandths, visibility/full visibility, direct or
+  Indirect Fire, eligible selected weapon count, measurement source, player
+  review, and explained Range overrides. Every new ranged attack references the
+  exact replayed fact, weapon, formations, clock, mode, and declared count;
+  unknown, stale, out-of-range, non-visible, unsupported Indirect Fire, and
+  over-count attacks fail closed. The replay API exposes eligibility facts and
+  cross-checks them against the same C/WebAssembly predicate. ACSL specifies the
+  predicate, WP proves it, E-ACSL exercises it, and native, fuzz, Wasm
+  differential, migration, catalogue, UI, API, and source-lock regressions cover
+  the change. Core Rules pages 7, 8, 19, and 26 join the pinned official source.
 
 - 2026-08-10: Advanced guided play to battle-state version 7 with canonical
   Transport occupancy. Legal saved assignments now lock exact passenger and

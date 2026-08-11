@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { WorkflowNav } from "../../components/workflow-nav";
 import {
+  catalogueWeaponRangeError,
   AGENT_SCHEMA_VERSION,
   canonicalAgentParameters,
   isCatalogueAgentQuery,
@@ -97,6 +98,8 @@ export default function AgentCalculator() {
           const selection = resolveAgentCatalogueSelection(search, catalogue);
           const requestedContext = parseAgentProfile(search, DEFAULT_PROFILE, false);
           const requestedDistance = requestedContext.targetDistance;
+          const rangeError = catalogueWeaponRangeError(selection.weapon, requestedDistance);
+          if (rangeError) throw new Error(rangeError);
           const supportDistance = requestedContext.supportDistance;
           const targetSupportDistance = requestedContext.targetSupportDistance;
           const attackerUnitModels = requestedContext.attackerUnitModels;
@@ -387,7 +390,12 @@ export default function AgentCalculator() {
             mode: "catalogue",
             profileSourceUpdatedAt: catalogue.sourceUpdatedAt,
             attacker: { id: selection.attacker.id, name: selection.attacker.name },
-            weapon: { id: selection.weapon.id, name: selection.weapon.name },
+            weapon: {
+              id: selection.weapon.id,
+              name: selection.weapon.name,
+              rangeText: selection.weapon.rangeText,
+              range: selection.weapon.range,
+            },
             firingDeck: selection.firingDeck
               ? {
                   capacity: selection.attacker.firingDeck?.capacity,

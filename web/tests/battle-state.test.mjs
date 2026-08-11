@@ -25,6 +25,7 @@ import {
   registerBattleFormation,
   recordFormationCharge,
   recordFormationMovement,
+  recordRangedTargetEligibility,
   replayBattleState,
   resolveDestroyedTransport,
   revertLatestAttack,
@@ -307,6 +308,72 @@ function advanceTo(state, predicate, prefix) {
   return next;
 }
 
+function recordVisibleRangedTarget(
+  state,
+  attackerFormationId,
+  targetFormationId,
+  { weaponId = "test-ranged-weapon", eligibleWeaponCount = 1 } = {},
+) {
+  return recordRangedTargetEligibility(
+    state,
+    {
+      attackerFormationId,
+      targetFormationId,
+      weaponId,
+      weaponName: "Test ranged weapon",
+      publishedRangeThousandths: 24000,
+      effectiveRangeThousandths: 24000,
+      measuredDistanceThousandths: 12000,
+      visible: true,
+      fullyVisible: true,
+      indirectFire: false,
+      weaponHasIndirect: false,
+      eligibleWeaponCount,
+      method: "manual",
+      reviewedByPlayer: true,
+      reviewReason: "Closest base or hull points and line of sight checked",
+    },
+    `target-eligibility-${state.events.length + 1}`,
+    state.events.length + 1,
+  );
+}
+
+function appendZeroDamageRangedAttack(
+  state,
+  {
+    id = "test-ranged-attack",
+    weaponId = "test-ranged-weapon",
+    targetEligibilityEventId = state.events.at(-1).id,
+    declaredWeaponCount = 1,
+    indirectFire = false,
+  } = {},
+) {
+  return appendResolvedAttack(state, {
+    id,
+    at: state.events.length + 1,
+    attackerFormationId: attackerFormation.id,
+    targetFormationId: formation.id,
+    segmentIds: ["bodyguard", "leader"],
+    targets,
+    initialWoundsLost: 0,
+    result: { appliedDamage: 0, modelsDestroyed: 0 },
+    summary: {
+      attacker: attackerFormation.name,
+      weapon: "Test ranged weapon",
+      target: formation.name,
+      damage: 0,
+      successful: 0,
+    },
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Reviewed structured target facts",
+    targetEligibilityEventId,
+    weaponId,
+    declaredWeaponCount,
+    indirectFire,
+  });
+}
+
 function battleWithDestroyedOccupiedTransport(passenger = passengerFormation) {
   let state = transportBattle({ firstPlayerId: "player-2", passenger });
   state = advanceTo(
@@ -329,6 +396,7 @@ function battleWithDestroyedOccupiedTransport(passenger = passengerFormation) {
     "destroy-helper-activation",
     state.events.length + 1,
   );
+  state = recordVisibleRangedTarget(state, formation.id, transportFormation.id);
   return appendResolvedAttack(state, {
     id: "destroy-helper-transport",
     at: state.events.length + 1,
@@ -348,6 +416,9 @@ function battleWithDestroyedOccupiedTransport(passenger = passengerFormation) {
     weaponType: "Ranged",
     targetEligibilityConfirmed: true,
     targetEligibilityReason: "Visible and in range",
+    targetEligibilityEventId: state.events.at(-1).id,
+    weaponId: "test-ranged-weapon",
+    declaredWeaponCount: 1,
   });
 }
 
@@ -363,12 +434,137 @@ test("reports exact per-segment damage state across mixed profiles", () => {
   assert.throws(() => targetSequenceState(12, targets), /Invalid target sequence damage state/);
 });
 
-test("pins the official deployment and Reserves rules source", () => {
+test("pins the official battle-state rules source", () => {
   assert.equal(battleRuleSources.version, 1);
-  assert.deepEqual(battleRuleSources.sources[0].pages, [16, 17, 18, 23, 39, 43, 53, 57, 60]);
+  assert.deepEqual(
+    battleRuleSources.sources[0].pages,
+    [7, 8, 16, 17, 18, 19, 23, 26, 39, 43, 53, 57, 60],
+  );
   assert.equal(
     battleRuleSources.sources[0].sha256,
     "4d0e8019cbfddd6f46781d5b4ed31d46fb21eb2d0d10a0f6fabefac0ce054364",
+  );
+});
+
+test("replays reviewed range, visibility, Indirect Fire, and eligible weapon counts", () => {
+  let state = registeredBattle();
+  state = recordRangedTargetEligibility(
+    state,
+    {
+      attackerFormationId: attackerFormation.id,
+      targetFormationId: formation.id,
+      weaponId: "indirect-weapon",
+      weaponName: "Indirect weapon",
+      publishedRangeThousandths: 48000,
+      effectiveRangeThousandths: 48000,
+      measuredDistanceThousandths: 32000,
+      visible: false,
+      fullyVisible: false,
+      indirectFire: true,
+      weaponHasIndirect: true,
+      eligibleWeaponCount: 2,
+      method: "uwb",
+      reviewedByPlayer: true,
+      reviewReason: "UWB distance reviewed; target is not visible",
+    },
+    "indirect-eligibility",
+    state.events.length + 1,
+  );
+  state = appendZeroDamageRangedAttack(state, {
+    weaponId: "indirect-weapon",
+    targetEligibilityEventId: "indirect-eligibility",
+    declaredWeaponCount: 2,
+    indirectFire: true,
+  });
+  const fact = replayBattleState(state).targetEligibilityFacts.get("indirect-eligibility");
+  assert.equal(fact.method, "uwb");
+  assert.equal(fact.measuredDistanceThousandths, 32000);
+
+  let outsideRange = registeredBattle();
+  outsideRange = recordRangedTargetEligibility(
+    outsideRange,
+    {
+      attackerFormationId: attackerFormation.id,
+      targetFormationId: formation.id,
+      weaponId: "short-weapon",
+      weaponName: "Short weapon",
+      publishedRangeThousandths: 12000,
+      effectiveRangeThousandths: 12000,
+      measuredDistanceThousandths: 12001,
+      visible: true,
+      eligibleWeaponCount: 1,
+      method: "manual",
+      reviewedByPlayer: true,
+      reviewReason: "Closest points measured",
+    },
+    "outside-range",
+    outsideRange.events.length + 1,
+  );
+  assert.throws(
+    () =>
+      appendZeroDamageRangedAttack(outsideRange, {
+        weaponId: "short-weapon",
+        targetEligibilityEventId: "outside-range",
+      }),
+    /does not satisfy.*target eligibility/i,
+  );
+
+  let countLimited = registeredBattle();
+  countLimited = recordVisibleRangedTarget(countLimited, attackerFormation.id, formation.id, {
+    eligibleWeaponCount: 1,
+  });
+  assert.throws(
+    () => appendZeroDamageRangedAttack(countLimited, { declaredWeaponCount: 2 }),
+    /does not satisfy.*target eligibility/i,
+  );
+
+  const unreviewed = registeredBattle();
+  assert.throws(
+    () =>
+      recordRangedTargetEligibility(
+        unreviewed,
+        {
+          attackerFormationId: attackerFormation.id,
+          targetFormationId: formation.id,
+          weaponId: "unreviewed-weapon",
+          weaponName: "Unreviewed weapon",
+          publishedRangeThousandths: 24000,
+          effectiveRangeThousandths: 24000,
+          measuredDistanceThousandths: 12000,
+          visible: true,
+          eligibleWeaponCount: 1,
+          method: "manual",
+          reviewedByPlayer: true,
+          reviewReason: "   ",
+        },
+        "blank-review",
+        unreviewed.events.length + 1,
+      ),
+    /review must explain/i,
+  );
+  assert.throws(
+    () =>
+      recordRangedTargetEligibility(
+        unreviewed,
+        {
+          attackerFormationId: attackerFormation.id,
+          targetFormationId: formation.id,
+          weaponId: "override-weapon",
+          weaponName: "Override weapon",
+          publishedRangeThousandths: 24000,
+          effectiveRangeThousandths: 30000,
+          measuredDistanceThousandths: 25000,
+          visible: true,
+          eligibleWeaponCount: 1,
+          method: "manual",
+          reviewedByPlayer: true,
+          reviewReason: "Closest points measured",
+          rangeOverrideReason: "   ",
+        },
+        "blank-override",
+        unreviewed.events.length + 1,
+      ),
+    /override must name/i,
   );
 });
 
@@ -716,6 +912,7 @@ test("forces and verifies destroyed Transport disembarkation rolls", () => {
     "enemy-activation",
     state.events.length + 1,
   );
+  state = recordVisibleRangedTarget(state, formation.id, transportFormation.id);
   state = appendResolvedAttack(state, {
     id: "destroy-transport",
     at: state.events.length + 1,
@@ -735,6 +932,9 @@ test("forces and verifies destroyed Transport disembarkation rolls", () => {
     weaponType: "Ranged",
     targetEligibilityConfirmed: true,
     targetEligibilityReason: "Visible and in range",
+    targetEligibilityEventId: state.events.at(-1).id,
+    weaponId: "test-ranged-weapon",
+    declaredWeaponCount: 1,
   });
   let replayed = replayBattleState(state);
   assert.deepEqual([...replayed.pendingTransportDestructions.keys()], [transportFormation.id]);
@@ -889,8 +1089,11 @@ test("replays movement and enforces one weapon-scoped Shooting activation", () =
           successful: 0,
         },
       }),
-    /target eligibility requires explicit/i,
+    /requires a replayed target eligibility measurement/i,
   );
+  state = recordVisibleRangedTarget(state, attackerFormation.id, formation.id, {
+    weaponId: "assault-cannon",
+  });
   state = appendResolvedAttack(state, {
     weaponType: "Ranged",
     targetEligibilityConfirmed: true,
@@ -911,6 +1114,9 @@ test("replays movement and enforces one weapon-scoped Shooting activation", () =
       successful: 0,
     },
     weaponHasAssault: true,
+    targetEligibilityEventId: state.events.at(-1).id,
+    weaponId: "assault-cannon",
+    declaredWeaponCount: 1,
   });
   state = completeFormationActivation(state, "shooting-complete", state.events.length + 1);
   assert.equal(
@@ -1024,10 +1230,16 @@ test("records charge eligibility and alternates replayed Fight priority", () => 
 
 test("replays persistent mixed-profile casualties and compensating undo", () => {
   let state = registeredBattle();
+  state = recordVisibleRangedTarget(state, "player-1:formation-9", formation.id, {
+    weaponId: "cannon",
+  });
   state = appendResolvedAttack(state, {
     weaponType: "Ranged",
     targetEligibilityConfirmed: true,
     targetEligibilityReason: "Target is visible and in range",
+    targetEligibilityEventId: state.events.at(-1).id,
+    weaponId: "cannon",
+    declaredWeaponCount: 1,
     id: "event-attack-1",
     at: 102,
     attackerFormationId: "player-1:formation-9",
@@ -1500,10 +1712,16 @@ test("replays the versioned cross-surface golden battle", () => {
 
 test("rejects divergent replay state and non-latest undo", () => {
   let state = registeredBattle();
+  state = recordVisibleRangedTarget(state, "player-1:formation-9", formation.id, {
+    weaponId: "cannon",
+  });
   state = appendResolvedAttack(state, {
     weaponType: "Ranged",
     targetEligibilityConfirmed: true,
     targetEligibilityReason: "Target is visible and in range",
+    targetEligibilityEventId: state.events.at(-1).id,
+    weaponId: "cannon",
+    declaredWeaponCount: 1,
     id: "event-attack-1",
     at: 102,
     attackerFormationId: "player-1:formation-9",
