@@ -27,9 +27,9 @@ state.
 
 ## Prioritized backlog
 
-1. Extend the canonical version-25 table frame from objective centres and the
-   source terrain inventory to terrain footprints, model bases or hulls,
-   movement paths, charge endpoints, cover, visibility, coherency, and
+1. Extend the canonical version-26 table frame from objective centres and area-
+   terrain outlines to model bases or hulls, movement paths, charge endpoints,
+   terrain height and Ruin-wall subgeometry, cover, visibility, coherency, and
    Engagement Range.
 2. Implement source-locked mission scoring and secondary-card/action tracking
    for the selected Chapter Approved combination while keeping unavailable card
@@ -38,6 +38,21 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced canonical battle setup to version 26 with replayable
+  terrain footprints. Exact Chapter Approved games now require all twelve
+  official rectangular area-terrain outlines before deployment: four 6-by-4,
+  two 10-by-5, and six 12-by-6 outlines, each with a centre, rotation, and
+  source-reviewable area-terrain section ID. Rotated corners must stay inside
+  the 60-by-44-inch frame; positive-area overlaps, missing or duplicate
+  outlines, wrong size counts, incomplete reviews, and source mismatches fail
+  closed, while touching outlines remain legal. Shared section IDs preserve the
+  companion's single-versus-separate connected-outline semantics. Manual, UWB,
+  camera, and imported provenance remain editable until locked. Version-25
+  games migrate without invented footprints and can append one reviewed record.
+  Guided Play, API replay, JavaScript, and a new ACSL-specified C/WebAssembly
+  aggregate predicate share regression coverage. The next geometry boundary is
+  replayable model bases or hulls and movement paths within this frame.
 
 - 2026-08-11: Advanced canonical battle setup to version 25 with a replayable
   Chapter Approved table frame. Exact 2025-26 v1.4 mission/layout games now

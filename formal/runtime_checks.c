@@ -266,6 +266,10 @@ int main(void) {
                                        WHC_TABLE_GEOMETRY_FLAGS_MASK));
     assert(!whc_table_geometry_is_valid(60000u, 44000u, 5u, 4u, 12u, 4u, 2u, 6u,
                                         WHC_TABLE_GEOMETRY_FLAGS_MASK));
+    assert(whc_terrain_footprint_set_is_valid(12u, 12u, 12u, 12u, 12u, 0u, 4u, 2u, 6u,
+                                              WHC_TERRAIN_FOOTPRINT_FLAGS_MASK));
+    assert(!whc_terrain_footprint_set_is_valid(12u, 12u, 12u, 12u, 12u, 1u, 4u, 2u, 6u,
+                                               WHC_TERRAIN_FOOTPRINT_FLAGS_MASK));
 
     return 0;
 }

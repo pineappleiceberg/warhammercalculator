@@ -37,6 +37,7 @@ import {
   configureBattleWeaponBearers,
   configureBattleMission,
   configureBattleTableGeometry,
+  configureBattleTerrainFootprints,
   configureUnengagedBattleFormation,
   createBattleState,
   declareFormationCharge,
@@ -79,6 +80,7 @@ import {
   startFormationActivation,
   TABLE_GEOMETRY_CONSTANTS,
 } from "../../lib/battle-state.mjs";
+
 import { battleClockLabel } from "../../lib/battle-clock.mjs";
 import { battleRosterRevisionsMatch, initializeBattleForLists } from "../../lib/battle-setup.mjs";
 import { loadBattleRuleCoverage } from "../../lib/battle-rule-selection.mjs";
@@ -127,6 +129,12 @@ import {
   reconcileActiveLimitedAbilityUses,
   withoutLimitedAbilityPresetIds,
 } from "../../lib/ability-uses.mjs";
+
+const TERRAIN_OUTLINE_DIMENSIONS = [
+  ...Array.from({ length: 4 }, () => [6_000, 4_000] as const),
+  ...Array.from({ length: 2 }, () => [10_000, 5_000] as const),
+  ...Array.from({ length: 6 }, () => [12_000, 6_000] as const),
+];
 
 type LogEntry = {
   id: string;
@@ -3286,6 +3294,63 @@ export default function PlayMode() {
       setStatus("Table geometry recorded");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Table geometry could not be recorded");
+    }
+  };
+
+  const configureTerrainFootprints = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!battleState || !replayedBattle?.tableGeometry) return;
+    try {
+      const data = new FormData(event.currentTarget);
+      const coordinate = (name: string, maximum: number) => {
+        const inches = Number(data.get(name));
+        if (!Number.isFinite(inches) || inches < 0 || inches > maximum) {
+          throw new Error(`${name} must be between 0 and ${maximum} inches`);
+        }
+        return Math.round(inches * 1000);
+      };
+      const terrain = replayedBattle.tableGeometry;
+      const next = configureBattleTerrainFootprints(
+        battleState,
+        {
+          missionSourceId: terrain.missionSourceId,
+          terrainSourceId: terrain.terrainSourceId,
+          battlefieldWidthThousandths: terrain.battlefieldWidthThousandths,
+          battlefieldHeightThousandths: terrain.battlefieldHeightThousandths,
+          origin: terrain.origin,
+          sourcePage: terrain.terrainProfile.sourcePage,
+          footprints: TERRAIN_OUTLINE_DIMENSIONS.map(
+            ([widthThousandths, heightThousandths], index) => {
+              const rotation = Number(data.get(`terrain-rotation-${index}`));
+              if (!Number.isFinite(rotation) || rotation < 0 || rotation >= 180) {
+                throw new Error(`Outline ${index + 1} rotation must be from 0 to 179.999 degrees`);
+              }
+              return {
+                id: `outline-${index + 1}`,
+                widthThousandths,
+                heightThousandths,
+                centerXThousandths: coordinate(`terrain-x-${index}`, 60),
+                centerYThousandths: coordinate(`terrain-y-${index}`, 44),
+                rotationMilliDegrees: Math.round(rotation * 1000),
+                areaTerrainSectionId: String(data.get(`terrain-section-${index}`) || "").trim(),
+              };
+            },
+          ),
+          placementReviewed: data.get("terrain-placement-reviewed") === "on",
+          sectionGroupingReviewed: data.get("terrain-grouping-reviewed") === "on",
+          reviewedByPlayer: data.get("terrain-footprints-player-reviewed") === "on",
+          method: String(data.get("terrain-footprints-method") || "manual"),
+          reviewReason: String(data.get("terrain-footprints-reason") || "").trim(),
+        },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setStatus("Terrain footprints recorded");
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "Terrain footprints could not be recorded",
+      );
     }
   };
 
@@ -8374,8 +8439,132 @@ export default function PlayMode() {
               </div>
             )}
             {battleClock.status === "setup" &&
+              replayedBattle.tableGeometry &&
+              !replayedBattle.terrainFootprints &&
+              (replayedBattle.deploymentByFormation.size === 0 || battleState.migration) && (
+                <form
+                  className="mission-setup"
+                  data-testid="terrain-footprint-setup"
+                  onSubmit={configureTerrainFootprints}
+                >
+                  <div>
+                    <strong>Record terrain outlines</strong>
+                    <span>
+                      Enter each outline centre and counter-clockwise rotation from the table&apos;s
+                      0,0 corner. Give touching outlines the same section ID only when the layout
+                      marks them as one area terrain section.
+                    </span>
+                  </div>
+                  {TERRAIN_OUTLINE_DIMENSIONS.map(
+                    ([widthThousandths, heightThousandths], index) => (
+                      <fieldset key={"terrain-outline-" + (index + 1)}>
+                        <legend>
+                          Outline {index + 1} · {widthThousandths / 1000} ×{" "}
+                          {heightThousandths / 1000} inches
+                        </legend>
+                        <label>
+                          <span>Centre X (inches)</span>
+                          <input
+                            name={"terrain-x-" + index}
+                            type="number"
+                            min="0"
+                            max="60"
+                            step="0.001"
+                            required
+                          />
+                        </label>
+                        <label>
+                          <span>Centre Y (inches)</span>
+                          <input
+                            name={"terrain-y-" + index}
+                            type="number"
+                            min="0"
+                            max="44"
+                            step="0.001"
+                            required
+                          />
+                        </label>
+                        <label>
+                          <span>Counter-clockwise rotation (degrees)</span>
+                          <input
+                            name={"terrain-rotation-" + index}
+                            type="number"
+                            min="0"
+                            max="179.999"
+                            step="0.001"
+                            defaultValue="0"
+                            required
+                          />
+                        </label>
+                        <label>
+                          <span>Area terrain section ID</span>
+                          <input
+                            name={"terrain-section-" + index}
+                            defaultValue={"section-" + (index + 1)}
+                            maxLength={100}
+                            required
+                          />
+                        </label>
+                      </fieldset>
+                    ),
+                  )}
+                  <label>
+                    <span>Measurement source</span>
+                    <select name="terrain-footprints-method" defaultValue="manual">
+                      <option value="manual">Manual tabletop measurement</option>
+                      <option value="uwb">UWB measurement</option>
+                      <option value="camera">Camera measurement</option>
+                      <option value="imported">Imported geometry</option>
+                    </select>
+                  </label>
+                  <label>
+                    <input name="terrain-placement-reviewed" type="checkbox" required />
+                    <span>All twelve outline placements were checked</span>
+                  </label>
+                  <label>
+                    <input name="terrain-grouping-reviewed" type="checkbox" required />
+                    <span>Single/separate area terrain section icons were checked</span>
+                  </label>
+                  <label>
+                    <input name="terrain-footprints-player-reviewed" type="checkbox" required />
+                    <span>A player reviewed and accepts these terrain facts</span>
+                  </label>
+                  <label>
+                    <span>Review record</span>
+                    <input
+                      name="terrain-footprints-reason"
+                      maxLength={500}
+                      required
+                      placeholder="Outline centres, rotations, and connected sections checked"
+                    />
+                  </label>
+                  <button type="submit">Lock reviewed terrain outlines</button>
+                </form>
+              )}
+            {battleClock.status === "setup" && replayedBattle.terrainFootprints && (
+              <div className="action-tracker" data-testid="terrain-footprint-summary">
+                <strong>
+                  Terrain outlines · {replayedBattle.terrainFootprints.terrainSourceId}
+                </strong>
+                <span>
+                  {replayedBattle.terrainFootprints.footprints.length} non-overlapping outlines ·{" "}
+                  {
+                    new Set(
+                      replayedBattle.terrainFootprints.footprints.map(
+                        (footprint: { areaTerrainSectionId: string }) =>
+                          footprint.areaTerrainSectionId,
+                      ),
+                    ).size
+                  }{" "}
+                  area terrain sections · {replayedBattle.terrainFootprints.method} review
+                </span>
+                <span>{replayedBattle.terrainFootprints.reviewReason}</span>
+              </div>
+            )}
+            {battleClock.status === "setup" &&
               replayedBattle.deploymentByFormation.size === 0 &&
-              (replayedBattle.tableGeometry || !exactTableGeometryRequired) &&
+              ((!exactTableGeometryRequired && !replayedBattle.tableGeometry) ||
+                (replayedBattle.tableGeometry && replayedBattle.terrainFootprints)) &&
               !battleState.migration && (
                 <form className="deployment-planner" onSubmit={declareDeployments}>
                   <div>

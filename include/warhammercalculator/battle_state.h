@@ -119,10 +119,16 @@
 #define WHC_TABLE_GEOMETRY_FLAGS_MASK 31u
 #define WHC_TABLE_WIDTH_THOUSANDTHS 60000u
 #define WHC_TABLE_HEIGHT_THOUSANDTHS 44000u
-#define WHC_TERRAIN_SECTION_COUNT 12u
+#define WHC_TERRAIN_OUTLINE_COUNT 12u
+#define WHC_TERRAIN_SECTION_COUNT WHC_TERRAIN_OUTLINE_COUNT
 #define WHC_TERRAIN_SIX_BY_FOUR_COUNT 4u
 #define WHC_TERRAIN_TEN_BY_FIVE_COUNT 2u
 #define WHC_TERRAIN_TWELVE_BY_SIX_COUNT 6u
+#define WHC_TERRAIN_FOOTPRINT_REVIEWED_BY_PLAYER 1u
+#define WHC_TERRAIN_FOOTPRINT_SOURCE_LOCKED 2u
+#define WHC_TERRAIN_FOOTPRINT_PLACEMENT_REVIEWED 4u
+#define WHC_TERRAIN_FOOTPRINT_GROUPING_REVIEWED 8u
+#define WHC_TERRAIN_FOOTPRINT_FLAGS_MASK 15u
 
 enum whc_fire_overwatch_trigger {
     WHC_FIRE_OVERWATCH_SET_UP = 1u,
@@ -536,6 +542,30 @@ bool whc_table_geometry_is_valid(uint32_t battlefield_width_thousandths,
                                  uint32_t terrain_section_count, uint32_t six_by_four_count,
                                  uint32_t ten_by_five_count, uint32_t twelve_by_six_count,
                                  uint32_t flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        footprint_count == WHC_TERRAIN_OUTLINE_COUNT &&
+        positioned_footprint_count == footprint_count &&
+        unique_footprint_count == footprint_count &&
+        in_bounds_footprint_count == footprint_count &&
+        grouped_footprint_count == footprint_count &&
+        overlap_pair_count == 0 &&
+        six_by_four_count == WHC_TERRAIN_SIX_BY_FOUR_COUNT &&
+        ten_by_five_count == WHC_TERRAIN_TEN_BY_FIVE_COUNT &&
+        twelve_by_six_count == WHC_TERRAIN_TWELVE_BY_SIX_COUNT &&
+        six_by_four_count + ten_by_five_count + twelve_by_six_count == footprint_count &&
+        flags == WHC_TERRAIN_FOOTPRINT_FLAGS_MASK;
+*/
+bool whc_terrain_footprint_set_is_valid(uint32_t footprint_count,
+                                        uint32_t positioned_footprint_count,
+                                        uint32_t unique_footprint_count,
+                                        uint32_t in_bounds_footprint_count,
+                                        uint32_t grouped_footprint_count,
+                                        uint32_t overlap_pair_count,
+                                        uint32_t six_by_four_count,
+                                        uint32_t ten_by_five_count,
+                                        uint32_t twelve_by_six_count, uint32_t flags);
 
 /*@ requires first_player_index <= 1;
     requires \valid(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));
