@@ -3142,8 +3142,22 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
   assert.deepEqual(body.data.modelPositionHistory, {
     [target.id]: [{ ...modelPlacements, context: "deployment" }, modelPositions],
   });
+  assert.deepEqual(body.data.modelLocationHistory, {
+    [target.id]: [
+      {
+        context: "deployment",
+        referenceEventId: modelPlacements.referenceEventId,
+        sequence: state.events.find(
+          (event) => event.id === "record-table-geometry-target-placement",
+        ).sequence,
+        location: "battlefield",
+        transportFormationId: "",
+      },
+    ],
+  });
   assert.deepEqual(body.data.geometryStaleFormationIds, []);
   assert.equal(body.data.pendingModelPosition, null);
+  assert.deepEqual(body.data.pendingModelPositions, []);
 });
 
 test("cross-checks structured charge movement through the C and WebAssembly API", async () => {

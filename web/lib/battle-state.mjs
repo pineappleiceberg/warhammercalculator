@@ -13,7 +13,8 @@ import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 import { normalizeBattleRuleCoverageBinding } from "./battle-rule-selection.mjs";
 import { chapterApprovedTableBinding } from "./mission-pack.mjs";
 
-export const BATTLE_STATE_VERSION = 29;
+export const BATTLE_STATE_VERSION = 30;
+export const TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION = 30;
 export const EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION = 29;
 export const MODEL_POSITION_BATTLE_STATE_VERSION = 28;
 export const MODEL_PLACEMENT_BATTLE_STATE_VERSION = 27;
@@ -97,6 +98,8 @@ const MODEL_SETUP_POSITION_CONTEXTS = Object.freeze([
   "reserve_arrival",
   "rapid_ingress",
   "disembarkation",
+  "destroyed_transport_disembarkation",
+  "emergency_disembarkation",
 ]);
 
 export function modelPositionContextUsesPath(context) {
@@ -1867,7 +1870,7 @@ function normalizeModelPositionSet(candidate, formation) {
     throw new Error("Model positions must reference unique model identities");
   }
   const normalized = {
-    context: boundedString(set.context, "Model position context", 30),
+    context: boundedString(set.context, "Model position context", 40),
     referenceEventId: boundedString(set.referenceEventId, "Model position reference event id", 100),
     missionSourceId: boundedString(set.missionSourceId, "Model position mission source id", 200),
     terrainSourceId: boundedString(set.terrainSourceId, "Model position terrain source id", 200),
@@ -4376,6 +4379,7 @@ export function normalizeBattleState(candidate) {
       MODEL_PLACEMENT_BATTLE_STATE_VERSION,
       MODEL_POSITION_BATTLE_STATE_VERSION,
       EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION,
+      TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -4437,6 +4441,7 @@ export function normalizeBattleState(candidate) {
         TERRAIN_FOOTPRINT_BATTLE_STATE_VERSION,
         MODEL_PLACEMENT_BATTLE_STATE_VERSION,
         MODEL_POSITION_BATTLE_STATE_VERSION,
+        EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -4616,6 +4621,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyExtendedModelPositionsThroughSequence = nonnegativeInteger(
         migration.legacyExtendedModelPositionsThroughSequence,
         "Legacy extended model positions event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyTransportModelLocationsThroughSequence = nonnegativeInteger(
+        migration.legacyTransportModelLocationsThroughSequence,
+        "Legacy Transport model location event sequence",
         events.length,
       );
     }
@@ -5341,6 +5353,7 @@ export function replayBattleState(state) {
   const deployedFormationIds = new Set();
   const modelPlacementsByFormation = new Map();
   const modelPositionHistoryByFormation = new Map();
+  const modelLocationHistoryByFormation = new Map();
   const currentModelPositionsByFormation = new Map();
   const geometryStaleFormationIds = new Set();
   const setupDestroyedFormationIds = new Set();
@@ -5394,6 +5407,7 @@ export function replayBattleState(state) {
   let deploymentPriorityPlayerId = "";
   let pendingDeploymentPlacement = null;
   let pendingModelPosition = null;
+  const queuedModelPositions = [];
   let ruleCoverage = null;
   let tableGeometry = null;
   let terrainFootprints = null;
@@ -5477,6 +5491,10 @@ export function replayBattleState(state) {
     state.version < EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyExtendedModelPositionsThroughSequence ?? 0);
+  const legacyTransportModelLocationsThroughSequence =
+    state.version < TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyTransportModelLocationsThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -5727,8 +5745,32 @@ export function replayBattleState(state) {
       geometryStaleFormationIds.add(formationId);
     }
   };
+  const recordModelLocation = (
+    formationId,
+    { context, referenceEventId, sequence, location, transportFormationId = "" },
+  ) => {
+    const history = modelLocationHistoryByFormation.get(formationId) ?? [];
+    modelLocationHistoryByFormation.set(formationId, [
+      ...history,
+      {
+        context,
+        referenceEventId,
+        sequence,
+        location,
+        transportFormationId,
+      },
+    ]);
+  };
+  const enqueueModelPosition = (pending) => {
+    if (pendingModelPosition) queuedModelPositions.push(pending);
+    else pendingModelPosition = pending;
+  };
   for (const event of state.events) {
-    if (pendingModelPosition && event.type !== "model_positions_recorded") {
+    if (
+      pendingModelPosition &&
+      event.type !== "model_positions_recorded" &&
+      !(pendingTransportDestructions.size > 0 && event.type === "transport_destroyed_resolved")
+    ) {
       throw new Error("Record the pending per-model position snapshot before continuing");
     }
     const resolvesPendingModelPosition =
@@ -5814,6 +5856,7 @@ export function replayBattleState(state) {
       throw new Error("Finish or retract the activation's ranged target declarations first");
     }
     if (
+      !resolvesPendingModelPosition &&
       activeActivation?.source === "fire_overwatch" &&
       ![
         "ranged_target_eligibility_recorded",
@@ -5976,6 +6019,15 @@ export function replayBattleState(state) {
           throw new Error("Formation is not assigned to that Transport in the locked roster");
         }
         embarkedByFormation.set(event.formationId, event.transportFormationId);
+        if (event.sequence > legacyTransportModelLocationsThroughSequence) {
+          recordModelLocation(event.formationId, {
+            context: "deployment_embarked",
+            referenceEventId: event.id,
+            sequence: event.sequence,
+            location: "embarked",
+            transportFormationId: event.transportFormationId,
+          });
+        }
       }
       if (
         event.location === "strategic_reserves" &&
@@ -6141,6 +6193,14 @@ export function replayBattleState(state) {
       const deploymentSnapshot = { ...event.placement, context: "deployment" };
       modelPositionHistoryByFormation.set(event.formationId, [deploymentSnapshot]);
       currentModelPositionsByFormation.set(event.formationId, deploymentSnapshot);
+      if (event.sequence > legacyTransportModelLocationsThroughSequence) {
+        recordModelLocation(event.formationId, {
+          context: "deployment",
+          referenceEventId: event.placement.referenceEventId,
+          sequence: event.sequence,
+          location: "battlefield",
+        });
+      }
       geometryStaleFormationIds.delete(event.formationId);
       if (!migratedPlacement) pendingDeploymentPlacement = null;
       continue;
@@ -6165,18 +6225,38 @@ export function replayBattleState(state) {
         reserve_arrival: "reserve_arrived",
         rapid_ingress: "rapid_ingress_resolved",
         disembarkation: "formation_disembarked",
+        destroyed_transport_disembarkation: "transport_destroyed_resolved",
+        emergency_disembarkation: "transport_destroyed_resolved",
         charge: "charge_recorded",
         heroic_intervention: "heroic_intervention_resolved",
         pile_in: "fight_move_recorded",
         consolidation: "fight_move_recorded",
       }[event.position.context];
+      const destroyedTransportPassenger = reference?.passengers?.find(
+        (passenger) => passenger.formationId === event.formationId,
+      );
+      const referenceMatchesFormation =
+        reference?.type === "transport_destroyed_resolved"
+          ? Boolean(destroyedTransportPassenger)
+          : reference?.formationId === event.formationId;
       if (
         !reference ||
         reference.type !== expectedReferenceType ||
-        reference.formationId !== event.formationId ||
+        !referenceMatchesFormation ||
         reference.sequence >= event.sequence
       ) {
         throw new Error("Model positions reference the wrong formation action");
+      }
+      if (
+        (["destroyed_transport_disembarkation", "emergency_disembarkation"].includes(
+          event.position.context,
+        ) &&
+          Boolean(destroyedTransportPassenger.emergency) !==
+            (event.position.context === "emergency_disembarkation")) ||
+        (event.position.context === "destroyed_transport_disembarkation" &&
+          destroyedTransportPassenger.unplacedModels > 0)
+      ) {
+        throw new Error("Model positions do not match the destroyed Transport placement mode");
       }
       if (
         (["charge", "heroic_intervention"].includes(event.position.context) &&
@@ -6222,9 +6302,21 @@ export function replayBattleState(state) {
       const history = modelPositionHistoryByFormation.get(event.formationId) ?? [];
       modelPositionHistoryByFormation.set(event.formationId, [...history, event.position]);
       currentModelPositionsByFormation.set(event.formationId, event.position);
-      geometryStaleFormationIds.delete(event.formationId);
       const completed = pendingModelPosition;
-      pendingModelPosition = null;
+      if (
+        event.sequence > legacyTransportModelLocationsThroughSequence &&
+        MODEL_SETUP_POSITION_CONTEXTS.includes(event.position.context)
+      ) {
+        recordModelLocation(event.formationId, {
+          context: event.position.context,
+          referenceEventId: event.position.referenceEventId,
+          sequence: event.sequence,
+          location: "battlefield",
+          transportFormationId: completed.transportFormationId ?? "",
+        });
+      }
+      geometryStaleFormationIds.delete(event.formationId);
+      pendingModelPosition = queuedModelPositions.shift() ?? null;
       if (completed.fireOverwatchTrigger) {
         pendingFireOverwatch = {
           triggerEventId: completed.referenceEventId,
@@ -6774,7 +6866,17 @@ export function replayBattleState(state) {
         throw new Error("A formation cannot embark after disembarking in the same phase");
       }
       embarkedByFormation.set(event.formationId, event.transportFormationId);
-      if (currentModelPositionsByFormation.has(event.formationId)) {
+      if (event.sequence > legacyTransportModelLocationsThroughSequence) {
+        recordModelLocation(event.formationId, {
+          context: "embarkation",
+          referenceEventId: event.id,
+          sequence: event.sequence,
+          location: "embarked",
+          transportFormationId: event.transportFormationId,
+        });
+        currentModelPositionsByFormation.delete(event.formationId);
+        geometryStaleFormationIds.delete(event.formationId);
+      } else if (currentModelPositionsByFormation.has(event.formationId)) {
         geometryStaleFormationIds.add(event.formationId);
       }
       continue;
@@ -6826,6 +6928,10 @@ export function replayBattleState(state) {
           fireOverwatchTrigger: "",
           reconcilesStaleStart: false,
           maximumDistanceThousandths: 0,
+          transportFormationId: event.transportFormationId,
+          placementRadiusThousandths: 3000,
+          emergency: false,
+          destroyedTransport: false,
         };
         geometryStaleFormationIds.add(event.formationId);
       } else if (currentModelPositionsByFormation.has(event.formationId)) {
@@ -6900,6 +7006,51 @@ export function replayBattleState(state) {
           destroyedTransport: true,
           clock: event.clock,
         });
+        const requiresModelPosition =
+          event.sequence > legacyTransportModelLocationsThroughSequence &&
+          battleRuleCoverageRequiresTableGeometry(ruleCoverage) &&
+          formation.weaponBearerTracking === "exact" &&
+          !formationDestroyed(formation);
+        if (event.sequence > legacyTransportModelLocationsThroughSequence) {
+          currentModelPositionsByFormation.delete(passenger.formationId);
+          if (formationDestroyed(formation)) {
+            geometryStaleFormationIds.delete(passenger.formationId);
+            recordModelLocation(passenger.formationId, {
+              context: "destroyed_transport_disembarkation",
+              referenceEventId: event.id,
+              sequence: event.sequence,
+              location: "destroyed",
+              transportFormationId: event.transportFormationId,
+            });
+          } else if (requiresModelPosition) {
+            enqueueModelPosition({
+              formationId: passenger.formationId,
+              context: passenger.emergency
+                ? "emergency_disembarkation"
+                : "destroyed_transport_disembarkation",
+              referenceEventId: event.id,
+              fireOverwatchTrigger: "",
+              reconcilesStaleStart: false,
+              maximumDistanceThousandths: 0,
+              transportFormationId: event.transportFormationId,
+              placementRadiusThousandths: passenger.emergency ? 6000 : 3000,
+              emergency: passenger.emergency,
+              destroyedTransport: true,
+            });
+            geometryStaleFormationIds.add(passenger.formationId);
+          } else {
+            recordModelLocation(passenger.formationId, {
+              context: passenger.emergency
+                ? "emergency_disembarkation"
+                : "destroyed_transport_disembarkation",
+              referenceEventId: event.id,
+              sequence: event.sequence,
+              location: "battlefield",
+              transportFormationId: event.transportFormationId,
+            });
+            geometryStaleFormationIds.delete(passenger.formationId);
+          }
+        }
         movementByFormation.set(passenger.formationId, {
           formationId: passenger.formationId,
           movement: "normal",
@@ -9083,10 +9234,14 @@ export function replayBattleState(state) {
     deployedFormationIds,
     modelPlacementsByFormation,
     modelPositionHistoryByFormation,
+    modelLocationHistoryByFormation,
     currentModelPositionsByFormation,
     geometryStaleFormationIds,
     pendingDeploymentPlacement,
     pendingModelPosition,
+    pendingModelPositions: pendingModelPosition
+      ? [pendingModelPosition, ...queuedModelPositions]
+      : [],
     setupDestroyedFormationIds,
     deploymentPriorityPlayerId,
     deploymentComplete:

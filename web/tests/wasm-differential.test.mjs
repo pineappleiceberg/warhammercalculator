@@ -452,6 +452,16 @@ test("WebAssembly and JavaScript agree on live per-model movement invariants", (
   };
   const cases = [
     base,
+    ...["destroyed_transport_disembarkation", "emergency_disembarkation"].map((context) => ({
+      ...base,
+      context,
+      models: base.models.map((model) => ({
+        ...model,
+        path: [model.path.at(-1)],
+        distanceMovedThousandths: 0,
+        maximumDistanceThousandths: 0,
+      })),
+    })),
     { ...base, pathsReviewed: false },
     {
       ...base,
