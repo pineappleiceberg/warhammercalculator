@@ -8025,7 +8025,7 @@ export default function PlayMode() {
                       <input
                         value={battleRuleSetupDraft.guidedReason}
                         maxLength={500}
-                        placeholder="How measurements and physical placements will be reviewed"
+                        placeholder="How guided rules and physical-table facts will be resolved"
                         onChange={(event) =>
                           setBattleRuleSetupDraft((current) => ({
                             ...current,

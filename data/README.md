@@ -7,13 +7,20 @@ from datasheet/profile provenance because battle timing and setup rules apply
 across every catalogue faction.
 
 `battle-rule-coverage.json` is the machine-readable coverage contract for that
-source set. Every listed rule is classified as `executable`, `guided`,
-`irrelevant`, or `unsupported`, points to pages in a locked source, and records
-the battle-state version that introduced it. Every unlisted rule and every
-unlisted faction, detachment, enhancement, datasheet, terrain, or mission rule
-defaults to `unsupported`; a guided rule is permitted only with a non-empty
-player acknowledgement. The published copies under `web/public/` must remain
-byte-equivalent to these data files and are validated in the web test suite.
+source set. The checked generator also maps every faction and datasheet in the
+pinned profile export to one exact guided rule identity. PDF-backed rules use
+page locators; structured-export entries use typed faction or datasheet record
+locators whose source-manifest checksum locks every contributing CSV checksum.
+Every listed rule is classified as `executable`, `guided`, `irrelevant`, or
+`unsupported` and records the battle-state version that introduced it. Every
+unlisted detachment, enhancement, terrain, or mission rule defaults to
+`unsupported`; a guided rule is permitted only with a non-empty player
+acknowledgement. Guided catalogue coverage means the players explicitly retain
+responsibility for non-executable faction and datasheet text; it never makes
+that text appear implemented. The published copies under `web/public/` must
+remain byte-equivalent to these data files and are validated in the web test
+suite. Regenerate or verify them with
+`python3 scripts/sync_battle_rule_catalogue.py` and its `--check` option.
 
 `warhammer_10e.sqlite` is generated from Wahapedia's structured 10th-edition
 CSV exports. It contains calculator-relevant profile data only: factions,

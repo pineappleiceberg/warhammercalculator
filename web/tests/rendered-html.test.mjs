@@ -279,7 +279,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   );
   assert.equal(coverageResponse.status, 200);
   const coverage = (await coverageResponse.json()).data;
-  assert.equal(coverage.snapshotId, "wh40k-10e-core-2025-10-v23");
+  assert.equal(coverage.snapshotId, "wh40k-10e-core-2025-10-catalogue-2026-06-13-v24");
   assert.equal(coverage.sourceLocked, true);
   assert.equal(coverage.rules.length, coveredRuleCoverageMatrix.rules.length);
 

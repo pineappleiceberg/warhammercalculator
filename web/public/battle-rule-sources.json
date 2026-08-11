@@ -9,7 +9,30 @@
       "retrievedAt": "2026-08-10",
       "sha256": "4d0e8019cbfddd6f46781d5b4ed31d46fb21eb2d0d10a0f6fabefac0ce054364",
       "pages": [
-        7, 8, 9, 16, 17, 18, 19, 20, 23, 25, 26, 29, 32, 33, 34, 35, 39, 41, 42, 43, 44, 53, 56, 57,
+        7,
+        8,
+        9,
+        16,
+        17,
+        18,
+        19,
+        20,
+        23,
+        25,
+        26,
+        29,
+        32,
+        33,
+        34,
+        35,
+        39,
+        41,
+        42,
+        43,
+        44,
+        53,
+        56,
+        57,
         60
       ],
       "usedFor": [
@@ -50,7 +73,15 @@
       "url": "https://assets.warhammer-community.com/eng_22-10_warhammer40000_core_rules_updates-kikyythcsl-5iydvuj9w6.pdf",
       "retrievedAt": "2026-08-10",
       "sha256": "27960a4d4affecd450af69c54d7583bcc2941b00ba5845f5786a630bdec7f4ba",
-      "pages": [7, 8, 10, 12, 14, 18, 21],
+      "pages": [
+        7,
+        8,
+        10,
+        12,
+        14,
+        18,
+        21
+      ],
       "usedFor": [
         "Heroic Intervention timing, target eligibility, 6-inch range, 1CP cost, Walker restriction, sole target, out-of-phase Charge resolution, and suppressed Charge bonus",
         "Fire Overwatch timing after setup, move starts and ends, and charge declarations; 24-inch visible-target eligibility; 1CP cost; once-per-turn limit; Titanic exclusion; unmodified 6 Hit and Critical Hit thresholds; out-of-phase rule and Firing Deck exclusions",
@@ -58,6 +89,25 @@
         "Benefit of Cover granted by a rule even when the affected unit is not within terrain",
         "duplicated Stealth abilities are not cumulative",
         "Rapid Ingress Deep Strike permission for complete Deep Strike units, first-round out-of-phase eligibility, the prohibition on passengers disembarking that phase, and the large-model Strategic Reserves own-edge exception with its turn-long action restriction"
+      ]
+    },
+    {
+      "id": "wahapedia-profile-export-2026-06-13",
+      "title": "Wahapedia structured profile export source lock",
+      "edition": "Warhammer 40,000 10th Edition",
+      "version": "2026-06-13 12:02:41",
+      "url": "https://wahapedia.ru/wh40k10ed",
+      "retrievedAt": "2026-08-11",
+      "sha256": "623fd089d1825d9e2e126d814c4ff1d0948da867bbd8407b9867d4ad482bd686",
+      "artifact": "profile-source-lock.json",
+      "pages": [],
+      "recordTypes": [
+        "faction",
+        "datasheet"
+      ],
+      "usedFor": [
+        "exact faction identities selected by saved lists",
+        "exact datasheet identities and source-linked rules selected by saved units"
       ]
     }
   ]

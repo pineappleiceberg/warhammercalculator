@@ -27,11 +27,11 @@ state.
 
 ## Prioritized backlog
 
-1. Expand the matrix from the current Core Rules and universal-Stratagem
-   foundation with pinned faction, detachment, enhancement, datasheet, terrain,
-   and mission sources, catalogue-to-rule mappings, executable handlers, and
-   reason-backed guided fallbacks so supported real lists can pass the version-24
-   setup gate.
+1. Pin detachment, enhancement, terrain, and mission sources and exact
+   catalogue-to-rule mappings, then add executable handlers or reason-backed
+   guided fallbacks so supported real lists can pass the version-24 setup gate.
+   Faction and datasheet identities are now exact and guided, but the remaining
+   categories still fail closed.
 2. Expand reviewable table geometry beyond the version-8 ranged measurement to
    movement paths, charge endpoints, cover, coherency, Engagement Range,
    terrain, and objective facts.
@@ -39,6 +39,17 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Connected every one of the pinned profile catalogue's 26 factions
+  and 1,712 datasheets to canonical battle setup. A deterministic generator
+  emits 1,738 exact guided coverage entries from the checked profile snapshot,
+  locks them through the manifest that pins every contributing Wahapedia CSV,
+  publishes typed faction/datasheet record locators, and rejects stale generated
+  artifacts in CI. Saved lists now select those exact rule IDs automatically;
+  the shared guided-review reason acknowledges each selected non-executable
+  faction and datasheet rule without making it appear executable. Unknown IDs
+  still fail closed, and detachment, enhancement, terrain, and mission rules
+  remain explicit blockers until their own source sets are ingested.
 
 - 2026-08-11: Advanced canonical battle setup to version 24 with an append-only,
   source-locked rule selection boundary. Every new battle now records the exact
