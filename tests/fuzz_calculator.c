@@ -210,6 +210,12 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     bool expected_counter_offensive_valid;
     bool smokescreen_valid;
     bool expected_smokescreen_valid;
+    uint32_t rapid_ingress_step;
+    uint32_t rapid_ingress_round;
+    uint32_t rapid_ingress_earliest_round;
+    bool rapid_ingress_first_round_allowed;
+    bool rapid_ingress_valid;
+    bool expected_rapid_ingress_valid;
     uint32_t declaration_count;
     uint32_t unique_declaration_count;
     uint32_t target_run_count;
@@ -535,6 +541,28 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         !go_to_ground_already_used && !go_to_ground_battle_shocked &&
         go_to_ground_flags == WHC_SMOKESCREEN_FLAGS_MASK;
     assert(smokescreen_valid == expected_smokescreen_valid);
+    rapid_ingress_step = next_byte(&input);
+    rapid_ingress_round = next_byte(&input);
+    rapid_ingress_earliest_round = next_byte(&input);
+    rapid_ingress_first_round_allowed = next_byte(&input) % 2u != 0u;
+    rapid_ingress_valid = whc_rapid_ingress_is_valid(
+        go_to_ground_phase, rapid_ingress_step, rapid_ingress_round,
+        rapid_ingress_earliest_round, go_to_ground_cp_before, go_to_ground_cost,
+        go_to_ground_cp_after, go_to_ground_already_used, go_to_ground_battle_shocked,
+        rapid_ingress_first_round_allowed, go_to_ground_flags);
+    expected_rapid_ingress_valid =
+        go_to_ground_phase == WHC_BATTLE_PHASE_MOVEMENT &&
+        rapid_ingress_step == WHC_MOVEMENT_STEP_END && rapid_ingress_round >= 1u &&
+        rapid_ingress_round <= 5u && rapid_ingress_earliest_round >= 1u &&
+        rapid_ingress_earliest_round <= 5u &&
+        rapid_ingress_round >= rapid_ingress_earliest_round &&
+        (rapid_ingress_round != 1u || rapid_ingress_first_round_allowed) &&
+        go_to_ground_cp_before >= 1u && go_to_ground_cp_before <= 100000u &&
+        go_to_ground_cost == 1u &&
+        go_to_ground_cp_after == go_to_ground_cp_before - go_to_ground_cost &&
+        !go_to_ground_already_used && !go_to_ground_battle_shocked &&
+        go_to_ground_flags == WHC_RAPID_INGRESS_FLAGS_MASK;
+    assert(rapid_ingress_valid == expected_rapid_ingress_valid);
     declaration_count = next_u16(&input);
     unique_declaration_count = next_u16(&input);
     target_run_count = next_u16(&input);

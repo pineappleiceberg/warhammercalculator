@@ -76,6 +76,9 @@ import {
   heroicInterventionIsValid,
   normalizeBattleState,
   rangedDeclarationIsValid,
+  rapidIngressFlags,
+  rapidIngressIsValid,
+  rapidIngressPlacementIsLegal,
   rangedTargetEligibilityIsValid,
   replayBattleState,
   transportLoadIsValid,
@@ -336,6 +339,7 @@ type CalculatorExports = {
   whc_hazardous_resolution_is_valid(...values: number[]): number;
   whc_go_to_ground_is_valid(...values: number[]): number;
   whc_smokescreen_is_valid(...values: number[]): number;
+  whc_rapid_ingress_is_valid(...values: number[]): number;
   whc_counter_offensive_is_valid(...values: number[]): number;
   whc_ranged_declaration_is_valid(...values: number[]): number;
   whc_transport_load_is_valid(...values: number[]): number;
@@ -486,6 +490,7 @@ async function loadCalculator() {
       typeof calculator.whc_hazardous_resolution_is_valid !== "function" ||
       typeof calculator.whc_go_to_ground_is_valid !== "function" ||
       typeof calculator.whc_smokescreen_is_valid !== "function" ||
+      typeof calculator.whc_rapid_ingress_is_valid !== "function" ||
       typeof calculator.whc_counter_offensive_is_valid !== "function" ||
       typeof calculator.whc_ranged_declaration_is_valid !== "function" ||
       typeof calculator.whc_transport_load_is_valid !== "function" ||
@@ -1219,6 +1224,74 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
           canonical: true,
         };
       });
+    const rapidIngresses = replayed.rapidIngresses.map((event) => {
+      const formation = replayed.formations.get(event.formationId);
+      const deployment = replayed.deploymentByFormation.get(event.formationId);
+      if (!formation || !deployment) {
+        throw new ServiceUnavailableError(
+          "Rapid Ingress source facts are unavailable",
+          "RAPID_INGRESS_DIVERGENCE",
+        );
+      }
+      const placementLegal = rapidIngressPlacementIsLegal(event, deployment);
+      const flags = rapidIngressFlags(
+        event,
+        ["reserves", "strategic_reserves"].includes(deployment.location),
+        formation.playerId === event.playerId,
+        placementLegal,
+      );
+      const values = [
+        2,
+        3,
+        event.clock.battleRound,
+        deployment.earliestBattleRound,
+        event.commandPointsBefore,
+        event.commandPointCost,
+        event.commandPointsAfter,
+        0,
+        0,
+        event.firstRoundOutOfPhaseAllowed ? 1 : 0,
+        flags,
+      ];
+      const javascriptValid = rapidIngressIsValid(
+        "movement",
+        "end",
+        event.clock.battleRound,
+        deployment.earliestBattleRound,
+        event.commandPointsBefore,
+        event.commandPointCost,
+        event.commandPointsAfter,
+        false,
+        false,
+        event.firstRoundOutOfPhaseAllowed,
+        flags,
+      );
+      const nativeValid = Boolean(calculator.whc_rapid_ingress_is_valid(...values));
+      if (!javascriptValid || javascriptValid !== nativeValid) {
+        throw new ServiceUnavailableError(
+          "Rapid Ingress diverged from the C/WebAssembly predicate",
+          "RAPID_INGRESS_DIVERGENCE",
+        );
+      }
+      return {
+        eventId: event.id,
+        triggerEventId: event.triggerEventId,
+        playerId: event.playerId,
+        formationId: event.formationId,
+        commandPointCost: event.commandPointCost,
+        commandPointsBefore: event.commandPointsBefore,
+        commandPointsAfter: event.commandPointsAfter,
+        placementMethod: event.placementMethod,
+        placementReason: event.placementReason,
+        firstRoundOutOfPhaseAllowed: event.firstRoundOutOfPhaseAllowed,
+        firstRoundOutOfPhaseReason: event.firstRoundOutOfPhaseReason,
+        deployedFormationIds: event.deployedFormationIds,
+        passengersCannotDisembarkThisPhase: event.passengersCannotDisembarkThisPhase,
+        largeModelRestrictedThisTurn: event.largeModelRestrictedThisTurn,
+        clock: event.clock,
+        canonical: true,
+      };
+    });
     const counterOffensives = replayed.counterOffensives.map((event) => {
       const flags = counterOffensiveFlags(event, true, true);
       const values = [
@@ -1368,6 +1441,8 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         allMovedModelsCloserToObjective: event.allMovedModelsCloserToObjective,
         objectiveDestinationImpossible: event.objectiveDestinationImpossible,
         outcomeReason: event.outcomeReason,
+        movementRuleRestricted: event.movementRuleRestricted,
+        movementRuleRestrictionReason: event.movementRuleRestrictionReason,
         meleeAttacksCompleteConfirmed: event.meleeAttacksCompleteConfirmed,
         meleeAttacksCompletionReason: event.meleeAttacksCompletionReason,
         clock: event.clock,
@@ -1486,11 +1561,12 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
       objectives: [...replayed.objectives.values()].map((objective) => ({ ...objective })),
       battleShockedFormationIds: [...replayed.battleShockedFormations.keys()].sort(),
       movement: [...replayed.movementByFormation.values()]
-        .map(({ formationId, movement, clock, fromReserves = false }) => ({
+        .map(({ formationId, movement, clock, fromReserves = false, rapidIngress = false }) => ({
           formationId,
           movement,
           clock,
           fromReserves,
+          rapidIngress,
         }))
         .sort((left, right) => left.formationId.localeCompare(right.formationId)),
       charges,
@@ -1509,6 +1585,9 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
       })),
       pendingGoToGround: replayed.pendingGoToGround ? { ...replayed.pendingGoToGround } : null,
       pendingSmokescreen: replayed.pendingSmokescreen ? { ...replayed.pendingSmokescreen } : null,
+      pendingRapidIngress: replayed.pendingRapidIngress
+        ? { ...replayed.pendingRapidIngress }
+        : null,
       pendingCounterOffensive: replayed.pendingCounterOffensive
         ? { ...replayed.pendingCounterOffensive }
         : null,
@@ -1558,6 +1637,14 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         triggerEventId: event.triggerEventId,
         playerId: event.playerId,
         targetFormationId: event.targetFormationId,
+        reason: event.reason,
+        clock: event.clock,
+      })),
+      rapidIngresses,
+      rapidIngressPasses: replayed.rapidIngressPasses.map((event) => ({
+        eventId: event.id,
+        triggerEventId: event.triggerEventId,
+        playerId: event.playerId,
         reason: event.reason,
         clock: event.clock,
       })),

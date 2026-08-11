@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  BATTLE_STATE_VERSION,
   battleFormation,
   battleFormationHealth,
   configureUnengagedBattleFormation,
@@ -151,7 +152,7 @@ function deployAllOnBattlefield(state) {
 
 test("registers every formation on both rosters before combat with stable ids", () => {
   const state = setup();
-  assert.equal(state.version, 22);
+  assert.equal(state.version, BATTLE_STATE_VERSION);
   assert.deepEqual(
     state.players.map((player) => [player.listId, player.listUpdatedAt]),
     [
@@ -342,7 +343,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
   versionTwo.players[0].listUpdatedAt = attackers.updatedAt;
   versionTwo.players[1].listUpdatedAt = defenders.updatedAt;
   const migrated = setup(normalizeBattleState(versionTwo));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 2,
     legacyUntimedThroughSequence: 3,
@@ -363,6 +364,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacySetupRulesThroughSequence: 3,
     legacyCounterOffensiveThroughSequence: 3,
     legacySmokescreenThroughSequence: 3,
+    legacyRapidIngressThroughSequence: 3,
   });
   assert.equal(migrated.events.at(-1).id, "legacy-attack");
 });
@@ -374,7 +376,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
   const legacy = normalizeBattleState(legacySetup);
 
   const migrated = setup(legacy);
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 1,
     legacyUntimedThroughSequence: 3,
@@ -395,6 +397,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacySetupRulesThroughSequence: 3,
     legacyCounterOffensiveThroughSequence: 3,
     legacySmokescreenThroughSequence: 3,
+    legacyRapidIngressThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -411,7 +414,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
   versionThree.version = 3;
   delete versionThree.migration;
   const migrated = setup(normalizeBattleState(versionThree));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 3,
     legacyUntimedThroughSequence: 0,
@@ -432,6 +435,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacySetupRulesThroughSequence: 2,
     legacyCounterOffensiveThroughSequence: 2,
     legacySmokescreenThroughSequence: 2,
+    legacyRapidIngressThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -441,7 +445,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
   versionFour.version = 4;
   delete versionFour.migration;
   const migrated = setup(normalizeBattleState(versionFour));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 4,
     legacyUntimedThroughSequence: 0,
@@ -462,6 +466,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacySetupRulesThroughSequence: 2,
     legacyCounterOffensiveThroughSequence: 2,
     legacySmokescreenThroughSequence: 2,
+    legacyRapidIngressThroughSequence: 2,
   });
 });
 
@@ -470,7 +475,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
   versionFive.version = 5;
   delete versionFive.migration;
   let migrated = setup(normalizeBattleState(versionFive));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 5,
     legacyUntimedThroughSequence: 0,
@@ -491,6 +496,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacySetupRulesThroughSequence: 2,
     legacyCounterOffensiveThroughSequence: 2,
     legacySmokescreenThroughSequence: 2,
+    legacyRapidIngressThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 2);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -505,7 +511,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
   versionSix.version = 6;
   delete versionSix.migration;
   const migrated = setup(normalizeBattleState(versionSix));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 6,
     legacyUntimedThroughSequence: 0,
@@ -526,6 +532,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacySetupRulesThroughSequence: 2,
     legacyCounterOffensiveThroughSequence: 2,
     legacySmokescreenThroughSequence: 2,
+    legacyRapidIngressThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -535,7 +542,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
   versionSeven.version = 7;
   delete versionSeven.migration;
   const migrated = setup(normalizeBattleState(versionSeven));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 7,
     legacyUntimedThroughSequence: 0,
@@ -556,6 +563,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacySetupRulesThroughSequence: 2,
     legacyCounterOffensiveThroughSequence: 2,
     legacySmokescreenThroughSequence: 2,
+    legacyRapidIngressThroughSequence: 2,
   });
 });
 
@@ -564,7 +572,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
   versionEight.version = 8;
   delete versionEight.migration;
   const migrated = setup(normalizeBattleState(versionEight));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.deepEqual(migrated.migration, {
     sourceVersion: 8,
     legacyUntimedThroughSequence: 0,
@@ -585,6 +593,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacySetupRulesThroughSequence: 2,
     legacyCounterOffensiveThroughSequence: 2,
     legacySmokescreenThroughSequence: 2,
+    legacyRapidIngressThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -613,7 +622,7 @@ test("migrates version-9 weapon inventory with explicit aggregate-bearer provena
     });
   }
   const migrated = setup(normalizeBattleState(versionNine));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.equal(migrated.migration.sourceVersion, 9);
   assert.equal(migrated.migration.legacyWeaponInventoryThroughSequence, 0);
   assert.equal(migrated.migration.legacyWeaponBearersThroughSequence, 2);
@@ -640,7 +649,7 @@ test("migrates version-10 exact bearers with an explicit legacy charge boundary"
   versionTen.version = 10;
   delete versionTen.migration;
   const migrated = setup(normalizeBattleState(versionTen));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.equal(migrated.migration.sourceVersion, 10);
   assert.equal(migrated.migration.legacyWeaponBearersThroughSequence, 0);
   assert.equal(migrated.migration.legacyChargeMovementThroughSequence, 2);
@@ -656,7 +665,7 @@ test("migrates version-11 charge movement with explicit Fight and reaction bound
   versionEleven.version = 11;
   delete versionEleven.migration;
   const migrated = setup(normalizeBattleState(versionEleven));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.equal(migrated.migration.sourceVersion, 11);
   assert.equal(migrated.migration.legacyChargeMovementThroughSequence, 0);
   assert.equal(migrated.migration.legacyFightMovementThroughSequence, 2);
@@ -670,7 +679,7 @@ test("migrates version-12 Fight movement with an explicit Heroic Intervention bo
   versionTwelve.version = 12;
   delete versionTwelve.migration;
   const migrated = setup(normalizeBattleState(versionTwelve));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.equal(migrated.migration.sourceVersion, 12);
   assert.equal(migrated.migration.legacyFightMovementThroughSequence, 0);
   assert.equal(migrated.migration.legacyHeroicInterventionThroughSequence, 2);
@@ -683,7 +692,7 @@ test("migrates version-13 reactions with an explicit Fire Overwatch boundary", (
   versionThirteen.version = 13;
   delete versionThirteen.migration;
   const migrated = setup(normalizeBattleState(versionThirteen));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.equal(migrated.migration.sourceVersion, 13);
   assert.equal(migrated.migration.legacyHeroicInterventionThroughSequence, 0);
   assert.equal(migrated.migration.legacyFireOverwatchThroughSequence, 2);
@@ -695,7 +704,7 @@ test("migrates version-14 Fire Overwatch with an explicit Hazardous boundary", (
   versionFourteen.version = 14;
   delete versionFourteen.migration;
   const migrated = setup(normalizeBattleState(versionFourteen));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.equal(migrated.migration.sourceVersion, 14);
   assert.equal(migrated.migration.legacyFireOverwatchThroughSequence, 0);
   assert.equal(migrated.migration.legacyHazardousThroughSequence, 2);
@@ -705,7 +714,7 @@ test("migrates version-15 Hazardous state with an explicit Go to Ground boundary
   const versionFifteen = structuredClone(setup());
   versionFifteen.version = 15;
   const migrated = setup(normalizeBattleState(versionFifteen));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.equal(migrated.migration.sourceVersion, 15);
   assert.equal(migrated.migration.legacyHazardousThroughSequence, 0);
   assert.equal(migrated.migration.legacyGoToGroundThroughSequence, 2);
@@ -716,7 +725,7 @@ test("migrates version-16 Go to Ground state with an explicit ranged declaration
   versionSixteen.version = 16;
   delete versionSixteen.migration;
   const migrated = setup(normalizeBattleState(versionSixteen));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.equal(migrated.migration.sourceVersion, 16);
   assert.equal(migrated.migration.legacyGoToGroundThroughSequence, 0);
   assert.equal(migrated.migration.legacyRangedDeclarationsThroughSequence, 2);
@@ -727,7 +736,7 @@ test("migrates version-17 declarations with an explicit Transport compatibility 
   versionSeventeen.version = 17;
   delete versionSeventeen.migration;
   const migrated = setup(normalizeBattleState(versionSeventeen));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.equal(migrated.migration.sourceVersion, 17);
   assert.equal(migrated.migration.legacyRangedDeclarationsThroughSequence, 0);
   assert.equal(migrated.migration.legacyTransportCompatibilityThroughSequence, 2);
@@ -744,7 +753,7 @@ test("migrates version-18 Transport compatibility state to nested deployment sem
   delete versionEighteen.migration;
   const eventIds = versionEighteen.events.map((event) => event.id);
   const migrated = setup(normalizeBattleState(versionEighteen));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.equal(migrated.migration.sourceVersion, 18);
   assert.equal(migrated.migration.legacyTransportCompatibilityThroughSequence, 0);
   assert.deepEqual(
@@ -759,7 +768,7 @@ test("migrates version-19 nested Transport state across the setup-rules boundary
   delete versionNineteen.migration;
   const eventIds = versionNineteen.events.map((event) => event.id);
   const migrated = setup(normalizeBattleState(versionNineteen));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.equal(migrated.migration.sourceVersion, 19);
   assert.equal(migrated.migration.legacySetupRulesThroughSequence, 2);
   assert.deepEqual(
@@ -774,7 +783,7 @@ test("migrates version-20 setup state across the Counter-offensive boundary", ()
   delete versionTwenty.migration;
   const eventIds = versionTwenty.events.map((event) => event.id);
   const migrated = setup(normalizeBattleState(versionTwenty));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.equal(migrated.migration.sourceVersion, 20);
   assert.equal(migrated.migration.legacyCounterOffensiveThroughSequence, 2);
   assert.deepEqual(
@@ -789,9 +798,25 @@ test("migrates version-21 state across the Smokescreen boundary", () => {
   delete versionTwentyOne.migration;
   const eventIds = versionTwentyOne.events.map((event) => event.id);
   const migrated = setup(normalizeBattleState(versionTwentyOne));
-  assert.equal(migrated.version, 22);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.equal(migrated.migration.sourceVersion, 21);
   assert.equal(migrated.migration.legacySmokescreenThroughSequence, 2);
+  assert.deepEqual(
+    migrated.events.map((event) => event.id),
+    eventIds,
+  );
+});
+
+test("migrates version-22 state without retroactively opening Rapid Ingress", () => {
+  const versionTwentyTwo = structuredClone(setup());
+  versionTwentyTwo.version = 22;
+  delete versionTwentyTwo.migration;
+  const eventIds = versionTwentyTwo.events.map((event) => event.id);
+  const migrated = setup(normalizeBattleState(versionTwentyTwo));
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 22);
+  assert.equal(migrated.migration.legacyRapidIngressThroughSequence, 2);
+  assert.equal(replayBattleState(migrated).pendingRapidIngress, null);
   assert.deepEqual(
     migrated.events.map((event) => event.id),
     eventIds,

@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 22;
+export const BATTLE_STATE_VERSION = 23;
+export const RAPID_INGRESS_BATTLE_STATE_VERSION = 23;
 export const SMOKESCREEN_BATTLE_STATE_VERSION = 22;
 export const COUNTER_OFFENSIVE_BATTLE_STATE_VERSION = 21;
 export const SETUP_RULES_BATTLE_STATE_VERSION = 20;
@@ -124,6 +125,56 @@ export const SMOKESCREEN_FLAGS = Object.freeze({
   stealth: 16,
   mask: 31,
 });
+
+export const RAPID_INGRESS_FLAGS = Object.freeze({
+  targetInReserves: 1,
+  respondingPlayer: 2,
+  arrivesAsReinforcements: 4,
+  placementLegal: 8,
+  passengersRemainEmbarked: 16,
+  mask: 31,
+});
+
+export const RAPID_INGRESS_PLACEMENT_METHODS = Object.freeze([
+  "deep_strike",
+  "strategic_reserves",
+  "source_rule",
+]);
+
+export function rapidIngressIsValid(
+  phase,
+  step,
+  battleRound,
+  earliestBattleRound,
+  commandPointsBefore,
+  commandPointCost,
+  commandPointsAfter,
+  alreadyUsed,
+  targetBattleShocked,
+  firstRoundOutOfPhaseAllowed,
+  flags,
+) {
+  return Boolean(
+    phase === "movement" &&
+      step === "end" &&
+      Number.isSafeInteger(battleRound) &&
+      battleRound >= 1 &&
+      battleRound <= 5 &&
+      Number.isSafeInteger(earliestBattleRound) &&
+      earliestBattleRound >= 1 &&
+      earliestBattleRound <= 5 &&
+      battleRound >= earliestBattleRound &&
+      (battleRound !== 1 || firstRoundOutOfPhaseAllowed) &&
+      Number.isSafeInteger(commandPointsBefore) &&
+      commandPointsBefore >= 1 &&
+      commandPointsBefore <= 100_000 &&
+      commandPointCost === 1 &&
+      commandPointsAfter === commandPointsBefore - commandPointCost &&
+      !alreadyUsed &&
+      !targetBattleShocked &&
+      flags === RAPID_INGRESS_FLAGS.mask,
+  );
+}
 
 export const RANGED_DECLARATION_FLAGS = Object.freeze({
   sameActivation: 1,
@@ -469,6 +520,38 @@ export function smokescreenFlags(event, targetIsSmoke, respondingPlayer) {
   );
 }
 
+export function rapidIngressPlacementIsLegal(event, deployment) {
+  if (!event.placementConfirmed) return false;
+  if (event.placementMethod === "deep_strike") {
+    return Boolean(event.allModelsHaveDeepStrike && event.moreThanNineFromEnemyModels);
+  }
+  if (event.placementMethod === "strategic_reserves") {
+    if (deployment?.location !== "strategic_reserves" || !event.moreThanNineFromEnemyModels) {
+      return false;
+    }
+    const normalEdgePlacement =
+      event.whollyWithinSixOfBattlefieldEdge &&
+      (event.clock.battleRound >= 3 || event.outsideEnemyDeploymentZone);
+    const largeModelException = event.largeModelEdgeException && event.touchingOwnBattlefieldEdge;
+    return normalEdgePlacement || largeModelException;
+  }
+  return Boolean(
+    event.placementMethod === "source_rule" &&
+      deployment?.location === "reserves" &&
+      event.sourceRulePlacementConfirmed,
+  );
+}
+
+export function rapidIngressFlags(event, targetInReserves, respondingPlayer, placementLegal) {
+  return (
+    (targetInReserves ? RAPID_INGRESS_FLAGS.targetInReserves : 0) |
+    (respondingPlayer ? RAPID_INGRESS_FLAGS.respondingPlayer : 0) |
+    (event.arrivesAsReinforcements ? RAPID_INGRESS_FLAGS.arrivesAsReinforcements : 0) |
+    (placementLegal ? RAPID_INGRESS_FLAGS.placementLegal : 0) |
+    (event.passengersRemainEmbarked ? RAPID_INGRESS_FLAGS.passengersRemainEmbarked : 0)
+  );
+}
+
 export function hazardousResolutionIsValid(
   initialRoll,
   reroll,
@@ -650,6 +733,7 @@ export const FIGHT_MOVE_FLAGS = Object.freeze({
   allMovedModelsCloserToObjective: 256,
   objectiveDestinationImpossible: 512,
   outcomeExplained: 1024,
+  ruleRestricted: 2048,
 });
 
 export const HEROIC_INTERVENTION_FLAGS = Object.freeze({
@@ -732,7 +816,7 @@ export function fightMoveIsValid(stage, destination, maximumModelMoveThousandths
     maximumModelMoveThousandths > 3000 ||
     !Number.isSafeInteger(flags) ||
     flags < 0 ||
-    flags > 2047
+    flags > 4095
   ) {
     return false;
   }
@@ -740,12 +824,16 @@ export function fightMoveIsValid(stage, destination, maximumModelMoveThousandths
     return flags === 63;
   }
   if (stage === 1) {
-    return destination === 0 && maximumModelMoveThousandths === 0 && flags === 1121;
+    return (
+      destination === 0 && maximumModelMoveThousandths === 0 && (flags === 1121 || flags === 3105)
+    );
   }
   if (destination === 2) {
     return flags === 1507;
   }
-  return destination === 0 && maximumModelMoveThousandths === 0 && flags === 1633;
+  return (
+    destination === 0 && maximumModelMoveThousandths === 0 && (flags === 1633 || flags === 3105)
+  );
 }
 
 export function fightMoveFlags(event) {
@@ -760,7 +848,8 @@ export function fightMoveFlags(event) {
     (event.endsWithinObjectiveRange ? FIGHT_MOVE_FLAGS.endsWithinObjectiveRange : 0) |
     (event.allMovedModelsCloserToObjective ? FIGHT_MOVE_FLAGS.allMovedModelsCloserToObjective : 0) |
     (event.objectiveDestinationImpossible ? FIGHT_MOVE_FLAGS.objectiveDestinationImpossible : 0) |
-    (event.outcomeReason ? FIGHT_MOVE_FLAGS.outcomeExplained : 0)
+    (event.outcomeReason ? FIGHT_MOVE_FLAGS.outcomeExplained : 0) |
+    (event.movementRuleRestricted ? FIGHT_MOVE_FLAGS.ruleRestricted : 0)
   );
 }
 
@@ -1803,6 +1892,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   ) {
     throw new Error("Smokescreen reactions require battle-state version 22");
   }
+  if (
+    stateVersion < RAPID_INGRESS_BATTLE_STATE_VERSION &&
+    ["rapid_ingress_passed", "rapid_ingress_resolved"].includes(event.type)
+  ) {
+    throw new Error("Rapid Ingress reactions require battle-state version 23");
+  }
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation, stateVersion);
     if (!formations.players.has(formation.playerId)) throw new Error("Formation player is unknown");
@@ -2587,6 +2682,85 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
+  if (event.type === "rapid_ingress_passed") {
+    normalized.triggerEventId = boundedString(
+      event.triggerEventId,
+      "Rapid Ingress trigger event id",
+      100,
+    );
+    normalized.playerId = boundedString(event.playerId, "Rapid Ingress player id", 100);
+    if (!formations.players.has(normalized.playerId)) {
+      throw new Error("Rapid Ingress player is unknown");
+    }
+    normalized.reason = boundedString(event.reason, "Rapid Ingress pass reason", 300);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "rapid_ingress_resolved") {
+    normalized.triggerEventId = boundedString(
+      event.triggerEventId,
+      "Rapid Ingress trigger event id",
+      100,
+    );
+    normalized.playerId = boundedString(event.playerId, "Rapid Ingress player id", 100);
+    normalized.formationId = boundedString(event.formationId, "Rapid Ingress formation id", 100);
+    if (
+      !formations.players.has(normalized.playerId) ||
+      !formations.byId.has(normalized.formationId)
+    ) {
+      throw new Error("Rapid Ingress references an unknown player or formation");
+    }
+    normalized.commandPointCost = nonnegativeInteger(
+      event.commandPointCost,
+      "Rapid Ingress Command Point cost",
+      5,
+    );
+    normalized.commandPointsBefore = nonnegativeInteger(
+      event.commandPointsBefore,
+      "Command Points before Rapid Ingress",
+      100_000,
+    );
+    normalized.commandPointsAfter = nonnegativeInteger(
+      event.commandPointsAfter,
+      "Command Points after Rapid Ingress",
+      100_000,
+    );
+    normalized.placementMethod = boundedString(
+      event.placementMethod,
+      "Rapid Ingress placement method",
+      30,
+    );
+    if (!RAPID_INGRESS_PLACEMENT_METHODS.includes(normalized.placementMethod)) {
+      throw new Error("Rapid Ingress placement method is unsupported");
+    }
+    for (const key of [
+      "placementConfirmed",
+      "allModelsHaveDeepStrike",
+      "whollyWithinSixOfBattlefieldEdge",
+      "outsideEnemyDeploymentZone",
+      "moreThanNineFromEnemyModels",
+      "largeModelEdgeException",
+      "touchingOwnBattlefieldEdge",
+      "sourceRulePlacementConfirmed",
+      "firstRoundOutOfPhaseAllowed",
+      "arrivesAsReinforcements",
+      "passengersRemainEmbarked",
+    ]) {
+      normalized[key] = Boolean(event[key]);
+    }
+    normalized.placementReason = normalized.placementConfirmed
+      ? boundedString(event.placementReason, "Rapid Ingress placement confirmation", 300)
+      : "";
+    normalized.firstRoundOutOfPhaseReason = normalized.firstRoundOutOfPhaseAllowed
+      ? boundedString(
+          event.firstRoundOutOfPhaseReason,
+          "Rapid Ingress first-round source rule",
+          300,
+        )
+      : "";
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
   if (event.type === "fire_overwatch_started") {
     normalized.triggerEventId = boundedString(
       event.triggerEventId,
@@ -2722,6 +2896,10 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.endsWithinObjectiveRange = Boolean(event.endsWithinObjectiveRange);
     normalized.allMovedModelsCloserToObjective = Boolean(event.allMovedModelsCloserToObjective);
     normalized.objectiveDestinationImpossible = Boolean(event.objectiveDestinationImpossible);
+    normalized.movementRuleRestricted = Boolean(event.movementRuleRestricted);
+    normalized.movementRuleRestrictionReason = normalized.movementRuleRestricted
+      ? boundedString(event.movementRuleRestrictionReason, "Fight movement rule restriction", 300)
+      : "";
     normalized.outcomeReason =
       normalized.destination === "enemy"
         ? ""
@@ -3198,6 +3376,7 @@ export function normalizeBattleState(candidate) {
       SETUP_RULES_BATTLE_STATE_VERSION,
       COUNTER_OFFENSIVE_BATTLE_STATE_VERSION,
       SMOKESCREEN_BATTLE_STATE_VERSION,
+      RAPID_INGRESS_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -3253,6 +3432,7 @@ export function normalizeBattleState(candidate) {
         SETUP_RULES_BATTLE_STATE_VERSION,
         COUNTER_OFFENSIVE_BATTLE_STATE_VERSION,
         SMOKESCREEN_BATTLE_STATE_VERSION,
+        RAPID_INGRESS_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -3383,6 +3563,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacySmokescreenThroughSequence = nonnegativeInteger(
         migration.legacySmokescreenThroughSequence,
         "Legacy Smokescreen event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= RAPID_INGRESS_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyRapidIngressThroughSequence = nonnegativeInteger(
+        migration.legacyRapidIngressThroughSequence,
+        "Legacy Rapid Ingress event sequence",
         events.length,
       );
     }
@@ -4132,6 +4319,9 @@ export function replayBattleState(state) {
   const smokescreens = [];
   const smokescreenPasses = [];
   const usedSmokescreenKeys = new Set();
+  const rapidIngresses = [];
+  const rapidIngressPasses = [];
+  const usedRapidIngressKeys = new Set();
   const counterOffensives = [];
   const counterOffensivePasses = [];
   const usedCounterOffensiveKeys = new Set();
@@ -4144,6 +4334,7 @@ export function replayBattleState(state) {
   let pendingHazardous = null;
   let pendingGoToGround = null;
   let pendingSmokescreen = null;
+  let pendingRapidIngress = null;
   let pendingCounterOffensive = null;
   let forcedFightFormationId = "";
   let readyRangedAttack = null;
@@ -4203,6 +4394,10 @@ export function replayBattleState(state) {
     state.version < SMOKESCREEN_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacySmokescreenThroughSequence ?? 0);
+  const legacyRapidIngressThroughSequence =
+    state.version < RAPID_INGRESS_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyRapidIngressThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -4400,6 +4595,43 @@ export function replayBattleState(state) {
       clock: { ...clock },
     };
   };
+  const openRapidIngressWindow = (triggerEvent) => {
+    if (
+      triggerEvent.sequence <= legacyRapidIngressThroughSequence ||
+      clock.status !== "active" ||
+      clock.phase !== "movement" ||
+      clock.step !== "end" ||
+      pendingRapidIngress
+    ) {
+      return;
+    }
+    const responderPlayerId = otherPlayerId(state.players, clock.activePlayerId);
+    const usageKey = `${clock.battleRound}:${clock.turn}:${clock.phase}:${responderPlayerId}:rapid_ingress`;
+    const commandPoints = resources.get(responderPlayerId).get("command_points")?.value ?? 0;
+    if (commandPoints < 1 || usedRapidIngressKeys.has(usageKey)) return;
+    const candidateFormationIds = [...formations.values()]
+      .filter((formation) => {
+        const deployment = deploymentByFormation.get(formation.id);
+        return (
+          formation.playerId === responderPlayerId &&
+          !formationDestroyed(formation) &&
+          ["reserves", "strategic_reserves"].includes(deployment?.location) &&
+          !deployedFormationIds.has(formation.id) &&
+          !reserveArrivals.has(formation.id) &&
+          !battleShockedFormations.has(formation.id) &&
+          clock.battleRound >= deployment.earliestBattleRound
+        );
+      })
+      .map((formation) => formation.id)
+      .sort();
+    if (candidateFormationIds.length < 1) return;
+    pendingRapidIngress = {
+      triggerEventId: triggerEvent.id,
+      responderPlayerId,
+      candidateFormationIds,
+      clock: { ...clock },
+    };
+  };
   for (const event of state.events) {
     if (pendingTransportDestructions.size > 0 && event.type !== "transport_destroyed_resolved") {
       throw new Error("Destroyed Transport passengers must disembark immediately");
@@ -4449,6 +4681,12 @@ export function replayBattleState(state) {
       !["smokescreen_resolved", "smokescreen_passed"].includes(event.type)
     ) {
       throw new Error("Resolve or pass the pending Smokescreen window first");
+    }
+    if (
+      pendingRapidIngress &&
+      !["rapid_ingress_resolved", "rapid_ingress_passed"].includes(event.type)
+    ) {
+      throw new Error("Resolve or pass the pending Rapid Ingress window first");
     }
     if (
       pendingCounterOffensive &&
@@ -4779,6 +5017,7 @@ export function replayBattleState(state) {
         }
       }
       clock = expected;
+      openRapidIngressWindow(event);
       continue;
     }
     if (event.type === "choice_opened") {
@@ -4963,6 +5202,84 @@ export function replayBattleState(state) {
           clock: { ...clock },
         };
       }
+      continue;
+    }
+    if (event.type === "rapid_ingress_passed") {
+      if (
+        !pendingRapidIngress ||
+        event.triggerEventId !== pendingRapidIngress.triggerEventId ||
+        event.playerId !== pendingRapidIngress.responderPlayerId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Rapid Ingress pass does not match the pending reaction window");
+      }
+      rapidIngressPasses.push({ ...event, ...pendingRapidIngress });
+      pendingRapidIngress = null;
+      continue;
+    }
+    if (event.type === "rapid_ingress_resolved") {
+      if (
+        !pendingRapidIngress ||
+        event.triggerEventId !== pendingRapidIngress.triggerEventId ||
+        event.playerId !== pendingRapidIngress.responderPlayerId ||
+        !pendingRapidIngress.candidateFormationIds.includes(event.formationId) ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Rapid Ingress does not match the pending reaction window");
+      }
+      const formation = formations.get(event.formationId);
+      const deployment = deploymentByFormation.get(event.formationId);
+      const targetInReserves = Boolean(
+        ["reserves", "strategic_reserves"].includes(deployment?.location) &&
+          !deployedFormationIds.has(event.formationId) &&
+          !reserveArrivals.has(event.formationId),
+      );
+      const respondingPlayer = formation.playerId === pendingRapidIngress.responderPlayerId;
+      const placementLegal = rapidIngressPlacementIsLegal(event, deployment);
+      const usageKey = `${clock.battleRound}:${clock.turn}:${clock.phase}:${event.playerId}:rapid_ingress`;
+      const commandPoints = resources.get(event.playerId).get("command_points");
+      if (
+        event.commandPointsBefore !== commandPoints.value ||
+        !rapidIngressIsValid(
+          clock.phase,
+          clock.step,
+          clock.battleRound,
+          deployment.earliestBattleRound,
+          event.commandPointsBefore,
+          event.commandPointCost,
+          event.commandPointsAfter,
+          usedRapidIngressKeys.has(usageKey),
+          battleShockedFormations.has(formation.id),
+          event.firstRoundOutOfPhaseAllowed,
+          rapidIngressFlags(event, targetInReserves, respondingPlayer, placementLegal),
+        )
+      ) {
+        throw new Error("Rapid Ingress facts or Command Point spending are inconsistent");
+      }
+      resources.get(event.playerId).set("command_points", {
+        ...commandPoints,
+        value: event.commandPointsAfter,
+      });
+      usedRapidIngressKeys.add(usageKey);
+      const deployedTree = deployedFormationTree(event.formationId, embarkedByFormation);
+      for (const deployedFormationId of deployedTree) {
+        deployedFormationIds.add(deployedFormationId);
+      }
+      reserveArrivals.set(event.formationId, event);
+      movementByFormation.set(event.formationId, {
+        formationId: event.formationId,
+        movement: "normal",
+        clock: event.clock,
+        fromReserves: true,
+        rapidIngress: true,
+      });
+      rapidIngresses.push({
+        ...event,
+        deployedFormationIds: [...deployedTree].sort(),
+        passengersCannotDisembarkThisPhase: true,
+        largeModelRestrictedThisTurn: Boolean(event.largeModelEdgeException),
+      });
+      pendingRapidIngress = null;
       continue;
     }
     if (event.type === "formation_embarked") {
@@ -5544,6 +5861,18 @@ export function replayBattleState(state) {
           group.profiles.some((profile) => profile.type === "Ranged") &&
           formationSurvivingWeaponCount(formation, group.sourceSavedUnitId, group.groupId) > 0,
       );
+      if (
+        rapidIngresses.some(
+          (arrival) =>
+            arrival.formationId === formation.id &&
+            arrival.largeModelEdgeException &&
+            sameTurn(arrival.clock, clock),
+        )
+      ) {
+        throw new Error(
+          "A large model using the Strategic Reserves edge exception cannot shoot this turn",
+        );
+      }
       if (!hasSurvivingRangedWeapon) {
         throw new Error("Fire Overwatch requires a surviving ranged weapon");
       }
@@ -5664,6 +5993,19 @@ export function replayBattleState(state) {
       ) {
         throw new Error(
           "This formation requires an explicit source-rule override for Heroic Intervention",
+        );
+      }
+      if (
+        rapidIngresses.some(
+          (arrival) =>
+            arrival.formationId === formation.id &&
+            arrival.largeModelEdgeException &&
+            sameTurn(arrival.clock, clock),
+        ) &&
+        !event.stratagemEligibilityOverrideReason
+      ) {
+        throw new Error(
+          "The large-model Rapid Ingress exception prevents this formation from charging this turn",
         );
       }
       const chargeFlags = heroicInterventionChargeFlags(event);
@@ -5919,6 +6261,21 @@ export function replayBattleState(state) {
       }
       const stage = FIGHT_MOVE_STAGES.indexOf(event.stage) + 1;
       const destination = FIGHT_MOVE_DESTINATIONS.indexOf(event.destination);
+      const rapidIngressMovementRestricted = rapidIngresses.some(
+        (arrival) =>
+          arrival.formationId === event.formationId &&
+          arrival.largeModelEdgeException &&
+          sameTurn(arrival.clock, clock),
+      );
+      if (
+        event.movementRuleRestricted !== rapidIngressMovementRestricted ||
+        (rapidIngressMovementRestricted &&
+          (event.destination !== "none" || event.maximumModelMoveThousandths !== 0))
+      ) {
+        throw new Error(
+          "The large-model Rapid Ingress exception prevents Pile-in and Consolidation moves this turn",
+        );
+      }
       if (
         !fightMoveIsValid(
           stage,
@@ -7152,6 +7509,11 @@ export function replayBattleState(state) {
         })
       : [],
   );
+  const largeModelRapidIngressRestrictedFormationIds = new Set(
+    rapidIngresses
+      .filter((arrival) => arrival.largeModelEdgeException && sameTurn(arrival.clock, clock))
+      .map((arrival) => arrival.formationId),
+  );
   return {
     formations,
     activeAttackIds,
@@ -7212,6 +7574,10 @@ export function replayBattleState(state) {
     smokescreens,
     smokescreenPasses,
     activeSmokescreenEffects: smokescreens.filter((effect) => samePhase(effect.appliedAt, clock)),
+    pendingRapidIngress,
+    rapidIngresses,
+    rapidIngressPasses,
+    largeModelRapidIngressRestrictedFormationIds,
     pendingCounterOffensive,
     counterOffensives,
     counterOffensivePasses,
@@ -7341,6 +7707,9 @@ export function advanceBattleClock(state, id, at) {
   }
   if (replayed.pendingSmokescreen) {
     throw new Error("Resolve or pass the pending Smokescreen window first");
+  }
+  if (replayed.pendingRapidIngress) {
+    throw new Error("Resolve or pass the pending Rapid Ingress window first");
   }
   if (replayed.pendingCounterOffensive) {
     throw new Error("Resolve or pass the pending Counter-offensive window first");
@@ -7999,6 +8368,78 @@ export function battleSmokescreenEffect(state, formationId) {
   );
 }
 
+export function passRapidIngress(state, reason, id, at) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingRapidIngress;
+  if (!pending) throw new Error("No Rapid Ingress window is pending");
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "rapid_ingress_passed",
+    triggerEventId: pending.triggerEventId,
+    playerId: pending.responderPlayerId,
+    reason,
+    clock: replayed.clock,
+  });
+}
+
+export function resolveRapidIngress(
+  state,
+  formationId,
+  {
+    placementMethod = "source_rule",
+    placementConfirmed = false,
+    placementReason = "",
+    allModelsHaveDeepStrike = false,
+    whollyWithinSixOfBattlefieldEdge = false,
+    outsideEnemyDeploymentZone = false,
+    moreThanNineFromEnemyModels = false,
+    largeModelEdgeException = false,
+    touchingOwnBattlefieldEdge = false,
+    sourceRulePlacementConfirmed = false,
+    firstRoundOutOfPhaseAllowed = false,
+    firstRoundOutOfPhaseReason = "",
+  } = {},
+  id,
+  at,
+) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingRapidIngress;
+  if (!pending) throw new Error("No Rapid Ingress window is pending");
+  const commandPointsBefore =
+    replayed.resources.get(pending.responderPlayerId)?.get("command_points")?.value ?? 0;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "rapid_ingress_resolved",
+    triggerEventId: pending.triggerEventId,
+    playerId: pending.responderPlayerId,
+    formationId,
+    commandPointCost: 1,
+    commandPointsBefore,
+    commandPointsAfter: commandPointsBefore - 1,
+    placementMethod,
+    placementConfirmed,
+    placementReason,
+    allModelsHaveDeepStrike,
+    whollyWithinSixOfBattlefieldEdge,
+    outsideEnemyDeploymentZone,
+    moreThanNineFromEnemyModels,
+    largeModelEdgeException,
+    touchingOwnBattlefieldEdge,
+    sourceRulePlacementConfirmed,
+    firstRoundOutOfPhaseAllowed,
+    firstRoundOutOfPhaseReason,
+    arrivesAsReinforcements: true,
+    passengersRemainEmbarked: true,
+    clock: replayed.clock,
+  });
+}
+
 export function recordFormationCharge(
   state,
   formationId,
@@ -8363,6 +8804,9 @@ export function recordFightMove(
   if (!replayed.activeActivation || replayed.activeActivation.activationType !== "fight") {
     throw new Error("No Fight activation is in progress");
   }
+  const movementRuleRestricted = replayed.largeModelRapidIngressRestrictedFormationIds.has(
+    replayed.activeActivation.formationId,
+  );
   return appendEvent(state, {
     version: BATTLE_EVENT_VERSION,
     id,
@@ -8372,21 +8816,29 @@ export function recordFightMove(
     formationId: replayed.activeActivation.formationId,
     activationEventId: replayed.activeActivation.id,
     stage,
-    destination,
-    maximumModelMoveThousandths,
+    destination: movementRuleRestricted ? "none" : destination,
+    maximumModelMoveThousandths: movementRuleRestricted ? 0 : maximumModelMoveThousandths,
     movementReviewedByPlayer,
     movementReviewReason,
-    baseContactModelsStationary,
-    unitCoherencyConfirmed,
-    endsWithinEngagementRange,
-    allMovedModelsCloserToEnemy,
-    baseContactMaximized,
-    enemyDestinationImpossible,
-    objectiveId,
-    endsWithinObjectiveRange,
-    allMovedModelsCloserToObjective,
-    objectiveDestinationImpossible,
-    outcomeReason,
+    baseContactModelsStationary: movementRuleRestricted ? true : baseContactModelsStationary,
+    unitCoherencyConfirmed: movementRuleRestricted ? false : unitCoherencyConfirmed,
+    endsWithinEngagementRange: movementRuleRestricted ? false : endsWithinEngagementRange,
+    allMovedModelsCloserToEnemy: movementRuleRestricted ? false : allMovedModelsCloserToEnemy,
+    baseContactMaximized: movementRuleRestricted ? false : baseContactMaximized,
+    enemyDestinationImpossible: movementRuleRestricted ? false : enemyDestinationImpossible,
+    objectiveId: movementRuleRestricted ? "" : objectiveId,
+    endsWithinObjectiveRange: movementRuleRestricted ? false : endsWithinObjectiveRange,
+    allMovedModelsCloserToObjective: movementRuleRestricted
+      ? false
+      : allMovedModelsCloserToObjective,
+    objectiveDestinationImpossible: movementRuleRestricted ? false : objectiveDestinationImpossible,
+    outcomeReason: movementRuleRestricted
+      ? "Large-model Rapid Ingress restriction prevents movement this turn"
+      : outcomeReason,
+    movementRuleRestricted,
+    movementRuleRestrictionReason: movementRuleRestricted
+      ? "Large-model Strategic Reserves own-edge exception"
+      : "",
     meleeAttacksCompleteConfirmed,
     meleeAttacksCompletionReason,
     clock: replayed.clock,
@@ -8593,6 +9045,7 @@ export function battleCanStartFormationActivation(
     replayed.pendingFireOverwatch ||
     replayed.pendingHeroicIntervention ||
     replayed.pendingSmokescreen ||
+    replayed.pendingRapidIngress ||
     replayed.pendingCounterOffensive ||
     replayed.activeActivation ||
     replayed.completedActivations.has(
@@ -8602,6 +9055,9 @@ export function battleCanStartFormationActivation(
     return false;
   }
   if (replayed.clock.phase === "shooting") {
+    if (replayed.largeModelRapidIngressRestrictedFormationIds.has(attackerFormationId)) {
+      return false;
+    }
     if (weaponType !== "Ranged") return false;
     if (formation.playerId !== replayed.clock.activePlayerId) return false;
     const movement = replayed.movementByFormation.get(attackerFormationId);

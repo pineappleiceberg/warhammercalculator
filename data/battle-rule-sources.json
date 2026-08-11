@@ -38,6 +38,7 @@
         "Counter-offensive timing after an enemy unit fights, 2CP cost, Engagement Range and not-yet-fought target restrictions, and fights-next interruption",
         "Go to Ground timing, Infantry target, 1CP cost, 6+ invulnerable save, Benefit of Cover, and phase duration",
         "Smokescreen timing after target selection, Smoke target, 1CP cost, Benefit of Cover, Stealth, and phase duration",
+        "Rapid Ingress timing at the end of the opponent's Movement phase, Reserve target, 1CP cost, normal battle-round eligibility, Reinforcements-step arrival, and Strategic Reserves placement",
         "Benefit of Cover save modifier, AP 0 restriction for 3+ or better saves, non-cumulative effect, and Ignores Cover interaction"
       ]
     },
@@ -49,13 +50,14 @@
       "url": "https://assets.warhammer-community.com/eng_22-10_warhammer40000_core_rules_updates-kikyythcsl-5iydvuj9w6.pdf",
       "retrievedAt": "2026-08-10",
       "sha256": "27960a4d4affecd450af69c54d7583bcc2941b00ba5845f5786a630bdec7f4ba",
-      "pages": [7, 8, 10, 18, 21],
+      "pages": [7, 8, 10, 12, 14, 18, 21],
       "usedFor": [
         "Heroic Intervention timing, target eligibility, 6-inch range, 1CP cost, Walker restriction, sole target, out-of-phase Charge resolution, and suppressed Charge bonus",
         "Fire Overwatch timing after setup, move starts and ends, and charge declarations; 24-inch visible-target eligibility; 1CP cost; once-per-turn limit; Titanic exclusion; unmodified 6 Hit and Critical Hit thresholds; out-of-phase rule and Firing Deck exclusions",
         "Hazardous test count, failed-test bearer priority, three mortal wounds allocated without spillover, and Fire Overwatch Charge-phase deferral until after the charging unit ends its Charge move",
         "Benefit of Cover granted by a rule even when the affected unit is not within terrain",
-        "duplicated Stealth abilities are not cumulative"
+        "duplicated Stealth abilities are not cumulative",
+        "Rapid Ingress Deep Strike permission for complete Deep Strike units, first-round out-of-phase eligibility, the prohibition on passengers disembarking that phase, and the large-model Strategic Reserves own-edge exception with its turn-long action restriction"
       ]
     }
   ]

@@ -171,6 +171,12 @@ int main(void) {
                                    fight_enemy_flags));
     assert(!whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN, WHC_FIGHT_DESTINATION_NONE, 3000u,
                                     fight_enemy_flags));
+    const uint32_t fight_rule_restricted = WHC_FIGHT_MOVE_REVIEWED_BY_PLAYER |
+                                           WHC_FIGHT_MOVE_BASE_CONTACT_STATIONARY |
+                                           WHC_FIGHT_MOVE_OUTCOME_EXPLAINED |
+                                           WHC_FIGHT_MOVE_RULE_RESTRICTED;
+    assert(whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN, WHC_FIGHT_DESTINATION_NONE, 0u,
+                                   fight_rule_restricted));
     assert(whc_heroic_intervention_is_valid(3u, 4u, 0, 7000u, 5500u, 5500u, true, charge_flags,
                                             WHC_HEROIC_FLAGS_MASK));
     assert(!whc_heroic_intervention_is_valid(3u, 4u, 0, 7000u, 6001u, 5500u, true, charge_flags,
@@ -217,6 +223,18 @@ int main(void) {
     assert(!whc_smokescreen_is_valid(
         WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, false, false,
         WHC_SMOKESCREEN_FLAGS_MASK & ~WHC_SMOKESCREEN_BENEFIT_OF_COVER));
+    assert(whc_rapid_ingress_is_valid(
+        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 2u, 2u, 2u, 1u, 1u, false,
+        false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(whc_rapid_ingress_is_valid(
+        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 1u, 1u, 1u, 1u, 0u, false,
+        false, true, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(!whc_rapid_ingress_is_valid(
+        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 1u, 1u, 1u, 1u, 0u, false,
+        false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(!whc_rapid_ingress_is_valid(
+        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_REINFORCEMENTS, 2u, 2u, 2u, 1u, 1u,
+        false, false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
     assert(whc_ranged_declaration_is_valid(3u, 3u, 2u, 2u, 3u, 3u,
                                            WHC_RANGED_DECLARATION_FLAGS_MASK));
     assert(!whc_ranged_declaration_is_valid(3u, 3u, 3u, 2u, 3u, 3u,

@@ -25,6 +25,7 @@ import {
   fightMoveIsValid,
   fireOverwatchIsValid,
   goToGroundIsValid,
+  rapidIngressIsValid,
   smokescreenIsValid,
   hazardousResolutionIsValid,
   heroicInterventionIsValid,
@@ -109,6 +110,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_hazardous_resolution_is_valid, "function");
   assert.equal(typeof calculator._whc_go_to_ground_is_valid, "function");
   assert.equal(typeof calculator._whc_smokescreen_is_valid, "function");
+  assert.equal(typeof calculator._whc_rapid_ingress_is_valid, "function");
   assert.equal(typeof calculator._whc_counter_offensive_is_valid, "function");
   assert.equal(typeof calculator._whc_ranged_declaration_is_valid, "function");
   assert.equal(typeof calculator._whc_transport_load_is_valid, "function");
@@ -225,6 +227,9 @@ test("WebAssembly and JavaScript agree on reviewed Fight movements", () => {
     [2, 1, 3000, 63],
     [2, 2, 2500, 1507],
     [2, 0, 0, 1633],
+    [1, 0, 0, 3105],
+    [2, 0, 0, 3105],
+    [1, 1, 0, 3105],
     [1, 2, 1000, 1507],
     [1, 0, 1, 1121],
     [2, 1, 3001, 63],
@@ -357,6 +362,39 @@ test("WebAssembly and JavaScript agree on Smokescreen resolution", () => {
         values[4],
         values[5],
         values[6],
+      ),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on Rapid Ingress resolution", () => {
+  const cases = [
+    [2, 3, 2, 2, 2, 1, 1, false, false, false, 31],
+    [2, 3, 1, 1, 1, 1, 0, false, false, true, 31],
+    [2, 2, 2, 2, 2, 1, 1, false, false, false, 31],
+    [3, 3, 2, 2, 2, 1, 1, false, false, false, 31],
+    [2, 3, 1, 1, 1, 1, 0, false, false, false, 31],
+    [2, 3, 1, 2, 2, 1, 1, false, false, true, 31],
+    [2, 3, 2, 2, 0, 1, 0, false, false, false, 31],
+    [2, 3, 2, 2, 2, 1, 1, true, false, false, 31],
+    [2, 3, 2, 2, 2, 1, 1, false, true, false, 31],
+    [2, 3, 2, 2, 2, 1, 1, false, false, false, 15],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_rapid_ingress_is_valid(...values)),
+      rapidIngressIsValid(
+        values[0] === 2 ? "movement" : "shooting",
+        values[1] === 3 ? "end" : "reinforcements",
+        values[2],
+        values[3],
+        values[4],
+        values[5],
+        values[6],
+        values[7],
+        values[8],
+        values[9],
+        values[10],
       ),
     );
   }

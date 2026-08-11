@@ -34,6 +34,7 @@ import {
   hazardousBearerOptions,
   passFireOverwatch,
   passGoToGround,
+  passRapidIngress,
   passSmokescreen,
   passHeroicIntervention,
   passFightPriority,
@@ -48,6 +49,7 @@ import {
   replayBattleState,
   resolveHazardousDamage,
   resolveGoToGround,
+  resolveRapidIngress,
   resolveSmokescreen,
   resolveHeroicIntervention,
   resolveCounterOffensive,
@@ -1034,7 +1036,7 @@ test("pins the official battle-state rules source", () => {
     (source) => source.id === "core-rules-updates-10e-2025-10",
   );
   assert.ok(updates);
-  assert.deepEqual(updates.pages, [7, 8, 10, 18, 21]);
+  assert.deepEqual(updates.pages, [7, 8, 10, 12, 14, 18, 21]);
   assert.equal(updates.sha256, "27960a4d4affecd450af69c54d7583bcc2941b00ba5845f5786a630bdec7f4ba");
   assert.equal(
     updates.usedFor.some((usage) => /Heroic Intervention/i.test(usage)),
@@ -1057,6 +1059,16 @@ test("pins the official battle-state rules source", () => {
     updates.usedFor.some(
       (usage) => /duplicated Stealth/i.test(usage) && /not cumulative/i.test(usage),
     ),
+    true,
+  );
+  assert.equal(
+    battleRuleSources.sources[0].usedFor.some(
+      (usage) => /Rapid Ingress/i.test(usage) && /opponent's Movement phase/i.test(usage),
+    ),
+    true,
+  );
+  assert.equal(
+    updates.usedFor.some((usage) => /Rapid Ingress/i.test(usage) && /Deep Strike/i.test(usage)),
     true,
   );
   assert.equal(
@@ -4640,7 +4652,14 @@ test("reports a Reserve formation destroyed when the battle ends off battlefield
   );
   state = startBattle(state, "player-1", "start", 6);
   while (replayBattleState(state).clock.status !== "complete") {
-    state = advanceBattleClock(state, `complete-${state.events.length}`, state.events.length + 1);
+    state = replayBattleState(state).pendingRapidIngress
+      ? passRapidIngress(
+          state,
+          "Keep the formation off the battlefield",
+          `complete-rapid-pass-${state.events.length}`,
+          state.events.length + 1,
+        )
+      : advanceBattleClock(state, `complete-${state.events.length}`, state.events.length + 1);
   }
   const replayed = replayBattleState(state);
   assert.deepEqual([...replayed.reserveDestroyedFormationIds], [attackerFormation.id]);
@@ -4673,6 +4692,337 @@ test("rejects Fortifications in Strategic Reserves", () => {
       ),
     /Fortifications cannot/,
   );
+});
+
+function rapidIngressBattle(location = "strategic_reserves", earliestBattleRound = 2) {
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), attackerFormation, "rapid-register-active", 1),
+    formation,
+    "rapid-register-reserve",
+    2,
+  );
+  state = configureBattleMission(
+    state,
+    {
+      name: "Rapid Ingress test",
+      commandPointsPerCommandPhase: 0,
+      startingCommandPoints: { "player-1": 0, "player-2": 1 },
+      objectives: [],
+    },
+    "rapid-mission",
+    3,
+  );
+  state = declareFormationDeployment(
+    state,
+    attackerFormation.id,
+    "battlefield",
+    {},
+    "rapid-declare-active",
+    4,
+  );
+  state = declareFormationDeployment(
+    state,
+    formation.id,
+    location,
+    {
+      points: location === "strategic_reserves" ? 100 : 0,
+      earliestBattleRound,
+      eligibilityConfirmed: true,
+      eligibilityReason:
+        location === "strategic_reserves" ? "Core Strategic Reserves" : "Source Reserve rule",
+    },
+    "rapid-declare-reserve",
+    5,
+  );
+  state = deployFormation(
+    state,
+    attackerFormation.id,
+    { placementConfirmed: true, placementReason: "Deployment zone" },
+    "rapid-deploy-active",
+    6,
+  );
+  return startBattle(state, "player-1", "rapid-start", 7);
+}
+
+test("opens and resolves canonical Rapid Ingress at the opponent Movement phase end", () => {
+  let state = rapidIngressBattle();
+  state = advanceTo(
+    state,
+    (clock) =>
+      clock.battleRound === 2 &&
+      clock.activePlayerId === "player-1" &&
+      clock.phase === "movement" &&
+      clock.step === "end",
+    "rapid-to-round-two-end",
+  );
+  let replayed = replayBattleState(state);
+  assert.deepEqual(replayed.pendingRapidIngress.candidateFormationIds, [formation.id]);
+  assert.equal(replayed.pendingRapidIngress.responderPlayerId, "player-2");
+  assert.throws(
+    () => advanceBattleClock(state, "rapid-blocked", state.events.length + 1),
+    /Rapid Ingress window/,
+  );
+
+  const declined = passRapidIngress(
+    state,
+    "Keep the formation in Reserves",
+    "rapid-pass",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(declined).pendingRapidIngress, null);
+  assert.equal(replayBattleState(declined).rapidIngressPasses.length, 1);
+
+  state = resolveRapidIngress(
+    state,
+    formation.id,
+    {
+      placementMethod: "strategic_reserves",
+      placementConfirmed: true,
+      placementReason: "Wholly within 6 inches of the side edge and outside 9 inches",
+      whollyWithinSixOfBattlefieldEdge: true,
+      outsideEnemyDeploymentZone: true,
+      moreThanNineFromEnemyModels: true,
+    },
+    "rapid-resolve",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.pendingRapidIngress, null);
+  assert.equal(replayed.deployedFormationIds.has(formation.id), true);
+  assert.equal(replayed.offBattlefieldFormationIds.has(formation.id), false);
+  assert.equal(replayed.resources.get("player-2").get("command_points").value, 0);
+  assert.equal(replayed.reserveArrivals.get(formation.id).type, "rapid_ingress_resolved");
+  assert.deepEqual(replayed.movementByFormation.get(formation.id), {
+    formationId: formation.id,
+    movement: "normal",
+    clock: replayed.clock,
+    fromReserves: true,
+    rapidIngress: true,
+  });
+  assert.equal(replayed.rapidIngresses[0].passengersCannotDisembarkThisPhase, true);
+
+  const tampered = structuredClone(state);
+  tampered.events.find((event) => event.id === "rapid-resolve").outsideEnemyDeploymentZone = false;
+  assert.throws(() => normalizeBattleState(tampered), /Rapid Ingress facts/i);
+});
+
+test("enforces the first-round out-of-phase rule and complete Deep Strike formation", () => {
+  let state = rapidIngressBattle("reserves", 1);
+  state = advanceTo(
+    state,
+    (clock) =>
+      clock.battleRound === 1 &&
+      clock.activePlayerId === "player-1" &&
+      clock.phase === "movement" &&
+      clock.step === "end",
+    "rapid-to-round-one-end",
+  );
+  assert.ok(replayBattleState(state).pendingRapidIngress);
+  assert.throws(
+    () =>
+      resolveRapidIngress(
+        state,
+        formation.id,
+        {
+          placementMethod: "deep_strike",
+          placementConfirmed: true,
+          placementReason: "Outside 9 inches",
+          allModelsHaveDeepStrike: true,
+          moreThanNineFromEnemyModels: true,
+        },
+        "rapid-round-one-without-source",
+        state.events.length + 1,
+      ),
+    /Rapid Ingress facts/i,
+  );
+  state = resolveRapidIngress(
+    state,
+    formation.id,
+    {
+      placementMethod: "deep_strike",
+      placementConfirmed: true,
+      placementReason: "Every model Deep Strikes outside 9 inches",
+      allModelsHaveDeepStrike: true,
+      moreThanNineFromEnemyModels: true,
+      firstRoundOutOfPhaseAllowed: true,
+      firstRoundOutOfPhaseReason: "Source rule permits a first-round Reserve setup in any turn",
+    },
+    "rapid-round-one",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).rapidIngresses[0].placementMethod, "deep_strike");
+
+  const partialDeepStrike = structuredClone(state);
+  partialDeepStrike.events.find((event) => event.id === "rapid-round-one").allModelsHaveDeepStrike =
+    false;
+  assert.throws(() => normalizeBattleState(partialDeepStrike), /Rapid Ingress facts/i);
+});
+
+test("enforces the large-model Rapid Ingress action restriction without suppressing melee attacks", () => {
+  let state = rapidIngressBattle();
+  state = advanceTo(
+    state,
+    (clock) =>
+      clock.battleRound === 2 &&
+      clock.activePlayerId === "player-1" &&
+      clock.phase === "movement" &&
+      clock.step === "move_units",
+    "large-rapid-to-move-units",
+  );
+  state = recordFormationMovement(
+    state,
+    attackerFormation.id,
+    "stationary",
+    "large-rapid-attacker-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "end",
+    "large-rapid-to-movement-end",
+  );
+  state = resolveRapidIngress(
+    state,
+    formation.id,
+    {
+      placementMethod: "strategic_reserves",
+      placementConfirmed: true,
+      placementReason: "Large model touches its own battlefield edge outside 9 inches",
+      moreThanNineFromEnemyModels: true,
+      largeModelEdgeException: true,
+      touchingOwnBattlefieldEdge: true,
+    },
+    "large-rapid-resolve",
+    state.events.length + 1,
+  );
+  assert.equal(
+    replayBattleState(state).largeModelRapidIngressRestrictedFormationIds.has(formation.id),
+    true,
+  );
+  state = changeBattleResource(
+    state,
+    {
+      playerId: "player-2",
+      resourceId: "command_points",
+      name: "Command Points",
+      delta: 2,
+      reason: "Test reaction restrictions",
+    },
+    "large-rapid-grant-cp",
+    state.events.length + 1,
+  );
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "charge" && clock.step === "charge_moves",
+    "large-rapid-to-charge",
+  );
+  state = declareFormationCharge(
+    state,
+    attackerFormation.id,
+    [formation.id],
+    {
+      targetFacts: [{ formationId: formation.id, startDistanceThousandths: 8000 }],
+      phaseStartEligibilityConfirmed: true,
+      phaseStartEligibilityReason: "Eligible at the start of the Charge phase",
+      startedOutsideEngagementRange: true,
+    },
+    "large-rapid-charge-declared",
+    state.events.length + 1,
+  );
+  assert.throws(
+    () =>
+      startFireOverwatch(
+        state,
+        formation.id,
+        {
+          distanceThousandths: 8000,
+          targetVisible: true,
+          shootingEligibilityConfirmed: true,
+          shootingEligibilityReason: "Otherwise eligible to shoot",
+          outOfPhaseRestrictionsConfirmed: true,
+          outOfPhaseRestrictionsReason: "Out-of-phase rules reviewed",
+        },
+        "large-rapid-overwatch",
+        state.events.length + 1,
+      ),
+    /cannot shoot this turn/i,
+  );
+  state = passFireOverwatch(
+    state,
+    "Large-model Rapid Ingress restriction prevents shooting",
+    "large-rapid-pass-overwatch",
+    state.events.length + 1,
+  );
+  state = recordFormationCharge(
+    state,
+    attackerFormation.id,
+    [formation.id],
+    successfulChargeOptions(formation.id),
+    "large-rapid-charge-resolved",
+    state.events.length + 1,
+  );
+  assert.throws(
+    () =>
+      resolveHeroicIntervention(
+        state,
+        formation.id,
+        {
+          successful: true,
+          rolls: [3, 4],
+          chargeDistanceThousandths: 7000,
+          startDistanceThousandths: 6000,
+          targetEligibilityConfirmed: true,
+          targetEligibilityReason: "Within 6 inches of the triggering charger",
+          startedOutsideEngagementRange: true,
+          maximumModelMoveThousandths: 5000,
+          endsWithinEngagementRange: true,
+          unitCoherencyConfirmed: true,
+          nonTargetEngagementRangeAvoided: true,
+          allModelsCloserToTarget: true,
+          baseContactMaximized: true,
+          movementReviewedByPlayer: true,
+          movementReviewReason: "Player reviewed every endpoint",
+        },
+        "large-rapid-heroic",
+        state.events.length + 1,
+      ),
+    /prevents this formation from charging/i,
+  );
+  state = passHeroicIntervention(
+    state,
+    "Large-model Rapid Ingress restriction prevents charging",
+    "large-rapid-pass-heroic",
+    state.events.length + 1,
+  );
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "fight" && clock.step === "fights_first",
+    "large-rapid-to-fight",
+  );
+  state = advanceBattleClock(state, "large-rapid-to-remaining", state.events.length + 1);
+  assert.equal(
+    battleCanStartFormationActivation(state, formation.id, {
+      weaponType: "Melee",
+      eligibilityOverride: true,
+    }),
+    true,
+  );
+  state = startFormationActivation(
+    state,
+    formation.id,
+    { eligibilityOverride: true, overrideReason: "The enemy charged this formation" },
+    "large-rapid-fight-start",
+    state.events.length + 1,
+  );
+  state = recordFightMove(
+    state,
+    "pile_in",
+    enemyFightMoveOptions("pile_in"),
+    "large-rapid-pile-in",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).activeActivation.pileIn.destination, "none");
+  assert.equal(replayBattleState(state).activeActivation.pileIn.movementRuleRestricted, true);
 });
 
 test("replays the versioned cross-surface golden battle", () => {

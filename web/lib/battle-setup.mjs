@@ -10,6 +10,7 @@ import {
   HAZARDOUS_BATTLE_STATE_VERSION,
   HEROIC_INTERVENTION_BATTLE_STATE_VERSION,
   RANGED_DECLARATION_BATTLE_STATE_VERSION,
+  RAPID_INGRESS_BATTLE_STATE_VERSION,
   SETUP_RULES_BATTLE_STATE_VERSION,
   SMOKESCREEN_BATTLE_STATE_VERSION,
   ROSTER_BATTLE_STATE_VERSION,
@@ -513,6 +514,10 @@ export function initializeBattleForLists({
             sourceVersion < SMOKESCREEN_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacySmokescreenThroughSequence ?? 0),
+          legacyRapidIngressThroughSequence:
+            sourceVersion < RAPID_INGRESS_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyRapidIngressThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

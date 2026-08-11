@@ -51,7 +51,8 @@
 #define WHC_FIGHT_MOVE_CLOSER_TO_OBJECTIVE 256u
 #define WHC_FIGHT_MOVE_OBJECTIVE_DESTINATION_IMPOSSIBLE 512u
 #define WHC_FIGHT_MOVE_OUTCOME_EXPLAINED 1024u
-#define WHC_FIGHT_MOVE_FLAGS_MASK 2047u
+#define WHC_FIGHT_MOVE_RULE_RESTRICTED 2048u
+#define WHC_FIGHT_MOVE_FLAGS_MASK 4095u
 #define WHC_HEROIC_TARGET_ELIGIBILITY_REVIEWED 1u
 #define WHC_HEROIC_VEHICLE_RESTRICTION_SATISFIED 2u
 #define WHC_HEROIC_SOLE_TRIGGER_TARGET 4u
@@ -85,6 +86,12 @@
 #define WHC_SMOKESCREEN_BENEFIT_OF_COVER 8u
 #define WHC_SMOKESCREEN_STEALTH 16u
 #define WHC_SMOKESCREEN_FLAGS_MASK 31u
+#define WHC_RAPID_INGRESS_TARGET_IN_RESERVES 1u
+#define WHC_RAPID_INGRESS_RESPONDING_PLAYER 2u
+#define WHC_RAPID_INGRESS_AS_REINFORCEMENTS 4u
+#define WHC_RAPID_INGRESS_PLACEMENT_LEGAL 8u
+#define WHC_RAPID_INGRESS_PASSENGERS_REMAIN_EMBARKED 16u
+#define WHC_RAPID_INGRESS_FLAGS_MASK 31u
 #define WHC_RANGED_DECLARATION_SAME_ACTIVATION 1u
 #define WHC_RANGED_DECLARATION_BEFORE_ATTACKS 2u
 #define WHC_RANGED_DECLARATION_ALL_ELIGIBLE 4u
@@ -125,6 +132,13 @@ enum whc_battle_phase {
     WHC_BATTLE_PHASE_CHARGE = 4u,
     WHC_BATTLE_PHASE_FIGHT = 5u,
     WHC_BATTLE_PHASE_COMPLETE = 6u
+};
+
+enum whc_movement_step {
+    WHC_MOVEMENT_STEP_START = 0u,
+    WHC_MOVEMENT_STEP_MOVE_UNITS = 1u,
+    WHC_MOVEMENT_STEP_REINFORCEMENTS = 2u,
+    WHC_MOVEMENT_STEP_END = 3u
 };
 
 enum whc_battle_event_kind {
@@ -273,7 +287,9 @@ bool whc_charge_resolution_is_valid(uint32_t die_one, uint32_t die_two, int32_t 
           destination == WHC_FIGHT_DESTINATION_OBJECTIVE && flags == 1507) ||
          (stage == WHC_FIGHT_MOVE_CONSOLIDATION &&
           destination == WHC_FIGHT_DESTINATION_NONE &&
-          maximum_model_move_thousandths == 0 && flags == 1633));
+          maximum_model_move_thousandths == 0 && flags == 1633) ||
+         (destination == WHC_FIGHT_DESTINATION_NONE &&
+          maximum_model_move_thousandths == 0 && flags == 3105));
 */
 bool whc_fight_move_is_valid(uint32_t stage, uint32_t destination,
                              uint32_t maximum_model_move_thousandths, uint32_t flags);
@@ -388,6 +404,27 @@ bool whc_counter_offensive_is_valid(uint32_t phase, uint32_t command_points_befo
 bool whc_smokescreen_is_valid(uint32_t phase, uint32_t command_points_before,
                               uint32_t command_point_cost, uint32_t command_points_after,
                               bool already_used, bool target_battle_shocked, uint32_t flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        phase == WHC_BATTLE_PHASE_MOVEMENT && step == WHC_MOVEMENT_STEP_END &&
+        battle_round >= 1 && battle_round <= 5 &&
+        earliest_battle_round >= 1 && earliest_battle_round <= 5 &&
+        battle_round >= earliest_battle_round &&
+        (battle_round != 1 || first_round_out_of_phase_allowed) &&
+        command_points_before >= 1 && command_points_before <= 100000 &&
+        command_point_cost == 1 &&
+        command_points_after == command_points_before - command_point_cost &&
+        !already_used && !target_battle_shocked &&
+        flags == WHC_RAPID_INGRESS_FLAGS_MASK;
+*/
+bool whc_rapid_ingress_is_valid(uint32_t phase, uint32_t step, uint32_t battle_round,
+                                uint32_t earliest_battle_round,
+                                uint32_t command_points_before,
+                                uint32_t command_point_cost,
+                                uint32_t command_points_after, bool already_used,
+                                bool target_battle_shocked,
+                                bool first_round_out_of_phase_allowed, uint32_t flags);
 
 /*@ assigns \nothing;
     ensures \result <==>
