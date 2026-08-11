@@ -9,6 +9,7 @@ import {
   HAZARDOUS_BATTLE_STATE_VERSION,
   HEROIC_INTERVENTION_BATTLE_STATE_VERSION,
   RANGED_DECLARATION_BATTLE_STATE_VERSION,
+  SETUP_RULES_BATTLE_STATE_VERSION,
   ROSTER_BATTLE_STATE_VERSION,
   TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
   TIMELINE_BATTLE_STATE_VERSION,
@@ -252,6 +253,7 @@ function legacyAggregateBearerFormation(existing, desired) {
   return {
     ...existing,
     keywords: desired.keywords,
+    deploymentTraits: desired.deploymentTraits,
     defensiveEquipmentCounts: existing.defensiveEquipmentCounts ?? desired.defensiveEquipmentCounts,
     assignedTransportFormationId: desired.assignedTransportFormationId,
     transportOptions: desired.transportOptions,
@@ -343,6 +345,7 @@ function registerCompleteRosters(catalogue, state, firstList, secondList, equipm
           formation: {
             ...existing.formation,
             keywords: formation.keywords,
+            deploymentTraits: formation.deploymentTraits,
             defensiveEquipmentCounts: formation.defensiveEquipmentCounts,
             weaponInventory: formation.weaponInventory,
             assignedTransportFormationId: formation.assignedTransportFormationId,
@@ -496,6 +499,10 @@ export function initializeBattleForLists({
             sourceVersion < RANGED_DECLARATION_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyRangedDeclarationsThroughSequence ?? 0),
+          legacySetupRulesThroughSequence:
+            sourceVersion < SETUP_RULES_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacySetupRulesThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

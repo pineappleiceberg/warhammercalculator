@@ -115,9 +115,10 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    Overwatch allocation until the triggering charger
    ends its Charge move. When deferred Hazardous damage and Heroic Intervention
    become due together, the active player chooses their resolution order and
-   both remain mandatory until resolved. Remaining work
-   includes Dedicated Transport and Aircraft/Hover setup exceptions, remaining
-   reactions and Stratagem
+   both remain mandatory until resolved. Empty Dedicated Transports now become
+   not deployed and are destroyed in round one, non-Hover Aircraft must begin
+   in Reserves, and source-locked Hover Aircraft can instead deploy normally or
+   enter Strategic Reserves. Remaining work includes remaining reactions and Stratagem
    windows, full geometry-backed
    target eligibility, and geometry-backed engagement.
 6. Normalize complete faction, detachment, enhancement, Stratagem, and mission

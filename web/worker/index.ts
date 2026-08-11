@@ -52,6 +52,7 @@ import {
 import {
   battleTransportOccupancy,
   battleTransportDeploymentChains,
+  battleInitialDeploymentRules,
   battleFormation,
   battleFormationHealth,
   battleSurvivingWeaponCount,
@@ -75,6 +76,7 @@ import {
   replayBattleState,
   transportLoadIsValid,
   transportDeploymentChainIsValid,
+  initialDeploymentIsValid,
   weaponBearerDeclarationIsValid,
   weaponInventoryDeclarationIsValid,
 } from "../lib/battle-state.mjs";
@@ -332,6 +334,7 @@ type CalculatorExports = {
   whc_ranged_declaration_is_valid(...values: number[]): number;
   whc_transport_load_is_valid(...values: number[]): number;
   whc_transport_deployment_chain_is_valid(...values: number[]): number;
+  whc_initial_deployment_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -479,6 +482,7 @@ async function loadCalculator() {
       typeof calculator.whc_ranged_declaration_is_valid !== "function" ||
       typeof calculator.whc_transport_load_is_valid !== "function" ||
       typeof calculator.whc_transport_deployment_chain_is_valid !== "function" ||
+      typeof calculator.whc_initial_deployment_is_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -1324,6 +1328,23 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         return chain;
       })
       .sort((left, right) => left.formationId.localeCompare(right.formationId));
+    const initialDeploymentRules = battleInitialDeploymentRules(state)
+      .map((report) => {
+        if (report.complete) {
+          const javascriptValid = initialDeploymentIsValid(...report.values);
+          const nativeValid = Boolean(calculator.whc_initial_deployment_is_valid(...report.values));
+          if (javascriptValid !== nativeValid || javascriptValid !== report.valid) {
+            throw new ServiceUnavailableError(
+              "Initial deployment rules diverged from the C/WebAssembly predicate",
+              "INITIAL_DEPLOYMENT_DIVERGENCE",
+            );
+          }
+        }
+        const { values, ...publicReport } = report;
+        void values;
+        return publicReport;
+      })
+      .sort((left, right) => left.formationId.localeCompare(right.formationId));
     return {
       schemaVersion: state.version,
       rulesSnapshot: state.rulesSnapshot,
@@ -1482,6 +1503,8 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
           }))
           .sort((left, right) => left.formationId.localeCompare(right.formationId)),
         destroyedAtBattleEndFormationIds: [...replayed.reserveDestroyedFormationIds].sort(),
+        destroyedInFirstRoundFormationIds: [...replayed.setupDestroyedFormationIds].sort(),
+        initialRules: initialDeploymentRules,
         transportChains: transportDeploymentChains,
       },
       transports: {

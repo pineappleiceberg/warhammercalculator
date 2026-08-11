@@ -228,6 +228,14 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     uint32_t transport_reserve_eligibility_count;
     bool transport_chain_valid;
     bool expected_transport_chain_valid;
+    uint32_t setup_is_dedicated_transport;
+    uint32_t setup_starting_passenger_count;
+    uint32_t setup_is_aircraft;
+    uint32_t setup_has_hover;
+    uint32_t setup_aircraft_mode;
+    uint32_t setup_root_location;
+    bool setup_valid;
+    bool expected_setup_valid;
 
     while (index < weapon_count) {
         generate_weapon(&input, &weapons[index]);
@@ -546,11 +554,41 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     expected_transport_chain_valid =
         transport_chain_length >= 1u && transport_chain_length <= 257u &&
         transport_unique_formations == transport_chain_length &&
-        transport_root_location >= WHC_DEPLOYMENT_ROOT_BATTLEFIELD &&
         transport_root_location <= WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES &&
         transport_reserve_eligibility_count <= transport_chain_length &&
-        (transport_root_location == WHC_DEPLOYMENT_ROOT_BATTLEFIELD ||
+        ((transport_root_location == WHC_DEPLOYMENT_ROOT_NOT_DEPLOYED &&
+          transport_reserve_eligibility_count == 0u) ||
+         transport_root_location == WHC_DEPLOYMENT_ROOT_BATTLEFIELD ||
          transport_reserve_eligibility_count == transport_chain_length);
     assert(transport_chain_valid == expected_transport_chain_valid);
+    setup_is_dedicated_transport = next_byte(&input);
+    setup_starting_passenger_count = next_u16(&input);
+    setup_is_aircraft = next_byte(&input);
+    setup_has_hover = next_byte(&input);
+    setup_aircraft_mode = next_byte(&input);
+    setup_root_location = next_byte(&input);
+    setup_valid = whc_initial_deployment_is_valid(
+        setup_is_dedicated_transport, setup_starting_passenger_count,
+        setup_is_aircraft, setup_has_hover, setup_aircraft_mode,
+        setup_root_location);
+    expected_setup_valid =
+        setup_is_dedicated_transport <= 1u && setup_is_aircraft <= 1u &&
+        setup_has_hover <= 1u && setup_aircraft_mode <= WHC_AIRCRAFT_MODE_HOVER &&
+        setup_root_location <= WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES &&
+        ((!setup_is_aircraft && setup_aircraft_mode == WHC_AIRCRAFT_MODE_NONE) ||
+         (setup_is_aircraft &&
+          (setup_aircraft_mode == WHC_AIRCRAFT_MODE_AIRCRAFT ||
+           (setup_aircraft_mode == WHC_AIRCRAFT_MODE_HOVER && setup_has_hover)))) &&
+        ((setup_is_dedicated_transport && setup_starting_passenger_count == 0u &&
+          setup_root_location == WHC_DEPLOYMENT_ROOT_NOT_DEPLOYED) ||
+         ((!setup_is_dedicated_transport || setup_starting_passenger_count > 0u) &&
+          setup_root_location != WHC_DEPLOYMENT_ROOT_NOT_DEPLOYED &&
+          (!setup_is_aircraft ||
+           (setup_aircraft_mode == WHC_AIRCRAFT_MODE_AIRCRAFT &&
+            setup_root_location == WHC_DEPLOYMENT_ROOT_RESERVES) ||
+           (setup_aircraft_mode == WHC_AIRCRAFT_MODE_HOVER &&
+            (setup_root_location == WHC_DEPLOYMENT_ROOT_BATTLEFIELD ||
+             setup_root_location == WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES)))));
+    assert(setup_valid == expected_setup_valid);
     return 0;
 }

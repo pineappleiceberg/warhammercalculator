@@ -27,8 +27,8 @@ state.
 
 ## Prioritized backlog
 
-1. Execute the empty Dedicated Transport and Aircraft/Hover setup exceptions,
-   then continue the remaining reactions, cover, and Stratagem windows.
+1. Execute the remaining reactions, terrain cover, and Stratagem timing windows,
+   starting with the highest-frequency mandatory choice not already represented.
 2. Build and enforce the source-locked faction, detachment, enhancement,
    Stratagem, terrain, and mission coverage matrix described by the complete
    battle requirements.
@@ -39,6 +39,19 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced guided play to battle-state version 20 with executable
+  empty Dedicated Transport and Aircraft/Hover setup exceptions. Locked
+  catalogue registrations preserve Dedicated Transport and Aircraft keywords
+  plus the source-derived Hover ability. An empty Dedicated Transport must be
+  marked not deployed and becomes destroyed when round one begins; an occupied
+  one deploys normally. Aircraft mode must start in Reserves, while a model with
+  Hover can declare that mode and deploy on the battlefield or enter Strategic
+  Reserves. Guided Play derives the legal defaults, the replay API exposes each
+  setup report and round-one destruction, and an ACSL-specified predicate is
+  differentially checked across C, WebAssembly, JavaScript, the API, fuzz, and
+  formal runtime checks. Version-19 histories migrate without retroactive rule
+  rejection. Official Core Rules pages 53 and 56 provide the source boundary.
 
 - 2026-08-11: Advanced guided play to battle-state version 19 with executable
   datasheet-permitted nested Transport deployment. The event replay now follows

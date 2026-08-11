@@ -8,6 +8,7 @@ import {
   advanceBattleClock,
   appendResolvedAttack as appendResolvedAttackEvent,
   battleEmbarkationOptions,
+  battleInitialDeploymentRules,
   battleFormationEmbarkedTransport,
   arriveFromReserves,
   battleFormationIsOnBattlefield,
@@ -398,11 +399,20 @@ function newBattle() {
 function deployAllOnBattlefield(state) {
   let next = state;
   for (const formation of replayBattleState(next).formations.values()) {
+    const aircraft = formation.deploymentTraits.aircraft;
+    const hover = formation.deploymentTraits.hover;
+    const location = aircraft && !hover ? "reserves" : "battlefield";
     next = declareFormationDeployment(
       next,
       formation.id,
-      "battlefield",
-      {},
+      location,
+      aircraft
+        ? {
+            aircraftMode: hover ? "hover" : "aircraft",
+            eligibilityConfirmed: location === "reserves",
+            eligibilityReason: location === "reserves" ? "Aircraft must start in Reserves" : "",
+          }
+        : {},
       `declare-${formation.id}`,
       next.events.length + 1,
     );
@@ -425,6 +435,207 @@ function deployAllOnBattlefield(state) {
   }
   return next;
 }
+
+function setupTraitsFormation(id, keywords, hover = false) {
+  return {
+    ...attackerFormation,
+    id: `player-1:${id}`,
+    sourceFormationId: id,
+    name: id,
+    keywords,
+    deploymentTraits: {
+      dedicatedTransport: keywords.includes("Dedicated Transport"),
+      aircraft: keywords.includes("Aircraft"),
+      hover,
+    },
+  };
+}
+
+function deployConfirmed(state, formationId, id) {
+  return deployFormation(
+    state,
+    formationId,
+    { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
+    id,
+    state.events.length + 1,
+  );
+}
+
+test("marks an empty Dedicated Transport not deployed and destroys it in round one", () => {
+  const dedicated = setupTraitsFormation("empty-dedicated-transport", [
+    "Dedicated Transport",
+    "Transport",
+    "Vehicle",
+  ]);
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), dedicated, "register-dedicated", 1),
+    formation,
+    "register-target",
+    2,
+  );
+  state = declareFormationDeployment(
+    state,
+    dedicated.id,
+    "not_deployed",
+    {},
+    "declare-not-deployed",
+    3,
+  );
+  state = declareFormationDeployment(state, formation.id, "battlefield", {}, "declare-target", 4);
+  state = deployConfirmed(state, formation.id, "deploy-target");
+
+  const report = battleInitialDeploymentRules(state).find(
+    (candidate) => candidate.formationId === dedicated.id,
+  );
+  assert.deepEqual(report, {
+    formationId: dedicated.id,
+    dedicatedTransport: true,
+    aircraft: false,
+    hasHover: false,
+    aircraftMode: "",
+    startingPassengerCount: 0,
+    rootFormationId: dedicated.id,
+    rootLocation: "not_deployed",
+    rootLocationCode: 0,
+    complete: true,
+    valid: true,
+    reason: "Initial deployment follows the locked setup rules",
+    values: [1, 0, 0, 0, 0, 0],
+  });
+  state = startBattle(state, "player-1", "start", 6);
+  const replayed = replayBattleState(state);
+  assert.deepEqual([...replayed.setupDestroyedFormationIds], [dedicated.id]);
+  assert.deepEqual(battleFormationHealth(state, dedicated.id), {
+    bodyguard: { modelsRemaining: 0, woundsLost: 0 },
+    leader: { modelsRemaining: 0, woundsLost: 0 },
+  });
+});
+
+test("requires an empty Dedicated Transport to be marked not deployed", () => {
+  const dedicated = setupTraitsFormation("illegal-empty-dedicated", [
+    "Dedicated Transport",
+    "Transport",
+    "Vehicle",
+  ]);
+  let state = registerBattleFormation(newBattle(), dedicated, "register-dedicated", 1);
+  state = declareFormationDeployment(state, dedicated.id, "battlefield", {}, "declare", 2);
+  state = deployConfirmed(state, dedicated.id, "deploy");
+  assert.throws(
+    () => startBattle(state, "player-1", "start", 4),
+    /empty Dedicated Transport cannot be deployed/,
+  );
+});
+
+test("allows an occupied Dedicated Transport to deploy normally", () => {
+  const dedicated = {
+    ...setupTraitsFormation("occupied-dedicated", ["Dedicated Transport", "Transport", "Vehicle"]),
+  };
+  const passengers = {
+    ...passengerFormation,
+    assignedTransportFormationId: dedicated.id,
+    transportOptions: [testTransportOption(dedicated.id, ["passengers"])],
+  };
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), dedicated, "register-dedicated", 1),
+    passengers,
+    "register-passengers",
+    2,
+  );
+  state = declareFormationDeployment(state, dedicated.id, "battlefield", {}, "declare-carrier", 3);
+  state = declareFormationDeployment(
+    state,
+    passengers.id,
+    "embarked",
+    { transportFormationId: dedicated.id },
+    "declare-passengers",
+    4,
+  );
+  state = deployConfirmed(state, dedicated.id, "deploy-carrier");
+  assert.doesNotThrow(() => startBattle(state, "player-1", "start", 6));
+});
+
+test("requires Aircraft to start in Reserves unless Hover was declared", () => {
+  const aircraft = setupTraitsFormation("aircraft", ["Aircraft", "Vehicle"]);
+  let invalid = registerBattleFormation(newBattle(), aircraft, "register-aircraft", 1);
+  invalid = declareFormationDeployment(
+    invalid,
+    aircraft.id,
+    "battlefield",
+    { aircraftMode: "aircraft" },
+    "declare-aircraft",
+    2,
+  );
+  invalid = deployConfirmed(invalid, aircraft.id, "deploy-aircraft");
+  assert.throws(
+    () => startBattle(invalid, "player-1", "start-invalid", 4),
+    /must start in Reserves/,
+  );
+
+  let valid = registerBattleFormation(newBattle(), aircraft, "register-aircraft", 1);
+  valid = declareFormationDeployment(
+    valid,
+    aircraft.id,
+    "reserves",
+    {
+      aircraftMode: "aircraft",
+      eligibilityConfirmed: true,
+      eligibilityReason: "Aircraft must start in Reserves",
+    },
+    "declare-aircraft",
+    2,
+  );
+  assert.doesNotThrow(() => startBattle(valid, "player-1", "start-valid", 3));
+});
+
+test("allows a Hover Aircraft on the battlefield or in Strategic Reserves", () => {
+  const hoverAircraft = setupTraitsFormation("hover-aircraft", ["Aircraft", "Vehicle"], true);
+  let battlefield = registerBattleFormation(newBattle(), hoverAircraft, "register-hover", 1);
+  battlefield = declareFormationDeployment(
+    battlefield,
+    hoverAircraft.id,
+    "battlefield",
+    { aircraftMode: "hover" },
+    "declare-hover",
+    2,
+  );
+  battlefield = deployConfirmed(battlefield, hoverAircraft.id, "deploy-hover");
+  assert.doesNotThrow(() => startBattle(battlefield, "player-1", "start-hover", 4));
+
+  let strategic = registerBattleFormation(newBattle(), hoverAircraft, "register-hover", 1);
+  strategic = declareFormationDeployment(
+    strategic,
+    hoverAircraft.id,
+    "strategic_reserves",
+    {
+      aircraftMode: "hover",
+      points: 100,
+      earliestBattleRound: 2,
+      eligibilityConfirmed: true,
+      eligibilityReason: "Hover model selected for Strategic Reserves",
+    },
+    "declare-hover",
+    2,
+  );
+  assert.doesNotThrow(() => startBattle(strategic, "player-1", "start-strategic", 3));
+
+  let invalid = registerBattleFormation(newBattle(), hoverAircraft, "register-hover", 1);
+  invalid = declareFormationDeployment(
+    invalid,
+    hoverAircraft.id,
+    "reserves",
+    {
+      aircraftMode: "hover",
+      eligibilityConfirmed: true,
+      eligibilityReason: "Incorrect generic Reserves placement",
+    },
+    "declare-hover",
+    2,
+  );
+  assert.throws(
+    () => startBattle(invalid, "player-1", "start-invalid", 3),
+    /battlefield or in Strategic Reserves/,
+  );
+});
 
 function registeredBattle() {
   let state = registerBattleFormation(
@@ -805,7 +1016,10 @@ test("pins the official battle-state rules source", () => {
   assert.equal(battleRuleSources.version, 1);
   assert.deepEqual(
     battleRuleSources.sources[0].pages,
-    [7, 8, 9, 16, 17, 18, 19, 20, 23, 25, 26, 29, 32, 33, 34, 35, 39, 41, 42, 43, 44, 53, 57, 60],
+    [
+      7, 8, 9, 16, 17, 18, 19, 20, 23, 25, 26, 29, 32, 33, 34, 35, 39, 41, 42, 43, 44, 53, 56, 57,
+      60,
+    ],
   );
   assert.equal(
     battleRuleSources.sources[0].sha256,
@@ -824,6 +1038,18 @@ test("pins the official battle-state rules source", () => {
   assert.equal(
     battleRuleSources.sources[0].usedFor.some(
       (usage) => /Go to Ground/i.test(usage) && /6\+ invulnerable/i.test(usage),
+    ),
+    true,
+  );
+  assert.equal(
+    battleRuleSources.sources[0].usedFor.some(
+      (usage) => /Dedicated Transport/i.test(usage) && /first-round destruction/i.test(usage),
+    ),
+    true,
+  );
+  assert.equal(
+    battleRuleSources.sources[0].usedFor.some(
+      (usage) => /Aircraft mandatory Reserve setup/i.test(usage) && /Hover/i.test(usage),
     ),
     true,
   );
@@ -3602,7 +3828,11 @@ test("resolves the immediate Heroic Intervention window without granting Charge 
 });
 
 test("rejects an Aircraft charge without an explicit rules override", () => {
-  const aircraft = { ...attackerFormation, keywords: ["Aircraft", "Vehicle"] };
+  const aircraft = {
+    ...attackerFormation,
+    keywords: ["Aircraft", "Vehicle"],
+    deploymentTraits: { dedicatedTransport: false, aircraft: true, hover: true },
+  };
   let state = registerBattleFormation(
     registerBattleFormation(newBattle(), aircraft, "register-aircraft", 1),
     formation,

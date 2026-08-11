@@ -124,6 +124,7 @@ def export(database: Path, output: Path) -> None:
                 "defensiveEquipment": [],
                 "firingDeck": None,
                 "firingDeckModelCost": 1,
+                "hasHover": False,
                 "transport": None,
                 "transportKeywords": [],
                 "leaderBodyguardIds": [],
@@ -321,6 +322,14 @@ def export(database: Path, output: Path) -> None:
                FROM unit_firing_deck_passenger_costs ORDER BY datasheet_id"""
         ):
             units[row["datasheet_id"]]["firingDeckModelCost"] = row["model_cost"]
+
+        for row in connection.execute(
+            """SELECT DISTINCT datasheet_id
+               FROM datasheet_abilities
+               WHERE lower(name) = 'hover'
+               ORDER BY datasheet_id"""
+        ):
+            units[row["datasheet_id"]]["hasHover"] = True
 
         transport_allowed: dict[tuple[str, int], list[str]] = {}
         for row in connection.execute(

@@ -1612,6 +1612,8 @@ static void test_transport_deployment_chain(void) {
     assert(whc_transport_deployment_chain_is_valid(
         1u, 1u, WHC_DEPLOYMENT_ROOT_BATTLEFIELD, 0u));
     assert(whc_transport_deployment_chain_is_valid(
+        1u, 1u, WHC_DEPLOYMENT_ROOT_NOT_DEPLOYED, 0u));
+    assert(whc_transport_deployment_chain_is_valid(
         3u, 3u, WHC_DEPLOYMENT_ROOT_BATTLEFIELD, 0u));
     assert(whc_transport_deployment_chain_is_valid(
         3u, 3u, WHC_DEPLOYMENT_ROOT_RESERVES, 3u));
@@ -1622,6 +1624,38 @@ static void test_transport_deployment_chain(void) {
     assert(!whc_transport_deployment_chain_is_valid(
         3u, 3u, WHC_DEPLOYMENT_ROOT_RESERVES, 2u));
     assert(!whc_transport_deployment_chain_is_valid(0u, 0u, 0u, 0u));
+}
+
+/*@ assigns \nothing;
+ */
+static void test_initial_deployment(void) {
+    assert(whc_initial_deployment_is_valid(0u, 0u, 0u, 0u,
+                                           WHC_AIRCRAFT_MODE_NONE,
+                                           WHC_DEPLOYMENT_ROOT_BATTLEFIELD));
+    assert(whc_initial_deployment_is_valid(1u, 0u, 0u, 0u,
+                                           WHC_AIRCRAFT_MODE_NONE,
+                                           WHC_DEPLOYMENT_ROOT_NOT_DEPLOYED));
+    assert(!whc_initial_deployment_is_valid(1u, 0u, 0u, 0u,
+                                            WHC_AIRCRAFT_MODE_NONE,
+                                            WHC_DEPLOYMENT_ROOT_BATTLEFIELD));
+    assert(whc_initial_deployment_is_valid(1u, 1u, 0u, 0u,
+                                           WHC_AIRCRAFT_MODE_NONE,
+                                           WHC_DEPLOYMENT_ROOT_BATTLEFIELD));
+    assert(whc_initial_deployment_is_valid(0u, 0u, 1u, 0u,
+                                           WHC_AIRCRAFT_MODE_AIRCRAFT,
+                                           WHC_DEPLOYMENT_ROOT_RESERVES));
+    assert(!whc_initial_deployment_is_valid(0u, 0u, 1u, 0u,
+                                            WHC_AIRCRAFT_MODE_AIRCRAFT,
+                                            WHC_DEPLOYMENT_ROOT_BATTLEFIELD));
+    assert(whc_initial_deployment_is_valid(0u, 0u, 1u, 1u,
+                                           WHC_AIRCRAFT_MODE_HOVER,
+                                           WHC_DEPLOYMENT_ROOT_BATTLEFIELD));
+    assert(whc_initial_deployment_is_valid(0u, 0u, 1u, 1u,
+                                           WHC_AIRCRAFT_MODE_HOVER,
+                                           WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES));
+    assert(!whc_initial_deployment_is_valid(0u, 0u, 1u, 1u,
+                                            WHC_AIRCRAFT_MODE_HOVER,
+                                            WHC_DEPLOYMENT_ROOT_RESERVES));
 }
 
 /*@ assigns \nothing;
@@ -1695,6 +1729,7 @@ int main(void) {
     test_ranged_declaration();
     test_transport_load();
     test_transport_deployment_chain();
+    test_initial_deployment();
     test_battle_clock();
     puts("all tests passed");
     return 0;
