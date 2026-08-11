@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 30 as soon as both lists are selected. Every
+creates battle-state version 31 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -675,7 +675,9 @@ use the Attacker's left-near corner as the stable origin and retain manual, UWB,
 camera, or imported provenance. After each battlefield formation is deployed,
 the same exact workflow records every stable model identity with a circular,
 elliptical, or rectangular base or baseless-model footprint, its centre,
-elevation, and rotation. Rotated footprint extents must remain inside the table;
+boundary-bottom elevation, vertical extent, and rotation. Based models use a
+zero vertical extent because measurements are made to the base; baseless models
+record the measured hull height. Rotated footprint extents must remain inside the table;
 missing, duplicate, unrecognized, unsupported, or out-of-bounds models fail
 closed. Because flat coordinates cannot safely prove multilevel or irregular
 physical clearance, model/model and model/objective non-overlap are retained as
@@ -687,9 +689,8 @@ optional intermediate path points, measured farthest-part distance, and reviewed
 maximum distance. The engine rejects missing or duplicate live identities,
 wrong per-segment survivor counts, changed footprints, mismatched path starts or
 endpoints, paths outside the table, distances shorter than the centre path, and
-distances above the reviewed allowance. Terrain clearance, model overlap,
-objective clearance, coherency, and Engagement Range remain explicit
-reason-bearing tabletop reviews rather than inferred facts. Casualties mark the
+distances above the reviewed allowance. Terrain clearance and model overlap
+remain explicit reason-bearing tabletop reviews. Casualties mark the
 last position snapshot stale until the next snapshot identifies the surviving
 models; undo restores freshness when the identities match again. If a Charge,
 Pile In, Consolidation, or other reviewed physical move made the saved start
@@ -709,6 +710,20 @@ normal forced disembarkation uses the reviewed 3-inch placement boundary and
 Emergency Disembarkation uses the reviewed 6-inch boundary after unplaceable
 models and rolled mortal wounds are applied. All queued passenger snapshots
 block later play until their surviving model identities have exact endpoints.
+Version 31 derives current unit coherency, Engagement Range, and objective-marker
+proximity from the closest points of circular, elliptical, or rotated rectangular
+measurement boundaries. It applies the Core Rules' separate horizontal and
+vertical thresholds, includes the recommended 40 mm objective marker footprint,
+requires two neighbours for units of seven or more models, and rejects newly
+recorded incoherent exact snapshots. The worker returns the same structured
+per-model facts and independently validates each executable summary through the
+ACSL-specified C/WebAssembly predicate. Stale casualty geometry and legacy
+baseless hulls without a measured height report `unknown` instead of producing a
+guess. Version-30 histories gain an explicit migration boundary and zero-valued
+legacy hull heights; no missing baseless height is invented. Visibility, Benefit
+of Cover, terrain clearance, and objective control remain separately reviewed
+because the current terrain representation does not contain sufficient 3D wall,
+opening, or model silhouette geometry.
 Version-25
 games migrate without invented terrain footprints, version-26 games migrate
 without invented deployment positions, and version-27 games migrate without
@@ -1367,6 +1382,8 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 - Deferred Devastating Wounds exact evaluation uses at most 2,047 live sparse
   states. Its preflight number is a conservative upper bound and can therefore
   recommend simulation for a volley that exact evaluation still solves.
+- Exact position snapshots execute proximity rules, but do not claim line of
+  sight or cover from flat terrain outlines.
 
 ## 10th edition profile database
 

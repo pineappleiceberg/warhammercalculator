@@ -288,6 +288,14 @@ int main(void) {
     assert(!whc_model_position_set_is_valid(3u, 3u, 3u, 3u, 3u, 3u, 3u, 3u,
                                             UINT32_MAX, 4u, 2u, 2u, 3u, 3u, 3u, 3u, 3u,
                                             3u, 3u, WHC_MODEL_POSITION_FLAGS_MASK));
+    assert(whc_spatial_facts_are_valid(3u, 3u, 1u, 3u, 2u, 5u, 1u,
+                                       WHC_SPATIAL_FACTS_FLAGS_MASK));
+    assert(whc_spatial_facts_are_valid(7u, 7u, 2u, 6u, 0u, 5u, 0u,
+                                       WHC_SPATIAL_FACTS_FLAGS_MASK));
+    assert(!whc_spatial_facts_are_valid(7u, 6u, 2u, 6u, 0u, 5u, 0u,
+                                        WHC_SPATIAL_FACTS_FLAGS_MASK));
+    assert(!whc_spatial_facts_are_valid(7u, 7u, 1u, 6u, 0u, 5u, 0u,
+                                        WHC_SPATIAL_FACTS_FLAGS_MASK));
 
     return 0;
 }

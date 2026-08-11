@@ -3,6 +3,7 @@ import {
   BATTLE_EVENT_VERSION,
   BATTLE_STATE_VERSION,
   EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION,
+  SPATIAL_FACTS_BATTLE_STATE_VERSION,
   TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION,
   CHARGE_MOVE_BATTLE_STATE_VERSION,
   COUNTER_OFFENSIVE_BATTLE_STATE_VERSION,
@@ -81,6 +82,36 @@ function upgradePlayers(state, firstList, secondList) {
     ...player,
     listUpdatedAt: listRevision(lists[index]),
   }));
+}
+
+function upgradeSpatialGeometry(events) {
+  return events.map((event) => {
+    if (event.type === "model_placements_recorded") {
+      return {
+        ...event,
+        placement: {
+          ...event.placement,
+          models: event.placement.models.map((model) => ({
+            ...model,
+            verticalExtentThousandths: model.verticalExtentThousandths ?? 0,
+          })),
+        },
+      };
+    }
+    if (event.type === "model_positions_recorded") {
+      return {
+        ...event,
+        position: {
+          ...event.position,
+          models: event.position.models.map((model) => ({
+            ...model,
+            verticalExtentThousandths: model.verticalExtentThousandths ?? 0,
+          })),
+        },
+      };
+    }
+    return event;
+  });
 }
 
 function registrationFor(
@@ -534,6 +565,10 @@ export function initializeBattleForLists({
       next = normalizeBattleState({
         ...next,
         version: BATTLE_STATE_VERSION,
+        events:
+          sourceVersion < SPATIAL_FACTS_BATTLE_STATE_VERSION
+            ? upgradeSpatialGeometry(next.events)
+            : next.events,
         players: upgradePlayers(next, firstList, secondList),
         migration: {
           sourceVersion,
@@ -638,6 +673,10 @@ export function initializeBattleForLists({
             sourceVersion < TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyTransportModelLocationsThroughSequence ?? 0),
+          legacySpatialFactsThroughSequence:
+            sourceVersion < SPATIAL_FACTS_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacySpatialFactsThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

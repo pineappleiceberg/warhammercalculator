@@ -137,6 +137,10 @@
 #define WHC_MODEL_PLACEMENT_OBJECTIVES_REVIEWED 32u
 #define WHC_MODEL_PLACEMENT_FLAGS_MASK 63u
 #define WHC_MODEL_POSITION_FLAGS_MASK 1023u
+#define WHC_SPATIAL_FACTS_CURRENT 1u
+#define WHC_SPATIAL_FACTS_SOURCE_LOCKED 2u
+#define WHC_SPATIAL_FACTS_EXECUTABLE 4u
+#define WHC_SPATIAL_FACTS_FLAGS_MASK 7u
 
 enum whc_fire_overwatch_trigger {
     WHC_FIRE_OVERWATCH_SET_UP = 1u,
@@ -632,6 +636,23 @@ bool whc_model_position_set_is_valid(
     uint32_t path_in_bounds_count, uint32_t footprint_match_count,
     uint32_t distance_within_limit_count, uint32_t distance_covers_path_count,
     uint32_t flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        model_count > 0 && model_count <= 1000 &&
+        ready_model_count == model_count &&
+        required_neighbour_count ==
+            (model_count <= 1 ? 0 : (model_count <= 6 ? 1 : 2)) &&
+        coherent_model_count <= model_count &&
+        enemy_model_pair_count <= 1000000 &&
+        objective_count <= 12 && objective_in_range_count <= objective_count &&
+        flags == WHC_SPATIAL_FACTS_FLAGS_MASK;
+*/
+bool whc_spatial_facts_are_valid(uint32_t model_count, uint32_t ready_model_count,
+                                 uint32_t required_neighbour_count,
+                                 uint32_t coherent_model_count,
+                                 uint32_t enemy_model_pair_count, uint32_t objective_count,
+                                 uint32_t objective_in_range_count, uint32_t flags);
 
 /*@ requires first_player_index <= 1;
     requires \valid(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));

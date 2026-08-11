@@ -12,8 +12,10 @@ import {
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 import { normalizeBattleRuleCoverageBinding } from "./battle-rule-selection.mjs";
 import { chapterApprovedTableBinding } from "./mission-pack.mjs";
+import { deriveSpatialFacts } from "./spatial-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 30;
+export const BATTLE_STATE_VERSION = 31;
+export const SPATIAL_FACTS_BATTLE_STATE_VERSION = 31;
 export const TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION = 30;
 export const EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION = 29;
 export const MODEL_POSITION_BATTLE_STATE_VERSION = 28;
@@ -286,7 +288,8 @@ function sameModelFootprint(first, second) {
       first.measurementBasis === second.measurementBasis &&
       first.shape === second.shape &&
       first.widthThousandths === second.widthThousandths &&
-      first.depthThousandths === second.depthThousandths,
+      first.depthThousandths === second.depthThousandths &&
+      first.verticalExtentThousandths === second.verticalExtentThousandths,
   );
 }
 
@@ -1711,6 +1714,11 @@ function normalizeModelPlacementSet(candidate, formation) {
         "Model footprint depth thousandths",
         30_000,
       ),
+      verticalExtentThousandths: nonnegativeInteger(
+        model.verticalExtentThousandths ?? 0,
+        "Model measurement-boundary vertical extent thousandths",
+        30_000,
+      ),
       centerXThousandths: nonnegativeInteger(
         model.centerXThousandths,
         "Model centre x-coordinate thousandths",
@@ -1850,6 +1858,11 @@ function normalizeModelPositionSet(candidate, formation) {
       depthThousandths: nonnegativeInteger(
         model.depthThousandths,
         "Model footprint depth thousandths",
+        30_000,
+      ),
+      verticalExtentThousandths: nonnegativeInteger(
+        model.verticalExtentThousandths ?? 0,
+        "Model measurement-boundary vertical extent thousandths",
         30_000,
       ),
       ...normalizeModelPositionPoint(model, "Model endpoint"),
@@ -4442,6 +4455,7 @@ export function normalizeBattleState(candidate) {
         MODEL_PLACEMENT_BATTLE_STATE_VERSION,
         MODEL_POSITION_BATTLE_STATE_VERSION,
         EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION,
+        TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -4628,6 +4642,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyTransportModelLocationsThroughSequence = nonnegativeInteger(
         migration.legacyTransportModelLocationsThroughSequence,
         "Legacy Transport model location event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= SPATIAL_FACTS_BATTLE_STATE_VERSION) {
+      normalized.migration.legacySpatialFactsThroughSequence = nonnegativeInteger(
+        migration.legacySpatialFactsThroughSequence,
+        "Legacy spatial facts event sequence",
         events.length,
       );
     }
@@ -5495,6 +5516,10 @@ export function replayBattleState(state) {
     state.version < TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyTransportModelLocationsThroughSequence ?? 0);
+  const legacySpatialFactsThroughSequence =
+    state.version < SPATIAL_FACTS_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacySpatialFactsThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -5743,6 +5768,21 @@ export function replayBattleState(state) {
       geometryStaleFormationIds.delete(formationId);
     } else {
       geometryStaleFormationIds.add(formationId);
+    }
+  };
+  const requireExecutableCoherency = (formationId, sequence) => {
+    if (sequence <= legacySpatialFactsThroughSequence) return;
+    const formation = formations.get(formationId);
+    const position = currentModelPositionsByFormation.get(formationId);
+    if (!formation || !position) return;
+    const fact = deriveSpatialFacts({
+      formations: new Map([[formationId, formation]]),
+      positions: new Map([[formationId, position]]),
+      staleFormationIds: geometryStaleFormationIds,
+      objectives: [],
+    }).get(formationId);
+    if (fact?.executable && fact.coherency.status !== "coherent") {
+      throw new Error("Reviewed model positions do not end in executable unit coherency");
     }
   };
   const recordModelLocation = (
@@ -6202,6 +6242,7 @@ export function replayBattleState(state) {
         });
       }
       geometryStaleFormationIds.delete(event.formationId);
+      requireExecutableCoherency(event.formationId, event.sequence);
       if (!migratedPlacement) pendingDeploymentPlacement = null;
       continue;
     }
@@ -6316,6 +6357,7 @@ export function replayBattleState(state) {
         });
       }
       geometryStaleFormationIds.delete(event.formationId);
+      requireExecutableCoherency(event.formationId, event.sequence);
       pendingModelPosition = queuedModelPositions.shift() ?? null;
       if (completed.fireOverwatchTrigger) {
         pendingFireOverwatch = {
@@ -9213,6 +9255,12 @@ export function replayBattleState(state) {
       .filter((arrival) => arrival.largeModelEdgeException && sameTurn(arrival.clock, clock))
       .map((arrival) => arrival.formationId),
   );
+  const spatialFactsByFormation = deriveSpatialFacts({
+    formations,
+    positions: currentModelPositionsByFormation,
+    staleFormationIds: geometryStaleFormationIds,
+    objectives: tableGeometry?.objectivePositions ?? [],
+  });
   return {
     formations,
     activeAttackIds,
@@ -9237,6 +9285,7 @@ export function replayBattleState(state) {
     modelLocationHistoryByFormation,
     currentModelPositionsByFormation,
     geometryStaleFormationIds,
+    spatialFactsByFormation,
     pendingDeploymentPlacement,
     pendingModelPosition,
     pendingModelPositions: pendingModelPosition

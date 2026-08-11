@@ -27,16 +27,32 @@ state.
 
 ## Prioritized backlog
 
-1. Make terrain height and Ruin-wall subgeometry, cover, visibility, coherency,
-   objective range, and Engagement Range executable from exact footprints
-   instead of review-only facts.
-2. Implement source-locked mission scoring and secondary-card/action tracking
+1. Add measured 3D model silhouettes, terrain height, and Ruin-wall/opening
+   subgeometry so visibility and Benefit of Cover can be resolved without
+   converting uncertain tabletop facts into guesses.
+2. Make movement clearance, model/objective overlap, and objective control
+   executable from exact per-model geometry and current Objective Control,
+   Battle-shock, and contested-unit state.
+3. Implement source-locked mission scoring and secondary-card/action tracking
    for the selected Chapter Approved combination while keeping unavailable card
    text fail-closed.
-3. Deliver full guided-game replay scenarios before adding deterministic
+4. Deliver full guided-game replay scenarios before adding deterministic
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced exact battlefield geometry to battle-state version 31.
+  Circular, elliptical, and rotated rectangular model boundaries now derive
+  unit coherency, Engagement Range, and objective-marker proximity from their
+  closest points with separate horizontal and vertical Core Rules thresholds.
+  Units of seven or more models require two neighbours, the recommended 40 mm
+  objective footprint is included, and newly recorded incoherent snapshots fail
+  closed. Based models measure to their base; baseless hulls require a measured
+  vertical extent. Legacy hulls and stale casualty geometry report unknown
+  instead of inventing facts. Guided Play, replay/API output, JavaScript, and an
+  ACSL-specified C/WebAssembly summary predicate share threshold, migration,
+  malformed-input, and differential coverage. Visibility and cover remain
+  reviewed until the state contains real 3D walls, openings, and silhouettes.
 
 - 2026-08-11: Advanced exact Transport geometry to battle-state version 30.
   Starting-embarked declarations and later embarkation now record every stable

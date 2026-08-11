@@ -91,6 +91,7 @@ import {
 } from "../lib/loadout.mjs";
 import { resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
 import { ruleCoverageIsPermitted } from "../lib/rule-coverage.mjs";
+import { spatialFactValuesAreValid } from "../lib/spatial-facts.mjs";
 
 globalThis.require = createRequire(import.meta.url);
 globalThis.__dirname = dirname(fileURLToPath(import.meta.url));
@@ -134,8 +135,28 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_terrain_footprint_set_is_valid, "function");
   assert.equal(typeof calculator._whc_model_placement_set_is_valid, "function");
   assert.equal(typeof calculator._whc_model_position_set_is_valid, "function");
+  assert.equal(typeof calculator._whc_spatial_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
+});
+
+test("WebAssembly and JavaScript agree on executable spatial-fact summaries", () => {
+  const cases = [
+    [1, 1, 0, 1, 0, 5, 1, 7],
+    [6, 6, 1, 5, 3, 5, 2, 7],
+    [7, 7, 2, 7, 0, 12, 0, 7],
+    [7, 6, 2, 7, 0, 12, 0, 7],
+    [7, 7, 1, 7, 0, 12, 0, 7],
+    [7, 7, 2, 8, 0, 12, 0, 7],
+    [7, 7, 2, 7, 0, 13, 0, 7],
+    [7, 7, 2, 7, 0, 12, 0, 3],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_spatial_facts_are_valid(...values)),
+      spatialFactValuesAreValid(...values),
+    );
+  }
 });
 
 test("WebAssembly and JavaScript agree on canonical table geometry", () => {
