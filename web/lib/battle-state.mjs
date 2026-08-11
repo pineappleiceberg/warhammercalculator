@@ -13,7 +13,8 @@ import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 import { normalizeBattleRuleCoverageBinding } from "./battle-rule-selection.mjs";
 import { chapterApprovedTableBinding } from "./mission-pack.mjs";
 
-export const BATTLE_STATE_VERSION = 26;
+export const BATTLE_STATE_VERSION = 27;
+export const MODEL_PLACEMENT_BATTLE_STATE_VERSION = 27;
 export const TERRAIN_FOOTPRINT_BATTLE_STATE_VERSION = 26;
 export const TABLE_GEOMETRY_BATTLE_STATE_VERSION = 25;
 export const RULE_COVERAGE_BATTLE_STATE_VERSION = 24;
@@ -80,6 +81,9 @@ const DEPLOYMENT_LOCATIONS = Object.freeze([
 const TARGET_MEASUREMENT_METHODS = Object.freeze(["manual", "uwb", "camera", "imported"]);
 const TABLE_GEOMETRY_METHODS = Object.freeze(["manual", "uwb", "camera", "imported"]);
 const TERRAIN_FOOTPRINT_METHODS = TABLE_GEOMETRY_METHODS;
+const MODEL_PLACEMENT_METHODS = TABLE_GEOMETRY_METHODS;
+const MODEL_MEASUREMENT_BASES = Object.freeze(["base", "model"]);
+const MODEL_FOOTPRINT_SHAPES = Object.freeze(["circle", "ellipse", "rectangle"]);
 export const TABLE_GEOMETRY_FLAGS = Object.freeze({
   reviewedByPlayer: 1,
   sourceLocked: 2,
@@ -104,6 +108,116 @@ export const TERRAIN_FOOTPRINT_FLAGS = Object.freeze({
   groupingReviewed: 8,
   mask: 15,
 });
+export const MODEL_PLACEMENT_FLAGS = Object.freeze({
+  reviewedByPlayer: 1,
+  sourceLocked: 2,
+  boundariesReviewed: 4,
+  positionsReviewed: 8,
+  noOverlapReviewed: 16,
+  objectivesReviewed: 32,
+  mask: 63,
+});
+
+export function modelPlacementFlags(set, sourceLocked = true) {
+  return (
+    (set?.reviewedByPlayer ? MODEL_PLACEMENT_FLAGS.reviewedByPlayer : 0) |
+    (sourceLocked ? MODEL_PLACEMENT_FLAGS.sourceLocked : 0) |
+    (set?.measurementBoundariesReviewed ? MODEL_PLACEMENT_FLAGS.boundariesReviewed : 0) |
+    (set?.positionsReviewed ? MODEL_PLACEMENT_FLAGS.positionsReviewed : 0) |
+    (set?.noModelOverlapReviewed ? MODEL_PLACEMENT_FLAGS.noOverlapReviewed : 0) |
+    (set?.objectiveClearanceReviewed ? MODEL_PLACEMENT_FLAGS.objectivesReviewed : 0)
+  );
+}
+
+function modelPlacementExtents(model) {
+  const halfWidth = model.widthThousandths / 2;
+  const halfDepth = model.depthThousandths / 2;
+  const angle = (model.rotationMilliDegrees * Math.PI) / 180_000;
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  if (model.shape === "rectangle") {
+    return {
+      x: Math.abs(halfWidth * cosine) + Math.abs(halfDepth * sine),
+      y: Math.abs(halfWidth * sine) + Math.abs(halfDepth * cosine),
+    };
+  }
+  return {
+    x: Math.hypot(halfWidth * cosine, halfDepth * sine),
+    y: Math.hypot(halfWidth * sine, halfDepth * cosine),
+  };
+}
+
+export function modelPlacementSetFacts(set, expectedModelIds) {
+  const models = Array.isArray(set?.models) ? set.models : [];
+  const expected = new Set(Array.isArray(expectedModelIds) ? expectedModelIds : []);
+  const positioned = models.filter(
+    (model) =>
+      Number.isSafeInteger(model?.centerXThousandths) &&
+      Number.isSafeInteger(model?.centerYThousandths) &&
+      Number.isSafeInteger(model?.elevationThousandths) &&
+      model.elevationThousandths >= 0 &&
+      model.elevationThousandths <= 24_000 &&
+      Number.isSafeInteger(model?.rotationMilliDegrees) &&
+      model.rotationMilliDegrees >= 0 &&
+      model.rotationMilliDegrees < 180_000,
+  );
+  const dimensioned = models.filter(
+    (model) =>
+      Number.isSafeInteger(model?.widthThousandths) &&
+      model.widthThousandths > 0 &&
+      model.widthThousandths <= 30_000 &&
+      Number.isSafeInteger(model?.depthThousandths) &&
+      model.depthThousandths > 0 &&
+      model.depthThousandths <= 30_000 &&
+      (model.shape !== "circle" || model.widthThousandths === model.depthThousandths),
+  );
+  const supported = models.filter(
+    (model) =>
+      MODEL_FOOTPRINT_SHAPES.includes(model?.shape) &&
+      MODEL_MEASUREMENT_BASES.includes(model?.measurementBasis),
+  );
+  const dimensionedIds = new Set(dimensioned.map((model) => model.modelId));
+  const supportedIds = new Set(supported.map((model) => model.modelId));
+  const inBounds = positioned.filter((model) => {
+    if (!dimensionedIds.has(model.modelId) || !supportedIds.has(model.modelId)) return false;
+    const extent = modelPlacementExtents(model);
+    return (
+      model.centerXThousandths - extent.x >= -0.001 &&
+      model.centerXThousandths + extent.x <= TABLE_GEOMETRY_CONSTANTS.widthThousandths + 0.001 &&
+      model.centerYThousandths - extent.y >= -0.001 &&
+      model.centerYThousandths + extent.y <= TABLE_GEOMETRY_CONSTANTS.heightThousandths + 0.001
+    );
+  });
+  return {
+    expectedModelCount: expected.size,
+    placementCount: models.length,
+    uniqueModelCount: new Set(models.map((model) => model?.modelId)).size,
+    recognizedModelCount: models.filter((model) => expected.has(model?.modelId)).length,
+    positionedModelCount: positioned.length,
+    inBoundsModelCount: inBounds.length,
+    dimensionedModelCount: dimensioned.length,
+    supportedShapeCount: supported.length,
+    basedModelCount: models.filter((model) => model?.measurementBasis === "base").length,
+    baselessModelCount: models.filter((model) => model?.measurementBasis === "model").length,
+  };
+}
+
+export function modelPlacementSetIsValid(set, expectedModelIds, sourceLocked = true) {
+  const facts = modelPlacementSetFacts(set, expectedModelIds);
+  return Boolean(
+    facts.expectedModelCount > 0 &&
+      facts.expectedModelCount <= 1000 &&
+      facts.placementCount === facts.expectedModelCount &&
+      facts.uniqueModelCount === facts.placementCount &&
+      facts.recognizedModelCount === facts.placementCount &&
+      facts.positionedModelCount === facts.placementCount &&
+      facts.inBoundsModelCount === facts.placementCount &&
+      facts.dimensionedModelCount === facts.placementCount &&
+      facts.supportedShapeCount === facts.placementCount &&
+      facts.basedModelCount + facts.baselessModelCount === facts.placementCount &&
+      modelPlacementFlags(set, sourceLocked) === MODEL_PLACEMENT_FLAGS.mask,
+  );
+}
 
 export function terrainFootprintFlags(set, sourceLocked = true) {
   return (
@@ -1375,6 +1489,115 @@ function normalizeTerrainFootprintSet(candidate) {
   return normalized;
 }
 
+function normalizeModelPlacementSet(candidate, formation) {
+  const set = record(candidate, "Model placement set must be an object");
+  if (formation.weaponBearerTracking !== "exact") {
+    throw new Error("Model placement requires exact battle model identities");
+  }
+  if (!Array.isArray(set.models) || set.models.length < 1 || set.models.length > 1000) {
+    throw new Error("Model placement must contain 1 to 1000 model footprints");
+  }
+  const models = set.models.map((candidateModel) => {
+    const model = record(candidateModel, "Each model placement must be an object");
+    const shape = boundedString(model.shape, "Model footprint shape", 20);
+    const measurementBasis = boundedString(model.measurementBasis, "Model measurement basis", 20);
+    if (!MODEL_FOOTPRINT_SHAPES.includes(shape)) {
+      throw new Error("Model footprint shape is unsupported");
+    }
+    if (!MODEL_MEASUREMENT_BASES.includes(measurementBasis)) {
+      throw new Error("Model measurement basis must be base or model");
+    }
+    return {
+      modelId: boundedString(model.modelId, "Placed battle model id", 200),
+      measurementBasis,
+      shape,
+      widthThousandths: nonnegativeInteger(
+        model.widthThousandths,
+        "Model footprint width thousandths",
+        30_000,
+      ),
+      depthThousandths: nonnegativeInteger(
+        model.depthThousandths,
+        "Model footprint depth thousandths",
+        30_000,
+      ),
+      centerXThousandths: nonnegativeInteger(
+        model.centerXThousandths,
+        "Model centre x-coordinate thousandths",
+        TABLE_GEOMETRY_CONSTANTS.widthThousandths,
+      ),
+      centerYThousandths: nonnegativeInteger(
+        model.centerYThousandths,
+        "Model centre y-coordinate thousandths",
+        TABLE_GEOMETRY_CONSTANTS.heightThousandths,
+      ),
+      elevationThousandths: nonnegativeInteger(
+        model.elevationThousandths,
+        "Model elevation thousandths",
+        24_000,
+      ),
+      rotationMilliDegrees: nonnegativeInteger(
+        model.rotationMilliDegrees,
+        "Model rotation milli-degrees",
+        179_999,
+      ),
+    };
+  });
+  const normalized = {
+    context: boundedString(set.context, "Model placement context", 30),
+    referenceEventId: boundedString(
+      set.referenceEventId,
+      "Model placement reference event id",
+      100,
+    ),
+    missionSourceId: boundedString(set.missionSourceId, "Model placement mission source id", 200),
+    terrainSourceId: boundedString(set.terrainSourceId, "Model placement terrain source id", 200),
+    battlefieldWidthThousandths: nonnegativeInteger(
+      set.battlefieldWidthThousandths,
+      "Model placement battlefield width thousandths",
+      100_000,
+    ),
+    battlefieldHeightThousandths: nonnegativeInteger(
+      set.battlefieldHeightThousandths,
+      "Model placement battlefield height thousandths",
+      100_000,
+    ),
+    origin: boundedString(set.origin, "Model placement coordinate origin", 60),
+    models,
+    measurementBoundariesReviewed: Boolean(set.measurementBoundariesReviewed),
+    positionsReviewed: Boolean(set.positionsReviewed),
+    noModelOverlapReviewed: Boolean(set.noModelOverlapReviewed),
+    objectiveClearanceReviewed: Boolean(set.objectiveClearanceReviewed),
+    reviewedByPlayer: Boolean(set.reviewedByPlayer),
+    method: boundedString(set.method, "Model placement method", 20),
+    reviewReason: set.reviewedByPlayer
+      ? boundedString(set.reviewReason, "Model placement review", 500).trim()
+      : "",
+  };
+  if (normalized.context !== "deployment") {
+    throw new Error("Only deployment model placement is supported in battle-state version 27");
+  }
+  if (normalized.origin !== "attacker-left-near") {
+    throw new Error("Model placement coordinate origin is unsupported");
+  }
+  if (!MODEL_PLACEMENT_METHODS.includes(normalized.method)) {
+    throw new Error("Model placement method is unsupported");
+  }
+  if (!normalized.reviewReason) {
+    throw new Error("Model placement review must explain the checked tabletop facts");
+  }
+  if (
+    !modelPlacementSetIsValid(
+      normalized,
+      formation.modelInstances.map((model) => model.id),
+      true,
+    )
+  ) {
+    throw new Error("Model placement does not match the reviewed battlefield and formation");
+  }
+  return normalized;
+}
+
 function normalizePlayers(players, stateVersion) {
   if (!Array.isArray(players) || players.length !== 2) {
     throw new Error("Battle state must contain exactly two players");
@@ -2283,6 +2506,19 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   }
   if (event.type === "terrain_footprints_recorded") {
     normalized.terrainFootprints = normalizeTerrainFootprintSet(event.terrainFootprints);
+    return normalized;
+  }
+  if (
+    stateVersion < MODEL_PLACEMENT_BATTLE_STATE_VERSION &&
+    event.type === "model_placements_recorded"
+  ) {
+    throw new Error("Model placement requires battle-state version 27");
+  }
+  if (event.type === "model_placements_recorded") {
+    normalized.formationId = boundedString(event.formationId, "Placed formation id", 100);
+    const formation = formations.byId.get(normalized.formationId);
+    if (!formation) throw new Error("Placed formation is not registered");
+    normalized.placement = normalizeModelPlacementSet(event.placement, formation);
     return normalized;
   }
   if (event.type === "formation_registered") {
@@ -3787,6 +4023,7 @@ export function normalizeBattleState(candidate) {
       RAPID_INGRESS_BATTLE_STATE_VERSION,
       RULE_COVERAGE_BATTLE_STATE_VERSION,
       TABLE_GEOMETRY_BATTLE_STATE_VERSION,
+      TERRAIN_FOOTPRINT_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -3845,6 +4082,7 @@ export function normalizeBattleState(candidate) {
         RAPID_INGRESS_BATTLE_STATE_VERSION,
         RULE_COVERAGE_BATTLE_STATE_VERSION,
         TABLE_GEOMETRY_BATTLE_STATE_VERSION,
+        TERRAIN_FOOTPRINT_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -4003,6 +4241,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyTerrainFootprintsThroughSequence = nonnegativeInteger(
         migration.legacyTerrainFootprintsThroughSequence,
         "Legacy terrain footprints event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= MODEL_PLACEMENT_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyModelPlacementsThroughSequence = nonnegativeInteger(
+        migration.legacyModelPlacementsThroughSequence,
+        "Legacy model placements event sequence",
         events.length,
       );
     }
@@ -4726,6 +4971,7 @@ export function replayBattleState(state) {
   const chargeByFormation = new Map();
   const deploymentByFormation = new Map();
   const deployedFormationIds = new Set();
+  const modelPlacementsByFormation = new Map();
   const setupDestroyedFormationIds = new Set();
   const reserveArrivals = new Map();
   const embarkedByFormation = new Map();
@@ -4775,6 +5021,7 @@ export function replayBattleState(state) {
   let activeRangedDeclarationSet = null;
   let readyRangedAttacks = [];
   let deploymentPriorityPlayerId = "";
+  let pendingDeploymentPlacement = null;
   let ruleCoverage = null;
   let tableGeometry = null;
   let terrainFootprints = null;
@@ -4846,6 +5093,10 @@ export function replayBattleState(state) {
     state.version < TERRAIN_FOOTPRINT_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyTerrainFootprintsThroughSequence ?? 0);
+  const legacyModelPlacementsThroughSequence =
+    state.version < MODEL_PLACEMENT_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyModelPlacementsThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -5384,6 +5635,9 @@ export function replayBattleState(state) {
     }
     if (event.type === "formation_deployed") {
       if (clock.status !== "setup") throw new Error("Formation deployment is locked after start");
+      if (pendingDeploymentPlacement) {
+        throw new Error("Record the deployed formation's model placements before continuing");
+      }
       if (!deploymentDeclarationsComplete(formations, deploymentByFormation)) {
         throw new Error("Declare every formation before deploying armies");
       }
@@ -5417,6 +5671,15 @@ export function replayBattleState(state) {
       for (const deployedFormationId of deployedTree) {
         deployedFormationIds.add(deployedFormationId);
       }
+      if (
+        event.sequence > legacyModelPlacementsThroughSequence &&
+        battleRuleCoverageRequiresTableGeometry(ruleCoverage)
+      ) {
+        pendingDeploymentPlacement = {
+          formationId: event.formationId,
+          referenceEventId: event.id,
+        };
+      }
       deploymentPriorityPlayerId = nextDeploymentPlayer(
         state.players,
         otherPlayerId(state.players, expectedPlayerId),
@@ -5424,6 +5687,54 @@ export function replayBattleState(state) {
         deploymentByFormation,
         deployedFormationIds,
       );
+      continue;
+    }
+    if (event.type === "model_placements_recorded") {
+      if (clock.status !== "setup") {
+        throw new Error("Deployment model placements are locked after the battle starts");
+      }
+      if (!tableGeometry) {
+        throw new Error("Record reviewed table geometry before model placements");
+      }
+      if (modelPlacementsByFormation.has(event.formationId)) {
+        throw new Error("Deployment model placements have already been recorded");
+      }
+      const reference = state.events.find(
+        (candidate) => candidate.id === event.placement.referenceEventId,
+      );
+      if (
+        !reference ||
+        reference.type !== "formation_deployed" ||
+        reference.formationId !== event.formationId ||
+        reference.sequence >= event.sequence
+      ) {
+        throw new Error("Model placement must reference that formation's deployment event");
+      }
+      const migratedPlacement = Boolean(
+        state.migration &&
+          reference.sequence <= legacyModelPlacementsThroughSequence &&
+          event.sequence > legacyModelPlacementsThroughSequence,
+      );
+      if (
+        (!pendingDeploymentPlacement ||
+          pendingDeploymentPlacement.formationId !== event.formationId ||
+          pendingDeploymentPlacement.referenceEventId !== event.placement.referenceEventId) &&
+        !migratedPlacement
+      ) {
+        throw new Error("Model placement does not resolve the pending deployment placement");
+      }
+      if (
+        event.placement.missionSourceId !== tableGeometry.missionSourceId ||
+        event.placement.terrainSourceId !== tableGeometry.terrainSourceId ||
+        event.placement.battlefieldWidthThousandths !== tableGeometry.battlefieldWidthThousandths ||
+        event.placement.battlefieldHeightThousandths !==
+          tableGeometry.battlefieldHeightThousandths ||
+        event.placement.origin !== tableGeometry.origin
+      ) {
+        throw new Error("Model placement does not match the reviewed table geometry");
+      }
+      modelPlacementsByFormation.set(event.formationId, event.placement);
+      if (!migratedPlacement) pendingDeploymentPlacement = null;
       continue;
     }
     if (event.type === "rule_coverage_configured") {
@@ -5473,6 +5784,19 @@ export function replayBattleState(state) {
         !terrainFootprints
       ) {
         throw new Error("Reviewed terrain footprints are required before battle start");
+      }
+      if (
+        event.sequence > legacyModelPlacementsThroughSequence &&
+        battleRuleCoverageRequiresTableGeometry(ruleCoverage) &&
+        (pendingDeploymentPlacement ||
+          [...deploymentByFormation.values()].some(
+            (deployment) =>
+              deployment.location === "battlefield" &&
+              deployedFormationIds.has(deployment.formationId) &&
+              !modelPlacementsByFormation.has(deployment.formationId),
+          ))
+      ) {
+        throw new Error("Reviewed model placements are required before battle start");
       }
       if (
         (state.version < DEPLOYMENT_BATTLE_STATE_VERSION || state.migration) &&
@@ -8116,14 +8440,21 @@ export function replayBattleState(state) {
     chargeByFormation,
     deploymentByFormation,
     deployedFormationIds,
+    modelPlacementsByFormation,
+    pendingDeploymentPlacement,
     setupDestroyedFormationIds,
     deploymentPriorityPlayerId,
     deploymentComplete:
       deploymentDeclarationsComplete(formations, deploymentByFormation) &&
       [...deploymentByFormation.values()].every(
         (deployment) =>
-          deployment.location !== "battlefield" || deployedFormationIds.has(deployment.formationId),
-      ),
+          deployment.location !== "battlefield" ||
+          (deployedFormationIds.has(deployment.formationId) &&
+            (!battleRuleCoverageRequiresTableGeometry(ruleCoverage) ||
+              state.version < MODEL_PLACEMENT_BATTLE_STATE_VERSION ||
+              modelPlacementsByFormation.has(deployment.formationId))),
+      ) &&
+      !pendingDeploymentPlacement,
     reserveArrivals,
     embarkedByFormation,
     disembarkedByFormation,
@@ -8282,6 +8613,28 @@ export function deployFormation(
     formationId,
     placementConfirmed,
     placementReason,
+  });
+}
+
+export function recordDeploymentModelPlacements(state, formationId, placement, id, at) {
+  const replayed = replayBattleState(state);
+  if (replayed.clock.status !== "setup") {
+    throw new Error("Deployment model placements are locked after the battle starts");
+  }
+  if (!replayed.deployedFormationIds.has(formationId)) {
+    throw new Error("Deploy the formation before recording its model placements");
+  }
+  if (replayed.modelPlacementsByFormation.has(formationId)) {
+    throw new Error("Deployment model placements have already been recorded");
+  }
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "model_placements_recorded",
+    formationId,
+    placement,
   });
 }
 

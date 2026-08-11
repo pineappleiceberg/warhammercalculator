@@ -27,10 +27,10 @@ state.
 
 ## Prioritized backlog
 
-1. Extend the canonical version-26 table frame from objective centres and area-
-   terrain outlines to model bases or hulls, movement paths, charge endpoints,
-   terrain height and Ruin-wall subgeometry, cover, visibility, coherency, and
-   Engagement Range.
+1. Extend the canonical version-27 deployment snapshots into replayable movement
+   paths, Advance and charge endpoints, Reserve arrivals, casualty-aware model
+   identity, terrain height and Ruin-wall subgeometry, cover, visibility,
+   coherency, objective range, and Engagement Range.
 2. Implement source-locked mission scoring and secondary-card/action tracking
    for the selected Chapter Approved combination while keeping unavailable card
    text fail-closed.
@@ -38,6 +38,24 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced canonical battle setup to version 27 with replayable
+  exact-model deployment snapshots. After each battlefield formation is placed
+  in an exact Chapter Approved game, Guided Play now requires every stable model
+  identity, its base or baseless-model measurement boundary, circular, elliptical,
+  or rectangular footprint dimensions, centre, elevation, and rotation before
+  alternating deployment can continue or the battle can start. Exact rotated
+  extents must remain inside the 60-by-44-inch frame; missing, duplicate,
+  unrecognized, undimensioned, unsupported, or out-of-bounds models and incomplete
+  reviews fail closed. Physical model/model and model/objective non-overlap remain
+  explicit player-reviewed facts rather than unsafe flat-geometry guesses. Manual,
+  UWB, camera, and imported provenance remain reviewable. Version-26 games migrate
+  without invented geometry and can append snapshots against their historical
+  deployment events. Custom games preserve their confirmation-only workflow.
+  Guided Play, replay/API output, JavaScript, and an ACSL-specified C/WebAssembly
+  predicate share migration, rotation, edge, malformed-input, and differential
+  coverage. The next geometry boundary is replayable movement and Reserve-arrival
+  placement using these same stable model identities.
 
 - 2026-08-11: Advanced canonical battle setup to version 26 with replayable
   terrain footprints. Exact Chapter Approved games now require all twelve
@@ -51,8 +69,8 @@ state.
   camera, and imported provenance remain editable until locked. Version-25
   games migrate without invented footprints and can append one reviewed record.
   Guided Play, API replay, JavaScript, and a new ACSL-specified C/WebAssembly
-  aggregate predicate share regression coverage. The next geometry boundary is
-  replayable model bases or hulls and movement paths within this frame.
+  aggregate predicate share regression coverage. This boundary was extended by
+  version 27's exact-model deployment snapshots.
 
 - 2026-08-11: Advanced canonical battle setup to version 25 with a replayable
   Chapter Approved table frame. Exact 2025-26 v1.4 mission/layout games now

@@ -270,6 +270,12 @@ int main(void) {
                                               WHC_TERRAIN_FOOTPRINT_FLAGS_MASK));
     assert(!whc_terrain_footprint_set_is_valid(12u, 12u, 12u, 12u, 12u, 1u, 4u, 2u, 6u,
                                                WHC_TERRAIN_FOOTPRINT_FLAGS_MASK));
+    assert(whc_model_placement_set_is_valid(3u, 3u, 3u, 3u, 3u, 3u, 3u, 3u, 2u, 1u,
+                                            WHC_MODEL_PLACEMENT_FLAGS_MASK));
+    assert(!whc_model_placement_set_is_valid(3u, 3u, 3u, 3u, 3u, 2u, 3u, 3u, 2u, 1u,
+                                             WHC_MODEL_PLACEMENT_FLAGS_MASK));
+    assert(!whc_model_placement_set_is_valid(3u, 3u, 3u, 3u, 3u, 3u, 3u, 3u, UINT32_MAX, 4u,
+                                             WHC_MODEL_PLACEMENT_FLAGS_MASK));
 
     return 0;
 }

@@ -443,6 +443,27 @@ bool whc_terrain_footprint_set_is_valid(uint32_t footprint_count,
            flags == WHC_TERRAIN_FOOTPRINT_FLAGS_MASK;
 }
 
+bool whc_model_placement_set_is_valid(uint32_t expected_model_count,
+                                      uint32_t placement_count,
+                                      uint32_t unique_model_count,
+                                      uint32_t recognized_model_count,
+                                      uint32_t positioned_model_count,
+                                      uint32_t in_bounds_model_count,
+                                      uint32_t dimensioned_model_count,
+                                      uint32_t supported_shape_count,
+                                      uint32_t based_model_count,
+                                      uint32_t baseless_model_count, uint32_t flags) {
+    return expected_model_count > 0u && expected_model_count <= 1000u &&
+           placement_count == expected_model_count && unique_model_count == placement_count &&
+           recognized_model_count == placement_count &&
+           positioned_model_count == placement_count &&
+           in_bounds_model_count == placement_count &&
+           dimensioned_model_count == placement_count &&
+           supported_shape_count == placement_count && based_model_count <= placement_count &&
+           baseless_model_count == placement_count - based_model_count &&
+           flags == WHC_MODEL_PLACEMENT_FLAGS_MASK;
+}
+
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,
                                      const uint32_t *events, uint32_t event_count,
                                      uint32_t *health) {
