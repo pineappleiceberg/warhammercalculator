@@ -137,8 +137,10 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    selection gate are complete. Setup records exact faction, detachment,
    enhancement, datasheet, terrain, and mission identities and blocks every
    absent, stale, unsupported, or unacknowledged rule before a new battle starts.
-   Next expand each category with pinned catalogue mappings and executable or
-   reason-backed guided rules.
+   The pinned profile snapshot now supplies exact guided mappings for all 26
+   faction and 1,712 datasheet identities. Next add pinned detachment,
+   enhancement, terrain, and mission mappings, then replace guided boundaries
+   with executable handlers as their state becomes representable.
 7. Add table geometry and player-supplied measurement and visibility facts.
 8. Deliver the complete guided battle workflow and full-game replay corpus.
 9. Add deterministic automated policies, batch battle simulation, and calibrated

@@ -22,16 +22,40 @@ const coverageSource = JSON.parse(
 const publicCoverageSource = JSON.parse(
   await readFile(new URL("../public/battle-rule-coverage.json", import.meta.url), "utf8"),
 );
+const publicSourceManifest = JSON.parse(
+  await readFile(new URL("../public/battle-rule-sources.json", import.meta.url), "utf8"),
+);
 
 test("published coverage matrix is source-locked and identical to its data source", () => {
   assert.deepEqual(publicCoverageSource, coverageSource);
+  assert.deepEqual(publicSourceManifest, sourceManifest);
   const matrix = normalizeRuleCoverageMatrix(coverageSource, sourceManifest);
   assert.equal(matrix.sourceLocked, true);
-  assert.equal(matrix.snapshotId, "wh40k-10e-core-2025-10-v23");
-  assert.equal(matrix.rules.length, 15);
+  assert.equal(matrix.snapshotId, "wh40k-10e-core-2025-10-catalogue-2026-06-13-v24");
+  assert.equal(matrix.rules.length, 1753);
   assert.deepEqual(
     new Set(matrix.rules.map((rule) => rule.category)),
-    new Set(["core", "stratagem"]),
+    new Set(["core", "stratagem", "faction", "datasheet"]),
+  );
+  assert.deepEqual(
+    matrix.rules.find((rule) => rule.id === "faction.catalogue-nec"),
+    {
+      id: "faction.catalogue-nec",
+      category: "faction",
+      name: "Necrons faction rules",
+      status: "guided",
+      introducedBattleStateVersion: 24,
+      sources: [
+        {
+          id: "wahapedia-profile-export-2026-06-13",
+          records: [{ type: "faction", id: "NEC" }],
+        },
+      ],
+    },
+  );
+  assert.equal(
+    matrix.rules.find((rule) => rule.id === "datasheet.catalogue-000000545")?.name,
+    "Doom Scythe datasheet rules",
   );
 });
 
@@ -43,6 +67,38 @@ test("coverage matrix rejects stale source hashes and pages outside the manifest
   const badPage = structuredClone(coverageSource);
   badPage.rules[0].sources[0].pages.push(999);
   assert.throws(() => normalizeRuleCoverageMatrix(badPage, sourceManifest), /outside/);
+
+  const badRecord = structuredClone(coverageSource);
+  badRecord.rules.find((rule) => rule.id === "faction.catalogue-nec").sources[0].records[0].type =
+    "datasheet";
+  assert.throws(() => normalizeRuleCoverageMatrix(badRecord, sourceManifest), /outside/);
+});
+
+test("saved list identities select exact guided catalogue rules", () => {
+  const matrix = normalizeRuleCoverageMatrix(coverageSource, sourceManifest);
+  const players = [{ id: "player-1" }, { id: "player-2" }];
+  const lists = [
+    { factionId: "NEC", units: [{ id: "doom", unitId: "000000545" }] },
+    { factionId: "SM", units: [{ id: "brutalis", unitId: "000000136" }] },
+  ];
+  const plan = deriveBattleRuleSelectionPlan(matrix, players, lists, {
+    guidedReason: "Players will resolve non-executable source rules at the physical table",
+  });
+  assert.deepEqual(plan.players[0].faction.ruleIds, ["faction.catalogue-nec"]);
+  assert.deepEqual(plan.players[0].datasheets[0].ruleIds, ["datasheet.catalogue-000000545"]);
+  assert.match(plan.acknowledgements["faction.catalogue-nec"], /physical table/);
+  assert.match(plan.acknowledgements["datasheet.catalogue-000000545"], /physical table/);
+  const binding = bindBattleRuleSelections(matrix, plan);
+  assert.equal(
+    binding.report.results.find((result) => result.id === "faction.catalogue-nec")?.permitted,
+    true,
+  );
+  assert.equal(binding.report.permitted, false);
+  assert.ok(
+    binding.report.results.some(
+      (result) => result.category === "detachment" && !result.sourceLocked,
+    ),
+  );
 });
 
 test("coverage gate requires acknowledgement for guided rules and fails closed", () => {

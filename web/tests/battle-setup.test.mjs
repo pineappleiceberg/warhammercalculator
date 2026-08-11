@@ -237,7 +237,13 @@ test("records exact battle rule identities and blocks absent coverage before bat
     ],
   );
   assert.ok(
-    coverage.report.results.some((result) => result.category === "faction" && !result.sourceLocked),
+    coverage.report.results.some(
+      (result) =>
+        result.category === "faction" && result.sourceLocked && result.status === "guided",
+    ),
+  );
+  assert.ok(
+    coverage.report.results.some((result) => result.category === "mission" && !result.sourceLocked),
   );
   state = deployAllOnBattlefield(state);
   assert.throws(

@@ -1,5 +1,7 @@
 README.md
 drizzle/meta/
 public/profile-data.json
+public/battle-rule-coverage.json
+public/battle-rule-sources.json
 public/wasm/
 dist-pages/

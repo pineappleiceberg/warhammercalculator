@@ -49,7 +49,15 @@ function normalizeSourceManifest(value) {
       if (!Array.isArray(source.pages) || source.pages.some((page) => !Number.isInteger(page))) {
         throw new Error(`Source ${id} pages are invalid`);
       }
-      return [id, { sha256, pages: new Set(source.pages) }];
+      const recordTypes = source.recordTypes ?? [];
+      if (
+        !Array.isArray(recordTypes) ||
+        recordTypes.some((type) => !CATEGORIES.includes(type)) ||
+        new Set(recordTypes).size !== recordTypes.length
+      ) {
+        throw new Error(`Source ${id} record types are invalid`);
+      }
+      return [id, { sha256, pages: new Set(source.pages), recordTypes: new Set(recordTypes) }];
     }),
   );
 }
@@ -137,14 +145,38 @@ export function normalizeRuleCoverageMatrix(value, sourceManifest) {
       if (!locked || !sourceLockIds.has(sourceId)) {
         throw new Error(`Rule coverage source ${sourceId} for ${id} is not locked`);
       }
+      const pages = source.pages ?? [];
+      const records = source.records ?? [];
       if (
-        !Array.isArray(source.pages) ||
-        source.pages.length === 0 ||
-        source.pages.some((page) => !Number.isInteger(page) || !locked.pages.has(page))
+        !Array.isArray(pages) ||
+        !Array.isArray(records) ||
+        (pages.length === 0 && records.length === 0)
       ) {
+        throw new Error(`Rule coverage locators for ${id} are required`);
+      }
+      if (pages.some((page) => !Number.isInteger(page) || !locked.pages.has(page))) {
         throw new Error(`Rule coverage pages for ${id} are outside the source manifest`);
       }
-      return { id: sourceId, pages: [...new Set(source.pages)] };
+      const normalizedRecords = records.map((recordValue) => {
+        const record = object(recordValue, `Rule coverage record for ${id} is invalid`);
+        const type = boundedString(record.type, `Rule coverage record for ${id} needs a type`);
+        const recordId = boundedString(record.id, `Rule coverage record for ${id} needs an id`);
+        if (!locked.recordTypes.has(type) || type !== rule.category) {
+          throw new Error(`Rule coverage record for ${id} is outside the source manifest`);
+        }
+        return { type, id: recordId };
+      });
+      if (
+        new Set(normalizedRecords.map((record) => `${record.type}:${record.id}`)).size !==
+        normalizedRecords.length
+      ) {
+        throw new Error(`Rule coverage records for ${id} are duplicated`);
+      }
+      return {
+        id: sourceId,
+        ...(pages.length ? { pages: [...new Set(pages)] } : {}),
+        ...(normalizedRecords.length ? { records: normalizedRecords } : {}),
+      };
     });
     return {
       id,

@@ -70,6 +70,11 @@ function fallbackRuleId(category, ...identity) {
   return `${category}.unselected-${identity.map(token).join("-")}`;
 }
 
+function catalogueRuleId(matrixRuleIds, category, sourceId) {
+  const candidate = `${category}.catalogue-${token(sourceId)}`;
+  return matrixRuleIds.has(candidate) ? candidate : fallbackRuleId(category, sourceId);
+}
+
 function normalizeAcknowledgements(value) {
   const source =
     value === undefined ? {} : object(value, "Rule acknowledgements must be an object");
@@ -204,13 +209,9 @@ export function deriveBattleRuleSelectionPlan(matrix, players, lists, overrides 
   }
   const guidedReason =
     typeof overrides.guidedReason === "string" ? overrides.guidedReason.trim() : "";
+  const matrixRuleIds = new Set(matrix.rules.map((rule) => rule.id));
   const universalRuleIds = matrix.rules.filter((rule) =>
     ["core", "stratagem"].includes(rule.category),
-  );
-  const acknowledgements = Object.fromEntries(
-    universalRuleIds
-      .filter((rule) => rule.status === "guided" && guidedReason)
-      .map((rule) => [rule.id, guidedReason]),
   );
   const plan = {
     schemaVersion: BATTLE_RULE_SELECTION_SCHEMA_VERSION,
@@ -233,7 +234,9 @@ export function deriveBattleRuleSelectionPlan(matrix, players, lists, overrides 
         playerId: player.id,
         faction: {
           sourceId: list.factionId,
-          ruleIds: playerOverride.factionRuleIds ?? [fallbackRuleId("faction", list.factionId)],
+          ruleIds: playerOverride.factionRuleIds ?? [
+            catalogueRuleId(matrixRuleIds, "faction", list.factionId),
+          ],
         },
         detachment: {
           sourceId: detachmentSourceId,
@@ -254,7 +257,7 @@ export function deriveBattleRuleSelectionPlan(matrix, players, lists, overrides 
           savedUnitId: unit.id,
           datasheetId: unit.unitId,
           ruleIds: playerOverride.datasheetRuleIds?.[unit.id] ?? [
-            fallbackRuleId("datasheet", unit.unitId),
+            catalogueRuleId(matrixRuleIds, "datasheet", unit.unitId),
           ],
         })),
       };
@@ -271,8 +274,16 @@ export function deriveBattleRuleSelectionPlan(matrix, players, lists, overrides 
         fallbackRuleId("terrain", overrides.terrainSourceId || "unselected"),
       ],
     },
-    acknowledgements: { ...acknowledgements, ...(overrides.acknowledgements ?? {}) },
+    acknowledgements: { ...(overrides.acknowledgements ?? {}) },
   };
+  if (guidedReason) {
+    const rules = new Map(matrix.rules.map((rule) => [rule.id, rule]));
+    for (const id of battleRuleSelectionIds(plan)) {
+      if (rules.get(id)?.status === "guided" && !plan.acknowledgements[id]) {
+        plan.acknowledgements[id] = guidedReason;
+      }
+    }
+  }
   return normalizeBattleRuleSelectionPlan(plan);
 }
 
