@@ -251,6 +251,8 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.match(documented.endpoints.volleyComplexity, /POST \/api\/v1\/volley\/complexity/);
   assert.match(documented.endpoints.volleySimulate, /POST \/api\/v1\/volley\/simulate/);
   assert.match(documented.endpoints.battleReplay, /POST \/api\/v1\/battle\/replay/);
+  assert.match(documented.endpoints.ruleCoverage, /GET \/api\/v1\/rules\/coverage/);
+  assert.match(documented.endpoints.checkRuleCoverage, /POST \/api\/v1\/rules\/coverage\/check/);
   assert.match(documented.endpoints.firingDeck, /GET \/api\/v1\/firing-deck/);
   assert.match(documented.endpoints.transport, /GET \/api\/v1\/transport/);
   assert.match(documented.endpoints.leader, /GET \/api\/v1\/leader/);
@@ -258,6 +260,47 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   assert.match(documented.endpoints.bodyguardJoin, /GET \/api\/v1\/bodyguard-join/);
   assert.match(documented.endpoints.validateFiringDeck, /POST \/api\/v1\/validate-firing-deck/);
   assert.match(documented.endpoints.lists, /lists\/export/);
+
+  const coverageResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/rules/coverage"),
+    testEnv,
+    context,
+  );
+  assert.equal(coverageResponse.status, 200);
+  const coverage = (await coverageResponse.json()).data;
+  assert.equal(coverage.snapshotId, "wh40k-10e-core-2025-10-v23");
+  assert.equal(coverage.sourceLocked, true);
+  assert.equal(coverage.rules.length, 15);
+
+  const coverageCheckResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/rules/coverage/check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        rules: [
+          "core.attack-sequence",
+          {
+            id: "core.charge-resolution",
+            acknowledgement: "Players will review measured charge movement",
+          },
+          "mission.pariah-nexus",
+        ],
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(coverageCheckResponse.status, 200);
+  const coverageCheck = (await coverageCheckResponse.json()).data;
+  assert.equal(coverageCheck.permitted, false);
+  assert.deepEqual(
+    coverageCheck.results.map((entry) => [entry.status, entry.permitted, entry.sourceLocked]),
+    [
+      ["executable", true, true],
+      ["guided", true, true],
+      ["unsupported", false, false],
+    ],
+  );
 
   const factions = await worker.fetch(
     new Request("http://localhost/api/v1/factions"),
@@ -4289,7 +4332,12 @@ test("reports dependency health, retryable outages, and request diagnostics", as
   assert.equal(degradedBody.status, "degraded");
   assert.deepEqual(
     degradedBody.checks.map((entry) => entry.code),
-    ["PROFILE_CATALOGUE_UNAVAILABLE", undefined, "LIST_STORAGE_UNAVAILABLE"],
+    [
+      "PROFILE_CATALOGUE_UNAVAILABLE",
+      undefined,
+      "RULE_COVERAGE_UNAVAILABLE",
+      "LIST_STORAGE_UNAVAILABLE",
+    ],
   );
   assert.equal(degradedBody.checks[1].status, "ok");
 
@@ -4303,7 +4351,7 @@ test("reports dependency health, retryable outages, and request diagnostics", as
   assert.equal(recoveredBody.status, "ok");
   assert.deepEqual(
     recoveredBody.checks.map((entry) => entry.name),
-    ["profile-catalogue", "calculator-engine", "list-storage"],
+    ["profile-catalogue", "calculator-engine", "rule-coverage", "list-storage"],
   );
 
   const storageFailure = await worker.fetch(

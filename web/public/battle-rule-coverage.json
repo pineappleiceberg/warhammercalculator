@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "wh40k-10e-core-2025-10-v23",
+  "edition": "Warhammer 40,000 10th Edition",
+  "updatedAt": "2026-08-11",
+  "sourceLocks": [
+    {
+      "id": "core-rules-10e",
+      "sha256": "4d0e8019cbfddd6f46781d5b4ed31d46fb21eb2d0d10a0f6fabefac0ce054364"
+    },
+    {
+      "id": "core-rules-updates-10e-2025-10",
+      "sha256": "27960a4d4affecd450af69c54d7583bcc2941b00ba5845f5786a630bdec7f4ba"
+    }
+  ],
+  "statuses": ["executable", "guided", "irrelevant", "unsupported"],
+  "categoryDefaults": {
+    "core": "unsupported",
+    "faction": "unsupported",
+    "detachment": "unsupported",
+    "enhancement": "unsupported",
+    "datasheet": "unsupported",
+    "stratagem": "unsupported",
+    "terrain": "unsupported",
+    "mission": "unsupported"
+  },
+  "rules": [
+    {
+      "id": "core.attack-sequence",
+      "category": "core",
+      "name": "Attack sequence and damage allocation",
+      "status": "executable",
+      "introducedBattleStateVersion": 1,
+      "sources": [{ "id": "core-rules-10e", "pages": [19, 20, 23] }]
+    },
+    {
+      "id": "core.measurement-and-visibility",
+      "category": "core",
+      "name": "Measurement and visibility",
+      "status": "guided",
+      "introducedBattleStateVersion": 8,
+      "sources": [{ "id": "core-rules-10e", "pages": [7, 8] }]
+    },
+    {
+      "id": "core.deployment-and-reserves",
+      "category": "core",
+      "name": "Deployment and Reserves",
+      "status": "guided",
+      "introducedBattleStateVersion": 7,
+      "sources": [{ "id": "core-rules-10e", "pages": [16, 39, 43] }]
+    },
+    {
+      "id": "core.transports",
+      "category": "core",
+      "name": "Transports, embarkation, disembarkation, and destruction",
+      "status": "guided",
+      "introducedBattleStateVersion": 18,
+      "sources": [
+        { "id": "core-rules-10e", "pages": [17] },
+        { "id": "core-rules-updates-10e-2025-10", "pages": [12] }
+      ]
+    },
+    {
+      "id": "core.aircraft-and-hover",
+      "category": "core",
+      "name": "Aircraft setup and Hover declarations",
+      "status": "executable",
+      "introducedBattleStateVersion": 20,
+      "sources": [{ "id": "core-rules-10e", "pages": [53, 56] }]
+    },
+    {
+      "id": "core.ranged-target-declarations",
+      "category": "core",
+      "name": "Ranged targets, split fire, and ordered declarations",
+      "status": "guided",
+      "introducedBattleStateVersion": 17,
+      "sources": [{ "id": "core-rules-10e", "pages": [19, 20] }]
+    },
+    {
+      "id": "core.charge-resolution",
+      "category": "core",
+      "name": "Charge rolls and reviewed charge movement",
+      "status": "guided",
+      "introducedBattleStateVersion": 11,
+      "sources": [{ "id": "core-rules-10e", "pages": [29] }]
+    },
+    {
+      "id": "core.fight-movement",
+      "category": "core",
+      "name": "Pile In and Consolidation",
+      "status": "guided",
+      "introducedBattleStateVersion": 12,
+      "sources": [{ "id": "core-rules-10e", "pages": [32, 33, 34, 35] }]
+    },
+    {
+      "id": "core.hazardous",
+      "category": "core",
+      "name": "Hazardous tests and self-damage",
+      "status": "executable",
+      "introducedBattleStateVersion": 15,
+      "sources": [
+        { "id": "core-rules-10e", "pages": [39] },
+        { "id": "core-rules-updates-10e-2025-10", "pages": [12] }
+      ]
+    },
+    {
+      "id": "stratagem.heroic-intervention",
+      "category": "stratagem",
+      "name": "Heroic Intervention",
+      "status": "guided",
+      "introducedBattleStateVersion": 13,
+      "sources": [{ "id": "core-rules-updates-10e-2025-10", "pages": [7] }]
+    },
+    {
+      "id": "stratagem.fire-overwatch",
+      "category": "stratagem",
+      "name": "Fire Overwatch",
+      "status": "guided",
+      "introducedBattleStateVersion": 14,
+      "sources": [{ "id": "core-rules-updates-10e-2025-10", "pages": [8, 10] }]
+    },
+    {
+      "id": "stratagem.go-to-ground",
+      "category": "stratagem",
+      "name": "Go to Ground",
+      "status": "executable",
+      "introducedBattleStateVersion": 16,
+      "sources": [
+        { "id": "core-rules-10e", "pages": [25, 41, 42, 44] },
+        { "id": "core-rules-updates-10e-2025-10", "pages": [18] }
+      ]
+    },
+    {
+      "id": "stratagem.counter-offensive",
+      "category": "stratagem",
+      "name": "Counter-offensive",
+      "status": "guided",
+      "introducedBattleStateVersion": 21,
+      "sources": [{ "id": "core-rules-10e", "pages": [41] }]
+    },
+    {
+      "id": "stratagem.smokescreen",
+      "category": "stratagem",
+      "name": "Smokescreen",
+      "status": "executable",
+      "introducedBattleStateVersion": 22,
+      "sources": [
+        { "id": "core-rules-10e", "pages": [9, 20, 42, 44] },
+        { "id": "core-rules-updates-10e-2025-10", "pages": [21] }
+      ]
+    },
+    {
+      "id": "stratagem.rapid-ingress",
+      "category": "stratagem",
+      "name": "Rapid Ingress",
+      "status": "guided",
+      "introducedBattleStateVersion": 23,
+      "sources": [
+        { "id": "core-rules-10e", "pages": [42, 43] },
+        { "id": "core-rules-updates-10e-2025-10", "pages": [10, 12, 14] }
+      ]
+    }
+  ]
+}

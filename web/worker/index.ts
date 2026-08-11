@@ -88,6 +88,11 @@ import {
   weaponInventoryDeclarationIsValid,
 } from "../lib/battle-state.mjs";
 import { BATTLE_PHASE_STEPS } from "../lib/battle-clock.mjs";
+import {
+  RULE_COVERAGE_STATUS,
+  assessRuleCoverage,
+  normalizeRuleCoverageMatrix,
+} from "../lib/rule-coverage.mjs";
 
 interface Env {
   ASSETS: Fetcher;
@@ -340,6 +345,7 @@ type CalculatorExports = {
   whc_go_to_ground_is_valid(...values: number[]): number;
   whc_smokescreen_is_valid(...values: number[]): number;
   whc_rapid_ingress_is_valid(...values: number[]): number;
+  whc_rule_coverage_is_permitted(...values: number[]): number;
   whc_counter_offensive_is_valid(...values: number[]): number;
   whc_ranged_declaration_is_valid(...values: number[]): number;
   whc_transport_load_is_valid(...values: number[]): number;
@@ -375,6 +381,7 @@ const API_HEADERS = {
 
 let cataloguePromise: Promise<Catalogue> | null = null;
 let calculatorPromise: Promise<CalculatorExports> | null = null;
+let ruleCoveragePromise: Promise<ReturnType<typeof normalizeRuleCoverageMatrix>> | null = null;
 
 class ServiceUnavailableError extends Error {
   constructor(
@@ -446,6 +453,55 @@ async function loadCatalogue(request: Request, env: Env) {
       );
     });
   return cataloguePromise;
+}
+
+async function loadRuleCoverage(request: Request, env: Env) {
+  ruleCoveragePromise ??= Promise.all([
+    env.ASSETS.fetch(new Request(new URL("/battle-rule-coverage.json", request.url))),
+    env.ASSETS.fetch(new Request(new URL("/battle-rule-sources.json", request.url))),
+  ])
+    .then(async ([coverageResponse, sourceResponse]) => {
+      if (!coverageResponse.ok || !sourceResponse.ok) {
+        throw new ServiceUnavailableError(
+          "Rule coverage catalogue is unavailable",
+          "RULE_COVERAGE_UNAVAILABLE",
+        );
+      }
+      return normalizeRuleCoverageMatrix(
+        await coverageResponse.json(),
+        await sourceResponse.json(),
+      );
+    })
+    .catch((error: unknown) => {
+      ruleCoveragePromise = null;
+      if (error instanceof ServiceUnavailableError) throw error;
+      throw new ServiceUnavailableError(
+        "Rule coverage catalogue is invalid",
+        "RULE_COVERAGE_INVALID",
+      );
+    });
+  return ruleCoveragePromise;
+}
+
+async function checkedRuleCoverage(request: Request, env: Env, rules: unknown) {
+  const report = assessRuleCoverage(await loadRuleCoverage(request, env), rules);
+  const calculator = await loadCalculator();
+  for (const result of report.results) {
+    const wasmPermitted = Boolean(
+      calculator.whc_rule_coverage_is_permitted(
+        RULE_COVERAGE_STATUS[result.status],
+        Number(result.sourceLocked),
+        Number(result.acknowledged),
+      ),
+    );
+    if (wasmPermitted !== result.permitted) {
+      throw new ServiceUnavailableError(
+        "Rule coverage engines disagree",
+        "RULE_COVERAGE_ENGINE_MISMATCH",
+      );
+    }
+  }
+  return report;
 }
 
 async function loadCalculator() {
@@ -2350,6 +2406,8 @@ async function handleApi(request: Request, env: Env) {
         apiVersion: "v1",
         endpoints: {
           health: "GET /api/v1/health",
+          ruleCoverage: "GET /api/v1/rules/coverage",
+          checkRuleCoverage: "POST /api/v1/rules/coverage/check",
           factions: "GET /api/v1/factions",
           units: "GET /api/v1/units?faction={factionId}&kind={attacker|target|all}",
           weapons: "GET /api/v1/weapons?unit={datasheetId}",
@@ -2395,6 +2453,18 @@ async function handleApi(request: Request, env: Env) {
         healthCheck("calculator-engine", async () => {
           await loadCalculator();
         }),
+        healthCheck("rule-coverage", async () => {
+          const coverage = await loadRuleCoverage(request, env);
+          await checkedRuleCoverage(request, env, [
+            "core.attack-sequence",
+            "core.charge-resolution",
+          ]);
+          return {
+            snapshotId: coverage.snapshotId,
+            rules: coverage.rules.length,
+            sourceLocked: coverage.sourceLocked,
+          };
+        }),
         healthCheck("list-storage", async () => {
           await withStorage(() => env.ARMY_DB.prepare("SELECT 1 AS healthy").first());
         }),
@@ -2415,6 +2485,20 @@ async function handleApi(request: Request, env: Env) {
     if (url.pathname === "/api/v1/profiles" && request.method === "GET") {
       return json(await loadCatalogue(request, env), 200, {
         "Cache-Control": "public, max-age=3600",
+      });
+    }
+
+    if (url.pathname === "/api/v1/rules/coverage" && request.method === "GET") {
+      return json({ data: await loadRuleCoverage(request, env), apiVersion: "v1" }, 200, {
+        "Cache-Control": "public, max-age=3600",
+      });
+    }
+
+    if (url.pathname === "/api/v1/rules/coverage/check" && request.method === "POST") {
+      const body = (await request.json()) as { rules?: unknown };
+      return json({
+        data: await checkedRuleCoverage(request, env, body?.rules),
+        apiVersion: "v1",
       });
     }
 

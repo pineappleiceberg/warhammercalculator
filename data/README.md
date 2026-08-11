@@ -6,6 +6,15 @@ pages, and the executable behavior derived from each source. It is separate
 from datasheet/profile provenance because battle timing and setup rules apply
 across every catalogue faction.
 
+`battle-rule-coverage.json` is the machine-readable coverage contract for that
+source set. Every listed rule is classified as `executable`, `guided`,
+`irrelevant`, or `unsupported`, points to pages in a locked source, and records
+the battle-state version that introduced it. Every unlisted rule and every
+unlisted faction, detachment, enhancement, datasheet, terrain, or mission rule
+defaults to `unsupported`; a guided rule is permitted only with a non-empty
+player acknowledgement. The published copies under `web/public/` must remain
+byte-equivalent to these data files and are validated in the web test suite.
+
 `warhammer_10e.sqlite` is generated from Wahapedia's structured 10th-edition
 CSV exports. It contains calculator-relevant profile data only: factions,
 datasheets, model defenses, weapon statlines, weapon ability tags, unit combat

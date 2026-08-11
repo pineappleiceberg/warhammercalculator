@@ -27,16 +27,33 @@ state.
 
 ## Prioritized backlog
 
-1. Build and enforce the source-locked faction, detachment, enhancement,
-   Stratagem, terrain, and mission coverage matrix described by the complete
-   battle requirements.
-2. Expand reviewable table geometry beyond the version-8 ranged measurement to
+1. Enforce the source-locked coverage matrix during versioned battle setup by
+   recording exact faction, detachment, enhancement, datasheet, terrain, and
+   mission selections and blocking every absent or unsupported rule before the
+   battle begins.
+2. Expand the matrix from the current Core Rules and universal-Stratagem
+   foundation with pinned faction, detachment, enhancement, datasheet, terrain,
+   and mission sources, executable handlers, and reason-backed guided fallbacks.
+3. Expand reviewable table geometry beyond the version-8 ranged measurement to
    movement paths, charge endpoints, cover, coherency, Engagement Range,
    terrain, and objective facts.
-3. Deliver full guided-game replay scenarios before adding deterministic
+4. Deliver full guided-game replay scenarios before adding deterministic
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Added the first source-locked rule coverage contract. The
+  machine-readable matrix classifies 15 implemented Core Rules and universal
+  Stratagem boundaries as executable or guided, locks every entry to the exact
+  official source checksum and page set, and explicitly defaults unlisted core,
+  faction, detachment, enhancement, datasheet, Stratagem, terrain, and mission
+  rules to unsupported. Guided entries require a reason-backed player
+  acknowledgement; unknown or stale-source entries fail closed. Static clients
+  can fetch the matrix directly, while the hosted API exposes discovery and
+  bounded coverage-check endpoints and reports the matrix in dependency health.
+  A formally specified C predicate is exported to WebAssembly and
+  differentially checked against JavaScript. The next cycle records exact rules
+  selections in canonical battle setup so omission cannot bypass the gate.
 
 - 2026-08-11: Advanced guided play to battle-state version 23 with canonical
   Rapid Ingress. At the end of the opposing Movement phase, replay now opens a

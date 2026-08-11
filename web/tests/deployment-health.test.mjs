@@ -26,9 +26,23 @@ const profiles = {
   ],
 };
 
+const ruleCoverage = {
+  schemaVersion: 1,
+  snapshotId: "test-rules",
+  sourceLocks: [{ id: "core", sha256: "a".repeat(64) }],
+  rules: [
+    {
+      id: "core.attack-sequence",
+      status: "executable",
+      sources: [{ id: "core", pages: [1] }],
+    },
+  ],
+};
+
 function healthyFetch(request) {
   const url = new URL(request);
   if (url.pathname.endsWith("/profile-data.json")) return Response.json(profiles);
+  if (url.pathname.endsWith("/battle-rule-coverage.json")) return Response.json(ruleCoverage);
   if (url.pathname.endsWith("/wasm/calculator.wasm")) {
     return new Response(Uint8Array.of(0, 0x61, 0x73, 0x6d, 1, 0, 0, 0));
   }
@@ -57,9 +71,9 @@ test("accepts healthy API and static deployments", async () => {
   });
 
   assert.equal(api.status, "ok");
-  assert.equal(api.checks.length, 4);
+  assert.equal(api.checks.length, 5);
   assert.equal(staticSite.status, "ok");
-  assert.equal(staticSite.checks.length, 3);
+  assert.equal(staticSite.checks.length, 4);
   assert.equal(api.baseUrl, "https://example.test/calculator/");
 });
 
@@ -70,6 +84,7 @@ test("identifies HTTP, profile schema, and Wasm deployment failures", async () =
       const pathname = new URL(request).pathname;
       if (pathname === "/") return new Response("Unavailable", { status: 503 });
       if (pathname === "/profile-data.json") return Response.json({ factions: [] });
+      if (pathname === "/battle-rule-coverage.json") return Response.json({ rules: [] });
       return new Response("not wasm");
     },
   });
@@ -77,7 +92,7 @@ test("identifies HTTP, profile schema, and Wasm deployment failures", async () =
   assert.equal(report.status, "failed");
   assert.deepEqual(
     report.checks.map((entry) => entry.code),
-    ["HTTP_503", "INVALID_PROFILE_SCHEMA", "INVALID_WASM"],
+    ["HTTP_503", "INVALID_PROFILE_SCHEMA", "INVALID_RULE_COVERAGE_SCHEMA", "INVALID_WASM"],
   );
 });
 

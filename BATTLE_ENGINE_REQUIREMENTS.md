@@ -131,8 +131,12 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    Remaining work includes other reaction and Stratagem windows, full
    geometry-backed target eligibility, and
    geometry-backed engagement.
-6. Normalize complete faction, detachment, enhancement, Stratagem, and mission
-   coverage with source-locked executable rules and a fail-closed coverage gate.
+6. **In progress:** the source-locked Core Rules and universal-Stratagem matrix,
+   four-state coverage model, fail-closed C/WebAssembly predicate, static
+   catalogue, API checker, and deployment health check are complete. Next record
+   exact faction, detachment, enhancement, datasheet, terrain, and mission
+   selections in canonical battle setup, then expand each category with pinned
+   executable or reason-backed guided rules.
 7. Add table geometry and player-supplied measurement and visibility facts.
 8. Deliver the complete guided battle workflow and full-game replay corpus.
 9. Add deterministic automated policies, batch battle simulation, and calibrated
