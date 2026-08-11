@@ -36,6 +36,9 @@ import {
   hazardousResolutionIsValid,
   heroicInterventionIsValid,
   initialDeploymentIsValid,
+  modelPlacementFlags,
+  modelPlacementSetFacts,
+  modelPlacementSetIsValid,
   normalizeBattleState,
   rangedDeclarationIsValid,
   rangedTargetEligibilityIsValid,
@@ -126,6 +129,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_initial_deployment_is_valid, "function");
   assert.equal(typeof calculator._whc_table_geometry_is_valid, "function");
   assert.equal(typeof calculator._whc_terrain_footprint_set_is_valid, "function");
+  assert.equal(typeof calculator._whc_model_placement_set_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
 });
@@ -290,6 +294,93 @@ test("WebAssembly and JavaScript agree on canonical terrain footprints", () => {
     assert.equal(
       Boolean(calculator._whc_terrain_footprint_set_is_valid(...values)),
       terrainFootprintSetIsValid(terrain, true),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on exact-model placement sets", () => {
+  const expectedModelIds = ["circle", "ellipse", "hull"];
+  const base = {
+    reviewedByPlayer: true,
+    measurementBoundariesReviewed: true,
+    positionsReviewed: true,
+    noModelOverlapReviewed: true,
+    objectiveClearanceReviewed: true,
+    models: [
+      {
+        modelId: "circle",
+        measurementBasis: "base",
+        shape: "circle",
+        widthThousandths: 2_000,
+        depthThousandths: 2_000,
+        centerXThousandths: 1_000,
+        centerYThousandths: 1_000,
+        elevationThousandths: 0,
+        rotationMilliDegrees: 0,
+      },
+      {
+        modelId: "ellipse",
+        measurementBasis: "base",
+        shape: "ellipse",
+        widthThousandths: 4_000,
+        depthThousandths: 2_000,
+        centerXThousandths: 58_000,
+        centerYThousandths: 22_000,
+        elevationThousandths: 2_000,
+        rotationMilliDegrees: 0,
+      },
+      {
+        modelId: "hull",
+        measurementBasis: "model",
+        shape: "rectangle",
+        widthThousandths: 2_000,
+        depthThousandths: 2_000,
+        centerXThousandths: 30_000,
+        centerYThousandths: 42_585,
+        elevationThousandths: 0,
+        rotationMilliDegrees: 45_000,
+      },
+    ],
+  };
+  const cases = [
+    base,
+    {
+      ...base,
+      models: base.models.map((model) =>
+        model.modelId === "hull" ? { ...model, centerYThousandths: 42_586 } : model,
+      ),
+    },
+    {
+      ...base,
+      models: base.models.map((model) =>
+        model.modelId === "circle" ? { ...model, depthThousandths: 1_999 } : model,
+      ),
+    },
+    { ...base, models: [...base.models.slice(0, 2), { ...base.models[1] }] },
+    {
+      ...base,
+      models: base.models.map((model, index) => (index ? model : { ...model, modelId: "unknown" })),
+    },
+    { ...base, positionsReviewed: false },
+  ];
+  for (const placement of cases) {
+    const facts = modelPlacementSetFacts(placement, expectedModelIds);
+    const values = [
+      facts.expectedModelCount,
+      facts.placementCount,
+      facts.uniqueModelCount,
+      facts.recognizedModelCount,
+      facts.positionedModelCount,
+      facts.inBoundsModelCount,
+      facts.dimensionedModelCount,
+      facts.supportedShapeCount,
+      facts.basedModelCount,
+      facts.baselessModelCount,
+      modelPlacementFlags(placement, true),
+    ];
+    assert.equal(
+      Boolean(calculator._whc_model_placement_set_is_valid(...values)),
+      modelPlacementSetIsValid(placement, expectedModelIds, true),
     );
   }
 });

@@ -14,7 +14,10 @@ import {
   configureUnengagedBattleFormation,
   declareFormationDeployment,
   deployFormation,
+  modelPlacementSetFacts,
+  modelPlacementSetIsValid,
   normalizeBattleState,
+  recordDeploymentModelPlacements,
   replayBattleState,
   startBattle,
   tableGeometryIsValid,
@@ -272,6 +275,43 @@ function reviewedTerrainFootprints(state, overrides = {}) {
   };
 }
 
+function reviewedDeploymentModelPlacements(state, formationId, referenceEventId, overrides = {}) {
+  const replayed = replayBattleState(state);
+  const formation = replayed.formations.get(formationId);
+  const tableGeometry = replayed.tableGeometry;
+  assert.ok(formation);
+  assert.ok(tableGeometry);
+  const placement = {
+    context: "deployment",
+    referenceEventId,
+    missionSourceId: tableGeometry.missionSourceId,
+    terrainSourceId: tableGeometry.terrainSourceId,
+    battlefieldWidthThousandths: tableGeometry.battlefieldWidthThousandths,
+    battlefieldHeightThousandths: tableGeometry.battlefieldHeightThousandths,
+    origin: tableGeometry.origin,
+    models: formation.modelInstances.map((model, index) => ({
+      modelId: model.id,
+      measurementBasis: "base",
+      shape: "circle",
+      widthThousandths: 1_000,
+      depthThousandths: 1_000,
+      centerXThousandths: 5_000 + (index % 20) * 2_000,
+      centerYThousandths: 5_000 + Math.floor(index / 20) * 2_000,
+      elevationThousandths: 0,
+      rotationMilliDegrees: 0,
+    })),
+    measurementBoundariesReviewed: true,
+    positionsReviewed: true,
+    noModelOverlapReviewed: true,
+    objectiveClearanceReviewed: true,
+    reviewedByPlayer: true,
+    method: "manual",
+    reviewReason: "Every model footprint and position was checked on the physical battlefield",
+    ...overrides,
+  };
+  return placement;
+}
+
 function setup(state = null) {
   return initializeBattleForLists({
     catalogue,
@@ -471,6 +511,173 @@ test("preserves the custom-mission deployment workflow without table geometry", 
   assert.doesNotThrow(() => deployAllOnBattlefield(state));
 });
 
+test("requires a reviewed exact-model placement snapshot after each battlefield deployment", () => {
+  let state = exactMissionSetup("exact-model-placement-required");
+  state = configureBattleTableGeometry(
+    state,
+    reviewedTableGeometry(state),
+    "placement-table-geometry",
+    state.events.length + 1,
+  );
+  state = configureBattleTerrainFootprints(
+    state,
+    reviewedTerrainFootprints(state),
+    "placement-terrain-footprints",
+    state.events.length + 1,
+  );
+  for (const formation of replayBattleState(state).formations.values()) {
+    const mustStartInReserves =
+      formation.deploymentTraits.aircraft && !formation.deploymentTraits.hover;
+    state = declareFormationDeployment(
+      state,
+      formation.id,
+      mustStartInReserves ? "reserves" : "battlefield",
+      mustStartInReserves
+        ? {
+            aircraftMode: "aircraft",
+            eligibilityConfirmed: true,
+            eligibilityReason: "Aircraft must start in Reserves",
+          }
+        : {},
+      `placement-declare-${formation.id}`,
+      state.events.length + 1,
+    );
+  }
+  const beforeDeployment = replayBattleState(state);
+  const formation = [...beforeDeployment.formations.values()].find(
+    (candidate) =>
+      candidate.playerId === beforeDeployment.deploymentPriorityPlayerId &&
+      beforeDeployment.deploymentByFormation.get(candidate.id)?.location === "battlefield",
+  );
+  assert.ok(formation);
+  const deploymentEventId = `placement-deploy-${formation.id}`;
+  state = deployFormation(
+    state,
+    formation.id,
+    { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
+    deploymentEventId,
+    state.events.length + 1,
+  );
+  const pending = replayBattleState(state).pendingDeploymentPlacement;
+  assert.deepEqual(pending, { formationId: formation.id, referenceEventId: deploymentEventId });
+  assert.equal(replayBattleState(state).deploymentComplete, false);
+  assert.throws(
+    () => startBattle(state, "player-1", "start-before-model-placement", state.events.length + 1),
+    /model placement/i,
+  );
+
+  const placement = reviewedDeploymentModelPlacements(state, formation.id, deploymentEventId);
+  const expectedModelIds = formation.modelInstances.map((model) => model.id);
+  assert.equal(modelPlacementSetIsValid(placement, expectedModelIds), true);
+  assert.throws(
+    () =>
+      recordDeploymentModelPlacements(
+        state,
+        formation.id,
+        { ...placement, terrainSourceId: "wrong-layout" },
+        `placement-models-wrong-source-${formation.id}`,
+        state.events.length + 1,
+      ),
+    /does not match the reviewed table geometry/i,
+  );
+  state = recordDeploymentModelPlacements(
+    state,
+    formation.id,
+    placement,
+    `placement-models-${formation.id}`,
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).pendingDeploymentPlacement, null);
+  assert.equal(replayBattleState(state).deploymentComplete, true);
+});
+
+test("validates circular, elliptical, and rotated rectangular model footprints at table edges", () => {
+  const reviewed = {
+    reviewedByPlayer: true,
+    measurementBoundariesReviewed: true,
+    positionsReviewed: true,
+    noModelOverlapReviewed: true,
+    objectiveClearanceReviewed: true,
+    models: [
+      {
+        modelId: "circle",
+        measurementBasis: "base",
+        shape: "circle",
+        widthThousandths: 2_000,
+        depthThousandths: 2_000,
+        centerXThousandths: 1_000,
+        centerYThousandths: 1_000,
+        elevationThousandths: 0,
+        rotationMilliDegrees: 90_000,
+      },
+      {
+        modelId: "ellipse",
+        measurementBasis: "base",
+        shape: "ellipse",
+        widthThousandths: 4_000,
+        depthThousandths: 2_000,
+        centerXThousandths: 58_000,
+        centerYThousandths: 22_000,
+        elevationThousandths: 2_000,
+        rotationMilliDegrees: 0,
+      },
+      {
+        modelId: "hull",
+        measurementBasis: "model",
+        shape: "rectangle",
+        widthThousandths: 2_000,
+        depthThousandths: 2_000,
+        centerXThousandths: 30_000,
+        centerYThousandths: 42_585,
+        elevationThousandths: 0,
+        rotationMilliDegrees: 45_000,
+      },
+    ],
+  };
+  const expected = ["circle", "ellipse", "hull"];
+  assert.equal(modelPlacementSetIsValid(reviewed, expected), true);
+  assert.deepEqual(modelPlacementSetFacts(reviewed, expected), {
+    expectedModelCount: 3,
+    placementCount: 3,
+    uniqueModelCount: 3,
+    recognizedModelCount: 3,
+    positionedModelCount: 3,
+    inBoundsModelCount: 3,
+    dimensionedModelCount: 3,
+    supportedShapeCount: 3,
+    basedModelCount: 2,
+    baselessModelCount: 1,
+  });
+  assert.equal(
+    modelPlacementSetIsValid(
+      {
+        ...reviewed,
+        models: reviewed.models.map((model) =>
+          model.modelId === "hull" ? { ...model, centerYThousandths: 42_586 } : model,
+        ),
+      },
+      expected,
+    ),
+    false,
+  );
+  assert.equal(
+    modelPlacementSetIsValid(
+      {
+        ...reviewed,
+        models: reviewed.models.map((model) =>
+          model.modelId === "circle" ? { ...model, depthThousandths: 1_999 } : model,
+        ),
+      },
+      expected,
+    ),
+    false,
+  );
+  assert.equal(
+    modelPlacementSetIsValid({ ...reviewed, noModelOverlapReviewed: false }, expected),
+    false,
+  );
+});
+
 function deployAllOnBattlefield(state) {
   let next = state;
   for (const formation of replayBattleState(next).formations.values()) {
@@ -507,6 +714,17 @@ function deployAllOnBattlefield(state) {
       `deploy-${formation.id}`,
       next.events.length + 1,
     );
+    const afterDeployment = replayBattleState(next);
+    if (afterDeployment.pendingDeploymentPlacement) {
+      const pending = afterDeployment.pendingDeploymentPlacement;
+      next = recordDeploymentModelPlacements(
+        next,
+        pending.formationId,
+        reviewedDeploymentModelPlacements(next, pending.formationId, pending.referenceEventId),
+        `place-${pending.formationId}`,
+        next.events.length + 1,
+      );
+    }
   }
   return next;
 }
@@ -899,6 +1117,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacyRuleCoverageThroughSequence: 3,
     legacyTableGeometryThroughSequence: 3,
     legacyTerrainFootprintsThroughSequence: 3,
+    legacyModelPlacementsThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -935,6 +1154,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacyRuleCoverageThroughSequence: 3,
     legacyTableGeometryThroughSequence: 3,
     legacyTerrainFootprintsThroughSequence: 3,
+    legacyModelPlacementsThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -976,6 +1196,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacyRuleCoverageThroughSequence: 2,
     legacyTableGeometryThroughSequence: 2,
     legacyTerrainFootprintsThroughSequence: 2,
+    legacyModelPlacementsThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -1010,6 +1231,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacyRuleCoverageThroughSequence: 2,
     legacyTableGeometryThroughSequence: 2,
     legacyTerrainFootprintsThroughSequence: 2,
+    legacyModelPlacementsThroughSequence: 2,
   });
 });
 
@@ -1043,6 +1265,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacyRuleCoverageThroughSequence: 2,
     legacyTableGeometryThroughSequence: 2,
     legacyTerrainFootprintsThroughSequence: 2,
+    legacyModelPlacementsThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -1082,6 +1305,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacyRuleCoverageThroughSequence: 2,
     legacyTableGeometryThroughSequence: 2,
     legacyTerrainFootprintsThroughSequence: 2,
+    legacyModelPlacementsThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -1116,6 +1340,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacyRuleCoverageThroughSequence: 2,
     legacyTableGeometryThroughSequence: 2,
     legacyTerrainFootprintsThroughSequence: 2,
+    legacyModelPlacementsThroughSequence: 2,
   });
 });
 
@@ -1149,6 +1374,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacyRuleCoverageThroughSequence: 2,
     legacyTableGeometryThroughSequence: 2,
     legacyTerrainFootprintsThroughSequence: 2,
+    legacyModelPlacementsThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -1488,4 +1714,63 @@ test("migrates version-25 exact games without inventing terrain footprints", () 
     migrated.events.length + 1,
   );
   assert.deepEqual(replayBattleState(migrated).terrainFootprints, terrain);
+});
+
+test("migrates version-26 exact games without inventing model placements", () => {
+  let versionTwentySix = exactMissionSetup("version-26-model-placements");
+  versionTwentySix = configureBattleTableGeometry(
+    versionTwentySix,
+    reviewedTableGeometry(versionTwentySix),
+    "version-26-table-geometry",
+    versionTwentySix.events.length + 1,
+  );
+  versionTwentySix = configureBattleTerrainFootprints(
+    versionTwentySix,
+    reviewedTerrainFootprints(versionTwentySix),
+    "version-26-terrain-footprints",
+    versionTwentySix.events.length + 1,
+  );
+  versionTwentySix.version = 26;
+  delete versionTwentySix.migration;
+  versionTwentySix = deployAllOnBattlefield(versionTwentySix);
+  const legacyEventCount = versionTwentySix.events.length;
+  let migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: normalizeBattleState(versionTwentySix),
+    id: versionTwentySix.id,
+  });
+  let replayed = replayBattleState(migrated);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 26);
+  assert.equal(migrated.migration.legacyModelPlacementsThroughSequence, legacyEventCount);
+  assert.equal(replayed.modelPlacementsByFormation.size, 0);
+  assert.equal(replayed.pendingDeploymentPlacement, null);
+  assert.equal(replayed.deploymentComplete, false);
+
+  for (const deployment of replayed.deploymentByFormation.values()) {
+    if (deployment.location !== "battlefield") continue;
+    const reference = migrated.events.find(
+      (event) =>
+        event.type === "formation_deployed" && event.formationId === deployment.formationId,
+    );
+    assert.ok(reference);
+    migrated = recordDeploymentModelPlacements(
+      migrated,
+      deployment.formationId,
+      reviewedDeploymentModelPlacements(migrated, deployment.formationId, reference.id, {
+        method: "imported",
+      }),
+      `migrated-model-placements-${deployment.formationId}`,
+      migrated.events.length + 1,
+    );
+  }
+  replayed = replayBattleState(migrated);
+  assert.equal(replayed.modelPlacementsByFormation.size, 1);
+  assert.equal(replayed.deploymentComplete, true);
 });

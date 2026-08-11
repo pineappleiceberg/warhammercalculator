@@ -54,6 +54,7 @@ import {
   passSmokescreen,
   passHeroicIntervention,
   recordFormationCharge,
+  recordDeploymentModelPlacements,
   recordHazardousTests,
   recordFightMove,
   recordRangedTargetEligibility,
@@ -909,6 +910,9 @@ export default function PlayMode() {
   const exactTableGeometryRequired = Boolean(
     replayedBattle?.ruleCoverage?.report.permitted && geometryMission && geometryTerrain,
   );
+  const pendingDeploymentFormation = replayedBattle?.pendingDeploymentPlacement
+    ? replayedBattle.formations.get(replayedBattle.pendingDeploymentPlacement.formationId)
+    : null;
   targetFormationBaseModels = battleTargetSequence(
     targetFormationBaseModels,
     targetBattleFormationId ? replayedBattle?.formations.get(targetBattleFormationId) : null,
@@ -3180,6 +3184,86 @@ export default function PlayMode() {
       setStatus(`${battleFormation(next, formationId)?.name ?? "Formation"} deployed`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Formation could not be deployed");
+    }
+  };
+
+  const recordPendingDeploymentModelPlacements = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (
+      !battleState ||
+      !replayedBattle?.pendingDeploymentPlacement ||
+      !replayedBattle.tableGeometry
+    ) {
+      return;
+    }
+    try {
+      const pending = replayedBattle.pendingDeploymentPlacement;
+      const formation = replayedBattle.formations.get(pending.formationId);
+      if (!formation) throw new Error("Pending deployment formation is unavailable");
+      const data = new FormData(event.currentTarget);
+      const table = replayedBattle.tableGeometry;
+      const measurement = (name: string, maximum: number, allowZero = false) => {
+        const value = Number(data.get(name));
+        if (!Number.isFinite(value) || value < (allowZero ? 0 : 0.001) || value > maximum) {
+          throw new Error(
+            `${name} must be ${allowZero ? "from 0" : "greater than 0"} to ${maximum} inches`,
+          );
+        }
+        return Math.round(value * 1000);
+      };
+      const rotation = (name: string) => {
+        const value = Number(data.get(name));
+        if (!Number.isFinite(value) || value < 0 || value >= 180) {
+          throw new Error(`${name} must be from 0 to 179.999 degrees`);
+        }
+        return Math.round(value * 1000);
+      };
+      const placement = {
+        context: "deployment",
+        referenceEventId: pending.referenceEventId,
+        missionSourceId: table.missionSourceId,
+        terrainSourceId: table.terrainSourceId,
+        battlefieldWidthThousandths: table.battlefieldWidthThousandths,
+        battlefieldHeightThousandths: table.battlefieldHeightThousandths,
+        origin: table.origin,
+        models: formation.modelInstances.map((model: { id: string }) => ({
+          modelId: model.id,
+          measurementBasis: String(data.get(`model-basis-${model.id}`) || "base"),
+          shape: String(data.get(`model-shape-${model.id}`) || "circle"),
+          widthThousandths: measurement(`model-width-${model.id}`, 30),
+          depthThousandths: measurement(`model-depth-${model.id}`, 30),
+          centerXThousandths: measurement(
+            `model-x-${model.id}`,
+            table.battlefieldWidthThousandths / 1000,
+            true,
+          ),
+          centerYThousandths: measurement(
+            `model-y-${model.id}`,
+            table.battlefieldHeightThousandths / 1000,
+            true,
+          ),
+          elevationThousandths: measurement(`model-z-${model.id}`, 24, true),
+          rotationMilliDegrees: rotation(`model-rotation-${model.id}`),
+        })),
+        measurementBoundariesReviewed: data.get("model-boundaries-reviewed") === "on",
+        positionsReviewed: data.get("model-positions-reviewed") === "on",
+        noModelOverlapReviewed: data.get("model-overlap-reviewed") === "on",
+        objectiveClearanceReviewed: data.get("model-objectives-reviewed") === "on",
+        reviewedByPlayer: data.get("model-placement-player-reviewed") === "on",
+        method: String(data.get("model-placement-method") || "manual"),
+        reviewReason: String(data.get("model-placement-reason") || "").trim(),
+      };
+      const next = recordDeploymentModelPlacements(
+        battleState,
+        formation.id,
+        placement,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setStatus(`${formation.name} model placements recorded`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Model placements could not be recorded");
     }
   };
 
@@ -8680,40 +8764,196 @@ export default function PlayMode() {
                     </strong>
                     <span>Place one formation, then alternate. Confirm physical placement.</span>
                   </div>
-                  <label className="confirmation-row">
-                    <input
-                      type="checkbox"
-                      checked={deploymentPlacementConfirmed}
-                      onChange={(event) => setDeploymentPlacementConfirmed(event.target.checked)}
-                    />
-                    Deployment-zone and table-state placement confirmed
-                  </label>
-                  <input
-                    value={deploymentPlacementReason}
-                    maxLength={300}
-                    placeholder="Deployment zone and applicable setup rules checked"
-                    onChange={(event) => setDeploymentPlacementReason(event.target.value)}
-                  />
-                  <div className="deployment-options">
-                    {[...replayedBattle.formations.values()]
-                      .filter(
-                        (formation) =>
-                          replayedBattle.deploymentByFormation.get(formation.id)?.location ===
-                            "battlefield" && !replayedBattle.deployedFormationIds.has(formation.id),
-                      )
-                      .map((formation) => (
-                        <button
-                          type="button"
-                          key={formation.id}
-                          disabled={
-                            formation.playerId !== replayedBattle.deploymentPriorityPlayerId
+                  {pendingDeploymentFormation ? (
+                    <form
+                      className="mission-setup"
+                      data-testid="deployment-model-placement"
+                      onSubmit={recordPendingDeploymentModelPlacements}
+                    >
+                      <div>
+                        <strong>Record {pendingDeploymentFormation.name} model positions</strong>
+                        <span>
+                          Measure from each base. For a baseless model, use the closest-point model
+                          footprint. Elevation is the tabletop height of that base or footprint.
+                        </span>
+                      </div>
+                      {pendingDeploymentFormation.modelInstances.map(
+                        (model: { id: string; modelName: string; ordinal: number }) => (
+                          <fieldset key={model.id}>
+                            <legend>
+                              {model.modelName} · model {model.ordinal}
+                            </legend>
+                            <label>
+                              <span>Measurement boundary</span>
+                              <select name={`model-basis-${model.id}`} defaultValue="base">
+                                <option value="base">Base</option>
+                                <option value="model">Baseless model footprint</option>
+                              </select>
+                            </label>
+                            <label>
+                              <span>Footprint shape</span>
+                              <select name={`model-shape-${model.id}`} defaultValue="circle">
+                                <option value="circle">Circle</option>
+                                <option value="ellipse">Ellipse or oval</option>
+                                <option value="rectangle">Reviewed rectangle</option>
+                              </select>
+                            </label>
+                            <label>
+                              <span>Width (inches)</span>
+                              <input
+                                name={`model-width-${model.id}`}
+                                type="number"
+                                min="0.001"
+                                max="30"
+                                step="0.001"
+                                required
+                              />
+                            </label>
+                            <label>
+                              <span>Depth (inches; equal width for a circle)</span>
+                              <input
+                                name={`model-depth-${model.id}`}
+                                type="number"
+                                min="0.001"
+                                max="30"
+                                step="0.001"
+                                required
+                              />
+                            </label>
+                            <label>
+                              <span>Centre X (inches)</span>
+                              <input
+                                name={`model-x-${model.id}`}
+                                type="number"
+                                min="0"
+                                max={
+                                  replayedBattle.tableGeometry.battlefieldWidthThousandths / 1000
+                                }
+                                step="0.001"
+                                required
+                              />
+                            </label>
+                            <label>
+                              <span>Centre Y (inches)</span>
+                              <input
+                                name={`model-y-${model.id}`}
+                                type="number"
+                                min="0"
+                                max={
+                                  replayedBattle.tableGeometry.battlefieldHeightThousandths / 1000
+                                }
+                                step="0.001"
+                                required
+                              />
+                            </label>
+                            <label>
+                              <span>Elevation (inches)</span>
+                              <input
+                                name={`model-z-${model.id}`}
+                                type="number"
+                                min="0"
+                                max="24"
+                                step="0.001"
+                                defaultValue="0"
+                                required
+                              />
+                            </label>
+                            <label>
+                              <span>Counter-clockwise rotation (degrees)</span>
+                              <input
+                                name={`model-rotation-${model.id}`}
+                                type="number"
+                                min="0"
+                                max="179.999"
+                                step="0.001"
+                                defaultValue="0"
+                                required
+                              />
+                            </label>
+                          </fieldset>
+                        ),
+                      )}
+                      <label>
+                        <span>Measurement source</span>
+                        <select name="model-placement-method" defaultValue="manual">
+                          <option value="manual">Manual tabletop measurement</option>
+                          <option value="uwb">UWB measurement</option>
+                          <option value="camera">Camera measurement</option>
+                          <option value="imported">Imported geometry</option>
+                        </select>
+                      </label>
+                      <label className="confirmation-row">
+                        <input name="model-boundaries-reviewed" type="checkbox" required />
+                        Every base or baseless-model measurement boundary was checked
+                      </label>
+                      <label className="confirmation-row">
+                        <input name="model-positions-reviewed" type="checkbox" required />
+                        Every centre, rotation, and elevation was checked
+                      </label>
+                      <label className="confirmation-row">
+                        <input name="model-overlap-reviewed" type="checkbox" required />
+                        No model ends on top of another model
+                      </label>
+                      <label className="confirmation-row">
+                        <input name="model-objectives-reviewed" type="checkbox" required />
+                        No model ends on top of an objective marker
+                      </label>
+                      <label className="confirmation-row">
+                        <input name="model-placement-player-reviewed" type="checkbox" required /> A
+                        player reviewed and accepts these physical-table facts
+                      </label>
+                      <label>
+                        <span>Review record</span>
+                        <input
+                          name="model-placement-reason"
+                          maxLength={500}
+                          required
+                          placeholder="Bases or hulls, positions, elevation, overlap, and objectives checked"
+                        />
+                      </label>
+                      <button type="submit">Lock reviewed model positions</button>
+                    </form>
+                  ) : (
+                    <>
+                      <label className="confirmation-row">
+                        <input
+                          type="checkbox"
+                          checked={deploymentPlacementConfirmed}
+                          onChange={(event) =>
+                            setDeploymentPlacementConfirmed(event.target.checked)
                           }
-                          onClick={() => recordFormationDeployment(formation.id)}
-                        >
-                          Deploy {formation.name}
-                        </button>
-                      ))}
-                  </div>
+                        />
+                        Deployment-zone and table-state placement confirmed
+                      </label>
+                      <input
+                        value={deploymentPlacementReason}
+                        maxLength={300}
+                        placeholder="Deployment zone and applicable setup rules checked"
+                        onChange={(event) => setDeploymentPlacementReason(event.target.value)}
+                      />
+                      <div className="deployment-options">
+                        {[...replayedBattle.formations.values()]
+                          .filter(
+                            (formation) =>
+                              replayedBattle.deploymentByFormation.get(formation.id)?.location ===
+                                "battlefield" &&
+                              !replayedBattle.deployedFormationIds.has(formation.id),
+                          )
+                          .map((formation) => (
+                            <button
+                              type="button"
+                              key={formation.id}
+                              disabled={
+                                formation.playerId !== replayedBattle.deploymentPriorityPlayerId
+                              }
+                              onClick={() => recordFormationDeployment(formation.id)}
+                            >
+                              Deploy {formation.name}
+                            </button>
+                          ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             {battleClock.status === "setup" && replayedBattle.deploymentComplete && (

@@ -129,6 +129,13 @@
 #define WHC_TERRAIN_FOOTPRINT_PLACEMENT_REVIEWED 4u
 #define WHC_TERRAIN_FOOTPRINT_GROUPING_REVIEWED 8u
 #define WHC_TERRAIN_FOOTPRINT_FLAGS_MASK 15u
+#define WHC_MODEL_PLACEMENT_REVIEWED_BY_PLAYER 1u
+#define WHC_MODEL_PLACEMENT_SOURCE_LOCKED 2u
+#define WHC_MODEL_PLACEMENT_BOUNDARIES_REVIEWED 4u
+#define WHC_MODEL_PLACEMENT_POSITIONS_REVIEWED 8u
+#define WHC_MODEL_PLACEMENT_NO_OVERLAP_REVIEWED 16u
+#define WHC_MODEL_PLACEMENT_OBJECTIVES_REVIEWED 32u
+#define WHC_MODEL_PLACEMENT_FLAGS_MASK 63u
 
 enum whc_fire_overwatch_trigger {
     WHC_FIRE_OVERWATCH_SET_UP = 1u,
@@ -566,6 +573,31 @@ bool whc_terrain_footprint_set_is_valid(uint32_t footprint_count,
                                         uint32_t six_by_four_count,
                                         uint32_t ten_by_five_count,
                                         uint32_t twelve_by_six_count, uint32_t flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        expected_model_count > 0 && expected_model_count <= 1000 &&
+        placement_count == expected_model_count &&
+        unique_model_count == placement_count &&
+        recognized_model_count == placement_count &&
+        positioned_model_count == placement_count &&
+        in_bounds_model_count == placement_count &&
+        dimensioned_model_count == placement_count &&
+        supported_shape_count == placement_count &&
+        based_model_count <= placement_count &&
+        baseless_model_count == placement_count - based_model_count &&
+        flags == WHC_MODEL_PLACEMENT_FLAGS_MASK;
+*/
+bool whc_model_placement_set_is_valid(uint32_t expected_model_count,
+                                      uint32_t placement_count,
+                                      uint32_t unique_model_count,
+                                      uint32_t recognized_model_count,
+                                      uint32_t positioned_model_count,
+                                      uint32_t in_bounds_model_count,
+                                      uint32_t dimensioned_model_count,
+                                      uint32_t supported_shape_count,
+                                      uint32_t based_model_count,
+                                      uint32_t baseless_model_count, uint32_t flags);
 
 /*@ requires first_player_index <= 1;
     requires \valid(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));

@@ -1816,6 +1816,16 @@ int main(void) {
                                                WHC_TERRAIN_FOOTPRINT_FLAGS_MASK));
     assert(!whc_terrain_footprint_set_is_valid(12u, 12u, 12u, 12u, 12u, 0u, 4u, 2u, 6u,
                                                WHC_TERRAIN_FOOTPRINT_FLAGS_MASK - 1u));
+    assert(whc_model_placement_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u, 4u, 1u,
+                                            WHC_MODEL_PLACEMENT_FLAGS_MASK));
+    assert(!whc_model_placement_set_is_valid(5u, 4u, 4u, 4u, 4u, 4u, 4u, 4u, 3u, 1u,
+                                             WHC_MODEL_PLACEMENT_FLAGS_MASK));
+    assert(!whc_model_placement_set_is_valid(5u, 5u, 5u, 5u, 5u, 4u, 5u, 5u, 4u, 1u,
+                                             WHC_MODEL_PLACEMENT_FLAGS_MASK));
+    assert(!whc_model_placement_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u, 4u, 1u,
+                                             WHC_MODEL_PLACEMENT_FLAGS_MASK - 1u));
+    assert(!whc_model_placement_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u, UINT32_MAX, 6u,
+                                             WHC_MODEL_PLACEMENT_FLAGS_MASK));
     puts("all tests passed");
 
     return 0;

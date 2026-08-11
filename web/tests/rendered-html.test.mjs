@@ -23,6 +23,7 @@ import {
   passFireOverwatch,
   recordFormationCharge,
   recordFormationMovement,
+  recordDeploymentModelPlacements,
   recordFightMove,
   recordHazardousTests,
   recordRangedTargetEligibility,
@@ -2992,6 +2993,58 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
     "record-terrain-footprints",
     4,
   );
+  state = declareFormationDeployment(
+    state,
+    target.id,
+    "battlefield",
+    {},
+    "declare-table-geometry-target",
+    5,
+  );
+  state = deployFormation(
+    state,
+    target.id,
+    { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
+    "deploy-table-geometry-target",
+    6,
+  );
+  const replayedAfterDeployment = replayBattleState(state);
+  const registeredTarget = replayedAfterDeployment.formations.get(target.id);
+  assert.ok(registeredTarget);
+  const modelPlacements = {
+    context: "deployment",
+    referenceEventId: "deploy-table-geometry-target",
+    missionSourceId: geometry.missionSourceId,
+    terrainSourceId: geometry.terrainSourceId,
+    battlefieldWidthThousandths: geometry.battlefieldWidthThousandths,
+    battlefieldHeightThousandths: geometry.battlefieldHeightThousandths,
+    origin: geometry.origin,
+    models: registeredTarget.modelInstances.map((model) => ({
+      modelId: model.id,
+      measurementBasis: "model",
+      shape: "rectangle",
+      widthThousandths: 3_000,
+      depthThousandths: 2_000,
+      centerXThousandths: 30_000,
+      centerYThousandths: 22_000,
+      elevationThousandths: 0,
+      rotationMilliDegrees: 45_000,
+    })),
+    measurementBoundariesReviewed: true,
+    positionsReviewed: true,
+    noModelOverlapReviewed: true,
+    objectiveClearanceReviewed: true,
+    reviewedByPlayer: true,
+    method: "manual",
+    reviewReason: "The target hull and position were measured on the physical battlefield",
+  };
+  state = recordDeploymentModelPlacements(
+    state,
+    target.id,
+    modelPlacements,
+    "record-table-geometry-target-placement",
+    7,
+  );
 
   const worker = await loadWorker();
   const response = await worker.fetch(
@@ -3008,6 +3061,7 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
   assert.equal(body.data.schemaVersion, BATTLE_STATE_VERSION);
   assert.deepEqual(body.data.tableGeometry, geometry);
   assert.deepEqual(body.data.terrainFootprints, terrainFootprints);
+  assert.deepEqual(body.data.modelPlacements, { [target.id]: modelPlacements });
 });
 
 test("cross-checks structured charge movement through the C and WebAssembly API", async () => {
