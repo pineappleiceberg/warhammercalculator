@@ -67,3 +67,23 @@ export function coveredBattleRuleBinding(players) {
   );
   return bindBattleRuleSelections(coveredRuleCoverageMatrix, plan);
 }
+
+export function coveredExactBattleRuleBinding(players) {
+  const lists = players.map((player, index) => ({
+    factionId: `test-faction-${index + 1}`,
+    units: [
+      {
+        id: `test-unit-${index + 1}`,
+        unitId: `test-datasheet-${index + 1}`,
+      },
+    ],
+  }));
+  const plan = deriveBattleRuleSelectionPlan(coveredRuleCoverageMatrix, players, lists, {
+    ...coveredRuleSelectionOverrides(players, lists),
+    missionSourceId: "chapter-approved-2025-26-v1.4-a",
+    missionRuleIds: undefined,
+    terrainSourceId: "chapter-approved-2025-26-v1.4-layout-1",
+    terrainRuleIds: undefined,
+  });
+  return bindBattleRuleSelections(coveredRuleCoverageMatrix, plan);
+}

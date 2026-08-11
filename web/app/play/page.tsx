@@ -36,6 +36,7 @@ import {
   completeFormationActivation,
   configureBattleWeaponBearers,
   configureBattleMission,
+  configureBattleTableGeometry,
   configureUnengagedBattleFormation,
   createBattleState,
   declareFormationCharge,
@@ -76,6 +77,7 @@ import {
   startFireOverwatch,
   startFormationMovement,
   startFormationActivation,
+  TABLE_GEOMETRY_CONSTANTS,
 } from "../../lib/battle-state.mjs";
 import { battleClockLabel } from "../../lib/battle-clock.mjs";
 import { battleRosterRevisionsMatch, initializeBattleForLists } from "../../lib/battle-setup.mjs";
@@ -890,6 +892,15 @@ export default function PlayMode() {
     missionPackCatalogue?.terrainLayouts.filter((entry) =>
       selectedMission?.terrainLayoutIds.includes(entry.id),
     ) ?? [];
+  const geometryMission = missionOptions.find(
+    (entry) => entry.id === replayedBattle?.ruleCoverage?.plan.mission.sourceId,
+  );
+  const geometryTerrain = missionPackCatalogue?.terrainLayouts.find(
+    (entry) => entry.id === replayedBattle?.ruleCoverage?.plan.terrain.sourceId,
+  );
+  const exactTableGeometryRequired = Boolean(
+    replayedBattle?.ruleCoverage?.report.permitted && geometryMission && geometryTerrain,
+  );
   targetFormationBaseModels = battleTargetSequence(
     targetFormationBaseModels,
     targetBattleFormationId ? replayedBattle?.formations.get(targetBattleFormationId) : null,
@@ -3223,6 +3234,58 @@ export default function PlayMode() {
       setStatus("Mission setup recorded");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Mission setup could not be recorded");
+    }
+  };
+
+  const configureTableGeometry = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!battleState || !replayedBattle || !geometryMission || !geometryTerrain) return;
+    try {
+      const data = new FormData(event.currentTarget);
+      const coordinate = (name: string, maximum: number) => {
+        const inches = Number(data.get(name));
+        if (!Number.isFinite(inches) || inches < 0 || inches > maximum) {
+          throw new Error(`${name} must be between 0 and ${maximum} inches`);
+        }
+        return Math.round(inches * 1000);
+      };
+      const next = configureBattleTableGeometry(
+        battleState,
+        {
+          missionSourceId: geometryMission.id,
+          terrainSourceId: geometryTerrain.id,
+          deploymentName: geometryMission.deployment,
+          battlefieldWidthThousandths: TABLE_GEOMETRY_CONSTANTS.widthThousandths,
+          battlefieldHeightThousandths: TABLE_GEOMETRY_CONSTANTS.heightThousandths,
+          origin: "attacker-left-near",
+          objectivePositions: replayedBattle.mission.objectives.map(
+            (objective: { id: string }) => ({
+              objectiveId: objective.id,
+              xThousandths: coordinate(`objective-x-${objective.id}`, 60),
+              yThousandths: coordinate(`objective-y-${objective.id}`, 44),
+            }),
+          ),
+          terrainProfile: {
+            sectionCount: TABLE_GEOMETRY_CONSTANTS.terrainSectionCount,
+            sixByFourCount: TABLE_GEOMETRY_CONSTANTS.sixByFourCount,
+            tenByFiveCount: TABLE_GEOMETRY_CONSTANTS.tenByFiveCount,
+            twelveBySixCount: TABLE_GEOMETRY_CONSTANTS.twelveBySixCount,
+            sourcePage: Math.max(...geometryTerrain.sourcePages),
+          },
+          terrainLayoutReviewed: data.get("terrain-reviewed") === "on",
+          deploymentZonesReviewed: data.get("deployment-reviewed") === "on",
+          objectivePositionsReviewed: data.get("objectives-reviewed") === "on",
+          reviewedByPlayer: data.get("player-reviewed") === "on",
+          method: String(data.get("geometry-method") || "manual"),
+          reviewReason: String(data.get("geometry-reason") || "").trim(),
+        },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setStatus("Table geometry recorded");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Table geometry could not be recorded");
     }
   };
 
@@ -8125,7 +8188,8 @@ export default function PlayMode() {
             )}
             {battleClock.status === "setup" &&
               replayedBattle &&
-              replayedBattle.deploymentByFormation.size === 0 && (
+              replayedBattle.deploymentByFormation.size === 0 &&
+              !replayedBattle.tableGeometry && (
                 <form className="mission-setup" onSubmit={configureMission}>
                   <label>
                     <span>Mission</span>
@@ -8194,7 +8258,124 @@ export default function PlayMode() {
                 </form>
               )}
             {battleClock.status === "setup" &&
+              replayedBattle &&
+              !replayedBattle.tableGeometry &&
+              replayedBattle.ruleCoverage?.report.permitted &&
+              geometryMission &&
+              geometryTerrain &&
+              (replayedBattle.deploymentByFormation.size === 0 || battleState.migration) && (
+                <form
+                  className="mission-setup"
+                  data-testid="table-geometry-setup"
+                  onSubmit={configureTableGeometry}
+                >
+                  <div>
+                    <strong>Review table geometry</strong>
+                    <span>
+                      60 × 44 inches · {geometryMission.code} · {geometryMission.deployment} ·{" "}
+                      {geometryTerrain.name}. Use the Attacker&apos;s left-near corner as 0,0 and
+                      enter the objective centres from the physical mission setup.
+                    </span>
+                  </div>
+                  {replayedBattle.mission.objectives.map(
+                    (objective: { id: string; name: string }) => (
+                      <fieldset key={objective.id}>
+                        <legend>{objective.name}</legend>
+                        <label>
+                          <span>X from left edge (inches)</span>
+                          <input
+                            name={"objective-x-" + objective.id}
+                            type="number"
+                            min="0"
+                            max="60"
+                            step="0.001"
+                            required
+                          />
+                        </label>
+                        <label>
+                          <span>Y from near edge (inches)</span>
+                          <input
+                            name={"objective-y-" + objective.id}
+                            type="number"
+                            min="0"
+                            max="44"
+                            step="0.001"
+                            required
+                          />
+                        </label>
+                      </fieldset>
+                    ),
+                  )}
+                  <label>
+                    <span>Measurement source</span>
+                    <select name="geometry-method" defaultValue="manual">
+                      <option value="manual">Manual tabletop measurement</option>
+                      <option value="uwb">UWB measurement</option>
+                      <option value="camera">Camera measurement</option>
+                      <option value="imported">Imported geometry</option>
+                    </select>
+                  </label>
+                  <label>
+                    <input name="terrain-reviewed" type="checkbox" required />
+                    <span>
+                      Terrain placement reviewed against {geometryTerrain.name}, source page{" "}
+                      {Math.max(...geometryTerrain.sourcePages)}
+                    </span>
+                  </label>
+                  <label>
+                    <input name="deployment-reviewed" type="checkbox" required />
+                    <span>{geometryMission.deployment} deployment zones reviewed</span>
+                  </label>
+                  <label>
+                    <input name="objectives-reviewed" type="checkbox" required />
+                    <span>Every objective centre checked against the mission setup</span>
+                  </label>
+                  <label>
+                    <input name="player-reviewed" type="checkbox" required />
+                    <span>A player reviewed and accepts these geometry facts</span>
+                  </label>
+                  <label>
+                    <span>Review record</span>
+                    <input
+                      name="geometry-reason"
+                      maxLength={500}
+                      required
+                      placeholder="Measurements, orientation, terrain and objective placement checked"
+                    />
+                  </label>
+                  <button type="submit">Lock reviewed table geometry</button>
+                </form>
+              )}
+            {battleClock.status === "setup" && replayedBattle.tableGeometry && (
+              <div className="action-tracker" data-testid="table-geometry-summary">
+                <strong>
+                  Table geometry · {replayedBattle.tableGeometry.deploymentName} ·{" "}
+                  {replayedBattle.tableGeometry.terrainSourceId}
+                </strong>
+                <span>
+                  60 × 44 inches · origin at the Attacker&apos;s left-near corner ·{" "}
+                  {replayedBattle.tableGeometry.method} review
+                </span>
+                <ul>
+                  {replayedBattle.tableGeometry.objectivePositions.map(
+                    (objective: {
+                      objectiveId: string;
+                      xThousandths: number;
+                      yThousandths: number;
+                    }) => (
+                      <li key={objective.objectiveId}>
+                        {objective.objectiveId}: {(objective.xThousandths / 1000).toFixed(3)},{" "}
+                        {(objective.yThousandths / 1000).toFixed(3)} inches
+                      </li>
+                    ),
+                  )}
+                </ul>
+                <span>{replayedBattle.tableGeometry.reviewReason}</span>
+              </div>
+            )}
+            {battleClock.status === "setup" &&
               replayedBattle.deploymentByFormation.size === 0 &&
+              (replayedBattle.tableGeometry || !exactTableGeometryRequired) &&
               !battleState.migration && (
                 <form className="deployment-planner" onSubmit={declareDeployments}>
                   <div>

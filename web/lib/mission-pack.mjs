@@ -2,6 +2,56 @@ export const MISSION_PACK_SCHEMA_VERSION = 1;
 
 const ID = /^[a-z0-9][a-z0-9.-]*$/;
 const SHA256 = /^[0-9a-f]{64}$/;
+const CHAPTER_APPROVED_PREFIX = "chapter-approved-2025-26-v1.4-";
+const CHAPTER_APPROVED_TABLE_BINDINGS = new Map([
+  ...["a", "b", "c", "d"].map((code) => [
+    code,
+    { deploymentName: "Tipping Point", terrainLayoutNumbers: [1, 2, 4, 6, 7, 8] },
+  ]),
+  ...["e", "f", "g", "h"].map((code) => [
+    code,
+    { deploymentName: "Hammer and Anvil", terrainLayoutNumbers: [1, 7, 8] },
+  ]),
+  ...["i", "j", "k", "l"].map((code) => [
+    code,
+    { deploymentName: "Search and Destroy", terrainLayoutNumbers: [1, 2, 3, 4, 6] },
+  ]),
+  ...["m", "n", "o", "p"].map((code) => [
+    code,
+    { deploymentName: "Crucible of Battle", terrainLayoutNumbers: [1, 2, 4, 6, 8] },
+  ]),
+  ...["q", "r"].map((code) => [
+    code,
+    { deploymentName: "Sweeping Engagement", terrainLayoutNumbers: [3, 5] },
+  ]),
+  ...["s", "t"].map((code) => [code, { deploymentName: "Dawn of War", terrainLayoutNumbers: [5] }]),
+]);
+
+export function chapterApprovedTableBinding(missionSourceId, terrainSourceId) {
+  if (
+    typeof missionSourceId !== "string" ||
+    typeof terrainSourceId !== "string" ||
+    !missionSourceId.startsWith(CHAPTER_APPROVED_PREFIX) ||
+    !terrainSourceId.startsWith(`${CHAPTER_APPROVED_PREFIX}layout-`)
+  ) {
+    return null;
+  }
+  const code = missionSourceId.slice(CHAPTER_APPROVED_PREFIX.length);
+  const layoutNumber = Number(terrainSourceId.slice(`${CHAPTER_APPROVED_PREFIX}layout-`.length));
+  const binding = CHAPTER_APPROVED_TABLE_BINDINGS.get(code);
+  if (
+    !binding ||
+    !Number.isInteger(layoutNumber) ||
+    !binding.terrainLayoutNumbers.includes(layoutNumber)
+  ) {
+    return null;
+  }
+  return {
+    missionSourceId,
+    terrainSourceId,
+    deploymentName: binding.deploymentName,
+  };
+}
 
 function object(value, message) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(message);

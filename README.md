@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 24 as soon as both lists are selected. Every
+creates battle-state version 25 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -663,10 +663,16 @@ Battlefield formations deploy one at a time in alternating player order;
 Reserves can arrive only for the active player in the Reinforcements step and
 are recorded as having made a Normal move. Formations outside the battlefield
 cannot move, charge, activate, attack, or be targeted, and any that remain there
-when the battle ends are reported as destroyed. Physical deployment-zone,
-board-edge, enemy-distance, Deep Strike, and source-rule eligibility facts stay
-fail-closed behind explicit reason-bearing player confirmations until table
-geometry is executable. The official Core Rules source identity, retrieval date,
+when the battle ends are reported as destroyed. For an exact Chapter Approved
+2025-26 v1.4 mission/layout, version 25 blocks deployment until a player records
+a reviewed 60-by-44-inch table frame, every configured objective centre, the
+named deployment map, and the official 12-section terrain inventory. Coordinates
+use the Attacker's left-near corner as the stable origin and retain manual, UWB,
+camera, or imported provenance. Custom missions keep the existing confirmation-
+based workflow. Physical model or hull positions, terrain footprints, board-edge
+and enemy-distance checks, Deep Strike, and source-rule eligibility remain
+fail-closed behind explicit reason-bearing player confirmations until those
+geometry layers are executable. The official Core Rules source identity, retrieval date,
 content hash, and relevant pages are pinned in
 `data/battle-rule-sources.json`.
 Version 7 locks each legal saved Transport assignment to its exact battle
@@ -1072,8 +1078,13 @@ static catalogue is `/chapter-approved-2025-26-v1.4.json`; the hosted API expose
 `GET /api/v1/missions` and `GET /api/v1/terrain?mission=...`. The guided-review reason
 records that players will resolve non-executable text at the physical table; it
 does not label that text executable. Unknown catalogue IDs still fail closed.
-Mission-card scoring text and physical terrain geometry remain guided, not
-executable.
+Mission-card scoring text, terrain footprints, and model positions remain
+guided. The version-25 table frame makes the exact mission/layout identity,
+battlefield dimensions, objective centres, and published terrain-section
+inventory executable and replayable before deployment. JavaScript,
+C/WebAssembly, and the replay API check the same aggregate contract; versions
+1-24 retain an explicit migration boundary instead of receiving invented
+coordinates.
 
 A catalogue matchup can use exact catalogue IDs or unambiguous names:
 

@@ -1452,10 +1452,9 @@ static void test_fight_move(void) {
                                WHC_FIGHT_MOVE_OBJECTIVE_RANGE | WHC_FIGHT_MOVE_CLOSER_TO_OBJECTIVE |
                                WHC_FIGHT_MOVE_OUTCOME_EXPLAINED;
     const uint32_t consolidation_none = pile_none | WHC_FIGHT_MOVE_OBJECTIVE_DESTINATION_IMPOSSIBLE;
-    const uint32_t rule_restricted = WHC_FIGHT_MOVE_REVIEWED_BY_PLAYER |
-                                     WHC_FIGHT_MOVE_BASE_CONTACT_STATIONARY |
-                                     WHC_FIGHT_MOVE_OUTCOME_EXPLAINED |
-                                     WHC_FIGHT_MOVE_RULE_RESTRICTED;
+    const uint32_t rule_restricted =
+        WHC_FIGHT_MOVE_REVIEWED_BY_PLAYER | WHC_FIGHT_MOVE_BASE_CONTACT_STATIONARY |
+        WHC_FIGHT_MOVE_OUTCOME_EXPLAINED | WHC_FIGHT_MOVE_RULE_RESTRICTED;
 
     assert(
         whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN, WHC_FIGHT_DESTINATION_ENEMY, 3000u, enemy));
@@ -1505,27 +1504,22 @@ static void test_heroic_intervention(void) {
 
 /*@ terminates \true; */
 static void test_fire_overwatch(void) {
-    assert(whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_SET_UP,
-                                       WHC_BATTLE_PHASE_MOVEMENT, 24000u,
+    assert(whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_SET_UP, WHC_BATTLE_PHASE_MOVEMENT, 24000u,
                                        WHC_FIRE_OVERWATCH_FLAGS_MASK));
-    assert(whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_SET_UP,
-                                       WHC_BATTLE_PHASE_CHARGE, 1u,
+    assert(whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_SET_UP, WHC_BATTLE_PHASE_CHARGE, 1u,
                                        WHC_FIRE_OVERWATCH_FLAGS_MASK));
     assert(whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_NORMAL_MOVE_START,
                                        WHC_BATTLE_PHASE_MOVEMENT, 12000u,
                                        WHC_FIRE_OVERWATCH_FLAGS_MASK));
-    assert(whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_CHARGE_DECLARED,
-                                       WHC_BATTLE_PHASE_CHARGE, 6000u,
-                                       WHC_FIRE_OVERWATCH_FLAGS_MASK));
+    assert(whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_CHARGE_DECLARED, WHC_BATTLE_PHASE_CHARGE,
+                                       6000u, WHC_FIRE_OVERWATCH_FLAGS_MASK));
     assert(!whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_CHARGE_DECLARED,
                                         WHC_BATTLE_PHASE_MOVEMENT, 6000u,
                                         WHC_FIRE_OVERWATCH_FLAGS_MASK));
-    assert(!whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_NORMAL_MOVE_END,
-                                        WHC_BATTLE_PHASE_CHARGE, 6000u,
-                                        WHC_FIRE_OVERWATCH_FLAGS_MASK));
-    assert(!whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_ADVANCE_END,
-                                        WHC_BATTLE_PHASE_MOVEMENT, 24001u,
-                                        WHC_FIRE_OVERWATCH_FLAGS_MASK));
+    assert(!whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_NORMAL_MOVE_END, WHC_BATTLE_PHASE_CHARGE,
+                                        6000u, WHC_FIRE_OVERWATCH_FLAGS_MASK));
+    assert(!whc_fire_overwatch_is_valid(WHC_FIRE_OVERWATCH_ADVANCE_END, WHC_BATTLE_PHASE_MOVEMENT,
+                                        24001u, WHC_FIRE_OVERWATCH_FLAGS_MASK));
     assert(!whc_fire_overwatch_is_valid(
         WHC_FIRE_OVERWATCH_FALL_BACK_START, WHC_BATTLE_PHASE_MOVEMENT, 6000u,
         WHC_FIRE_OVERWATCH_FLAGS_MASK & ~WHC_FIRE_OVERWATCH_TARGET_VISIBLE));
@@ -1537,20 +1531,20 @@ static void test_hazardous_resolution(void) {
     uint32_t events[WHC_BATTLE_EVENT_FIELDS] = {0u};
     uint32_t health[WHC_BATTLE_HEALTH_FIELDS] = {99u, 99u};
 
-    assert(whc_hazardous_resolution_is_valid(1u, 0u, false, 2u, 0u, 0u, 0u, 2u,
-                                              true, WHC_HAZARDOUS_FLAGS_MASK));
-    assert(whc_hazardous_resolution_is_valid(1u, 0u, false, 5u, 5u, 3u, 2u, 1u,
-                                              false, WHC_HAZARDOUS_FLAGS_MASK));
-    assert(whc_hazardous_resolution_is_valid(2u, 1u, true, 2u, 5u, 2u, 0u, 2u,
-                                              true, WHC_HAZARDOUS_FLAGS_MASK));
-    assert(whc_hazardous_resolution_is_valid(1u, 0u, false, 1u, 5u, 3u, 3u, 0u,
-                                              false, WHC_HAZARDOUS_FLAGS_MASK));
-    assert(!whc_hazardous_resolution_is_valid(2u, 0u, false, 3u, 0u, 0u, 0u, 3u,
-                                               true, WHC_HAZARDOUS_FLAGS_MASK));
-    assert(!whc_hazardous_resolution_is_valid(1u, 2u, true, 3u, 0u, 0u, 0u, 3u,
-                                               true, WHC_HAZARDOUS_FLAGS_MASK));
-    assert(!whc_hazardous_resolution_is_valid(1u, 0u, false, 2u, 5u, 3u, 0u, 3u,
-                                               false, WHC_HAZARDOUS_FLAGS_MASK));
+    assert(whc_hazardous_resolution_is_valid(1u, 0u, false, 2u, 0u, 0u, 0u, 2u, true,
+                                             WHC_HAZARDOUS_FLAGS_MASK));
+    assert(whc_hazardous_resolution_is_valid(1u, 0u, false, 5u, 5u, 3u, 2u, 1u, false,
+                                             WHC_HAZARDOUS_FLAGS_MASK));
+    assert(whc_hazardous_resolution_is_valid(2u, 1u, true, 2u, 5u, 2u, 0u, 2u, true,
+                                             WHC_HAZARDOUS_FLAGS_MASK));
+    assert(whc_hazardous_resolution_is_valid(1u, 0u, false, 1u, 5u, 3u, 3u, 0u, false,
+                                             WHC_HAZARDOUS_FLAGS_MASK));
+    assert(!whc_hazardous_resolution_is_valid(2u, 0u, false, 3u, 0u, 0u, 0u, 3u, true,
+                                              WHC_HAZARDOUS_FLAGS_MASK));
+    assert(!whc_hazardous_resolution_is_valid(1u, 2u, true, 3u, 0u, 0u, 0u, 3u, true,
+                                              WHC_HAZARDOUS_FLAGS_MASK));
+    assert(!whc_hazardous_resolution_is_valid(1u, 0u, false, 2u, 5u, 3u, 0u, 3u, false,
+                                              WHC_HAZARDOUS_FLAGS_MASK));
 
     events[0] = WHC_BATTLE_EVENT_VERSION;
     events[1] = WHC_BATTLE_EVENT_HAZARDOUS_DAMAGE;
@@ -1581,28 +1575,28 @@ static void test_go_to_ground(void) {
                                       WHC_GO_TO_GROUND_FLAGS_MASK));
     assert(!whc_go_to_ground_is_valid(WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, false, true,
                                       WHC_GO_TO_GROUND_FLAGS_MASK));
-    assert(!whc_go_to_ground_is_valid(
-        WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, false, false,
-        WHC_GO_TO_GROUND_FLAGS_MASK & ~WHC_GO_TO_GROUND_BENEFIT_OF_COVER));
+    assert(!whc_go_to_ground_is_valid(WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, false, false,
+                                      WHC_GO_TO_GROUND_FLAGS_MASK &
+                                          ~WHC_GO_TO_GROUND_BENEFIT_OF_COVER));
 }
 
 static void test_counter_offensive(void) {
     assert(whc_counter_offensive_is_valid(WHC_BATTLE_PHASE_FIGHT, 2u, 2u, 0u, false, false,
-                                           WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
+                                          WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
     assert(whc_counter_offensive_is_valid(WHC_BATTLE_PHASE_FIGHT, 3u, 2u, 1u, false, false,
-                                           WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
+                                          WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
     assert(!whc_counter_offensive_is_valid(WHC_BATTLE_PHASE_SHOOTING, 2u, 2u, 0u, false, false,
-                                            WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
+                                           WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
     assert(!whc_counter_offensive_is_valid(WHC_BATTLE_PHASE_FIGHT, 1u, 2u, 0u, false, false,
-                                            WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
+                                           WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
     assert(!whc_counter_offensive_is_valid(WHC_BATTLE_PHASE_FIGHT, 2u, 2u, 1u, false, false,
-                                            WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
+                                           WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
     assert(!whc_counter_offensive_is_valid(WHC_BATTLE_PHASE_FIGHT, 2u, 2u, 0u, true, false,
-                                            WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
+                                           WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
     assert(!whc_counter_offensive_is_valid(WHC_BATTLE_PHASE_FIGHT, 2u, 2u, 0u, false, true,
-                                            WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
+                                           WHC_COUNTER_OFFENSIVE_FLAGS_MASK));
     assert(!whc_counter_offensive_is_valid(WHC_BATTLE_PHASE_FIGHT, 2u, 2u, 0u, false, false,
-                                            WHC_COUNTER_OFFENSIVE_FLAGS_MASK - 1u));
+                                           WHC_COUNTER_OFFENSIVE_FLAGS_MASK - 1u));
 }
 
 static void test_smokescreen(void) {
@@ -1620,42 +1614,32 @@ static void test_smokescreen(void) {
                                      WHC_SMOKESCREEN_FLAGS_MASK));
     assert(!whc_smokescreen_is_valid(WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, false, true,
                                      WHC_SMOKESCREEN_FLAGS_MASK));
-    assert(!whc_smokescreen_is_valid(
-        WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, false, false,
-        WHC_SMOKESCREEN_FLAGS_MASK & ~WHC_SMOKESCREEN_STEALTH));
+    assert(!whc_smokescreen_is_valid(WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, false, false,
+                                     WHC_SMOKESCREEN_FLAGS_MASK & ~WHC_SMOKESCREEN_STEALTH));
 }
 
 static void test_rapid_ingress(void) {
-    assert(whc_rapid_ingress_is_valid(
-        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 2u, 2u, 2u, 1u, 1u, false,
-        false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
-    assert(whc_rapid_ingress_is_valid(
-        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 1u, 1u, 1u, 1u, 0u, false,
-        false, true, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(whc_rapid_ingress_is_valid(WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 2u, 2u, 2u,
+                                      1u, 1u, false, false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(whc_rapid_ingress_is_valid(WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 1u, 1u, 1u,
+                                      1u, 0u, false, false, true, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(!whc_rapid_ingress_is_valid(WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_REINFORCEMENTS,
+                                       2u, 2u, 2u, 1u, 1u, false, false, false,
+                                       WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(!whc_rapid_ingress_is_valid(WHC_BATTLE_PHASE_SHOOTING, WHC_MOVEMENT_STEP_END, 2u, 2u, 2u,
+                                       1u, 1u, false, false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(!whc_rapid_ingress_is_valid(WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 1u, 1u, 2u,
+                                       1u, 1u, false, false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(!whc_rapid_ingress_is_valid(WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 1u, 2u, 2u,
+                                       1u, 1u, false, false, true, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(!whc_rapid_ingress_is_valid(WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 2u, 2u, 0u,
+                                       1u, 0u, false, false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(!whc_rapid_ingress_is_valid(WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 2u, 2u, 2u,
+                                       1u, 1u, true, false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(!whc_rapid_ingress_is_valid(WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 2u, 2u, 2u,
+                                       1u, 1u, false, true, false, WHC_RAPID_INGRESS_FLAGS_MASK));
     assert(!whc_rapid_ingress_is_valid(
-        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_REINFORCEMENTS, 2u, 2u, 2u, 1u, 1u,
-        false, false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
-    assert(!whc_rapid_ingress_is_valid(
-        WHC_BATTLE_PHASE_SHOOTING, WHC_MOVEMENT_STEP_END, 2u, 2u, 2u, 1u, 1u, false,
-        false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
-    assert(!whc_rapid_ingress_is_valid(
-        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 1u, 1u, 2u, 1u, 1u, false,
-        false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
-    assert(!whc_rapid_ingress_is_valid(
-        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 1u, 2u, 2u, 1u, 1u, false,
-        false, true, WHC_RAPID_INGRESS_FLAGS_MASK));
-    assert(!whc_rapid_ingress_is_valid(
-        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 2u, 2u, 0u, 1u, 0u, false,
-        false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
-    assert(!whc_rapid_ingress_is_valid(
-        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 2u, 2u, 2u, 1u, 1u, true,
-        false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
-    assert(!whc_rapid_ingress_is_valid(
-        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 2u, 2u, 2u, 1u, 1u, false,
-        true, false, WHC_RAPID_INGRESS_FLAGS_MASK));
-    assert(!whc_rapid_ingress_is_valid(
-        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 2u, 2u, 2u, 1u, 1u, false,
-        false, false,
+        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 2u, 2u, 2u, 1u, 1u, false, false, false,
         WHC_RAPID_INGRESS_FLAGS_MASK & ~WHC_RAPID_INGRESS_PLACEMENT_LEGAL));
 }
 
@@ -1671,19 +1655,19 @@ static void test_rule_coverage(void) {
 }
 
 static void test_ranged_declaration(void) {
-    assert(whc_ranged_declaration_is_valid(3u, 3u, 2u, 2u, 3u, 3u,
-                                           WHC_RANGED_DECLARATION_FLAGS_MASK));
-    assert(whc_ranged_declaration_is_valid(2u, 2u, 1u, 1u, 1u, 1u,
-                                           WHC_RANGED_DECLARATION_FLAGS_MASK));
+    assert(
+        whc_ranged_declaration_is_valid(3u, 3u, 2u, 2u, 3u, 3u, WHC_RANGED_DECLARATION_FLAGS_MASK));
+    assert(
+        whc_ranged_declaration_is_valid(2u, 2u, 1u, 1u, 1u, 1u, WHC_RANGED_DECLARATION_FLAGS_MASK));
     assert(!whc_ranged_declaration_is_valid(0u, 0u, 0u, 0u, 0u, 0u,
                                             WHC_RANGED_DECLARATION_FLAGS_MASK));
     assert(!whc_ranged_declaration_is_valid(3u, 2u, 2u, 2u, 3u, 3u,
                                             WHC_RANGED_DECLARATION_FLAGS_MASK));
     assert(!whc_ranged_declaration_is_valid(3u, 3u, 3u, 2u, 3u, 3u,
                                             WHC_RANGED_DECLARATION_FLAGS_MASK));
-    assert(!whc_ranged_declaration_is_valid(
-        3u, 3u, 2u, 2u, 3u, 3u,
-        WHC_RANGED_DECLARATION_FLAGS_MASK & ~WHC_RANGED_DECLARATION_ALL_ELIGIBLE));
+    assert(!whc_ranged_declaration_is_valid(3u, 3u, 2u, 2u, 3u, 3u,
+                                            WHC_RANGED_DECLARATION_FLAGS_MASK &
+                                                ~WHC_RANGED_DECLARATION_ALL_ELIGIBLE));
 }
 
 /*@ assigns \nothing;
@@ -1703,52 +1687,37 @@ static void test_transport_load(void) {
 /*@ assigns \nothing;
  */
 static void test_transport_deployment_chain(void) {
-    assert(whc_transport_deployment_chain_is_valid(
-        1u, 1u, WHC_DEPLOYMENT_ROOT_BATTLEFIELD, 0u));
-    assert(whc_transport_deployment_chain_is_valid(
-        1u, 1u, WHC_DEPLOYMENT_ROOT_NOT_DEPLOYED, 0u));
-    assert(whc_transport_deployment_chain_is_valid(
-        3u, 3u, WHC_DEPLOYMENT_ROOT_BATTLEFIELD, 0u));
-    assert(whc_transport_deployment_chain_is_valid(
-        3u, 3u, WHC_DEPLOYMENT_ROOT_RESERVES, 3u));
-    assert(whc_transport_deployment_chain_is_valid(
-        3u, 3u, WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES, 3u));
-    assert(!whc_transport_deployment_chain_is_valid(
-        3u, 2u, WHC_DEPLOYMENT_ROOT_BATTLEFIELD, 0u));
-    assert(!whc_transport_deployment_chain_is_valid(
-        3u, 3u, WHC_DEPLOYMENT_ROOT_RESERVES, 2u));
+    assert(whc_transport_deployment_chain_is_valid(1u, 1u, WHC_DEPLOYMENT_ROOT_BATTLEFIELD, 0u));
+    assert(whc_transport_deployment_chain_is_valid(1u, 1u, WHC_DEPLOYMENT_ROOT_NOT_DEPLOYED, 0u));
+    assert(whc_transport_deployment_chain_is_valid(3u, 3u, WHC_DEPLOYMENT_ROOT_BATTLEFIELD, 0u));
+    assert(whc_transport_deployment_chain_is_valid(3u, 3u, WHC_DEPLOYMENT_ROOT_RESERVES, 3u));
+    assert(whc_transport_deployment_chain_is_valid(3u, 3u, WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES,
+                                                   3u));
+    assert(!whc_transport_deployment_chain_is_valid(3u, 2u, WHC_DEPLOYMENT_ROOT_BATTLEFIELD, 0u));
+    assert(!whc_transport_deployment_chain_is_valid(3u, 3u, WHC_DEPLOYMENT_ROOT_RESERVES, 2u));
     assert(!whc_transport_deployment_chain_is_valid(0u, 0u, 0u, 0u));
 }
 
 /*@ assigns \nothing;
  */
 static void test_initial_deployment(void) {
-    assert(whc_initial_deployment_is_valid(0u, 0u, 0u, 0u,
-                                           WHC_AIRCRAFT_MODE_NONE,
+    assert(whc_initial_deployment_is_valid(0u, 0u, 0u, 0u, WHC_AIRCRAFT_MODE_NONE,
                                            WHC_DEPLOYMENT_ROOT_BATTLEFIELD));
-    assert(whc_initial_deployment_is_valid(1u, 0u, 0u, 0u,
-                                           WHC_AIRCRAFT_MODE_NONE,
+    assert(whc_initial_deployment_is_valid(1u, 0u, 0u, 0u, WHC_AIRCRAFT_MODE_NONE,
                                            WHC_DEPLOYMENT_ROOT_NOT_DEPLOYED));
-    assert(!whc_initial_deployment_is_valid(1u, 0u, 0u, 0u,
-                                            WHC_AIRCRAFT_MODE_NONE,
+    assert(!whc_initial_deployment_is_valid(1u, 0u, 0u, 0u, WHC_AIRCRAFT_MODE_NONE,
                                             WHC_DEPLOYMENT_ROOT_BATTLEFIELD));
-    assert(whc_initial_deployment_is_valid(1u, 1u, 0u, 0u,
-                                           WHC_AIRCRAFT_MODE_NONE,
+    assert(whc_initial_deployment_is_valid(1u, 1u, 0u, 0u, WHC_AIRCRAFT_MODE_NONE,
                                            WHC_DEPLOYMENT_ROOT_BATTLEFIELD));
-    assert(whc_initial_deployment_is_valid(0u, 0u, 1u, 0u,
-                                           WHC_AIRCRAFT_MODE_AIRCRAFT,
+    assert(whc_initial_deployment_is_valid(0u, 0u, 1u, 0u, WHC_AIRCRAFT_MODE_AIRCRAFT,
                                            WHC_DEPLOYMENT_ROOT_RESERVES));
-    assert(!whc_initial_deployment_is_valid(0u, 0u, 1u, 0u,
-                                            WHC_AIRCRAFT_MODE_AIRCRAFT,
+    assert(!whc_initial_deployment_is_valid(0u, 0u, 1u, 0u, WHC_AIRCRAFT_MODE_AIRCRAFT,
                                             WHC_DEPLOYMENT_ROOT_BATTLEFIELD));
-    assert(whc_initial_deployment_is_valid(0u, 0u, 1u, 1u,
-                                           WHC_AIRCRAFT_MODE_HOVER,
+    assert(whc_initial_deployment_is_valid(0u, 0u, 1u, 1u, WHC_AIRCRAFT_MODE_HOVER,
                                            WHC_DEPLOYMENT_ROOT_BATTLEFIELD));
-    assert(whc_initial_deployment_is_valid(0u, 0u, 1u, 1u,
-                                           WHC_AIRCRAFT_MODE_HOVER,
+    assert(whc_initial_deployment_is_valid(0u, 0u, 1u, 1u, WHC_AIRCRAFT_MODE_HOVER,
                                            WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES));
-    assert(!whc_initial_deployment_is_valid(0u, 0u, 1u, 1u,
-                                            WHC_AIRCRAFT_MODE_HOVER,
+    assert(!whc_initial_deployment_is_valid(0u, 0u, 1u, 1u, WHC_AIRCRAFT_MODE_HOVER,
                                             WHC_DEPLOYMENT_ROOT_RESERVES));
 }
 
@@ -1829,6 +1798,17 @@ int main(void) {
     test_transport_deployment_chain();
     test_initial_deployment();
     test_battle_clock();
+    assert(whc_table_geometry_is_valid(60000u, 44000u, 5u, 5u, 12u, 4u, 2u, 6u,
+                                       WHC_TABLE_GEOMETRY_FLAGS_MASK));
+    assert(!whc_table_geometry_is_valid(44000u, 60000u, 5u, 5u, 12u, 4u, 2u, 6u,
+                                        WHC_TABLE_GEOMETRY_FLAGS_MASK));
+    assert(!whc_table_geometry_is_valid(60000u, 44000u, 5u, 4u, 12u, 4u, 2u, 6u,
+                                        WHC_TABLE_GEOMETRY_FLAGS_MASK));
+    assert(!whc_table_geometry_is_valid(60000u, 44000u, 5u, 5u, 11u, 4u, 2u, 5u,
+                                        WHC_TABLE_GEOMETRY_FLAGS_MASK));
+    assert(!whc_table_geometry_is_valid(60000u, 44000u, 5u, 5u, 12u, 4u, 2u, 6u,
+                                        WHC_TABLE_GEOMETRY_FLAGS_MASK - 1u));
     puts("all tests passed");
+
     return 0;
 }

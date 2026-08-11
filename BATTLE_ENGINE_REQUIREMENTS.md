@@ -143,7 +143,12 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    exact 20 A-T mission combinations, eight terrain layouts, and their allowed
    pairings. Next replace guided mission scoring and physical terrain boundaries
    with executable handlers as their state becomes representable.
-7. Add table geometry and player-supplied measurement and visibility facts.
+7. **In progress:** version 25 records the canonical 60-by-44-inch battlefield,
+   exact mission/layout binding, objective centres, official terrain-section
+   inventory, stable coordinate origin, review method, and player confirmation
+   before an exact Chapter Approved deployment. Next add terrain footprints,
+   model bases or hulls, movement paths, and geometry-derived visibility,
+   cover, coherency, and Engagement Range while retaining explicit overrides.
 8. Deliver the complete guided battle workflow and full-game replay corpus.
 9. Add deterministic automated policies, batch battle simulation, and calibrated
    matchup reporting.

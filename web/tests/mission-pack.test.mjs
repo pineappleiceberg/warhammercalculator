@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  chapterApprovedTableBinding,
   normalizeMissionPackCatalogue,
   validateMissionTerrainSelection,
 } from "../lib/mission-pack.mjs";
@@ -69,6 +70,17 @@ test("mission and terrain selection accepts only source-compatible pairs", () =>
     () => validateMissionTerrainSelection(source, "unknown", "unknown"),
     /outside the source-locked mission pack/,
   );
+});
+
+test("runtime table bindings exactly match every published mission compatibility", () => {
+  for (const mission of source.missions) {
+    for (const terrain of source.terrainLayouts) {
+      const binding = chapterApprovedTableBinding(mission.id, terrain.id);
+      assert.equal(Boolean(binding), mission.terrainLayoutIds.includes(terrain.id));
+      if (binding) assert.equal(binding.deploymentName, mission.deployment);
+    }
+  }
+  assert.equal(chapterApprovedTableBinding("unknown", "unknown"), null);
 });
 
 test("mission catalogue rejects altered compatibility and duplicate identities", () => {

@@ -27,10 +27,10 @@ state.
 
 ## Prioritized backlog
 
-1. Expand reviewable table geometry beyond the version-8 ranged measurement to
-   movement paths, charge endpoints, cover, coherency, Engagement Range,
-   the selected source-locked terrain layout, deployment zones, and objective
-   facts.
+1. Extend the canonical version-25 table frame from objective centres and the
+   source terrain inventory to terrain footprints, model bases or hulls,
+   movement paths, charge endpoints, cover, visibility, coherency, and
+   Engagement Range.
 2. Implement source-locked mission scoring and secondary-card/action tracking
    for the selected Chapter Approved combination while keeping unavailable card
    text fail-closed.
@@ -38,6 +38,22 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced canonical battle setup to version 25 with a replayable
+  Chapter Approved table frame. Exact 2025-26 v1.4 mission/layout games now
+  fail closed before deployment until a player reviews the 60-by-44-inch
+  battlefield, every configured objective centre, the named deployment map,
+  and the official 12-section terrain inventory (four 6-by-4, two 10-by-5,
+  and six 12-by-6 sections). Coordinates use a stable Attacker-left-near origin
+  and preserve manual, UWB, camera, or imported provenance plus a reason-backed
+  review. Mission/layout mismatches, duplicate or out-of-bounds coordinates,
+  incomplete reviews, late mutations, and missing objectives are rejected;
+  custom missions keep their prior deployment workflow. Version-24 games
+  migrate without invented geometry and may append one reviewed binding.
+  Guided Play records and displays the frame, the replay API returns it, and a
+  new ACSL-specified C/WebAssembly predicate is differentially checked against
+  JavaScript. The next geometry boundary is exact terrain footprints and model
+  or hull positions within this frame.
 
 - 2026-08-11: Pinned the final 10th-edition Chapter Approved 2025-26 Tournament
   Companion v1.4 by official URL, SHA-256, retrieval date, and reviewed pages.

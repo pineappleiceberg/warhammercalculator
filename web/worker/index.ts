@@ -82,6 +82,8 @@ import {
   RULE_COVERAGE_BATTLE_STATE_VERSION,
   rangedTargetEligibilityIsValid,
   replayBattleState,
+  tableGeometryFlags,
+  tableGeometryIsValid,
   transportLoadIsValid,
   transportDeploymentChainIsValid,
   initialDeploymentIsValid,
@@ -357,6 +359,7 @@ type CalculatorExports = {
   whc_transport_load_is_valid(...values: number[]): number;
   whc_transport_deployment_chain_is_valid(...values: number[]): number;
   whc_initial_deployment_is_valid(...values: number[]): number;
+  whc_table_geometry_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -585,6 +588,7 @@ async function loadCalculator() {
       typeof calculator.whc_transport_load_is_valid !== "function" ||
       typeof calculator.whc_transport_deployment_chain_is_valid !== "function" ||
       typeof calculator.whc_initial_deployment_is_valid !== "function" ||
+      typeof calculator.whc_table_geometry_is_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -863,6 +867,32 @@ async function replayFormationHealth(
   }
   try {
     verifyBattleClock(state, calculator);
+    if (replayedState.tableGeometry) {
+      const geometry = replayedState.tableGeometry;
+      const values = [
+        geometry.battlefieldWidthThousandths,
+        geometry.battlefieldHeightThousandths,
+        geometry.objectivePositions.length,
+        new Set(
+          geometry.objectivePositions.map(
+            (objective) => `${objective.xThousandths}:${objective.yThousandths}`,
+          ),
+        ).size,
+        geometry.terrainProfile.sectionCount,
+        geometry.terrainProfile.sixByFourCount,
+        geometry.terrainProfile.tenByFiveCount,
+        geometry.terrainProfile.twelveBySixCount,
+        tableGeometryFlags(geometry, true),
+      ];
+      const javascriptValid = tableGeometryIsValid(geometry, true);
+      const nativeValid = Boolean(calculator.whc_table_geometry_is_valid(...values));
+      if (!javascriptValid || javascriptValid !== nativeValid) {
+        throw new ServiceUnavailableError(
+          "Table geometry diverged from the C/WebAssembly predicate",
+          "TABLE_GEOMETRY_DIVERGENCE",
+        );
+      }
+    }
     new Uint32Array(calculator.memory.buffer, profilesPointer, profiles.length).set(profiles);
     if (eventsPointer) {
       new Uint32Array(calculator.memory.buffer, eventsPointer, events.length).set(events);
@@ -1655,6 +1685,7 @@ async function replayFormationHealth(
       schemaVersion: state.version,
       rulesSnapshot: state.rulesSnapshot,
       ruleCoverage: replayed.ruleCoverage,
+      tableGeometry: replayed.tableGeometry,
       formationId: requestedFormationId,
       health,
       activeAttackIds: replayed.activeAttackIds,

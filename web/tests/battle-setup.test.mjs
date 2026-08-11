@@ -4,15 +4,19 @@ import test from "node:test";
 
 import {
   BATTLE_STATE_VERSION,
+  TABLE_GEOMETRY_CONSTANTS,
   battleFormation,
   battleFormationHealth,
+  configureBattleMission,
   configureBattleRuleCoverage,
+  configureBattleTableGeometry,
   configureUnengagedBattleFormation,
   declareFormationDeployment,
   deployFormation,
   normalizeBattleState,
   replayBattleState,
   startBattle,
+  tableGeometryIsValid,
 } from "../lib/battle-state.mjs";
 import { battleRosterRevisionsMatch, initializeBattleForLists } from "../lib/battle-setup.mjs";
 import { normalizeRuleCoverageMatrix } from "../lib/rule-coverage.mjs";
@@ -146,6 +150,79 @@ attackers.units[0].weapons = [
   },
 ];
 
+const exactMissionOverrides = {
+  guidedReason: "Players will resolve guided source rules at the physical table",
+  players: {
+    "player-1": { detachmentSourceId: "000000818" },
+    "player-2": { detachmentSourceId: "000000750" },
+  },
+  missionSourceId: "chapter-approved-2025-26-v1.4-a",
+  terrainSourceId: "chapter-approved-2025-26-v1.4-layout-1",
+};
+
+function exactMissionSetup(id = "source-locked-mission") {
+  let state = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    id,
+  });
+  state = configureBattleMission(
+    state,
+    {
+      name: "A · Take and Hold · Tipping Point",
+      pointsLimit: 2000,
+      deploymentFirstPlayerId: "player-1",
+      commandPointsPerCommandPhase: 1,
+      startingCommandPoints: { "player-1": 0, "player-2": 0 },
+      objectives: Array.from({ length: 5 }, (_, index) => ({
+        id: `objective-${index + 1}`,
+        name: `Objective ${index + 1}`,
+      })),
+    },
+    `${id}-mission`,
+    state.events.length + 1,
+  );
+  return state;
+}
+
+function reviewedTableGeometry(state, overrides = {}) {
+  const objectivePositions = replayBattleState(state).mission.objectives.map(
+    (objective, index) => ({
+      objectiveId: objective.id,
+      xThousandths: 10_000 + index * 8_000,
+      yThousandths: 6_000 + index * 7_000,
+    }),
+  );
+  return {
+    missionSourceId: exactMissionOverrides.missionSourceId,
+    terrainSourceId: exactMissionOverrides.terrainSourceId,
+    deploymentName: "Tipping Point",
+    battlefieldWidthThousandths: TABLE_GEOMETRY_CONSTANTS.widthThousandths,
+    battlefieldHeightThousandths: TABLE_GEOMETRY_CONSTANTS.heightThousandths,
+    origin: "attacker-left-near",
+    objectivePositions,
+    terrainProfile: {
+      sectionCount: TABLE_GEOMETRY_CONSTANTS.terrainSectionCount,
+      sixByFourCount: TABLE_GEOMETRY_CONSTANTS.sixByFourCount,
+      tenByFiveCount: TABLE_GEOMETRY_CONSTANTS.tenByFiveCount,
+      twelveBySixCount: TABLE_GEOMETRY_CONSTANTS.twelveBySixCount,
+      sourcePage: 8,
+    },
+    terrainLayoutReviewed: true,
+    deploymentZonesReviewed: true,
+    objectivePositionsReviewed: true,
+    reviewedByPlayer: true,
+    method: "manual",
+    reviewReason: "Mission card, zones, terrain placement, and objective centres checked",
+    ...overrides,
+  };
+}
+
 function setup(state = null) {
   return initializeBattleForLists({
     catalogue,
@@ -160,15 +237,6 @@ function setup(state = null) {
 }
 
 test("canonical setup accepts only source-compatible mission and terrain selections", () => {
-  const overrides = {
-    guidedReason: "Players will resolve guided source rules at the physical table",
-    players: {
-      "player-1": { detachmentSourceId: "000000818" },
-      "player-2": { detachmentSourceId: "000000750" },
-    },
-    missionSourceId: "chapter-approved-2025-26-v1.4-a",
-    terrainSourceId: "chapter-approved-2025-26-v1.4-layout-1",
-  };
   const state = initializeBattleForLists({
     catalogue,
     firstList: attackers,
@@ -176,7 +244,7 @@ test("canonical setup accepts only source-compatible mission and terrain selecti
     rulesSnapshot: "catalogue:test",
     ruleCoverageMatrix,
     missionPackCatalogue,
-    ruleSelectionOverrides: overrides,
+    ruleSelectionOverrides: exactMissionOverrides,
     id: "source-locked-mission",
   });
   assert.equal(replayBattleState(state).ruleCoverage.report.permitted, true);
@@ -191,13 +259,97 @@ test("canonical setup accepts only source-compatible mission and terrain selecti
         ruleCoverageMatrix,
         missionPackCatalogue,
         ruleSelectionOverrides: {
-          ...overrides,
+          ...exactMissionOverrides,
           terrainSourceId: "chapter-approved-2025-26-v1.4-layout-5",
         },
         id: "incompatible-mission-terrain",
       }),
     /not source-compatible/,
   );
+});
+
+test("requires reviewed canonical table geometry before exact Chapter Approved deployment", () => {
+  let state = exactMissionSetup("exact-geometry-required");
+  assert.throws(() => deployAllOnBattlefield(state), /reviewed table geometry/i);
+
+  const geometry = reviewedTableGeometry(state);
+  assert.equal(tableGeometryIsValid(geometry), true);
+  state = configureBattleTableGeometry(
+    state,
+    geometry,
+    "record-table-geometry",
+    state.events.length + 1,
+  );
+  const replayed = replayBattleState(state);
+  assert.deepEqual(replayed.tableGeometry, geometry);
+  assert.deepEqual(
+    replayed.tableGeometry.objectivePositions.map((objective) => objective.objectiveId),
+    replayed.mission.objectives.map((objective) => objective.id),
+  );
+  assert.doesNotThrow(() => deployAllOnBattlefield(state));
+  assert.throws(
+    () =>
+      configureBattleMission(
+        state,
+        replayed.mission,
+        "late-mission-change",
+        state.events.length + 1,
+      ),
+    /locked after table geometry/i,
+  );
+});
+
+test("rejects ambiguous, incomplete, or mismatched table geometry", () => {
+  const state = exactMissionSetup("invalid-exact-geometry");
+  const valid = reviewedTableGeometry(state);
+  const attempts = [
+    [{ ...valid, missionSourceId: "chapter-approved-2025-26-v1.4-b" }, /does not match/],
+    [{ ...valid, deploymentName: "Dawn of War" }, /source-locked deployment map/],
+    [
+      {
+        ...valid,
+        objectivePositions: valid.objectivePositions.map((objective, index) =>
+          index === 1
+            ? {
+                ...objective,
+                xThousandths: valid.objectivePositions[0].xThousandths,
+                yThousandths: valid.objectivePositions[0].yThousandths,
+              }
+            : objective,
+        ),
+      },
+      /does not match the source-locked tournament frame/,
+    ],
+    [
+      {
+        ...valid,
+        objectivePositions: valid.objectivePositions.map((objective, index) =>
+          index === 0 ? { ...objective, xThousandths: 60_001 } : objective,
+        ),
+      },
+      /x-coordinate thousandths must be an integer from 0 to 60000/,
+    ],
+    [{ ...valid, terrainLayoutReviewed: false }, /does not match/],
+    [{ ...valid, reviewReason: "" }, /must be a non-empty string/],
+  ];
+  for (const [geometry, expected] of attempts) {
+    assert.throws(
+      () =>
+        configureBattleTableGeometry(
+          state,
+          geometry,
+          `invalid-${String(expected)}`,
+          state.events.length + 1,
+        ),
+      expected,
+    );
+  }
+});
+
+test("preserves the custom-mission deployment workflow without table geometry", () => {
+  const state = setup();
+  assert.equal(replayBattleState(state).tableGeometry, null);
+  assert.doesNotThrow(() => deployAllOnBattlefield(state));
 });
 
 function deployAllOnBattlefield(state) {
@@ -626,6 +778,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacySmokescreenThroughSequence: 3,
     legacyRapidIngressThroughSequence: 3,
     legacyRuleCoverageThroughSequence: 3,
+    legacyTableGeometryThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -660,6 +813,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacySmokescreenThroughSequence: 3,
     legacyRapidIngressThroughSequence: 3,
     legacyRuleCoverageThroughSequence: 3,
+    legacyTableGeometryThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -699,6 +853,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacySmokescreenThroughSequence: 2,
     legacyRapidIngressThroughSequence: 2,
     legacyRuleCoverageThroughSequence: 2,
+    legacyTableGeometryThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -731,6 +886,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacySmokescreenThroughSequence: 2,
     legacyRapidIngressThroughSequence: 2,
     legacyRuleCoverageThroughSequence: 2,
+    legacyTableGeometryThroughSequence: 2,
   });
 });
 
@@ -762,6 +918,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacySmokescreenThroughSequence: 2,
     legacyRapidIngressThroughSequence: 2,
     legacyRuleCoverageThroughSequence: 2,
+    legacyTableGeometryThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -799,6 +956,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacySmokescreenThroughSequence: 2,
     legacyRapidIngressThroughSequence: 2,
     legacyRuleCoverageThroughSequence: 2,
+    legacyTableGeometryThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -831,6 +989,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacySmokescreenThroughSequence: 2,
     legacyRapidIngressThroughSequence: 2,
     legacyRuleCoverageThroughSequence: 2,
+    legacyTableGeometryThroughSequence: 2,
   });
 });
 
@@ -862,6 +1021,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacySmokescreenThroughSequence: 2,
     legacyRapidIngressThroughSequence: 2,
     legacyRuleCoverageThroughSequence: 2,
+    legacyTableGeometryThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -1114,4 +1274,46 @@ test("migrates version-23 state with an explicit source-locked rule boundary", (
   );
   assert.equal(replayBattleState(migrated).ruleCoverage.report.permitted, true);
   assert.ok(replayBattleState(migrated).deploymentByFormation.size > 0);
+});
+
+test("migrates version-24 exact games without inventing geometry and permits one reviewed binding", () => {
+  let versionTwentyFour = exactMissionSetup("version-24-table-geometry");
+  versionTwentyFour.version = 24;
+  delete versionTwentyFour.migration;
+  versionTwentyFour = deployAllOnBattlefield(versionTwentyFour);
+  const legacyEventCount = versionTwentyFour.events.length;
+  let migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: normalizeBattleState(versionTwentyFour),
+    id: versionTwentyFour.id,
+  });
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 24);
+  assert.equal(migrated.migration.legacyTableGeometryThroughSequence, legacyEventCount);
+  assert.equal(replayBattleState(migrated).tableGeometry, null);
+
+  const geometry = reviewedTableGeometry(migrated, { method: "imported" });
+  migrated = configureBattleTableGeometry(
+    migrated,
+    geometry,
+    "migrated-table-geometry",
+    migrated.events.length + 1,
+  );
+  assert.deepEqual(replayBattleState(migrated).tableGeometry, geometry);
+  assert.throws(
+    () =>
+      configureBattleTableGeometry(
+        migrated,
+        geometry,
+        "duplicate-migrated-table-geometry",
+        migrated.events.length + 1,
+      ),
+    /already been recorded/,
+  );
 });

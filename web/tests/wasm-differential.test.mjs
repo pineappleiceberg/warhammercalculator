@@ -27,6 +27,9 @@ import {
   goToGroundIsValid,
   rapidIngressIsValid,
   smokescreenIsValid,
+  TABLE_GEOMETRY_CONSTANTS,
+  tableGeometryFlags,
+  tableGeometryIsValid,
   hazardousResolutionIsValid,
   heroicInterventionIsValid,
   initialDeploymentIsValid,
@@ -118,8 +121,64 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_transport_load_is_valid, "function");
   assert.equal(typeof calculator._whc_transport_deployment_chain_is_valid, "function");
   assert.equal(typeof calculator._whc_initial_deployment_is_valid, "function");
+  assert.equal(typeof calculator._whc_table_geometry_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
+});
+
+test("WebAssembly and JavaScript agree on canonical table geometry", () => {
+  const base = {
+    battlefieldWidthThousandths: TABLE_GEOMETRY_CONSTANTS.widthThousandths,
+    battlefieldHeightThousandths: TABLE_GEOMETRY_CONSTANTS.heightThousandths,
+    objectivePositions: [
+      { objectiveId: "objective-1", xThousandths: 10_000, yThousandths: 10_000 },
+      { objectiveId: "objective-2", xThousandths: 50_000, yThousandths: 34_000 },
+    ],
+    terrainProfile: {
+      sectionCount: TABLE_GEOMETRY_CONSTANTS.terrainSectionCount,
+      sixByFourCount: TABLE_GEOMETRY_CONSTANTS.sixByFourCount,
+      tenByFiveCount: TABLE_GEOMETRY_CONSTANTS.tenByFiveCount,
+      twelveBySixCount: TABLE_GEOMETRY_CONSTANTS.twelveBySixCount,
+    },
+    terrainLayoutReviewed: true,
+    deploymentZonesReviewed: true,
+    objectivePositionsReviewed: true,
+    reviewedByPlayer: true,
+  };
+  const cases = [
+    base,
+    { ...base, battlefieldWidthThousandths: 44_000 },
+    {
+      ...base,
+      objectivePositions: [base.objectivePositions[0], { ...base.objectivePositions[0] }],
+    },
+    { ...base, terrainLayoutReviewed: false },
+    {
+      ...base,
+      terrainProfile: { ...base.terrainProfile, twelveBySixCount: 5, sectionCount: 11 },
+    },
+  ];
+  for (const geometry of cases) {
+    const positions = geometry.objectivePositions;
+    const uniquePositions = new Set(
+      positions.map((objective) => `${objective.xThousandths}:${objective.yThousandths}`),
+    ).size;
+    const values = [
+      geometry.battlefieldWidthThousandths,
+      geometry.battlefieldHeightThousandths,
+      positions.length,
+      uniquePositions,
+      geometry.terrainProfile.sectionCount,
+      geometry.terrainProfile.sixByFourCount,
+      geometry.terrainProfile.tenByFiveCount,
+      geometry.terrainProfile.twelveBySixCount,
+      tableGeometryFlags(geometry, true),
+    ];
+    assert.equal(
+      Boolean(calculator._whc_table_geometry_is_valid(...values)),
+      tableGeometryIsValid(geometry, true),
+    );
+  }
 });
 
 test("WebAssembly and JavaScript agree on initial deployment exceptions", () => {

@@ -243,8 +243,8 @@ bool whc_heroic_intervention_is_valid(uint32_t die_one, uint32_t die_two, int32_
                                           charge_flags);
 }
 
-bool whc_fire_overwatch_is_valid(uint32_t trigger, uint32_t phase,
-                                 uint32_t distance_thousandths, uint32_t flags) {
+bool whc_fire_overwatch_is_valid(uint32_t trigger, uint32_t phase, uint32_t distance_thousandths,
+                                 uint32_t flags) {
     if (trigger < WHC_FIRE_OVERWATCH_SET_UP || trigger > WHC_FIRE_OVERWATCH_CHARGE_DECLARED ||
         (phase != WHC_BATTLE_PHASE_MOVEMENT && phase != WHC_BATTLE_PHASE_CHARGE) ||
         distance_thousandths == 0u || distance_thousandths > 24000u ||
@@ -261,10 +261,10 @@ bool whc_fire_overwatch_is_valid(uint32_t trigger, uint32_t phase,
 }
 
 bool whc_hazardous_resolution_is_valid(uint32_t initial_roll, uint32_t reroll,
-                                        bool reroll_explained, uint32_t remaining_wounds,
-                                        uint32_t feel_no_pain, uint32_t feel_no_pain_roll_count,
-                                        uint32_t ignored_wounds, uint32_t applied_damage,
-                                        bool model_destroyed, uint32_t flags) {
+                                       bool reroll_explained, uint32_t remaining_wounds,
+                                       uint32_t feel_no_pain, uint32_t feel_no_pain_roll_count,
+                                       uint32_t ignored_wounds, uint32_t applied_damage,
+                                       bool model_destroyed, uint32_t flags) {
     const uint32_t final_roll = reroll == 0u ? initial_roll : reroll;
 
     if (initial_roll < 1u || initial_roll > 6u || reroll > 6u ||
@@ -276,8 +276,7 @@ bool whc_hazardous_resolution_is_valid(uint32_t initial_roll, uint32_t reroll,
     }
     if (feel_no_pain == 0u) {
         const uint32_t expected = remaining_wounds < 3u ? remaining_wounds : 3u;
-        if (feel_no_pain_roll_count != 0u || ignored_wounds != 0u ||
-            applied_damage != expected) {
+        if (feel_no_pain_roll_count != 0u || ignored_wounds != 0u || applied_damage != expected) {
             return false;
         }
     } else if (feel_no_pain_roll_count < 1u || feel_no_pain_roll_count > 3u ||
@@ -287,8 +286,7 @@ bool whc_hazardous_resolution_is_valid(uint32_t initial_roll, uint32_t reroll,
                 (applied_damage >= remaining_wounds || feel_no_pain_roll_count != 3u))) {
         return false;
     }
-    return model_destroyed ? applied_damage == remaining_wounds
-                           : applied_damage < remaining_wounds;
+    return model_destroyed ? applied_damage == remaining_wounds : applied_damage < remaining_wounds;
 }
 
 bool whc_go_to_ground_is_valid(uint32_t phase, uint32_t command_points_before,
@@ -319,11 +317,9 @@ bool whc_smokescreen_is_valid(uint32_t phase, uint32_t command_points_before,
 }
 
 bool whc_rapid_ingress_is_valid(uint32_t phase, uint32_t step, uint32_t battle_round,
-                                uint32_t earliest_battle_round,
-                                uint32_t command_points_before,
-                                uint32_t command_point_cost,
-                                uint32_t command_points_after, bool already_used,
-                                bool target_battle_shocked,
+                                uint32_t earliest_battle_round, uint32_t command_points_before,
+                                uint32_t command_point_cost, uint32_t command_points_after,
+                                bool already_used, bool target_battle_shocked,
                                 bool first_round_out_of_phase_allowed, uint32_t flags) {
     return phase == WHC_BATTLE_PHASE_MOVEMENT && step == WHC_MOVEMENT_STEP_END &&
            battle_round >= 1u && battle_round <= 5u && earliest_battle_round >= 1u &&
@@ -337,13 +333,11 @@ bool whc_rapid_ingress_is_valid(uint32_t phase, uint32_t step, uint32_t battle_r
 
 bool whc_rule_coverage_is_permitted(uint32_t status, bool source_locked, bool acknowledged) {
     return source_locked &&
-           (status == WHC_RULE_COVERAGE_EXECUTABLE ||
-            status == WHC_RULE_COVERAGE_IRRELEVANT ||
+           (status == WHC_RULE_COVERAGE_EXECUTABLE || status == WHC_RULE_COVERAGE_IRRELEVANT ||
             (status == WHC_RULE_COVERAGE_GUIDED && acknowledged));
 }
 
-bool whc_ranged_declaration_is_valid(uint32_t declaration_count,
-                                     uint32_t unique_declaration_count,
+bool whc_ranged_declaration_is_valid(uint32_t declaration_count, uint32_t unique_declaration_count,
                                      uint32_t target_run_count, uint32_t unique_target_count,
                                      uint32_t profile_run_count,
                                      uint32_t unique_target_profile_count, uint32_t flags) {
@@ -365,12 +359,10 @@ bool whc_transport_load_is_valid(uint32_t used_capacity, uint32_t capacity,
             (allowance_maximum > 0u && allowance_models <= allowance_maximum));
 }
 
-bool whc_transport_deployment_chain_is_valid(uint32_t chain_length,
-                                             uint32_t unique_formation_count,
+bool whc_transport_deployment_chain_is_valid(uint32_t chain_length, uint32_t unique_formation_count,
                                              uint32_t root_location,
                                              uint32_t reserve_eligibility_count) {
-    return chain_length >= 1u && chain_length <= 257u &&
-           unique_formation_count == chain_length &&
+    return chain_length >= 1u && chain_length <= 257u && unique_formation_count == chain_length &&
            root_location <= WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES &&
            reserve_eligibility_count <= chain_length &&
            ((root_location == WHC_DEPLOYMENT_ROOT_NOT_DEPLOYED &&
@@ -380,9 +372,9 @@ bool whc_transport_deployment_chain_is_valid(uint32_t chain_length,
 }
 
 bool whc_initial_deployment_is_valid(uint32_t is_dedicated_transport,
-                                     uint32_t starting_passenger_count,
-                                     uint32_t is_aircraft, uint32_t has_hover,
-                                     uint32_t aircraft_mode, uint32_t root_location) {
+                                     uint32_t starting_passenger_count, uint32_t is_aircraft,
+                                     uint32_t has_hover, uint32_t aircraft_mode,
+                                     uint32_t root_location) {
     bool mode_is_valid;
 
     if (is_dedicated_transport > 1u || is_aircraft > 1u || has_hover > 1u ||
@@ -391,9 +383,8 @@ bool whc_initial_deployment_is_valid(uint32_t is_dedicated_transport,
         return false;
     }
     mode_is_valid = (!is_aircraft && aircraft_mode == WHC_AIRCRAFT_MODE_NONE) ||
-                    (is_aircraft &&
-                     (aircraft_mode == WHC_AIRCRAFT_MODE_AIRCRAFT ||
-                      (aircraft_mode == WHC_AIRCRAFT_MODE_HOVER && has_hover)));
+                    (is_aircraft && (aircraft_mode == WHC_AIRCRAFT_MODE_AIRCRAFT ||
+                                     (aircraft_mode == WHC_AIRCRAFT_MODE_HOVER && has_hover)));
     if (!mode_is_valid) {
         return false;
     }
@@ -411,6 +402,24 @@ bool whc_initial_deployment_is_valid(uint32_t is_dedicated_transport,
     }
     return root_location == WHC_DEPLOYMENT_ROOT_BATTLEFIELD ||
            root_location == WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES;
+}
+
+bool whc_table_geometry_is_valid(uint32_t battlefield_width_thousandths,
+                                 uint32_t battlefield_height_thousandths, uint32_t objective_count,
+                                 uint32_t positioned_objective_count,
+                                 uint32_t terrain_section_count, uint32_t six_by_four_count,
+                                 uint32_t ten_by_five_count, uint32_t twelve_by_six_count,
+                                 uint32_t flags) {
+    return battlefield_width_thousandths == WHC_TABLE_WIDTH_THOUSANDTHS &&
+           battlefield_height_thousandths == WHC_TABLE_HEIGHT_THOUSANDTHS &&
+           objective_count >= 1u && objective_count <= 12u &&
+           positioned_objective_count == objective_count &&
+           terrain_section_count == WHC_TERRAIN_SECTION_COUNT &&
+           six_by_four_count == WHC_TERRAIN_SIX_BY_FOUR_COUNT &&
+           ten_by_five_count == WHC_TERRAIN_TEN_BY_FIVE_COUNT &&
+           twelve_by_six_count == WHC_TERRAIN_TWELVE_BY_SIX_COUNT &&
+           six_by_four_count + ten_by_five_count + twelve_by_six_count == terrain_section_count &&
+           flags == WHC_TABLE_GEOMETRY_FLAGS_MASK;
 }
 
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,
