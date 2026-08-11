@@ -48,6 +48,7 @@ import {
   passCounterOffensive,
   passFireOverwatch,
   passGoToGround,
+  passRapidIngress,
   passSmokescreen,
   passHeroicIntervention,
   recordFormationCharge,
@@ -64,6 +65,7 @@ import {
   resolveHeroicIntervention,
   resolveHazardousDamage,
   resolveGoToGround,
+  resolveRapidIngress,
   resolveSmokescreen,
   resolveCounterOffensive,
   revertLatestAttack,
@@ -281,6 +283,22 @@ export default function PlayMode() {
   const [deploymentPlacementReason, setDeploymentPlacementReason] = useState("");
   const [reservePlacementConfirmed, setReservePlacementConfirmed] = useState(false);
   const [reservePlacementReason, setReservePlacementReason] = useState("");
+  const [rapidIngressFormationId, setRapidIngressFormationId] = useState("");
+  const [rapidIngressPlacementMethod, setRapidIngressPlacementMethod] = useState("source_rule");
+  const [rapidIngressPlacementReason, setRapidIngressPlacementReason] = useState("");
+  const [rapidIngressFirstRoundReason, setRapidIngressFirstRoundReason] = useState("");
+  const [rapidIngressPassReason, setRapidIngressPassReason] = useState("");
+  const [rapidIngressFacts, setRapidIngressFacts] = useState({
+    placementConfirmed: false,
+    allModelsHaveDeepStrike: false,
+    whollyWithinSixOfBattlefieldEdge: false,
+    outsideEnemyDeploymentZone: false,
+    moreThanNineFromEnemyModels: false,
+    largeModelEdgeException: false,
+    touchingOwnBattlefieldEdge: false,
+    sourceRulePlacementConfirmed: false,
+    firstRoundOutOfPhaseAllowed: false,
+  });
   const [transportPlacementConfirmed, setTransportPlacementConfirmed] = useState(false);
   const [transportPlacementReason, setTransportPlacementReason] = useState("");
   const [selectedEmbarkTransportId, setSelectedEmbarkTransportId] = useState("");
@@ -935,6 +953,7 @@ export default function PlayMode() {
   const pendingFireOverwatch = replayedBattle?.pendingFireOverwatch ?? null;
   const pendingGoToGround = replayedBattle?.pendingGoToGround ?? null;
   const pendingSmokescreen = replayedBattle?.pendingSmokescreen ?? null;
+  const pendingRapidIngress = replayedBattle?.pendingRapidIngress ?? null;
   const pendingCounterOffensive = replayedBattle?.pendingCounterOffensive ?? null;
   const counterOffensiveFormationOptions = pendingCounterOffensive
     ? pendingCounterOffensive.candidateFormationIds
@@ -978,6 +997,18 @@ export default function PlayMode() {
     ? (replayedBattle?.resources.get(pendingSmokescreen.responderPlayerId)?.get("command_points")
         ?.value ?? 0)
     : 0;
+  const selectedRapidIngressFormationId = pendingRapidIngress
+    ? pendingRapidIngress.candidateFormationIds.includes(rapidIngressFormationId)
+      ? rapidIngressFormationId
+      : (pendingRapidIngress.candidateFormationIds[0] ?? "")
+    : "";
+  const rapidIngressResponderCommandPoints = pendingRapidIngress
+    ? (replayedBattle?.resources.get(pendingRapidIngress.responderPlayerId)?.get("command_points")
+        ?.value ?? 0)
+    : 0;
+  const selectedRapidIngressDeployment = selectedRapidIngressFormationId
+    ? replayedBattle?.deploymentByFormation.get(selectedRapidIngressFormationId)
+    : null;
   const pendingHazardous = replayedBattle?.pendingHazardous ?? null;
   const hazardousOptions =
     battleState && pendingHazardous?.due ? hazardousBearerOptions(battleState) : [];
@@ -3647,6 +3678,67 @@ export default function PlayMode() {
     }
   };
 
+  const useRapidIngress = () => {
+    if (!battleState || !pendingRapidIngress || !selectedRapidIngressFormationId) return;
+    try {
+      const next = resolveRapidIngress(
+        battleState,
+        selectedRapidIngressFormationId,
+        {
+          placementMethod: rapidIngressPlacementMethod,
+          placementConfirmed: rapidIngressFacts.placementConfirmed,
+          placementReason: rapidIngressPlacementReason.trim(),
+          allModelsHaveDeepStrike: rapidIngressFacts.allModelsHaveDeepStrike,
+          whollyWithinSixOfBattlefieldEdge: rapidIngressFacts.whollyWithinSixOfBattlefieldEdge,
+          outsideEnemyDeploymentZone: rapidIngressFacts.outsideEnemyDeploymentZone,
+          moreThanNineFromEnemyModels: rapidIngressFacts.moreThanNineFromEnemyModels,
+          largeModelEdgeException: rapidIngressFacts.largeModelEdgeException,
+          touchingOwnBattlefieldEdge: rapidIngressFacts.touchingOwnBattlefieldEdge,
+          sourceRulePlacementConfirmed: rapidIngressFacts.sourceRulePlacementConfirmed,
+          firstRoundOutOfPhaseAllowed: rapidIngressFacts.firstRoundOutOfPhaseAllowed,
+          firstRoundOutOfPhaseReason: rapidIngressFirstRoundReason.trim(),
+        },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setRapidIngressPlacementReason("");
+      setRapidIngressFirstRoundReason("");
+      setRapidIngressPassReason("");
+      setRapidIngressFacts({
+        placementConfirmed: false,
+        allModelsHaveDeepStrike: false,
+        whollyWithinSixOfBattlefieldEdge: false,
+        outsideEnemyDeploymentZone: false,
+        moreThanNineFromEnemyModels: false,
+        largeModelEdgeException: false,
+        touchingOwnBattlefieldEdge: false,
+        sourceRulePlacementConfirmed: false,
+        firstRoundOutOfPhaseAllowed: false,
+      });
+      setStatus("Rapid Ingress resolved · the Reserve formation is now on the battlefield");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Rapid Ingress could not be resolved");
+    }
+  };
+
+  const declineRapidIngress = () => {
+    if (!battleState || !pendingRapidIngress) return;
+    try {
+      const next = passRapidIngress(
+        battleState,
+        rapidIngressPassReason.trim() || "Responding player declined Rapid Ingress",
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setRapidIngressPassReason("");
+      setStatus("Rapid Ingress declined · continue to the Shooting phase");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Rapid Ingress could not be declined");
+    }
+  };
+
   const rollHeroicIntervention = () => {
     const dice = rollChargeDice() as [number, number];
     const distance = Math.max(0, dice[0] + dice[1] + heroicRollModifier);
@@ -6111,6 +6203,7 @@ export default function PlayMode() {
                     replayedBattle.movementStartsByFormation.size > 0 ||
                     replayedBattle.chargeDeclarationsByFormation.size > 0 ||
                     Boolean(pendingHeroicIntervention) ||
+                    Boolean(pendingRapidIngress) ||
                     Boolean(pendingCounterOffensive)
                   }
                   onClick={advanceGuidedBattle}
@@ -6782,6 +6875,225 @@ export default function PlayMode() {
                   </button>
                 </div>
               )}
+            {battleClock.status === "active" && pendingRapidIngress && (
+              <div className="action-tracker" aria-labelledby="rapid-ingress-heading">
+                <strong id="rapid-ingress-heading">Rapid Ingress response</strong>
+                <span>
+                  It is the end of the opponent&apos;s Movement phase. Spend 1CP to set up one
+                  eligible Reserve formation as though it were your Reinforcements step, or decline.
+                  Transport passengers cannot disembark this phase.
+                </span>
+                <span>Available CP: {rapidIngressResponderCommandPoints}</span>
+                <div className="action-buttons">
+                  <label>
+                    <span>Reserve formation</span>
+                    <select
+                      value={selectedRapidIngressFormationId}
+                      onChange={(event) => setRapidIngressFormationId(event.target.value)}
+                    >
+                      {pendingRapidIngress.candidateFormationIds.map((formationId: string) => (
+                        <option key={formationId} value={formationId}>
+                          {replayedBattle?.formations.get(formationId)?.name ?? formationId}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Placement rule</span>
+                    <select
+                      value={rapidIngressPlacementMethod}
+                      onChange={(event) => setRapidIngressPlacementMethod(event.target.value)}
+                    >
+                      <option value="source_rule">Unit&apos;s Reserve source rule</option>
+                      <option value="deep_strike">Deep Strike</option>
+                      <option value="strategic_reserves">Strategic Reserves</option>
+                    </select>
+                  </label>
+                  {rapidIngressPlacementMethod === "deep_strike" && (
+                    <>
+                      <label className="confirmation-row">
+                        <input
+                          type="checkbox"
+                          checked={rapidIngressFacts.allModelsHaveDeepStrike}
+                          onChange={(event) =>
+                            setRapidIngressFacts((current) => ({
+                              ...current,
+                              allModelsHaveDeepStrike: event.target.checked,
+                            }))
+                          }
+                        />
+                        Every model in this formation has Deep Strike
+                      </label>
+                      <label className="confirmation-row">
+                        <input
+                          type="checkbox"
+                          checked={rapidIngressFacts.moreThanNineFromEnemyModels}
+                          onChange={(event) =>
+                            setRapidIngressFacts((current) => ({
+                              ...current,
+                              moreThanNineFromEnemyModels: event.target.checked,
+                            }))
+                          }
+                        />
+                        Every model is more than 9 inches from every enemy model
+                      </label>
+                    </>
+                  )}
+                  {rapidIngressPlacementMethod === "strategic_reserves" && (
+                    <>
+                      <span>
+                        Declared location: {selectedRapidIngressDeployment?.location ?? "unknown"}
+                      </span>
+                      <label className="confirmation-row">
+                        <input
+                          type="checkbox"
+                          checked={rapidIngressFacts.whollyWithinSixOfBattlefieldEdge}
+                          onChange={(event) =>
+                            setRapidIngressFacts((current) => ({
+                              ...current,
+                              whollyWithinSixOfBattlefieldEdge: event.target.checked,
+                            }))
+                          }
+                        />
+                        Formation is wholly within 6 inches of one battlefield edge
+                      </label>
+                      {battleClock.battleRound === 2 && (
+                        <label className="confirmation-row">
+                          <input
+                            type="checkbox"
+                            checked={rapidIngressFacts.outsideEnemyDeploymentZone}
+                            onChange={(event) =>
+                              setRapidIngressFacts((current) => ({
+                                ...current,
+                                outsideEnemyDeploymentZone: event.target.checked,
+                              }))
+                            }
+                          />
+                          No model is inside the enemy deployment zone
+                        </label>
+                      )}
+                      <label className="confirmation-row">
+                        <input
+                          type="checkbox"
+                          checked={rapidIngressFacts.moreThanNineFromEnemyModels}
+                          onChange={(event) =>
+                            setRapidIngressFacts((current) => ({
+                              ...current,
+                              moreThanNineFromEnemyModels: event.target.checked,
+                            }))
+                          }
+                        />
+                        Every model is more than 9 inches from every enemy model
+                      </label>
+                      <label className="confirmation-row">
+                        <input
+                          type="checkbox"
+                          checked={rapidIngressFacts.largeModelEdgeException}
+                          onChange={(event) =>
+                            setRapidIngressFacts((current) => ({
+                              ...current,
+                              largeModelEdgeException: event.target.checked,
+                            }))
+                          }
+                        />
+                        Use the too-large-to-fit edge exception
+                      </label>
+                      {rapidIngressFacts.largeModelEdgeException && (
+                        <label className="confirmation-row">
+                          <input
+                            type="checkbox"
+                            checked={rapidIngressFacts.touchingOwnBattlefieldEdge}
+                            onChange={(event) =>
+                              setRapidIngressFacts((current) => ({
+                                ...current,
+                                touchingOwnBattlefieldEdge: event.target.checked,
+                              }))
+                            }
+                          />
+                          The model touches its own battlefield edge; it cannot move, shoot, or
+                          charge this turn
+                        </label>
+                      )}
+                    </>
+                  )}
+                  {rapidIngressPlacementMethod === "source_rule" && (
+                    <label className="confirmation-row">
+                      <input
+                        type="checkbox"
+                        checked={rapidIngressFacts.sourceRulePlacementConfirmed}
+                        onChange={(event) =>
+                          setRapidIngressFacts((current) => ({
+                            ...current,
+                            sourceRulePlacementConfirmed: event.target.checked,
+                          }))
+                        }
+                      />
+                      The formation&apos;s source rule permits this reviewed placement
+                    </label>
+                  )}
+                  {battleClock.battleRound === 1 && (
+                    <>
+                      <label className="confirmation-row">
+                        <input
+                          type="checkbox"
+                          checked={rapidIngressFacts.firstRoundOutOfPhaseAllowed}
+                          onChange={(event) =>
+                            setRapidIngressFacts((current) => ({
+                              ...current,
+                              firstRoundOutOfPhaseAllowed: event.target.checked,
+                            }))
+                          }
+                        />
+                        Its first-round arrival rule also applies outside your Movement phase
+                      </label>
+                      <input
+                        value={rapidIngressFirstRoundReason}
+                        maxLength={300}
+                        placeholder="First-round source rule and out-of-phase wording"
+                        onChange={(event) => setRapidIngressFirstRoundReason(event.target.value)}
+                      />
+                    </>
+                  )}
+                  <label className="confirmation-row">
+                    <input
+                      type="checkbox"
+                      checked={rapidIngressFacts.placementConfirmed}
+                      onChange={(event) =>
+                        setRapidIngressFacts((current) => ({
+                          ...current,
+                          placementConfirmed: event.target.checked,
+                        }))
+                      }
+                    />
+                    Final model placement reviewed on the physical table
+                  </label>
+                  <input
+                    value={rapidIngressPlacementReason}
+                    maxLength={300}
+                    placeholder="Rule, edge or setup-zone, and enemy-distance checks"
+                    onChange={(event) => setRapidIngressPlacementReason(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    disabled={
+                      rapidIngressResponderCommandPoints < 1 || !selectedRapidIngressFormationId
+                    }
+                    onClick={useRapidIngress}
+                  >
+                    Spend 1CP · Rapid Ingress
+                  </button>
+                  <input
+                    value={rapidIngressPassReason}
+                    maxLength={300}
+                    placeholder="Optional reason for declining"
+                    onChange={(event) => setRapidIngressPassReason(event.target.value)}
+                  />
+                  <button type="button" onClick={declineRapidIngress}>
+                    Decline Rapid Ingress
+                  </button>
+                </div>
+              </div>
+            )}
             {battleClock.status === "active" && pendingGoToGround && (
               <div className="action-tracker" aria-labelledby="go-to-ground-heading">
                 <strong id="go-to-ground-heading">Go to Ground response</strong>

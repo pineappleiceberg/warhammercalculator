@@ -1452,6 +1452,10 @@ static void test_fight_move(void) {
                                WHC_FIGHT_MOVE_OBJECTIVE_RANGE | WHC_FIGHT_MOVE_CLOSER_TO_OBJECTIVE |
                                WHC_FIGHT_MOVE_OUTCOME_EXPLAINED;
     const uint32_t consolidation_none = pile_none | WHC_FIGHT_MOVE_OBJECTIVE_DESTINATION_IMPOSSIBLE;
+    const uint32_t rule_restricted = WHC_FIGHT_MOVE_REVIEWED_BY_PLAYER |
+                                     WHC_FIGHT_MOVE_BASE_CONTACT_STATIONARY |
+                                     WHC_FIGHT_MOVE_OUTCOME_EXPLAINED |
+                                     WHC_FIGHT_MOVE_RULE_RESTRICTED;
 
     assert(
         whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN, WHC_FIGHT_DESTINATION_ENEMY, 3000u, enemy));
@@ -1461,6 +1465,12 @@ static void test_fight_move(void) {
                                    2500u, objective));
     assert(whc_fight_move_is_valid(WHC_FIGHT_MOVE_CONSOLIDATION, WHC_FIGHT_DESTINATION_NONE, 0u,
                                    consolidation_none));
+    assert(whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN, WHC_FIGHT_DESTINATION_NONE, 0u,
+                                   rule_restricted));
+    assert(whc_fight_move_is_valid(WHC_FIGHT_MOVE_CONSOLIDATION, WHC_FIGHT_DESTINATION_NONE, 0u,
+                                   rule_restricted));
+    assert(!whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN, WHC_FIGHT_DESTINATION_ENEMY, 0u,
+                                    rule_restricted));
     assert(!whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN, WHC_FIGHT_DESTINATION_OBJECTIVE, 1000u,
                                     objective));
     assert(!whc_fight_move_is_valid(WHC_FIGHT_MOVE_PILE_IN, WHC_FIGHT_DESTINATION_NONE, 1u,
@@ -1615,6 +1625,40 @@ static void test_smokescreen(void) {
         WHC_SMOKESCREEN_FLAGS_MASK & ~WHC_SMOKESCREEN_STEALTH));
 }
 
+static void test_rapid_ingress(void) {
+    assert(whc_rapid_ingress_is_valid(
+        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 2u, 2u, 2u, 1u, 1u, false,
+        false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(whc_rapid_ingress_is_valid(
+        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 1u, 1u, 1u, 1u, 0u, false,
+        false, true, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(!whc_rapid_ingress_is_valid(
+        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_REINFORCEMENTS, 2u, 2u, 2u, 1u, 1u,
+        false, false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(!whc_rapid_ingress_is_valid(
+        WHC_BATTLE_PHASE_SHOOTING, WHC_MOVEMENT_STEP_END, 2u, 2u, 2u, 1u, 1u, false,
+        false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(!whc_rapid_ingress_is_valid(
+        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 1u, 1u, 2u, 1u, 1u, false,
+        false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(!whc_rapid_ingress_is_valid(
+        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 1u, 2u, 2u, 1u, 1u, false,
+        false, true, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(!whc_rapid_ingress_is_valid(
+        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 2u, 2u, 0u, 1u, 0u, false,
+        false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(!whc_rapid_ingress_is_valid(
+        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 2u, 2u, 2u, 1u, 1u, true,
+        false, false, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(!whc_rapid_ingress_is_valid(
+        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 2u, 2u, 2u, 1u, 1u, false,
+        true, false, WHC_RAPID_INGRESS_FLAGS_MASK));
+    assert(!whc_rapid_ingress_is_valid(
+        WHC_BATTLE_PHASE_MOVEMENT, WHC_MOVEMENT_STEP_END, 2u, 2u, 2u, 1u, 1u, false,
+        false, false,
+        WHC_RAPID_INGRESS_FLAGS_MASK & ~WHC_RAPID_INGRESS_PLACEMENT_LEGAL));
+}
+
 static void test_ranged_declaration(void) {
     assert(whc_ranged_declaration_is_valid(3u, 3u, 2u, 2u, 3u, 3u,
                                            WHC_RANGED_DECLARATION_FLAGS_MASK));
@@ -1767,6 +1811,7 @@ int main(void) {
     test_go_to_ground();
     test_counter_offensive();
     test_smokescreen();
+    test_rapid_ingress();
     test_ranged_declaration();
     test_transport_load();
     test_transport_deployment_chain();

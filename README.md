@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 22 as soon as both lists are selected. Every
+creates battle-state version 23 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -747,6 +747,23 @@ The replay API reports pending, resolved, passed, and active phase-effect state
 and independently cross-checks the same ACSL-specified predicate through C and
 WebAssembly. Version-21 and older histories preserve their original attack
 ordering behind an explicit Smokescreen migration boundary.
+Version 23 makes Rapid Ingress an executable response at the end of the
+opponent's Movement phase. Replay offers each eligible non-Battle-shocked
+formation in Reserves, blocks unrelated events until the choice is answered,
+spends 1CP atomically, and enforces once-per-phase use. Resolution records a
+reviewed Deep Strike, Strategic Reserves, or source-rule placement, deploys the
+complete nested Transport tree as Reinforcements, and leaves every passenger
+embarked. Deep Strike requires every model in the formation to have the
+ability. Strategic Reserves records the battlefield-edge, enemy deployment-zone,
+and enemy-distance facts; its large-model own-edge exception also prevents that
+formation from moving, shooting, or charging for the rest of the turn. A
+round-one source exception must explicitly work outside the controlling
+player's Movement phase. Guided Play exposes resolve and decline controls. The
+replay API reports pending, resolved, and passed windows and independently
+cross-checks the same ACSL-specified predicate through C and WebAssembly.
+Version-22 and older histories preserve their original timing behind an explicit
+Rapid Ingress migration boundary. Official Core Rules pages 42-43 and Core
+Rules Updates pages 10, 12, and 14 define this source boundary.
 Version 8 makes ranged target eligibility an executable replay fact. The
 browser catalogue preserves each weapon's published Range, while Guided Play
 records the effective Range, closest-point measured distance to one thousandth

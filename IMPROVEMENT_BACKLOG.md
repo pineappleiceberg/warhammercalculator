@@ -27,20 +27,34 @@ state.
 
 ## Prioritized backlog
 
-1. Implement Rapid Ingress as the next universal reaction window, including the
-   opponent's Movement-phase timing, Reserves eligibility, round and placement
-   restrictions, 1CP spending, Battle-shock and repeat-use guards, and canonical
-   Guided Play, API, C, WebAssembly, migration, and formal evidence.
-2. Build and enforce the source-locked faction, detachment, enhancement,
+1. Build and enforce the source-locked faction, detachment, enhancement,
    Stratagem, terrain, and mission coverage matrix described by the complete
    battle requirements.
-3. Expand reviewable table geometry beyond the version-8 ranged measurement to
+2. Expand reviewable table geometry beyond the version-8 ranged measurement to
    movement paths, charge endpoints, cover, coherency, Engagement Range,
    terrain, and objective facts.
-4. Deliver full guided-game replay scenarios before adding deterministic
+3. Deliver full guided-game replay scenarios before adding deterministic
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced guided play to battle-state version 23 with canonical
+  Rapid Ingress. At the end of the opposing Movement phase, replay now opens a
+  blocking response for each eligible formation in Reserves. Resolution spends
+  1CP atomically, enforces Battle-shock and same-Stratagem once-per-phase
+  restrictions, records Deep Strike, Strategic Reserves, or source-rule
+  placement facts, deploys the complete nested Transport tree as Reinforcements,
+  and keeps passengers embarked. Round-one source exceptions require explicit
+  out-of-phase permission. The large-model Strategic Reserves exception records
+  the own-edge placement and enforces its move, shoot, and charge restriction
+  for the turn. Guided Play exposes resolve and decline controls; the replay API
+  reports pending, resolved, and passed windows and independently cross-checks
+  the ACSL-specified predicate through C and WebAssembly. Version-22 histories
+  migrate without retroactively opening a response window. Official Core Rules
+  pages 42-43 and Core Rules Updates pages 10, 12, and 14 define the source
+  boundary. Release evidence includes three native suites, 247 web/API/Wasm
+  tests, the static Pages build, 2,000 ASan/UBSan fuzz inputs, E-ACSL runtime
+  checks, zero Eva alarms, and 683 proved WP goals.
 
 - 2026-08-11: Advanced guided play to battle-state version 22 with canonical
   Smokescreen. Closing an activation-wide ranged declaration now offers every

@@ -4,6 +4,7 @@ import test from "node:test";
 import { antiWoundThreshold } from "../lib/anti.mjs";
 import { sourceEquippedWeaponCounts } from "../lib/loadout.mjs";
 import {
+  BATTLE_STATE_VERSION,
   advanceBattleClock,
   appendResolvedAttack,
   applyBattleEffect,
@@ -29,6 +30,7 @@ import {
   resolveHazardousDamage,
   resolveGoToGround,
   resolveSmokescreen,
+  resolveRapidIngress,
   resolveBattleChoice,
   resolveDestroyedTransport,
   scoreBattlePoints,
@@ -3013,7 +3015,7 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 22);
+  assert.equal(body.data.schemaVersion, BATTLE_STATE_VERSION);
   assert.equal(body.data.charges[0].canonicalMovement, true);
   assert.deepEqual(body.data.charges[0].rolls, [3, 4]);
   assert.equal(body.data.charges[0].chargeDistanceThousandths, 7000);
@@ -3200,7 +3202,7 @@ test("cross-checks Fire Overwatch reactions through the C and WebAssembly API", 
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 22);
+  assert.equal(body.data.schemaVersion, BATTLE_STATE_VERSION);
   assert.equal(body.data.pendingFireOverwatch, null);
   assert.equal(body.data.fireOverwatches.length, 1);
   assert.equal(body.data.fireOverwatches[0].trigger, "normal_move_start");
@@ -3519,7 +3521,7 @@ test("cross-checks Go to Ground and Smokescreen through the C and WebAssembly AP
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 22);
+  assert.equal(body.data.schemaVersion, BATTLE_STATE_VERSION);
   assert.equal(body.data.pendingGoToGround, null);
   assert.equal(body.data.readyRangedAttack.triggerEventId, "gtg-target-selected");
   assert.equal(body.data.rangedDeclarations.sets.length, 1);
@@ -3547,6 +3549,150 @@ test("cross-checks Go to Ground and Smokescreen through the C and WebAssembly AP
   assert.equal(body.data.smokescreens[0].effect.stealth, true);
   assert.equal(body.data.activeSmokescreenEffects.length, 1);
   assert.deepEqual(body.data.smokescreenPasses, []);
+});
+
+test("cross-checks Rapid Ingress through the C and WebAssembly replay API", async () => {
+  const active = {
+    id: "rapid-api-active",
+    playerId: "player-1",
+    sourceFormationId: "rapid-api-active",
+    name: "Active formation",
+    keywords: ["Infantry"],
+    segments: [
+      {
+        id: "rapid-api-active-model",
+        savedUnitId: "rapid-api-active",
+        unitName: "Active formation",
+        modelName: "Active model",
+        role: "standalone",
+        wounds: 2,
+        startingModels: 5,
+      },
+    ],
+  };
+  const reserve = {
+    ...active,
+    id: "rapid-api-reserve",
+    playerId: "player-2",
+    sourceFormationId: "rapid-api-reserve",
+    name: "Reserve formation",
+    segments: [
+      {
+        ...active.segments[0],
+        id: "rapid-api-reserve-model",
+        savedUnitId: "rapid-api-reserve",
+        unitName: "Reserve formation",
+      },
+    ],
+  };
+  let state = createBattleState({
+    id: "rapid-api-battle",
+    createdAt: 1,
+    rulesSnapshot: "catalogue:test",
+    players: [
+      { id: "player-1", listId: "rapid-list-1", listUpdatedAt: 1, name: "Active" },
+      { id: "player-2", listId: "rapid-list-2", listUpdatedAt: 1, name: "Responder" },
+    ],
+  });
+  state = registerBattleFormation(state, active, "rapid-api-register-active", 1);
+  state = registerBattleFormation(state, reserve, "rapid-api-register-reserve", 2);
+  state = configureBattleMission(
+    state,
+    {
+      name: "Rapid Ingress API",
+      commandPointsPerCommandPhase: 0,
+      startingCommandPoints: { "player-1": 0, "player-2": 1 },
+      objectives: [],
+    },
+    "rapid-api-mission",
+    3,
+  );
+  state = declareFormationDeployment(
+    state,
+    active.id,
+    "battlefield",
+    {},
+    "rapid-api-declare-active",
+    4,
+  );
+  state = declareFormationDeployment(
+    state,
+    reserve.id,
+    "strategic_reserves",
+    {
+      points: 100,
+      earliestBattleRound: 2,
+      eligibilityConfirmed: true,
+      eligibilityReason: "Core Strategic Reserves",
+    },
+    "rapid-api-declare-reserve",
+    5,
+  );
+  state = deployFormation(
+    state,
+    active.id,
+    { placementConfirmed: true, placementReason: "Deployment zone" },
+    "rapid-api-deploy-active",
+    6,
+  );
+  state = startBattle(state, "player-1", "rapid-api-start", 7);
+  while (
+    !(
+      replayBattleState(state).clock.battleRound === 2 &&
+      replayBattleState(state).clock.activePlayerId === "player-1" &&
+      replayBattleState(state).clock.phase === "movement" &&
+      replayBattleState(state).clock.step === "end"
+    )
+  ) {
+    state = advanceBattleClock(
+      state,
+      `rapid-api-clock-${state.events.length}`,
+      state.events.length + 1,
+    );
+  }
+  state = resolveRapidIngress(
+    state,
+    reserve.id,
+    {
+      placementMethod: "strategic_reserves",
+      placementConfirmed: true,
+      placementReason: "Large model touches its own battlefield edge outside 9 inches",
+      moreThanNineFromEnemyModels: true,
+      largeModelEdgeException: true,
+      touchingOwnBattlefieldEdge: true,
+    },
+    "rapid-api-resolved",
+    state.events.length + 1,
+  );
+
+  const worker = await loadWorker();
+  const response = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: state, formationId: reserve.id }),
+    }),
+    testEnv,
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  const body = await response.json();
+  assert.equal(body.data.schemaVersion, BATTLE_STATE_VERSION);
+  assert.equal(body.data.pendingRapidIngress, null);
+  assert.equal(body.data.rapidIngresses.length, 1);
+  assert.equal(body.data.rapidIngresses[0].canonical, true);
+  assert.equal(body.data.rapidIngresses[0].formationId, reserve.id);
+  assert.equal(body.data.rapidIngresses[0].placementMethod, "strategic_reserves");
+  assert.equal(body.data.rapidIngresses[0].commandPointsBefore, 1);
+  assert.equal(body.data.rapidIngresses[0].commandPointsAfter, 0);
+  assert.equal(body.data.rapidIngresses[0].passengersCannotDisembarkThisPhase, true);
+  assert.equal(body.data.rapidIngresses[0].largeModelRestrictedThisTurn, true);
+  assert.deepEqual(body.data.rapidIngressPasses, []);
+  assert.equal(
+    body.data.movement.find((entry) => entry.formationId === reserve.id).rapidIngress,
+    true,
+  );
+  assert.equal(body.data.deployment.deployedFormationIds.includes(reserve.id), true);
 });
 
 test("cross-checks destroyed Transport passenger damage through WebAssembly", async () => {
@@ -3811,7 +3957,7 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 22);
+  assert.equal(body.data.schemaVersion, BATTLE_STATE_VERSION);
   assert.equal(body.data.transports.compatibility.length, 1);
   assert.equal(body.data.transports.compatibility[0].formationId, "passenger");
   assert.equal(body.data.transports.compatibility[0].transportFormationId, "transport");
@@ -3995,7 +4141,7 @@ test("API replay exposes and cross-checks nested Transport deployment ancestry",
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 22);
+  assert.equal(body.data.schemaVersion, BATTLE_STATE_VERSION);
   assert.deepEqual(body.data.transports.embarked, [
     { formationId: inner.id, transportFormationId: outer.id },
     { formationId: passengers.id, transportFormationId: inner.id },
