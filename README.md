@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 16 as soon as both lists are selected. Every
+creates battle-state version 17 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -829,9 +829,26 @@ without reopening the spent Stratagem. Guided Play exposes the decision and
 resume path, while the replay API reports pending, ready, resolved, passed, and
 active-effect state and cross-checks the ACSL-specified C/WebAssembly predicate.
 Version-15 and older histories retain their recorded attacks behind an explicit
-Go to Ground migration boundary. Activation-wide declarations for every weapon
-and split-fire target remain a documented next step; until then, select the
-intended Go to Ground target first in Guided Play.
+Go to Ground migration boundary.
+Version 17 replaces the weapon-at-a-time Shooting boundary with one immutable,
+activation-wide declaration set. Before any attack dice are generated, Guided
+Play records every selected weapon copy, profile, and split-fire target with its
+reviewed range and visibility facts plus an editable attack snapshot. Closing
+target selection canonicalizes resolution by first-selected target and then by
+first-selected weapon profile, so all attacks against one target and with one
+profile remain contiguous. Only after the complete target set is visible does
+the defender receive one Go to Ground choice among all eligible Infantry
+targets. The resulting queue is locked to the original activation, formation,
+weapon source, group, profile, declared copy count, and target; later casualties
+update only the surviving target counts, while destroyed targets are skipped.
+Replay rejects early dice, duplicate declarations, aggregate weapon
+oversubscription, out-of-order resolution, and unfinished activations. Hazardous
+tests are counted from every declared Hazardous copy even when its target is
+destroyed before that profile resolves. The replay API exposes draft, closed,
+ready, retracted, and auto-skipped declarations and cross-checks the declaration
+structure with the ACSL-specified C/WebAssembly predicate. Version-16 and older
+histories retain their original attack ordering behind an explicit migration
+boundary.
 The guided timeline records battle round, first or second player turn, active
 and priority player, phase, and step. It covers Command, Movement, Shooting,
 Charge, and Fight through five rounds. Pending bounded choices stop both attacks

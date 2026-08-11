@@ -8,6 +8,7 @@ import {
   appendResolvedAttack,
   applyBattleEffect,
   changeBattleResource,
+  closeRangedTargetDeclarations,
   completeFormationActivation,
   configureBattleMission,
   createBattleState,
@@ -2990,7 +2991,7 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 16);
+  assert.equal(body.data.schemaVersion, 17);
   assert.equal(body.data.charges[0].canonicalMovement, true);
   assert.deepEqual(body.data.charges[0].rolls, [3, 4]);
   assert.equal(body.data.charges[0].chargeDistanceThousandths, 7000);
@@ -3169,7 +3170,7 @@ test("cross-checks Fire Overwatch reactions through the C and WebAssembly API", 
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 16);
+  assert.equal(body.data.schemaVersion, 17);
   assert.equal(body.data.pendingFireOverwatch, null);
   assert.equal(body.data.fireOverwatches.length, 1);
   assert.equal(body.data.fireOverwatches[0].trigger, "normal_move_start");
@@ -3445,6 +3446,19 @@ test("cross-checks Go to Ground reaction and phase effect through the C and WebA
       indirectFire: false,
       weaponHasIndirect: false,
       eligibleWeaponCount: 1,
+      declaredWeaponCount: 1,
+      attackSnapshot: {
+        attackProfiles: [{ weaponCount: 1 }],
+        targets: [{ wounds: 2, modelCount: 5 }],
+        segmentIds: ["gtg-target-model"],
+        initialWoundsLost: 0,
+        weaponHasAssault: false,
+        summary: {
+          attacker: attacker.name,
+          weapon: "Go to Ground gun",
+          target: target.name,
+        },
+      },
       method: "manual",
       reviewedByPlayer: true,
       reviewReason: "Range and visibility reviewed",
@@ -3452,8 +3466,9 @@ test("cross-checks Go to Ground reaction and phase effect through the C and WebA
     "gtg-target-selected",
     state.events.length,
   );
+  state = closeRangedTargetDeclarations(state, "gtg-targets-declared", state.events.length);
   assert.equal(replayBattleState(state).pendingGoToGround.targetFormationId, target.id);
-  state = resolveGoToGround(state, "gtg-resolved", state.events.length);
+  state = resolveGoToGround(state, target.id, "gtg-resolved", state.events.length);
 
   const worker = await loadWorker();
   const response = await worker.fetch(
@@ -3467,9 +3482,16 @@ test("cross-checks Go to Ground reaction and phase effect through the C and WebA
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 16);
+  assert.equal(body.data.schemaVersion, 17);
   assert.equal(body.data.pendingGoToGround, null);
   assert.equal(body.data.readyRangedAttack.triggerEventId, "gtg-target-selected");
+  assert.equal(body.data.rangedDeclarations.sets.length, 1);
+  assert.equal(body.data.rangedDeclarations.sets[0].eventId, "gtg-targets-declared");
+  assert.deepEqual(body.data.rangedDeclarations.sets[0].declarationEventIds, [
+    "gtg-target-selected",
+  ]);
+  assert.equal(body.data.rangedDeclarations.ready.length, 1);
+  assert.deepEqual(body.data.rangedDeclarations.draft, []);
   assert.equal(body.data.goToGrounds.length, 1);
   assert.equal(body.data.goToGrounds[0].canonical, true);
   assert.equal(body.data.goToGrounds[0].commandPointsBefore, 1);
@@ -3624,6 +3646,19 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
       visible: true,
       fullyVisible: true,
       eligibleWeaponCount: 1,
+      declaredWeaponCount: 1,
+      attackSnapshot: {
+        attackProfiles: [{ weaponCount: 1 }],
+        targets: [{ wounds: 2, modelCount: 1 }],
+        segmentIds: ["transport-model"],
+        initialWoundsLost: 0,
+        weaponHasAssault: false,
+        summary: {
+          attacker: "Enemy",
+          weapon: "Anti-transport weapon",
+          target: "Transport",
+        },
+      },
       method: "manual",
       reviewedByPlayer: true,
       reviewReason: "Range and line of sight checked",
@@ -3631,9 +3666,10 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
     "target-eligibility",
     31,
   );
+  state = closeRangedTargetDeclarations(state, "transport-targets-declared", 32);
   state = appendResolvedAttack(state, {
     id: "destroy-transport",
-    at: 32,
+    at: 33,
     attackerFormationId: "enemy",
     targetFormationId: "transport",
     segmentIds: ["transport-model"],
@@ -3671,7 +3707,7 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
       },
     ],
     "resolve-passenger",
-    33,
+    34,
     () => 0,
     {
       deadlyDemiseResolvedConfirmed: true,
@@ -3690,7 +3726,7 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 16);
+  assert.equal(body.data.schemaVersion, 17);
   assert.deepEqual(body.data.weaponDeclarations, [
     {
       attackEventId: "destroy-transport",

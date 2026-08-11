@@ -203,5 +203,12 @@ int main(void) {
     assert(!whc_go_to_ground_is_valid(
         WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, false, false,
         WHC_GO_TO_GROUND_FLAGS_MASK & ~WHC_GO_TO_GROUND_SIX_PLUS_INVULNERABLE));
+    assert(whc_ranged_declaration_is_valid(3u, 3u, 2u, 2u, 3u, 3u,
+                                           WHC_RANGED_DECLARATION_FLAGS_MASK));
+    assert(!whc_ranged_declaration_is_valid(3u, 3u, 3u, 2u, 3u, 3u,
+                                            WHC_RANGED_DECLARATION_FLAGS_MASK));
+    assert(!whc_ranged_declaration_is_valid(
+        3u, 3u, 2u, 2u, 3u, 3u,
+        WHC_RANGED_DECLARATION_FLAGS_MASK & ~WHC_RANGED_DECLARATION_PROFILES_CONTIGUOUS));
     return 0;
 }

@@ -206,6 +206,15 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     uint32_t go_to_ground_flags;
     bool go_to_ground_valid;
     bool expected_go_to_ground_valid;
+    uint32_t declaration_count;
+    uint32_t unique_declaration_count;
+    uint32_t target_run_count;
+    uint32_t unique_target_count;
+    uint32_t profile_run_count;
+    uint32_t unique_target_profile_count;
+    uint32_t declaration_flags;
+    bool declaration_valid;
+    bool expected_declaration_valid;
 
     while (index < weapon_count) {
         generate_weapon(&input, &weapons[index]);
@@ -479,5 +488,25 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         !go_to_ground_already_used && !go_to_ground_battle_shocked &&
         go_to_ground_flags == WHC_GO_TO_GROUND_FLAGS_MASK;
     assert(go_to_ground_valid == expected_go_to_ground_valid);
+    declaration_count = next_u16(&input);
+    unique_declaration_count = next_u16(&input);
+    target_run_count = next_u16(&input);
+    unique_target_count = next_u16(&input);
+    profile_run_count = next_u16(&input);
+    unique_target_profile_count = next_u16(&input);
+    declaration_flags = next_byte(&input);
+    declaration_valid = whc_ranged_declaration_is_valid(
+        declaration_count, unique_declaration_count, target_run_count, unique_target_count,
+        profile_run_count, unique_target_profile_count, declaration_flags);
+    expected_declaration_valid =
+        declaration_count >= 1u && declaration_count <= 256u &&
+        unique_declaration_count == declaration_count &&
+        target_run_count == unique_target_count && unique_target_count >= 1u &&
+        unique_target_count <= declaration_count &&
+        profile_run_count == unique_target_profile_count &&
+        unique_target_profile_count >= unique_target_count &&
+        unique_target_profile_count <= declaration_count &&
+        declaration_flags == WHC_RANGED_DECLARATION_FLAGS_MASK;
+    assert(declaration_valid == expected_declaration_valid);
     return 0;
 }

@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 16;
+export const BATTLE_STATE_VERSION = 17;
+export const RANGED_DECLARATION_BATTLE_STATE_VERSION = 17;
 export const GO_TO_GROUND_BATTLE_STATE_VERSION = 16;
 export const HAZARDOUS_BATTLE_STATE_VERSION = 15;
 export const FIRE_OVERWATCH_BATTLE_STATE_VERSION = 14;
@@ -99,6 +100,150 @@ export const GO_TO_GROUND_FLAGS = Object.freeze({
   benefitOfCover: 16,
   mask: 31,
 });
+
+export const RANGED_DECLARATION_FLAGS = Object.freeze({
+  sameActivation: 1,
+  beforeAttacks: 2,
+  allEligible: 4,
+  weaponCountsValid: 8,
+  targetsContiguous: 16,
+  profilesContiguous: 32,
+  mask: 63,
+});
+
+export function rangedDeclarationIsValid(
+  declarationCount,
+  uniqueDeclarationCount,
+  targetRunCount,
+  uniqueTargetCount,
+  profileRunCount,
+  uniqueTargetProfileCount,
+  flags,
+) {
+  return Boolean(
+    Number.isSafeInteger(declarationCount) &&
+      declarationCount >= 1 &&
+      declarationCount <= 256 &&
+      uniqueDeclarationCount === declarationCount &&
+      targetRunCount === uniqueTargetCount &&
+      uniqueTargetCount >= 1 &&
+      uniqueTargetCount <= declarationCount &&
+      profileRunCount === uniqueTargetProfileCount &&
+      uniqueTargetProfileCount >= uniqueTargetCount &&
+      uniqueTargetProfileCount <= declarationCount &&
+      flags === RANGED_DECLARATION_FLAGS.mask,
+  );
+}
+
+function canonicalRangedDeclarations(declarations) {
+  const targetOrder = [...new Set(declarations.map((entry) => entry.targetFormationId))];
+  return targetOrder.flatMap((targetFormationId) => {
+    const targetDeclarations = declarations.filter(
+      (entry) => entry.targetFormationId === targetFormationId,
+    );
+    const profileOrder = [...new Set(targetDeclarations.map((entry) => entry.weaponId))];
+    return profileOrder.flatMap((weaponId) =>
+      targetDeclarations.filter((entry) => entry.weaponId === weaponId),
+    );
+  });
+}
+
+function rangedDeclarationStructure(declarations) {
+  const targetRuns = [];
+  const profileRuns = [];
+  for (const declaration of declarations) {
+    if (targetRuns.at(-1) !== declaration.targetFormationId) {
+      targetRuns.push(declaration.targetFormationId);
+    }
+    const profileKey = `${declaration.targetFormationId}:${declaration.weaponId}`;
+    if (profileRuns.at(-1) !== profileKey) profileRuns.push(profileKey);
+  }
+  return {
+    declarationCount: declarations.length,
+    uniqueDeclarationCount: new Set(declarations.map((entry) => entry.id)).size,
+    targetRunCount: targetRuns.length,
+    uniqueTargetCount: new Set(declarations.map((entry) => entry.targetFormationId)).size,
+    profileRunCount: profileRuns.length,
+    uniqueTargetProfileCount: new Set(
+      declarations.map((entry) => `${entry.targetFormationId}:${entry.weaponId}`),
+    ).size,
+  };
+}
+
+function normalizeSnapshotJson(value, name, depth = 0, budget = { nodes: 0 }) {
+  budget.nodes += 1;
+  if (budget.nodes > 4096 || depth > 8) throw new Error(`${name} is too complex`);
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    if (value.length > 1000) throw new Error(`${name} contains an oversized string`);
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || Math.abs(value) > 1_000_000_000) {
+      throw new Error(`${name} contains an invalid number`);
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (value.length > 256) throw new Error(`${name} contains an oversized array`);
+    return value.map((entry, index) =>
+      normalizeSnapshotJson(entry, `${name}[${index}]`, depth + 1, budget),
+    );
+  }
+  if (!value || typeof value !== "object") throw new Error(`${name} must contain JSON values`);
+  const entries = Object.entries(value);
+  if (entries.length > 256) throw new Error(`${name} contains too many fields`);
+  return Object.fromEntries(
+    entries.map(([key, entry]) => {
+      if (!key || key.length > 100) throw new Error(`${name} contains an invalid field name`);
+      return [key, normalizeSnapshotJson(entry, `${name}.${key}`, depth + 1, budget)];
+    }),
+  );
+}
+
+function normalizeRangedAttackSnapshot(value) {
+  const snapshot = normalizeSnapshotJson(value, "Ranged attack snapshot");
+  record(snapshot, "Ranged attack snapshot must be an object");
+  if (
+    !Array.isArray(snapshot.attackProfiles) ||
+    snapshot.attackProfiles.length < 1 ||
+    snapshot.attackProfiles.length > 32 ||
+    !snapshot.attackProfiles.every(
+      (profile) => profile && typeof profile === "object" && !Array.isArray(profile),
+    )
+  ) {
+    throw new Error("Ranged attack snapshot must contain 1 to 32 attack profiles");
+  }
+  if (
+    !Array.isArray(snapshot.targets) ||
+    snapshot.targets.length < 1 ||
+    snapshot.targets.length > 16 ||
+    !snapshot.targets.every(
+      (target) =>
+        target &&
+        typeof target === "object" &&
+        !Array.isArray(target) &&
+        Number.isSafeInteger(target.modelCount) &&
+        target.modelCount >= 1,
+    )
+  ) {
+    throw new Error("Ranged attack snapshot must contain 1 to 16 target segments");
+  }
+  if (
+    !Array.isArray(snapshot.segmentIds) ||
+    snapshot.segmentIds.length !== snapshot.targets.length ||
+    snapshot.segmentIds.some((id) => typeof id !== "string" || !id || id.length > 100) ||
+    new Set(snapshot.segmentIds).size !== snapshot.segmentIds.length
+  ) {
+    throw new Error("Ranged attack snapshot segment ids must uniquely match its targets");
+  }
+  nonnegativeInteger(snapshot.initialWoundsLost, "Ranged snapshot initial wounds", 1024);
+  const summary = record(snapshot.summary, "Ranged attack snapshot summary must be an object");
+  boundedString(summary.attacker, "Ranged snapshot attacker", 200);
+  boundedString(summary.weapon, "Ranged snapshot weapon", 200);
+  boundedString(summary.target, "Ranged snapshot target", 200);
+  return snapshot;
+}
 
 export function goToGroundIsValid(
   phase,
@@ -1319,6 +1464,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   ) {
     throw new Error("Go to Ground reactions require battle-state version 16");
   }
+  if (
+    stateVersion < RANGED_DECLARATION_BATTLE_STATE_VERSION &&
+    ["ranged_target_declaration_retracted", "ranged_targets_declared"].includes(event.type)
+  ) {
+    throw new Error("Activation-wide ranged declarations require battle-state version 17");
+  }
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation, stateVersion);
     if (!formations.players.has(formation.playerId)) throw new Error("Formation player is unknown");
@@ -1990,12 +2141,11 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     if (!formations.players.has(normalized.playerId)) {
       throw new Error("Go to Ground player is unknown");
     }
-    normalized.targetFormationId = boundedString(
-      event.targetFormationId,
-      "Go to Ground target formation id",
-      100,
-    );
-    if (!formations.byId.has(normalized.targetFormationId)) {
+    normalized.targetFormationId =
+      stateVersion >= RANGED_DECLARATION_BATTLE_STATE_VERSION && !event.targetFormationId
+        ? ""
+        : boundedString(event.targetFormationId, "Go to Ground target formation id", 100);
+    if (normalized.targetFormationId && !formations.byId.has(normalized.targetFormationId)) {
       throw new Error("Go to Ground target formation is unknown");
     }
     normalized.reason = boundedString(event.reason, "Go to Ground pass reason", 300);
@@ -2325,6 +2475,11 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
         : "";
       normalized.clock = normalizeClock(event.clock, formations.players);
     }
+    if (stateVersion >= RANGED_DECLARATION_BATTLE_STATE_VERSION) {
+      normalized.activationEventId = event.activationEventId
+        ? boundedString(event.activationEventId, "Target declaration activation id", 100)
+        : "";
+    }
     normalized.publishedRangeThousandths = nonnegativeInteger(
       event.publishedRangeThousandths,
       "Published weapon range thousandths",
@@ -2355,6 +2510,15 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
       "Eligible weapon count",
       1000,
     );
+    if (stateVersion >= RANGED_DECLARATION_BATTLE_STATE_VERSION) {
+      normalized.declaredWeaponCount = nonnegativeInteger(
+        event.declaredWeaponCount ?? 0,
+        "Declared weapon count",
+        1000,
+      );
+      normalized.attackSnapshot =
+        event.attackSnapshot == null ? null : normalizeRangedAttackSnapshot(event.attackSnapshot);
+    }
     normalized.method = boundedString(event.method, "Target measurement method", 20);
     if (!TARGET_MEASUREMENT_METHODS.includes(normalized.method)) {
       throw new Error("Target measurement method is unsupported");
@@ -2379,6 +2543,71 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     ) {
       throw new Error("Weapon range override must name the rule or effect changing Range");
     }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "ranged_target_declaration_retracted") {
+    normalized.activationEventId = boundedString(
+      event.activationEventId,
+      "Ranged declaration activation id",
+      100,
+    );
+    normalized.declarationEventId = boundedString(
+      event.declarationEventId,
+      "Retracted ranged declaration event id",
+      100,
+    );
+    normalized.reason = boundedString(event.reason, "Ranged declaration retraction reason", 300);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "ranged_targets_declared") {
+    normalized.activationEventId = boundedString(
+      event.activationEventId,
+      "Ranged declaration activation id",
+      100,
+    );
+    if (
+      !Array.isArray(event.declarationEventIds) ||
+      event.declarationEventIds.length < 1 ||
+      event.declarationEventIds.length > 256
+    ) {
+      throw new Error("Ranged target declaration must contain 1 to 256 attacks");
+    }
+    normalized.declarationEventIds = event.declarationEventIds.map((id) =>
+      boundedString(id, "Ranged declaration event id", 100),
+    );
+    normalized.declarationCount = nonnegativeInteger(
+      event.declarationCount,
+      "Ranged declaration count",
+      256,
+    );
+    normalized.uniqueDeclarationCount = nonnegativeInteger(
+      event.uniqueDeclarationCount,
+      "Unique ranged declaration count",
+      256,
+    );
+    normalized.targetRunCount = nonnegativeInteger(
+      event.targetRunCount,
+      "Ranged declaration target run count",
+      256,
+    );
+    normalized.uniqueTargetCount = nonnegativeInteger(
+      event.uniqueTargetCount,
+      "Ranged declaration unique target count",
+      256,
+    );
+    normalized.profileRunCount = nonnegativeInteger(
+      event.profileRunCount,
+      "Ranged declaration profile run count",
+      256,
+    );
+    normalized.uniqueTargetProfileCount = nonnegativeInteger(
+      event.uniqueTargetProfileCount,
+      "Ranged declaration unique target/profile count",
+      256,
+    );
+    normalized.flags = nonnegativeInteger(event.flags, "Ranged declaration flags", 63);
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
@@ -2501,6 +2730,7 @@ export function normalizeBattleState(candidate) {
       HEROIC_INTERVENTION_BATTLE_STATE_VERSION,
       FIRE_OVERWATCH_BATTLE_STATE_VERSION,
       HAZARDOUS_BATTLE_STATE_VERSION,
+      GO_TO_GROUND_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -2549,6 +2779,7 @@ export function normalizeBattleState(candidate) {
         HEROIC_INTERVENTION_BATTLE_STATE_VERSION,
         FIRE_OVERWATCH_BATTLE_STATE_VERSION,
         HAZARDOUS_BATTLE_STATE_VERSION,
+        GO_TO_GROUND_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -2644,6 +2875,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyGoToGroundThroughSequence = nonnegativeInteger(
         migration.legacyGoToGroundThroughSequence,
         "Legacy Go to Ground event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= RANGED_DECLARATION_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyRangedDeclarationsThroughSequence = nonnegativeInteger(
+        migration.legacyRangedDeclarationsThroughSequence,
+        "Legacy ranged declaration event sequence",
         events.length,
       );
     }
@@ -3062,12 +3300,18 @@ export function replayBattleState(state) {
   const goToGrounds = [];
   const goToGroundPasses = [];
   const usedGoToGroundKeys = new Set();
+  const rangedDeclarationRetractions = [];
+  const rangedDeclarationSets = [];
+  const resolvedRangedDeclarationIds = new Set();
   let activeActivation = null;
   let pendingFireOverwatch = null;
   let pendingHeroicIntervention = null;
   let pendingHazardous = null;
   let pendingGoToGround = null;
   let readyRangedAttack = null;
+  let rangedDeclarationDraft = [];
+  let activeRangedDeclarationSet = null;
+  let readyRangedAttacks = [];
   let deploymentPriorityPlayerId = "";
   let clock = setupBattleClock();
   let mission = defaultMission(state.players);
@@ -3105,6 +3349,10 @@ export function replayBattleState(state) {
     state.version < GO_TO_GROUND_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyGoToGroundThroughSequence ?? 0);
+  const legacyRangedDeclarationsThroughSequence =
+    state.version < RANGED_DECLARATION_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyRangedDeclarationsThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -3113,6 +3361,82 @@ export function replayBattleState(state) {
     state.version < WEAPON_INVENTORY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyWeaponInventoryThroughSequence ?? 0);
+
+  const declarationWeaponKey = (declaration) =>
+    [
+      declaration.weaponSourceFormationId,
+      declaration.sourceSavedUnitId,
+      declaration.weaponGroupId,
+    ].join(":");
+  const declarationProfileKey = (declaration) =>
+    `${declaration.targetFormationId}:${declaration.weaponId}`;
+  const canonicalRangedDeclarationOrder = (declarations) => {
+    const targetOrder = [
+      ...new Set(declarations.map((declaration) => declaration.targetFormationId)),
+    ];
+    return targetOrder.flatMap((targetFormationId) => {
+      const targetDeclarations = declarations.filter(
+        (declaration) => declaration.targetFormationId === targetFormationId,
+      );
+      const profileOrder = [
+        ...new Set(targetDeclarations.map((declaration) => declaration.weaponId)),
+      ];
+      return profileOrder.flatMap((weaponId) =>
+        targetDeclarations.filter((declaration) => declaration.weaponId === weaponId),
+      );
+    });
+  };
+  const rangedDeclarationStats = (declarations) => {
+    const targetRuns = [];
+    const profileRuns = [];
+    for (const declaration of declarations) {
+      if (targetRuns.at(-1) !== declaration.targetFormationId) {
+        targetRuns.push(declaration.targetFormationId);
+      }
+      const profileKey = declarationProfileKey(declaration);
+      if (profileRuns.at(-1) !== profileKey) profileRuns.push(profileKey);
+    }
+    return {
+      declarationCount: declarations.length,
+      uniqueDeclarationCount: new Set(declarations.map((declaration) => declaration.id)).size,
+      targetRunCount: targetRuns.length,
+      uniqueTargetCount: new Set(declarations.map((declaration) => declaration.targetFormationId))
+        .size,
+      profileRunCount: profileRuns.length,
+      uniqueTargetProfileCount: new Set(declarations.map(declarationProfileKey)).size,
+    };
+  };
+  const declarationFlags = ({ sameActivation, beforeAttacks, allEligible, weaponCountsValid }) =>
+    (sameActivation ? RANGED_DECLARATION_FLAGS.sameActivation : 0) |
+    (beforeAttacks ? RANGED_DECLARATION_FLAGS.beforeAttacks : 0) |
+    (allEligible ? RANGED_DECLARATION_FLAGS.allEligible : 0) |
+    (weaponCountsValid ? RANGED_DECLARATION_FLAGS.weaponCountsValid : 0) |
+    RANGED_DECLARATION_FLAGS.targetsContiguous |
+    RANGED_DECLARATION_FLAGS.profilesContiguous;
+  const refreshReadyRangedAttacks = () => {
+    if (!activeRangedDeclarationSet || pendingGoToGround) {
+      readyRangedAttacks = [];
+      return;
+    }
+    readyRangedAttacks = activeRangedDeclarationSet.declarations
+      .filter(
+        (declaration) =>
+          !resolvedRangedDeclarationIds.has(declaration.id) &&
+          !formationDestroyed(formations.get(declaration.targetFormationId)),
+      )
+      .map((declaration) => ({
+        ...declaration,
+        triggerEventId: declaration.id,
+        declarationSetEventId: activeRangedDeclarationSet.id,
+        activationEventId: activeRangedDeclarationSet.activationEventId,
+        goToGroundEffectId:
+          goToGrounds.find(
+            (effect) =>
+              effect.targetFormationId === declaration.targetFormationId &&
+              samePhase(effect.appliedAt, clock),
+          )?.id ?? "",
+      }));
+  };
   for (const event of state.events) {
     if (pendingTransportDestructions.size > 0 && event.type !== "transport_destroyed_resolved") {
       throw new Error("Destroyed Transport passengers must disembark immediately");
@@ -3157,8 +3481,21 @@ export function replayBattleState(state) {
     ) {
       throw new Error("Resolve or pass the pending Go to Ground window first");
     }
-    if (readyRangedAttack && event.type !== "attack_resolved") {
-      throw new Error("Resolve the declared ranged attack before continuing the battle");
+    if (
+      (readyRangedAttack || readyRangedAttacks.length > 0) &&
+      !["attack_resolved", "attack_reverted"].includes(event.type)
+    ) {
+      throw new Error("Resolve every declared ranged attack before continuing the battle");
+    }
+    if (
+      rangedDeclarationDraft.length > 0 &&
+      ![
+        "ranged_target_eligibility_recorded",
+        "ranged_target_declaration_retracted",
+        "ranged_targets_declared",
+      ].includes(event.type)
+    ) {
+      throw new Error("Finish or retract the activation's ranged target declarations first");
     }
     if (
       activeActivation?.source === "fire_overwatch" &&
@@ -4231,6 +4568,9 @@ export function replayBattleState(state) {
         pileIn: null,
         consolidation: null,
       };
+      rangedDeclarationDraft = [];
+      activeRangedDeclarationSet = null;
+      readyRangedAttacks = [];
       pendingFireOverwatch = null;
       continue;
     }
@@ -4447,6 +4787,9 @@ export function replayBattleState(state) {
         pileIn: null,
         consolidation: null,
       };
+      rangedDeclarationDraft = [];
+      activeRangedDeclarationSet = null;
+      readyRangedAttacks = [];
       continue;
     }
     if (event.type === "fight_move_recorded") {
@@ -4657,6 +5000,9 @@ export function replayBattleState(state) {
       if (pendingHazardous && !pendingHazardous.deferredUntilChargeMove) {
         throw new Error("Resolve Hazardous mortal wounds before finishing the activation");
       }
+      if (rangedDeclarationDraft.length > 0 || readyRangedAttacks.length > 0) {
+        throw new Error("Resolve or retract every ranged declaration before finishing activation");
+      }
       if (event.activationType === "fight") {
         fightMovementsByActivation.set(activeActivation.id, {
           formationId: activeActivation.formationId,
@@ -4679,6 +5025,9 @@ export function replayBattleState(state) {
         }
       }
       activeActivation = null;
+      activeRangedDeclarationSet = null;
+      rangedDeclarationDraft = [];
+      readyRangedAttacks = [];
       if (event.activationType === "fight") {
         clock = {
           ...clock,
@@ -4692,14 +5041,23 @@ export function replayBattleState(state) {
         !pendingGoToGround ||
         event.triggerEventId !== pendingGoToGround.triggerEventId ||
         event.playerId !== pendingGoToGround.responderPlayerId ||
-        event.targetFormationId !== pendingGoToGround.targetFormationId ||
+        (!pendingGoToGround.activationWide &&
+          event.targetFormationId !== pendingGoToGround.targetFormationId) ||
         !sameBattleClock(event.clock, clock)
       ) {
         throw new Error("Go to Ground pass does not match the pending reaction window");
       }
       goToGroundPasses.push({ ...event, ...pendingGoToGround });
-      readyRangedAttack = { ...pendingGoToGround, goToGroundEffectId: "" };
+      if (pendingGoToGround.activationWide) {
+        activeRangedDeclarationSet = {
+          ...activeRangedDeclarationSet,
+          reactionResolved: true,
+        };
+      } else {
+        readyRangedAttack = { ...pendingGoToGround, goToGroundEffectId: "" };
+      }
       pendingGoToGround = null;
+      refreshReadyRangedAttacks();
       continue;
     }
     if (event.type === "go_to_ground_resolved") {
@@ -4707,7 +5065,9 @@ export function replayBattleState(state) {
         !pendingGoToGround ||
         event.triggerEventId !== pendingGoToGround.triggerEventId ||
         event.playerId !== pendingGoToGround.responderPlayerId ||
-        event.targetFormationId !== pendingGoToGround.targetFormationId ||
+        (pendingGoToGround.activationWide
+          ? !pendingGoToGround.candidateTargetFormationIds.includes(event.targetFormationId)
+          : event.targetFormationId !== pendingGoToGround.targetFormationId) ||
         !sameBattleClock(event.clock, clock)
       ) {
         throw new Error("Go to Ground does not match the pending reaction window");
@@ -4748,8 +5108,188 @@ export function replayBattleState(state) {
         benefitOfCover: true,
       };
       goToGrounds.push(effect);
-      readyRangedAttack = { ...pendingGoToGround, goToGroundEffectId: effect.id };
+      if (pendingGoToGround.activationWide) {
+        activeRangedDeclarationSet = {
+          ...activeRangedDeclarationSet,
+          reactionResolved: true,
+          goToGroundEffectId: effect.id,
+        };
+      } else {
+        readyRangedAttack = { ...pendingGoToGround, goToGroundEffectId: effect.id };
+      }
       pendingGoToGround = null;
+      refreshReadyRangedAttacks();
+      continue;
+    }
+    if (event.type === "ranged_target_declaration_retracted") {
+      if (
+        !activeActivation ||
+        activeActivation.activationType !== "shooting" ||
+        activeActivation.source === "fire_overwatch" ||
+        activeActivation.id !== event.activationEventId ||
+        activeActivation.attackCount !== 0 ||
+        activeRangedDeclarationSet ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Ranged declaration retraction is outside its open activation window");
+      }
+      const declaration = rangedDeclarationDraft.find(
+        (candidate) => candidate.id === event.declarationEventId,
+      );
+      if (!declaration) throw new Error("Ranged declaration retraction is not active");
+      rangedDeclarationDraft = rangedDeclarationDraft.filter(
+        (candidate) => candidate.id !== event.declarationEventId,
+      );
+      rangedDeclarationRetractions.push({ ...event, declaration });
+      continue;
+    }
+    if (event.type === "ranged_targets_declared") {
+      if (
+        !activeActivation ||
+        activeActivation.activationType !== "shooting" ||
+        activeActivation.source === "fire_overwatch" ||
+        activeActivation.id !== event.activationEventId ||
+        activeActivation.attackCount !== 0 ||
+        activeRangedDeclarationSet ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Ranged targets must close once before attacks in their activation");
+      }
+      const ordered = canonicalRangedDeclarationOrder(rangedDeclarationDraft);
+      if (
+        event.declarationEventIds.length !== ordered.length ||
+        event.declarationEventIds.some((id, index) => id !== ordered[index]?.id)
+      ) {
+        throw new Error("Ranged declaration order must group each target and weapon profile");
+      }
+      const stats = rangedDeclarationStats(ordered);
+      const sameActivation = ordered.every(
+        (declaration) => declaration.activationEventId === activeActivation.id,
+      );
+      const beforeAttacks = activeActivation.attackCount === 0;
+      const allEligible = ordered.every((declaration) =>
+        rangedTargetEligibilityIsValid(declaration, declaration.declaredWeaponCount),
+      );
+      const totals = new Map();
+      for (const declaration of ordered) {
+        const key = declarationWeaponKey(declaration);
+        totals.set(key, (totals.get(key) ?? 0) + declaration.declaredWeaponCount);
+      }
+      const weaponCountsValid = [...totals].every(([key, count]) => {
+        const declaration = ordered.find((candidate) => declarationWeaponKey(candidate) === key);
+        const source = formations.get(declaration.weaponSourceFormationId);
+        return (
+          source &&
+          count <=
+            formationSurvivingWeaponCount(
+              source,
+              declaration.sourceSavedUnitId,
+              declaration.weaponGroupId,
+            )
+        );
+      });
+      const flags = declarationFlags({
+        sameActivation,
+        beforeAttacks,
+        allEligible,
+        weaponCountsValid,
+      });
+      if (
+        event.declarationCount !== stats.declarationCount ||
+        event.uniqueDeclarationCount !== stats.uniqueDeclarationCount ||
+        event.targetRunCount !== stats.targetRunCount ||
+        event.uniqueTargetCount !== stats.uniqueTargetCount ||
+        event.profileRunCount !== stats.profileRunCount ||
+        event.uniqueTargetProfileCount !== stats.uniqueTargetProfileCount ||
+        event.flags !== flags ||
+        !rangedDeclarationIsValid(
+          stats.declarationCount,
+          stats.uniqueDeclarationCount,
+          stats.targetRunCount,
+          stats.uniqueTargetCount,
+          stats.profileRunCount,
+          stats.uniqueTargetProfileCount,
+          flags,
+        )
+      ) {
+        throw new Error("Ranged declaration set is structurally inconsistent");
+      }
+      const hazardousDeclarations = ordered.filter((declaration) => {
+        const source = formations.get(declaration.weaponSourceFormationId);
+        return Boolean(
+          source &&
+            formationWeaponProfile(
+              source,
+              declaration.sourceSavedUnitId,
+              declaration.weaponGroupId,
+              declaration.weaponId,
+            )?.profile.hasHazardous,
+        );
+      });
+      activeActivation = {
+        ...activeActivation,
+        rangedDeclarationsClosed: true,
+        rangedDeclarationEventId: event.id,
+        rangedDeclarationCount: ordered.length,
+        hazardousTestCount: hazardousDeclarations.reduce(
+          (total, declaration) => total + declaration.declaredWeaponCount,
+          0,
+        ),
+        hazardousGroupIds: [
+          ...new Set(hazardousDeclarations.map((entry) => entry.weaponGroupId)),
+        ].sort(),
+      };
+      activeRangedDeclarationSet = {
+        ...event,
+        declarations: ordered,
+        reactionResolved: false,
+      };
+      rangedDeclarationSets.push(activeRangedDeclarationSet);
+      rangedDeclarationDraft = [];
+      const candidateTargetFormationIds = [
+        ...new Set(ordered.map((declaration) => declaration.targetFormationId)),
+      ].filter((targetFormationId) => {
+        const target = formations.get(targetFormationId);
+        const usageKey = `${clock.battleRound}:${clock.turn}:${clock.phase}:${target.playerId}:go_to_ground`;
+        const commandPoints = resources.get(target.playerId).get("command_points")?.value ?? 0;
+        const activeEffect = goToGrounds.some(
+          (effect) => effect.targetFormationId === target.id && samePhase(effect.appliedAt, clock),
+        );
+        return (
+          target.playerId !== clock.activePlayerId &&
+          target.keywords.includes("infantry") &&
+          !battleShockedFormations.has(target.id) &&
+          commandPoints >= 1 &&
+          !usedGoToGroundKeys.has(usageKey) &&
+          !activeEffect
+        );
+      });
+      if (candidateTargetFormationIds.length > 0) {
+        const responderPlayerId = formations.get(candidateTargetFormationIds[0]).playerId;
+        if (
+          candidateTargetFormationIds.some(
+            (targetFormationId) => formations.get(targetFormationId).playerId !== responderPlayerId,
+          )
+        ) {
+          throw new Error("Go to Ground candidates must belong to one defending player");
+        }
+        pendingGoToGround = {
+          activationWide: true,
+          triggerEventId: event.id,
+          activationEventId: activeActivation.id,
+          attackerFormationId: activeActivation.formationId,
+          targetFormationId: candidateTargetFormationIds[0],
+          candidateTargetFormationIds,
+          responderPlayerId,
+          clock: { ...clock },
+        };
+      } else {
+        activeRangedDeclarationSet = {
+          ...activeRangedDeclarationSet,
+          reactionResolved: true,
+        };
+        refreshReadyRangedAttacks();
+      }
       continue;
     }
     if (event.type === "ranged_target_eligibility_recorded") {
@@ -4831,12 +5371,85 @@ export function replayBattleState(state) {
       }
       if (
         event.sequence > legacyGoToGroundThroughSequence &&
+        event.sequence <= legacyRangedDeclarationsThroughSequence &&
         (pendingGoToGround || readyRangedAttack)
       ) {
         throw new Error("Resolve the previously declared ranged attack before selecting a target");
       }
       targetEligibilityFacts.set(event.id, event);
-      if (event.sequence > legacyGoToGroundThroughSequence) {
+      if (event.sequence > legacyRangedDeclarationsThroughSequence && !resolvingFireOverwatch) {
+        if (
+          event.activationEventId !== activeActivation.id ||
+          activeActivation.attackCount !== 0 ||
+          activeRangedDeclarationSet ||
+          event.declaredWeaponCount < 1 ||
+          !event.attackSnapshot ||
+          !rangedTargetEligibilityIsValid(event, event.declaredWeaponCount)
+        ) {
+          throw new Error("Ranged attack must be declared exactly before any attack is resolved");
+        }
+        const duplicateKey = [
+          event.targetFormationId,
+          event.weaponSourceFormationId,
+          event.sourceSavedUnitId,
+          event.weaponGroupId,
+          event.weaponId,
+        ].join(":");
+        if (
+          rangedDeclarationDraft.some(
+            (declaration) =>
+              [
+                declaration.targetFormationId,
+                declaration.weaponSourceFormationId,
+                declaration.sourceSavedUnitId,
+                declaration.weaponGroupId,
+                declaration.weaponId,
+              ].join(":") === duplicateKey,
+          )
+        ) {
+          throw new Error("Combine matching weapon copies into one target declaration");
+        }
+        const profileWeaponCount = event.attackSnapshot.attackProfiles.reduce(
+          (total, profile) =>
+            total + (Number.isSafeInteger(profile.weaponCount) ? profile.weaponCount : 0),
+          0,
+        );
+        if (profileWeaponCount !== event.declaredWeaponCount) {
+          throw new Error("Ranged attack snapshot weapon count differs from its declaration");
+        }
+        const snapshotHealthValid = event.attackSnapshot.segmentIds.every((segmentId, index) => {
+          const health = target.health[segmentId];
+          return (
+            health && health.modelsRemaining === event.attackSnapshot.targets[index].modelCount
+          );
+        });
+        if (
+          !snapshotHealthValid ||
+          target.health[event.attackSnapshot.segmentIds[0]]?.woundsLost !==
+            event.attackSnapshot.initialWoundsLost
+        ) {
+          throw new Error("Ranged attack snapshot does not match declared target health");
+        }
+        const source = formations.get(event.weaponSourceFormationId);
+        const alreadyDeclared = rangedDeclarationDraft
+          .filter(
+            (declaration) => declarationWeaponKey(declaration) === declarationWeaponKey(event),
+          )
+          .reduce((total, declaration) => total + declaration.declaredWeaponCount, 0);
+        if (
+          !source ||
+          alreadyDeclared + event.declaredWeaponCount >
+            formationSurvivingWeaponCount(source, event.sourceSavedUnitId, event.weaponGroupId)
+        ) {
+          throw new Error("Ranged declarations exceed surviving weapon copies");
+        }
+        rangedDeclarationDraft.push(event);
+        continue;
+      }
+      if (
+        event.sequence > legacyGoToGroundThroughSequence &&
+        (event.sequence <= legacyRangedDeclarationsThroughSequence || resolvingFireOverwatch)
+      ) {
         const usageKey = `${clock.battleRound}:${clock.turn}:${clock.phase}:${target.playerId}:go_to_ground`;
         const commandPoints = resources.get(target.playerId).get("command_points")?.value ?? 0;
         const activeEffect = goToGrounds.find(
@@ -4878,6 +5491,7 @@ export function replayBattleState(state) {
       continue;
     }
     if (event.type === "attack_resolved") {
+      let resolvedRangedDeclarationId = "";
       const resolvingFireOverwatch = activeActivation?.source === "fire_overwatch";
       if (
         state.version >= TIMELINE_BATTLE_STATE_VERSION &&
@@ -4988,8 +5602,11 @@ export function replayBattleState(state) {
                 )
                 .reduce((total, attack) => total + attack.declaredWeaponCount, 0);
               const declaredFlags = (event.weaponHasAssault ? 1 : 0) | (event.indirectFire ? 2 : 0);
+              const activationWideDeclaration =
+                event.sequence > legacyRangedDeclarationsThroughSequence && !resolvingFireOverwatch;
               if (
-                !(source.weaponBearerTracking === "exact"
+                !activationWideDeclaration &&
+                (!(source.weaponBearerTracking === "exact"
                   ? weaponBearerDeclarationIsValid(
                       inventory.group.count,
                       formationSurvivingWeaponCount(
@@ -5010,13 +5627,13 @@ export function replayBattleState(state) {
                       weaponProfileFlags(inventory.profile),
                       declaredFlags,
                     )) ||
-                eligibility.eligibleWeaponCount >
-                  formationSurvivingWeaponCount(
-                    source,
-                    event.sourceSavedUnitId,
-                    event.weaponGroupId,
-                  ) -
-                    usedCount
+                  eligibility.eligibleWeaponCount >
+                    formationSurvivingWeaponCount(
+                      source,
+                      event.sourceSavedUnitId,
+                      event.weaponGroupId,
+                    ) -
+                      usedCount)
               ) {
                 throw new Error("Ranged attack exceeds its surviving unused weapon inventory");
               }
@@ -5029,7 +5646,27 @@ export function replayBattleState(state) {
                 "Ranged attack does not satisfy its reviewed target eligibility facts",
               );
             }
-            if (event.sequence > legacyGoToGroundThroughSequence) {
+            if (
+              event.sequence > legacyRangedDeclarationsThroughSequence &&
+              !resolvingFireOverwatch
+            ) {
+              const ready = readyRangedAttacks[0];
+              if (
+                !ready ||
+                ready.id !== event.targetEligibilityEventId ||
+                ready.activationEventId !== event.activationEventId ||
+                ready.attackerFormationId !== event.attackerFormationId ||
+                ready.targetFormationId !== event.targetFormationId ||
+                ready.weaponId !== event.weaponId ||
+                ready.weaponSourceFormationId !== event.weaponSourceFormationId ||
+                ready.sourceSavedUnitId !== event.sourceSavedUnitId ||
+                ready.weaponGroupId !== event.weaponGroupId ||
+                ready.declaredWeaponCount !== event.declaredWeaponCount
+              ) {
+                throw new Error("Ranged attack is not the next activation-wide declared attack");
+              }
+              resolvedRangedDeclarationId = ready.id;
+            } else if (event.sequence > legacyGoToGroundThroughSequence) {
               if (
                 !readyRangedAttack ||
                 readyRangedAttack.triggerEventId !== event.targetEligibilityEventId ||
@@ -5128,16 +5765,21 @@ export function replayBattleState(state) {
       attacks.set(event.id, event);
       activeAttackIds.push(event.id);
       targetedFormationIds.add(event.targetFormationId);
+      if (resolvedRangedDeclarationId) {
+        resolvedRangedDeclarationIds.add(resolvedRangedDeclarationId);
+      }
       if (activeActivation) {
+        const activationWideRangedAttack = Boolean(resolvedRangedDeclarationId);
         activeActivation = {
           ...activeActivation,
           attackCount: activeActivation.attackCount + 1,
           hazardousTestCount:
             activeActivation.hazardousTestCount +
-            (hazardousWeaponUsed ? event.declaredWeaponCount : 0),
-          hazardousGroupIds: hazardousWeaponUsed
-            ? [...new Set([...activeActivation.hazardousGroupIds, event.weaponGroupId])].sort()
-            : activeActivation.hazardousGroupIds,
+            (!activationWideRangedAttack && hazardousWeaponUsed ? event.declaredWeaponCount : 0),
+          hazardousGroupIds:
+            !activationWideRangedAttack && hazardousWeaponUsed
+              ? [...new Set([...activeActivation.hazardousGroupIds, event.weaponGroupId])].sort()
+              : activeActivation.hazardousGroupIds,
         };
         if (activeActivation.activationType === "fight") {
           const movement = fightMovementsByActivation.get(activeActivation.id);
@@ -5163,6 +5805,7 @@ export function replayBattleState(state) {
           });
         }
       }
+      refreshReadyRangedAttacks();
       continue;
     }
     if (event.type !== "attack_reverted") {
@@ -5189,6 +5832,12 @@ export function replayBattleState(state) {
       formation.health[allocation.segmentId] = { ...allocation.before };
     }
     activeAttackIds.pop();
+    const revertedActivationWideDeclaration = activeRangedDeclarationSet?.declarations.some(
+      (declaration) => declaration.id === reverted.targetEligibilityEventId,
+    );
+    if (revertedActivationWideDeclaration) {
+      resolvedRangedDeclarationIds.delete(reverted.targetEligibilityEventId);
+    }
     if (
       activeActivation &&
       (state.version < FIRE_OVERWATCH_BATTLE_STATE_VERSION
@@ -5204,29 +5853,32 @@ export function replayBattleState(state) {
             reverted.weaponId,
           )
         : null;
-      const revertedHazardousCount = revertedInventory?.profile.hasHazardous
-        ? reverted.declaredWeaponCount
-        : 0;
-      const hazardousGroupStillUsed = activeAttackIds.some((id) => {
-        const attack = attacks.get(id);
-        if (
-          !attack ||
-          attack.activationEventId !== activeActivation.id ||
-          attack.weaponGroupId !== reverted.weaponGroupId
-        ) {
-          return false;
-        }
-        const source = formations.get(attack.weaponSourceFormationId);
-        return Boolean(
-          source &&
-            formationWeaponProfile(
-              source,
-              attack.sourceSavedUnitId,
-              attack.weaponGroupId,
-              attack.weaponId,
-            )?.profile.hasHazardous,
-        );
-      });
+      const revertedHazardousCount =
+        !revertedActivationWideDeclaration && revertedInventory?.profile.hasHazardous
+          ? reverted.declaredWeaponCount
+          : 0;
+      const hazardousGroupStillUsed =
+        revertedActivationWideDeclaration ||
+        activeAttackIds.some((id) => {
+          const attack = attacks.get(id);
+          if (
+            !attack ||
+            attack.activationEventId !== activeActivation.id ||
+            attack.weaponGroupId !== reverted.weaponGroupId
+          ) {
+            return false;
+          }
+          const source = formations.get(attack.weaponSourceFormationId);
+          return Boolean(
+            source &&
+              formationWeaponProfile(
+                source,
+                attack.sourceSavedUnitId,
+                attack.weaponGroupId,
+                attack.weaponId,
+              )?.profile.hasHazardous,
+          );
+        });
       activeActivation = {
         ...activeActivation,
         attackCount: Math.max(0, activeActivation.attackCount - 1),
@@ -5250,6 +5902,7 @@ export function replayBattleState(state) {
         }
       }
     }
+    refreshReadyRangedAttacks();
   }
   const offBattlefieldFormationIds = new Set(
     [...formations.keys()].filter(
@@ -5320,7 +5973,18 @@ export function replayBattleState(state) {
     hazardousTests,
     hazardousDamageResolutions,
     pendingGoToGround,
-    readyRangedAttack,
+    readyRangedAttack: readyRangedAttacks[0] ?? readyRangedAttack,
+    readyRangedAttacks,
+    rangedDeclarationDraft,
+    activeRangedDeclarationSet,
+    rangedDeclarationSets,
+    rangedDeclarationRetractions,
+    autoSkippedRangedDeclarations:
+      activeRangedDeclarationSet?.declarations.filter(
+        (declaration) =>
+          !resolvedRangedDeclarationIds.has(declaration.id) &&
+          formationDestroyed(formations.get(declaration.targetFormationId)),
+      ) ?? [],
     goToGrounds,
     goToGroundPasses,
     activeGoToGroundEffects: goToGrounds.filter((effect) => samePhase(effect.appliedAt, clock)),
@@ -5841,6 +6505,8 @@ export function recordRangedTargetEligibility(
     indirectFire = false,
     weaponHasIndirect = false,
     eligibleWeaponCount = 0,
+    declaredWeaponCount = 0,
+    attackSnapshot,
     method = "manual",
     reviewedByPlayer = false,
     reviewReason = "",
@@ -5849,7 +6515,8 @@ export function recordRangedTargetEligibility(
   id,
   at,
 ) {
-  const clock = replayBattleState(state).clock;
+  const replayed = replayBattleState(state);
+  const clock = replayed.clock;
   return appendEvent(state, {
     version: BATTLE_EVENT_VERSION,
     id,
@@ -5871,11 +6538,53 @@ export function recordRangedTargetEligibility(
     indirectFire,
     weaponHasIndirect,
     eligibleWeaponCount,
+    declaredWeaponCount,
+    attackSnapshot,
+    activationEventId: replayed.activeActivation?.id ?? "",
     method,
     reviewedByPlayer,
     reviewReason,
     rangeOverrideReason,
     clock,
+  });
+}
+
+export function retractRangedTargetDeclaration(state, declarationEventId, reason, id, at) {
+  const replayed = replayBattleState(state);
+  if (!replayed.activeActivation || replayed.rangedDeclarationDraft.length < 1) {
+    throw new Error("No ranged target declaration is open");
+  }
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "ranged_target_declaration_retracted",
+    activationEventId: replayed.activeActivation.id,
+    declarationEventId,
+    reason,
+    clock: replayed.clock,
+  });
+}
+
+export function closeRangedTargetDeclarations(state, id, at) {
+  const replayed = replayBattleState(state);
+  if (!replayed.activeActivation || replayed.rangedDeclarationDraft.length < 1) {
+    throw new Error("Declare at least one ranged attack before finishing target selection");
+  }
+  const ordered = canonicalRangedDeclarations(replayed.rangedDeclarationDraft);
+  const stats = rangedDeclarationStructure(ordered);
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "ranged_targets_declared",
+    activationEventId: replayed.activeActivation.id,
+    declarationEventIds: ordered.map((declaration) => declaration.id),
+    ...stats,
+    flags: RANGED_DECLARATION_FLAGS.mask,
+    clock: replayed.clock,
   });
 }
 
@@ -5891,13 +6600,13 @@ export function passGoToGround(state, reason, id, at) {
     type: "go_to_ground_passed",
     triggerEventId: pending.triggerEventId,
     playerId: pending.responderPlayerId,
-    targetFormationId: pending.targetFormationId,
+    targetFormationId: pending.activationWide ? "" : pending.targetFormationId,
     reason,
     clock: replayed.clock,
   });
 }
 
-export function resolveGoToGround(state, id, at) {
+export function resolveGoToGround(state, targetFormationId, id, at) {
   const replayed = replayBattleState(state);
   const pending = replayed.pendingGoToGround;
   if (!pending) throw new Error("No Go to Ground window is pending");
@@ -5911,7 +6620,7 @@ export function resolveGoToGround(state, id, at) {
     type: "go_to_ground_resolved",
     triggerEventId: pending.triggerEventId,
     playerId: pending.responderPlayerId,
-    targetFormationId: pending.targetFormationId,
+    targetFormationId: pending.activationWide ? targetFormationId : pending.targetFormationId,
     commandPointCost: 1,
     commandPointsBefore,
     commandPointsAfter: commandPointsBefore - 1,
@@ -6526,6 +7235,22 @@ export function battleCanResolveAttack(state, attackerFormationId, options = {})
     const expectedWeaponType =
       replayed.activeActivation.activationType === "shooting" ? "Ranged" : "Melee";
     if (
+      state.version >= RANGED_DECLARATION_BATTLE_STATE_VERSION &&
+      expectedWeaponType === "Ranged" &&
+      replayed.activeActivation.source !== "fire_overwatch"
+    ) {
+      const ready = replayed.readyRangedAttacks[0];
+      return Boolean(
+        ready &&
+          ready.attackerFormationId === attackerFormationId &&
+          ready.targetFormationId === options.targetFormationId &&
+          ready.weaponId === String(options.weaponId ?? "") &&
+          ready.weaponSourceFormationId === (options.weaponSourceFormationId ?? "") &&
+          ready.sourceSavedUnitId === (options.sourceSavedUnitId ?? "") &&
+          ready.weaponGroupId === (options.weaponGroupId ?? ""),
+      );
+    }
+    if (
       replayed.activeActivation.source === "fire_overwatch" &&
       options.targetFormationId !== replayed.activeActivation.targetFormationId
     ) {
@@ -6552,6 +7277,48 @@ export function battleCanResolveAttack(state, attackerFormationId, options = {})
   }
   if (replayed.clock.phase === "fight" && state.version >= FIGHT_MOVE_BATTLE_STATE_VERSION) {
     return false;
+  }
+  if (
+    replayed.clock.phase === "shooting" &&
+    state.version >= RANGED_DECLARATION_BATTLE_STATE_VERSION
+  ) {
+    return false;
+  }
+  return battleCanStartFormationActivation(state, attackerFormationId, options);
+}
+
+export function battleCanDeclareRangedAttack(state, attackerFormationId, options = {}) {
+  if (!state || !options.targetEligibilityConfirmed || options.weaponType !== "Ranged") {
+    return false;
+  }
+  const replayed = replayBattleState(state);
+  if (
+    replayed.pendingGoToGround ||
+    replayed.readyRangedAttacks.length > 0 ||
+    replayed.activeRangedDeclarationSet
+  ) {
+    return false;
+  }
+  if (
+    options.targetFormationId &&
+    !formationIsOnBattlefield(
+      options.targetFormationId,
+      replayed.deploymentByFormation,
+      replayed.deployedFormationIds,
+      replayed.embarkedByFormation,
+    )
+  ) {
+    return false;
+  }
+  if (replayed.activeActivation) {
+    return Boolean(
+      replayed.activeActivation.activationType === "shooting" &&
+        replayed.activeActivation.source !== "fire_overwatch" &&
+        replayed.activeActivation.formationId === attackerFormationId &&
+        replayed.activeActivation.attackCount === 0 &&
+        (replayed.activeActivation.weaponRestriction !== "assault_only" ||
+          Boolean(options.weaponHasAssault)),
+    );
   }
   return battleCanStartFormationActivation(state, attackerFormationId, options);
 }
@@ -6820,7 +7587,30 @@ export function battleUnusedWeaponCount(
           : sameBattleClock(event.clock, replayed.clock)),
     )
     .reduce((total, event) => total + event.declaredWeaponCount, 0);
-  return Math.max(0, surviving - used);
+  const resolvedDeclarationIds = new Set(
+    state.events
+      .filter(
+        (event) =>
+          event.type === "attack_resolved" &&
+          active.has(event.id) &&
+          event.activationEventId === replayed.activeActivation?.id,
+      )
+      .map((event) => event.targetEligibilityEventId),
+  );
+  const unresolvedDeclarations = [
+    ...replayed.rangedDeclarationDraft,
+    ...(replayed.activeRangedDeclarationSet?.declarations ?? []).filter(
+      (declaration) => !resolvedDeclarationIds.has(declaration.id),
+    ),
+  ]
+    .filter(
+      (declaration) =>
+        declaration.weaponSourceFormationId === weaponSourceFormationId &&
+        declaration.sourceSavedUnitId === sourceSavedUnitId &&
+        declaration.weaponGroupId === weaponGroupId,
+    )
+    .reduce((total, declaration) => total + declaration.declaredWeaponCount, 0);
+  return Math.max(0, surviving - used - unresolvedDeclarations);
 }
 
 export function battleSurvivingWeaponCount(

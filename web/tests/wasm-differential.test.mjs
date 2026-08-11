@@ -27,6 +27,7 @@ import {
   hazardousResolutionIsValid,
   heroicInterventionIsValid,
   normalizeBattleState,
+  rangedDeclarationIsValid,
   rangedTargetEligibilityIsValid,
   replayBattleState,
   weaponBearerDeclarationIsValid,
@@ -102,6 +103,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_fire_overwatch_is_valid, "function");
   assert.equal(typeof calculator._whc_hazardous_resolution_is_valid, "function");
   assert.equal(typeof calculator._whc_go_to_ground_is_valid, "function");
+  assert.equal(typeof calculator._whc_ranged_declaration_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
 });
@@ -255,6 +257,25 @@ test("WebAssembly and JavaScript agree on Go to Ground resolution", () => {
         values[5],
         values[6],
       ),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on activation-wide ranged declarations", () => {
+  const cases = [
+    [3, 3, 2, 2, 3, 3, 63],
+    [1, 1, 1, 1, 1, 1, 63],
+    [0, 0, 0, 0, 0, 0, 63],
+    [3, 2, 2, 2, 3, 3, 63],
+    [3, 3, 3, 2, 3, 3, 63],
+    [3, 3, 2, 2, 2, 3, 63],
+    [3, 3, 2, 2, 3, 3, 31],
+    [257, 257, 2, 2, 3, 3, 63],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_ranged_declaration_is_valid(...values)),
+      rangedDeclarationIsValid(...values),
     );
   }
 });

@@ -20,6 +20,7 @@ import {
   advanceBattleClock,
   appendResolvedAttack,
   arriveFromReserves,
+  battleCanDeclareRangedAttack,
   battleCanResolveAttack,
   battleFormation,
   battleFormationIsOnBattlefield,
@@ -28,6 +29,7 @@ import {
   battleFormationWasTargeted,
   hazardousBearerOptions,
   changeBattleResource,
+  closeRangedTargetDeclarations,
   completeFormationMovement,
   completeFormationActivation,
   configureBattleWeaponBearers,
@@ -48,6 +50,7 @@ import {
   recordHazardousTests,
   recordFightMove,
   recordRangedTargetEligibility,
+  retractRangedTargetDeclaration,
   replayBattleState,
   rollChargeDice,
   rollHazardousFeelNoPain,
@@ -218,6 +221,7 @@ export default function PlayMode() {
   const [fireOverwatchOutOfPhaseReason, setFireOverwatchOutOfPhaseReason] = useState("");
   const [fireOverwatchPassReason, setFireOverwatchPassReason] = useState("");
   const [goToGroundPassReason, setGoToGroundPassReason] = useState("");
+  const [goToGroundTargetFormationId, setGoToGroundTargetFormationId] = useState("");
   const [hazardousBearerId, setHazardousBearerId] = useState("");
   const [hazardousSelectionReason, setHazardousSelectionReason] = useState("");
   const [heroicFormationId, setHeroicFormationId] = useState("");
@@ -758,6 +762,7 @@ export default function PlayMode() {
   const weaponSourceBattleFormationId = weaponSourceFormation
     ? `${attackerPlayerId}:${weaponSourceFormation.id}`
     : "";
+  const weaponSourceFormationId = weaponSourceBattleFormationId;
   const unusedSelectedWeaponCount =
     battleState &&
     weaponSourceBattleFormationId &&
@@ -864,6 +869,10 @@ export default function PlayMode() {
   );
   const battleActionOptions = {
     targetFormationId: targetBattleFormationId,
+    weaponId: String(weaponProfile?.id ?? ""),
+    weaponSourceFormationId,
+    sourceSavedUnitId: weaponSourceArmyUnit?.id ?? "",
+    weaponGroupId: selectedWeaponGroup?.id ?? "",
     weaponHasAssault,
     weaponType: weaponProfile?.type ?? "",
     eligibilityOverride: actionEligibilityOverride,
@@ -905,6 +914,20 @@ export default function PlayMode() {
   const pendingBattleChoices = replayedBattle ? [...replayedBattle.pendingChoices.values()] : [];
   const pendingFireOverwatch = replayedBattle?.pendingFireOverwatch ?? null;
   const pendingGoToGround = replayedBattle?.pendingGoToGround ?? null;
+  const rangedDeclarationDraft = replayedBattle?.rangedDeclarationDraft ?? [];
+  const readyRangedAttacks = replayedBattle?.readyRangedAttacks ?? [];
+  const nextReadyRangedAttack = readyRangedAttacks[0] ?? null;
+  const normalShootingDeclarationMode = Boolean(
+    battleState &&
+      battleClock?.phase === "shooting" &&
+      !resolvingFireOverwatch &&
+      (!activeFormationActivation || activeFormationActivation.activationType === "shooting"),
+  );
+  const selectedGoToGroundTargetFormationId = pendingGoToGround?.activationWide
+    ? pendingGoToGround.candidateTargetFormationIds.includes(goToGroundTargetFormationId)
+      ? goToGroundTargetFormationId
+      : (pendingGoToGround.candidateTargetFormationIds[0] ?? "")
+    : (pendingGoToGround?.targetFormationId ?? "");
   const goToGroundResponderCommandPoints = pendingGoToGround
     ? (replayedBattle?.resources.get(pendingGoToGround.responderPlayerId)?.get("command_points")
         ?.value ?? 0)
@@ -2241,7 +2264,109 @@ export default function PlayMode() {
     refreshProfile(weaponId, targetModelId, profileId, attackerIds, targetIds);
   };
 
+  const resolveNextDeclaredRangedAttack = () => {
+    if (!battleState) return;
+    try {
+      const replayed = replayBattleState(battleState);
+      const declaration = replayed.readyRangedAttacks[0];
+      if (!declaration) throw new Error("No declared ranged attack is ready");
+      const target = replayed.formations.get(declaration.targetFormationId);
+      if (!target) throw new Error("The declared target is unavailable");
+      const snapshot = declaration.attackSnapshot;
+      const surviving = snapshot.segmentIds
+        .map((segmentId: string, index: number) => ({
+          segmentId,
+          target: snapshot.targets[index],
+          health: target.health[segmentId],
+          index,
+        }))
+        .filter((entry: { health?: { modelsRemaining: number } }) =>
+          Boolean(entry.health && entry.health.modelsRemaining > 0),
+        )
+        .sort(
+          (
+            first: { health: { woundsLost: number }; index: number },
+            second: { health: { woundsLost: number }; index: number },
+          ) =>
+            Number(second.health.woundsLost > 0) - Number(first.health.woundsLost > 0) ||
+            first.index - second.index,
+        );
+      if (surviving.length < 1) {
+        throw new Error("The declared target has already been destroyed");
+      }
+      const segmentIds = surviving.map((entry: { segmentId: string }) => entry.segmentId);
+      const currentTargets = surviving.map(
+        (entry: { target: Record<string, unknown>; health: { modelsRemaining: number } }) => ({
+          ...entry.target,
+          modelCount: entry.health.modelsRemaining,
+        }),
+      ) as Parameters<typeof simulateOrderedVolley>[1];
+      const initialWoundsLost = surviving[0].health.woundsLost;
+      const goToGroundEffect = replayed.activeGoToGroundEffects.some(
+        (effect: { targetFormationId: string }) =>
+          effect.targetFormationId === declaration.targetFormationId,
+      );
+      const { attackProfiles, targets } = applyGoToGroundAttackEffects(
+        snapshot.attackProfiles as Parameters<typeof simulateOrderedVolley>[0],
+        currentTargets,
+        goToGroundEffect,
+      );
+      const rolled = simulateOrderedVolley(attackProfiles, targets, initialWoundsLost);
+      const attackId = crypto.randomUUID();
+      const next = appendResolvedAttack(battleState, {
+        id: attackId,
+        at: battleState.events.length + 1,
+        attackerFormationId: declaration.attackerFormationId,
+        targetFormationId: declaration.targetFormationId,
+        segmentIds,
+        targets,
+        initialWoundsLost,
+        result: rolled,
+        weaponHasAssault: Boolean(snapshot.weaponHasAssault),
+        weaponType: "Ranged",
+        targetEligibilityConfirmed: true,
+        targetEligibilityReason: declaration.reviewReason,
+        targetEligibilityEventId: declaration.id,
+        weaponId: declaration.weaponId,
+        declaredWeaponCount: declaration.declaredWeaponCount,
+        indirectFire: declaration.indirectFire,
+        weaponSourceFormationId: declaration.weaponSourceFormationId,
+        sourceSavedUnitId: declaration.sourceSavedUnitId,
+        weaponGroupId: declaration.weaponGroupId,
+        summary: {
+          ...snapshot.summary,
+          damage: rolled.appliedDamage,
+          successful: rolled.successfulAttacks,
+        },
+      });
+      setBattleState(next);
+      setResult(rolled);
+      setHistory((current) =>
+        [
+          {
+            id: attackId,
+            ...snapshot.summary,
+            damage: rolled.appliedDamage,
+            successful: rolled.successfulAttacks,
+          },
+          ...current,
+        ].slice(0, 30),
+      );
+      const remaining = replayBattleState(next).readyRangedAttacks.length;
+      setStatus(
+        `${rolled.appliedDamage} damage applied${remaining ? ` · ${remaining} declared attack${remaining === 1 ? "" : "s"} remaining` : ""}`,
+      );
+      requestAnimationFrame(() => latestResult.current?.focus());
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Declared attack could not be resolved");
+    }
+  };
+
   const roll = () => {
+    if (nextReadyRangedAttack) {
+      resolveNextDeclaredRangedAttack();
+      return;
+    }
     if (!attackerUnit || !targetUnit || !selectedWeapon || !weaponProfile) return;
     if (firingDeckChoice && !validFiringDeckPassengerIds.has(firingDeckChoice.passengerUnitId)) {
       setStatus("Assign this passenger to the attacking Transport in Army Lists first");
@@ -2373,6 +2498,7 @@ export default function PlayMode() {
     }
     let rolled: RollResult | OrderedVolleyRollResult;
     let nextBattleState = battleState;
+    let attackId = "";
     try {
       if (!targetFormation || !attackerFormation || !catalogue) {
         throw new Error("Battle state is not ready");
@@ -2394,6 +2520,66 @@ export default function PlayMode() {
           nextBattleState.events.length + 1,
         );
         replayedBeforeAttack = replayBattleState(nextBattleState);
+      }
+      if (
+        weaponProfile.type === "Ranged" &&
+        replayedBeforeAttack.activeActivation?.source !== "fire_overwatch"
+      ) {
+        const sourceSavedUnitId = weaponSourceArmyUnit?.id ?? "";
+        const weaponGroupId = selectedWeaponGroup?.id ?? "";
+        const eligibleWeaponCount = battleUnusedWeaponCount(
+          nextBattleState,
+          weaponSourceFormationId,
+          sourceSavedUnitId,
+          weaponGroupId,
+        );
+        const declarationId = crypto.randomUUID();
+        nextBattleState = recordRangedTargetEligibility(
+          nextBattleState,
+          {
+            attackerFormationId: `${attackerPlayerId}:${attackerFormation.id}`,
+            targetFormationId: targetBattleFormationId,
+            weaponId: String(weaponProfile.id),
+            weaponName: weaponProfile.name,
+            weaponSourceFormationId,
+            sourceSavedUnitId,
+            weaponGroupId,
+            publishedRangeThousandths: Math.round((weaponProfile.range ?? 0) * 1000),
+            effectiveRangeThousandths: Math.round(effectiveWeaponRange * 1000),
+            measuredDistanceThousandths: Math.round(profile.targetDistance * 1000),
+            visible: targetVisible,
+            fullyVisible: targetFullyVisible,
+            indirectFire: !targetVisible && profile.indirect,
+            weaponHasIndirect,
+            eligibleWeaponCount,
+            declaredWeaponCount,
+            attackSnapshot: {
+              attackProfiles,
+              targets: orderedTargets,
+              segmentIds: targetFormationModels.orderedSegments.map((segment) => segment.id),
+              initialWoundsLost: targetFormationModels.initialWoundsLost,
+              weaponHasAssault,
+              summary: {
+                attacker: attackerFormation.name,
+                weapon: weaponProfile.name,
+                target: targetFormation.name,
+              },
+            },
+            method: targetMeasurementMethod,
+            reviewedByPlayer: targetEligibilityReviewed,
+            reviewReason: targetMeasurementReason.trim(),
+            rangeOverrideReason: rangeOverrideReason.trim(),
+          },
+          declarationId,
+          nextBattleState.events.length + 1,
+        );
+        setBattleState(nextBattleState);
+        setResult(null);
+        const count = replayBattleState(nextBattleState).rangedDeclarationDraft.length;
+        setStatus(
+          `Attack declared · ${count} declaration${count === 1 ? "" : "s"} ready for target selection`,
+        );
+        return;
       }
       let targetEligibilityEventId = "";
       if (weaponProfile.type === "Ranged") {
@@ -2434,6 +2620,7 @@ export default function PlayMode() {
               indirectFire: !targetVisible && profile.indirect,
               weaponHasIndirect,
               eligibleWeaponCount: declaredWeaponCount,
+              declaredWeaponCount,
               method: targetMeasurementMethod,
               reviewedByPlayer: targetEligibilityReviewed,
               reviewReason: targetMeasurementReason.trim(),
@@ -2469,7 +2656,7 @@ export default function PlayMode() {
         resolvedTargets,
         targetFormationModels.initialWoundsLost,
       );
-      const attackId = crypto.randomUUID();
+      attackId = crypto.randomUUID();
       nextBattleState = appendResolvedAttack(nextBattleState, {
         id: attackId,
         at: nextBattleState.events.length + 1,
@@ -2519,6 +2706,45 @@ export default function PlayMode() {
     );
     setStatus(`${rolled.appliedDamage} damage applied`);
     requestAnimationFrame(() => latestResult.current?.focus());
+  };
+
+  const retractRangedDeclaration = (declarationEventId: string) => {
+    if (!battleState) return;
+    try {
+      const next = retractRangedTargetDeclaration(
+        battleState,
+        declarationEventId,
+        "Player changed the activation-wide target declaration",
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setResult(null);
+      setStatus("Ranged target declaration retracted");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Declaration could not be retracted");
+    }
+  };
+
+  const finishRangedTargetDeclarations = () => {
+    if (!battleState) return;
+    try {
+      const next = closeRangedTargetDeclarations(
+        battleState,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      const replayed = replayBattleState(next);
+      setBattleState(next);
+      setResult(null);
+      setStatus(
+        replayed.pendingGoToGround
+          ? "Targets locked · defending player must resolve or decline Go to Ground"
+          : "Targets locked · roll the first declared attack",
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Target declarations could not be closed");
+    }
   };
 
   const setNumber = (key: keyof CombatProfile, value: number) =>
@@ -3210,13 +3436,14 @@ export default function PlayMode() {
     try {
       const next = resolveGoToGround(
         battleState,
+        selectedGoToGroundTargetFormationId,
         crypto.randomUUID(),
         battleState.events.length + 1,
       );
       setBattleState(next);
       setGoToGroundPassReason("");
       setResult(null);
-      setStatus("Go to Ground active · click Roll this attack to resolve the declared weapon");
+      setStatus("Go to Ground active · roll the first declared attack");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Go to Ground could not be resolved");
     }
@@ -3234,7 +3461,7 @@ export default function PlayMode() {
       setBattleState(next);
       setGoToGroundPassReason("");
       setResult(null);
-      setStatus("Go to Ground declined · click Roll this attack to resolve the declared weapon");
+      setStatus("Go to Ground declined · roll the first declared attack");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Go to Ground could not be declined");
     }
@@ -3538,29 +3765,39 @@ export default function PlayMode() {
   const battleAttackReady =
     Boolean(battleState && attackerBattleFormationId) &&
     battleCanResolveAttack(battleState, attackerBattleFormationId, battleActionOptions);
+  const battleDeclarationReady =
+    Boolean(battleState && attackerBattleFormationId) &&
+    battleCanDeclareRangedAttack(battleState, attackerBattleFormationId, battleActionOptions);
+  const selectedBattleActionReady = normalShootingDeclarationMode
+    ? battleDeclarationReady
+    : battleAttackReady;
 
   const ready = Boolean(
-    attackerUnit &&
-      targetUnit &&
-      selectedWeapon &&
-      weaponProfile &&
-      targetModelId &&
-      !targetFormationModels.destroyed &&
-      !targetBattleStateError &&
-      battleRulesMatch &&
-      battleRostersMatch &&
-      !battleSetupError &&
-      Boolean(battleState) &&
-      battleAttackReady &&
-      !pendingGoToGround &&
-      (unusedSelectedWeaponCount === null ||
-        (unusedSelectedWeaponCount > 0 &&
-          selectedDeclaredWeaponCount <= unusedSelectedWeaponCount)) &&
-      targetFormationModels.ambiguousComponents.length === 0 &&
-      !(firingDeckChoice && !validFiringDeckPassengerIds.has(firingDeckChoice.passengerUnitId)) &&
-      !(firingDeckChoice && firingDeckPassengerAlreadyShot),
+    nextReadyRangedAttack ||
+      (attackerUnit &&
+        targetUnit &&
+        selectedWeapon &&
+        weaponProfile &&
+        targetModelId &&
+        !targetFormationModels.destroyed &&
+        !targetBattleStateError &&
+        battleRulesMatch &&
+        battleRostersMatch &&
+        !battleSetupError &&
+        Boolean(battleState) &&
+        selectedBattleActionReady &&
+        !pendingGoToGround &&
+        (unusedSelectedWeaponCount === null ||
+          (unusedSelectedWeaponCount > 0 &&
+            selectedDeclaredWeaponCount <= unusedSelectedWeaponCount)) &&
+        targetFormationModels.ambiguousComponents.length === 0 &&
+        !(firingDeckChoice && !validFiringDeckPassengerIds.has(firingDeckChoice.passengerUnitId)) &&
+        !(firingDeckChoice && firingDeckPassengerAlreadyShot)),
   );
   const readyLabel = (() => {
+    if (nextReadyRangedAttack) {
+      return `Next declared attack · ${nextReadyRangedAttack.attackSnapshot.summary.attacker} · ${nextReadyRangedAttack.attackSnapshot.summary.weapon} into ${nextReadyRangedAttack.attackSnapshot.summary.target}`;
+    }
     if (!attackerList) return "Choose an attacking list";
     if (!attackerUnit) return "Choose an attacking unit";
     if (firingDeckChoice && !validFiringDeckPassengerIds.has(firingDeckChoice.passengerUnitId)) {
@@ -3639,7 +3876,7 @@ export default function PlayMode() {
     if (battleClock.phase === "fight" && !resolvingFireOverwatch && !targetEligibilityConfirmed) {
       return "Confirm Engagement Range and target eligibility";
     }
-    if (!battleAttackReady) {
+    if (!selectedBattleActionReady) {
       if (
         activeFormationActivation &&
         activeFormationActivation.formationId !== attackerBattleFormationId
@@ -5478,6 +5715,56 @@ export default function PlayMode() {
                 )}
               </div>
             )}
+            {(rangedDeclarationDraft.length > 0 || readyRangedAttacks.length > 0) && (
+              <div className="action-tracker" aria-labelledby="ranged-declarations-heading">
+                <strong id="ranged-declarations-heading">
+                  {readyRangedAttacks.length > 0
+                    ? "Declared attack order"
+                    : "Shooting target declarations"}
+                </strong>
+                <span>
+                  {readyRangedAttacks.length > 0
+                    ? "Resolve every weapon profile against one target before moving to the next target."
+                    : "Add every weapon and split-fire target for this unit before rolling any dice."}
+                </span>
+                <ol>
+                  {(readyRangedAttacks.length > 0
+                    ? readyRangedAttacks
+                    : rangedDeclarationDraft
+                  ).map(
+                    (
+                      declaration: {
+                        id: string;
+                        declaredWeaponCount: number;
+                        attackSnapshot: { summary: { weapon: string; target: string } };
+                      },
+                      index: number,
+                    ) => (
+                      <li key={declaration.id}>
+                        <span>
+                          {index + 1}. {declaration.attackSnapshot.summary.weapon} ×
+                          {declaration.declaredWeaponCount} into{" "}
+                          {declaration.attackSnapshot.summary.target}
+                        </span>
+                        {readyRangedAttacks.length === 0 && (
+                          <button
+                            type="button"
+                            onClick={() => retractRangedDeclaration(declaration.id)}
+                          >
+                            Retract
+                          </button>
+                        )}
+                      </li>
+                    ),
+                  )}
+                </ol>
+                {rangedDeclarationDraft.length > 0 && (
+                  <button type="button" onClick={finishRangedTargetDeclarations}>
+                    Finish target declarations
+                  </button>
+                )}
+              </div>
+            )}
             <div className="play-action-bar">
               <span id="play-action-hint">{readyLabel}</span>
               <button
@@ -5487,7 +5774,11 @@ export default function PlayMode() {
                 aria-describedby="play-action-hint"
                 onClick={roll}
               >
-                {result ? "Roll again" : "Resolve attack"}
+                {nextReadyRangedAttack
+                  ? "Roll next declared attack"
+                  : normalShootingDeclarationMode
+                    ? "Declare attack"
+                    : "Resolve attack"}
               </button>
             </div>
           </div>
@@ -6216,16 +6507,34 @@ export default function PlayMode() {
               <div className="action-tracker" aria-labelledby="go-to-ground-heading">
                 <strong id="go-to-ground-heading">Go to Ground response</strong>
                 <span>
-                  {replayedBattle?.formations.get(pendingGoToGround.targetFormationId)?.name ??
-                    "The selected Infantry unit"}{" "}
-                  was selected as a ranged target. Spend 1CP to give every model a 6+ invulnerable
-                  save and Benefit of Cover until the end of this phase.
+                  Target selection is complete. Choose one eligible Infantry target, or decline,
+                  before any declared attacks are rolled. Go to Ground grants that unit a 6+
+                  invulnerable save and Benefit of Cover until the end of this phase.
                 </span>
                 <span>Available CP: {goToGroundResponderCommandPoints}</span>
                 <div className="action-buttons">
+                  {pendingGoToGround.activationWide && (
+                    <label>
+                      <span>Infantry target</span>
+                      <select
+                        value={selectedGoToGroundTargetFormationId}
+                        onChange={(event) => setGoToGroundTargetFormationId(event.target.value)}
+                      >
+                        {pendingGoToGround.candidateTargetFormationIds.map(
+                          (formationId: string) => (
+                            <option key={formationId} value={formationId}>
+                              {replayedBattle?.formations.get(formationId)?.name ?? formationId}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </label>
+                  )}
                   <button
                     type="button"
-                    disabled={goToGroundResponderCommandPoints < 1}
+                    disabled={
+                      goToGroundResponderCommandPoints < 1 || !selectedGoToGroundTargetFormationId
+                    }
                     onClick={useGoToGround}
                   >
                     Spend 1CP · Go to Ground

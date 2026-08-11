@@ -1576,6 +1576,22 @@ static void test_go_to_ground(void) {
         WHC_GO_TO_GROUND_FLAGS_MASK & ~WHC_GO_TO_GROUND_BENEFIT_OF_COVER));
 }
 
+static void test_ranged_declaration(void) {
+    assert(whc_ranged_declaration_is_valid(3u, 3u, 2u, 2u, 3u, 3u,
+                                           WHC_RANGED_DECLARATION_FLAGS_MASK));
+    assert(whc_ranged_declaration_is_valid(2u, 2u, 1u, 1u, 1u, 1u,
+                                           WHC_RANGED_DECLARATION_FLAGS_MASK));
+    assert(!whc_ranged_declaration_is_valid(0u, 0u, 0u, 0u, 0u, 0u,
+                                            WHC_RANGED_DECLARATION_FLAGS_MASK));
+    assert(!whc_ranged_declaration_is_valid(3u, 2u, 2u, 2u, 3u, 3u,
+                                            WHC_RANGED_DECLARATION_FLAGS_MASK));
+    assert(!whc_ranged_declaration_is_valid(3u, 3u, 3u, 2u, 3u, 3u,
+                                            WHC_RANGED_DECLARATION_FLAGS_MASK));
+    assert(!whc_ranged_declaration_is_valid(
+        3u, 3u, 2u, 2u, 3u, 3u,
+        WHC_RANGED_DECLARATION_FLAGS_MASK & ~WHC_RANGED_DECLARATION_ALL_ELIGIBLE));
+}
+
 /*@ assigns \nothing;
  */
 static void test_battle_clock(void) {
@@ -1644,6 +1660,7 @@ int main(void) {
     test_fire_overwatch();
     test_hazardous_resolution();
     test_go_to_ground();
+    test_ranged_declaration();
     test_battle_clock();
     puts("all tests passed");
     return 0;

@@ -5,7 +5,9 @@ import {
   advanceBattleClock,
   appendResolvedAttack,
   applyBattleEffect,
+  battleCanDeclareRangedAttack,
   battleCanResolveAttack,
+  closeRangedTargetDeclarations,
   createBattleState,
   declareFormationDeployment,
   deployFormation,
@@ -189,7 +191,7 @@ test("pending choices block time and attacks until a bounded selection resolves"
   );
   assert.equal(replayBattleState(state).pendingChoices.size, 0);
   assert.equal(
-    battleCanResolveAttack(state, "unit-1", {
+    battleCanDeclareRangedAttack(state, "unit-1", {
       weaponType: "Ranged",
       targetEligibilityConfirmed: true,
     }),
@@ -245,7 +247,7 @@ test("allows attacks only for the active player in Shooting or Fight attack step
   assert.equal(battleCanResolveAttack(state, "unit-1"), false);
   state = readyToShoot(state);
   assert.equal(
-    battleCanResolveAttack(state, "unit-1", {
+    battleCanDeclareRangedAttack(state, "unit-1", {
       weaponType: "Ranged",
       targetEligibilityConfirmed: true,
     }),
@@ -269,6 +271,15 @@ test("allows attacks only for the active player in Shooting or Fight attack step
       visible: true,
       fullyVisible: true,
       eligibleWeaponCount: 1,
+      declaredWeaponCount: 1,
+      attackSnapshot: {
+        attackProfiles: [{ weaponCount: 1 }],
+        targets: [{ wounds: 10, modelCount: 1 }],
+        segmentIds: ["unit-2-model"],
+        initialWoundsLost: 0,
+        weaponHasAssault: false,
+        summary: { attacker: "Unit 1", weapon: "Weapon", target: "Unit 2" },
+      },
       method: "manual",
       reviewedByPlayer: true,
       reviewReason: "Range and line of sight checked",
@@ -276,6 +287,7 @@ test("allows attacks only for the active player in Shooting or Fight attack step
     "target-eligibility",
     state.events.length + 1,
   );
+  state = closeRangedTargetDeclarations(state, "targets-declared", state.events.length + 1);
   state = appendResolvedAttack(state, {
     weaponType: "Ranged",
     targetEligibilityConfirmed: true,

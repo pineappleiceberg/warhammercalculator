@@ -73,6 +73,13 @@
 #define WHC_GO_TO_GROUND_SIX_PLUS_INVULNERABLE 8u
 #define WHC_GO_TO_GROUND_BENEFIT_OF_COVER 16u
 #define WHC_GO_TO_GROUND_FLAGS_MASK 31u
+#define WHC_RANGED_DECLARATION_SAME_ACTIVATION 1u
+#define WHC_RANGED_DECLARATION_BEFORE_ATTACKS 2u
+#define WHC_RANGED_DECLARATION_ALL_ELIGIBLE 4u
+#define WHC_RANGED_DECLARATION_WEAPON_COUNTS_VALID 8u
+#define WHC_RANGED_DECLARATION_TARGETS_CONTIGUOUS 16u
+#define WHC_RANGED_DECLARATION_PROFILES_CONTIGUOUS 32u
+#define WHC_RANGED_DECLARATION_FLAGS_MASK 63u
 
 enum whc_fire_overwatch_trigger {
     WHC_FIRE_OVERWATCH_SET_UP = 1u,
@@ -338,6 +345,23 @@ bool whc_hazardous_resolution_is_valid(uint32_t initial_roll, uint32_t reroll,
 bool whc_go_to_ground_is_valid(uint32_t phase, uint32_t command_points_before,
                                uint32_t command_point_cost, uint32_t command_points_after,
                                bool already_used, bool target_battle_shocked, uint32_t flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        declaration_count >= 1 && declaration_count <= 256 &&
+        unique_declaration_count == declaration_count &&
+        target_run_count == unique_target_count &&
+        unique_target_count >= 1 && unique_target_count <= declaration_count &&
+        profile_run_count == unique_target_profile_count &&
+        unique_target_profile_count >= unique_target_count &&
+        unique_target_profile_count <= declaration_count &&
+        flags == WHC_RANGED_DECLARATION_FLAGS_MASK;
+*/
+bool whc_ranged_declaration_is_valid(uint32_t declaration_count,
+                                     uint32_t unique_declaration_count,
+                                     uint32_t target_run_count, uint32_t unique_target_count,
+                                     uint32_t profile_run_count,
+                                     uint32_t unique_target_profile_count, uint32_t flags);
 
 /*@ requires first_player_index <= 1;
     requires \valid(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));

@@ -27,12 +27,9 @@ state.
 
 ## Prioritized backlog
 
-1. Replace the guided weapon-at-a-time target boundary with an activation-wide
-   declaration covering every weapon and split-fire target before any attack is
-   rolled, then continue the remaining reactions, cover, and Stratagem windows;
-   then expand
-   Transport changes beyond the roster's locked assigned carrier and execute
-   transport-specific exceptions.
+1. Expand Transport changes beyond the roster's locked assigned carrier and
+   execute transport-specific exceptions, then continue the remaining
+   reactions, cover, and Stratagem windows.
 2. Build and enforce the source-locked faction, detachment, enhancement,
    Stratagem, terrain, and mission coverage matrix described by the complete
    battle requirements.
@@ -43,6 +40,26 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced guided play to battle-state version 17 with immutable,
+  activation-wide Shooting declarations. Every weapon copy, selected profile,
+  and split-fire target is now declared before any attack dice are generated.
+  Closing the set groups resolution by first-selected target and then
+  first-selected weapon profile, rejects duplicate or aggregate-over-count
+  declarations, and locks each queued attack to its activation, source,
+  profile, count, target, reviewed eligibility facts, and editable combat
+  snapshot. Go to Ground now opens once from the complete eligible Infantry
+  target set, allowing the defender to choose the affected unit before the
+  queue resolves. Later casualties update surviving target counts without
+  changing attack facts, destroyed targets are skipped, undo restores the
+  declaration's queue position, and Hazardous tests count all declared
+  Hazardous copies. Guided Play exposes draft, retract, finish, reaction, and
+  ordered-roll controls. The replay API exposes draft, closed, ready,
+  retracted, and auto-skipped state and independently cross-checks the
+  ACSL-specified declaration predicate through C/WebAssembly. Version-16 and
+  older histories migrate behind an explicit ranged-declaration boundary.
+  Official Core Rules pages 19-20 are source-locked for activation-wide target
+  selection, split fire, and target/profile-contiguous resolution.
 
 - 2026-08-11: Advanced guided play to battle-state version 16 with an executable
   Go to Ground reaction at the current single-weapon declaration boundary. The

@@ -68,6 +68,7 @@ import {
   heroicInterventionFlags,
   heroicInterventionIsValid,
   normalizeBattleState,
+  rangedDeclarationIsValid,
   rangedTargetEligibilityIsValid,
   replayBattleState,
   weaponBearerDeclarationIsValid,
@@ -324,6 +325,7 @@ type CalculatorExports = {
   whc_fire_overwatch_is_valid(...values: number[]): number;
   whc_hazardous_resolution_is_valid(...values: number[]): number;
   whc_go_to_ground_is_valid(...values: number[]): number;
+  whc_ranged_declaration_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -468,6 +470,7 @@ async function loadCalculator() {
       typeof calculator.whc_fire_overwatch_is_valid !== "function" ||
       typeof calculator.whc_hazardous_resolution_is_valid !== "function" ||
       typeof calculator.whc_go_to_ground_is_valid !== "function" ||
+      typeof calculator.whc_ranged_declaration_is_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -762,7 +765,7 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
           (fact.weaponHasIndirect ? 8 : 0) |
           (fact.reviewedByPlayer ? 16 : 0) |
           (fact.rangeOverrideReason ? 32 : 0);
-        const declaredWeaponCount = fact.eligibleWeaponCount;
+        const declaredWeaponCount = fact.declaredWeaponCount || fact.eligibleWeaponCount;
         const javascriptEligible = rangedTargetEligibilityIsValid(fact, declaredWeaponCount);
         const nativeEligible = Boolean(
           calculator.whc_ranged_target_eligibility_is_valid(
@@ -783,6 +786,34 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         return { ...fact, eligible: javascriptEligible };
       })
       .sort((left, right) => left.id.localeCompare(right.id));
+    const rangedDeclarationSets = replayed.rangedDeclarationSets.map((event) => {
+      const values = [
+        event.declarationCount,
+        event.uniqueDeclarationCount,
+        event.targetRunCount,
+        event.uniqueTargetCount,
+        event.profileRunCount,
+        event.uniqueTargetProfileCount,
+        event.flags,
+      ];
+      const javascriptValid = rangedDeclarationIsValid(...values);
+      const nativeValid = Boolean(calculator.whc_ranged_declaration_is_valid(...values));
+      if (!javascriptValid || javascriptValid !== nativeValid) {
+        throw new ServiceUnavailableError(
+          "Activation-wide ranged declarations diverged from the C/WebAssembly predicate",
+          "RANGED_DECLARATION_DIVERGENCE",
+        );
+      }
+      return {
+        eventId: event.id,
+        activationEventId: event.activationEventId,
+        declarationEventIds: [...event.declarationEventIds],
+        declarationCount: event.declarationCount,
+        uniqueTargetCount: event.uniqueTargetCount,
+        uniqueTargetProfileCount: event.uniqueTargetProfileCount,
+        flags: event.flags,
+      };
+    });
     const activeAttackIds = new Set(replayed.activeAttackIds);
     const weaponUses = new Map<string, number>();
     const weaponDeclarations = state.events.flatMap((event, eventIndex) => {
@@ -1278,6 +1309,21 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
       })),
       pendingGoToGround: replayed.pendingGoToGround ? { ...replayed.pendingGoToGround } : null,
       readyRangedAttack: replayed.readyRangedAttack ? { ...replayed.readyRangedAttack } : null,
+      rangedDeclarations: {
+        draft: replayed.rangedDeclarationDraft.map((declaration) => ({ ...declaration })),
+        sets: rangedDeclarationSets,
+        activeSetEventId: replayed.activeRangedDeclarationSet?.id ?? null,
+        ready: replayed.readyRangedAttacks.map((declaration) => ({ ...declaration })),
+        retractions: replayed.rangedDeclarationRetractions.map((event) => ({
+          eventId: event.id,
+          activationEventId: event.activationEventId,
+          declarationEventId: event.declarationEventId,
+          reason: event.reason,
+        })),
+        autoSkipped: replayed.autoSkippedRangedDeclarations.map((declaration) => ({
+          ...declaration,
+        })),
+      },
       goToGrounds,
       activeGoToGroundEffects: replayed.activeGoToGroundEffects.map((effect) => ({
         ...effect,

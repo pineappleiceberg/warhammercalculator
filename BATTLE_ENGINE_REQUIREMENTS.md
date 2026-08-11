@@ -103,7 +103,10 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    setup, movement-start, movement-end, and charge-declaration windows; audited
    CP and once-per-turn use; non-Titanic, range, visibility, surviving-weapon,
    target-lock, and unmodified-6 enforcement; out-of-phase review; and explicit
-   decline paths. Hazardous weapons now lock their exact bearer and profile
+   decline paths. Normal Shooting now declares all weapon copies, profiles, and
+   split-fire targets activation-wide before dice, gives Go to Ground the
+   complete eligible target set, and enforces target- and profile-contiguous
+   resolution. Hazardous weapons now lock their exact bearer and profile
    identity, roll one replayed test per used copy, enforce wounded/non-Character/
    Character priority across every surviving Hazardous bearer in the unit,
    apply three non-spilling mortal wounds with Feel No Pain, and defer Fire

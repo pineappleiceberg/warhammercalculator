@@ -6,15 +6,17 @@ import { targetSequenceState } from "../lib/allocation.mjs";
 import {
   activeBattleAttacks,
   advanceBattleClock,
-  appendResolvedAttack,
+  appendResolvedAttack as appendResolvedAttackEvent,
   battleFormationEmbarkedTransport,
   arriveFromReserves,
   battleFormationIsOnBattlefield,
   battleFormationHealth,
   battleUnusedWeaponCount,
+  battleCanDeclareRangedAttack,
   battleCanResolveAttack,
   battleCanStartFormationActivation,
   changeBattleResource,
+  closeRangedTargetDeclarations,
   completeFormationMovement,
   completeFormationActivation,
   configureBattleMission,
@@ -37,6 +39,7 @@ import {
   recordFormationMovement,
   recordFightMove,
   recordRangedTargetEligibility,
+  retractRangedTargetDeclaration,
   replayBattleState,
   resolveHazardousDamage,
   resolveGoToGround,
@@ -60,6 +63,19 @@ const targets = [
   { wounds: 3, modelCount: 2 },
   { wounds: 5, modelCount: 1 },
 ];
+
+function appendResolvedAttack(state, attack) {
+  const replayed = replayBattleState(state);
+  const next =
+    replayed.rangedDeclarationDraft.length > 0
+      ? closeRangedTargetDeclarations(
+          state,
+          `close-ranged-${state.events.length + 1}`,
+          state.events.length + 1,
+        )
+      : state;
+  return appendResolvedAttackEvent(next, attack);
+}
 
 function testWeaponInventory(sourceSavedUnitId) {
   return [
@@ -455,38 +471,79 @@ function recordVisibleRangedTarget(
   state,
   attackerFormationId,
   targetFormationId,
-  { weaponId = "test-ranged-weapon", eligibleWeaponCount = 1 } = {},
+  {
+    weaponId = "test-ranged-weapon",
+    eligibleWeaponCount = 1,
+    declaredWeaponCount = eligibleWeaponCount,
+    close = false,
+    measuredDistanceThousandths = 12000,
+    visible = true,
+    fullyVisible = visible,
+    indirectFire = !visible,
+    method = "manual",
+  } = {},
 ) {
-  const attacker = replayBattleState(state).formations.get(attackerFormationId);
+  const replayed = replayBattleState(state);
+  const attacker = replayed.formations.get(attackerFormationId);
+  const target = replayed.formations.get(targetFormationId);
   const inventory = attacker.weaponInventory.find((group) =>
     group.profiles.some((profile) => profile.weaponId === weaponId),
   );
   assert.ok(inventory, `Missing test inventory for ${weaponId}`);
-  return recordRangedTargetEligibility(
+  const inventoryProfile = inventory.profiles.find((profile) => profile.weaponId === weaponId);
+  assert.ok(inventoryProfile, `Missing test profile for ${weaponId}`);
+  assert.ok(target, `Missing test target ${targetFormationId}`);
+  const segmentIds = target.segments.map((segment) => segment.id);
+  const snapshotTargets = target.segments.map((segment) => ({
+    wounds: segment.wounds,
+    modelCount: target.health[segment.id].modelsRemaining,
+  }));
+  let next = recordRangedTargetEligibility(
     state,
     {
       attackerFormationId,
       targetFormationId,
       weaponId,
-      weaponName: "Test ranged weapon",
+      weaponName: inventoryProfile.name,
       weaponSourceFormationId: attackerFormationId,
       sourceSavedUnitId: inventory.sourceSavedUnitId,
       weaponGroupId: inventory.groupId,
-      publishedRangeThousandths: 24000,
-      effectiveRangeThousandths: 24000,
-      measuredDistanceThousandths: 12000,
-      visible: true,
-      fullyVisible: true,
-      indirectFire: false,
-      weaponHasIndirect: false,
+      publishedRangeThousandths: inventoryProfile.publishedRangeThousandths,
+      effectiveRangeThousandths: inventoryProfile.publishedRangeThousandths,
+      measuredDistanceThousandths,
+      visible,
+      fullyVisible,
+      indirectFire,
+      weaponHasIndirect: inventoryProfile.hasIndirect,
       eligibleWeaponCount,
-      method: "manual",
+      declaredWeaponCount,
+      attackSnapshot: {
+        attackProfiles: [{ weaponCount: declaredWeaponCount }],
+        targets: snapshotTargets,
+        segmentIds,
+        initialWoundsLost: target.health[segmentIds[0]].woundsLost,
+        weaponHasAssault: inventoryProfile.hasAssault,
+        summary: {
+          attacker: attacker.name,
+          weapon: inventoryProfile.name,
+          target: target.name,
+        },
+      },
+      method,
       reviewedByPlayer: true,
       reviewReason: "Closest base or hull points and line of sight checked",
     },
     `target-eligibility-${state.events.length + 1}`,
     state.events.length + 1,
   );
+  if (close) {
+    next = closeRangedTargetDeclarations(
+      next,
+      `close-ranged-${next.events.length + 1}`,
+      next.events.length + 1,
+    );
+  }
+  return next;
 }
 
 function appendZeroDamageRangedAttack(
@@ -499,6 +556,14 @@ function appendZeroDamageRangedAttack(
     indirectFire = false,
   } = {},
 ) {
+  const replayedBeforeClose = replayBattleState(state);
+  if (replayedBeforeClose.rangedDeclarationDraft.length > 0) {
+    state = closeRangedTargetDeclarations(
+      state,
+      `close-ranged-${state.events.length + 1}`,
+      state.events.length + 1,
+    );
+  }
   const eligibility = replayBattleState(state).targetEligibilityFacts.get(targetEligibilityEventId);
   return appendResolvedAttack(state, {
     id,
@@ -526,6 +591,49 @@ function appendZeroDamageRangedAttack(
     weaponSourceFormationId: eligibility?.weaponSourceFormationId ?? attackerFormation.id,
     sourceSavedUnitId: eligibility?.sourceSavedUnitId ?? "unit-1",
     weaponGroupId: eligibility?.weaponGroupId ?? "test-ranged-group",
+  });
+}
+
+function appendReadyZeroDamageAttack(state, id) {
+  const replayed = replayBattleState(state);
+  const declaration = replayed.readyRangedAttacks[0];
+  assert.ok(declaration, "Expected an activation-wide ranged declaration");
+  const target = replayed.formations.get(declaration.targetFormationId);
+  const segmentIds = declaration.attackSnapshot.segmentIds.filter(
+    (segmentId) => target.health[segmentId].modelsRemaining > 0,
+  );
+  const currentTargets = segmentIds.map((segmentId) => {
+    const index = declaration.attackSnapshot.segmentIds.indexOf(segmentId);
+    return {
+      ...declaration.attackSnapshot.targets[index],
+      modelCount: target.health[segmentId].modelsRemaining,
+    };
+  });
+  return appendResolvedAttackEvent(state, {
+    id,
+    at: state.events.length + 1,
+    attackerFormationId: declaration.attackerFormationId,
+    targetFormationId: declaration.targetFormationId,
+    segmentIds,
+    targets: currentTargets,
+    initialWoundsLost: target.health[segmentIds[0]].woundsLost,
+    result: { appliedDamage: 0, modelsDestroyed: 0 },
+    summary: {
+      ...declaration.attackSnapshot.summary,
+      damage: 0,
+      successful: 0,
+    },
+    weaponType: "Ranged",
+    weaponHasAssault: declaration.attackSnapshot.weaponHasAssault,
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: declaration.reviewReason,
+    targetEligibilityEventId: declaration.id,
+    weaponId: declaration.weaponId,
+    declaredWeaponCount: declaration.declaredWeaponCount,
+    indirectFire: declaration.indirectFire,
+    weaponSourceFormationId: declaration.weaponSourceFormationId,
+    sourceSavedUnitId: declaration.sourceSavedUnitId,
+    weaponGroupId: declaration.weaponGroupId,
   });
 }
 
@@ -623,7 +731,7 @@ test("pins the official battle-state rules source", () => {
   assert.equal(battleRuleSources.version, 1);
   assert.deepEqual(
     battleRuleSources.sources[0].pages,
-    [7, 8, 9, 16, 17, 18, 19, 23, 25, 26, 29, 32, 33, 34, 35, 39, 41, 42, 43, 44, 53, 57, 60],
+    [7, 8, 9, 16, 17, 18, 19, 20, 23, 25, 26, 29, 32, 33, 34, 35, 39, 41, 42, 43, 44, 53, 57, 60],
   );
   assert.equal(
     battleRuleSources.sources[0].sha256,
@@ -646,6 +754,13 @@ test("pins the official battle-state rules source", () => {
     true,
   );
   assert.equal(
+    battleRuleSources.sources[0].usedFor.some(
+      (usage) =>
+        /activation-wide/i.test(usage) && /split fire/i.test(usage) && /contiguous/i.test(usage),
+    ),
+    true,
+  );
+  assert.equal(
     updates.usedFor.some(
       (usage) =>
         /Fire Overwatch/i.test(usage) && /unmodified 6/i.test(usage) && /Firing Deck/i.test(usage),
@@ -663,43 +778,29 @@ test("pins the official battle-state rules source", () => {
 
 test("replays reviewed range, visibility, Indirect Fire, and eligible weapon counts", () => {
   let state = registeredBattle();
-  state = recordRangedTargetEligibility(
-    state,
-    {
-      attackerFormationId: attackerFormation.id,
-      targetFormationId: formation.id,
-      weaponId: "indirect-weapon",
-      weaponName: "Indirect weapon",
-      weaponSourceFormationId: attackerFormation.id,
-      sourceSavedUnitId: "unit-1",
-      weaponGroupId: "test-ranged-group",
-      publishedRangeThousandths: 48000,
-      effectiveRangeThousandths: 48000,
-      measuredDistanceThousandths: 32000,
-      visible: false,
-      fullyVisible: false,
-      indirectFire: true,
-      weaponHasIndirect: true,
-      eligibleWeaponCount: 2,
-      method: "uwb",
-      reviewedByPlayer: true,
-      reviewReason: "UWB distance reviewed; target is not visible",
-    },
-    "indirect-eligibility",
-    state.events.length + 1,
-  );
+  state = recordVisibleRangedTarget(state, attackerFormation.id, formation.id, {
+    weaponId: "indirect-weapon",
+    eligibleWeaponCount: 2,
+    declaredWeaponCount: 2,
+    measuredDistanceThousandths: 32000,
+    visible: false,
+    fullyVisible: false,
+    indirectFire: true,
+    method: "uwb",
+  });
+  const indirectEligibilityId = replayBattleState(state).rangedDeclarationDraft[0].id;
   state = appendZeroDamageRangedAttack(state, {
     weaponId: "indirect-weapon",
-    targetEligibilityEventId: "indirect-eligibility",
+    targetEligibilityEventId: indirectEligibilityId,
     declaredWeaponCount: 2,
     indirectFire: true,
   });
-  const fact = replayBattleState(state).targetEligibilityFacts.get("indirect-eligibility");
+  const fact = replayBattleState(state).targetEligibilityFacts.get(indirectEligibilityId);
   assert.equal(fact.method, "uwb");
   assert.equal(fact.measuredDistanceThousandths, 32000);
 
   const forgedAbility = structuredClone(state);
-  forgedAbility.events.find((event) => event.id === "indirect-eligibility").weaponHasIndirect =
+  forgedAbility.events.find((event) => event.id === indirectEligibilityId).weaponHasIndirect =
     false;
   assert.throws(
     () => normalizeBattleState(forgedAbility),
@@ -713,10 +814,21 @@ test("replays reviewed range, visibility, Indirect Fire, and eligible weapon cou
     /weapon declaration is outside its recorded phase/i,
   );
 
-  let exhausted = recordVisibleRangedTarget(state, attackerFormation.id, formation.id);
+  let exhausted = registeredBattle();
+  exhausted = recordVisibleRangedTarget(exhausted, attackerFormation.id, formation.id, {
+    eligibleWeaponCount: 2,
+    declaredWeaponCount: 2,
+    close: false,
+  });
   assert.throws(
-    () => appendZeroDamageRangedAttack(exhausted, { id: "exhausted-weapon-attack" }),
-    /exceeds its surviving unused weapon inventory/i,
+    () =>
+      recordVisibleRangedTarget(exhausted, attackerFormation.id, formation.id, {
+        weaponId: "short-weapon",
+        eligibleWeaponCount: 1,
+        declaredWeaponCount: 1,
+        close: false,
+      }),
+    /declarations exceed surviving weapon copies/i,
   );
 
   assert.throws(
@@ -746,36 +858,13 @@ test("replays reviewed range, visibility, Indirect Fire, and eligible weapon cou
     /absent from the locked ranged inventory/i,
   );
 
-  let outsideRange = registeredBattle();
-  outsideRange = recordRangedTargetEligibility(
-    outsideRange,
-    {
-      attackerFormationId: attackerFormation.id,
-      targetFormationId: formation.id,
-      weaponId: "short-weapon",
-      weaponName: "Short weapon",
-      weaponSourceFormationId: attackerFormation.id,
-      sourceSavedUnitId: "unit-1",
-      weaponGroupId: "test-ranged-group",
-      publishedRangeThousandths: 12000,
-      effectiveRangeThousandths: 12000,
-      measuredDistanceThousandths: 12001,
-      visible: true,
-      eligibleWeaponCount: 1,
-      method: "manual",
-      reviewedByPlayer: true,
-      reviewReason: "Closest points measured",
-    },
-    "outside-range",
-    outsideRange.events.length + 1,
-  );
   assert.throws(
     () =>
-      appendZeroDamageRangedAttack(outsideRange, {
+      recordVisibleRangedTarget(registeredBattle(), attackerFormation.id, formation.id, {
         weaponId: "short-weapon",
-        targetEligibilityEventId: "outside-range",
+        measuredDistanceThousandths: 12001,
       }),
-    /does not satisfy.*target eligibility/i,
+    /must be declared exactly/i,
   );
 
   let countLimited = registeredBattle();
@@ -1375,7 +1464,7 @@ test("forces and verifies destroyed Transport disembarkation rolls", () => {
   );
 });
 
-test("replays movement and enforces one weapon-scoped Shooting activation", () => {
+test("replays movement and enforces one activation-wide Shooting declaration", () => {
   let state = registerBattleFormation(
     registerBattleFormation(newBattle(), attackerFormation, "register-attacker", 1),
     formation,
@@ -1403,14 +1492,14 @@ test("replays movement and enforces one weapon-scoped Shooting activation", () =
     state = advanceBattleClock(state, `to-shoot-${state.events.length}`, state.events.length + 1);
   }
   assert.equal(
-    battleCanResolveAttack(state, attackerFormation.id, {
+    battleCanDeclareRangedAttack(state, attackerFormation.id, {
       weaponType: "Ranged",
       targetEligibilityConfirmed: true,
     }),
     false,
   );
   assert.equal(
-    battleCanResolveAttack(state, attackerFormation.id, {
+    battleCanDeclareRangedAttack(state, attackerFormation.id, {
       weaponHasAssault: true,
       weaponType: "Ranged",
       targetEligibilityConfirmed: true,
@@ -1437,14 +1526,14 @@ test("replays movement and enforces one weapon-scoped Shooting activation", () =
   );
   assert.equal(replayBattleState(state).activeActivation.weaponRestriction, "assault_only");
   assert.equal(
-    battleCanResolveAttack(state, attackerFormation.id, {
+    battleCanDeclareRangedAttack(state, attackerFormation.id, {
       weaponType: "Ranged",
       targetEligibilityConfirmed: true,
     }),
     false,
   );
   assert.equal(
-    battleCanResolveAttack(state, attackerFormation.id, {
+    battleCanDeclareRangedAttack(state, attackerFormation.id, {
       weaponHasAssault: true,
       weaponType: "Ranged",
       targetEligibilityConfirmed: true,
@@ -1572,23 +1661,26 @@ test("resolves Go to Ground after target selection with atomic CP and phase effe
   );
   state = recordVisibleRangedTarget(state, attackerFormation.id, infantryTarget.id, {
     eligibleWeaponCount: 2,
+    declaredWeaponCount: 2,
   });
+  state = closeRangedTargetDeclarations(state, "gtg-targets-declared", state.events.length + 1);
   let replayed = replayBattleState(state);
   assert.equal(replayed.pendingGoToGround.targetFormationId, infantryTarget.id);
   assert.equal(replayed.readyRangedAttack, null);
   assert.throws(() => appendZeroDamageRangedAttack(state), /Go to Ground window/i);
 
-  state = resolveGoToGround(state, "gtg-resolve", state.events.length + 1);
+  const declarationEventId = replayed.activeRangedDeclarationSet.declarations[0].id;
+  state = resolveGoToGround(state, infantryTarget.id, "gtg-resolve", state.events.length + 1);
   replayed = replayBattleState(state);
   assert.equal(replayed.resources.get("player-2").get("command_points").value, 1);
   assert.equal(replayed.pendingGoToGround, null);
-  assert.equal(replayed.readyRangedAttack.triggerEventId, state.events.at(-2).id);
+  assert.equal(replayed.readyRangedAttack.triggerEventId, declarationEventId);
   assert.deepEqual(replayed.activeGoToGroundEffects[0], {
     id: "gtg-resolve",
     name: "Go to Ground",
     targetFormationId: infantryTarget.id,
     ownerPlayerId: "player-2",
-    triggerEventId: state.events.at(-2).id,
+    triggerEventId: "gtg-targets-declared",
     duration: "end_of_phase",
     appliedAt: replayed.clock,
     invulnerableSave: 6,
@@ -1597,17 +1689,10 @@ test("resolves Go to Ground after target selection with atomic CP and phase effe
   state = appendZeroDamageRangedAttack(state, {
     id: "gtg-first-attack",
     targetEligibilityEventId: replayed.readyRangedAttack.triggerEventId,
+    declaredWeaponCount: 2,
   });
   assert.equal(replayBattleState(state).readyRangedAttack, null);
 
-  state = recordVisibleRangedTarget(state, attackerFormation.id, infantryTarget.id);
-  replayed = replayBattleState(state);
-  assert.equal(replayed.pendingGoToGround, null);
-  assert.equal(replayed.readyRangedAttack.goToGroundEffectId, "gtg-resolve");
-  state = appendZeroDamageRangedAttack(state, {
-    id: "gtg-second-attack",
-    targetEligibilityEventId: replayed.readyRangedAttack.triggerEventId,
-  });
   state = completeFormationActivation(state, "gtg-complete", state.events.length + 1);
   state = advanceTo(state, (clock) => clock.phase !== "shooting", "gtg-expire");
   assert.equal(replayBattleState(state).activeGoToGroundEffects.length, 0);
@@ -1673,7 +1758,12 @@ test("passes Go to Ground and binds the attack to the reviewed target declaratio
   );
   assert.equal(replayBattleState(battleShockedTargeted).pendingGoToGround, null);
   state = recordVisibleRangedTarget(state, attackerFormation.id, infantryTarget.id);
-  const triggerEventId = state.events.at(-1).id;
+  state = closeRangedTargetDeclarations(
+    state,
+    "gtg-pass-targets-declared",
+    state.events.length + 1,
+  );
+  const triggerEventId = replayBattleState(state).activeRangedDeclarationSet.declarations[0].id;
   state = passGoToGround(
     state,
     "Defending player declined the Stratagem",
@@ -1694,9 +1784,145 @@ test("passes Go to Ground and binds the attack to the reviewed target declaratio
     targetEligibilityEventId: triggerEventId,
   });
   assert.equal(replayBattleState(state).goToGroundPasses.length, 1);
-  state = recordVisibleRangedTarget(state, attackerFormation.id, infantryTarget.id);
-  assert.equal(replayBattleState(state).pendingGoToGround, null);
-  assert.equal(replayBattleState(state).readyRangedAttack.triggerEventId, state.events.at(-1).id);
+});
+
+test("locks split fire activation-wide and resolves targets and profiles contiguously", () => {
+  const splitAttacker = {
+    ...attackerFormation,
+    weaponInventory: attackerFormation.weaponInventory.map((group) => ({ ...group, count: 3 })),
+    segments: attackerFormation.segments.map((segment, index) =>
+      index === 0 ? { ...segment, startingModels: 3 } : segment,
+    ),
+  };
+  const targetA = {
+    ...formation,
+    id: "player-2:target-a",
+    name: "Target A",
+    keywords: ["Infantry"],
+  };
+  const targetB = {
+    ...formation,
+    id: "player-2:target-b",
+    name: "Target B",
+    keywords: ["Infantry"],
+  };
+  let state = registerBattleFormation(newBattle(), splitAttacker, "split-attacker", 1);
+  state = registerBattleFormation(state, targetA, "split-target-a", 2);
+  state = registerBattleFormation(state, targetB, "split-target-b", 3);
+  state = configureBattleMission(
+    state,
+    {
+      name: "Split fire",
+      commandPointsPerCommandPhase: 0,
+      startingCommandPoints: { "player-1": 0, "player-2": 1 },
+      objectives: [],
+    },
+    "split-mission",
+    4,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "split-start", 5);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "split-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    splitAttacker.id,
+    "stationary",
+    "split-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, battleAttackWindow, "split-shooting");
+  state = startFormationActivation(
+    state,
+    splitAttacker.id,
+    {},
+    "split-activation",
+    state.events.length + 1,
+  );
+  state = recordVisibleRangedTarget(state, splitAttacker.id, targetA.id, {
+    weaponId: "test-ranged-weapon",
+    eligibleWeaponCount: 3,
+    declaredWeaponCount: 1,
+  });
+  state = recordVisibleRangedTarget(state, splitAttacker.id, targetB.id, {
+    weaponId: "short-weapon",
+    eligibleWeaponCount: 2,
+    declaredWeaponCount: 1,
+  });
+  const retractedDeclarationId = state.events.at(-1).id;
+  state = retractRangedTargetDeclaration(
+    state,
+    retractedDeclarationId,
+    "Player changed the split-fire declaration",
+    "split-retract-target-b",
+    state.events.length + 1,
+  );
+  assert.deepEqual(
+    replayBattleState(state).rangedDeclarationDraft.map((entry) => entry.targetFormationId),
+    [targetA.id],
+  );
+  assert.equal(battleUnusedWeaponCount(state, splitAttacker.id, "unit-1", "test-ranged-group"), 2);
+  state = recordVisibleRangedTarget(state, splitAttacker.id, targetB.id, {
+    weaponId: "short-weapon",
+    eligibleWeaponCount: 2,
+    declaredWeaponCount: 1,
+  });
+  state = recordVisibleRangedTarget(state, splitAttacker.id, targetA.id, {
+    weaponId: "assault-cannon",
+    eligibleWeaponCount: 1,
+    declaredWeaponCount: 1,
+  });
+  assert.equal(
+    battleCanResolveAttack(state, splitAttacker.id, {
+      targetFormationId: targetA.id,
+      weaponId: "test-ranged-weapon",
+      weaponSourceFormationId: splitAttacker.id,
+      sourceSavedUnitId: "unit-1",
+      weaponGroupId: "test-ranged-group",
+      weaponType: "Ranged",
+      targetEligibilityConfirmed: true,
+    }),
+    false,
+  );
+  state = closeRangedTargetDeclarations(state, "split-targets-declared", state.events.length + 1);
+  let replayed = replayBattleState(state);
+  assert.deepEqual(replayed.pendingGoToGround.candidateTargetFormationIds, [
+    targetA.id,
+    targetB.id,
+  ]);
+  assert.deepEqual(
+    replayed.activeRangedDeclarationSet.declarations.map((entry) => [
+      entry.targetFormationId,
+      entry.weaponId,
+    ]),
+    [
+      [targetA.id, "test-ranged-weapon"],
+      [targetA.id, "assault-cannon"],
+      [targetB.id, "short-weapon"],
+    ],
+  );
+  assert.equal(replayed.readyRangedAttacks.length, 0);
+  state = resolveGoToGround(state, targetB.id, "split-go-to-ground", state.events.length + 1);
+  replayed = replayBattleState(state);
+  assert.equal(replayed.resources.get("player-2").get("command_points").value, 0);
+  assert.equal(replayed.activeGoToGroundEffects[0].targetFormationId, targetB.id);
+  assert.deepEqual(
+    replayed.readyRangedAttacks.map((entry) => [entry.targetFormationId, entry.weaponId]),
+    [
+      [targetA.id, "test-ranged-weapon"],
+      [targetA.id, "assault-cannon"],
+      [targetB.id, "short-weapon"],
+    ],
+  );
+  state = appendReadyZeroDamageAttack(state, "split-attack-a-1");
+  state = appendReadyZeroDamageAttack(state, "split-attack-a-2");
+  state = appendReadyZeroDamageAttack(state, "split-attack-b-1");
+  assert.equal(replayBattleState(state).readyRangedAttacks.length, 0);
+  assert.doesNotThrow(() =>
+    completeFormationActivation(state, "split-complete", state.events.length + 1),
+  );
 });
 
 test("resolves Fire Overwatch at a move trigger with atomic CP and target locking", () => {

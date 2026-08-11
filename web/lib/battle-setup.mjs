@@ -8,6 +8,7 @@ import {
   GO_TO_GROUND_BATTLE_STATE_VERSION,
   HAZARDOUS_BATTLE_STATE_VERSION,
   HEROIC_INTERVENTION_BATTLE_STATE_VERSION,
+  RANGED_DECLARATION_BATTLE_STATE_VERSION,
   ROSTER_BATTLE_STATE_VERSION,
   TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
   TIMELINE_BATTLE_STATE_VERSION,
@@ -403,6 +404,10 @@ export function initializeBattleForLists({
             sourceVersion < GO_TO_GROUND_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyGoToGroundThroughSequence ?? 0),
+          legacyRangedDeclarationsThroughSequence:
+            sourceVersion < RANGED_DECLARATION_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyRangedDeclarationsThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

@@ -300,6 +300,21 @@ bool whc_go_to_ground_is_valid(uint32_t phase, uint32_t command_points_before,
            !target_battle_shocked && flags == WHC_GO_TO_GROUND_FLAGS_MASK;
 }
 
+bool whc_ranged_declaration_is_valid(uint32_t declaration_count,
+                                     uint32_t unique_declaration_count,
+                                     uint32_t target_run_count, uint32_t unique_target_count,
+                                     uint32_t profile_run_count,
+                                     uint32_t unique_target_profile_count, uint32_t flags) {
+    return declaration_count >= 1u && declaration_count <= 256u &&
+           unique_declaration_count == declaration_count &&
+           target_run_count == unique_target_count && unique_target_count >= 1u &&
+           unique_target_count <= declaration_count &&
+           profile_run_count == unique_target_profile_count &&
+           unique_target_profile_count >= unique_target_count &&
+           unique_target_profile_count <= declaration_count &&
+           flags == WHC_RANGED_DECLARATION_FLAGS_MASK;
+}
+
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,
                                      const uint32_t *events, uint32_t event_count,
                                      uint32_t *health) {
