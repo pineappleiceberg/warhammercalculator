@@ -10,6 +10,7 @@ import {
   configureBattleMission,
   configureBattleRuleCoverage,
   configureBattleTableGeometry,
+  configureBattleTerrainFootprints,
   configureUnengagedBattleFormation,
   declareFormationDeployment,
   deployFormation,
@@ -17,6 +18,7 @@ import {
   replayBattleState,
   startBattle,
   tableGeometryIsValid,
+  terrainFootprintSetIsValid,
 } from "../lib/battle-state.mjs";
 import { battleRosterRevisionsMatch, initializeBattleForLists } from "../lib/battle-setup.mjs";
 import { normalizeRuleCoverageMatrix } from "../lib/rule-coverage.mjs";
@@ -223,6 +225,53 @@ function reviewedTableGeometry(state, overrides = {}) {
   };
 }
 
+function reviewedTerrainFootprints(state, overrides = {}) {
+  const tableGeometry = replayBattleState(state).tableGeometry;
+  assert.ok(tableGeometry);
+  const dimensions = [
+    ...Array.from({ length: 4 }, () => [6_000, 4_000]),
+    ...Array.from({ length: 2 }, () => [10_000, 5_000]),
+    ...Array.from({ length: 6 }, () => [12_000, 6_000]),
+  ];
+  const centres = [
+    [4_000, 3_000],
+    [12_000, 3_000],
+    [20_000, 3_000],
+    [28_000, 3_000],
+    [5_000, 10_000],
+    [17_000, 10_000],
+    [6_000, 18_000],
+    [20_000, 18_000],
+    [34_000, 18_000],
+    [48_000, 18_000],
+    [6_000, 30_000],
+    [20_000, 30_000],
+  ];
+  return {
+    missionSourceId: tableGeometry.missionSourceId,
+    terrainSourceId: tableGeometry.terrainSourceId,
+    battlefieldWidthThousandths: tableGeometry.battlefieldWidthThousandths,
+    battlefieldHeightThousandths: tableGeometry.battlefieldHeightThousandths,
+    origin: tableGeometry.origin,
+    sourcePage: tableGeometry.terrainProfile.sourcePage,
+    footprints: dimensions.map(([widthThousandths, heightThousandths], index) => ({
+      id: `outline-${index + 1}`,
+      widthThousandths,
+      heightThousandths,
+      centerXThousandths: centres[index][0],
+      centerYThousandths: centres[index][1],
+      rotationMilliDegrees: 0,
+      areaTerrainSectionId: `section-${index + 1}`,
+    })),
+    placementReviewed: true,
+    sectionGroupingReviewed: true,
+    reviewedByPlayer: true,
+    method: "manual",
+    reviewReason: "Players measured every outline and checked connected-section icons",
+    ...overrides,
+  };
+}
+
 function setup(state = null) {
   return initializeBattleForLists({
     catalogue,
@@ -268,7 +317,7 @@ test("canonical setup accepts only source-compatible mission and terrain selecti
   );
 });
 
-test("requires reviewed canonical table geometry before exact Chapter Approved deployment", () => {
+test("requires reviewed table geometry and terrain footprints before exact deployment", () => {
   let state = exactMissionSetup("exact-geometry-required");
   assert.throws(() => deployAllOnBattlefield(state), /reviewed table geometry/i);
 
@@ -286,6 +335,16 @@ test("requires reviewed canonical table geometry before exact Chapter Approved d
     replayed.tableGeometry.objectivePositions.map((objective) => objective.objectiveId),
     replayed.mission.objectives.map((objective) => objective.id),
   );
+  assert.throws(() => deployAllOnBattlefield(state), /reviewed terrain footprints/i);
+  const terrain = reviewedTerrainFootprints(state);
+  assert.equal(terrainFootprintSetIsValid(terrain), true);
+  state = configureBattleTerrainFootprints(
+    state,
+    terrain,
+    "record-terrain-footprints",
+    state.events.length + 1,
+  );
+  assert.deepEqual(replayBattleState(state).terrainFootprints, terrain);
   assert.doesNotThrow(() => deployAllOnBattlefield(state));
   assert.throws(
     () =>
@@ -297,6 +356,66 @@ test("requires reviewed canonical table geometry before exact Chapter Approved d
       ),
     /locked after table geometry/i,
   );
+});
+
+test("rejects overlapping, out-of-bounds, ungrouped, or source-mismatched terrain", () => {
+  let state = exactMissionSetup("invalid-terrain-footprints");
+  state = configureBattleTableGeometry(
+    state,
+    reviewedTableGeometry(state),
+    "record-table-before-invalid-terrain",
+    state.events.length + 1,
+  );
+  const valid = reviewedTerrainFootprints(state);
+  const attempts = [
+    [{ ...valid, terrainSourceId: "chapter-approved-2025-26-v1.4-layout-2" }, /do not match/],
+    [
+      {
+        ...valid,
+        footprints: valid.footprints.map((footprint, index) =>
+          index === 1
+            ? {
+                ...footprint,
+                centerXThousandths: valid.footprints[0].centerXThousandths,
+                centerYThousandths: valid.footprints[0].centerYThousandths,
+              }
+            : footprint,
+        ),
+      },
+      /do not match the source-locked tournament layout/,
+    ],
+    [
+      {
+        ...valid,
+        footprints: valid.footprints.map((footprint, index) =>
+          index === 0 ? { ...footprint, centerXThousandths: 0 } : footprint,
+        ),
+      },
+      /do not match the source-locked tournament layout/,
+    ],
+    [
+      {
+        ...valid,
+        footprints: valid.footprints.map((footprint, index) =>
+          index === 0 ? { ...footprint, areaTerrainSectionId: "" } : footprint,
+        ),
+      },
+      /non-empty string/,
+    ],
+    [{ ...valid, sectionGroupingReviewed: false }, /do not match/],
+  ];
+  for (const [terrain, expected] of attempts) {
+    assert.throws(
+      () =>
+        configureBattleTerrainFootprints(
+          state,
+          terrain,
+          `invalid-terrain-${String(expected)}`,
+          state.events.length + 1,
+        ),
+      expected,
+    );
+  }
 });
 
 test("rejects ambiguous, incomplete, or mismatched table geometry", () => {
@@ -779,6 +898,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacyRapidIngressThroughSequence: 3,
     legacyRuleCoverageThroughSequence: 3,
     legacyTableGeometryThroughSequence: 3,
+    legacyTerrainFootprintsThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -814,6 +934,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacyRapidIngressThroughSequence: 3,
     legacyRuleCoverageThroughSequence: 3,
     legacyTableGeometryThroughSequence: 3,
+    legacyTerrainFootprintsThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -854,6 +975,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacyRapidIngressThroughSequence: 2,
     legacyRuleCoverageThroughSequence: 2,
     legacyTableGeometryThroughSequence: 2,
+    legacyTerrainFootprintsThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -887,6 +1009,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacyRapidIngressThroughSequence: 2,
     legacyRuleCoverageThroughSequence: 2,
     legacyTableGeometryThroughSequence: 2,
+    legacyTerrainFootprintsThroughSequence: 2,
   });
 });
 
@@ -919,6 +1042,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacyRapidIngressThroughSequence: 2,
     legacyRuleCoverageThroughSequence: 2,
     legacyTableGeometryThroughSequence: 2,
+    legacyTerrainFootprintsThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -957,6 +1081,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacyRapidIngressThroughSequence: 2,
     legacyRuleCoverageThroughSequence: 2,
     legacyTableGeometryThroughSequence: 2,
+    legacyTerrainFootprintsThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -990,6 +1115,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacyRapidIngressThroughSequence: 2,
     legacyRuleCoverageThroughSequence: 2,
     legacyTableGeometryThroughSequence: 2,
+    legacyTerrainFootprintsThroughSequence: 2,
   });
 });
 
@@ -1022,6 +1148,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacyRapidIngressThroughSequence: 2,
     legacyRuleCoverageThroughSequence: 2,
     legacyTableGeometryThroughSequence: 2,
+    legacyTerrainFootprintsThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -1306,6 +1433,14 @@ test("migrates version-24 exact games without inventing geometry and permits one
     migrated.events.length + 1,
   );
   assert.deepEqual(replayBattleState(migrated).tableGeometry, geometry);
+  const terrain = reviewedTerrainFootprints(migrated, { method: "imported" });
+  migrated = configureBattleTerrainFootprints(
+    migrated,
+    terrain,
+    "migrated-terrain-footprints",
+    migrated.events.length + 1,
+  );
+  assert.deepEqual(replayBattleState(migrated).terrainFootprints, terrain);
   assert.throws(
     () =>
       configureBattleTableGeometry(
@@ -1316,4 +1451,41 @@ test("migrates version-24 exact games without inventing geometry and permits one
       ),
     /already been recorded/,
   );
+});
+
+test("migrates version-25 exact games without inventing terrain footprints", () => {
+  let versionTwentyFive = exactMissionSetup("version-25-terrain-footprints");
+  versionTwentyFive = configureBattleTableGeometry(
+    versionTwentyFive,
+    reviewedTableGeometry(versionTwentyFive),
+    "version-25-table-geometry",
+    versionTwentyFive.events.length + 1,
+  );
+  versionTwentyFive.version = 25;
+  delete versionTwentyFive.migration;
+  versionTwentyFive = deployAllOnBattlefield(versionTwentyFive);
+  const legacyEventCount = versionTwentyFive.events.length;
+  let migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: normalizeBattleState(versionTwentyFive),
+    id: versionTwentyFive.id,
+  });
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 25);
+  assert.equal(migrated.migration.legacyTerrainFootprintsThroughSequence, legacyEventCount);
+  assert.equal(replayBattleState(migrated).terrainFootprints, null);
+  const terrain = reviewedTerrainFootprints(migrated, { method: "imported" });
+  migrated = configureBattleTerrainFootprints(
+    migrated,
+    terrain,
+    "migrated-version-25-terrain",
+    migrated.events.length + 1,
+  );
+  assert.deepEqual(replayBattleState(migrated).terrainFootprints, terrain);
 });

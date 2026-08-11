@@ -14,6 +14,7 @@ import {
   completeFormationActivation,
   configureBattleMission,
   configureBattleTableGeometry,
+  configureBattleTerrainFootprints,
   createBattleState as createUncoveredBattleState,
   declareFormationDeployment,
   deployFormation,
@@ -2944,6 +2945,53 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
     reviewReason: "Players checked the mission card, terrain, zones, and objective centres",
   };
   state = configureBattleTableGeometry(state, geometry, "record-table-geometry", 3);
+  const dimensions = [
+    ...Array.from({ length: 4 }, () => [6_000, 4_000]),
+    ...Array.from({ length: 2 }, () => [10_000, 5_000]),
+    ...Array.from({ length: 6 }, () => [12_000, 6_000]),
+  ];
+  const centres = [
+    [4_000, 3_000],
+    [12_000, 3_000],
+    [20_000, 3_000],
+    [28_000, 3_000],
+    [5_000, 10_000],
+    [17_000, 10_000],
+    [6_000, 18_000],
+    [20_000, 18_000],
+    [34_000, 18_000],
+    [48_000, 18_000],
+    [6_000, 30_000],
+    [20_000, 30_000],
+  ];
+  const terrainFootprints = {
+    missionSourceId: geometry.missionSourceId,
+    terrainSourceId: geometry.terrainSourceId,
+    battlefieldWidthThousandths: geometry.battlefieldWidthThousandths,
+    battlefieldHeightThousandths: geometry.battlefieldHeightThousandths,
+    origin: geometry.origin,
+    sourcePage: geometry.terrainProfile.sourcePage,
+    footprints: dimensions.map(([widthThousandths, heightThousandths], index) => ({
+      id: `outline-${index + 1}`,
+      widthThousandths,
+      heightThousandths,
+      centerXThousandths: centres[index][0],
+      centerYThousandths: centres[index][1],
+      rotationMilliDegrees: 0,
+      areaTerrainSectionId: `section-${index + 1}`,
+    })),
+    placementReviewed: true,
+    sectionGroupingReviewed: true,
+    reviewedByPlayer: true,
+    method: "manual",
+    reviewReason: "Players measured every outline and checked connected-section icons",
+  };
+  state = configureBattleTerrainFootprints(
+    state,
+    terrainFootprints,
+    "record-terrain-footprints",
+    4,
+  );
 
   const worker = await loadWorker();
   const response = await worker.fetch(
@@ -2959,6 +3007,7 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
   const body = await response.json();
   assert.equal(body.data.schemaVersion, BATTLE_STATE_VERSION);
   assert.deepEqual(body.data.tableGeometry, geometry);
+  assert.deepEqual(body.data.terrainFootprints, terrainFootprints);
 });
 
 test("cross-checks structured charge movement through the C and WebAssembly API", async () => {

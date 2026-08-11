@@ -84,6 +84,9 @@ import {
   replayBattleState,
   tableGeometryFlags,
   tableGeometryIsValid,
+  terrainFootprintFlags,
+  terrainFootprintSetFacts,
+  terrainFootprintSetIsValid,
   transportLoadIsValid,
   transportDeploymentChainIsValid,
   initialDeploymentIsValid,
@@ -360,6 +363,7 @@ type CalculatorExports = {
   whc_transport_deployment_chain_is_valid(...values: number[]): number;
   whc_initial_deployment_is_valid(...values: number[]): number;
   whc_table_geometry_is_valid(...values: number[]): number;
+  whc_terrain_footprint_set_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -589,6 +593,7 @@ async function loadCalculator() {
       typeof calculator.whc_transport_deployment_chain_is_valid !== "function" ||
       typeof calculator.whc_initial_deployment_is_valid !== "function" ||
       typeof calculator.whc_table_geometry_is_valid !== "function" ||
+      typeof calculator.whc_terrain_footprint_set_is_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -890,6 +895,30 @@ async function replayFormationHealth(
         throw new ServiceUnavailableError(
           "Table geometry diverged from the C/WebAssembly predicate",
           "TABLE_GEOMETRY_DIVERGENCE",
+        );
+      }
+    }
+    if (replayedState.terrainFootprints) {
+      const terrain = replayedState.terrainFootprints;
+      const facts = terrainFootprintSetFacts(terrain);
+      const values = [
+        facts.footprintCount,
+        facts.positionedFootprintCount,
+        facts.uniqueFootprintCount,
+        facts.inBoundsFootprintCount,
+        facts.groupedFootprintCount,
+        facts.overlapPairCount,
+        facts.sixByFourCount,
+        facts.tenByFiveCount,
+        facts.twelveBySixCount,
+        terrainFootprintFlags(terrain, true),
+      ];
+      const javascriptValid = terrainFootprintSetIsValid(terrain, true);
+      const nativeValid = Boolean(calculator.whc_terrain_footprint_set_is_valid(...values));
+      if (!javascriptValid || javascriptValid !== nativeValid) {
+        throw new ServiceUnavailableError(
+          "Terrain footprints diverged from the C/WebAssembly predicate",
+          "TERRAIN_FOOTPRINT_DIVERGENCE",
         );
       }
     }
@@ -1686,6 +1715,7 @@ async function replayFormationHealth(
       rulesSnapshot: state.rulesSnapshot,
       ruleCoverage: replayed.ruleCoverage,
       tableGeometry: replayed.tableGeometry,
+      terrainFootprints: replayed.terrainFootprints,
       formationId: requestedFormationId,
       health,
       activeAttackIds: replayed.activeAttackIds,

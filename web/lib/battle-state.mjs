@@ -13,7 +13,8 @@ import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 import { normalizeBattleRuleCoverageBinding } from "./battle-rule-selection.mjs";
 import { chapterApprovedTableBinding } from "./mission-pack.mjs";
 
-export const BATTLE_STATE_VERSION = 25;
+export const BATTLE_STATE_VERSION = 26;
+export const TERRAIN_FOOTPRINT_BATTLE_STATE_VERSION = 26;
 export const TABLE_GEOMETRY_BATTLE_STATE_VERSION = 25;
 export const RULE_COVERAGE_BATTLE_STATE_VERSION = 24;
 export const RAPID_INGRESS_BATTLE_STATE_VERSION = 23;
@@ -78,6 +79,7 @@ const DEPLOYMENT_LOCATIONS = Object.freeze([
 ]);
 const TARGET_MEASUREMENT_METHODS = Object.freeze(["manual", "uwb", "camera", "imported"]);
 const TABLE_GEOMETRY_METHODS = Object.freeze(["manual", "uwb", "camera", "imported"]);
+const TERRAIN_FOOTPRINT_METHODS = TABLE_GEOMETRY_METHODS;
 export const TABLE_GEOMETRY_FLAGS = Object.freeze({
   reviewedByPlayer: 1,
   sourceLocked: 2,
@@ -89,11 +91,132 @@ export const TABLE_GEOMETRY_FLAGS = Object.freeze({
 export const TABLE_GEOMETRY_CONSTANTS = Object.freeze({
   widthThousandths: 60_000,
   heightThousandths: 44_000,
+  terrainOutlineCount: 12,
   terrainSectionCount: 12,
   sixByFourCount: 4,
   tenByFiveCount: 2,
   twelveBySixCount: 6,
 });
+export const TERRAIN_FOOTPRINT_FLAGS = Object.freeze({
+  reviewedByPlayer: 1,
+  sourceLocked: 2,
+  placementReviewed: 4,
+  groupingReviewed: 8,
+  mask: 15,
+});
+
+export function terrainFootprintFlags(set, sourceLocked = true) {
+  return (
+    (set?.reviewedByPlayer ? TERRAIN_FOOTPRINT_FLAGS.reviewedByPlayer : 0) |
+    (sourceLocked ? TERRAIN_FOOTPRINT_FLAGS.sourceLocked : 0) |
+    (set?.placementReviewed ? TERRAIN_FOOTPRINT_FLAGS.placementReviewed : 0) |
+    (set?.sectionGroupingReviewed ? TERRAIN_FOOTPRINT_FLAGS.groupingReviewed : 0)
+  );
+}
+
+export function terrainFootprintCorners(footprint) {
+  const angle = (footprint.rotationMilliDegrees * Math.PI) / 180_000;
+  const cosine = Math.cos(angle);
+  const sine = Math.sin(angle);
+  const halfWidth = footprint.widthThousandths / 2;
+  const halfHeight = footprint.heightThousandths / 2;
+  return [
+    [-halfWidth, -halfHeight],
+    [halfWidth, -halfHeight],
+    [halfWidth, halfHeight],
+    [-halfWidth, halfHeight],
+  ].map(([x, y]) => ({
+    xThousandths: footprint.centerXThousandths + x * cosine - y * sine,
+    yThousandths: footprint.centerYThousandths + x * sine + y * cosine,
+  }));
+}
+
+function terrainFootprintsOverlap(first, second) {
+  const firstCorners = terrainFootprintCorners(first);
+  const secondCorners = terrainFootprintCorners(second);
+  const axes = [firstCorners, secondCorners].flatMap((corners) =>
+    [0, 1].map((index) => {
+      const next = corners[(index + 1) % corners.length];
+      const current = corners[index];
+      return {
+        x: -(next.yThousandths - current.yThousandths),
+        y: next.xThousandths - current.xThousandths,
+      };
+    }),
+  );
+  return axes.every((axis) => {
+    const project = (corner) => corner.xThousandths * axis.x + corner.yThousandths * axis.y;
+    const firstProjection = firstCorners.map(project);
+    const secondProjection = secondCorners.map(project);
+    return (
+      Math.max(...firstProjection) > Math.min(...secondProjection) + 0.001 &&
+      Math.max(...secondProjection) > Math.min(...firstProjection) + 0.001
+    );
+  });
+}
+
+export function terrainFootprintSetFacts(set) {
+  const footprints = Array.isArray(set?.footprints) ? set.footprints : [];
+  const positioned = footprints.filter(
+    (footprint) =>
+      Number.isSafeInteger(footprint?.centerXThousandths) &&
+      Number.isSafeInteger(footprint?.centerYThousandths) &&
+      Number.isSafeInteger(footprint?.rotationMilliDegrees) &&
+      footprint.rotationMilliDegrees >= 0 &&
+      footprint.rotationMilliDegrees < 180_000,
+  );
+  const inBounds = positioned.filter((footprint) =>
+    terrainFootprintCorners(footprint).every(
+      (corner) =>
+        corner.xThousandths >= -0.001 &&
+        corner.xThousandths <= TABLE_GEOMETRY_CONSTANTS.widthThousandths + 0.001 &&
+        corner.yThousandths >= -0.001 &&
+        corner.yThousandths <= TABLE_GEOMETRY_CONSTANTS.heightThousandths + 0.001,
+    ),
+  );
+  const sizeCount = (width, height) =>
+    footprints.filter(
+      (footprint) =>
+        footprint?.widthThousandths === width && footprint?.heightThousandths === height,
+    ).length;
+  let overlapPairCount = 0;
+  for (let first = 0; first < positioned.length; first += 1) {
+    for (let second = first + 1; second < positioned.length; second += 1) {
+      if (terrainFootprintsOverlap(positioned[first], positioned[second])) overlapPairCount += 1;
+    }
+  }
+  return {
+    footprintCount: footprints.length,
+    positionedFootprintCount: positioned.length,
+    uniqueFootprintCount: new Set(footprints.map((footprint) => footprint?.id)).size,
+    inBoundsFootprintCount: inBounds.length,
+    groupedFootprintCount: footprints.filter(
+      (footprint) =>
+        typeof footprint?.areaTerrainSectionId === "string" &&
+        footprint.areaTerrainSectionId.trim().length > 0,
+    ).length,
+    overlapPairCount,
+    sixByFourCount: sizeCount(6_000, 4_000),
+    tenByFiveCount: sizeCount(10_000, 5_000),
+    twelveBySixCount: sizeCount(12_000, 6_000),
+  };
+}
+
+export function terrainFootprintSetIsValid(set, sourceLocked = true) {
+  const facts = terrainFootprintSetFacts(set);
+  return Boolean(
+    facts.footprintCount === TABLE_GEOMETRY_CONSTANTS.terrainOutlineCount &&
+      facts.positionedFootprintCount === facts.footprintCount &&
+      facts.uniqueFootprintCount === facts.footprintCount &&
+      facts.inBoundsFootprintCount === facts.footprintCount &&
+      facts.groupedFootprintCount === facts.footprintCount &&
+      facts.overlapPairCount === 0 &&
+      facts.sixByFourCount === TABLE_GEOMETRY_CONSTANTS.sixByFourCount &&
+      facts.tenByFiveCount === TABLE_GEOMETRY_CONSTANTS.tenByFiveCount &&
+      facts.twelveBySixCount === TABLE_GEOMETRY_CONSTANTS.twelveBySixCount &&
+      terrainFootprintFlags(set, sourceLocked) === TERRAIN_FOOTPRINT_FLAGS.mask,
+  );
+}
 
 export function tableGeometryFlags(geometry, sourceLocked = true) {
   return (
@@ -1172,6 +1295,86 @@ function normalizeTableGeometry(candidate) {
   return normalized;
 }
 
+function normalizeTerrainFootprintSet(candidate) {
+  const set = record(candidate, "Terrain footprint set must be an object");
+  if (!Array.isArray(set.footprints) || set.footprints.length !== 12) {
+    throw new Error("Terrain footprint set must contain the twelve source outlines");
+  }
+  const footprints = set.footprints.map((candidateFootprint) => {
+    const footprint = record(candidateFootprint, "Each terrain footprint must be an object");
+    return {
+      id: boundedString(footprint.id, "Terrain footprint id", 100),
+      widthThousandths: nonnegativeInteger(
+        footprint.widthThousandths,
+        "Terrain footprint width thousandths",
+        12_000,
+      ),
+      heightThousandths: nonnegativeInteger(
+        footprint.heightThousandths,
+        "Terrain footprint height thousandths",
+        6_000,
+      ),
+      centerXThousandths: nonnegativeInteger(
+        footprint.centerXThousandths,
+        "Terrain footprint centre x-coordinate thousandths",
+        TABLE_GEOMETRY_CONSTANTS.widthThousandths,
+      ),
+      centerYThousandths: nonnegativeInteger(
+        footprint.centerYThousandths,
+        "Terrain footprint centre y-coordinate thousandths",
+        TABLE_GEOMETRY_CONSTANTS.heightThousandths,
+      ),
+      rotationMilliDegrees: nonnegativeInteger(
+        footprint.rotationMilliDegrees,
+        "Terrain footprint rotation milli-degrees",
+        179_999,
+      ),
+      areaTerrainSectionId: boundedString(
+        footprint.areaTerrainSectionId,
+        "Area terrain section id",
+        100,
+      ),
+    };
+  });
+  const normalized = {
+    missionSourceId: boundedString(set.missionSourceId, "Terrain mission source id", 200),
+    terrainSourceId: boundedString(set.terrainSourceId, "Terrain layout source id", 200),
+    battlefieldWidthThousandths: nonnegativeInteger(
+      set.battlefieldWidthThousandths,
+      "Terrain battlefield width thousandths",
+      100_000,
+    ),
+    battlefieldHeightThousandths: nonnegativeInteger(
+      set.battlefieldHeightThousandths,
+      "Terrain battlefield height thousandths",
+      100_000,
+    ),
+    origin: boundedString(set.origin, "Terrain coordinate origin", 60),
+    sourcePage: nonnegativeInteger(set.sourcePage, "Terrain source page", 1000),
+    footprints,
+    placementReviewed: Boolean(set.placementReviewed),
+    sectionGroupingReviewed: Boolean(set.sectionGroupingReviewed),
+    reviewedByPlayer: Boolean(set.reviewedByPlayer),
+    method: boundedString(set.method, "Terrain footprint method", 20),
+    reviewReason: set.reviewedByPlayer
+      ? boundedString(set.reviewReason, "Terrain footprint review", 500).trim()
+      : "",
+  };
+  if (normalized.origin !== "attacker-left-near") {
+    throw new Error("Terrain footprint coordinate origin is unsupported");
+  }
+  if (!TERRAIN_FOOTPRINT_METHODS.includes(normalized.method)) {
+    throw new Error("Terrain footprint method is unsupported");
+  }
+  if (!normalized.reviewReason) {
+    throw new Error("Terrain footprint review must explain the checked tabletop facts");
+  }
+  if (!terrainFootprintSetIsValid(normalized, true)) {
+    throw new Error("Terrain footprints do not match the source-locked tournament layout");
+  }
+  return normalized;
+}
+
 function normalizePlayers(players, stateVersion) {
   if (!Array.isArray(players) || players.length !== 2) {
     throw new Error("Battle state must contain exactly two players");
@@ -2070,6 +2273,16 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   }
   if (event.type === "table_geometry_recorded") {
     normalized.geometry = normalizeTableGeometry(event.geometry);
+    return normalized;
+  }
+  if (
+    stateVersion < TERRAIN_FOOTPRINT_BATTLE_STATE_VERSION &&
+    event.type === "terrain_footprints_recorded"
+  ) {
+    throw new Error("Terrain footprints require battle-state version 26");
+  }
+  if (event.type === "terrain_footprints_recorded") {
+    normalized.terrainFootprints = normalizeTerrainFootprintSet(event.terrainFootprints);
     return normalized;
   }
   if (event.type === "formation_registered") {
@@ -3573,6 +3786,7 @@ export function normalizeBattleState(candidate) {
       SMOKESCREEN_BATTLE_STATE_VERSION,
       RAPID_INGRESS_BATTLE_STATE_VERSION,
       RULE_COVERAGE_BATTLE_STATE_VERSION,
+      TABLE_GEOMETRY_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -3630,6 +3844,7 @@ export function normalizeBattleState(candidate) {
         SMOKESCREEN_BATTLE_STATE_VERSION,
         RAPID_INGRESS_BATTLE_STATE_VERSION,
         RULE_COVERAGE_BATTLE_STATE_VERSION,
+        TABLE_GEOMETRY_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -3781,6 +3996,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyTableGeometryThroughSequence = nonnegativeInteger(
         migration.legacyTableGeometryThroughSequence,
         "Legacy table geometry event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= TERRAIN_FOOTPRINT_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyTerrainFootprintsThroughSequence = nonnegativeInteger(
+        migration.legacyTerrainFootprintsThroughSequence,
+        "Legacy terrain footprints event sequence",
         events.length,
       );
     }
@@ -4555,6 +4777,7 @@ export function replayBattleState(state) {
   let deploymentPriorityPlayerId = "";
   let ruleCoverage = null;
   let tableGeometry = null;
+  let terrainFootprints = null;
   let clock = setupBattleClock();
   let mission = defaultMission(state.players);
   let resources = trackerResources(state.players, mission);
@@ -4619,6 +4842,10 @@ export function replayBattleState(state) {
     state.version < TABLE_GEOMETRY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyTableGeometryThroughSequence ?? 0);
+  const legacyTerrainFootprintsThroughSequence =
+    state.version < TERRAIN_FOOTPRINT_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyTerrainFootprintsThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -5013,6 +5240,39 @@ export function replayBattleState(state) {
       tableGeometry = event.geometry;
       continue;
     }
+    if (event.type === "terrain_footprints_recorded") {
+      if (clock.status !== "setup") {
+        throw new Error("Terrain footprints are locked after the battle starts");
+      }
+      if (terrainFootprints) throw new Error("Terrain footprints have already been recorded");
+      const postMigrationEvents = state.events.slice(
+        legacyTerrainFootprintsThroughSequence,
+        event.sequence - 1,
+      );
+      const migratedInitialFootprints =
+        state.migration &&
+        postMigrationEvents.every((candidate) => candidate.type === "table_geometry_recorded");
+      if (deploymentByFormation.size > 0 && !migratedInitialFootprints) {
+        throw new Error("Terrain footprints are locked after deployment declarations begin");
+      }
+      if (!tableGeometry) {
+        throw new Error("Record reviewed table geometry before terrain footprints");
+      }
+      if (
+        event.terrainFootprints.missionSourceId !== tableGeometry.missionSourceId ||
+        event.terrainFootprints.terrainSourceId !== tableGeometry.terrainSourceId ||
+        event.terrainFootprints.battlefieldWidthThousandths !==
+          tableGeometry.battlefieldWidthThousandths ||
+        event.terrainFootprints.battlefieldHeightThousandths !==
+          tableGeometry.battlefieldHeightThousandths ||
+        event.terrainFootprints.origin !== tableGeometry.origin ||
+        event.terrainFootprints.sourcePage !== tableGeometry.terrainProfile.sourcePage
+      ) {
+        throw new Error("Terrain footprints do not match the reviewed table geometry");
+      }
+      terrainFootprints = event.terrainFootprints;
+      continue;
+    }
     if (event.type === "deployment_declared") {
       if (clock.status !== "setup") {
         throw new Error("Deployment declarations are locked after the battle starts");
@@ -5024,6 +5284,14 @@ export function replayBattleState(state) {
         !tableGeometry
       ) {
         throw new Error("Record reviewed table geometry before declaring deployment");
+      }
+      if (
+        state.version >= TERRAIN_FOOTPRINT_BATTLE_STATE_VERSION &&
+        event.sequence > legacyTerrainFootprintsThroughSequence &&
+        battleRuleCoverageRequiresTableGeometry(ruleCoverage) &&
+        !terrainFootprints
+      ) {
+        throw new Error("Record reviewed terrain footprints before declaring deployment");
       }
       if (deployedFormationIds.size > 0) {
         throw new Error("Deployment declarations are locked after deployment begins");
@@ -5198,6 +5466,13 @@ export function replayBattleState(state) {
         !tableGeometry
       ) {
         throw new Error("Reviewed table geometry is required before battle start");
+      }
+      if (
+        event.sequence > legacyTerrainFootprintsThroughSequence &&
+        battleRuleCoverageRequiresTableGeometry(ruleCoverage) &&
+        !terrainFootprints
+      ) {
+        throw new Error("Reviewed terrain footprints are required before battle start");
       }
       if (
         (state.version < DEPLOYMENT_BATTLE_STATE_VERSION || state.migration) &&
@@ -7828,6 +8103,7 @@ export function replayBattleState(state) {
     clock,
     ruleCoverage,
     tableGeometry,
+    terrainFootprints,
     pendingChoices,
     resolvedChoices,
     effects,
@@ -7925,6 +8201,36 @@ export function configureBattleTableGeometry(state, geometry, id, at) {
     at,
     type: "table_geometry_recorded",
     geometry,
+  });
+}
+
+export function configureBattleTerrainFootprints(state, terrainFootprints, id, at) {
+  const replayed = replayBattleState(state);
+  if (replayed.clock.status !== "setup") {
+    throw new Error("Terrain footprints are locked after the battle starts");
+  }
+  if (replayed.terrainFootprints) {
+    throw new Error("Terrain footprints have already been recorded");
+  }
+  if (!replayed.tableGeometry) {
+    throw new Error("Record reviewed table geometry before terrain footprints");
+  }
+  const migrationBoundary = state.migration?.legacyTerrainFootprintsThroughSequence ?? -1;
+  const migratedInitialFootprints =
+    state.migration &&
+    state.events
+      .slice(migrationBoundary)
+      .every((candidate) => candidate.type === "table_geometry_recorded");
+  if (replayed.deploymentByFormation.size > 0 && !migratedInitialFootprints) {
+    throw new Error("Terrain footprints are locked after deployment declarations begin");
+  }
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "terrain_footprints_recorded",
+    terrainFootprints,
   });
 }
 

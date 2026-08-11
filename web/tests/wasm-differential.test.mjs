@@ -30,6 +30,9 @@ import {
   TABLE_GEOMETRY_CONSTANTS,
   tableGeometryFlags,
   tableGeometryIsValid,
+  terrainFootprintFlags,
+  terrainFootprintSetFacts,
+  terrainFootprintSetIsValid,
   hazardousResolutionIsValid,
   heroicInterventionIsValid,
   initialDeploymentIsValid,
@@ -122,6 +125,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_transport_deployment_chain_is_valid, "function");
   assert.equal(typeof calculator._whc_initial_deployment_is_valid, "function");
   assert.equal(typeof calculator._whc_table_geometry_is_valid, "function");
+  assert.equal(typeof calculator._whc_terrain_footprint_set_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
 });
@@ -177,6 +181,115 @@ test("WebAssembly and JavaScript agree on canonical table geometry", () => {
     assert.equal(
       Boolean(calculator._whc_table_geometry_is_valid(...values)),
       tableGeometryIsValid(geometry, true),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on canonical terrain footprints", () => {
+  const dimensions = [
+    ...Array.from({ length: 4 }, () => [6_000, 4_000]),
+    ...Array.from({ length: 2 }, () => [10_000, 5_000]),
+    ...Array.from({ length: 6 }, () => [12_000, 6_000]),
+  ];
+  const centres = [
+    [4_000, 3_000],
+    [12_000, 3_000],
+    [20_000, 3_000],
+    [28_000, 3_000],
+    [5_000, 10_000],
+    [17_000, 10_000],
+    [6_000, 18_000],
+    [20_000, 18_000],
+    [34_000, 18_000],
+    [48_000, 18_000],
+    [6_000, 30_000],
+    [20_000, 30_000],
+  ];
+  const base = {
+    footprints: dimensions.map(([widthThousandths, heightThousandths], index) => ({
+      id: `outline-${index + 1}`,
+      widthThousandths,
+      heightThousandths,
+      centerXThousandths: centres[index][0],
+      centerYThousandths: centres[index][1],
+      rotationMilliDegrees: 0,
+      areaTerrainSectionId: `section-${index + 1}`,
+    })),
+    placementReviewed: true,
+    sectionGroupingReviewed: true,
+    reviewedByPlayer: true,
+  };
+  const rotated = {
+    ...base,
+    footprints: base.footprints.map((footprint, index) =>
+      index === 8 ? { ...footprint, rotationMilliDegrees: 45_000 } : footprint,
+    ),
+  };
+  const rotatedOutOfBounds = {
+    ...base,
+    footprints: base.footprints.map((footprint, index) =>
+      index === 0 ? { ...footprint, rotationMilliDegrees: 45_000 } : footprint,
+    ),
+  };
+  const rotatedOverlap = {
+    ...base,
+    footprints: base.footprints.map((footprint, index) =>
+      index === 8
+        ? {
+            ...footprint,
+            centerXThousandths: 32_000,
+            rotationMilliDegrees: 45_000,
+          }
+        : footprint,
+    ),
+  };
+  const cases = [
+    base,
+    rotated,
+    rotatedOutOfBounds,
+    rotatedOverlap,
+    {
+      ...base,
+      footprints: base.footprints.map((footprint, index) =>
+        index === 1
+          ? {
+              ...footprint,
+              centerXThousandths: base.footprints[0].centerXThousandths,
+              centerYThousandths: base.footprints[0].centerYThousandths,
+            }
+          : footprint,
+      ),
+    },
+    {
+      ...base,
+      footprints: base.footprints.map((footprint, index) =>
+        index === 0 ? { ...footprint, centerXThousandths: 0 } : footprint,
+      ),
+    },
+    { ...base, sectionGroupingReviewed: false },
+  ];
+  assert.equal(terrainFootprintSetIsValid(rotated, true), true);
+  assert.equal(terrainFootprintSetFacts(rotatedOutOfBounds).inBoundsFootprintCount, 11);
+  assert.equal(terrainFootprintSetIsValid(rotatedOutOfBounds, true), false);
+  assert.ok(terrainFootprintSetFacts(rotatedOverlap).overlapPairCount > 0);
+  assert.equal(terrainFootprintSetIsValid(rotatedOverlap, true), false);
+  for (const terrain of cases) {
+    const facts = terrainFootprintSetFacts(terrain);
+    const values = [
+      facts.footprintCount,
+      facts.positionedFootprintCount,
+      facts.uniqueFootprintCount,
+      facts.inBoundsFootprintCount,
+      facts.groupedFootprintCount,
+      facts.overlapPairCount,
+      facts.sixByFourCount,
+      facts.tenByFiveCount,
+      facts.twelveBySixCount,
+      terrainFootprintFlags(terrain, true),
+    ];
+    assert.equal(
+      Boolean(calculator._whc_terrain_footprint_set_is_valid(...values)),
+      terrainFootprintSetIsValid(terrain, true),
     );
   }
 });
