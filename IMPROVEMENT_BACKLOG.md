@@ -27,11 +27,9 @@ state.
 
 ## Prioritized backlog
 
-1. Extend canonical position history through Emergency Disembarkation and
-   embarkation, including multiple forced passenger formations; then make
-   terrain height and Ruin-wall subgeometry, cover, visibility,
-   coherency, objective range, and Engagement Range executable from those exact
-   footprints instead of review-only facts.
+1. Make terrain height and Ruin-wall subgeometry, cover, visibility, coherency,
+   objective range, and Engagement Range executable from exact footprints
+   instead of review-only facts.
 2. Implement source-locked mission scoring and secondary-card/action tracking
    for the selected Chapter Approved combination while keeping unavailable card
    text fail-closed.
@@ -39,6 +37,19 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced exact Transport geometry to battle-state version 30.
+  Starting-embarked declarations and later embarkation now record every stable
+  model identity inside the named Transport, while later embarkation removes
+  obsolete battlefield coordinates. Destroyed Transports queue
+  each surviving passenger formation independently, preserving the Core Rules
+  distinction between normal placement wholly within 3 inches and Emergency
+  Disembarkation wholly within 6 inches. Unplaceable and mortal-wound
+  casualties are applied before the snapshot, fully destroyed passengers
+  receive an explicit destroyed location, and multiple passenger or nested
+  Transport resolutions retain immediate-disembarkation priority. Guided Play,
+  replay/API output, version-29 migration, and C/WebAssembly aggregate position
+  validation have regression and differential coverage.
 
 - 2026-08-11: Advanced exact guided geometry to battle-state version 29 across
   successful Charge and Heroic Intervention moves, non-zero Pile In and

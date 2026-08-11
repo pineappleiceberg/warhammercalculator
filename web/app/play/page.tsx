@@ -916,6 +916,7 @@ export default function PlayMode() {
     ? replayedBattle.formations.get(replayedBattle.pendingDeploymentPlacement.formationId)
     : null;
   const pendingModelPosition = replayedBattle?.pendingModelPosition ?? null;
+  const pendingModelPositionCount = replayedBattle?.pendingModelPositions?.length ?? 0;
   const pendingModelPositionFormation = pendingModelPosition
     ? replayedBattle?.formations.get(pendingModelPosition.formationId)
     : null;
@@ -3936,7 +3937,10 @@ export default function PlayMode() {
               0,
             )
           : 0;
-      setStatus(`Destroyed Transport resolved · ${mortalWounds} passenger damage`);
+      const pendingPassengerPositions = replayBattleState(next).pendingModelPositions.length;
+      setStatus(
+        `Destroyed Transport resolved · ${mortalWounds} passenger damage${pendingPassengerPositions > 0 ? ` · record ${pendingPassengerPositions} passenger placement${pendingPassengerPositions === 1 ? "" : "s"}` : ""}`,
+      );
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : "Destroyed Transport could not be resolved",
@@ -7242,10 +7246,36 @@ export default function PlayMode() {
                         ? `${pendingModelPosition.context.replaceAll("_", " ")} paths`
                         : `${pendingModelPosition.context.replaceAll("_", " ")} positions`}
                     </strong>
-                    <span>
-                      Preserve each surviving model identity. Distances are the farthest distance
-                      any part of that model&apos;s base or hull travelled along its reviewed path.
-                    </span>
+                    {modelPositionContextUsesPath(pendingModelPosition.context) ? (
+                      <span>
+                        Preserve each surviving model identity. Distances are the farthest distance
+                        any part of that model&apos;s base or hull travelled along its reviewed
+                        path.
+                      </span>
+                    ) : (
+                      <span>
+                        Preserve every surviving model identity at its reviewed tabletop endpoint.
+                      </span>
+                    )}
+                    {pendingModelPosition.placementRadiusThousandths !== undefined && (
+                      <span>
+                        Set up the complete surviving unit wholly within{" "}
+                        {pendingModelPosition.placementRadiusThousandths / 1000}″ of the{" "}
+                        {pendingModelPosition.destroyedTransport ? "destroyed " : ""}
+                        Transport and outside Engagement Range.{" "}
+                        {pendingModelPosition.destroyedTransport
+                          ? pendingModelPosition.emergency
+                            ? "This is an Emergency Disembarkation."
+                            : "This is the normal destroyed-Transport placement."
+                          : "This is a normal disembarkation."}
+                      </span>
+                    )}
+                    {pendingModelPositionCount > 1 && (
+                      <span>
+                        {pendingModelPositionCount} forced passenger placement snapshots remain.
+                        They are recorded one formation at a time.
+                      </span>
+                    )}
                     {pendingModelPosition.reconcilesStaleStart && (
                       <span>
                         Earlier physical movement made the saved geometry stale. Record each

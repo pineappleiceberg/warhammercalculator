@@ -6,6 +6,7 @@ import {
   BATTLE_STATE_VERSION,
   TABLE_GEOMETRY_CONSTANTS,
   advanceBattleClock,
+  appendResolvedAttack,
   arriveFromReserves,
   battleFormation,
   battleFormationHealth,
@@ -19,6 +20,7 @@ import {
   declareFormationDeployment,
   deployFormation,
   disembarkFormation,
+  embarkFormation,
   modelPlacementSetFacts,
   modelPlacementSetIsValid,
   modelPositionSetFacts,
@@ -31,11 +33,16 @@ import {
   resolveHeroicIntervention,
   resolveRapidIngress,
   completeFormationMovement,
+  completeFormationActivation,
+  closeRangedTargetDeclarations,
   passFireOverwatch,
   passFightPriority,
   passHeroicIntervention,
+  passSmokescreen,
   recordFightMove,
   recordFormationCharge,
+  recordRangedTargetEligibility,
+  resolveDestroyedTransport,
   startFormationActivation,
   startBattle,
   startFormationMovement,
@@ -1260,6 +1267,494 @@ test("records exact disembarkation positions before the set-up reaction window",
   assert.equal(replayed.currentModelPositionsByFormation.get("player-1:boyz").models.length, 10);
   assert.equal(replayed.geometryStaleFormationIds.has("player-1:boyz"), false);
   assert.equal(replayed.pendingFireOverwatch?.trigger, "set_up");
+  assert.deepEqual(replayed.modelLocationHistoryByFormation.get("player-1:boyz"), [
+    {
+      context: "deployment_embarked",
+      referenceEventId: "declare-disembark-boyz",
+      sequence: state.events.find((event) => event.id === "declare-disembark-boyz").sequence,
+      location: "embarked",
+      transportFormationId: "player-1:trukk",
+    },
+    {
+      context: "disembarkation",
+      referenceEventId: "exact-boyz-disembarked",
+      sequence: state.events.at(-1).sequence,
+      location: "battlefield",
+      transportFormationId: "player-1:trukk",
+    },
+  ]);
+  state = passFireOverwatch(
+    state,
+    "No eligible response to the disembarkation",
+    "disembark-overwatch-passed",
+    state.events.length + 1,
+  );
+  for (let guard = 0; guard < 100; guard += 1) {
+    const clock = replayBattleState(state).clock;
+    if (
+      clock.battleRound === 2 &&
+      clock.activePlayerId === "player-1" &&
+      clock.phase === "movement" &&
+      clock.step === "move_units"
+    ) {
+      break;
+    }
+    state = advanceBattleClock(
+      state,
+      `advance-to-reembark-${state.events.length + 1}`,
+      state.events.length + 1,
+    );
+  }
+  assert.equal(replayBattleState(state).clock.battleRound, 2);
+  state = startFormationMovement(
+    state,
+    "player-1:boyz",
+    "normal",
+    "boyz-reembark-move-start",
+    state.events.length + 1,
+  );
+  state = passFireOverwatch(
+    state,
+    "No eligible response at move start",
+    "boyz-reembark-start-overwatch-passed",
+    state.events.length + 1,
+  );
+  state = completeFormationMovement(
+    state,
+    "player-1:boyz",
+    "normal",
+    "boyz-reembark-move",
+    state.events.length + 1,
+  );
+  state = recordModelPositions(
+    state,
+    "player-1:boyz",
+    reviewedModelPositions(state, "player-1:boyz", "movement", "boyz-reembark-move"),
+    "boyz-reembark-move-positioned",
+    state.events.length + 1,
+  );
+  state = passFireOverwatch(
+    state,
+    "No eligible response at move end",
+    "boyz-reembark-end-overwatch-passed",
+    state.events.length + 1,
+  );
+  state = embarkFormation(
+    state,
+    "player-1:boyz",
+    "player-1:trukk",
+    {
+      rangeConfirmed: true,
+      rangeReason: "Every model ended the move within 3 inches of the Trukk",
+    },
+    "boyz-reembarked",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.currentModelPositionsByFormation.has("player-1:boyz"), false);
+  assert.equal(replayed.geometryStaleFormationIds.has("player-1:boyz"), false);
+  assert.deepEqual(replayed.modelLocationHistoryByFormation.get("player-1:boyz").at(-1), {
+    context: "embarkation",
+    referenceEventId: "boyz-reembarked",
+    sequence: state.events.at(-1).sequence,
+    location: "embarked",
+    transportFormationId: "player-1:trukk",
+  });
+});
+
+test("queues exact normal and Emergency Disembarkation positions for every destroyed Transport passenger", () => {
+  const trukk = catalogueUnit("Trukk");
+  const lootas = catalogueUnit("Lootas");
+  const burnaBoyz = catalogueUnit("Burna Boyz");
+  const heavyDestroyers = catalogueUnit("Lokhust Heavy Destroyers");
+  const gaussDestructor = heavyDestroyers.weapons.find(
+    (weapon) => weapon.name === "Gauss destructor",
+  );
+  assert.ok(gaussDestructor);
+  const transportList = {
+    id: "list-exact-destroyed-transport",
+    createdAt: 1,
+    updatedAt: 42,
+    name: "Destroyed Transport geometry",
+    factionId: trukk.factionId,
+    units: [
+      {
+        id: "trukk",
+        unitId: trukk.id,
+        name: trukk.name,
+        modelCount: 1,
+        weapons: [],
+      },
+      {
+        id: "lootas",
+        unitId: lootas.id,
+        name: lootas.name,
+        modelCount: 5,
+        weapons: [],
+        transportId: "trukk",
+      },
+      {
+        id: "burnas",
+        unitId: burnaBoyz.id,
+        name: burnaBoyz.name,
+        modelCount: 5,
+        weapons: [],
+        transportId: "trukk",
+      },
+    ],
+  };
+  const transportMissionOverrides = {
+    ...exactMissionOverrides,
+    players: {
+      "player-1": { detachmentSourceId: "000000852" },
+      "player-2": { detachmentSourceId: "000000818" },
+    },
+  };
+  const shootingList = {
+    id: "list-destroyed-transport-shooters",
+    createdAt: 1,
+    updatedAt: 43,
+    name: "Transport destroyers",
+    factionId: heavyDestroyers.factionId,
+    units: [
+      {
+        id: "heavy-destroyer",
+        unitId: heavyDestroyers.id,
+        name: heavyDestroyers.name,
+        modelCount: 1,
+        weapons: [
+          {
+            weaponId: gaussDestructor.id,
+            groupId: gaussDestructor.groupId,
+            name: gaussDestructor.groupName,
+            count: 1,
+          },
+        ],
+      },
+    ],
+  };
+  let state = initializeBattleForLists({
+    catalogue,
+    firstList: transportList,
+    secondList: shootingList,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: transportMissionOverrides,
+    id: "exact-destroyed-transport-positions",
+  });
+  state = configureBattleMission(
+    state,
+    {
+      name: "A · Take and Hold · Tipping Point",
+      pointsLimit: 2_000,
+      deploymentFirstPlayerId: "player-1",
+      commandPointsPerCommandPhase: 1,
+      startingCommandPoints: { "player-1": 0, "player-2": 0 },
+      objectives: Array.from({ length: 5 }, (_, index) => ({
+        id: `objective-${index + 1}`,
+        name: `Objective ${index + 1}`,
+      })),
+    },
+    "destroyed-transport-mission",
+    state.events.length + 1,
+  );
+  state = configureBattleTableGeometry(
+    state,
+    reviewedTableGeometry(state),
+    "destroyed-transport-table",
+    state.events.length + 1,
+  );
+  state = configureBattleTerrainFootprints(
+    state,
+    reviewedTerrainFootprints(state),
+    "destroyed-transport-terrain",
+    state.events.length + 1,
+  );
+  for (const [formationId, location, transportFormationId] of [
+    ["player-1:trukk", "battlefield", ""],
+    ["player-1:lootas", "embarked", "player-1:trukk"],
+    ["player-1:burnas", "embarked", "player-1:trukk"],
+    ["player-2:heavy-destroyer", "battlefield", ""],
+  ]) {
+    state = declareFormationDeployment(
+      state,
+      formationId,
+      location,
+      transportFormationId ? { transportFormationId } : {},
+      `declare-${formationId}`,
+      state.events.length + 1,
+    );
+  }
+  while (!replayBattleState(state).deploymentComplete) {
+    const replayed = replayBattleState(state);
+    const formation = [...replayed.formations.values()].find(
+      (candidate) =>
+        candidate.playerId === replayed.deploymentPriorityPlayerId &&
+        !replayed.deployedFormationIds.has(candidate.id) &&
+        replayed.deploymentByFormation.get(candidate.id)?.location === "battlefield",
+    );
+    assert.ok(formation);
+    state = deployFormation(
+      state,
+      formation.id,
+      { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
+      `deploy-${formation.id}`,
+      state.events.length + 1,
+    );
+    const pending = replayBattleState(state).pendingDeploymentPlacement;
+    if (pending) {
+      state = recordDeploymentModelPlacements(
+        state,
+        pending.formationId,
+        reviewedDeploymentModelPlacements(state, pending.formationId, pending.referenceEventId),
+        `place-${pending.formationId}`,
+        state.events.length + 1,
+      );
+    }
+  }
+  state = startBattle(
+    state,
+    "player-2",
+    "destroyed-transport-battle-start",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, "movement", "move_units");
+  state = completeFormationMovement(
+    state,
+    "player-2:heavy-destroyer",
+    "stationary",
+    "doom-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, "shooting", "resolve_attacks");
+  state = startFormationActivation(
+    state,
+    "player-2:heavy-destroyer",
+    {},
+    "doom-shooting",
+    state.events.length + 1,
+  );
+  let replayed = replayBattleState(state);
+  const doom = replayed.formations.get("player-2:heavy-destroyer");
+  const target = replayed.formations.get("player-1:trukk");
+  const inventory = doom.weaponInventory.find((group) =>
+    group.profiles.some((profile) => profile.weaponId === String(gaussDestructor.id)),
+  );
+  assert.ok(inventory);
+  const weapon = inventory.profiles.find(
+    (profile) => profile.weaponId === String(gaussDestructor.id),
+  );
+  assert.ok(weapon);
+  const segmentIds = target.segments.map((segment) => segment.id);
+  const targets = target.segments.map((segment) => ({
+    wounds: segment.wounds,
+    modelCount: target.health[segment.id].modelsRemaining,
+  }));
+  state = recordRangedTargetEligibility(
+    state,
+    {
+      attackerFormationId: doom.id,
+      targetFormationId: target.id,
+      weaponId: weapon.weaponId,
+      weaponName: weapon.name,
+      weaponSourceFormationId: doom.id,
+      sourceSavedUnitId: inventory.sourceSavedUnitId,
+      weaponGroupId: inventory.groupId,
+      publishedRangeThousandths: weapon.publishedRangeThousandths,
+      effectiveRangeThousandths: weapon.publishedRangeThousandths,
+      measuredDistanceThousandths: 12_000,
+      visible: true,
+      fullyVisible: true,
+      indirectFire: false,
+      weaponHasIndirect: weapon.hasIndirect,
+      eligibleWeaponCount: 1,
+      declaredWeaponCount: 1,
+      attackSnapshot: {
+        attackProfiles: [{ weaponCount: 1 }],
+        targets,
+        segmentIds,
+        initialWoundsLost: 0,
+        weaponHasAssault: weapon.hasAssault,
+        summary: { attacker: doom.name, weapon: weapon.name, target: target.name },
+      },
+      method: "manual",
+      reviewedByPlayer: true,
+      reviewReason: "Closest hull points, range, and line of sight checked",
+    },
+    "doom-targets-trukk",
+    state.events.length + 1,
+  );
+  state = closeRangedTargetDeclarations(state, "doom-targets-closed", state.events.length + 1);
+  if (replayBattleState(state).pendingSmokescreen) {
+    state = passSmokescreen(
+      state,
+      "Defender declined Smokescreen",
+      "trukk-smokescreen-passed",
+      state.events.length + 1,
+    );
+  }
+  const totalWounds = targets.reduce((total, profile) => total + profile.wounds, 0);
+  state = appendResolvedAttack(state, {
+    id: "doom-destroys-trukk",
+    at: state.events.length + 1,
+    attackerFormationId: doom.id,
+    targetFormationId: target.id,
+    segmentIds,
+    targets,
+    initialWoundsLost: 0,
+    result: { appliedDamage: totalWounds, modelsDestroyed: 1 },
+    summary: {
+      attacker: doom.name,
+      weapon: weapon.name,
+      target: target.name,
+      damage: totalWounds,
+      successful: 1,
+    },
+    weaponHasAssault: weapon.hasAssault,
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Closest hull points, range, and line of sight checked",
+    targetEligibilityEventId: "doom-targets-trukk",
+    weaponId: weapon.weaponId,
+    declaredWeaponCount: 1,
+    indirectFire: false,
+    weaponSourceFormationId: doom.id,
+    sourceSavedUnitId: inventory.sourceSavedUnitId,
+    weaponGroupId: inventory.groupId,
+  });
+  replayed = replayBattleState(state);
+  assert.deepEqual(replayed.pendingTransportDestructions.get(target.id).passengerFormationIds, [
+    "player-1:burnas",
+    "player-1:lootas",
+  ]);
+  state = resolveDestroyedTransport(
+    state,
+    target.id,
+    [
+      {
+        formationId: "player-1:burnas",
+        firstSegmentId: replayed.formations
+          .get("player-1:burnas")
+          .segments.find(
+            (segment) =>
+              replayed.formations.get("player-1:burnas").health[segment.id].modelsRemaining > 0,
+          ).id,
+        emergency: true,
+        unplacedModels: 0,
+        placementConfirmed: true,
+        placementReason: "Wholly within 6 inches and outside Engagement Range",
+      },
+      {
+        formationId: "player-1:lootas",
+        firstSegmentId: replayed.formations
+          .get("player-1:lootas")
+          .segments.find(
+            (segment) =>
+              replayed.formations.get("player-1:lootas").health[segment.id].modelsRemaining > 0,
+          ).id,
+        emergency: false,
+        unplacedModels: 0,
+        placementConfirmed: true,
+        placementReason: "Wholly within 3 inches and outside Engagement Range",
+      },
+    ],
+    "resolve-destroyed-trukk",
+    state.events.length + 1,
+    () => 5,
+    {
+      deadlyDemiseResolvedConfirmed: true,
+      deadlyDemiseResolutionReason: "Deadly Demise was resolved first",
+    },
+  );
+  replayed = replayBattleState(state);
+  assert.deepEqual(
+    replayed.pendingModelPositions.map((pending) => [
+      pending.formationId,
+      pending.context,
+      pending.placementRadiusThousandths,
+    ]),
+    [
+      ["player-1:burnas", "emergency_disembarkation", 6_000],
+      ["player-1:lootas", "destroyed_transport_disembarkation", 3_000],
+    ],
+  );
+  assert.throws(
+    () =>
+      completeFormationActivation(
+        state,
+        "blocked-before-passenger-positions",
+        state.events.length + 1,
+      ),
+    /per-model position snapshot/i,
+  );
+  assert.throws(
+    () =>
+      recordModelPositions(
+        state,
+        "player-1:burnas",
+        reviewedModelPositions(
+          state,
+          "player-1:burnas",
+          "destroyed_transport_disembarkation",
+          "resolve-destroyed-trukk",
+        ),
+        "wrong-emergency-mode",
+        state.events.length + 1,
+      ),
+    /pending position snapshot|placement mode/i,
+  );
+  state = recordModelPositions(
+    state,
+    "player-1:burnas",
+    reviewedModelPositions(
+      state,
+      "player-1:burnas",
+      "emergency_disembarkation",
+      "resolve-destroyed-trukk",
+    ),
+    "burnas-emergency-positioned",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).pendingModelPosition.formationId, "player-1:lootas");
+  state = recordModelPositions(
+    state,
+    "player-1:lootas",
+    reviewedModelPositions(
+      state,
+      "player-1:lootas",
+      "destroyed_transport_disembarkation",
+      "resolve-destroyed-trukk",
+    ),
+    "lootas-positioned",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.deepEqual(
+    replayed.modelLocationHistoryByFormation
+      .get("player-1:burnas")
+      .map(({ context, location, transportFormationId }) => [
+        context,
+        location,
+        transportFormationId,
+      ]),
+    [
+      ["deployment_embarked", "embarked", "player-1:trukk"],
+      ["emergency_disembarkation", "battlefield", "player-1:trukk"],
+    ],
+  );
+  assert.equal(replayed.pendingModelPosition, null);
+  assert.deepEqual(replayed.pendingModelPositions, []);
+  assert.equal(replayed.currentModelPositionsByFormation.get("player-1:burnas").models.length, 5);
+  assert.equal(replayed.currentModelPositionsByFormation.get("player-1:lootas").models.length, 5);
+  assert.equal(
+    replayed.modelLocationHistoryByFormation.get("player-1:burnas").at(-1).transportFormationId,
+    target.id,
+  );
+  assert.equal(
+    replayed.modelLocationHistoryByFormation.get("player-1:lootas").at(-1).transportFormationId,
+    target.id,
+  );
 });
 
 test("requires exact first positions after Rapid Ingress before play can continue", () => {
@@ -1864,6 +2359,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacyModelPlacementsThroughSequence: 3,
     legacyModelPositionsThroughSequence: 3,
     legacyExtendedModelPositionsThroughSequence: 3,
+    legacyTransportModelLocationsThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -1903,6 +2399,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacyModelPlacementsThroughSequence: 3,
     legacyModelPositionsThroughSequence: 3,
     legacyExtendedModelPositionsThroughSequence: 3,
+    legacyTransportModelLocationsThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -1947,6 +2444,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacyModelPlacementsThroughSequence: 2,
     legacyModelPositionsThroughSequence: 2,
     legacyExtendedModelPositionsThroughSequence: 2,
+    legacyTransportModelLocationsThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -1984,6 +2482,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacyModelPlacementsThroughSequence: 2,
     legacyModelPositionsThroughSequence: 2,
     legacyExtendedModelPositionsThroughSequence: 2,
+    legacyTransportModelLocationsThroughSequence: 2,
   });
 });
 
@@ -2020,6 +2519,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacyModelPlacementsThroughSequence: 2,
     legacyModelPositionsThroughSequence: 2,
     legacyExtendedModelPositionsThroughSequence: 2,
+    legacyTransportModelLocationsThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -2062,6 +2562,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacyModelPlacementsThroughSequence: 2,
     legacyModelPositionsThroughSequence: 2,
     legacyExtendedModelPositionsThroughSequence: 2,
+    legacyTransportModelLocationsThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -2099,6 +2600,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacyModelPlacementsThroughSequence: 2,
     legacyModelPositionsThroughSequence: 2,
     legacyExtendedModelPositionsThroughSequence: 2,
+    legacyTransportModelLocationsThroughSequence: 2,
   });
 });
 
@@ -2135,6 +2637,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacyModelPlacementsThroughSequence: 2,
     legacyModelPositionsThroughSequence: 2,
     legacyExtendedModelPositionsThroughSequence: 2,
+    legacyTransportModelLocationsThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -2569,6 +3072,7 @@ test("migrates version-27 placement snapshots without inventing movement history
   assert.equal(migrated.migration.sourceVersion, 27);
   assert.equal(migrated.migration.legacyModelPositionsThroughSequence, legacyEventCount);
   assert.equal(migrated.migration.legacyExtendedModelPositionsThroughSequence, legacyEventCount);
+  assert.equal(migrated.migration.legacyTransportModelLocationsThroughSequence, legacyEventCount);
   assert.equal(replayed.pendingModelPosition, null);
   assert.equal(replayed.modelPositionHistoryByFormation.get("player-2:brutalis").length, 1);
 });
@@ -2607,7 +3111,48 @@ test("migrates version-28 paths without inventing extended physical movement sna
   assert.equal(migrated.migration.sourceVersion, 28);
   assert.equal(migrated.migration.legacyModelPositionsThroughSequence, 0);
   assert.equal(migrated.migration.legacyExtendedModelPositionsThroughSequence, legacyEventCount);
+  assert.equal(migrated.migration.legacyTransportModelLocationsThroughSequence, legacyEventCount);
   assert.equal(replayed.pendingModelPosition, null);
+  assert.equal(replayed.modelPositionHistoryByFormation.get("player-2:brutalis").length, 1);
+});
+
+test("migrates version-29 geometry without inventing Transport location transitions", () => {
+  let versionTwentyNine = exactMissionSetup("version-29-transport-model-locations");
+  versionTwentyNine = configureBattleTableGeometry(
+    versionTwentyNine,
+    reviewedTableGeometry(versionTwentyNine),
+    "version-29-table-geometry",
+    versionTwentyNine.events.length + 1,
+  );
+  versionTwentyNine = configureBattleTerrainFootprints(
+    versionTwentyNine,
+    reviewedTerrainFootprints(versionTwentyNine),
+    "version-29-terrain-footprints",
+    versionTwentyNine.events.length + 1,
+  );
+  versionTwentyNine = deployAllOnBattlefield(versionTwentyNine);
+  versionTwentyNine.version = 29;
+  delete versionTwentyNine.migration;
+  const legacyEventCount = versionTwentyNine.events.length;
+  const migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: normalizeBattleState(versionTwentyNine),
+    id: versionTwentyNine.id,
+  });
+  const replayed = replayBattleState(migrated);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 29);
+  assert.equal(migrated.migration.legacyModelPositionsThroughSequence, 0);
+  assert.equal(migrated.migration.legacyExtendedModelPositionsThroughSequence, 0);
+  assert.equal(migrated.migration.legacyTransportModelLocationsThroughSequence, legacyEventCount);
+  assert.equal(replayed.pendingModelPosition, null);
+  assert.equal(replayed.modelLocationHistoryByFormation.size, 0);
   assert.equal(replayed.modelPositionHistoryByFormation.get("player-2:brutalis").length, 1);
 });
 
