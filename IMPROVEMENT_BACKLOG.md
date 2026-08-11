@@ -27,8 +27,10 @@ state.
 
 ## Prioritized backlog
 
-1. Continue the legal-action engine with the remaining reactions, cover, and
-   Stratagem windows; then expand
+1. Replace the guided weapon-at-a-time target boundary with an activation-wide
+   declaration covering every weapon and split-fire target before any attack is
+   rolled, then continue the remaining reactions, cover, and Stratagem windows;
+   then expand
    Transport changes beyond the roster's locked assigned carrier and execute
    transport-specific exceptions.
 2. Build and enforce the source-locked faction, detachment, enhancement,
@@ -41,6 +43,25 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced guided play to battle-state version 16 with an executable
+  Go to Ground reaction at the current single-weapon declaration boundary. The
+  first reviewed ranged target in an activation now pauses before attack dice
+  are generated when an eligible enemy Infantry formation can use the
+  Stratagem. Replay enforces the opponent's Shooting-phase timing, target-player
+  1CP deduction, Battle-shock restriction, same-Stratagem once-per-phase
+  restriction, pass path, and exact declaration-to-attack binding. Resolution
+  gives every target model a 6+ invulnerable save and Benefit of Cover until
+  phase end; better invulnerable saves remain better and Ignores Cover removes
+  only the cover benefit. The play UI resumes the locked attack after the
+  defender's choice. The replay API exposes pending, ready, resolved, declined,
+  and active-effect state, and an ACSL-specified native predicate is exported to
+  WebAssembly and differentially checked. Version-15 and older histories
+  migrate behind an explicit Go to Ground boundary. Official Core Rules pages
+  25, 41, 42, and 44 and Core Rules Updates page 18 are source-locked for the
+  implemented interaction. Activation-wide target declaration remains the next
+  correctness slice so a split-fire unit can expose every eligible target to
+  the defender before any attack is rolled.
 
 - 2026-08-11: Advanced guided play to battle-state version 15 with canonical
   Hazardous self-damage. Locked weapon profiles and exact bearer segments now

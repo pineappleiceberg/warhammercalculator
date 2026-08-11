@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 15 as soon as both lists are selected. Every
+creates battle-state version 16 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -812,6 +812,26 @@ JavaScript replay, native C health replay, WebAssembly, and the worker API share
 the same allocation outcome, while an ACSL contract specifies and proves the
 failed-test damage predicate. Version-14 and older histories retain an explicit
 Hazardous migration boundary.
+Version 16 makes Go to Ground executable at Guided Play's current pre-roll
+weapon-target declaration boundary. When the first reviewed ranged weapon
+target in an activation is an eligible enemy Infantry formation in the
+opponent's Shooting phase, replay pauses before any attack dice are generated
+and gives the defending player the 1CP decision. Resolution atomically spends
+the target player's Command Point, enforces the same-Stratagem once-per-phase
+restriction and Battle-shock restriction, and gives every model in the target
+formation a 6+ invulnerable save and Benefit of Cover until the end of that
+phase. Existing better invulnerable saves remain better, and Ignores Cover
+removes only the cover benefit. Passing or resolving the window produces one
+ready attack bound to the exact activation, attacker, target, source unit,
+weapon group, and profile; no attack dice are generated until that attack
+resumes. Later attacks against the affected formation inherit the phase effect
+without reopening the spent Stratagem. Guided Play exposes the decision and
+resume path, while the replay API reports pending, ready, resolved, passed, and
+active-effect state and cross-checks the ACSL-specified C/WebAssembly predicate.
+Version-15 and older histories retain their recorded attacks behind an explicit
+Go to Ground migration boundary. Activation-wide declarations for every weapon
+and split-fire target remain a documented next step; until then, select the
+intended Go to Ground target first in Guided Play.
 The guided timeline records battle round, first or second player turn, active
 and priority player, phase, and step. It covers Command, Movement, Shooting,
 Charge, and Fight through five rounds. Pending bounded choices stop both attacks

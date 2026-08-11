@@ -67,6 +67,12 @@
 #define WHC_HAZARDOUS_SELECTED_BEARER 1u
 #define WHC_HAZARDOUS_SELECTION_PRIORITY 2u
 #define WHC_HAZARDOUS_FLAGS_MASK 3u
+#define WHC_GO_TO_GROUND_TARGET_SELECTED 1u
+#define WHC_GO_TO_GROUND_TARGET_INFANTRY 2u
+#define WHC_GO_TO_GROUND_RESPONDING_PLAYER 4u
+#define WHC_GO_TO_GROUND_SIX_PLUS_INVULNERABLE 8u
+#define WHC_GO_TO_GROUND_BENEFIT_OF_COVER 16u
+#define WHC_GO_TO_GROUND_FLAGS_MASK 31u
 
 enum whc_fire_overwatch_trigger {
     WHC_FIRE_OVERWATCH_SET_UP = 1u,
@@ -319,6 +325,19 @@ bool whc_hazardous_resolution_is_valid(uint32_t initial_roll, uint32_t reroll,
                                         uint32_t feel_no_pain, uint32_t feel_no_pain_roll_count,
                                         uint32_t ignored_wounds, uint32_t applied_damage,
                                         bool model_destroyed, uint32_t flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        phase == WHC_BATTLE_PHASE_SHOOTING &&
+        command_points_before >= 1 && command_points_before <= 100000 &&
+        command_point_cost == 1 &&
+        command_points_after == command_points_before - command_point_cost &&
+        !already_used && !target_battle_shocked &&
+        flags == WHC_GO_TO_GROUND_FLAGS_MASK;
+*/
+bool whc_go_to_ground_is_valid(uint32_t phase, uint32_t command_points_before,
+                               uint32_t command_point_cost, uint32_t command_points_after,
+                               bool already_used, bool target_battle_shocked, uint32_t flags);
 
 /*@ requires first_player_index <= 1;
     requires \valid(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));

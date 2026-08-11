@@ -25,6 +25,7 @@ import {
   replayBattleState,
   resolveHeroicIntervention,
   resolveHazardousDamage,
+  resolveGoToGround,
   resolveBattleChoice,
   resolveDestroyedTransport,
   scoreBattlePoints,
@@ -2989,7 +2990,7 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 15);
+  assert.equal(body.data.schemaVersion, 16);
   assert.equal(body.data.charges[0].canonicalMovement, true);
   assert.deepEqual(body.data.charges[0].rolls, [3, 4]);
   assert.equal(body.data.charges[0].chargeDistanceThousandths, 7000);
@@ -3168,7 +3169,7 @@ test("cross-checks Fire Overwatch reactions through the C and WebAssembly API", 
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 15);
+  assert.equal(body.data.schemaVersion, 16);
   assert.equal(body.data.pendingFireOverwatch, null);
   assert.equal(body.data.fireOverwatches.length, 1);
   assert.equal(body.data.fireOverwatches[0].trigger, "normal_move_start");
@@ -3304,6 +3305,179 @@ test("cross-checks Fire Overwatch reactions through the C and WebAssembly API", 
   assert.equal(declinedBody.data.fireOverwatches.length, 0);
   assert.equal(declinedBody.data.fireOverwatchPasses.length, 1);
   assert.equal(declinedBody.data.fireOverwatchPasses[0].trigger, "normal_move_start");
+});
+
+test("cross-checks Go to Ground reaction and phase effect through the C and WebAssembly API", async () => {
+  const attacker = {
+    id: "gtg-attacker",
+    playerId: "player-1",
+    sourceFormationId: "gtg-attacker",
+    name: "Go to Ground attacker",
+    keywords: ["Vehicle"],
+    weaponInventory: [
+      {
+        sourceSavedUnitId: "gtg-attacker",
+        groupId: "gtg-gun-group",
+        name: "Go to Ground gun",
+        count: 1,
+        profiles: [
+          {
+            weaponId: "gtg-gun",
+            name: "Go to Ground gun",
+            type: "Ranged",
+            publishedRangeThousandths: 24000,
+            hasAssault: false,
+            hasIndirect: false,
+            hasHazardous: false,
+          },
+        ],
+      },
+    ],
+    segments: [
+      {
+        id: "gtg-attacker-model",
+        savedUnitId: "gtg-attacker",
+        unitName: "Go to Ground attacker",
+        modelName: "Go to Ground attacker",
+        role: "standalone",
+        wounds: 10,
+        startingModels: 1,
+      },
+    ],
+  };
+  const target = {
+    id: "gtg-target",
+    playerId: "player-2",
+    sourceFormationId: "gtg-target",
+    name: "Go to Ground target",
+    keywords: ["Infantry"],
+    segments: [
+      {
+        id: "gtg-target-model",
+        savedUnitId: "gtg-target",
+        unitName: "Go to Ground target",
+        modelName: "Go to Ground target",
+        role: "standalone",
+        keywords: ["Infantry"],
+        wounds: 2,
+        startingModels: 5,
+      },
+    ],
+  };
+  let state = createBattleState({
+    id: "api-go-to-ground-battle",
+    createdAt: 1,
+    rulesSnapshot: "catalogue:test",
+    players: [
+      { id: "player-1", listId: "gtg-list-1", listUpdatedAt: 1, name: "Attacker" },
+      { id: "player-2", listId: "gtg-list-2", listUpdatedAt: 1, name: "Defender" },
+    ],
+  });
+  state = registerBattleFormation(state, attacker, "gtg-register-attacker", 1);
+  state = registerBattleFormation(state, target, "gtg-register-target", 2);
+  state = configureBattleMission(
+    state,
+    {
+      name: "API Go to Ground",
+      commandPointsPerCommandPhase: 0,
+      startingCommandPoints: { "player-1": 0, "player-2": 1 },
+      objectives: [],
+    },
+    "gtg-mission",
+    3,
+  );
+  state = declareFormationDeployment(state, attacker.id, "battlefield", {}, "gtg-declare-a", 4);
+  state = declareFormationDeployment(state, target.id, "battlefield", {}, "gtg-declare-t", 5);
+  state = deployFormation(
+    state,
+    attacker.id,
+    { placementConfirmed: true, placementReason: "Deployment zone" },
+    "gtg-deploy-a",
+    6,
+  );
+  state = deployFormation(
+    state,
+    target.id,
+    { placementConfirmed: true, placementReason: "Deployment zone" },
+    "gtg-deploy-t",
+    7,
+  );
+  state = startBattle(state, "player-1", "gtg-start", 8);
+  while (
+    !(
+      replayBattleState(state).clock.phase === "movement" &&
+      replayBattleState(state).clock.step === "move_units"
+    )
+  ) {
+    state = advanceBattleClock(state, `gtg-move-${state.events.length}`, state.events.length);
+  }
+  state = recordFormationMovement(
+    state,
+    attacker.id,
+    "stationary",
+    "gtg-stationary",
+    state.events.length,
+  );
+  while (
+    !(
+      replayBattleState(state).clock.phase === "shooting" &&
+      replayBattleState(state).clock.step === "resolve_attacks"
+    )
+  ) {
+    state = advanceBattleClock(state, `gtg-shoot-${state.events.length}`, state.events.length);
+  }
+  state = startFormationActivation(state, attacker.id, {}, "gtg-activation", state.events.length);
+  state = recordRangedTargetEligibility(
+    state,
+    {
+      attackerFormationId: attacker.id,
+      targetFormationId: target.id,
+      weaponId: "gtg-gun",
+      weaponName: "Go to Ground gun",
+      weaponSourceFormationId: attacker.id,
+      sourceSavedUnitId: "gtg-attacker",
+      weaponGroupId: "gtg-gun-group",
+      publishedRangeThousandths: 24000,
+      effectiveRangeThousandths: 24000,
+      measuredDistanceThousandths: 12000,
+      visible: true,
+      fullyVisible: false,
+      indirectFire: false,
+      weaponHasIndirect: false,
+      eligibleWeaponCount: 1,
+      method: "manual",
+      reviewedByPlayer: true,
+      reviewReason: "Range and visibility reviewed",
+    },
+    "gtg-target-selected",
+    state.events.length,
+  );
+  assert.equal(replayBattleState(state).pendingGoToGround.targetFormationId, target.id);
+  state = resolveGoToGround(state, "gtg-resolved", state.events.length);
+
+  const worker = await loadWorker();
+  const response = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: state, formationId: target.id }),
+    }),
+    testEnv,
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  const body = await response.json();
+  assert.equal(body.data.schemaVersion, 16);
+  assert.equal(body.data.pendingGoToGround, null);
+  assert.equal(body.data.readyRangedAttack.triggerEventId, "gtg-target-selected");
+  assert.equal(body.data.goToGrounds.length, 1);
+  assert.equal(body.data.goToGrounds[0].canonical, true);
+  assert.equal(body.data.goToGrounds[0].commandPointsBefore, 1);
+  assert.equal(body.data.goToGrounds[0].commandPointsAfter, 0);
+  assert.equal(body.data.goToGrounds[0].effect.invulnerableSave, 6);
+  assert.equal(body.data.goToGrounds[0].effect.benefitOfCover, true);
+  assert.equal(body.data.activeGoToGroundEffects.length, 1);
+  assert.deepEqual(body.data.goToGroundPasses, []);
 });
 
 test("cross-checks destroyed Transport passenger damage through WebAssembly", async () => {
@@ -3516,7 +3690,7 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 15);
+  assert.equal(body.data.schemaVersion, 16);
   assert.deepEqual(body.data.weaponDeclarations, [
     {
       attackEventId: "destroy-transport",

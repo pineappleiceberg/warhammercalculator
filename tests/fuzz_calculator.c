@@ -197,6 +197,15 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     uint32_t hazardous_flags;
     bool hazardous_valid;
     bool expected_hazardous_valid;
+    uint32_t go_to_ground_phase;
+    uint32_t go_to_ground_cp_before;
+    uint32_t go_to_ground_cost;
+    uint32_t go_to_ground_cp_after;
+    bool go_to_ground_already_used;
+    bool go_to_ground_battle_shocked;
+    uint32_t go_to_ground_flags;
+    bool go_to_ground_valid;
+    bool expected_go_to_ground_valid;
 
     while (index < weapon_count) {
         generate_weapon(&input, &weapons[index]);
@@ -452,5 +461,23 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         (hazardous_destroyed ? hazardous_damage == hazardous_remaining_wounds
                              : hazardous_damage < hazardous_remaining_wounds);
     assert(hazardous_valid == expected_hazardous_valid);
+    go_to_ground_phase = next_byte(&input);
+    go_to_ground_cp_before = next_u16(&input);
+    go_to_ground_cost = next_byte(&input);
+    go_to_ground_cp_after = next_u16(&input);
+    go_to_ground_already_used = next_byte(&input) % 2u != 0u;
+    go_to_ground_battle_shocked = next_byte(&input) % 2u != 0u;
+    go_to_ground_flags = next_byte(&input);
+    go_to_ground_valid = whc_go_to_ground_is_valid(
+        go_to_ground_phase, go_to_ground_cp_before, go_to_ground_cost,
+        go_to_ground_cp_after, go_to_ground_already_used, go_to_ground_battle_shocked,
+        go_to_ground_flags);
+    expected_go_to_ground_valid =
+        go_to_ground_phase == WHC_BATTLE_PHASE_SHOOTING && go_to_ground_cp_before >= 1u &&
+        go_to_ground_cp_before <= 100000u && go_to_ground_cost == 1u &&
+        go_to_ground_cp_after == go_to_ground_cp_before - go_to_ground_cost &&
+        !go_to_ground_already_used && !go_to_ground_battle_shocked &&
+        go_to_ground_flags == WHC_GO_TO_GROUND_FLAGS_MASK;
+    assert(go_to_ground_valid == expected_go_to_ground_valid);
     return 0;
 }

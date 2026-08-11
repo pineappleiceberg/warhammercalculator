@@ -14,6 +14,7 @@ import {
   type RollResult,
 } from "../../lib/combat";
 import { applyFireOverwatchAttackRules } from "../../lib/fire-overwatch.mjs";
+import { applyGoToGroundAttackEffects } from "../../lib/go-to-ground.mjs";
 import {
   activeBattleAttacks,
   advanceBattleClock,
@@ -41,6 +42,7 @@ import {
   normalizeBattleState,
   passFightPriority,
   passFireOverwatch,
+  passGoToGround,
   passHeroicIntervention,
   recordFormationCharge,
   recordHazardousTests,
@@ -54,6 +56,7 @@ import {
   resolveBattleChoice,
   resolveHeroicIntervention,
   resolveHazardousDamage,
+  resolveGoToGround,
   revertLatestAttack,
   scoreBattlePoints,
   setBattleObjectiveControl,
@@ -214,6 +217,7 @@ export default function PlayMode() {
   const [fireOverwatchOutOfPhaseConfirmed, setFireOverwatchOutOfPhaseConfirmed] = useState(false);
   const [fireOverwatchOutOfPhaseReason, setFireOverwatchOutOfPhaseReason] = useState("");
   const [fireOverwatchPassReason, setFireOverwatchPassReason] = useState("");
+  const [goToGroundPassReason, setGoToGroundPassReason] = useState("");
   const [hazardousBearerId, setHazardousBearerId] = useState("");
   const [hazardousSelectionReason, setHazardousSelectionReason] = useState("");
   const [heroicFormationId, setHeroicFormationId] = useState("");
@@ -900,6 +904,11 @@ export default function PlayMode() {
   );
   const pendingBattleChoices = replayedBattle ? [...replayedBattle.pendingChoices.values()] : [];
   const pendingFireOverwatch = replayedBattle?.pendingFireOverwatch ?? null;
+  const pendingGoToGround = replayedBattle?.pendingGoToGround ?? null;
+  const goToGroundResponderCommandPoints = pendingGoToGround
+    ? (replayedBattle?.resources.get(pendingGoToGround.responderPlayerId)?.get("command_points")
+        ?.value ?? 0)
+    : 0;
   const pendingHazardous = replayedBattle?.pendingHazardous ?? null;
   const hazardousOptions =
     battleState && pendingHazardous?.due ? hazardousBearerOptions(battleState) : [];
@@ -2248,7 +2257,8 @@ export default function PlayMode() {
         : profile.attackerBattleShocked;
     const resolvedTargetBattleShocked =
       battleClock?.status === "active" ? targetFormationBattleShocked : profile.targetBattleShocked;
-    let rolled: RollResult | OrderedVolleyRollResult;
+    let orderedTargets: Parameters<typeof simulateOrderedVolley>[1] = [];
+    let attackProfiles: Parameters<typeof simulateOrderedVolley>[0] = [];
     let declaredWeaponCount = 0;
     try {
       if (targetFormationModels.ambiguousComponents.length > 0) {
@@ -2273,7 +2283,7 @@ export default function PlayMode() {
         profile.targetWaaaghActive,
       );
       const attackKeywords = attackKeywordsForWeapon(weaponProfile);
-      const orderedTargets = applyDefensiveEquipmentTargets(
+      orderedTargets = applyDefensiveEquipmentTargets(
         applyTargetCombatPresets(targetFormationModels.targets, targetPresets, [
           {
             weaponType: weaponProfile.type,
@@ -2309,7 +2319,7 @@ export default function PlayMode() {
         targetDefensiveEquipmentOptions,
         attackKeywords,
       );
-      const attackProfiles = (
+      attackProfiles = (
         selectedSourceEquipmentSegments.length
           ? selectedSourceEquipmentSegments
           : [{ count: profile.weaponCount, sourceEquipmentPresetIds: [] }]
@@ -2357,25 +2367,23 @@ export default function PlayMode() {
         (total, attackProfile) => total + attackProfile.weaponCount,
         0,
       );
-      rolled = simulateOrderedVolley(
-        attackProfiles,
-        orderedTargets,
-        targetFormationModels.initialWoundsLost,
-      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Attack could not be resolved");
       return;
     }
-    const attackId = crypto.randomUUID();
+    let rolled: RollResult | OrderedVolleyRollResult;
     let nextBattleState = battleState;
     try {
       if (!targetFormation || !attackerFormation || !catalogue) {
         throw new Error("Battle state is not ready");
       }
       if (!nextBattleState) throw new Error("Battle setup is not ready");
-      const replayedBeforeAttack = replayBattleState(nextBattleState);
+      let replayedBeforeAttack = replayBattleState(nextBattleState);
       if (replayedBeforeAttack.clock.phase === "fight" && !replayedBeforeAttack.activeActivation) {
         throw new Error("Begin the Fight activation and record Pile In before attacking");
+      }
+      if (replayedBeforeAttack.pendingGoToGround) {
+        throw new Error("Resolve or decline Go to Ground before rolling the declared attack");
       }
       if (!replayedBeforeAttack.activeActivation) {
         nextBattleState = startFormationActivation(
@@ -2385,44 +2393,90 @@ export default function PlayMode() {
           crypto.randomUUID(),
           nextBattleState.events.length + 1,
         );
+        replayedBeforeAttack = replayBattleState(nextBattleState);
       }
       let targetEligibilityEventId = "";
       if (weaponProfile.type === "Ranged") {
-        targetEligibilityEventId = crypto.randomUUID();
-        nextBattleState = recordRangedTargetEligibility(
-          nextBattleState,
-          {
-            attackerFormationId: `${attackerPlayerId}:${attackerFormation.id}`,
-            targetFormationId: targetBattleFormationId,
-            weaponId: String(weaponProfile.id),
-            weaponName: weaponProfile.name,
-            weaponSourceFormationId,
-            sourceSavedUnitId: weaponSourceArmyUnit?.id ?? "",
-            weaponGroupId: selectedWeaponGroup?.id ?? "",
-            publishedRangeThousandths: Math.round((weaponProfile.range ?? 0) * 1000),
-            effectiveRangeThousandths: Math.round(effectiveWeaponRange * 1000),
-            measuredDistanceThousandths: Math.round(profile.targetDistance * 1000),
-            visible: targetVisible,
-            fullyVisible: targetFullyVisible,
-            indirectFire: !targetVisible && profile.indirect,
-            weaponHasIndirect,
-            eligibleWeaponCount: declaredWeaponCount,
-            method: targetMeasurementMethod,
-            reviewedByPlayer: targetEligibilityReviewed,
-            reviewReason: targetMeasurementReason.trim(),
-            rangeOverrideReason: rangeOverrideReason.trim(),
-          },
-          targetEligibilityEventId,
-          nextBattleState.events.length + 1,
-        );
+        const attackerFormationId = `${attackerPlayerId}:${attackerFormation.id}`;
+        const sourceSavedUnitId = weaponSourceArmyUnit?.id ?? "";
+        const weaponGroupId = selectedWeaponGroup?.id ?? "";
+        const ready = replayedBeforeAttack.readyRangedAttack;
+        if (
+          ready &&
+          (ready.attackerFormationId !== attackerFormationId ||
+            ready.targetFormationId !== targetBattleFormationId ||
+            ready.weaponId !== String(weaponProfile.id) ||
+            ready.weaponSourceFormationId !== weaponSourceFormationId ||
+            ready.sourceSavedUnitId !== sourceSavedUnitId ||
+            ready.weaponGroupId !== weaponGroupId)
+        ) {
+          throw new Error(
+            "The declared ranged attack is locked to its original attacker, target, and weapon",
+          );
+        }
+        if (!ready) {
+          targetEligibilityEventId = crypto.randomUUID();
+          nextBattleState = recordRangedTargetEligibility(
+            nextBattleState,
+            {
+              attackerFormationId,
+              targetFormationId: targetBattleFormationId,
+              weaponId: String(weaponProfile.id),
+              weaponName: weaponProfile.name,
+              weaponSourceFormationId,
+              sourceSavedUnitId,
+              weaponGroupId,
+              publishedRangeThousandths: Math.round((weaponProfile.range ?? 0) * 1000),
+              effectiveRangeThousandths: Math.round(effectiveWeaponRange * 1000),
+              measuredDistanceThousandths: Math.round(profile.targetDistance * 1000),
+              visible: targetVisible,
+              fullyVisible: targetFullyVisible,
+              indirectFire: !targetVisible && profile.indirect,
+              weaponHasIndirect,
+              eligibleWeaponCount: declaredWeaponCount,
+              method: targetMeasurementMethod,
+              reviewedByPlayer: targetEligibilityReviewed,
+              reviewReason: targetMeasurementReason.trim(),
+              rangeOverrideReason: rangeOverrideReason.trim(),
+            },
+            targetEligibilityEventId,
+            nextBattleState.events.length + 1,
+          );
+          replayedBeforeAttack = replayBattleState(nextBattleState);
+          if (replayedBeforeAttack.pendingGoToGround) {
+            setBattleState(nextBattleState);
+            setResult(null);
+            setStatus("Target declared · defending player must resolve or decline Go to Ground");
+            return;
+          }
+        } else {
+          targetEligibilityEventId = ready.triggerEventId;
+        }
+        targetEligibilityEventId =
+          replayedBeforeAttack.readyRangedAttack?.triggerEventId ?? targetEligibilityEventId;
+        if (!targetEligibilityEventId) {
+          throw new Error("The ranged target reaction window did not produce a ready attack");
+        }
       }
+      const goToGroundEffect = replayedBeforeAttack.activeGoToGroundEffects.find(
+        (effect: { targetFormationId: string }) =>
+          effect.targetFormationId === targetBattleFormationId,
+      );
+      const { attackProfiles: resolvedAttackProfiles, targets: resolvedTargets } =
+        applyGoToGroundAttackEffects(attackProfiles, orderedTargets, Boolean(goToGroundEffect));
+      rolled = simulateOrderedVolley(
+        resolvedAttackProfiles,
+        resolvedTargets,
+        targetFormationModels.initialWoundsLost,
+      );
+      const attackId = crypto.randomUUID();
       nextBattleState = appendResolvedAttack(nextBattleState, {
         id: attackId,
         at: nextBattleState.events.length + 1,
         attackerFormationId: `${attackerPlayerId}:${attackerFormation.id}`,
         targetFormationId: targetBattleFormationId,
         segmentIds: targetFormationModels.orderedSegments.map((segment) => segment.id),
-        targets: orderedTargets,
+        targets: resolvedTargets,
         initialWoundsLost: targetFormationModels.initialWoundsLost,
         result: rolled,
         weaponHasAssault,
@@ -3151,6 +3205,41 @@ export default function PlayMode() {
     }
   };
 
+  const useGoToGround = () => {
+    if (!battleState || !pendingGoToGround) return;
+    try {
+      const next = resolveGoToGround(
+        battleState,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setGoToGroundPassReason("");
+      setResult(null);
+      setStatus("Go to Ground active · click Roll this attack to resolve the declared weapon");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Go to Ground could not be resolved");
+    }
+  };
+
+  const declineGoToGround = () => {
+    if (!battleState || !pendingGoToGround) return;
+    try {
+      const next = passGoToGround(
+        battleState,
+        goToGroundPassReason.trim() || "Defending player declined Go to Ground",
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setGoToGroundPassReason("");
+      setResult(null);
+      setStatus("Go to Ground declined · click Roll this attack to resolve the declared weapon");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Go to Ground could not be declined");
+    }
+  };
+
   const rollHeroicIntervention = () => {
     const dice = rollChargeDice() as [number, number];
     const distance = Math.max(0, dice[0] + dice[1] + heroicRollModifier);
@@ -3463,6 +3552,7 @@ export default function PlayMode() {
       !battleSetupError &&
       Boolean(battleState) &&
       battleAttackReady &&
+      !pendingGoToGround &&
       (unusedSelectedWeaponCount === null ||
         (unusedSelectedWeaponCount > 0 &&
           selectedDeclaredWeaponCount <= unusedSelectedWeaponCount)) &&
@@ -3505,6 +3595,9 @@ export default function PlayMode() {
     if (battleClock.status === "complete") return "The battle is complete";
     if (pendingDestroyedTransport) {
       return "Resolve the destroyed Transport and its passengers before continuing";
+    }
+    if (pendingGoToGround) {
+      return "Defending player must resolve or decline Go to Ground";
     }
     if (
       attackerBattleFormationId &&
@@ -6119,6 +6212,36 @@ export default function PlayMode() {
                   </button>
                 </div>
               )}
+            {battleClock.status === "active" && pendingGoToGround && (
+              <div className="action-tracker" aria-labelledby="go-to-ground-heading">
+                <strong id="go-to-ground-heading">Go to Ground response</strong>
+                <span>
+                  {replayedBattle?.formations.get(pendingGoToGround.targetFormationId)?.name ??
+                    "The selected Infantry unit"}{" "}
+                  was selected as a ranged target. Spend 1CP to give every model a 6+ invulnerable
+                  save and Benefit of Cover until the end of this phase.
+                </span>
+                <span>Available CP: {goToGroundResponderCommandPoints}</span>
+                <div className="action-buttons">
+                  <button
+                    type="button"
+                    disabled={goToGroundResponderCommandPoints < 1}
+                    onClick={useGoToGround}
+                  >
+                    Spend 1CP · Go to Ground
+                  </button>
+                  <input
+                    value={goToGroundPassReason}
+                    maxLength={300}
+                    placeholder="Optional reason for declining"
+                    onChange={(event) => setGoToGroundPassReason(event.target.value)}
+                  />
+                  <button type="button" onClick={declineGoToGround}>
+                    Decline Go to Ground
+                  </button>
+                </div>
+              </div>
+            )}
             {battleClock.status === "active" && pendingFireOverwatch && (
               <div className="action-tracker" aria-labelledby="fire-overwatch-heading">
                 <strong id="fire-overwatch-heading">Fire Overwatch response</strong>

@@ -291,6 +291,15 @@ bool whc_hazardous_resolution_is_valid(uint32_t initial_roll, uint32_t reroll,
                            : applied_damage < remaining_wounds;
 }
 
+bool whc_go_to_ground_is_valid(uint32_t phase, uint32_t command_points_before,
+                               uint32_t command_point_cost, uint32_t command_points_after,
+                               bool already_used, bool target_battle_shocked, uint32_t flags) {
+    return phase == WHC_BATTLE_PHASE_SHOOTING && command_points_before >= 1u &&
+           command_points_before <= 100000u && command_point_cost == 1u &&
+           command_points_after == command_points_before - command_point_cost && !already_used &&
+           !target_battle_shocked && flags == WHC_GO_TO_GROUND_FLAGS_MASK;
+}
+
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,
                                      const uint32_t *events, uint32_t event_count,
                                      uint32_t *health) {

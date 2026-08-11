@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 15;
+export const BATTLE_STATE_VERSION = 16;
+export const GO_TO_GROUND_BATTLE_STATE_VERSION = 16;
 export const HAZARDOUS_BATTLE_STATE_VERSION = 15;
 export const FIRE_OVERWATCH_BATTLE_STATE_VERSION = 14;
 export const HEROIC_INTERVENTION_BATTLE_STATE_VERSION = 13;
@@ -89,6 +90,47 @@ export const HAZARDOUS_FLAGS = Object.freeze({
   selectionPriority: 2,
   mask: 3,
 });
+
+export const GO_TO_GROUND_FLAGS = Object.freeze({
+  targetSelected: 1,
+  targetInfantry: 2,
+  respondingPlayer: 4,
+  sixPlusInvulnerable: 8,
+  benefitOfCover: 16,
+  mask: 31,
+});
+
+export function goToGroundIsValid(
+  phase,
+  commandPointsBefore,
+  commandPointCost,
+  commandPointsAfter,
+  alreadyUsed,
+  targetBattleShocked,
+  flags,
+) {
+  return Boolean(
+    phase === "shooting" &&
+      Number.isSafeInteger(commandPointsBefore) &&
+      commandPointsBefore >= 1 &&
+      commandPointsBefore <= 100_000 &&
+      commandPointCost === 1 &&
+      commandPointsAfter === commandPointsBefore - commandPointCost &&
+      !alreadyUsed &&
+      !targetBattleShocked &&
+      flags === GO_TO_GROUND_FLAGS.mask,
+  );
+}
+
+export function goToGroundFlags(event, targetIsInfantry, respondingPlayer) {
+  return (
+    GO_TO_GROUND_FLAGS.targetSelected |
+    (targetIsInfantry ? GO_TO_GROUND_FLAGS.targetInfantry : 0) |
+    (respondingPlayer ? GO_TO_GROUND_FLAGS.respondingPlayer : 0) |
+    (event.allModelsHaveSixPlusInvulnerable ? GO_TO_GROUND_FLAGS.sixPlusInvulnerable : 0) |
+    (event.allModelsHaveBenefitOfCover ? GO_TO_GROUND_FLAGS.benefitOfCover : 0)
+  );
+}
 
 export function hazardousResolutionIsValid(
   initialRoll,
@@ -1271,6 +1313,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   ) {
     throw new Error("Hazardous resolution requires battle-state version 15");
   }
+  if (
+    stateVersion < GO_TO_GROUND_BATTLE_STATE_VERSION &&
+    ["go_to_ground_passed", "go_to_ground_resolved"].includes(event.type)
+  ) {
+    throw new Error("Go to Ground reactions require battle-state version 16");
+  }
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation, stateVersion);
     if (!formations.players.has(formation.playerId)) throw new Error("Formation player is unknown");
@@ -1932,6 +1980,66 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
+  if (event.type === "go_to_ground_passed") {
+    normalized.triggerEventId = boundedString(
+      event.triggerEventId,
+      "Go to Ground trigger event id",
+      100,
+    );
+    normalized.playerId = boundedString(event.playerId, "Go to Ground player id", 100);
+    if (!formations.players.has(normalized.playerId)) {
+      throw new Error("Go to Ground player is unknown");
+    }
+    normalized.targetFormationId = boundedString(
+      event.targetFormationId,
+      "Go to Ground target formation id",
+      100,
+    );
+    if (!formations.byId.has(normalized.targetFormationId)) {
+      throw new Error("Go to Ground target formation is unknown");
+    }
+    normalized.reason = boundedString(event.reason, "Go to Ground pass reason", 300);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "go_to_ground_resolved") {
+    normalized.triggerEventId = boundedString(
+      event.triggerEventId,
+      "Go to Ground trigger event id",
+      100,
+    );
+    normalized.playerId = boundedString(event.playerId, "Go to Ground player id", 100);
+    if (!formations.players.has(normalized.playerId)) {
+      throw new Error("Go to Ground player is unknown");
+    }
+    normalized.targetFormationId = boundedString(
+      event.targetFormationId,
+      "Go to Ground target formation id",
+      100,
+    );
+    if (!formations.byId.has(normalized.targetFormationId)) {
+      throw new Error("Go to Ground target formation is unknown");
+    }
+    normalized.commandPointCost = nonnegativeInteger(
+      event.commandPointCost,
+      "Go to Ground Command Point cost",
+      5,
+    );
+    normalized.commandPointsBefore = nonnegativeInteger(
+      event.commandPointsBefore,
+      "Command Points before Go to Ground",
+      100_000,
+    );
+    normalized.commandPointsAfter = nonnegativeInteger(
+      event.commandPointsAfter,
+      "Command Points after Go to Ground",
+      100_000,
+    );
+    normalized.allModelsHaveSixPlusInvulnerable = Boolean(event.allModelsHaveSixPlusInvulnerable);
+    normalized.allModelsHaveBenefitOfCover = Boolean(event.allModelsHaveBenefitOfCover);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
   if (event.type === "fire_overwatch_started") {
     normalized.triggerEventId = boundedString(
       event.triggerEventId,
@@ -2392,6 +2500,7 @@ export function normalizeBattleState(candidate) {
       FIGHT_MOVE_BATTLE_STATE_VERSION,
       HEROIC_INTERVENTION_BATTLE_STATE_VERSION,
       FIRE_OVERWATCH_BATTLE_STATE_VERSION,
+      HAZARDOUS_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -2439,6 +2548,7 @@ export function normalizeBattleState(candidate) {
         FIGHT_MOVE_BATTLE_STATE_VERSION,
         HEROIC_INTERVENTION_BATTLE_STATE_VERSION,
         FIRE_OVERWATCH_BATTLE_STATE_VERSION,
+        HAZARDOUS_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -2527,6 +2637,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyHazardousThroughSequence = nonnegativeInteger(
         migration.legacyHazardousThroughSequence,
         "Legacy Hazardous event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= GO_TO_GROUND_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyGoToGroundThroughSequence = nonnegativeInteger(
+        migration.legacyGoToGroundThroughSequence,
+        "Legacy Go to Ground event sequence",
         events.length,
       );
     }
@@ -2942,10 +3059,15 @@ export function replayBattleState(state) {
   const completedActivations = new Set();
   const hazardousTests = [];
   const hazardousDamageResolutions = [];
+  const goToGrounds = [];
+  const goToGroundPasses = [];
+  const usedGoToGroundKeys = new Set();
   let activeActivation = null;
   let pendingFireOverwatch = null;
   let pendingHeroicIntervention = null;
   let pendingHazardous = null;
+  let pendingGoToGround = null;
+  let readyRangedAttack = null;
   let deploymentPriorityPlayerId = "";
   let clock = setupBattleClock();
   let mission = defaultMission(state.players);
@@ -2979,6 +3101,10 @@ export function replayBattleState(state) {
     state.version < HAZARDOUS_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyHazardousThroughSequence ?? 0);
+  const legacyGoToGroundThroughSequence =
+    state.version < GO_TO_GROUND_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyGoToGroundThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -3024,6 +3150,15 @@ export function replayBattleState(state) {
       !["fire_overwatch_started", "fire_overwatch_passed"].includes(event.type)
     ) {
       throw new Error("Resolve or pass the pending Fire Overwatch window first");
+    }
+    if (
+      pendingGoToGround &&
+      !["go_to_ground_resolved", "go_to_ground_passed"].includes(event.type)
+    ) {
+      throw new Error("Resolve or pass the pending Go to Ground window first");
+    }
+    if (readyRangedAttack && event.type !== "attack_resolved") {
+      throw new Error("Resolve the declared ranged attack before continuing the battle");
     }
     if (
       activeActivation?.source === "fire_overwatch" &&
@@ -4552,6 +4687,71 @@ export function replayBattleState(state) {
       }
       continue;
     }
+    if (event.type === "go_to_ground_passed") {
+      if (
+        !pendingGoToGround ||
+        event.triggerEventId !== pendingGoToGround.triggerEventId ||
+        event.playerId !== pendingGoToGround.responderPlayerId ||
+        event.targetFormationId !== pendingGoToGround.targetFormationId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Go to Ground pass does not match the pending reaction window");
+      }
+      goToGroundPasses.push({ ...event, ...pendingGoToGround });
+      readyRangedAttack = { ...pendingGoToGround, goToGroundEffectId: "" };
+      pendingGoToGround = null;
+      continue;
+    }
+    if (event.type === "go_to_ground_resolved") {
+      if (
+        !pendingGoToGround ||
+        event.triggerEventId !== pendingGoToGround.triggerEventId ||
+        event.playerId !== pendingGoToGround.responderPlayerId ||
+        event.targetFormationId !== pendingGoToGround.targetFormationId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Go to Ground does not match the pending reaction window");
+      }
+      const target = formations.get(event.targetFormationId);
+      const targetIsInfantry = target.keywords.includes("infantry");
+      const respondingPlayer = target.playerId === pendingGoToGround.responderPlayerId;
+      const usageKey = `${clock.battleRound}:${clock.turn}:${clock.phase}:${event.playerId}:go_to_ground`;
+      const commandPoints = resources.get(event.playerId).get("command_points");
+      if (
+        event.commandPointsBefore !== commandPoints.value ||
+        !goToGroundIsValid(
+          clock.phase,
+          event.commandPointsBefore,
+          event.commandPointCost,
+          event.commandPointsAfter,
+          usedGoToGroundKeys.has(usageKey),
+          battleShockedFormations.has(target.id),
+          goToGroundFlags(event, targetIsInfantry, respondingPlayer),
+        )
+      ) {
+        throw new Error("Go to Ground facts or Command Point spending are inconsistent");
+      }
+      resources.get(event.playerId).set("command_points", {
+        ...commandPoints,
+        value: event.commandPointsAfter,
+      });
+      usedGoToGroundKeys.add(usageKey);
+      const effect = {
+        id: event.id,
+        name: "Go to Ground",
+        targetFormationId: event.targetFormationId,
+        ownerPlayerId: event.playerId,
+        triggerEventId: event.triggerEventId,
+        duration: "end_of_phase",
+        appliedAt: { ...clock },
+        invulnerableSave: 6,
+        benefitOfCover: true,
+      };
+      goToGrounds.push(effect);
+      readyRangedAttack = { ...pendingGoToGround, goToGroundEffectId: effect.id };
+      pendingGoToGround = null;
+      continue;
+    }
     if (event.type === "ranged_target_eligibility_recorded") {
       const resolvingFireOverwatch = activeActivation?.source === "fire_overwatch";
       if (
@@ -4629,7 +4829,52 @@ export function replayBattleState(state) {
           throw new Error("Target eligibility exceeds the surviving locked weapon inventory");
         }
       }
+      if (
+        event.sequence > legacyGoToGroundThroughSequence &&
+        (pendingGoToGround || readyRangedAttack)
+      ) {
+        throw new Error("Resolve the previously declared ranged attack before selecting a target");
+      }
       targetEligibilityFacts.set(event.id, event);
+      if (event.sequence > legacyGoToGroundThroughSequence) {
+        const usageKey = `${clock.battleRound}:${clock.turn}:${clock.phase}:${target.playerId}:go_to_ground`;
+        const commandPoints = resources.get(target.playerId).get("command_points")?.value ?? 0;
+        const activeEffect = goToGrounds.find(
+          (effect) => effect.targetFormationId === target.id && samePhase(effect.appliedAt, clock),
+        );
+        const declaration = {
+          triggerEventId: event.id,
+          activationEventId: activeActivation.id,
+          attackerFormationId: event.attackerFormationId,
+          targetFormationId: event.targetFormationId,
+          weaponId: event.weaponId,
+          weaponSourceFormationId: event.weaponSourceFormationId,
+          sourceSavedUnitId: event.sourceSavedUnitId,
+          weaponGroupId: event.weaponGroupId,
+          responderPlayerId: target.playerId,
+          clock: { ...clock },
+        };
+        if (
+          !resolvingFireOverwatch &&
+          clock.phase === "shooting" &&
+          activeActivation.attackCount === 0 &&
+          rangedTargetEligibilityIsValid(event, event.eligibleWeaponCount) &&
+          attacker.playerId === clock.activePlayerId &&
+          target.playerId !== clock.activePlayerId &&
+          target.keywords.includes("infantry") &&
+          !battleShockedFormations.has(target.id) &&
+          commandPoints >= 1 &&
+          !usedGoToGroundKeys.has(usageKey) &&
+          !activeEffect
+        ) {
+          pendingGoToGround = declaration;
+        } else {
+          readyRangedAttack = {
+            ...declaration,
+            goToGroundEffectId: activeEffect?.id ?? "",
+          };
+        }
+      }
       continue;
     }
     if (event.type === "attack_resolved") {
@@ -4783,6 +5028,24 @@ export function replayBattleState(state) {
               throw new Error(
                 "Ranged attack does not satisfy its reviewed target eligibility facts",
               );
+            }
+            if (event.sequence > legacyGoToGroundThroughSequence) {
+              if (
+                !readyRangedAttack ||
+                readyRangedAttack.triggerEventId !== event.targetEligibilityEventId ||
+                readyRangedAttack.activationEventId !== event.activationEventId ||
+                readyRangedAttack.attackerFormationId !== event.attackerFormationId ||
+                readyRangedAttack.targetFormationId !== event.targetFormationId ||
+                readyRangedAttack.weaponId !== event.weaponId ||
+                readyRangedAttack.weaponSourceFormationId !== event.weaponSourceFormationId ||
+                readyRangedAttack.sourceSavedUnitId !== event.sourceSavedUnitId ||
+                readyRangedAttack.weaponGroupId !== event.weaponGroupId
+              ) {
+                throw new Error(
+                  "Ranged attack is not bound to its resolved target reaction window",
+                );
+              }
+              readyRangedAttack = null;
             }
           } else if (!event.targetEligibilityConfirmed) {
             throw new Error(
@@ -5056,6 +5319,11 @@ export function replayBattleState(state) {
     pendingHazardous,
     hazardousTests,
     hazardousDamageResolutions,
+    pendingGoToGround,
+    readyRangedAttack,
+    goToGrounds,
+    goToGroundPasses,
+    activeGoToGroundEffects: goToGrounds.filter((effect) => samePhase(effect.appliedAt, clock)),
     pendingHeroicIntervention,
     heroicInterventions,
     heroicInterventionPasses,
@@ -5609,6 +5877,56 @@ export function recordRangedTargetEligibility(
     rangeOverrideReason,
     clock,
   });
+}
+
+export function passGoToGround(state, reason, id, at) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingGoToGround;
+  if (!pending) throw new Error("No Go to Ground window is pending");
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "go_to_ground_passed",
+    triggerEventId: pending.triggerEventId,
+    playerId: pending.responderPlayerId,
+    targetFormationId: pending.targetFormationId,
+    reason,
+    clock: replayed.clock,
+  });
+}
+
+export function resolveGoToGround(state, id, at) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingGoToGround;
+  if (!pending) throw new Error("No Go to Ground window is pending");
+  const commandPointsBefore =
+    replayed.resources.get(pending.responderPlayerId)?.get("command_points")?.value ?? 0;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "go_to_ground_resolved",
+    triggerEventId: pending.triggerEventId,
+    playerId: pending.responderPlayerId,
+    targetFormationId: pending.targetFormationId,
+    commandPointCost: 1,
+    commandPointsBefore,
+    commandPointsAfter: commandPointsBefore - 1,
+    allModelsHaveSixPlusInvulnerable: true,
+    allModelsHaveBenefitOfCover: true,
+    clock: replayed.clock,
+  });
+}
+
+export function battleGoToGroundEffect(state, formationId) {
+  return (
+    replayBattleState(state).activeGoToGroundEffects.find(
+      (effect) => effect.targetFormationId === formationId,
+    ) ?? null
+  );
 }
 
 export function recordFormationCharge(
@@ -6192,6 +6510,7 @@ export function battleCanResolveAttack(state, attackerFormationId, options = {})
   if (!state) return false;
   if (!options.targetEligibilityConfirmed) return false;
   const replayed = replayBattleState(state);
+  if (replayed.pendingGoToGround) return false;
   if (
     options.targetFormationId &&
     !formationIsOnBattlefield(

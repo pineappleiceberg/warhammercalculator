@@ -196,5 +196,12 @@ int main(void) {
                                               WHC_HAZARDOUS_FLAGS_MASK));
     assert(!whc_hazardous_resolution_is_valid(2u, 0u, false, 3u, 0u, 0u, 0u, 3u, true,
                                                WHC_HAZARDOUS_FLAGS_MASK));
+    assert(whc_go_to_ground_is_valid(WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, false, false,
+                                     WHC_GO_TO_GROUND_FLAGS_MASK));
+    assert(!whc_go_to_ground_is_valid(WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, true, false,
+                                      WHC_GO_TO_GROUND_FLAGS_MASK));
+    assert(!whc_go_to_ground_is_valid(
+        WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, false, false,
+        WHC_GO_TO_GROUND_FLAGS_MASK & ~WHC_GO_TO_GROUND_SIX_PLUS_INVULNERABLE));
     return 0;
 }

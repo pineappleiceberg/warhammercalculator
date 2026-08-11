@@ -28,6 +28,7 @@ import {
   normalizeBattleState,
   hazardousBearerOptions,
   passFireOverwatch,
+  passGoToGround,
   passHeroicIntervention,
   passFightPriority,
   registerBattleFormation,
@@ -38,6 +39,7 @@ import {
   recordRangedTargetEligibility,
   replayBattleState,
   resolveHazardousDamage,
+  resolveGoToGround,
   resolveHeroicIntervention,
   resolveDestroyedTransport,
   revertLatestAttack,
@@ -51,6 +53,7 @@ import {
 } from "../lib/battle-state.mjs";
 import { battleAttackWindow } from "../lib/battle-clock.mjs";
 import { applyFireOverwatchAttackRules } from "../lib/fire-overwatch.mjs";
+import { applyGoToGroundAttackEffects } from "../lib/go-to-ground.mjs";
 import { applyBattleHealthToTargetSequence } from "../lib/formations.mjs";
 
 const targets = [
@@ -589,11 +592,38 @@ test("reports exact per-segment damage state across mixed profiles", () => {
   assert.throws(() => targetSequenceState(12, targets), /Invalid target sequence damage state/);
 });
 
+test("applies Go to Ground cover and a best-of 6+ invulnerable save to every model", () => {
+  const profiles = [
+    { targetCover: false, ignoresCover: false },
+    { targetCover: false, ignoresCover: true },
+  ];
+  const targetProfiles = [
+    { invulnerable: 0, modelCount: 2 },
+    { invulnerable: 4, modelCount: 1 },
+  ];
+  const applied = applyGoToGroundAttackEffects(profiles, targetProfiles, true);
+  assert.deepEqual(
+    applied.attackProfiles.map((profile) => [profile.targetCover, profile.ignoresCover]),
+    [
+      [true, false],
+      [true, true],
+    ],
+  );
+  assert.deepEqual(
+    applied.targets.map((target) => target.invulnerable),
+    [6, 4],
+  );
+  assert.deepEqual(applyGoToGroundAttackEffects(profiles, targetProfiles, false), {
+    attackProfiles: profiles,
+    targets: targetProfiles,
+  });
+});
+
 test("pins the official battle-state rules source", () => {
   assert.equal(battleRuleSources.version, 1);
   assert.deepEqual(
     battleRuleSources.sources[0].pages,
-    [7, 8, 9, 16, 17, 18, 19, 23, 26, 29, 32, 33, 34, 35, 39, 43, 53, 57, 60],
+    [7, 8, 9, 16, 17, 18, 19, 23, 25, 26, 29, 32, 33, 34, 35, 39, 41, 42, 43, 44, 53, 57, 60],
   );
   assert.equal(
     battleRuleSources.sources[0].sha256,
@@ -603,10 +633,16 @@ test("pins the official battle-state rules source", () => {
     (source) => source.id === "core-rules-updates-10e-2025-10",
   );
   assert.ok(updates);
-  assert.deepEqual(updates.pages, [7, 8, 10]);
+  assert.deepEqual(updates.pages, [7, 8, 10, 18]);
   assert.equal(updates.sha256, "27960a4d4affecd450af69c54d7583bcc2941b00ba5845f5786a630bdec7f4ba");
   assert.equal(
     updates.usedFor.some((usage) => /Heroic Intervention/i.test(usage)),
+    true,
+  );
+  assert.equal(
+    battleRuleSources.sources[0].usedFor.some(
+      (usage) => /Go to Ground/i.test(usage) && /6\+ invulnerable/i.test(usage),
+    ),
     true,
   );
   assert.equal(
@@ -1492,6 +1528,175 @@ test("replays movement and enforces one weapon-scoped Shooting activation", () =
       ),
     /already completed/i,
   );
+});
+
+test("resolves Go to Ground after target selection with atomic CP and phase effects", () => {
+  const infantryTarget = { ...formation, keywords: ["Infantry"] };
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), attackerFormation, "gtg-register-attacker", 1),
+    infantryTarget,
+    "gtg-register-target",
+    2,
+  );
+  state = configureBattleMission(
+    state,
+    {
+      name: "Go to Ground test",
+      commandPointsPerCommandPhase: 0,
+      startingCommandPoints: { "player-1": 0, "player-2": 2 },
+      objectives: [],
+    },
+    "gtg-mission",
+    3,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "gtg-start", 4);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "gtg-to-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    attackerFormation.id,
+    "stationary",
+    "gtg-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, battleAttackWindow, "gtg-to-shooting");
+  state = startFormationActivation(
+    state,
+    attackerFormation.id,
+    {},
+    "gtg-activation",
+    state.events.length + 1,
+  );
+  state = recordVisibleRangedTarget(state, attackerFormation.id, infantryTarget.id, {
+    eligibleWeaponCount: 2,
+  });
+  let replayed = replayBattleState(state);
+  assert.equal(replayed.pendingGoToGround.targetFormationId, infantryTarget.id);
+  assert.equal(replayed.readyRangedAttack, null);
+  assert.throws(() => appendZeroDamageRangedAttack(state), /Go to Ground window/i);
+
+  state = resolveGoToGround(state, "gtg-resolve", state.events.length + 1);
+  replayed = replayBattleState(state);
+  assert.equal(replayed.resources.get("player-2").get("command_points").value, 1);
+  assert.equal(replayed.pendingGoToGround, null);
+  assert.equal(replayed.readyRangedAttack.triggerEventId, state.events.at(-2).id);
+  assert.deepEqual(replayed.activeGoToGroundEffects[0], {
+    id: "gtg-resolve",
+    name: "Go to Ground",
+    targetFormationId: infantryTarget.id,
+    ownerPlayerId: "player-2",
+    triggerEventId: state.events.at(-2).id,
+    duration: "end_of_phase",
+    appliedAt: replayed.clock,
+    invulnerableSave: 6,
+    benefitOfCover: true,
+  });
+  state = appendZeroDamageRangedAttack(state, {
+    id: "gtg-first-attack",
+    targetEligibilityEventId: replayed.readyRangedAttack.triggerEventId,
+  });
+  assert.equal(replayBattleState(state).readyRangedAttack, null);
+
+  state = recordVisibleRangedTarget(state, attackerFormation.id, infantryTarget.id);
+  replayed = replayBattleState(state);
+  assert.equal(replayed.pendingGoToGround, null);
+  assert.equal(replayed.readyRangedAttack.goToGroundEffectId, "gtg-resolve");
+  state = appendZeroDamageRangedAttack(state, {
+    id: "gtg-second-attack",
+    targetEligibilityEventId: replayed.readyRangedAttack.triggerEventId,
+  });
+  state = completeFormationActivation(state, "gtg-complete", state.events.length + 1);
+  state = advanceTo(state, (clock) => clock.phase !== "shooting", "gtg-expire");
+  assert.equal(replayBattleState(state).activeGoToGroundEffects.length, 0);
+
+  const tampered = structuredClone(state);
+  const resolution = tampered.events.find((event) => event.type === "go_to_ground_resolved");
+  resolution.allModelsHaveBenefitOfCover = false;
+  assert.throws(() => normalizeBattleState(tampered), /Go to Ground facts/i);
+});
+
+test("passes Go to Ground and binds the attack to the reviewed target declaration", () => {
+  const infantryTarget = { ...formation, keywords: ["Infantry"] };
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), attackerFormation, "gtg-pass-attacker", 1),
+    infantryTarget,
+    "gtg-pass-target",
+    2,
+  );
+  state = configureBattleMission(
+    state,
+    {
+      name: "Go to Ground pass test",
+      commandPointsPerCommandPhase: 0,
+      startingCommandPoints: { "player-1": 0, "player-2": 1 },
+      objectives: [],
+    },
+    "gtg-pass-mission",
+    3,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "gtg-pass-start", 4);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "gtg-pass-to-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    attackerFormation.id,
+    "stationary",
+    "gtg-pass-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, battleAttackWindow, "gtg-pass-to-shooting");
+  state = startFormationActivation(
+    state,
+    attackerFormation.id,
+    {},
+    "gtg-pass-activation",
+    state.events.length + 1,
+  );
+  const battleShocked = setFormationBattleShocked(
+    state,
+    infantryTarget.id,
+    true,
+    "Failed Battle-shock test",
+    "gtg-battle-shocked",
+    state.events.length + 1,
+  );
+  const battleShockedTargeted = recordVisibleRangedTarget(
+    battleShocked,
+    attackerFormation.id,
+    infantryTarget.id,
+  );
+  assert.equal(replayBattleState(battleShockedTargeted).pendingGoToGround, null);
+  state = recordVisibleRangedTarget(state, attackerFormation.id, infantryTarget.id);
+  const triggerEventId = state.events.at(-1).id;
+  state = passGoToGround(
+    state,
+    "Defending player declined the Stratagem",
+    "gtg-pass",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).readyRangedAttack.triggerEventId, triggerEventId);
+  assert.throws(
+    () =>
+      appendZeroDamageRangedAttack(state, {
+        id: "gtg-wrong-declaration",
+        targetEligibilityEventId: "not-the-trigger",
+      }),
+    /target eligibility|reaction window/i,
+  );
+  state = appendZeroDamageRangedAttack(state, {
+    id: "gtg-passed-attack",
+    targetEligibilityEventId: triggerEventId,
+  });
+  assert.equal(replayBattleState(state).goToGroundPasses.length, 1);
+  state = recordVisibleRangedTarget(state, attackerFormation.id, infantryTarget.id);
+  assert.equal(replayBattleState(state).pendingGoToGround, null);
+  assert.equal(replayBattleState(state).readyRangedAttack.triggerEventId, state.events.at(-1).id);
 });
 
 test("resolves Fire Overwatch at a move trigger with atomic CP and target locking", () => {

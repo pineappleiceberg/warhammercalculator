@@ -60,6 +60,8 @@ import {
   fireOverwatchFlags,
   fireOverwatchIsValid,
   FIRE_OVERWATCH_TRIGGERS,
+  goToGroundFlags,
+  goToGroundIsValid,
   HAZARDOUS_FLAGS,
   hazardousResolutionIsValid,
   heroicInterventionChargeFlags,
@@ -321,6 +323,7 @@ type CalculatorExports = {
   whc_heroic_intervention_is_valid(...values: number[]): number;
   whc_fire_overwatch_is_valid(...values: number[]): number;
   whc_hazardous_resolution_is_valid(...values: number[]): number;
+  whc_go_to_ground_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -464,6 +467,7 @@ async function loadCalculator() {
       typeof calculator.whc_heroic_intervention_is_valid !== "function" ||
       typeof calculator.whc_fire_overwatch_is_valid !== "function" ||
       typeof calculator.whc_hazardous_resolution_is_valid !== "function" ||
+      typeof calculator.whc_go_to_ground_is_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -1039,6 +1043,68 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         clock: event.clock,
       };
     });
+    const goToGrounds = state.events
+      .filter((event) => event.type === "go_to_ground_resolved")
+      .map((event) => {
+        const target = replayed.formations.get(event.targetFormationId);
+        if (!target) {
+          throw new ServiceUnavailableError(
+            "Go to Ground target is unavailable",
+            "GO_TO_GROUND_DIVERGENCE",
+          );
+        }
+        const flags = goToGroundFlags(
+          event,
+          target.keywords.includes("infantry"),
+          target.playerId === event.playerId,
+        );
+        const values = [
+          3,
+          event.commandPointsBefore,
+          event.commandPointCost,
+          event.commandPointsAfter,
+          0,
+          0,
+          flags,
+        ];
+        const javascriptValid = goToGroundIsValid(
+          "shooting",
+          event.commandPointsBefore,
+          event.commandPointCost,
+          event.commandPointsAfter,
+          false,
+          false,
+          flags,
+        );
+        const nativeValid = Boolean(calculator.whc_go_to_ground_is_valid(...values));
+        if (!javascriptValid || javascriptValid !== nativeValid) {
+          throw new ServiceUnavailableError(
+            "Go to Ground diverged from the C/WebAssembly predicate",
+            "GO_TO_GROUND_DIVERGENCE",
+          );
+        }
+        const effect = replayed.goToGrounds.find((candidate) => candidate.id === event.id);
+        if (!effect) {
+          throw new ServiceUnavailableError(
+            "Go to Ground lost its phase effect",
+            "GO_TO_GROUND_DIVERGENCE",
+          );
+        }
+        return {
+          eventId: event.id,
+          triggerEventId: event.triggerEventId,
+          playerId: event.playerId,
+          targetFormationId: event.targetFormationId,
+          commandPointCost: event.commandPointCost,
+          commandPointsBefore: event.commandPointsBefore,
+          commandPointsAfter: event.commandPointsAfter,
+          allModelsHaveSixPlusInvulnerable: event.allModelsHaveSixPlusInvulnerable,
+          allModelsHaveBenefitOfCover: event.allModelsHaveBenefitOfCover,
+          effect,
+          clock: event.clock,
+          canonical: true,
+        };
+      });
     const hazardousTestsById = new Map(replayed.hazardousTests.map((event) => [event.id, event]));
     const hazardousDamageResolutions = replayed.hazardousDamageResolutions.map((event) => {
       if (!event.allocation) {
@@ -1207,6 +1273,20 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         trigger: event.trigger,
         targetFormationId: event.targetFormationId,
         playerId: event.playerId,
+        reason: event.reason,
+        clock: event.clock,
+      })),
+      pendingGoToGround: replayed.pendingGoToGround ? { ...replayed.pendingGoToGround } : null,
+      readyRangedAttack: replayed.readyRangedAttack ? { ...replayed.readyRangedAttack } : null,
+      goToGrounds,
+      activeGoToGroundEffects: replayed.activeGoToGroundEffects.map((effect) => ({
+        ...effect,
+      })),
+      goToGroundPasses: replayed.goToGroundPasses.map((event) => ({
+        eventId: event.id,
+        triggerEventId: event.triggerEventId,
+        playerId: event.playerId,
+        targetFormationId: event.targetFormationId,
         reason: event.reason,
         clock: event.clock,
       })),

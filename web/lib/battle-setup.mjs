@@ -5,6 +5,7 @@ import {
   CHARGE_MOVE_BATTLE_STATE_VERSION,
   FIGHT_MOVE_BATTLE_STATE_VERSION,
   FIRE_OVERWATCH_BATTLE_STATE_VERSION,
+  GO_TO_GROUND_BATTLE_STATE_VERSION,
   HAZARDOUS_BATTLE_STATE_VERSION,
   HEROIC_INTERVENTION_BATTLE_STATE_VERSION,
   ROSTER_BATTLE_STATE_VERSION,
@@ -398,6 +399,10 @@ export function initializeBattleForLists({
             sourceVersion < HAZARDOUS_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyHazardousThroughSequence ?? 0),
+          legacyGoToGroundThroughSequence:
+            sourceVersion < GO_TO_GROUND_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyGoToGroundThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

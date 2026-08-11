@@ -23,6 +23,7 @@ import {
   chargeResolutionIsValid,
   fightMoveIsValid,
   fireOverwatchIsValid,
+  goToGroundIsValid,
   hazardousResolutionIsValid,
   heroicInterventionIsValid,
   normalizeBattleState,
@@ -100,6 +101,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_heroic_intervention_is_valid, "function");
   assert.equal(typeof calculator._whc_fire_overwatch_is_valid, "function");
   assert.equal(typeof calculator._whc_hazardous_resolution_is_valid, "function");
+  assert.equal(typeof calculator._whc_go_to_ground_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
 });
@@ -225,6 +227,34 @@ test("WebAssembly and JavaScript agree on Hazardous damage resolution", () => {
     assert.equal(
       Boolean(calculator._whc_hazardous_resolution_is_valid(...values)),
       hazardousResolutionIsValid(...values),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on Go to Ground resolution", () => {
+  const cases = [
+    [3, 2, 1, 1, false, false, 31],
+    [3, 1, 1, 0, false, false, 31],
+    [2, 2, 1, 1, false, false, 31],
+    [3, 0, 1, 0, false, false, 31],
+    [3, 2, 2, 0, false, false, 31],
+    [3, 2, 1, 0, false, false, 31],
+    [3, 2, 1, 1, true, false, 31],
+    [3, 2, 1, 1, false, true, 31],
+    [3, 2, 1, 1, false, false, 15],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_go_to_ground_is_valid(...values)),
+      goToGroundIsValid(
+        values[0] === 3 ? "shooting" : "movement",
+        values[1],
+        values[2],
+        values[3],
+        values[4],
+        values[5],
+        values[6],
+      ),
     );
   }
 });
