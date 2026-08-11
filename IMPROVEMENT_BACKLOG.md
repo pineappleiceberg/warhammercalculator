@@ -27,8 +27,10 @@ state.
 
 ## Prioritized backlog
 
-1. Execute the remaining reactions, terrain cover, and Stratagem timing windows,
-   starting with the highest-frequency mandatory choice not already represented.
+1. Implement Smokescreen as the next activation-wide target-selection response,
+   including Smoke eligibility, 1CP spending, Battle-shock and repeat-use guards,
+   Benefit of Cover plus Stealth for the complete incoming attack sequence, and
+   canonical Guided Play, API, C, WebAssembly, migration, and formal evidence.
 2. Build and enforce the source-locked faction, detachment, enhancement,
    Stratagem, terrain, and mission coverage matrix described by the complete
    battle requirements.
@@ -39,6 +41,20 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced guided play to battle-state version 21 with canonical
+  Counter-offensive. Every completed enemy Fight activation can now open the
+  responding player's 2CP decision window when at least one living, on-board,
+  non-Battle-shocked formation has not fought. Resolution records reviewed
+  Engagement Range, spends CP atomically, enforces once-per-phase use, and
+  forces the selected formation to fight next even during the Fights First
+  step; declining preserves normal Fight priority. Guided Play blocks unrelated
+  actions until the choice is made, and the replay API exposes pending,
+  resolved, declined, and forced-activation state. An ACSL-specified predicate
+  is proved and differentially checked across C, WebAssembly, JavaScript, the
+  API, native tests, fuzzing, and formal runtime checks. Version-20 histories
+  migrate without retroactively opening response windows. Official Core Rules
+  page 41 and the October 2025 Core Rules Updates define the source boundary.
 
 - 2026-08-11: Advanced guided play to battle-state version 20 with executable
   empty Dedicated Transport and Aircraft/Hover setup exceptions. Locked

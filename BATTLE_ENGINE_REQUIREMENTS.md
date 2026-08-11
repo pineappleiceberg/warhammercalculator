@@ -118,9 +118,11 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    both remain mandatory until resolved. Empty Dedicated Transports now become
    not deployed and are destroyed in round one, non-Hover Aircraft must begin
    in Reserves, and source-locked Hover Aircraft can instead deploy normally or
-   enter Strategic Reserves. Remaining work includes remaining reactions and Stratagem
-   windows, full geometry-backed
-   target eligibility, and geometry-backed engagement.
+   enter Strategic Reserves. Counter-offensive now opens after an enemy Fight
+   activation, spends 2CP atomically, and forces an eligible reviewed formation
+   to fight next. Remaining work includes Smokescreen and other reaction or
+   Stratagem windows, full geometry-backed target eligibility, and
+   geometry-backed engagement.
 6. Normalize complete faction, detachment, enhancement, Stratagem, and mission
    coverage with source-locked executable rules and a fail-closed coverage gate.
 7. Add table geometry and player-supplied measurement and visibility facts.
