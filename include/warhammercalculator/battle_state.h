@@ -83,6 +83,10 @@
 #define WHC_DEPLOYMENT_ROOT_BATTLEFIELD 1u
 #define WHC_DEPLOYMENT_ROOT_RESERVES 2u
 #define WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES 3u
+#define WHC_DEPLOYMENT_ROOT_NOT_DEPLOYED 0u
+#define WHC_AIRCRAFT_MODE_NONE 0u
+#define WHC_AIRCRAFT_MODE_AIRCRAFT 1u
+#define WHC_AIRCRAFT_MODE_HOVER 2u
 
 enum whc_fire_overwatch_trigger {
     WHC_FIRE_OVERWATCH_SET_UP = 1u,
@@ -381,16 +385,42 @@ bool whc_transport_load_is_valid(uint32_t used_capacity, uint32_t capacity,
     ensures \result <==>
         chain_length >= 1 && chain_length <= 257 &&
         unique_formation_count == chain_length &&
-        root_location >= WHC_DEPLOYMENT_ROOT_BATTLEFIELD &&
         root_location <= WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES &&
         reserve_eligibility_count <= chain_length &&
-        (root_location == WHC_DEPLOYMENT_ROOT_BATTLEFIELD ||
+        ((root_location == WHC_DEPLOYMENT_ROOT_NOT_DEPLOYED &&
+          reserve_eligibility_count == 0) ||
+         root_location == WHC_DEPLOYMENT_ROOT_BATTLEFIELD ||
          reserve_eligibility_count == chain_length);
 */
 bool whc_transport_deployment_chain_is_valid(uint32_t chain_length,
                                              uint32_t unique_formation_count,
                                              uint32_t root_location,
                                              uint32_t reserve_eligibility_count);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        is_dedicated_transport <= 1 && is_aircraft <= 1 && has_hover <= 1 &&
+        aircraft_mode <= WHC_AIRCRAFT_MODE_HOVER &&
+        root_location <= WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES &&
+        ((!is_aircraft && aircraft_mode == WHC_AIRCRAFT_MODE_NONE) ||
+         (is_aircraft &&
+          (aircraft_mode == WHC_AIRCRAFT_MODE_AIRCRAFT ||
+           (aircraft_mode == WHC_AIRCRAFT_MODE_HOVER && has_hover)))) &&
+        ((is_dedicated_transport && starting_passenger_count == 0 &&
+          root_location == WHC_DEPLOYMENT_ROOT_NOT_DEPLOYED) ||
+         ((!is_dedicated_transport || starting_passenger_count > 0) &&
+          root_location != WHC_DEPLOYMENT_ROOT_NOT_DEPLOYED &&
+          (!is_aircraft ||
+           (aircraft_mode == WHC_AIRCRAFT_MODE_AIRCRAFT &&
+            root_location == WHC_DEPLOYMENT_ROOT_RESERVES) ||
+           (aircraft_mode == WHC_AIRCRAFT_MODE_HOVER &&
+            (root_location == WHC_DEPLOYMENT_ROOT_BATTLEFIELD ||
+             root_location == WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES)))));
+*/
+bool whc_initial_deployment_is_valid(uint32_t is_dedicated_transport,
+                                     uint32_t starting_passenger_count,
+                                     uint32_t is_aircraft, uint32_t has_hover,
+                                     uint32_t aircraft_mode, uint32_t root_location);
 
 /*@ requires first_player_index <= 1;
     requires \valid(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));

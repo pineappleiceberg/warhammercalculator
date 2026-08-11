@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 19;
+export const BATTLE_STATE_VERSION = 20;
+export const SETUP_RULES_BATTLE_STATE_VERSION = 20;
 export const TRANSPORT_NESTING_BATTLE_STATE_VERSION = 19;
 export const TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION = 18;
 export const RANGED_DECLARATION_BATTLE_STATE_VERSION = 17;
@@ -62,6 +63,7 @@ function boundedInteger(value, name, minimum = -1_000_000, maximum = 1_000_000) 
 const MOVEMENT_KINDS = Object.freeze(["stationary", "normal", "advance", "fall_back"]);
 const ACTIVATION_TYPES = Object.freeze(["shooting", "fight"]);
 const DEPLOYMENT_LOCATIONS = Object.freeze([
+  "not_deployed",
   "battlefield",
   "reserves",
   "strategic_reserves",
@@ -163,9 +165,16 @@ export function transportLoadIsValid(
 }
 
 const DEPLOYMENT_ROOT_LOCATION = Object.freeze({
+  not_deployed: 0,
   battlefield: 1,
   reserves: 2,
   strategic_reserves: 3,
+});
+
+const AIRCRAFT_MODE = Object.freeze({
+  "": 0,
+  aircraft: 1,
+  hover: 2,
 });
 
 export function transportDeploymentChainIsValid(
@@ -180,13 +189,57 @@ export function transportDeploymentChainIsValid(
       chainLength <= 257 &&
       uniqueFormationCount === chainLength &&
       Number.isSafeInteger(rootLocation) &&
-      rootLocation >= DEPLOYMENT_ROOT_LOCATION.battlefield &&
+      rootLocation >= DEPLOYMENT_ROOT_LOCATION.not_deployed &&
       rootLocation <= DEPLOYMENT_ROOT_LOCATION.strategic_reserves &&
       Number.isSafeInteger(reserveEligibilityCount) &&
       reserveEligibilityCount >= 0 &&
       reserveEligibilityCount <= chainLength &&
-      (rootLocation === DEPLOYMENT_ROOT_LOCATION.battlefield ||
+      ((rootLocation === DEPLOYMENT_ROOT_LOCATION.not_deployed && reserveEligibilityCount === 0) ||
+        rootLocation === DEPLOYMENT_ROOT_LOCATION.battlefield ||
         reserveEligibilityCount === chainLength),
+  );
+}
+
+export function initialDeploymentIsValid(
+  isDedicatedTransport,
+  startingPassengerCount,
+  isAircraft,
+  hasHover,
+  aircraftMode,
+  rootLocation,
+) {
+  if (
+    ![isDedicatedTransport, isAircraft, hasHover].every(
+      (value) => Number.isSafeInteger(value) && value >= 0 && value <= 1,
+    ) ||
+    !Number.isSafeInteger(startingPassengerCount) ||
+    startingPassengerCount < 0 ||
+    !Number.isSafeInteger(aircraftMode) ||
+    aircraftMode < AIRCRAFT_MODE[""] ||
+    aircraftMode > AIRCRAFT_MODE.hover ||
+    !Number.isSafeInteger(rootLocation) ||
+    rootLocation < DEPLOYMENT_ROOT_LOCATION.not_deployed ||
+    rootLocation > DEPLOYMENT_ROOT_LOCATION.strategic_reserves
+  ) {
+    return false;
+  }
+  const modeIsValid =
+    (!isAircraft && aircraftMode === AIRCRAFT_MODE[""]) ||
+    (Boolean(isAircraft) &&
+      (aircraftMode === AIRCRAFT_MODE.aircraft ||
+        (aircraftMode === AIRCRAFT_MODE.hover && Boolean(hasHover))));
+  if (!modeIsValid) return false;
+  if (isDedicatedTransport && startingPassengerCount === 0) {
+    return rootLocation === DEPLOYMENT_ROOT_LOCATION.not_deployed;
+  }
+  if (rootLocation === DEPLOYMENT_ROOT_LOCATION.not_deployed) return false;
+  if (!isAircraft) return true;
+  if (aircraftMode === AIRCRAFT_MODE.aircraft) {
+    return rootLocation === DEPLOYMENT_ROOT_LOCATION.reserves;
+  }
+  return (
+    rootLocation === DEPLOYMENT_ROOT_LOCATION.battlefield ||
+    rootLocation === DEPLOYMENT_ROOT_LOCATION.strategic_reserves
   );
 }
 
@@ -1275,6 +1328,34 @@ function normalizeFormation(candidate, stateVersion) {
     ),
     segments,
   };
+  if (
+    stateVersion >= SETUP_RULES_BATTLE_STATE_VERSION ||
+    formation.deploymentTraits !== undefined
+  ) {
+    const traits = record(
+      formation.deploymentTraits ?? {},
+      "Formation deployment traits must be an object",
+    );
+    normalized.deploymentTraits = {
+      dedicatedTransport:
+        traits.dedicatedTransport === undefined
+          ? normalized.keywords.includes("dedicated transport")
+          : Boolean(traits.dedicatedTransport),
+      aircraft:
+        traits.aircraft === undefined
+          ? normalized.keywords.includes("aircraft")
+          : Boolean(traits.aircraft),
+      hover: Boolean(traits.hover),
+    };
+    if (
+      normalized.deploymentTraits.dedicatedTransport !==
+        normalized.keywords.includes("dedicated transport") ||
+      normalized.deploymentTraits.aircraft !== normalized.keywords.includes("aircraft") ||
+      (normalized.deploymentTraits.hover && !normalized.deploymentTraits.aircraft)
+    ) {
+      throw new Error("Formation deployment traits do not match its locked source facts");
+    }
+  }
   normalized.transportOptions = normalizeTransportOptions(
     formation.transportOptions ?? [],
     segments,
@@ -1641,6 +1722,7 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
       previous.playerId !== formation.playerId ||
       previous.sourceFormationId !== formation.sourceFormationId ||
       previous.assignedTransportFormationId !== formation.assignedTransportFormationId ||
+      JSON.stringify(previous.deploymentTraits) !== JSON.stringify(formation.deploymentTraits) ||
       JSON.stringify(previous.transportOptions) !== JSON.stringify(formation.transportOptions) ||
       JSON.stringify(weaponInventoryProfileIdentity(previous.weaponInventory)) !==
         JSON.stringify(weaponInventoryProfileIdentity(formation.weaponInventory))
@@ -1839,6 +1921,9 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     if (!DEPLOYMENT_LOCATIONS.includes(normalized.location)) {
       throw new Error("Deployment location is unsupported");
     }
+    if (normalized.location === "not_deployed" && stateVersion < SETUP_RULES_BATTLE_STATE_VERSION) {
+      throw new Error("Not-deployed setup requires battle-state version 20");
+    }
     normalized.transportFormationId =
       normalized.location === "embarked"
         ? boundedString(event.transportFormationId, "Embarked Transport formation id", 100)
@@ -1870,6 +1955,13 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
       !normalized.eligibilityConfirmed
     ) {
       throw new Error("A Reserves declaration requires explicit source-rule eligibility");
+    }
+    normalized.aircraftMode = event.aircraftMode ?? "";
+    if (typeof normalized.aircraftMode !== "string" || normalized.aircraftMode.length > 20) {
+      throw new Error("Aircraft setup mode must be a string of at most 20 characters");
+    }
+    if (!Object.hasOwn(AIRCRAFT_MODE, normalized.aircraftMode)) {
+      throw new Error("Aircraft setup mode is unsupported");
     }
     return normalized;
   }
@@ -2890,6 +2982,7 @@ export function normalizeBattleState(candidate) {
       GO_TO_GROUND_BATTLE_STATE_VERSION,
       RANGED_DECLARATION_BATTLE_STATE_VERSION,
       TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION,
+      TRANSPORT_NESTING_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -2941,6 +3034,7 @@ export function normalizeBattleState(candidate) {
         GO_TO_GROUND_BATTLE_STATE_VERSION,
         RANGED_DECLARATION_BATTLE_STATE_VERSION,
         TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION,
+        TRANSPORT_NESTING_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -3053,6 +3147,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= SETUP_RULES_BATTLE_STATE_VERSION) {
+      normalized.migration.legacySetupRulesThroughSequence = nonnegativeInteger(
+        migration.legacySetupRulesThroughSequence,
+        "Legacy setup rules event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -3062,6 +3163,7 @@ export function normalizeBattleState(candidate) {
         event.formation.weaponBearerTracking === "legacy_aggregate",
     ) &&
     normalized.migration?.sourceVersion !== WEAPON_INVENTORY_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== TRANSPORT_NESTING_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== TARGET_ELIGIBILITY_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== HEROIC_INTERVENTION_BATTLE_STATE_VERSION &&
@@ -3243,6 +3345,99 @@ function validateDeclaredTransportChains(deploymentByFormation, requireComplete 
     if (!chain.valid || (requireComplete && !chain.complete)) {
       throw new Error(chain.reason);
     }
+  }
+}
+
+function initialDeploymentReportForFormation(
+  formationId,
+  formations,
+  deploymentByFormation,
+  embarkedByFormation,
+) {
+  const formation = formations.get(formationId);
+  const chain = transportDeploymentChain(formationId, deploymentByFormation);
+  const traits = formation?.deploymentTraits ?? {
+    dedicatedTransport: formation?.keywords.includes("dedicated transport") ?? false,
+    aircraft: formation?.keywords.includes("aircraft") ?? false,
+    hover: false,
+  };
+  const startingPassengerCount = [...embarkedByFormation.values()].filter(
+    (transportFormationId) => transportFormationId === formationId,
+  ).length;
+  const rootLocation = chain.rootDeployment?.location ?? "";
+  const aircraftMode = deploymentByFormation.get(formationId)?.aircraftMode ?? "";
+  const values = [
+    traits.dedicatedTransport ? 1 : 0,
+    startingPassengerCount,
+    traits.aircraft ? 1 : 0,
+    traits.hover ? 1 : 0,
+    AIRCRAFT_MODE[aircraftMode] ?? -1,
+    DEPLOYMENT_ROOT_LOCATION[rootLocation] ?? -1,
+  ];
+  const valid = chain.complete && initialDeploymentIsValid(...values);
+  let reason = valid ? "Initial deployment follows the locked setup rules" : chain.reason;
+  if (!valid && chain.complete) {
+    if (traits.dedicatedTransport && startingPassengerCount === 0) {
+      reason =
+        rootLocation === "not_deployed"
+          ? "Empty Dedicated Transport setup is valid"
+          : "An empty Dedicated Transport cannot be deployed and is destroyed in round one";
+    } else if (rootLocation === "not_deployed") {
+      reason = "Only an empty Dedicated Transport can be marked not deployed";
+    } else if (!traits.aircraft && aircraftMode) {
+      reason = "Only an Aircraft formation can declare an Aircraft setup mode";
+    } else if (traits.aircraft && aircraftMode === "hover" && !traits.hover) {
+      reason = "This Aircraft does not have the Hover ability";
+    } else if (traits.aircraft && aircraftMode === "aircraft") {
+      reason = "An Aircraft that is not in Hover mode must start in Reserves";
+    } else if (traits.aircraft && aircraftMode === "hover") {
+      reason = "A Hover model must start on the battlefield or in Strategic Reserves";
+    } else if (traits.aircraft) {
+      reason = "Aircraft setup mode must be declared before deployment";
+    } else {
+      reason = "Initial deployment is invalid";
+    }
+  }
+  return {
+    formationId,
+    dedicatedTransport: traits.dedicatedTransport,
+    aircraft: traits.aircraft,
+    hasHover: traits.hover,
+    aircraftMode,
+    startingPassengerCount,
+    rootFormationId: chain.rootFormationId,
+    rootLocation,
+    rootLocationCode: DEPLOYMENT_ROOT_LOCATION[rootLocation] ?? -1,
+    complete: chain.complete,
+    valid,
+    reason,
+    values,
+  };
+}
+
+function validateInitialDeploymentRules(
+  formations,
+  deploymentByFormation,
+  embarkedByFormation,
+  legacySetupRulesThroughSequence = 0,
+) {
+  for (const formationId of formations.keys()) {
+    const deployment = deploymentByFormation.get(formationId);
+    if (
+      legacySetupRulesThroughSequence > 0 &&
+      (deployment?.legacyAssumed ||
+        (Number.isSafeInteger(deployment?.sequence) &&
+          deployment.sequence <= legacySetupRulesThroughSequence))
+    ) {
+      continue;
+    }
+    const report = initialDeploymentReportForFormation(
+      formationId,
+      formations,
+      deploymentByFormation,
+      embarkedByFormation,
+    );
+    if (!report.valid) throw new Error(report.reason);
   }
 }
 
@@ -3678,6 +3873,7 @@ export function replayBattleState(state) {
   const chargeByFormation = new Map();
   const deploymentByFormation = new Map();
   const deployedFormationIds = new Set();
+  const setupDestroyedFormationIds = new Set();
   const reserveArrivals = new Map();
   const embarkedByFormation = new Map();
   const disembarkedByFormation = new Map();
@@ -3725,6 +3921,10 @@ export function replayBattleState(state) {
     state.version < ACTION_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyUnactionedThroughSequence ?? 0);
+  const legacySetupRulesThroughSequence =
+    state.version < SETUP_RULES_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacySetupRulesThroughSequence ?? 0);
   const legacyChargeMovementThroughSequence =
     state.version < CHARGE_MOVE_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -4104,6 +4304,12 @@ export function replayBattleState(state) {
       if (state.version >= TRANSPORT_NESTING_BATTLE_STATE_VERSION) {
         validateDeclaredTransportChains(deploymentByFormation, true);
       }
+      validateInitialDeploymentRules(
+        formations,
+        deploymentByFormation,
+        embarkedByFormation,
+        legacySetupRulesThroughSequence,
+      );
       if (
         [...deploymentByFormation.values()].some(
           (deployment) =>
@@ -4135,6 +4341,17 @@ export function replayBattleState(state) {
         throw new Error("Battle start clock is not canonical");
       }
       clock = expected;
+      if (event.sequence > legacySetupRulesThroughSequence) {
+        for (const deployment of deploymentByFormation.values()) {
+          if (deployment.location !== "not_deployed") continue;
+          const formation = formations.get(deployment.formationId);
+          for (const health of Object.values(formation?.health ?? {})) {
+            health.modelsRemaining = 0;
+            health.woundsLost = 0;
+          }
+          setupDestroyedFormationIds.add(deployment.formationId);
+        }
+      }
       if (state.version >= TRACKER_BATTLE_STATE_VERSION) {
         awardCommandPhasePoints(resources, state.players, mission);
       }
@@ -6388,6 +6605,7 @@ export function replayBattleState(state) {
     chargeByFormation,
     deploymentByFormation,
     deployedFormationIds,
+    setupDestroyedFormationIds,
     deploymentPriorityPlayerId,
     deploymentComplete:
       deploymentDeclarationsComplete(formations, deploymentByFormation) &&
@@ -6451,6 +6669,7 @@ export function declareFormationDeployment(
     eligibilityConfirmed = false,
     eligibilityReason = "",
     transportFormationId = "",
+    aircraftMode = "",
   } = {},
   id,
   at,
@@ -6468,6 +6687,7 @@ export function declareFormationDeployment(
     eligibilityConfirmed,
     eligibilityReason,
     transportFormationId,
+    aircraftMode,
   });
 }
 
@@ -6955,6 +7175,18 @@ export function battleTransportDeploymentChains(state) {
       reason: chain.reason,
     };
   });
+}
+
+export function battleInitialDeploymentRules(state) {
+  const replayed = replayBattleState(state);
+  return [...replayed.formations.keys()].map((formationId) =>
+    initialDeploymentReportForFormation(
+      formationId,
+      replayed.formations,
+      replayed.deploymentByFormation,
+      replayed.embarkedByFormation,
+    ),
+  );
 }
 
 export function battleEmbarkationOptions(state, formationId) {
@@ -7863,6 +8095,7 @@ export function configureUnengagedBattleFormation(state, formation, id, at) {
     previous.playerId !== formation.playerId ||
     previous.sourceFormationId !== formation.sourceFormationId ||
     previous.assignedTransportFormationId !== formation.assignedTransportFormationId ||
+    JSON.stringify(previous.deploymentTraits) !== JSON.stringify(formation.deploymentTraits) ||
     JSON.stringify(previous.transportOptions) !== JSON.stringify(formation.transportOptions)
   ) {
     throw new Error("Formation identity cannot change during battle setup");

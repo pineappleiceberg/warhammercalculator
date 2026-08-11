@@ -665,6 +665,16 @@ export function savedFormationBattleRegistration(
       `Exact weapon bearer assignments exceed the ${MAX_DAMAGE_ALLOCATION_SEGMENTS}-segment damage allocation limit`,
     );
   }
+  const formationKeywords = [
+    ...new Set(
+      formation.components.flatMap((component) =>
+        (component.catalogueUnit?.models ?? []).flatMap((model) => model.keywords ?? []),
+      ),
+    ),
+  ];
+  const normalizedFormationKeywords = new Set(
+    formationKeywords.map((keyword) => keyword.toLowerCase()),
+  );
   return {
     id,
     playerId,
@@ -672,13 +682,12 @@ export function savedFormationBattleRegistration(
     name: formation.name,
     assignedTransportFormationId,
     transportOptions,
-    keywords: [
-      ...new Set(
-        formation.components.flatMap((component) =>
-          (component.catalogueUnit?.models ?? []).flatMap((model) => model.keywords ?? []),
-        ),
-      ),
-    ],
+    keywords: formationKeywords,
+    deploymentTraits: {
+      dedicatedTransport: normalizedFormationKeywords.has("dedicated transport"),
+      aircraft: normalizedFormationKeywords.has("aircraft"),
+      hover: formation.components.some((component) => Boolean(component.catalogueUnit?.hasHover)),
+    },
     defensiveEquipmentCounts: { ...defensiveEquipmentCounts },
     weaponBearerTracking: "exact",
     modelInstances,

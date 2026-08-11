@@ -5821,6 +5821,21 @@ class ProfileDataTests(unittest.TestCase):
             export(DATABASE, exported)
             self.assertEqual(exported.read_bytes(), CATALOGUE.read_bytes())
 
+    def test_browser_catalogue_locks_hover_setup_eligibility(self):
+        catalogue = json.loads(CATALOGUE.read_text(encoding="utf-8"))
+        with closing(sqlite3.connect(DATABASE)) as connection:
+            expected = {
+                row[0]
+                for row in connection.execute(
+                    """SELECT DISTINCT datasheet_id
+                       FROM datasheet_abilities
+                       WHERE lower(name) = 'hover'"""
+                )
+            }
+        actual = {unit["id"] for unit in catalogue["units"] if unit["hasHover"]}
+        self.assertEqual(actual, expected)
+        self.assertTrue(all(isinstance(unit["hasHover"], bool) for unit in catalogue["units"]))
+
     def test_browser_catalogue_preserves_published_weapon_ranges(self):
         catalogue = json.loads(CATALOGUE.read_text(encoding="utf-8"))
         weapons = [weapon for unit in catalogue["units"] for weapon in unit["weapons"]]

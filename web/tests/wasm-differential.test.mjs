@@ -26,6 +26,7 @@ import {
   goToGroundIsValid,
   hazardousResolutionIsValid,
   heroicInterventionIsValid,
+  initialDeploymentIsValid,
   normalizeBattleState,
   rangedDeclarationIsValid,
   rangedTargetEligibilityIsValid,
@@ -108,8 +109,32 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_ranged_declaration_is_valid, "function");
   assert.equal(typeof calculator._whc_transport_load_is_valid, "function");
   assert.equal(typeof calculator._whc_transport_deployment_chain_is_valid, "function");
+  assert.equal(typeof calculator._whc_initial_deployment_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
+});
+
+test("WebAssembly and JavaScript agree on initial deployment exceptions", () => {
+  const cases = [
+    [0, 0, 0, 0, 0, 1],
+    [1, 0, 0, 0, 0, 0],
+    [1, 0, 0, 0, 0, 1],
+    [1, 1, 0, 0, 0, 1],
+    [0, 0, 1, 0, 1, 2],
+    [0, 0, 1, 0, 1, 1],
+    [0, 0, 1, 1, 2, 1],
+    [0, 0, 1, 1, 2, 3],
+    [0, 0, 1, 1, 2, 2],
+    [0, 0, 1, 0, 2, 1],
+    [0, 0, 0, 0, 1, 1],
+    [2, 0, 0, 0, 0, 1],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_initial_deployment_is_valid(...values)),
+      initialDeploymentIsValid(...values),
+    );
+  }
 });
 
 test("WebAssembly and JavaScript agree on Transport capacity boundaries", () => {
@@ -134,6 +159,7 @@ test("WebAssembly and JavaScript agree on Transport capacity boundaries", () => 
 
 test("WebAssembly and JavaScript agree on nested Transport deployment chains", () => {
   const cases = [
+    [1, 1, 0, 0],
     [1, 1, 1, 0],
     [3, 3, 1, 0],
     [3, 3, 2, 3],

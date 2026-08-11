@@ -329,11 +329,46 @@ bool whc_transport_deployment_chain_is_valid(uint32_t chain_length,
                                              uint32_t reserve_eligibility_count) {
     return chain_length >= 1u && chain_length <= 257u &&
            unique_formation_count == chain_length &&
-           root_location >= WHC_DEPLOYMENT_ROOT_BATTLEFIELD &&
            root_location <= WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES &&
            reserve_eligibility_count <= chain_length &&
-           (root_location == WHC_DEPLOYMENT_ROOT_BATTLEFIELD ||
+           ((root_location == WHC_DEPLOYMENT_ROOT_NOT_DEPLOYED &&
+             reserve_eligibility_count == 0u) ||
+            root_location == WHC_DEPLOYMENT_ROOT_BATTLEFIELD ||
             reserve_eligibility_count == chain_length);
+}
+
+bool whc_initial_deployment_is_valid(uint32_t is_dedicated_transport,
+                                     uint32_t starting_passenger_count,
+                                     uint32_t is_aircraft, uint32_t has_hover,
+                                     uint32_t aircraft_mode, uint32_t root_location) {
+    bool mode_is_valid;
+
+    if (is_dedicated_transport > 1u || is_aircraft > 1u || has_hover > 1u ||
+        aircraft_mode > WHC_AIRCRAFT_MODE_HOVER ||
+        root_location > WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES) {
+        return false;
+    }
+    mode_is_valid = (!is_aircraft && aircraft_mode == WHC_AIRCRAFT_MODE_NONE) ||
+                    (is_aircraft &&
+                     (aircraft_mode == WHC_AIRCRAFT_MODE_AIRCRAFT ||
+                      (aircraft_mode == WHC_AIRCRAFT_MODE_HOVER && has_hover)));
+    if (!mode_is_valid) {
+        return false;
+    }
+    if (is_dedicated_transport && starting_passenger_count == 0u) {
+        return root_location == WHC_DEPLOYMENT_ROOT_NOT_DEPLOYED;
+    }
+    if (root_location == WHC_DEPLOYMENT_ROOT_NOT_DEPLOYED) {
+        return false;
+    }
+    if (!is_aircraft) {
+        return true;
+    }
+    if (aircraft_mode == WHC_AIRCRAFT_MODE_AIRCRAFT) {
+        return root_location == WHC_DEPLOYMENT_ROOT_RESERVES;
+    }
+    return root_location == WHC_DEPLOYMENT_ROOT_BATTLEFIELD ||
+           root_location == WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES;
 }
 
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,

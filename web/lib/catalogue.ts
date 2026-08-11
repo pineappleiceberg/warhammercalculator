@@ -348,6 +348,7 @@ export type CatalogueUnit = {
   defensiveEquipment: CatalogueDefensiveEquipment[];
   firingDeck: { capacity: number; abilityId: string | null } | null;
   firingDeckModelCost: number;
+  hasHover: boolean;
   transport: {
     capacity: number;
     exactRules: boolean;

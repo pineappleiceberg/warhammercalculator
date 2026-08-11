@@ -10,7 +10,7 @@
       "sha256": "4d0e8019cbfddd6f46781d5b4ed31d46fb21eb2d0d10a0f6fabefac0ce054364",
       "pages": [
         7, 8, 9, 16, 17, 18, 19, 20, 23, 25, 26, 29, 32, 33, 34, 35, 39, 41, 42,
-        43, 44, 53, 57, 60
+        43, 44, 53, 56, 57, 60
       ],
       "usedFor": [
         "measuring distances between the closest base or hull points",
@@ -32,7 +32,8 @@
         "Firing Deck occupancy",
         "destroyed and Emergency Disembarkation",
         "mortal wounds and Feel No Pain",
-        "Aircraft Transport Reserve restrictions",
+        "Aircraft mandatory Reserve setup, Aircraft Transport Reserve restrictions, and Hover declarations",
+        "empty Dedicated Transport non-deployment and first-round destruction",
         "Stratagem Command Point payment and once-per-phase reuse restriction",
         "Go to Ground timing, Infantry target, 1CP cost, 6+ invulnerable save, Benefit of Cover, and phase duration",
         "Benefit of Cover save modifier, AP 0 restriction for 3+ or better saves, non-cumulative effect, and Ignores Cover interaction"

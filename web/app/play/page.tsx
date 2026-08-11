@@ -2812,6 +2812,37 @@ export default function PlayMode() {
           String(data.get(`location-${formationId}`) || "battlefield"),
         ]),
       );
+      const aircraftModes = new Map(
+        [...replayedBattle.formations.values()].map((formation) => [
+          formation.id,
+          formation.deploymentTraits?.aircraft
+            ? String(data.get(`aircraft-mode-${formation.id}`) || "aircraft")
+            : "",
+        ]),
+      );
+      const startingPassengerCounts = new Map<string, number>();
+      for (const choice of locationChoices.values()) {
+        if (!choice.startsWith("embarked:")) continue;
+        const transportFormationId = choice.slice("embarked:".length);
+        startingPassengerCounts.set(
+          transportFormationId,
+          (startingPassengerCounts.get(transportFormationId) ?? 0) + 1,
+        );
+      }
+      for (const formation of replayedBattle.formations.values()) {
+        const choice = locationChoices.get(formation.id) || "battlefield";
+        if (
+          formation.deploymentTraits?.dedicatedTransport &&
+          (startingPassengerCounts.get(formation.id) ?? 0) === 0
+        ) {
+          locationChoices.set(formation.id, "not_deployed");
+        } else if (
+          aircraftModes.get(formation.id) === "aircraft" &&
+          !choice.startsWith("embarked:")
+        ) {
+          locationChoices.set(formation.id, "reserves");
+        }
+      }
       const rootLocationChoice = (formationId: string) => {
         const seen = new Set<string>();
         let currentFormationId = formationId;
@@ -2834,6 +2865,8 @@ export default function PlayMode() {
         const inReserves = ["reserves", "strategic_reserves"].includes(rootLocation);
         const countsTowardStrategicReserves = rootLocation === "strategic_reserves";
         const reserveReason = String(data.get(`reason-${formation.id}`) || "").trim();
+        const aircraftMode = aircraftModes.get(formation.id) || "";
+        const automaticAircraftReserve = inReserves && aircraftMode === "aircraft";
         next = declareFormationDeployment(
           next,
           formation.id,
@@ -2846,9 +2879,15 @@ export default function PlayMode() {
               location === "strategic_reserves"
                 ? Math.max(2, Number(data.get(`round-${formation.id}`)) || 2)
                 : Math.max(1, Number(data.get(`round-${formation.id}`)) || 1),
-            eligibilityConfirmed: !inReserves || data.get(`eligible-${formation.id}`) === "on",
+            eligibilityConfirmed:
+              !inReserves ||
+              automaticAircraftReserve ||
+              data.get(`eligible-${formation.id}`) === "on",
             eligibilityReason: inReserves
               ? reserveReason ||
+                (automaticAircraftReserve
+                  ? "Core Rules: Aircraft must start the battle in Reserves"
+                  : "") ||
                 (location === "embarked"
                   ? "Embarked within a Transport chain placed in Reserves"
                   : "")
@@ -2856,6 +2895,7 @@ export default function PlayMode() {
                 ? "Core rules Transport declaration"
                 : "Battlefield deployment",
             transportFormationId,
+            aircraftMode,
           },
           crypto.randomUUID(),
           next.events.length + 1,
@@ -7269,6 +7309,8 @@ export default function PlayMode() {
                     <span>
                       Put every formation on the battlefield, in Reserves, in Strategic Reserves, or
                       inside a compatible friendly Transport before either player deploys a model.
+                      Empty Dedicated Transports are automatically left undeployed and destroyed in
+                      round one.
                     </span>
                   </div>
                   {[...replayedBattle.formations.values()].map((formation) => (
@@ -7278,9 +7320,27 @@ export default function PlayMode() {
                           ?.name ?? "Player"}{" "}
                         · {formation.name}
                       </legend>
+                      {formation.deploymentTraits?.aircraft && (
+                        <label>
+                          <span>Aircraft setup</span>
+                          <select name={"aircraft-mode-" + formation.id} defaultValue="aircraft">
+                            <option value="aircraft">Aircraft · start in Reserves</option>
+                            {formation.deploymentTraits.hover && (
+                              <option value="hover">
+                                Hover · battlefield or Strategic Reserves
+                              </option>
+                            )}
+                          </select>
+                        </label>
+                      )}
                       <label>
                         <span>Starting location</span>
-                        <select name={"location-" + formation.id} defaultValue="battlefield">
+                        <select
+                          name={"location-" + formation.id}
+                          defaultValue={
+                            formation.deploymentTraits?.aircraft ? "reserves" : "battlefield"
+                          }
+                        >
                           <option value="battlefield">Battlefield</option>
                           {formation.transportOptions.map(
                             (option: { transportFormationId: string }) => (
@@ -7323,7 +7383,11 @@ export default function PlayMode() {
                         />
                       </label>
                       <label className="confirmation-row">
-                        <input type="checkbox" name={"eligible-" + formation.id} />
+                        <input
+                          type="checkbox"
+                          name={"eligible-" + formation.id}
+                          defaultChecked={Boolean(formation.deploymentTraits?.aircraft)}
+                        />
                         Reserve eligibility confirmed when this formation or its Transport starts in
                         Reserves
                       </label>
