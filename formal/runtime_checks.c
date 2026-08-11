@@ -276,6 +276,18 @@ int main(void) {
                                              WHC_MODEL_PLACEMENT_FLAGS_MASK));
     assert(!whc_model_placement_set_is_valid(3u, 3u, 3u, 3u, 3u, 3u, 3u, 3u, UINT32_MAX, 4u,
                                              WHC_MODEL_PLACEMENT_FLAGS_MASK));
+    assert(whc_model_position_set_is_valid(3u, 3u, 3u, 3u, 3u, 3u, 3u, 3u, 2u, 1u, 2u,
+                                           2u, 3u, 3u, 3u, 3u, 3u, 3u, 3u,
+                                           WHC_MODEL_POSITION_FLAGS_MASK));
+    assert(!whc_model_position_set_is_valid(3u, 3u, 3u, 3u, 3u, 3u, 3u, 3u, 2u, 1u,
+                                            2u, 2u, 3u, 3u, 3u, 2u, 3u, 3u, 3u,
+                                            WHC_MODEL_POSITION_FLAGS_MASK));
+    assert(!whc_model_position_set_is_valid(3u, 3u, 3u, 3u, 3u, 3u, 3u, 3u, 2u, 1u,
+                                            2u, 2u, 3u, 3u, 3u, 3u, 3u, 3u, 2u,
+                                            WHC_MODEL_POSITION_FLAGS_MASK));
+    assert(!whc_model_position_set_is_valid(3u, 3u, 3u, 3u, 3u, 3u, 3u, 3u,
+                                            UINT32_MAX, 4u, 2u, 2u, 3u, 3u, 3u, 3u, 3u,
+                                            3u, 3u, WHC_MODEL_POSITION_FLAGS_MASK));
 
     return 0;
 }

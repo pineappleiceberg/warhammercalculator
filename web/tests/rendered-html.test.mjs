@@ -11,6 +11,7 @@ import {
   applyBattleEffect,
   changeBattleResource,
   closeRangedTargetDeclarations,
+  completeFormationMovement,
   completeFormationActivation,
   configureBattleMission,
   configureBattleTableGeometry,
@@ -24,6 +25,7 @@ import {
   recordFormationCharge,
   recordFormationMovement,
   recordDeploymentModelPlacements,
+  recordModelPositions,
   recordFightMove,
   recordHazardousTests,
   recordRangedTargetEligibility,
@@ -3045,6 +3047,78 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
     "record-table-geometry-target-placement",
     7,
   );
+  state = startBattle(state, "player-2", "start-table-geometry-battle", 8);
+  while (replayBattleState(state).clock.step !== "move_units") {
+    state = advanceBattleClock(
+      state,
+      `advance-table-geometry-${state.events.length + 1}`,
+      state.events.length + 1,
+    );
+  }
+  state = startFormationMovement(
+    state,
+    target.id,
+    "normal",
+    "start-table-geometry-movement",
+    state.events.length + 1,
+  );
+  state = passFireOverwatch(
+    state,
+    "No Fire Overwatch declared at move start",
+    "pass-table-geometry-start-overwatch",
+    state.events.length + 1,
+  );
+  state = completeFormationMovement(
+    state,
+    target.id,
+    "normal",
+    "complete-table-geometry-movement",
+    state.events.length + 1,
+  );
+  const movedModels = modelPlacements.models.map((model) => {
+    const endpoint = { ...model, centerXThousandths: model.centerXThousandths + 1_000 };
+    const point = (candidate) => ({
+      centerXThousandths: candidate.centerXThousandths,
+      centerYThousandths: candidate.centerYThousandths,
+      elevationThousandths: candidate.elevationThousandths,
+      rotationMilliDegrees: candidate.rotationMilliDegrees,
+    });
+    return {
+      ...endpoint,
+      path: [point(model), point(endpoint)],
+      distanceMovedThousandths: 1_000,
+      maximumDistanceThousandths: 10_000,
+    };
+  });
+  const modelPositions = {
+    context: "movement",
+    referenceEventId: "complete-table-geometry-movement",
+    missionSourceId: geometry.missionSourceId,
+    terrainSourceId: geometry.terrainSourceId,
+    battlefieldWidthThousandths: geometry.battlefieldWidthThousandths,
+    battlefieldHeightThousandths: geometry.battlefieldHeightThousandths,
+    origin: geometry.origin,
+    models: movedModels,
+    measurementBoundariesReviewed: true,
+    positionsReviewed: true,
+    noModelOverlapReviewed: true,
+    objectiveClearanceReviewed: true,
+    pathsReviewed: true,
+    terrainClearanceReviewed: true,
+    coherencyReviewed: true,
+    engagementRangeReviewed: true,
+    reconcilesStaleStart: false,
+    reviewedByPlayer: true,
+    method: "manual",
+    reviewReason: "The model path, endpoint, distance, terrain, and coherency were checked",
+  };
+  state = recordModelPositions(
+    state,
+    target.id,
+    modelPositions,
+    "record-table-geometry-target-movement",
+    state.events.length + 1,
+  );
 
   const worker = await loadWorker();
   const response = await worker.fetch(
@@ -3062,6 +3136,14 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
   assert.deepEqual(body.data.tableGeometry, geometry);
   assert.deepEqual(body.data.terrainFootprints, terrainFootprints);
   assert.deepEqual(body.data.modelPlacements, { [target.id]: modelPlacements });
+  assert.deepEqual(body.data.currentModelPositions, {
+    [target.id]: modelPositions,
+  });
+  assert.deepEqual(body.data.modelPositionHistory, {
+    [target.id]: [{ ...modelPlacements, context: "deployment" }, modelPositions],
+  });
+  assert.deepEqual(body.data.geometryStaleFormationIds, []);
+  assert.equal(body.data.pendingModelPosition, null);
 });
 
 test("cross-checks structured charge movement through the C and WebAssembly API", async () => {

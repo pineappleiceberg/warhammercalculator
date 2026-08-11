@@ -1826,6 +1826,18 @@ int main(void) {
                                              WHC_MODEL_PLACEMENT_FLAGS_MASK - 1u));
     assert(!whc_model_placement_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u, UINT32_MAX, 6u,
                                              WHC_MODEL_PLACEMENT_FLAGS_MASK));
+    assert(whc_model_position_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u, 4u, 1u, 2u,
+                                           2u, 5u, 5u, 5u, 5u, 5u, 5u, 5u,
+                                           WHC_MODEL_POSITION_FLAGS_MASK));
+    assert(!whc_model_position_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u, 4u, 1u,
+                                            2u, 1u, 5u, 5u, 5u, 5u, 5u, 5u, 5u,
+                                            WHC_MODEL_POSITION_FLAGS_MASK));
+    assert(!whc_model_position_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u, 4u, 1u,
+                                            2u, 2u, 5u, 5u, 5u, 5u, 5u, 5u, 4u,
+                                            WHC_MODEL_POSITION_FLAGS_MASK));
+    assert(!whc_model_position_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u,
+                                            UINT32_MAX, 6u, 2u, 2u, 5u, 5u, 5u, 5u, 5u,
+                                            5u, 5u, WHC_MODEL_POSITION_FLAGS_MASK));
     puts("all tests passed");
 
     return 0;

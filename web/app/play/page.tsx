@@ -55,6 +55,7 @@ import {
   passHeroicIntervention,
   recordFormationCharge,
   recordDeploymentModelPlacements,
+  recordModelPositions,
   recordHazardousTests,
   recordFightMove,
   recordRangedTargetEligibility,
@@ -912,6 +913,13 @@ export default function PlayMode() {
   );
   const pendingDeploymentFormation = replayedBattle?.pendingDeploymentPlacement
     ? replayedBattle.formations.get(replayedBattle.pendingDeploymentPlacement.formationId)
+    : null;
+  const pendingModelPosition = replayedBattle?.pendingModelPosition ?? null;
+  const pendingModelPositionFormation = pendingModelPosition
+    ? replayedBattle?.formations.get(pendingModelPosition.formationId)
+    : null;
+  const pendingModelPositionPrevious = pendingModelPosition
+    ? replayedBattle?.currentModelPositionsByFormation.get(pendingModelPosition.formationId)
     : null;
   targetFormationBaseModels = battleTargetSequence(
     targetFormationBaseModels,
@@ -3267,6 +3275,180 @@ export default function PlayMode() {
     }
   };
 
+  const recordPendingModelPositions = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!battleState || !replayedBattle?.pendingModelPosition || !replayedBattle.tableGeometry) {
+      return;
+    }
+    try {
+      const pending = replayedBattle.pendingModelPosition;
+      const formation = replayedBattle.formations.get(pending.formationId);
+      if (!formation) throw new Error("Pending position formation is unavailable");
+      const previous = replayedBattle.currentModelPositionsByFormation.get(formation.id);
+      const data = new FormData(event.currentTarget);
+      const table = replayedBattle.tableGeometry;
+      const measurement = (name: string, maximum: number, allowZero = false) => {
+        const value = Number(data.get(name));
+        if (!Number.isFinite(value) || value < (allowZero ? 0 : 0.001) || value > maximum) {
+          throw new Error(
+            `${name} must be ${allowZero ? "from 0" : "greater than 0"} to ${maximum} inches`,
+          );
+        }
+        return Math.round(value * 1000);
+      };
+      const rotation = (name: string) => {
+        const value = Number(data.get(name));
+        if (!Number.isFinite(value) || value < 0 || value >= 180) {
+          throw new Error(`${name} must be from 0 to 179.999 degrees`);
+        }
+        return Math.round(value * 1000);
+      };
+      const movement = pending.context === "movement";
+      const candidates = movement ? (previous?.models ?? []) : formation.modelInstances;
+      if (movement && !previous) throw new Error("Movement has no prior model positions");
+      const point = (model: {
+        centerXThousandths: number;
+        centerYThousandths: number;
+        elevationThousandths: number;
+        rotationMilliDegrees: number;
+      }) => ({
+        centerXThousandths: model.centerXThousandths,
+        centerYThousandths: model.centerYThousandths,
+        elevationThousandths: model.elevationThousandths,
+        rotationMilliDegrees: model.rotationMilliDegrees,
+      });
+      const models = candidates
+        .filter((model: { modelId?: string; id?: string }) => {
+          const modelId = model.modelId ?? model.id ?? "";
+          return data.get(`position-live-${modelId}`) === "on";
+        })
+        .map((candidate: { modelId?: string; id?: string }) => {
+          const modelId = candidate.modelId ?? candidate.id ?? "";
+          const prior = movement
+            ? previous.models.find((model: { modelId: string }) => model.modelId === modelId)
+            : null;
+          const start =
+            movement && pending.reconcilesStaleStart
+              ? {
+                  centerXThousandths: measurement(
+                    `position-start-x-${modelId}`,
+                    table.battlefieldWidthThousandths / 1000,
+                    true,
+                  ),
+                  centerYThousandths: measurement(
+                    `position-start-y-${modelId}`,
+                    table.battlefieldHeightThousandths / 1000,
+                    true,
+                  ),
+                  elevationThousandths: measurement(`position-start-z-${modelId}`, 24, true),
+                  rotationMilliDegrees: rotation(`position-start-rotation-${modelId}`),
+                }
+              : movement
+                ? point(prior)
+                : null;
+          const endpoint = {
+            centerXThousandths: measurement(
+              `position-x-${modelId}`,
+              table.battlefieldWidthThousandths / 1000,
+              true,
+            ),
+            centerYThousandths: measurement(
+              `position-y-${modelId}`,
+              table.battlefieldHeightThousandths / 1000,
+              true,
+            ),
+            elevationThousandths: measurement(`position-z-${modelId}`, 24, true),
+            rotationMilliDegrees: rotation(`position-rotation-${modelId}`),
+          };
+          const intermediatePath = String(data.get(`position-waypoints-${modelId}`) || "")
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line) => {
+              const values = line.split(",").map((value) => Number(value.trim()));
+              if (
+                values.length !== 4 ||
+                values.some((value) => !Number.isFinite(value)) ||
+                values[0] < 0 ||
+                values[0] > table.battlefieldWidthThousandths / 1000 ||
+                values[1] < 0 ||
+                values[1] > table.battlefieldHeightThousandths / 1000 ||
+                values[2] < 0 ||
+                values[2] > 24 ||
+                values[3] < 0 ||
+                values[3] >= 180
+              ) {
+                throw new Error(
+                  `Each ${modelId} waypoint must be x, y, elevation, rotation in table bounds`,
+                );
+              }
+              return {
+                centerXThousandths: Math.round(values[0] * 1000),
+                centerYThousandths: Math.round(values[1] * 1000),
+                elevationThousandths: Math.round(values[2] * 1000),
+                rotationMilliDegrees: Math.round(values[3] * 1000),
+              };
+            });
+          return {
+            modelId,
+            measurementBasis: movement
+              ? prior.measurementBasis
+              : String(data.get(`position-basis-${modelId}`) || "base"),
+            shape: movement
+              ? prior.shape
+              : String(data.get(`position-shape-${modelId}`) || "circle"),
+            widthThousandths: movement
+              ? prior.widthThousandths
+              : measurement(`position-width-${modelId}`, 30),
+            depthThousandths: movement
+              ? prior.depthThousandths
+              : measurement(`position-depth-${modelId}`, 30),
+            ...endpoint,
+            path: movement ? [start, ...intermediatePath, endpoint] : [endpoint],
+            distanceMovedThousandths: movement
+              ? measurement(`position-distance-${modelId}`, 120, true)
+              : 0,
+            maximumDistanceThousandths: movement
+              ? measurement(`position-maximum-${modelId}`, 120, true)
+              : 0,
+          };
+        });
+      const position = {
+        context: pending.context,
+        referenceEventId: pending.referenceEventId,
+        missionSourceId: table.missionSourceId,
+        terrainSourceId: table.terrainSourceId,
+        battlefieldWidthThousandths: table.battlefieldWidthThousandths,
+        battlefieldHeightThousandths: table.battlefieldHeightThousandths,
+        origin: table.origin,
+        models,
+        measurementBoundariesReviewed: data.get("position-boundaries-reviewed") === "on",
+        positionsReviewed: data.get("position-endpoints-reviewed") === "on",
+        noModelOverlapReviewed: data.get("position-overlap-reviewed") === "on",
+        objectiveClearanceReviewed: data.get("position-objectives-reviewed") === "on",
+        pathsReviewed: data.get("position-paths-reviewed") === "on",
+        terrainClearanceReviewed: data.get("position-terrain-reviewed") === "on",
+        coherencyReviewed: data.get("position-coherency-reviewed") === "on",
+        engagementRangeReviewed: data.get("position-engagement-reviewed") === "on",
+        reconcilesStaleStart: Boolean(pending.reconcilesStaleStart),
+        reviewedByPlayer: data.get("position-player-reviewed") === "on",
+        method: String(data.get("position-method") || "manual"),
+        reviewReason: String(data.get("position-reason") || "").trim(),
+      };
+      const next = recordModelPositions(
+        battleState,
+        formation.id,
+        position,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setStatus(`${formation.name} per-model ${movement ? "paths" : "positions"} recorded`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Model positions could not be recorded");
+    }
+  };
+
   const recordReserveArrival = () => {
     if (!battleState || !attackerBattleFormationId) return;
     try {
@@ -3634,6 +3816,7 @@ export default function PlayMode() {
               battleState.events.length + 1,
             );
       setBattleState(next);
+      const pendingPosition = replayBattleState(next).pendingModelPosition;
       refreshProfile(
         weaponId,
         targetModelId,
@@ -3651,7 +3834,7 @@ export default function PlayMode() {
         movement === "stationary"
           ? `${attackerFormation?.name ?? "Formation"} · remained stationary`
           : movementStarted
-            ? `${attackerFormation?.name ?? "Formation"} · ${movement.replace("_", " ")} complete · Fire Overwatch response`
+            ? `${attackerFormation?.name ?? "Formation"} · ${movement.replace("_", " ")} complete · ${pendingPosition ? "record per-model paths" : "Fire Overwatch response"}`
             : `${attackerFormation?.name ?? "Formation"} · ${movement.replace("_", " ")} started · Fire Overwatch response`,
       );
     } catch (error) {
@@ -7043,10 +7226,313 @@ export default function PlayMode() {
                   </button>
                 </div>
               )}
+            {pendingModelPosition &&
+              pendingModelPositionFormation &&
+              replayedBattle.tableGeometry && (
+                <form
+                  className="mission-setup"
+                  data-testid="pending-model-position"
+                  onSubmit={recordPendingModelPositions}
+                >
+                  <div>
+                    <strong>
+                      Record {pendingModelPositionFormation.name} per-model{" "}
+                      {pendingModelPosition.context === "movement" ? "paths" : "positions"}
+                    </strong>
+                    <span>
+                      Preserve each surviving model identity. Distances are the farthest distance
+                      any part of that model&apos;s base or hull travelled along its reviewed path.
+                    </span>
+                    {pendingModelPosition.reconcilesStaleStart && (
+                      <span>
+                        Earlier physical movement made the saved geometry stale. Record each
+                        model&apos;s verified starting position before entering this path.
+                      </span>
+                    )}
+                  </div>
+                  {(pendingModelPosition.context === "movement"
+                    ? (pendingModelPositionPrevious?.models ?? [])
+                    : pendingModelPositionFormation.modelInstances
+                  ).map(
+                    (candidate: {
+                      id?: string;
+                      modelId?: string;
+                      modelName?: string;
+                      ordinal?: number;
+                      measurementBasis?: string;
+                      shape?: string;
+                      widthThousandths?: number;
+                      depthThousandths?: number;
+                      centerXThousandths?: number;
+                      centerYThousandths?: number;
+                      elevationThousandths?: number;
+                      rotationMilliDegrees?: number;
+                    }) => {
+                      const modelId = candidate.modelId ?? candidate.id ?? "";
+                      const identity = pendingModelPositionFormation.modelInstances.find(
+                        (model: { id: string }) => model.id === modelId,
+                      );
+                      const segment = pendingModelPositionFormation.segments.find(
+                        (entry: { modelIds: string[] }) => entry.modelIds.includes(modelId),
+                      );
+                      const defaultLive = Boolean(
+                        segment &&
+                          segment.modelIds.indexOf(modelId) <
+                            pendingModelPositionFormation.health[segment.id].modelsRemaining,
+                      );
+                      const movement = pendingModelPosition.context === "movement";
+                      return (
+                        <fieldset key={modelId}>
+                          <legend>
+                            {identity?.modelName ?? candidate.modelName ?? "Model"} · model{" "}
+                            {identity?.ordinal ?? candidate.ordinal ?? modelId}
+                          </legend>
+                          <label className="confirmation-row">
+                            <input
+                              name={`position-live-${modelId}`}
+                              type="checkbox"
+                              defaultChecked={defaultLive}
+                            />
+                            This exact model is still in the formation
+                          </label>
+                          {movement ? (
+                            <>
+                              <span>
+                                Locked {candidate.measurementBasis} · {candidate.shape} ·{" "}
+                                {((candidate.widthThousandths ?? 0) / 1000).toFixed(3)} ×{" "}
+                                {((candidate.depthThousandths ?? 0) / 1000).toFixed(3)} inches ·
+                                saved {((candidate.centerXThousandths ?? 0) / 1000).toFixed(3)},{" "}
+                                {((candidate.centerYThousandths ?? 0) / 1000).toFixed(3)}
+                              </span>
+                              {pendingModelPosition.reconcilesStaleStart && (
+                                <>
+                                  <label>
+                                    <span>Verified start centre X (inches)</span>
+                                    <input
+                                      name={`position-start-x-${modelId}`}
+                                      type="number"
+                                      min="0"
+                                      max={
+                                        replayedBattle.tableGeometry.battlefieldWidthThousandths /
+                                        1000
+                                      }
+                                      step="0.001"
+                                      defaultValue={(candidate.centerXThousandths ?? 0) / 1000}
+                                    />
+                                  </label>
+                                  <label>
+                                    <span>Verified start centre Y (inches)</span>
+                                    <input
+                                      name={`position-start-y-${modelId}`}
+                                      type="number"
+                                      min="0"
+                                      max={
+                                        replayedBattle.tableGeometry.battlefieldHeightThousandths /
+                                        1000
+                                      }
+                                      step="0.001"
+                                      defaultValue={(candidate.centerYThousandths ?? 0) / 1000}
+                                    />
+                                  </label>
+                                  <label>
+                                    <span>Verified start elevation (inches)</span>
+                                    <input
+                                      name={`position-start-z-${modelId}`}
+                                      type="number"
+                                      min="0"
+                                      max="24"
+                                      step="0.001"
+                                      defaultValue={(candidate.elevationThousandths ?? 0) / 1000}
+                                    />
+                                  </label>
+                                  <label>
+                                    <span>Verified start rotation (degrees)</span>
+                                    <input
+                                      name={`position-start-rotation-${modelId}`}
+                                      type="number"
+                                      min="0"
+                                      max="179.999"
+                                      step="0.001"
+                                      defaultValue={(candidate.rotationMilliDegrees ?? 0) / 1000}
+                                    />
+                                  </label>
+                                </>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <label>
+                                <span>Measurement boundary</span>
+                                <select name={`position-basis-${modelId}`} defaultValue="base">
+                                  <option value="base">Base</option>
+                                  <option value="model">Baseless model footprint</option>
+                                </select>
+                              </label>
+                              <label>
+                                <span>Footprint shape</span>
+                                <select name={`position-shape-${modelId}`} defaultValue="circle">
+                                  <option value="circle">Circle</option>
+                                  <option value="ellipse">Ellipse or oval</option>
+                                  <option value="rectangle">Reviewed rectangle</option>
+                                </select>
+                              </label>
+                              <label>
+                                <span>Width (inches)</span>
+                                <input
+                                  name={`position-width-${modelId}`}
+                                  type="number"
+                                  min="0.001"
+                                  max="30"
+                                  step="0.001"
+                                />
+                              </label>
+                              <label>
+                                <span>Depth (inches)</span>
+                                <input
+                                  name={`position-depth-${modelId}`}
+                                  type="number"
+                                  min="0.001"
+                                  max="30"
+                                  step="0.001"
+                                />
+                              </label>
+                            </>
+                          )}
+                          <label>
+                            <span>Endpoint centre X (inches)</span>
+                            <input
+                              name={`position-x-${modelId}`}
+                              type="number"
+                              min="0"
+                              max={replayedBattle.tableGeometry.battlefieldWidthThousandths / 1000}
+                              step="0.001"
+                              defaultValue={
+                                movement ? (candidate.centerXThousandths ?? 0) / 1000 : undefined
+                              }
+                            />
+                          </label>
+                          <label>
+                            <span>Endpoint centre Y (inches)</span>
+                            <input
+                              name={`position-y-${modelId}`}
+                              type="number"
+                              min="0"
+                              max={replayedBattle.tableGeometry.battlefieldHeightThousandths / 1000}
+                              step="0.001"
+                              defaultValue={
+                                movement ? (candidate.centerYThousandths ?? 0) / 1000 : undefined
+                              }
+                            />
+                          </label>
+                          <label>
+                            <span>Endpoint elevation (inches)</span>
+                            <input
+                              name={`position-z-${modelId}`}
+                              type="number"
+                              min="0"
+                              max="24"
+                              step="0.001"
+                              defaultValue={
+                                movement ? (candidate.elevationThousandths ?? 0) / 1000 : 0
+                              }
+                            />
+                          </label>
+                          <label>
+                            <span>Endpoint counter-clockwise rotation (degrees)</span>
+                            <input
+                              name={`position-rotation-${modelId}`}
+                              type="number"
+                              min="0"
+                              max="179.999"
+                              step="0.001"
+                              defaultValue={
+                                movement ? (candidate.rotationMilliDegrees ?? 0) / 1000 : 0
+                              }
+                            />
+                          </label>
+                          {movement && (
+                            <>
+                              <label>
+                                <span>Intermediate path points</span>
+                                <textarea
+                                  name={`position-waypoints-${modelId}`}
+                                  rows={2}
+                                  placeholder="Optional; one x, y, elevation, rotation point per line"
+                                />
+                              </label>
+                              <label>
+                                <span>Measured distance travelled (inches)</span>
+                                <input
+                                  name={`position-distance-${modelId}`}
+                                  type="number"
+                                  min="0"
+                                  max="120"
+                                  step="0.001"
+                                />
+                              </label>
+                              <label>
+                                <span>Maximum allowed distance after modifiers (inches)</span>
+                                <input
+                                  name={`position-maximum-${modelId}`}
+                                  type="number"
+                                  min="0"
+                                  max="120"
+                                  step="0.001"
+                                />
+                              </label>
+                            </>
+                          )}
+                        </fieldset>
+                      );
+                    },
+                  )}
+                  <label>
+                    <span>Measurement source</span>
+                    <select name="position-method" defaultValue="manual">
+                      <option value="manual">Manual tabletop measurement</option>
+                      <option value="uwb">UWB measurement</option>
+                      <option value="camera">Camera measurement</option>
+                      <option value="imported">Imported geometry</option>
+                    </select>
+                  </label>
+                  {[
+                    ["position-boundaries-reviewed", "Every measurement boundary was checked"],
+                    ["position-endpoints-reviewed", "Every endpoint and rotation was checked"],
+                    ["position-overlap-reviewed", "No model ends on top of another model"],
+                    ["position-objectives-reviewed", "No model ends on an objective marker"],
+                    ["position-paths-reviewed", "Every complete path and distance was checked"],
+                    [
+                      "position-terrain-reviewed",
+                      "Terrain clearance and vertical movement were checked",
+                    ],
+                    ["position-coherency-reviewed", "The formation ends in unit coherency"],
+                    ["position-engagement-reviewed", "Engagement Range restrictions were checked"],
+                    ["position-player-reviewed", "A player accepts these physical-table facts"],
+                  ].map(([name, label]) => (
+                    <label className="confirmation-row" key={name}>
+                      <input name={name} type="checkbox" required /> {label}
+                    </label>
+                  ))}
+                  <label>
+                    <span>Review record</span>
+                    <input
+                      name="position-reason"
+                      maxLength={500}
+                      required
+                      placeholder="Paths, endpoints, terrain, coherency, overlap, and range checked"
+                    />
+                  </label>
+                  <button type="submit">
+                    Lock reviewed{" "}
+                    {pendingModelPosition.context === "movement" ? "paths" : "positions"}
+                  </button>
+                </form>
+              )}
             {battleClock.status === "active" &&
               battleClock.phase === "movement" &&
               battleClock.step === "move_units" &&
               !pendingFireOverwatch &&
+              !pendingModelPosition &&
               attackerBattleFormationId &&
               attackerPlayerId === battleClock.activePlayerId && (
                 <div className="action-tracker">
@@ -7193,6 +7679,7 @@ export default function PlayMode() {
               battleClock.phase === "movement" &&
               battleClock.step === "reinforcements" &&
               !pendingFireOverwatch &&
+              !pendingModelPosition &&
               attackerBattleFormationId &&
               attackerPlayerId === battleClock.activePlayerId &&
               replayedBattle.offBattlefieldFormationIds.has(attackerBattleFormationId) &&

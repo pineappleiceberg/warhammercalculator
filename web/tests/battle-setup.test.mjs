@@ -5,8 +5,11 @@ import test from "node:test";
 import {
   BATTLE_STATE_VERSION,
   TABLE_GEOMETRY_CONSTANTS,
+  advanceBattleClock,
+  arriveFromReserves,
   battleFormation,
   battleFormationHealth,
+  changeBattleResource,
   configureBattleMission,
   configureBattleRuleCoverage,
   configureBattleTableGeometry,
@@ -16,10 +19,17 @@ import {
   deployFormation,
   modelPlacementSetFacts,
   modelPlacementSetIsValid,
+  modelPositionSetFacts,
+  modelPositionSetIsValid,
   normalizeBattleState,
   recordDeploymentModelPlacements,
+  recordModelPositions,
   replayBattleState,
+  resolveRapidIngress,
+  completeFormationMovement,
+  passFireOverwatch,
   startBattle,
+  startFormationMovement,
   tableGeometryIsValid,
   terrainFootprintSetIsValid,
 } from "../lib/battle-state.mjs";
@@ -312,6 +322,81 @@ function reviewedDeploymentModelPlacements(state, formationId, referenceEventId,
   return placement;
 }
 
+function reviewedModelPositions(state, formationId, context, referenceEventId, overrides = {}) {
+  const replayed = replayBattleState(state);
+  const formation = replayed.formations.get(formationId);
+  const tableGeometry = replayed.tableGeometry;
+  const previous = replayed.currentModelPositionsByFormation.get(formationId);
+  assert.ok(formation);
+  assert.ok(tableGeometry);
+  const survivingIds = formation.segments.flatMap((segment) =>
+    segment.modelIds.slice(0, formation.health[segment.id].modelsRemaining),
+  );
+  const models = survivingIds.map((modelId, index) => {
+    const prior = previous?.models.find((model) => model.modelId === modelId);
+    const start = prior ?? {
+      modelId,
+      measurementBasis: "base",
+      shape: "circle",
+      widthThousandths: 1_000,
+      depthThousandths: 1_000,
+      centerXThousandths: 35_000 + index * 2_000,
+      centerYThousandths: 35_000,
+      elevationThousandths: 0,
+      rotationMilliDegrees: 0,
+    };
+    const endpoint =
+      context === "movement"
+        ? { ...start, centerXThousandths: start.centerXThousandths + 1_000 }
+        : start;
+    const point = (model) => ({
+      centerXThousandths: model.centerXThousandths,
+      centerYThousandths: model.centerYThousandths,
+      elevationThousandths: model.elevationThousandths,
+      rotationMilliDegrees: model.rotationMilliDegrees,
+    });
+    return {
+      ...endpoint,
+      path: context === "movement" ? [point(start), point(endpoint)] : [point(endpoint)],
+      distanceMovedThousandths: context === "movement" ? 1_000 : 0,
+      maximumDistanceThousandths: context === "movement" ? 12_000 : 0,
+    };
+  });
+  return {
+    context,
+    referenceEventId,
+    missionSourceId: tableGeometry.missionSourceId,
+    terrainSourceId: tableGeometry.terrainSourceId,
+    battlefieldWidthThousandths: tableGeometry.battlefieldWidthThousandths,
+    battlefieldHeightThousandths: tableGeometry.battlefieldHeightThousandths,
+    origin: tableGeometry.origin,
+    models,
+    measurementBoundariesReviewed: true,
+    positionsReviewed: true,
+    noModelOverlapReviewed: true,
+    objectiveClearanceReviewed: true,
+    pathsReviewed: true,
+    terrainClearanceReviewed: true,
+    coherencyReviewed: true,
+    engagementRangeReviewed: true,
+    reconcilesStaleStart: false,
+    reviewedByPlayer: true,
+    method: "manual",
+    reviewReason: "Every live model path, endpoint, clearance, coherency, and range was checked",
+    ...overrides,
+  };
+}
+
+function advanceTo(state, phase, step) {
+  let next = state;
+  for (let guard = 0; guard < 30; guard += 1) {
+    const clock = replayBattleState(next).clock;
+    if (clock.phase === phase && clock.step === step) return next;
+    next = advanceBattleClock(next, `advance-${next.events.length + 1}`, next.events.length + 1);
+  }
+  throw new Error(`Did not reach ${phase}/${step}`);
+}
+
 function setup(state = null) {
   return initializeBattleForLists({
     catalogue,
@@ -589,6 +674,226 @@ test("requires a reviewed exact-model placement snapshot after each battlefield 
   );
   assert.equal(replayBattleState(state).pendingDeploymentPlacement, null);
   assert.equal(replayBattleState(state).deploymentComplete, true);
+});
+
+test("records exact model paths before opening the end-of-move reaction window", () => {
+  let state = exactMissionSetup("exact-model-movement");
+  state = configureBattleTableGeometry(
+    state,
+    reviewedTableGeometry(state),
+    "movement-table-geometry",
+    state.events.length + 1,
+  );
+  state = configureBattleTerrainFootprints(
+    state,
+    reviewedTerrainFootprints(state),
+    "movement-terrain-footprints",
+    state.events.length + 1,
+  );
+  state = deployAllOnBattlefield(state);
+  state = startBattle(state, "player-2", "movement-battle-started", state.events.length + 1);
+  state = advanceTo(state, "movement", "move_units");
+  const formationId = "player-2:brutalis";
+  state = startFormationMovement(
+    state,
+    formationId,
+    "normal",
+    "movement-started",
+    state.events.length + 1,
+  );
+  state = passFireOverwatch(
+    state,
+    "No Fire Overwatch declared at move start",
+    "movement-start-overwatch-passed",
+    state.events.length + 1,
+  );
+  state = completeFormationMovement(
+    state,
+    formationId,
+    "normal",
+    "movement-completed",
+    state.events.length + 1,
+  );
+  let replayed = replayBattleState(state);
+  assert.deepEqual(replayed.pendingModelPosition, {
+    formationId,
+    context: "movement",
+    referenceEventId: "movement-completed",
+    fireOverwatchTrigger: "normal_move_end",
+    reconcilesStaleStart: false,
+  });
+  assert.equal(replayed.pendingFireOverwatch, null);
+  assert.equal(replayed.geometryStaleFormationIds.has(formationId), true);
+  assert.throws(
+    () => advanceBattleClock(state, "movement-blocked-advance", state.events.length + 1),
+    /per-model position snapshot/i,
+  );
+  const position = reviewedModelPositions(state, formationId, "movement", "movement-completed");
+  const formation = replayed.formations.get(formationId);
+  const previous = replayed.currentModelPositionsByFormation.get(formationId);
+  const facts = modelPositionSetFacts(position, formation, previous);
+  assert.equal(facts.distanceWithinLimitCount, facts.liveModelCount);
+  assert.equal(facts.distanceCoversPathCount, facts.liveModelCount);
+  assert.equal(modelPositionSetIsValid(position, formation, previous), true);
+  assert.throws(
+    () =>
+      recordModelPositions(
+        state,
+        formationId,
+        { ...position, reconcilesStaleStart: true },
+        "movement-invalid-stale-reconciliation",
+        state.events.length + 1,
+      ),
+    /stale-geometry reconciliation/i,
+  );
+  assert.throws(
+    () =>
+      recordModelPositions(
+        state,
+        formationId,
+        {
+          ...position,
+          models: position.models.map((model, index) =>
+            index === 0
+              ? { ...model, distanceMovedThousandths: 12_001, maximumDistanceThousandths: 12_000 }
+              : model,
+          ),
+        },
+        "movement-invalid-distance",
+        state.events.length + 1,
+      ),
+    /live formation and reviewed action/i,
+  );
+  state = recordModelPositions(
+    state,
+    formationId,
+    position,
+    "movement-positioned",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.pendingModelPosition, null);
+  assert.equal(replayed.pendingFireOverwatch?.trigger, "normal_move_end");
+  assert.equal(replayed.modelPositionHistoryByFormation.get(formationId).length, 2);
+  assert.equal(replayed.geometryStaleFormationIds.has(formationId), false);
+});
+
+test("records a reserve unit's first exact position before its set-up reaction window", () => {
+  let state = exactMissionSetup("exact-reserve-position");
+  state = configureBattleTableGeometry(
+    state,
+    reviewedTableGeometry(state),
+    "reserve-table-geometry",
+    state.events.length + 1,
+  );
+  state = configureBattleTerrainFootprints(
+    state,
+    reviewedTerrainFootprints(state),
+    "reserve-terrain-footprints",
+    state.events.length + 1,
+  );
+  state = deployAllOnBattlefield(state);
+  state = startBattle(state, "player-1", "reserve-battle-started", state.events.length + 1);
+  state = advanceTo(state, "movement", "reinforcements");
+  const formationId = "player-1:doom-scythe";
+  state = arriveFromReserves(
+    state,
+    formationId,
+    { placementConfirmed: true, placementReason: "Legal Aircraft reserve arrival" },
+    "reserve-arrived",
+    state.events.length + 1,
+  );
+  let replayed = replayBattleState(state);
+  assert.equal(replayed.pendingModelPosition?.context, "reserve_arrival");
+  assert.equal(replayed.pendingFireOverwatch, null);
+  const position = reviewedModelPositions(state, formationId, "reserve_arrival", "reserve-arrived");
+  state = recordModelPositions(
+    state,
+    formationId,
+    position,
+    "reserve-positioned",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.pendingModelPosition, null);
+  assert.equal(replayed.pendingFireOverwatch?.trigger, "set_up");
+  assert.equal(
+    replayed.currentModelPositionsByFormation.get(formationId).context,
+    "reserve_arrival",
+  );
+});
+
+test("requires exact first positions after Rapid Ingress before play can continue", () => {
+  let state = exactMissionSetup("exact-rapid-ingress-position");
+  state = configureBattleTableGeometry(
+    state,
+    reviewedTableGeometry(state),
+    "rapid-position-table-geometry",
+    state.events.length + 1,
+  );
+  state = configureBattleTerrainFootprints(
+    state,
+    reviewedTerrainFootprints(state),
+    "rapid-position-terrain-footprints",
+    state.events.length + 1,
+  );
+  state = deployAllOnBattlefield(state);
+  state = startBattle(state, "player-2", "rapid-position-battle-started", state.events.length + 1);
+  state = changeBattleResource(
+    state,
+    {
+      playerId: "player-1",
+      resourceId: "command_points",
+      name: "Command Points",
+      delta: 1,
+      maximum: null,
+      reason: "Test Rapid Ingress Command Point",
+    },
+    "rapid-position-command-point",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, "movement", "end");
+  const formationId = "player-1:doom-scythe";
+  assert.deepEqual(replayBattleState(state).pendingRapidIngress.candidateFormationIds, [
+    formationId,
+  ]);
+  state = resolveRapidIngress(
+    state,
+    formationId,
+    {
+      placementMethod: "source_rule",
+      placementConfirmed: true,
+      placementReason: "Aircraft source rule arrival checked outside enemy models",
+      sourceRulePlacementConfirmed: true,
+      firstRoundOutOfPhaseAllowed: true,
+      firstRoundOutOfPhaseReason: "Test source rule permits this first-round arrival",
+    },
+    "rapid-position-resolved",
+    state.events.length + 1,
+  );
+  let replayed = replayBattleState(state);
+  assert.equal(replayed.pendingRapidIngress, null);
+  assert.equal(replayed.pendingModelPosition?.context, "rapid_ingress");
+  assert.throws(
+    () => advanceBattleClock(state, "rapid-position-blocked", state.events.length + 1),
+    /per-model position snapshot/i,
+  );
+  const position = reviewedModelPositions(
+    state,
+    formationId,
+    "rapid_ingress",
+    "rapid-position-resolved",
+  );
+  state = recordModelPositions(
+    state,
+    formationId,
+    position,
+    "rapid-position-recorded",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.pendingModelPosition, null);
+  assert.equal(replayed.currentModelPositionsByFormation.get(formationId).context, "rapid_ingress");
 });
 
 test("validates circular, elliptical, and rotated rectangular model footprints at table edges", () => {
@@ -1118,6 +1423,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacyTableGeometryThroughSequence: 3,
     legacyTerrainFootprintsThroughSequence: 3,
     legacyModelPlacementsThroughSequence: 3,
+    legacyModelPositionsThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -1155,6 +1461,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacyTableGeometryThroughSequence: 3,
     legacyTerrainFootprintsThroughSequence: 3,
     legacyModelPlacementsThroughSequence: 3,
+    legacyModelPositionsThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -1197,6 +1504,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacyTableGeometryThroughSequence: 2,
     legacyTerrainFootprintsThroughSequence: 2,
     legacyModelPlacementsThroughSequence: 2,
+    legacyModelPositionsThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -1232,6 +1540,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacyTableGeometryThroughSequence: 2,
     legacyTerrainFootprintsThroughSequence: 2,
     legacyModelPlacementsThroughSequence: 2,
+    legacyModelPositionsThroughSequence: 2,
   });
 });
 
@@ -1266,6 +1575,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacyTableGeometryThroughSequence: 2,
     legacyTerrainFootprintsThroughSequence: 2,
     legacyModelPlacementsThroughSequence: 2,
+    legacyModelPositionsThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -1306,6 +1616,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacyTableGeometryThroughSequence: 2,
     legacyTerrainFootprintsThroughSequence: 2,
     legacyModelPlacementsThroughSequence: 2,
+    legacyModelPositionsThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -1341,6 +1652,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacyTableGeometryThroughSequence: 2,
     legacyTerrainFootprintsThroughSequence: 2,
     legacyModelPlacementsThroughSequence: 2,
+    legacyModelPositionsThroughSequence: 2,
   });
 });
 
@@ -1375,6 +1687,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacyTableGeometryThroughSequence: 2,
     legacyTerrainFootprintsThroughSequence: 2,
     legacyModelPlacementsThroughSequence: 2,
+    legacyModelPositionsThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -1773,4 +2086,128 @@ test("migrates version-26 exact games without inventing model placements", () =>
   replayed = replayBattleState(migrated);
   assert.equal(replayed.modelPlacementsByFormation.size, 1);
   assert.equal(replayed.deploymentComplete, true);
+});
+
+test("migrates version-27 placement snapshots without inventing movement history", () => {
+  let versionTwentySeven = exactMissionSetup("version-27-model-positions");
+  versionTwentySeven = configureBattleTableGeometry(
+    versionTwentySeven,
+    reviewedTableGeometry(versionTwentySeven),
+    "version-27-table-geometry",
+    versionTwentySeven.events.length + 1,
+  );
+  versionTwentySeven = configureBattleTerrainFootprints(
+    versionTwentySeven,
+    reviewedTerrainFootprints(versionTwentySeven),
+    "version-27-terrain-footprints",
+    versionTwentySeven.events.length + 1,
+  );
+  versionTwentySeven = deployAllOnBattlefield(versionTwentySeven);
+  versionTwentySeven.version = 27;
+  delete versionTwentySeven.migration;
+  const legacyEventCount = versionTwentySeven.events.length;
+  const migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: normalizeBattleState(versionTwentySeven),
+    id: versionTwentySeven.id,
+  });
+  const replayed = replayBattleState(migrated);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 27);
+  assert.equal(migrated.migration.legacyModelPositionsThroughSequence, legacyEventCount);
+  assert.equal(replayed.pendingModelPosition, null);
+  assert.equal(replayed.modelPositionHistoryByFormation.get("player-2:brutalis").length, 1);
+});
+
+test("marks exact geometry stale when casualties change live model identities and clears on undo", () => {
+  let legacy = exactMissionSetup("version-28-casualty-geometry");
+  legacy = configureBattleTableGeometry(
+    legacy,
+    reviewedTableGeometry(legacy),
+    "casualty-table-geometry",
+    legacy.events.length + 1,
+  );
+  legacy = configureBattleTerrainFootprints(
+    legacy,
+    reviewedTerrainFootprints(legacy),
+    "casualty-terrain-footprints",
+    legacy.events.length + 1,
+  );
+  legacy = deployAllOnBattlefield(legacy);
+  legacy.version = 27;
+  delete legacy.migration;
+  let state = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: normalizeBattleState(legacy),
+    id: legacy.id,
+  });
+  const target = replayBattleState(state).formations.get("player-2:brutalis");
+  const segment = target.segments[0];
+  const attackId = "casualty-attack";
+  const attack = {
+    version: 1,
+    id: attackId,
+    sequence: state.events.length + 1,
+    at: state.events.length + 1,
+    type: "attack_resolved",
+    attackerFormationId: "player-1:doom-scythe",
+    targetFormationId: target.id,
+    summary: {
+      attacker: "Doom Scythe",
+      weapon: "Heavy death ray",
+      target: target.name,
+      damage: segment.wounds,
+      successful: 1,
+      modelsDestroyed: 1,
+    },
+    allocations: [
+      {
+        segmentId: segment.id,
+        before: { modelsRemaining: 1, woundsLost: 0 },
+        after: { modelsRemaining: 0, woundsLost: 0 },
+      },
+    ],
+  };
+  const legacyThroughAttack = attack.sequence;
+  state = normalizeBattleState({
+    ...state,
+    migration: {
+      ...state.migration,
+      legacyUntimedThroughSequence: legacyThroughAttack,
+      legacyUnactionedThroughSequence: legacyThroughAttack,
+    },
+    events: [...state.events, attack],
+  });
+  assert.equal(replayBattleState(state).geometryStaleFormationIds.has(target.id), true);
+
+  const revert = {
+    version: 1,
+    id: "casualty-attack-reverted",
+    sequence: state.events.length + 1,
+    at: state.events.length + 1,
+    type: "attack_reverted",
+    revertsEventId: attackId,
+  };
+  state = normalizeBattleState({
+    ...state,
+    migration: {
+      ...state.migration,
+      legacyUntimedThroughSequence: revert.sequence,
+      legacyUnactionedThroughSequence: revert.sequence,
+    },
+    events: [...state.events, revert],
+  });
+  assert.equal(replayBattleState(state).geometryStaleFormationIds.has(target.id), false);
 });

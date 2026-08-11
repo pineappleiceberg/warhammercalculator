@@ -464,6 +464,32 @@ bool whc_model_placement_set_is_valid(uint32_t expected_model_count,
            flags == WHC_MODEL_PLACEMENT_FLAGS_MASK;
 }
 
+bool whc_model_position_set_is_valid(
+    uint32_t live_model_count, uint32_t position_count, uint32_t unique_model_count,
+    uint32_t recognized_model_count, uint32_t positioned_model_count,
+    uint32_t in_bounds_model_count, uint32_t dimensioned_model_count,
+    uint32_t supported_shape_count, uint32_t based_model_count,
+    uint32_t baseless_model_count, uint32_t segment_count, uint32_t matched_segment_count,
+    uint32_t path_model_count, uint32_t path_start_count, uint32_t path_endpoint_count,
+    uint32_t path_in_bounds_count, uint32_t footprint_match_count,
+    uint32_t distance_within_limit_count, uint32_t distance_covers_path_count,
+    uint32_t flags) {
+    return live_model_count > 0u && live_model_count <= 1000u &&
+           position_count == live_model_count && unique_model_count == position_count &&
+           recognized_model_count == position_count &&
+           positioned_model_count == position_count &&
+           in_bounds_model_count == position_count &&
+           dimensioned_model_count == position_count &&
+           supported_shape_count == position_count && based_model_count <= position_count &&
+           baseless_model_count == position_count - based_model_count &&
+           matched_segment_count == segment_count && path_model_count == position_count &&
+           path_start_count == position_count && path_endpoint_count == position_count &&
+           path_in_bounds_count == position_count && footprint_match_count == position_count &&
+           distance_within_limit_count == position_count &&
+           distance_covers_path_count == position_count &&
+           flags == WHC_MODEL_POSITION_FLAGS_MASK;
+}
+
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,
                                      const uint32_t *events, uint32_t event_count,
                                      uint32_t *health) {
