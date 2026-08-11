@@ -177,6 +177,42 @@ bool whc_weapon_bearer_declaration_is_valid(uint32_t inventory_count,
             (inventory_flags & WHC_WEAPON_INDIRECT) != 0u);
 }
 
+bool whc_charge_resolution_is_valid(uint32_t die_one, uint32_t die_two, int32_t roll_modifier,
+                                    uint32_t charge_distance_thousandths,
+                                    uint32_t maximum_target_distance_thousandths,
+                                    uint32_t maximum_model_move_thousandths,
+                                    uint32_t target_count, bool successful, uint32_t flags) {
+    if (die_one < 1u || die_one > 6u || die_two < 1u || die_two > 6u ||
+        roll_modifier < -12 || roll_modifier > 12) {
+        return false;
+    }
+    const int32_t modified_roll = (int32_t)(die_one + die_two) + roll_modifier;
+    const uint32_t canonical_distance =
+        modified_roll > 0 ? (uint32_t)modified_roll * 1000u : 0u;
+    const bool common =
+        charge_distance_thousandths <= 24000u && maximum_target_distance_thousandths > 0u &&
+        maximum_target_distance_thousandths <= 12000u &&
+        maximum_model_move_thousandths <= 24000u && target_count > 0u &&
+        target_count <= 12u && flags <= WHC_CHARGE_FLAGS_MASK &&
+        (flags & WHC_CHARGE_REVIEWED_BY_PLAYER) != 0u &&
+        (flags & WHC_CHARGE_PHASE_START_ELIGIBLE) != 0u &&
+        (flags & WHC_CHARGE_STARTED_OUTSIDE_ENGAGEMENT) != 0u &&
+        (charge_distance_thousandths == canonical_distance ||
+         (flags & WHC_CHARGE_ROLL_OVERRIDE_EXPLAINED) != 0u);
+    if (!common) return false;
+    if (!successful) {
+        return maximum_model_move_thousandths == 0u &&
+               (flags & WHC_CHARGE_FAILURE_EXPLAINED) != 0u;
+    }
+    return maximum_model_move_thousandths > 0u &&
+           maximum_model_move_thousandths <= charge_distance_thousandths &&
+           (flags & WHC_CHARGE_ALL_TARGETS_ENGAGED) != 0u &&
+           (flags & WHC_CHARGE_UNIT_COHERENCY) != 0u &&
+           (flags & WHC_CHARGE_NON_TARGETS_AVOIDED) != 0u &&
+           (flags & WHC_CHARGE_ALL_MODELS_CLOSER) != 0u &&
+           (flags & WHC_CHARGE_BASE_CONTACT_MAXIMIZED) != 0u;
+}
+
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,
                                      const uint32_t *events, uint32_t event_count,
                                      uint32_t *health) {

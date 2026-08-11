@@ -108,6 +108,34 @@ const attackerFormation = {
   name: "Tank",
 };
 
+function successfulChargeOptions(targetFormationId, overrides = {}) {
+  return {
+    successful: true,
+    rolls: [3, 4],
+    rollModifier: 0,
+    chargeDistanceThousandths: 7000,
+    targetFacts: [
+      {
+        formationId: targetFormationId,
+        startDistanceThousandths: 8000,
+        endsWithinEngagementRange: true,
+      },
+    ],
+    phaseStartEligibilityConfirmed: true,
+    phaseStartEligibilityReason: "Within 12 inches at the start of the Charge phase",
+    startedOutsideEngagementRange: true,
+    maximumModelMoveThousandths: 7000,
+    unitCoherencyConfirmed: true,
+    nonTargetEngagementRangeAvoided: true,
+    allModelsCloserToTarget: true,
+    baseContactMaximized: true,
+    movementReviewedByPlayer: true,
+    movementReviewReason: "Player reviewed every model endpoint",
+    failureReason: "",
+    ...overrides,
+  };
+}
+
 const transportFormation = {
   id: "player-1:transport",
   playerId: "player-1",
@@ -486,7 +514,7 @@ test("pins the official battle-state rules source", () => {
   assert.equal(battleRuleSources.version, 1);
   assert.deepEqual(
     battleRuleSources.sources[0].pages,
-    [7, 8, 16, 17, 18, 19, 23, 26, 39, 43, 53, 57, 60],
+    [7, 8, 16, 17, 18, 19, 23, 26, 29, 39, 43, 53, 57, 60],
   );
   assert.equal(
     battleRuleSources.sources[0].sha256,
@@ -921,12 +949,7 @@ test("inherits Transport movement restrictions after disembarking", () => {
         state,
         passengerFormation.id,
         [formation.id],
-        true,
-        7,
-        {
-          targetEligibilityConfirmed: true,
-          targetEligibilityReason: "Target in range",
-        },
+        successfulChargeOptions(formation.id),
         "illegal-charge",
         state.events.length + 1,
       ),
@@ -1394,26 +1417,61 @@ test("records charge eligibility and alternates replayed Fight priority", () => 
         state,
         attackerFormation.id,
         [formation.id],
-        true,
-        8,
         {},
         "illegal-charge",
         state.events.length + 1,
       ),
-    /explicit confirmation/i,
+    /two D6 rolls/i,
+  );
+  assert.throws(
+    () =>
+      recordFormationCharge(
+        state,
+        attackerFormation.id,
+        [formation.id],
+        successfulChargeOptions(formation.id, { maximumModelMoveThousandths: 8000 }),
+        "overlong-charge",
+        state.events.length + 1,
+      ),
+    /legal resolution/i,
+  );
+  const failedCharge = recordFormationCharge(
+    state,
+    attackerFormation.id,
+    [formation.id],
+    successfulChargeOptions(formation.id, {
+      successful: false,
+      targetFacts: [
+        {
+          formationId: formation.id,
+          startDistanceThousandths: 8000,
+          endsWithinEngagementRange: false,
+        },
+      ],
+      maximumModelMoveThousandths: 0,
+      unitCoherencyConfirmed: false,
+      nonTargetEngagementRangeAvoided: false,
+      allModelsCloserToTarget: false,
+      baseContactMaximized: false,
+      failureReason: "The rolled distance could not produce a coherent endpoint",
+      eligibilityOverride: true,
+      overrideReason: "Army rule permits charging after Advance",
+    }),
+    "failed-charge",
+    state.events.length + 1,
+  );
+  assert.equal(
+    replayBattleState(failedCharge).chargeByFormation.get(attackerFormation.id).successful,
+    false,
   );
   state = recordFormationCharge(
     state,
     attackerFormation.id,
     [formation.id],
-    true,
-    8,
-    {
-      targetEligibilityConfirmed: true,
-      targetEligibilityReason: "Target is visible and within charge range",
+    successfulChargeOptions(formation.id, {
       eligibilityOverride: true,
       overrideReason: "Army rule permits charging after Advance",
-    },
+    }),
     "charge",
     state.events.length + 1,
   );
@@ -1442,6 +1500,46 @@ test("records charge eligibility and alternates replayed Fight priority", () => 
   );
   state = completeFormationActivation(state, "fight-complete", state.events.length + 1);
   assert.equal(replayBattleState(state).clock.priorityPlayerId, "player-2");
+});
+
+test("rejects an Aircraft charge without an explicit rules override", () => {
+  const aircraft = { ...attackerFormation, keywords: ["Aircraft", "Vehicle"] };
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), aircraft, "register-aircraft", 1),
+    formation,
+    "register-target",
+    2,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "start", 3);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "charge" && clock.step === "charge_moves",
+    "to-aircraft-charge",
+  );
+  assert.throws(
+    () =>
+      recordFormationCharge(
+        state,
+        aircraft.id,
+        [formation.id],
+        successfulChargeOptions(formation.id),
+        "aircraft-charge",
+        state.events.length + 1,
+      ),
+    /Aircraft formation requires an explicit rule override/i,
+  );
+  state = recordFormationCharge(
+    state,
+    aircraft.id,
+    [formation.id],
+    successfulChargeOptions(formation.id, {
+      eligibilityOverride: true,
+      overrideReason: "Specific source rule overrides Aircraft charge eligibility",
+    }),
+    "overridden-aircraft-charge",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).chargeByFormation.get(aircraft.id).successful, true);
 });
 
 test("replays persistent mixed-profile casualties and compensating undo", () => {

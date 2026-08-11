@@ -156,5 +156,14 @@ int main(void) {
                                                    WHC_WEAPON_ASSAULT));
     assert(!whc_weapon_bearer_declaration_is_valid(2u, 3u, 0u, 1u, WHC_WEAPON_ASSAULT,
                                                    WHC_WEAPON_ASSAULT));
+    const uint32_t charge_flags =
+        WHC_CHARGE_REVIEWED_BY_PLAYER | WHC_CHARGE_PHASE_START_ELIGIBLE |
+        WHC_CHARGE_STARTED_OUTSIDE_ENGAGEMENT | WHC_CHARGE_ALL_TARGETS_ENGAGED |
+        WHC_CHARGE_UNIT_COHERENCY | WHC_CHARGE_NON_TARGETS_AVOIDED |
+        WHC_CHARGE_ALL_MODELS_CLOSER | WHC_CHARGE_BASE_CONTACT_MAXIMIZED;
+    assert(whc_charge_resolution_is_valid(3u, 4u, 0, 7000u, 9000u, 6500u, 1u, true,
+                                          charge_flags));
+    assert(!whc_charge_resolution_is_valid(3u, 4u, 0, 7000u, 9000u, 8000u, 1u, true,
+                                           charge_flags));
     return 0;
 }

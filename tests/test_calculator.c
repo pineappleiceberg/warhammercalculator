@@ -1419,6 +1419,31 @@ static void test_weapon_bearer_declaration(void) {
                                                    WHC_WEAPON_INDIRECT));
 }
 
+/*@ terminates \true; */
+static void test_charge_resolution(void) {
+    const uint32_t common = WHC_CHARGE_REVIEWED_BY_PLAYER |
+                            WHC_CHARGE_PHASE_START_ELIGIBLE |
+                            WHC_CHARGE_STARTED_OUTSIDE_ENGAGEMENT;
+    const uint32_t successful = common | WHC_CHARGE_ALL_TARGETS_ENGAGED |
+                                WHC_CHARGE_UNIT_COHERENCY |
+                                WHC_CHARGE_NON_TARGETS_AVOIDED |
+                                WHC_CHARGE_ALL_MODELS_CLOSER |
+                                WHC_CHARGE_BASE_CONTACT_MAXIMIZED;
+
+    assert(whc_charge_resolution_is_valid(3u, 4u, 0, 7000u, 8500u, 6500u, 1u, true,
+                                          successful));
+    assert(whc_charge_resolution_is_valid(1u, 2u, 0, 3000u, 11000u, 0u, 2u, false,
+                                          common | WHC_CHARGE_FAILURE_EXPLAINED));
+    assert(!whc_charge_resolution_is_valid(3u, 4u, 0, 7000u, 8500u, 7500u, 1u, true,
+                                           successful));
+    assert(!whc_charge_resolution_is_valid(3u, 4u, 0, 7000u, 12500u, 6500u, 1u, true,
+                                           successful));
+    assert(!whc_charge_resolution_is_valid(3u, 4u, 1, 7000u, 8500u, 6500u, 1u, true,
+                                           successful));
+    assert(whc_charge_resolution_is_valid(3u, 4u, 1, 7000u, 8500u, 6500u, 1u, true,
+                                          successful | WHC_CHARGE_ROLL_OVERRIDE_EXPLAINED));
+}
+
 /*@ assigns \nothing;
  */
 static void test_battle_clock(void) {
@@ -1481,6 +1506,7 @@ int main(void) {
     test_ranged_target_eligibility();
     test_weapon_inventory_declaration();
     test_weapon_bearer_declaration();
+    test_charge_resolution();
     test_battle_clock();
     puts("all tests passed");
     return 0;

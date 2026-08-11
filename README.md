@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 10 as soon as both lists are selected. Every
+creates battle-state version 11 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -729,6 +729,21 @@ from version 9 and earlier preserve aggregate bearer behavior behind explicit
 migration provenance rather than inventing model identities. Exact loadout
 splitting fails closed if it would exceed the native 16-segment damage
 allocation limit.
+Version 11 makes the charge roll and reviewed movement executable replay facts.
+Each new attempt stores both D6, a bounded modifier, effective Charge distance,
+every target's phase-start distance and final Engagement Range state, the
+longest model move, and explicit confirmations for phase-start eligibility,
+starting outside Engagement Range, coherency, avoiding non-target Engagement
+Range, moving each model closer to a target, and maximizing base contact where
+possible. Successful charges fail closed when any required movement fact is
+missing or the longest move exceeds the effective distance. Failed charges
+record zero movement and require an explanation. Browser rolls use
+rejection-sampled CSPRNG values; physical dice and rules modifiers remain
+editable, and any non-canonical effective distance requires a reason. The
+native predicate is ACSL-specified, proved, exported to WebAssembly, and
+differentially checked by JavaScript and the replay API. Version-10 and older
+charge attempts retain their historical confirmation model behind an explicit
+migration boundary.
 The guided timeline records battle round, first or second player turn, active
 and priority player, phase, and step. It covers Command, Movement, Shooting,
 Charge, and Fight through five rounds. Pending bounded choices stop both attacks

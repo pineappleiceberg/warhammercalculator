@@ -12,6 +12,7 @@ import {
   declareFormationDeployment,
   deployFormation,
   openBattleChoice,
+  recordFormationCharge,
   recordFormationMovement,
   recordRangedTargetEligibility,
   registerBattleFormation,
@@ -2722,6 +2723,155 @@ test("replays canonical battle health through the C and WebAssembly API", async 
   assert.equal((await rejected.json()).error.code, "INVALID_REQUEST");
 });
 
+test("cross-checks structured charge movement through the C and WebAssembly API", async () => {
+  const attacker = {
+    id: "charge-attacker",
+    playerId: "player-1",
+    sourceFormationId: "charge-attacker",
+    name: "Charge attacker",
+    keywords: ["Infantry"],
+    segments: [
+      {
+        id: "charge-attacker-model",
+        savedUnitId: "charge-attacker",
+        unitName: "Charge attacker",
+        modelName: "Charge attacker",
+        role: "standalone",
+        wounds: 2,
+        startingModels: 1,
+      },
+    ],
+  };
+  const target = {
+    ...structuredClone(attacker),
+    id: "charge-target",
+    playerId: "player-2",
+    sourceFormationId: "charge-target",
+    name: "Charge target",
+    segments: [
+      {
+        ...attacker.segments[0],
+        id: "charge-target-model",
+        savedUnitId: "charge-target",
+        unitName: "Charge target",
+        modelName: "Charge target",
+      },
+    ],
+  };
+  let state = createBattleState({
+    id: "charge-api",
+    createdAt: 1,
+    rulesSnapshot: "catalogue:test",
+    players: [
+      { id: "player-1", listId: "list-1", listUpdatedAt: 1, name: "Chargers" },
+      { id: "player-2", listId: "list-2", listUpdatedAt: 1, name: "Targets" },
+    ],
+  });
+  state = registerBattleFormation(state, attacker, "register-charge-attacker", 1);
+  state = registerBattleFormation(state, target, "register-charge-target", 2);
+  state = declareFormationDeployment(
+    state,
+    attacker.id,
+    "battlefield",
+    {},
+    "declare-charge-attacker",
+    3,
+  );
+  state = declareFormationDeployment(
+    state,
+    target.id,
+    "battlefield",
+    {},
+    "declare-charge-target",
+    4,
+  );
+  state = deployFormation(
+    state,
+    attacker.id,
+    { placementConfirmed: true, placementReason: "Deployment zone" },
+    "deploy-charge-attacker",
+    5,
+  );
+  state = deployFormation(
+    state,
+    target.id,
+    { placementConfirmed: true, placementReason: "Deployment zone" },
+    "deploy-charge-target",
+    6,
+  );
+  state = startBattle(state, "player-1", "start-charge", 7);
+  while (
+    !(
+      replayBattleState(state).clock.phase === "movement" &&
+      replayBattleState(state).clock.step === "move_units"
+    )
+  ) {
+    state = advanceBattleClock(state, `to-charge-move-${state.events.length}`, state.events.length);
+  }
+  state = recordFormationMovement(
+    state,
+    attacker.id,
+    "normal",
+    "charge-attacker-moved",
+    state.events.length,
+  );
+  while (
+    !(
+      replayBattleState(state).clock.phase === "charge" &&
+      replayBattleState(state).clock.step === "charge_moves"
+    )
+  ) {
+    state = advanceBattleClock(state, `to-charge-${state.events.length}`, state.events.length);
+  }
+  state = recordFormationCharge(
+    state,
+    attacker.id,
+    [target.id],
+    {
+      successful: true,
+      rolls: [3, 4],
+      rollModifier: 0,
+      chargeDistanceThousandths: 7000,
+      targetFacts: [
+        {
+          formationId: target.id,
+          startDistanceThousandths: 8000,
+          endsWithinEngagementRange: true,
+        },
+      ],
+      phaseStartEligibilityConfirmed: true,
+      phaseStartEligibilityReason: "Within 12 inches at the start of the Charge phase",
+      startedOutsideEngagementRange: true,
+      maximumModelMoveThousandths: 7000,
+      unitCoherencyConfirmed: true,
+      nonTargetEngagementRangeAvoided: true,
+      allModelsCloserToTarget: true,
+      baseContactMaximized: true,
+      movementReviewedByPlayer: true,
+      movementReviewReason: "Player reviewed every model endpoint",
+    },
+    "resolved-charge",
+    state.events.length,
+  );
+  const worker = await loadWorker();
+  const response = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: state, formationId: target.id }),
+    }),
+    testEnv,
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  const body = await response.json();
+  assert.equal(body.data.schemaVersion, 11);
+  assert.equal(body.data.charges[0].canonicalMovement, true);
+  assert.deepEqual(body.data.charges[0].rolls, [3, 4]);
+  assert.equal(body.data.charges[0].chargeDistanceThousandths, 7000);
+  assert.equal(body.data.charges[0].successful, true);
+});
+
 test("cross-checks destroyed Transport passenger damage through WebAssembly", async () => {
   const transport = {
     id: "transport",
@@ -2932,7 +3082,7 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 10);
+  assert.equal(body.data.schemaVersion, 11);
   assert.deepEqual(body.data.weaponDeclarations, [
     {
       attackEventId: "destroy-transport",

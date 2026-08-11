@@ -2,6 +2,7 @@ import {
   ACTION_BATTLE_STATE_VERSION,
   BATTLE_EVENT_VERSION,
   BATTLE_STATE_VERSION,
+  CHARGE_MOVE_BATTLE_STATE_VERSION,
   ROSTER_BATTLE_STATE_VERSION,
   TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
   TIMELINE_BATTLE_STATE_VERSION,
@@ -344,7 +345,14 @@ export function initializeBattleForLists({
             sourceVersion < WEAPON_INVENTORY_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyWeaponInventoryThroughSequence ?? 0),
-          legacyWeaponBearersThroughSequence: next.events.length,
+          legacyWeaponBearersThroughSequence:
+            sourceVersion < WEAPON_BEARER_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyWeaponBearersThroughSequence ?? 0),
+          legacyChargeMovementThroughSequence:
+            sourceVersion < CHARGE_MOVE_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyChargeMovementThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

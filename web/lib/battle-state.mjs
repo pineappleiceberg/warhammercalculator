@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 10;
+export const BATTLE_STATE_VERSION = 11;
+export const CHARGE_MOVE_BATTLE_STATE_VERSION = 11;
 export const WEAPON_BEARER_BATTLE_STATE_VERSION = 10;
 export const WEAPON_INVENTORY_BATTLE_STATE_VERSION = 9;
 export const TARGET_ELIGIBILITY_BATTLE_STATE_VERSION = 8;
@@ -135,6 +136,92 @@ export function weaponBearerDeclarationIsValid(
       survivingBearerCount <= inventoryCount &&
       usedCount <= survivingBearerCount &&
       declaredCount <= survivingBearerCount - usedCount,
+  );
+}
+
+export const CHARGE_RESOLUTION_FLAGS = Object.freeze({
+  reviewedByPlayer: 1,
+  phaseStartEligible: 2,
+  startedOutsideEngagementRange: 4,
+  allTargetsEngaged: 8,
+  unitCoherency: 16,
+  nonTargetsAvoided: 32,
+  allModelsCloser: 64,
+  baseContactMaximized: 128,
+  rollOverrideExplained: 256,
+  failureExplained: 512,
+});
+
+export function chargeResolutionIsValid(
+  dieOne,
+  dieTwo,
+  rollModifier,
+  chargeDistanceThousandths,
+  maximumTargetDistanceThousandths,
+  maximumModelMoveThousandths,
+  targetCount,
+  successful,
+  flags,
+) {
+  const flag = (name) => (flags & CHARGE_RESOLUTION_FLAGS[name]) !== 0;
+  const unmodifiedDistance = Math.max(0, dieOne + dieTwo + rollModifier) * 1000;
+  return Boolean(
+    Number.isSafeInteger(dieOne) &&
+      dieOne >= 1 &&
+      dieOne <= 6 &&
+      Number.isSafeInteger(dieTwo) &&
+      dieTwo >= 1 &&
+      dieTwo <= 6 &&
+      Number.isSafeInteger(rollModifier) &&
+      rollModifier >= -12 &&
+      rollModifier <= 12 &&
+      Number.isSafeInteger(chargeDistanceThousandths) &&
+      chargeDistanceThousandths >= 0 &&
+      chargeDistanceThousandths <= 24_000 &&
+      Number.isSafeInteger(maximumTargetDistanceThousandths) &&
+      maximumTargetDistanceThousandths > 0 &&
+      maximumTargetDistanceThousandths <= 12_000 &&
+      Number.isSafeInteger(maximumModelMoveThousandths) &&
+      maximumModelMoveThousandths >= 0 &&
+      maximumModelMoveThousandths <= 24_000 &&
+      Number.isSafeInteger(targetCount) &&
+      targetCount > 0 &&
+      targetCount <= 12 &&
+      Number.isSafeInteger(flags) &&
+      flags >= 0 &&
+      flags <= 1023 &&
+      flag("reviewedByPlayer") &&
+      flag("phaseStartEligible") &&
+      flag("startedOutsideEngagementRange") &&
+      (chargeDistanceThousandths === unmodifiedDistance || flag("rollOverrideExplained")) &&
+      (successful
+        ? maximumModelMoveThousandths > 0 &&
+          maximumModelMoveThousandths <= chargeDistanceThousandths &&
+          flag("allTargetsEngaged") &&
+          flag("unitCoherency") &&
+          flag("nonTargetsAvoided") &&
+          flag("allModelsCloser") &&
+          flag("baseContactMaximized")
+        : maximumModelMoveThousandths === 0 && flag("failureExplained")),
+  );
+}
+
+export function chargeResolutionFlags(event) {
+  return (
+    (event.movementReviewedByPlayer ? CHARGE_RESOLUTION_FLAGS.reviewedByPlayer : 0) |
+    (event.phaseStartEligibilityConfirmed ? CHARGE_RESOLUTION_FLAGS.phaseStartEligible : 0) |
+    (event.startedOutsideEngagementRange
+      ? CHARGE_RESOLUTION_FLAGS.startedOutsideEngagementRange
+      : 0) |
+    (event.targetFacts?.every((target) => target.endsWithinEngagementRange)
+      ? CHARGE_RESOLUTION_FLAGS.allTargetsEngaged
+      : 0) |
+    (event.unitCoherencyConfirmed ? CHARGE_RESOLUTION_FLAGS.unitCoherency : 0) |
+    (event.nonTargetEngagementRangeAvoided ? CHARGE_RESOLUTION_FLAGS.nonTargetsAvoided : 0) |
+    (event.allModelsCloserToTarget ? CHARGE_RESOLUTION_FLAGS.allModelsCloser : 0) |
+    (event.baseContactMaximized ? CHARGE_RESOLUTION_FLAGS.baseContactMaximized : 0) |
+    (event.rollOverrideReason ? CHARGE_RESOLUTION_FLAGS.rollOverrideExplained : 0) |
+    (event.failureReason ? CHARGE_RESOLUTION_FLAGS.failureExplained : 0)
   );
 }
 
@@ -1287,13 +1374,79 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     if (normalized.targetFormationIds.some((id) => !formations.byId.has(id))) {
       throw new Error("Charge target formation is not registered");
     }
-    normalized.successful = Boolean(event.successful);
-    normalized.roll = nonnegativeInteger(event.roll, "Charge roll", 12);
-    if (normalized.roll < 2) throw new Error("Charge roll must be from 2 to 12");
-    normalized.targetEligibilityConfirmed = Boolean(event.targetEligibilityConfirmed);
-    normalized.targetEligibilityReason = normalized.targetEligibilityConfirmed
-      ? boundedString(event.targetEligibilityReason, "Charge target eligibility reason", 300)
-      : "";
+    if (stateVersion >= CHARGE_MOVE_BATTLE_STATE_VERSION && Array.isArray(event.rolls)) {
+      normalized.rolls = normalizeDieRolls(event.rolls, "Charge dice");
+      if (normalized.rolls.length !== 2) throw new Error("A Charge roll must contain two D6 rolls");
+      normalized.rollModifier = boundedInteger(event.rollModifier, "Charge roll modifier", -12, 12);
+      normalized.chargeDistanceThousandths = nonnegativeInteger(
+        event.chargeDistanceThousandths,
+        "Charge distance",
+        24_000,
+      );
+      normalized.rollOverrideReason = event.rollOverrideReason
+        ? boundedString(event.rollOverrideReason, "Charge roll override reason", 300)
+        : "";
+      if (!Array.isArray(event.targetFacts) || event.targetFacts.length < 1) {
+        throw new Error("Structured charge movement requires target facts");
+      }
+      normalized.targetFacts = event.targetFacts.map((candidate) => {
+        const fact = record(candidate, "Each charge target fact must be an object");
+        return {
+          formationId: boundedString(fact.formationId, "Charge target fact formation id", 100),
+          startDistanceThousandths: nonnegativeInteger(
+            fact.startDistanceThousandths,
+            "Charge target starting distance",
+            12_000,
+          ),
+          endsWithinEngagementRange: Boolean(fact.endsWithinEngagementRange),
+        };
+      });
+      if (
+        normalized.targetFacts.some((fact) => fact.startDistanceThousandths < 1) ||
+        new Set(normalized.targetFacts.map((fact) => fact.formationId)).size !==
+          normalized.targetFacts.length ||
+        normalized.targetFacts.length !== normalized.targetFormationIds.length ||
+        normalized.targetFormationIds.some(
+          (formationId) => !normalized.targetFacts.some((fact) => fact.formationId === formationId),
+        )
+      ) {
+        throw new Error("Charge target facts must cover each selected target exactly once");
+      }
+      normalized.phaseStartEligibilityConfirmed = Boolean(event.phaseStartEligibilityConfirmed);
+      normalized.phaseStartEligibilityReason = normalized.phaseStartEligibilityConfirmed
+        ? boundedString(
+            event.phaseStartEligibilityReason,
+            "Charge phase-start eligibility reason",
+            300,
+          )
+        : "";
+      normalized.startedOutsideEngagementRange = Boolean(event.startedOutsideEngagementRange);
+      normalized.maximumModelMoveThousandths = nonnegativeInteger(
+        event.maximumModelMoveThousandths,
+        "Maximum Charge move",
+        24_000,
+      );
+      normalized.unitCoherencyConfirmed = Boolean(event.unitCoherencyConfirmed);
+      normalized.nonTargetEngagementRangeAvoided = Boolean(event.nonTargetEngagementRangeAvoided);
+      normalized.allModelsCloserToTarget = Boolean(event.allModelsCloserToTarget);
+      normalized.baseContactMaximized = Boolean(event.baseContactMaximized);
+      normalized.movementReviewedByPlayer = Boolean(event.movementReviewedByPlayer);
+      normalized.movementReviewReason = normalized.movementReviewedByPlayer
+        ? boundedString(event.movementReviewReason, "Charge movement review reason", 300)
+        : "";
+      normalized.successful = Boolean(event.successful);
+      normalized.failureReason = normalized.successful
+        ? ""
+        : boundedString(event.failureReason, "Charge failure reason", 300);
+    } else {
+      normalized.successful = Boolean(event.successful);
+      normalized.roll = nonnegativeInteger(event.roll, "Charge roll", 12);
+      if (normalized.roll < 2) throw new Error("Charge roll must be from 2 to 12");
+      normalized.targetEligibilityConfirmed = Boolean(event.targetEligibilityConfirmed);
+      normalized.targetEligibilityReason = normalized.targetEligibilityConfirmed
+        ? boundedString(event.targetEligibilityReason, "Charge target eligibility reason", 300)
+        : "";
+    }
     normalized.eligibilityOverride = Boolean(event.eligibilityOverride);
     normalized.overrideReason = normalized.eligibilityOverride
       ? boundedString(event.overrideReason, "Charge eligibility override reason", 300)
@@ -1544,6 +1697,7 @@ export function normalizeBattleState(candidate) {
       TRANSPORT_BATTLE_STATE_VERSION,
       TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
       WEAPON_INVENTORY_BATTLE_STATE_VERSION,
+      WEAPON_BEARER_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -1586,6 +1740,7 @@ export function normalizeBattleState(candidate) {
         TRANSPORT_BATTLE_STATE_VERSION,
         TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
         WEAPON_INVENTORY_BATTLE_STATE_VERSION,
+        WEAPON_BEARER_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -1639,6 +1794,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyWeaponBearersThroughSequence = nonnegativeInteger(
         migration.legacyWeaponBearersThroughSequence,
         "Legacy weapon bearer event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= CHARGE_MOVE_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyChargeMovementThroughSequence = nonnegativeInteger(
+        migration.legacyChargeMovementThroughSequence,
+        "Legacy charge movement event sequence",
         events.length,
       );
     }
@@ -1841,6 +2003,10 @@ function randomDie(sides, randomUint32 = secureRandomUint32) {
   return (value % sides) + 1;
 }
 
+export function rollChargeDice(randomUint32 = secureRandomUint32) {
+  return [randomDie(6, randomUint32), randomDie(6, randomUint32)];
+}
+
 function transportAllocationOrder(formation, health, firstSegmentId = "") {
   const wounded = formation.segments.find((segment) => health[segment.id].woundsLost > 0);
   if (wounded) {
@@ -1983,6 +2149,10 @@ export function replayBattleState(state) {
     state.version < ACTION_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyUnactionedThroughSequence ?? 0);
+  const legacyChargeMovementThroughSequence =
+    state.version < CHARGE_MOVE_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyChargeMovementThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -2646,6 +2816,12 @@ export function replayBattleState(state) {
         throw new Error("Only the active player's formation can charge");
       }
       if (formationDestroyed(formation)) throw new Error("A destroyed formation cannot charge");
+      if (
+        formation.keywords.some((keyword) => keyword.toLowerCase() === "aircraft") &&
+        !event.eligibilityOverride
+      ) {
+        throw new Error("An Aircraft formation requires an explicit rule override to charge");
+      }
       const previous = chargeByFormation.get(event.formationId);
       if (previous && sameTurn(previous.clock, clock)) {
         throw new Error("Formation has already attempted a charge this turn");
@@ -2668,10 +2844,36 @@ export function replayBattleState(state) {
         if (formationDestroyed(target))
           throw new Error("A formation cannot charge a destroyed target");
       }
-      if (!event.targetEligibilityConfirmed) {
-        throw new Error(
-          "Charge eligibility requires an explicit confirmation of range and table state",
+      const legacyChargeMovement = event.sequence <= legacyChargeMovementThroughSequence;
+      if (legacyChargeMovement) {
+        if (!event.targetEligibilityConfirmed) {
+          throw new Error(
+            "Charge eligibility requires an explicit confirmation of range and table state",
+          );
+        }
+      } else {
+        if (!Array.isArray(event.targetFacts)) {
+          throw new Error("New battle histories require structured charge movement facts");
+        }
+        const maximumTargetDistanceThousandths = Math.max(
+          ...event.targetFacts.map((fact) => fact.startDistanceThousandths),
         );
+        const flags = chargeResolutionFlags(event);
+        if (
+          !chargeResolutionIsValid(
+            event.rolls[0],
+            event.rolls[1],
+            event.rollModifier,
+            event.chargeDistanceThousandths,
+            maximumTargetDistanceThousandths,
+            event.maximumModelMoveThousandths,
+            event.targetFacts.length,
+            event.successful,
+            flags,
+          )
+        ) {
+          throw new Error("Charge roll and movement facts do not form a legal resolution");
+        }
       }
       const movement = movementByFormation.get(event.formationId);
       const currentMovement = movement && sameTurn(movement.clock, clock) ? movement : null;
@@ -3661,9 +3863,25 @@ export function recordFormationCharge(
   state,
   formationId,
   targetFormationIds,
-  successful,
-  roll,
   {
+    successful = false,
+    rolls = [],
+    rollModifier = 0,
+    chargeDistanceThousandths = Math.max(0, (rolls[0] ?? 0) + (rolls[1] ?? 0) + rollModifier) *
+      1000,
+    rollOverrideReason = "",
+    targetFacts = [],
+    phaseStartEligibilityConfirmed = false,
+    phaseStartEligibilityReason = "",
+    startedOutsideEngagementRange = false,
+    maximumModelMoveThousandths = 0,
+    unitCoherencyConfirmed = false,
+    nonTargetEngagementRangeAvoided = false,
+    allModelsCloserToTarget = false,
+    baseContactMaximized = false,
+    movementReviewedByPlayer = false,
+    movementReviewReason = "",
+    failureReason = "",
     targetEligibilityConfirmed = false,
     targetEligibilityReason = "",
     eligibilityOverride = false,
@@ -3682,7 +3900,22 @@ export function recordFormationCharge(
     formationId,
     targetFormationIds,
     successful,
-    roll,
+    rolls,
+    rollModifier,
+    chargeDistanceThousandths,
+    rollOverrideReason,
+    targetFacts,
+    phaseStartEligibilityConfirmed,
+    phaseStartEligibilityReason,
+    startedOutsideEngagementRange,
+    maximumModelMoveThousandths,
+    unitCoherencyConfirmed,
+    nonTargetEngagementRangeAvoided,
+    allModelsCloserToTarget,
+    baseContactMaximized,
+    movementReviewedByPlayer,
+    movementReviewReason,
+    failureReason,
     targetEligibilityConfirmed,
     targetEligibilityReason,
     eligibilityOverride,

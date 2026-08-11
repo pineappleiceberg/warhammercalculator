@@ -20,6 +20,7 @@ import { abilityDiceValue } from "../lib/dice.mjs";
 import { parseAgentProfile } from "../lib/agent-parameters.mjs";
 import {
   battleFormationHealth,
+  chargeResolutionIsValid,
   normalizeBattleState,
   rangedTargetEligibilityIsValid,
   replayBattleState,
@@ -90,6 +91,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_ranged_target_eligibility_is_valid, "function");
   assert.equal(typeof calculator._whc_weapon_inventory_declaration_is_valid, "function");
   assert.equal(typeof calculator._whc_weapon_bearer_declaration_is_valid, "function");
+  assert.equal(typeof calculator._whc_charge_resolution_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
 });
@@ -107,6 +109,25 @@ test("WebAssembly and JavaScript agree on exact weapon-bearer declarations", () 
     assert.equal(
       Boolean(calculator._whc_weapon_bearer_declaration_is_valid(...values)),
       weaponBearerDeclarationIsValid(...values),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on structured charge resolutions", () => {
+  const common = 1 | 2 | 4;
+  const successful = common | 8 | 16 | 32 | 64 | 128;
+  const cases = [
+    [3, 4, 0, 7000, 8500, 6500, 1, 1, successful],
+    [1, 2, 0, 3000, 11000, 0, 2, 0, common | 512],
+    [3, 4, 0, 7000, 8500, 7500, 1, 1, successful],
+    [3, 4, 0, 7000, 12500, 6500, 1, 1, successful],
+    [3, 4, 1, 7000, 8500, 6500, 1, 1, successful],
+    [3, 4, 1, 7000, 8500, 6500, 1, 1, successful | 256],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_charge_resolution_is_valid(...values)),
+      chargeResolutionIsValid(...values),
     );
   }
 });

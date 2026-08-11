@@ -27,10 +27,10 @@ state.
 
 ## Prioritized backlog
 
-1. Continue the legal-action engine with charge distance and movement, Heroic
-   Intervention, pile-in, consolidation, reactions, cover, and Stratagem
-   windows; then expand Transport changes beyond the roster's locked assigned
-   carrier and execute transport-specific exceptions.
+1. Continue the legal-action engine with Heroic Intervention, pile-in,
+   consolidation, reactions, cover, and Stratagem windows; then expand
+   Transport changes beyond the roster's locked assigned carrier and execute
+   transport-specific exceptions.
 2. Build and enforce the source-locked faction, detachment, enhancement,
    Stratagem, terrain, and mission coverage matrix described by the complete
    battle requirements.
@@ -41,6 +41,21 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-10: Advanced guided play to battle-state version 11 with canonical
+  charge-roll and charge-movement facts. New attempts record both D6, modifiers,
+  effective distance, every target's declared distance and final Engagement
+  Range state, the longest model move, phase-start eligibility, coherency,
+  non-target avoidance, closer-model movement, maximum possible base contact,
+  player review, and explained overrides or failures. Successful movement is
+  rejected unless every required Core Rules page 29 fact is present; failed
+  charges record no movement. Browser rolls use rejection-sampled CSPRNG values,
+  while manually entered dice remain editable and recompute canonical distance.
+  Version-10 and older attempts retain their historical aggregate behavior
+  behind an explicit migration boundary. A new ACSL-specified native predicate
+  is proved, exported to WebAssembly, differentially checked against JavaScript,
+  and independently cross-checked by the replay API. Native, migration, tamper,
+  UI, API, Wasm, provenance, and formal regressions cover the cycle.
 
 - 2026-08-10: Advanced guided play to battle-state version 10 with exact
   weapon-bearer identity. Every saved formation now has stable model instances,

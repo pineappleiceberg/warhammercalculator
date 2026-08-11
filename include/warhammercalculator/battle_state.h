@@ -24,6 +24,17 @@
 #define WHC_TARGET_RANGE_OVERRIDE_EXPLAINED 32u
 #define WHC_WEAPON_ASSAULT 1u
 #define WHC_WEAPON_INDIRECT 2u
+#define WHC_CHARGE_REVIEWED_BY_PLAYER 1u
+#define WHC_CHARGE_PHASE_START_ELIGIBLE 2u
+#define WHC_CHARGE_STARTED_OUTSIDE_ENGAGEMENT 4u
+#define WHC_CHARGE_ALL_TARGETS_ENGAGED 8u
+#define WHC_CHARGE_UNIT_COHERENCY 16u
+#define WHC_CHARGE_NON_TARGETS_AVOIDED 32u
+#define WHC_CHARGE_ALL_MODELS_CLOSER 64u
+#define WHC_CHARGE_BASE_CONTACT_MAXIMIZED 128u
+#define WHC_CHARGE_ROLL_OVERRIDE_EXPLAINED 256u
+#define WHC_CHARGE_FAILURE_EXPLAINED 512u
+#define WHC_CHARGE_FLAGS_MASK 1023u
 
 enum whc_battle_clock_status {
     WHC_BATTLE_CLOCK_SETUP = 0u,
@@ -139,6 +150,40 @@ bool whc_weapon_bearer_declaration_is_valid(uint32_t inventory_count,
                                             uint32_t surviving_bearer_count,
                                             uint32_t used_count, uint32_t declared_count,
                                             uint32_t inventory_flags, uint32_t declared_flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        die_one >= 1 && die_one <= 6 && die_two >= 1 && die_two <= 6 &&
+        roll_modifier >= -12 && roll_modifier <= 12 &&
+        charge_distance_thousandths <= 24000 &&
+        maximum_target_distance_thousandths > 0 &&
+        maximum_target_distance_thousandths <= 12000 &&
+        maximum_model_move_thousandths <= 24000 && target_count > 0 && target_count <= 12 &&
+        flags <= WHC_CHARGE_FLAGS_MASK &&
+        (flags & WHC_CHARGE_REVIEWED_BY_PLAYER) != 0 &&
+        (flags & WHC_CHARGE_PHASE_START_ELIGIBLE) != 0 &&
+        (flags & WHC_CHARGE_STARTED_OUTSIDE_ENGAGEMENT) != 0 &&
+        (charge_distance_thousandths ==
+             (die_one + die_two + roll_modifier > 0
+                  ? (die_one + die_two + roll_modifier) * 1000
+                  : 0) ||
+         (flags & WHC_CHARGE_ROLL_OVERRIDE_EXPLAINED) != 0) &&
+        (successful
+             ? maximum_model_move_thousandths > 0 &&
+                   maximum_model_move_thousandths <= charge_distance_thousandths &&
+                   (flags & WHC_CHARGE_ALL_TARGETS_ENGAGED) != 0 &&
+                   (flags & WHC_CHARGE_UNIT_COHERENCY) != 0 &&
+                   (flags & WHC_CHARGE_NON_TARGETS_AVOIDED) != 0 &&
+                   (flags & WHC_CHARGE_ALL_MODELS_CLOSER) != 0 &&
+                   (flags & WHC_CHARGE_BASE_CONTACT_MAXIMIZED) != 0
+             : maximum_model_move_thousandths == 0 &&
+                   (flags & WHC_CHARGE_FAILURE_EXPLAINED) != 0);
+*/
+bool whc_charge_resolution_is_valid(uint32_t die_one, uint32_t die_two, int32_t roll_modifier,
+                                    uint32_t charge_distance_thousandths,
+                                    uint32_t maximum_target_distance_thousandths,
+                                    uint32_t maximum_model_move_thousandths,
+                                    uint32_t target_count, bool successful, uint32_t flags);
 
 /*@ requires first_player_index <= 1;
     requires \valid(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));

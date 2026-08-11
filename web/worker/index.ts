@@ -53,6 +53,8 @@ import {
   battleFormation,
   battleFormationHealth,
   battleSurvivingWeaponCount,
+  chargeResolutionFlags,
+  chargeResolutionIsValid,
   normalizeBattleState,
   rangedTargetEligibilityIsValid,
   replayBattleState,
@@ -282,6 +284,7 @@ type CalculatorExports = {
   whc_ranged_target_eligibility_is_valid(...values: number[]): number;
   whc_weapon_inventory_declaration_is_valid(...values: number[]): number;
   whc_weapon_bearer_declaration_is_valid(...values: number[]): number;
+  whc_charge_resolution_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -420,6 +423,7 @@ async function loadCalculator() {
       typeof calculator.whc_ranged_target_eligibility_is_valid !== "function" ||
       typeof calculator.whc_weapon_inventory_declaration_is_valid !== "function" ||
       typeof calculator.whc_weapon_bearer_declaration_is_valid !== "function" ||
+      typeof calculator.whc_charge_resolution_is_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -790,6 +794,72 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         },
       ];
     });
+    const charges = [...replayed.chargeByFormation.values()]
+      .map((event) => {
+        if (!Array.isArray(event.targetFacts)) {
+          return {
+            formationId: event.formationId,
+            targetFormationIds: event.targetFormationIds,
+            successful: event.successful,
+            roll: event.roll,
+            targetEligibilityConfirmed: event.targetEligibilityConfirmed,
+            targetEligibilityReason: event.targetEligibilityReason,
+            eligibilityOverride: event.eligibilityOverride,
+            overrideReason: event.overrideReason,
+            clock: event.clock,
+            canonicalMovement: false,
+          };
+        }
+        const maximumTargetDistanceThousandths = Math.max(
+          ...event.targetFacts.map((fact) => fact.startDistanceThousandths),
+        );
+        const flags = chargeResolutionFlags(event);
+        const values = [
+          event.rolls[0],
+          event.rolls[1],
+          event.rollModifier,
+          event.chargeDistanceThousandths,
+          maximumTargetDistanceThousandths,
+          event.maximumModelMoveThousandths,
+          event.targetFacts.length,
+          event.successful ? 1 : 0,
+          flags,
+        ];
+        const javascriptValid = chargeResolutionIsValid(...values);
+        const nativeValid = Boolean(calculator.whc_charge_resolution_is_valid(...values));
+        if (!javascriptValid || javascriptValid !== nativeValid) {
+          throw new ServiceUnavailableError(
+            "Canonical charge movement diverged from the C/WebAssembly predicate",
+            "CHARGE_RESOLUTION_DIVERGENCE",
+          );
+        }
+        return {
+          formationId: event.formationId,
+          targetFormationIds: event.targetFormationIds,
+          successful: event.successful,
+          rolls: event.rolls,
+          rollModifier: event.rollModifier,
+          chargeDistanceThousandths: event.chargeDistanceThousandths,
+          rollOverrideReason: event.rollOverrideReason,
+          targetFacts: event.targetFacts,
+          phaseStartEligibilityConfirmed: event.phaseStartEligibilityConfirmed,
+          phaseStartEligibilityReason: event.phaseStartEligibilityReason,
+          startedOutsideEngagementRange: event.startedOutsideEngagementRange,
+          maximumModelMoveThousandths: event.maximumModelMoveThousandths,
+          unitCoherencyConfirmed: event.unitCoherencyConfirmed,
+          nonTargetEngagementRangeAvoided: event.nonTargetEngagementRangeAvoided,
+          allModelsCloserToTarget: event.allModelsCloserToTarget,
+          baseContactMaximized: event.baseContactMaximized,
+          movementReviewedByPlayer: event.movementReviewedByPlayer,
+          movementReviewReason: event.movementReviewReason,
+          failureReason: event.failureReason,
+          eligibilityOverride: event.eligibilityOverride,
+          overrideReason: event.overrideReason,
+          clock: event.clock,
+          canonicalMovement: true,
+        };
+      })
+      .sort((left, right) => left.formationId.localeCompare(right.formationId));
     return {
       schemaVersion: state.version,
       rulesSnapshot: state.rulesSnapshot,
@@ -825,31 +895,7 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
           fromReserves,
         }))
         .sort((left, right) => left.formationId.localeCompare(right.formationId)),
-      charges: [...replayed.chargeByFormation.values()]
-        .map(
-          ({
-            formationId,
-            targetFormationIds,
-            successful,
-            roll,
-            targetEligibilityConfirmed,
-            targetEligibilityReason,
-            eligibilityOverride,
-            overrideReason,
-            clock,
-          }) => ({
-            formationId,
-            targetFormationIds,
-            successful,
-            roll,
-            targetEligibilityConfirmed,
-            targetEligibilityReason,
-            eligibilityOverride,
-            overrideReason,
-            clock,
-          }),
-        )
-        .sort((left, right) => left.formationId.localeCompare(right.formationId)),
+      charges,
       activeActivation: replayed.activeActivation
         ? {
             formationId: replayed.activeActivation.formationId,

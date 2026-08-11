@@ -40,6 +40,7 @@ import {
   recordFormationMovement,
   recordRangedTargetEligibility,
   replayBattleState,
+  rollChargeDice,
   resolveDestroyedTransport,
   resolveBattleChoice,
   revertLatestAttack,
@@ -169,7 +170,24 @@ export default function PlayMode() {
   const [actionEligibilityOverride, setActionEligibilityOverride] = useState(false);
   const [actionOverrideReason, setActionOverrideReason] = useState("");
   const [fightsFirstOverride, setFightsFirstOverride] = useState(false);
-  const [chargeRoll, setChargeRoll] = useState(7);
+  const [chargeDice, setChargeDice] = useState<[number, number]>([3, 4]);
+  const [chargeRollModifier, setChargeRollModifier] = useState(0);
+  const [chargeDistance, setChargeDistance] = useState(7);
+  const [chargeTargetDistance, setChargeTargetDistance] = useState(7);
+  const [chargeMaximumModelMove, setChargeMaximumModelMove] = useState(7);
+  const [chargeRollOverrideReason, setChargeRollOverrideReason] = useState("");
+  const [chargeFailureReason, setChargeFailureReason] = useState("");
+  const [chargeMovementReviewReason, setChargeMovementReviewReason] = useState("");
+  const [chargeFacts, setChargeFacts] = useState({
+    phaseStartEligible: false,
+    startedOutsideEngagementRange: false,
+    targetEndsWithinEngagementRange: false,
+    unitCoherency: false,
+    nonTargetsAvoided: false,
+    allModelsCloser: false,
+    baseContactMaximized: false,
+    reviewedByPlayer: false,
+  });
   const [deploymentPlacementConfirmed, setDeploymentPlacementConfirmed] = useState(false);
   const [deploymentPlacementReason, setDeploymentPlacementReason] = useState("");
   const [reservePlacementConfirmed, setReservePlacementConfirmed] = useState(false);
@@ -2777,6 +2795,35 @@ export default function PlayMode() {
     }
   };
 
+  const rollSelectedCharge = () => {
+    const dice = rollChargeDice() as [number, number];
+    const distance = Math.max(0, dice[0] + dice[1] + chargeRollModifier);
+    setChargeDice(dice);
+    setChargeDistance(distance);
+    setChargeMaximumModelMove(distance);
+    setChargeRollOverrideReason("");
+    setStatus(`Charge roll · ${dice.join(" + ")} · ${distance}″`);
+  };
+
+  const updateChargeDie = (index: 0 | 1, value: number) => {
+    const dice: [number, number] = [...chargeDice];
+    dice[index] = Math.min(6, Math.max(1, value || 1));
+    const distance = Math.max(0, dice[0] + dice[1] + chargeRollModifier);
+    setChargeDice(dice);
+    setChargeDistance(distance);
+    setChargeMaximumModelMove(distance);
+    setChargeRollOverrideReason("");
+  };
+
+  const updateChargeRollModifier = (value: number) => {
+    const modifier = Math.min(12, Math.max(-12, value || 0));
+    const distance = Math.max(0, chargeDice[0] + chargeDice[1] + modifier);
+    setChargeRollModifier(modifier);
+    setChargeDistance(distance);
+    setChargeMaximumModelMove(distance);
+    setChargeRollOverrideReason("");
+  };
+
   const recordSelectedCharge = (successful: boolean) => {
     if (!battleState || !attackerBattleFormationId || !targetBattleFormationId) return;
     try {
@@ -2784,9 +2831,33 @@ export default function PlayMode() {
         battleState,
         attackerBattleFormationId,
         [targetBattleFormationId],
-        successful,
-        chargeRoll,
-        battleActionOptions,
+        {
+          successful,
+          rolls: chargeDice,
+          rollModifier: chargeRollModifier,
+          chargeDistanceThousandths: Math.round(chargeDistance * 1000),
+          rollOverrideReason: chargeRollOverrideReason,
+          targetFacts: [
+            {
+              formationId: targetBattleFormationId,
+              startDistanceThousandths: Math.round(chargeTargetDistance * 1000),
+              endsWithinEngagementRange: successful && chargeFacts.targetEndsWithinEngagementRange,
+            },
+          ],
+          phaseStartEligibilityConfirmed: chargeFacts.phaseStartEligible,
+          phaseStartEligibilityReason: battleActionOptions.targetEligibilityReason,
+          startedOutsideEngagementRange: chargeFacts.startedOutsideEngagementRange,
+          maximumModelMoveThousandths: successful ? Math.round(chargeMaximumModelMove * 1000) : 0,
+          unitCoherencyConfirmed: successful && chargeFacts.unitCoherency,
+          nonTargetEngagementRangeAvoided: successful && chargeFacts.nonTargetsAvoided,
+          allModelsCloserToTarget: successful && chargeFacts.allModelsCloser,
+          baseContactMaximized: successful && chargeFacts.baseContactMaximized,
+          movementReviewedByPlayer: chargeFacts.reviewedByPlayer,
+          movementReviewReason: chargeMovementReviewReason,
+          failureReason: successful ? "" : chargeFailureReason,
+          eligibilityOverride: battleActionOptions.eligibilityOverride,
+          overrideReason: battleActionOptions.overrideReason,
+        },
         crypto.randomUUID(),
         battleState.events.length + 1,
       );
@@ -2800,7 +2871,9 @@ export default function PlayMode() {
         profile.targetDistance,
         successful,
       );
-      setStatus(`${successful ? "Successful" : "Failed"} charge · rolled ${chargeRoll}`);
+      setStatus(
+        `${successful ? "Successful" : "Failed"} charge · ${chargeDice.join(" + ")} · ${chargeDistance.toFixed(3)}″`,
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Charge could not be recorded");
     }
@@ -5277,28 +5350,150 @@ export default function PlayMode() {
                   </strong>
                   {selectedChargeCurrent ? (
                     <span>
-                      {selectedCharge?.successful ? "Successful" : "Failed"} · rolled{" "}
-                      {selectedCharge?.roll}
+                      {selectedCharge?.successful ? "Successful" : "Failed"} ·{" "}
+                      {selectedCharge?.rolls
+                        ? `${selectedCharge.rolls.join(" + ")} · ${(
+                            selectedCharge.chargeDistanceThousandths / 1000
+                          ).toFixed(3)}″`
+                        : `legacy roll ${selectedCharge?.roll}`}
                     </span>
                   ) : (
                     <div className="action-buttons">
                       <label>
-                        <span>2D6 roll</span>
+                        <span>First D6</span>
                         <input
                           type="number"
-                          min={2}
+                          min={1}
+                          max={6}
+                          value={chargeDice[0]}
+                          onChange={(event) => updateChargeDie(0, +event.target.value)}
+                        />
+                      </label>
+                      <label>
+                        <span>Second D6</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={6}
+                          value={chargeDice[1]}
+                          onChange={(event) => updateChargeDie(1, +event.target.value)}
+                        />
+                      </label>
+                      <label>
+                        <span>Roll modifier</span>
+                        <input
+                          type="number"
+                          min={-12}
                           max={12}
-                          value={chargeRoll}
+                          value={chargeRollModifier}
+                          onChange={(event) => updateChargeRollModifier(+event.target.value)}
+                        />
+                      </label>
+                      <button type="button" onClick={rollSelectedCharge}>
+                        Roll 2D6 securely
+                      </button>
+                      <label>
+                        <span>Effective Charge distance (inches)</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={24}
+                          step={0.001}
+                          value={chargeDistance}
                           onChange={(event) =>
-                            setChargeRoll(Math.min(12, Math.max(2, +event.target.value || 2)))
+                            setChargeDistance(Math.min(24, Math.max(0, +event.target.value || 0)))
                           }
                         />
                       </label>
+                      <label>
+                        <span>Roll override reason</span>
+                        <input
+                          value={chargeRollOverrideReason}
+                          maxLength={300}
+                          onChange={(event) => setChargeRollOverrideReason(event.target.value)}
+                          placeholder="Required when distance differs from dice plus modifier"
+                        />
+                      </label>
+                      <label>
+                        <span>Target distance at declaration (inches)</span>
+                        <input
+                          type="number"
+                          min={0.001}
+                          max={12}
+                          step={0.001}
+                          value={chargeTargetDistance}
+                          onChange={(event) =>
+                            setChargeTargetDistance(
+                              Math.min(12, Math.max(0.001, +event.target.value || 0.001)),
+                            )
+                          }
+                        />
+                      </label>
+                      <label>
+                        <span>Longest model move (inches)</span>
+                        <input
+                          type="number"
+                          min={0.001}
+                          max={24}
+                          step={0.001}
+                          value={chargeMaximumModelMove}
+                          onChange={(event) =>
+                            setChargeMaximumModelMove(
+                              Math.min(24, Math.max(0.001, +event.target.value || 0.001)),
+                            )
+                          }
+                        />
+                      </label>
+                      {[
+                        ["phaseStartEligible", "Within 12″ of an enemy at phase start"],
+                        ["startedOutsideEngagementRange", "Started outside Engagement Range"],
+                        [
+                          "targetEndsWithinEngagementRange",
+                          "Every target ends in Engagement Range",
+                        ],
+                        ["unitCoherency", "Charge move ends in Unit Coherency"],
+                        ["nonTargetsAvoided", "No non-target Engagement Range entered"],
+                        ["allModelsCloser", "Every moved model ends closer to a target"],
+                        ["baseContactMaximized", "Base contact maximized where possible"],
+                        ["reviewedByPlayer", "Player reviewed the complete move"],
+                      ].map(([key, label]) => (
+                        <label className="check-line" key={key}>
+                          <input
+                            type="checkbox"
+                            checked={chargeFacts[key as keyof typeof chargeFacts]}
+                            onChange={(event) =>
+                              setChargeFacts((current) => ({
+                                ...current,
+                                [key]: event.target.checked,
+                              }))
+                            }
+                          />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                      <label>
+                        <span>Movement review</span>
+                        <input
+                          value={chargeMovementReviewReason}
+                          maxLength={300}
+                          onChange={(event) => setChargeMovementReviewReason(event.target.value)}
+                          placeholder="Measurement or tabletop review"
+                        />
+                      </label>
+                      <label>
+                        <span>Failure reason</span>
+                        <input
+                          value={chargeFailureReason}
+                          maxLength={300}
+                          onChange={(event) => setChargeFailureReason(event.target.value)}
+                          placeholder="Required for a failed charge"
+                        />
+                      </label>
                       <button type="button" onClick={() => recordSelectedCharge(true)}>
-                        Charge succeeded
+                        Record successful move
                       </button>
                       <button type="button" onClick={() => recordSelectedCharge(false)}>
-                        Charge failed
+                        Record failed charge
                       </button>
                     </div>
                   )}
