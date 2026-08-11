@@ -6,6 +6,7 @@ import {
   BATTLE_STATE_VERSION,
   battleFormation,
   battleFormationHealth,
+  configureBattleRuleCoverage,
   configureUnengagedBattleFormation,
   declareFormationDeployment,
   deployFormation,
@@ -14,6 +15,7 @@ import {
   startBattle,
 } from "../lib/battle-state.mjs";
 import { battleRosterRevisionsMatch, initializeBattleForLists } from "../lib/battle-setup.mjs";
+import { normalizeRuleCoverageMatrix } from "../lib/rule-coverage.mjs";
 import {
   battleTargetSequence,
   savedFormationDefensiveEquipmentDefaults,
@@ -57,6 +59,48 @@ const catalogue = JSON.parse(
 const legacySetup = JSON.parse(
   await readFile(new URL("./fixtures/battle-setup-migration-v1.json", import.meta.url), "utf8"),
 );
+const coverageSource = JSON.parse(
+  await readFile(new URL("../../data/battle-rule-coverage.json", import.meta.url), "utf8"),
+);
+for (const category of ["faction", "detachment", "datasheet", "mission", "terrain"]) {
+  coverageSource.rules.push({
+    id: `${category}.test`,
+    category,
+    name: `Test ${category}`,
+    status: "irrelevant",
+    introducedBattleStateVersion: 24,
+    sources: [{ id: "core-rules-10e", pages: [7] }],
+  });
+}
+const ruleCoverageMatrix = normalizeRuleCoverageMatrix(
+  coverageSource,
+  JSON.parse(
+    await readFile(new URL("../../data/battle-rule-sources.json", import.meta.url), "utf8"),
+  ),
+);
+
+function coveredRuleSelectionOverrides(firstList, secondList) {
+  return {
+    guidedReason: "Players will review guided movement and placement at the table",
+    players: Object.fromEntries(
+      [firstList, secondList].map((savedList, index) => [
+        `player-${index + 1}`,
+        {
+          factionRuleIds: ["faction.test"],
+          detachmentSourceId: "test",
+          detachmentRuleIds: ["detachment.test"],
+          datasheetRuleIds: Object.fromEntries(
+            savedList.units.map((unit) => [unit.id, ["datasheet.test"]]),
+          ),
+        },
+      ]),
+    ),
+    missionSourceId: "test",
+    missionRuleIds: ["mission.test"],
+    terrainSourceId: "test",
+    terrainRuleIds: ["terrain.test"],
+  };
+}
 
 function catalogueUnit(name) {
   const unit = catalogue.units.find((candidate) => candidate.name === name);
@@ -105,6 +149,8 @@ function setup(state = null) {
     firstList: attackers,
     secondList: defenders,
     rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    ruleSelectionOverrides: coveredRuleSelectionOverrides(attackers, defenders),
     state,
     id: "battle-setup-test",
   });
@@ -150,6 +196,61 @@ function deployAllOnBattlefield(state) {
   return next;
 }
 
+function withoutRuleCoverageEvent(state) {
+  return {
+    ...structuredClone(state),
+    events: state.events
+      .filter((event) => event.type !== "rule_coverage_configured")
+      .map((event, index) => ({ ...event, sequence: index + 1 })),
+  };
+}
+
+test("records exact battle rule identities and blocks absent coverage before battle start", () => {
+  let state = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    id: "battle-rule-coverage-blocked",
+  });
+  const coverage = replayBattleState(state).ruleCoverage;
+  assert.equal(coverage.snapshotId, ruleCoverageMatrix.snapshotId);
+  assert.equal(coverage.report.permitted, false);
+  assert.deepEqual(
+    coverage.plan.players.map((player) => ({
+      playerId: player.playerId,
+      factionId: player.faction.sourceId,
+      datasheets: player.datasheets.map((datasheet) => datasheet.datasheetId),
+    })),
+    [
+      {
+        playerId: "player-1",
+        factionId: attackers.factionId,
+        datasheets: [attackers.units[0].unitId],
+      },
+      {
+        playerId: "player-2",
+        factionId: defenders.factionId,
+        datasheets: [defenders.units[0].unitId],
+      },
+    ],
+  );
+  assert.ok(
+    coverage.report.results.some((result) => result.category === "faction" && !result.sourceLocked),
+  );
+  state = deployAllOnBattlefield(state);
+  assert.throws(
+    () =>
+      configureBattleRuleCoverage(state, coverage, "late-rule-selection", state.events.length + 1),
+    /deployment declarations/,
+  );
+  assert.throws(
+    () => startBattle(state, "player-1", "blocked-start", state.events.length + 1),
+    /source-locked coverage/,
+  );
+});
+
 test("registers every formation on both rosters before combat with stable ids", () => {
   const state = setup();
   assert.equal(state.version, BATTLE_STATE_VERSION);
@@ -165,6 +266,7 @@ test("registers every formation on both rosters before combat with stable ids", 
     [
       ["formation_registered", "player-1:doom-scythe"],
       ["formation_registered", "player-2:brutalis"],
+      ["rule_coverage_configured", undefined],
     ],
   );
   assert.equal(setup(state), state);
@@ -187,6 +289,11 @@ test("registers every formation on both rosters before combat with stable ids", 
         firstList: { ...attackers, updatedAt: 11 },
         secondList: defenders,
         rulesSnapshot: "catalogue:test",
+        ruleCoverageMatrix,
+        ruleSelectionOverrides: coveredRuleSelectionOverrides(
+          { ...attackers, updatedAt: 11 },
+          defenders,
+        ),
         state,
       }),
     /roster changed/i,
@@ -225,6 +332,8 @@ test("locks saved Transport assignments into exact battle formations", () => {
     firstList: transportList,
     secondList: defenders,
     rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    ruleSelectionOverrides: coveredRuleSelectionOverrides(transportList, defenders),
     id: "battle-transport-setup",
   });
   assert.equal(
@@ -232,7 +341,7 @@ test("locks saved Transport assignments into exact battle formations", () => {
     "player-1:trukk",
   );
   assert.equal(battleFormation(state, "player-1:trukk").assignedTransportFormationId, "");
-  const versionSix = structuredClone(state);
+  const versionSix = withoutRuleCoverageEvent(state);
   versionSix.version = 6;
   delete versionSix.migration;
   const migrated = initializeBattleForLists({
@@ -240,6 +349,8 @@ test("locks saved Transport assignments into exact battle formations", () => {
     firstList: transportList,
     secondList: defenders,
     rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    ruleSelectionOverrides: coveredRuleSelectionOverrides(transportList, defenders),
     state: normalizeBattleState(versionSix),
     id: "battle-transport-setup",
   });
@@ -281,6 +392,8 @@ test("locks every source-compatible friendly Transport option independently of t
     firstList: list,
     secondList: defenders,
     rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    ruleSelectionOverrides: coveredRuleSelectionOverrides(list, defenders),
     id: "battle-transport-options",
   });
   const formation = battleFormation(state, "player-1:boyz");
@@ -294,17 +407,20 @@ test("locks every source-compatible friendly Transport option independently of t
     [12, 12],
   );
 
+  const oversizedList = {
+    ...list,
+    id: "list-oversized-transport-options",
+    units: list.units.map((unit) =>
+      unit.id === "boyz" ? { ...unit, modelCount: 20, transportId: "" } : unit,
+    ),
+  };
   const oversizedState = initializeBattleForLists({
     catalogue,
-    firstList: {
-      ...list,
-      id: "list-oversized-transport-options",
-      units: list.units.map((unit) =>
-        unit.id === "boyz" ? { ...unit, modelCount: 20, transportId: "" } : unit,
-      ),
-    },
+    firstList: oversizedList,
     secondList: defenders,
     rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    ruleSelectionOverrides: coveredRuleSelectionOverrides(oversizedList, defenders),
     id: "battle-oversized-transport-options",
   });
   const oversizedFormation = battleFormation(oversizedState, "player-1:boyz");
@@ -331,6 +447,17 @@ test("allows equipment correction during setup, then freezes it when battle star
     "brutalis::unit::narrative": 1,
   });
   state = startBattle(deployAllOnBattlefield(state), "player-1", "start-battle", 4);
+  assert.equal(
+    initializeBattleForLists({
+      catalogue,
+      firstList: attackers,
+      secondList: defenders,
+      rulesSnapshot: "catalogue:test",
+      ruleCoverageMatrix,
+      state,
+    }),
+    state,
+  );
   assert.throws(
     () => configureUnengagedBattleFormation(state, registration, "configure-after-start", 5),
     /locked after the battle starts/i,
@@ -365,8 +492,9 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacyCounterOffensiveThroughSequence: 3,
     legacySmokescreenThroughSequence: 3,
     legacyRapidIngressThroughSequence: 3,
+    legacyRuleCoverageThroughSequence: 3,
   });
-  assert.equal(migrated.events.at(-1).id, "legacy-attack");
+  assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
 
 test("migrates a partial version-1 log without changing attack ids or health", () => {
@@ -398,19 +526,20 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacyCounterOffensiveThroughSequence: 3,
     legacySmokescreenThroughSequence: 3,
     legacyRapidIngressThroughSequence: 3,
+    legacyRuleCoverageThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
-    ["formation_registered", "formation_registered", "attack_resolved"],
+    ["formation_registered", "formation_registered", "attack_resolved", "rule_coverage_configured"],
   );
-  assert.equal(migrated.events.at(-1).id, "legacy-attack");
+  assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
   assert.deepEqual(battleFormationHealth(migrated, "player-2:brutalis"), {
     [sequence.orderedSegments[0].id]: { modelsRemaining: 1, woundsLost: 1 },
   });
 });
 
 test("migrates a version-3 guided battle without reclassifying timed events", () => {
-  const versionThree = structuredClone(setup());
+  const versionThree = withoutRuleCoverageEvent(setup());
   versionThree.version = 3;
   delete versionThree.migration;
   const migrated = setup(normalizeBattleState(versionThree));
@@ -436,12 +565,13 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacyCounterOffensiveThroughSequence: 2,
     legacySmokescreenThroughSequence: 2,
     legacyRapidIngressThroughSequence: 2,
+    legacyRuleCoverageThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
 
 test("migrates a version-4 tracker battle with explicit unactioned provenance", () => {
-  const versionFour = structuredClone(setup());
+  const versionFour = withoutRuleCoverageEvent(setup());
   versionFour.version = 4;
   delete versionFour.migration;
   const migrated = setup(normalizeBattleState(versionFour));
@@ -467,11 +597,12 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacyCounterOffensiveThroughSequence: 2,
     legacySmokescreenThroughSequence: 2,
     legacyRapidIngressThroughSequence: 2,
+    legacyRuleCoverageThroughSequence: 2,
   });
 });
 
 test("migrates a version-5 action battle as already deployed without rewriting its log", () => {
-  const versionFive = structuredClone(setup());
+  const versionFive = withoutRuleCoverageEvent(setup());
   versionFive.version = 5;
   delete versionFive.migration;
   let migrated = setup(normalizeBattleState(versionFive));
@@ -497,8 +628,9 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacyCounterOffensiveThroughSequence: 2,
     legacySmokescreenThroughSequence: 2,
     legacyRapidIngressThroughSequence: 2,
+    legacyRuleCoverageThroughSequence: 2,
   });
-  assert.equal(migrated.events.length, 2);
+  assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
   const replayed = replayBattleState(migrated);
   assert.equal(replayed.deploymentComplete, true);
@@ -507,7 +639,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
 });
 
 test("migrates a version-6 deployment battle with explicit unembarked provenance", () => {
-  const versionSix = structuredClone(setup());
+  const versionSix = withoutRuleCoverageEvent(setup());
   versionSix.version = 6;
   delete versionSix.migration;
   const migrated = setup(normalizeBattleState(versionSix));
@@ -533,12 +665,13 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacyCounterOffensiveThroughSequence: 2,
     legacySmokescreenThroughSequence: 2,
     legacyRapidIngressThroughSequence: 2,
+    legacyRuleCoverageThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
 
 test("migrates a version-7 Transport battle with explicit legacy target provenance", () => {
-  const versionSeven = structuredClone(setup());
+  const versionSeven = withoutRuleCoverageEvent(setup());
   versionSeven.version = 7;
   delete versionSeven.migration;
   const migrated = setup(normalizeBattleState(versionSeven));
@@ -564,11 +697,12 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacyCounterOffensiveThroughSequence: 2,
     legacySmokescreenThroughSequence: 2,
     legacyRapidIngressThroughSequence: 2,
+    legacyRuleCoverageThroughSequence: 2,
   });
 });
 
 test("migrates a version-8 target-eligibility battle with locked weapon provenance", () => {
-  const versionEight = structuredClone(setup());
+  const versionEight = withoutRuleCoverageEvent(setup());
   versionEight.version = 8;
   delete versionEight.migration;
   const migrated = setup(normalizeBattleState(versionEight));
@@ -594,12 +728,13 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacyCounterOffensiveThroughSequence: 2,
     legacySmokescreenThroughSequence: 2,
     legacyRapidIngressThroughSequence: 2,
+    legacyRuleCoverageThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
 
 test("migrates version-9 weapon inventory with explicit aggregate-bearer provenance", () => {
-  const versionNine = structuredClone(setup());
+  const versionNine = withoutRuleCoverageEvent(setup());
   versionNine.version = 9;
   delete versionNine.migration;
   for (const event of versionNine.events) {
@@ -645,7 +780,7 @@ test("migrates version-9 weapon inventory with explicit aggregate-bearer provena
 });
 
 test("migrates version-10 exact bearers with an explicit legacy charge boundary", () => {
-  const versionTen = structuredClone(setup());
+  const versionTen = withoutRuleCoverageEvent(setup());
   versionTen.version = 10;
   delete versionTen.migration;
   const migrated = setup(normalizeBattleState(versionTen));
@@ -661,7 +796,7 @@ test("migrates version-10 exact bearers with an explicit legacy charge boundary"
 });
 
 test("migrates version-11 charge movement with explicit Fight and reaction boundaries", () => {
-  const versionEleven = structuredClone(setup());
+  const versionEleven = withoutRuleCoverageEvent(setup());
   versionEleven.version = 11;
   delete versionEleven.migration;
   const migrated = setup(normalizeBattleState(versionEleven));
@@ -675,7 +810,7 @@ test("migrates version-11 charge movement with explicit Fight and reaction bound
 });
 
 test("migrates version-12 Fight movement with an explicit Heroic Intervention boundary", () => {
-  const versionTwelve = structuredClone(setup());
+  const versionTwelve = withoutRuleCoverageEvent(setup());
   versionTwelve.version = 12;
   delete versionTwelve.migration;
   const migrated = setup(normalizeBattleState(versionTwelve));
@@ -688,7 +823,7 @@ test("migrates version-12 Fight movement with an explicit Heroic Intervention bo
 });
 
 test("migrates version-13 reactions with an explicit Fire Overwatch boundary", () => {
-  const versionThirteen = structuredClone(setup());
+  const versionThirteen = withoutRuleCoverageEvent(setup());
   versionThirteen.version = 13;
   delete versionThirteen.migration;
   const migrated = setup(normalizeBattleState(versionThirteen));
@@ -700,7 +835,7 @@ test("migrates version-13 reactions with an explicit Fire Overwatch boundary", (
 });
 
 test("migrates version-14 Fire Overwatch with an explicit Hazardous boundary", () => {
-  const versionFourteen = structuredClone(setup());
+  const versionFourteen = withoutRuleCoverageEvent(setup());
   versionFourteen.version = 14;
   delete versionFourteen.migration;
   const migrated = setup(normalizeBattleState(versionFourteen));
@@ -711,7 +846,7 @@ test("migrates version-14 Fire Overwatch with an explicit Hazardous boundary", (
 });
 
 test("migrates version-15 Hazardous state with an explicit Go to Ground boundary", () => {
-  const versionFifteen = structuredClone(setup());
+  const versionFifteen = withoutRuleCoverageEvent(setup());
   versionFifteen.version = 15;
   const migrated = setup(normalizeBattleState(versionFifteen));
   assert.equal(migrated.version, BATTLE_STATE_VERSION);
@@ -721,7 +856,7 @@ test("migrates version-15 Hazardous state with an explicit Go to Ground boundary
 });
 
 test("migrates version-16 Go to Ground state with an explicit ranged declaration boundary", () => {
-  const versionSixteen = structuredClone(setup());
+  const versionSixteen = withoutRuleCoverageEvent(setup());
   versionSixteen.version = 16;
   delete versionSixteen.migration;
   const migrated = setup(normalizeBattleState(versionSixteen));
@@ -732,7 +867,7 @@ test("migrates version-16 Go to Ground state with an explicit ranged declaration
 });
 
 test("migrates version-17 declarations with an explicit Transport compatibility boundary", () => {
-  const versionSeventeen = structuredClone(setup());
+  const versionSeventeen = withoutRuleCoverageEvent(setup());
   versionSeventeen.version = 17;
   delete versionSeventeen.migration;
   const migrated = setup(normalizeBattleState(versionSeventeen));
@@ -748,7 +883,7 @@ test("migrates version-17 declarations with an explicit Transport compatibility 
 });
 
 test("migrates version-18 Transport compatibility state to nested deployment semantics", () => {
-  const versionEighteen = structuredClone(setup());
+  const versionEighteen = withoutRuleCoverageEvent(setup());
   versionEighteen.version = 18;
   delete versionEighteen.migration;
   const eventIds = versionEighteen.events.map((event) => event.id);
@@ -757,13 +892,15 @@ test("migrates version-18 Transport compatibility state to nested deployment sem
   assert.equal(migrated.migration.sourceVersion, 18);
   assert.equal(migrated.migration.legacyTransportCompatibilityThroughSequence, 0);
   assert.deepEqual(
-    migrated.events.map((event) => event.id),
+    migrated.events
+      .filter((event) => event.type !== "rule_coverage_configured")
+      .map((event) => event.id),
     eventIds,
   );
 });
 
 test("migrates version-19 nested Transport state across the setup-rules boundary", () => {
-  const versionNineteen = structuredClone(setup());
+  const versionNineteen = withoutRuleCoverageEvent(setup());
   versionNineteen.version = 19;
   delete versionNineteen.migration;
   const eventIds = versionNineteen.events.map((event) => event.id);
@@ -772,13 +909,15 @@ test("migrates version-19 nested Transport state across the setup-rules boundary
   assert.equal(migrated.migration.sourceVersion, 19);
   assert.equal(migrated.migration.legacySetupRulesThroughSequence, 2);
   assert.deepEqual(
-    migrated.events.map((event) => event.id),
+    migrated.events
+      .filter((event) => event.type !== "rule_coverage_configured")
+      .map((event) => event.id),
     eventIds,
   );
 });
 
 test("migrates version-20 setup state across the Counter-offensive boundary", () => {
-  const versionTwenty = structuredClone(setup());
+  const versionTwenty = withoutRuleCoverageEvent(setup());
   versionTwenty.version = 20;
   delete versionTwenty.migration;
   const eventIds = versionTwenty.events.map((event) => event.id);
@@ -787,13 +926,15 @@ test("migrates version-20 setup state across the Counter-offensive boundary", ()
   assert.equal(migrated.migration.sourceVersion, 20);
   assert.equal(migrated.migration.legacyCounterOffensiveThroughSequence, 2);
   assert.deepEqual(
-    migrated.events.map((event) => event.id),
+    migrated.events
+      .filter((event) => event.type !== "rule_coverage_configured")
+      .map((event) => event.id),
     eventIds,
   );
 });
 
 test("migrates version-21 state across the Smokescreen boundary", () => {
-  const versionTwentyOne = structuredClone(setup());
+  const versionTwentyOne = withoutRuleCoverageEvent(setup());
   versionTwentyOne.version = 21;
   delete versionTwentyOne.migration;
   const eventIds = versionTwentyOne.events.map((event) => event.id);
@@ -802,13 +943,15 @@ test("migrates version-21 state across the Smokescreen boundary", () => {
   assert.equal(migrated.migration.sourceVersion, 21);
   assert.equal(migrated.migration.legacySmokescreenThroughSequence, 2);
   assert.deepEqual(
-    migrated.events.map((event) => event.id),
+    migrated.events
+      .filter((event) => event.type !== "rule_coverage_configured")
+      .map((event) => event.id),
     eventIds,
   );
 });
 
 test("migrates version-22 state without retroactively opening Rapid Ingress", () => {
-  const versionTwentyTwo = structuredClone(setup());
+  const versionTwentyTwo = withoutRuleCoverageEvent(setup());
   versionTwentyTwo.version = 22;
   delete versionTwentyTwo.migration;
   const eventIds = versionTwentyTwo.events.map((event) => event.id);
@@ -818,7 +961,24 @@ test("migrates version-22 state without retroactively opening Rapid Ingress", ()
   assert.equal(migrated.migration.legacyRapidIngressThroughSequence, 2);
   assert.equal(replayBattleState(migrated).pendingRapidIngress, null);
   assert.deepEqual(
-    migrated.events.map((event) => event.id),
+    migrated.events
+      .filter((event) => event.type !== "rule_coverage_configured")
+      .map((event) => event.id),
     eventIds,
   );
+});
+
+test("migrates version-23 state with an explicit source-locked rule boundary", () => {
+  const versionTwentyThree = withoutRuleCoverageEvent(deployAllOnBattlefield(setup()));
+  versionTwentyThree.version = 23;
+  delete versionTwentyThree.migration;
+  const migrated = setup(normalizeBattleState(versionTwentyThree));
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 23);
+  assert.equal(
+    migrated.migration.legacyRuleCoverageThroughSequence,
+    versionTwentyThree.events.length,
+  );
+  assert.equal(replayBattleState(migrated).ruleCoverage.report.permitted, true);
+  assert.ok(replayBattleState(migrated).deploymentByFormation.size > 0);
 });

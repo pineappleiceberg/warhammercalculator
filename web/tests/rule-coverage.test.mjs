@@ -6,6 +6,12 @@ import {
   normalizeRuleCoverageMatrix,
   ruleCoverageIsPermitted,
 } from "../lib/rule-coverage.mjs";
+import {
+  battleRuleSelectionIds,
+  bindBattleRuleSelections,
+  deriveBattleRuleSelectionPlan,
+  verifyBattleRuleCoverageBinding,
+} from "../lib/battle-rule-selection.mjs";
 
 const sourceManifest = JSON.parse(
   await readFile(new URL("../../data/battle-rule-sources.json", import.meta.url), "utf8"),
@@ -70,4 +76,42 @@ test("coverage status predicate rejects unlocked, unsupported, and unknown statu
   assert.equal(ruleCoverageIsPermitted("unsupported", true, "ignored"), false);
   assert.equal(ruleCoverageIsPermitted("executable", false), false);
   assert.equal(ruleCoverageIsPermitted(99, true), false);
+});
+
+test("battle bindings capture every exact selection and fail closed on omitted categories", () => {
+  const matrix = normalizeRuleCoverageMatrix(coverageSource, sourceManifest);
+  const players = [{ id: "player-1" }, { id: "player-2" }];
+  const lists = [
+    { factionId: "NEC", units: [{ id: "doom", unitId: "000000001" }] },
+    { factionId: "SM", units: [{ id: "brutalis", unitId: "000000002" }] },
+  ];
+  const plan = deriveBattleRuleSelectionPlan(matrix, players, lists);
+  const binding = bindBattleRuleSelections(matrix, plan);
+  assert.equal(binding.report.permitted, false);
+  assert.equal(binding.plan.players[0].faction.sourceId, "NEC");
+  assert.equal(binding.plan.players[0].datasheets[0].datasheetId, "000000001");
+  assert.ok(battleRuleSelectionIds(plan).includes("mission.unselected-unselected"));
+  assert.deepEqual(verifyBattleRuleCoverageBinding(matrix, binding), binding);
+
+  const altered = structuredClone(binding);
+  altered.report.results[0].permitted = false;
+  assert.throws(() => verifyBattleRuleCoverageBinding(matrix, altered), /inconsistent|altered/);
+
+  const omitted = structuredClone(binding);
+  omitted.plan.universal.coreRuleIds.pop();
+  omitted.report.results.splice(omitted.plan.universal.coreRuleIds.length, 1);
+  assert.throws(
+    () => verifyBattleRuleCoverageBinding(matrix, omitted),
+    /omits|incomplete|canonical/,
+  );
+
+  const enhancedPlan = deriveBattleRuleSelectionPlan(matrix, players, lists, {
+    players: { "player-1": { enhancementSourceIds: ["hypermaterial-ablation"] } },
+  });
+  assert.ok(
+    battleRuleSelectionIds(enhancedPlan).includes(
+      "enhancement.unselected-player-1-hypermaterial-ablation",
+    ),
+  );
+  assert.equal(bindBattleRuleSelections(matrix, enhancedPlan).report.permitted, false);
 });

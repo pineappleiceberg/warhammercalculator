@@ -27,20 +27,35 @@ state.
 
 ## Prioritized backlog
 
-1. Enforce the source-locked coverage matrix during versioned battle setup by
-   recording exact faction, detachment, enhancement, datasheet, terrain, and
-   mission selections and blocking every absent or unsupported rule before the
-   battle begins.
-2. Expand the matrix from the current Core Rules and universal-Stratagem
+1. Expand the matrix from the current Core Rules and universal-Stratagem
    foundation with pinned faction, detachment, enhancement, datasheet, terrain,
-   and mission sources, executable handlers, and reason-backed guided fallbacks.
-3. Expand reviewable table geometry beyond the version-8 ranged measurement to
+   and mission sources, catalogue-to-rule mappings, executable handlers, and
+   reason-backed guided fallbacks so supported real lists can pass the version-24
+   setup gate.
+2. Expand reviewable table geometry beyond the version-8 ranged measurement to
    movement paths, charge endpoints, cover, coherency, Engagement Range,
    terrain, and objective facts.
-4. Deliver full guided-game replay scenarios before adding deterministic
+3. Deliver full guided-game replay scenarios before adding deterministic
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced canonical battle setup to version 24 with an append-only,
+  source-locked rule selection boundary. Every new battle now records the exact
+  faction identity and datasheet identity for each saved unit, explicit
+  detachment and enhancement declarations for each player, the mission and
+  terrain selections, and the complete known Core Rules and universal
+  Stratagem set. The binding stores the exact source snapshot and checks every
+  selected rule through the four-state coverage contract; absent, stale,
+  unsupported, or unacknowledged guided rules block battle start before turn
+  one. Guided Play displays each blocking rule and records a reason-backed
+  physical-table acknowledgement. The replay API recomputes the complete
+  binding from the deployed source catalogue, independently cross-checks every
+  result through C/WebAssembly, and rejects altered hashes or reports. Versions
+  1-23 migrate behind an explicit sequence boundary, preserving already-started
+  games while gating the next new start. The next priority is pinned faction,
+  detachment, enhancement, datasheet, terrain, and mission ingestion so real
+  matchups can move from precise unsupported reports to supported play.
 
 - 2026-08-11: Added the first source-locked rule coverage contract. The
   machine-readable matrix classifies 15 implemented Core Rules and universal
