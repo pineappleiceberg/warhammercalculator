@@ -15,19 +15,28 @@ import {
   configureBattleTableGeometry,
   configureBattleTerrainFootprints,
   configureUnengagedBattleFormation,
+  declareFormationCharge,
   declareFormationDeployment,
   deployFormation,
+  disembarkFormation,
   modelPlacementSetFacts,
   modelPlacementSetIsValid,
   modelPositionSetFacts,
   modelPositionSetIsValid,
+  modelPositionContextUsesPath,
   normalizeBattleState,
   recordDeploymentModelPlacements,
   recordModelPositions,
   replayBattleState,
+  resolveHeroicIntervention,
   resolveRapidIngress,
   completeFormationMovement,
   passFireOverwatch,
+  passFightPriority,
+  passHeroicIntervention,
+  recordFightMove,
+  recordFormationCharge,
+  startFormationActivation,
   startBattle,
   startFormationMovement,
   tableGeometryIsValid,
@@ -175,11 +184,15 @@ const exactMissionOverrides = {
   terrainSourceId: "chapter-approved-2025-26-v1.4-layout-1",
 };
 
-function exactMissionSetup(id = "source-locked-mission") {
+function exactMissionSetup(
+  id = "source-locked-mission",
+  firstList = attackers,
+  secondList = defenders,
+) {
   let state = initializeBattleForLists({
     catalogue,
-    firstList: attackers,
-    secondList: defenders,
+    firstList,
+    secondList,
     rulesSnapshot: "catalogue:test",
     ruleCoverageMatrix,
     missionPackCatalogue,
@@ -332,6 +345,8 @@ function reviewedModelPositions(state, formationId, context, referenceEventId, o
   const survivingIds = formation.segments.flatMap((segment) =>
     segment.modelIds.slice(0, formation.health[segment.id].modelsRemaining),
   );
+  const pathMovement = modelPositionContextUsesPath(context);
+  const pending = replayed.pendingModelPosition;
   const models = survivingIds.map((modelId, index) => {
     const prior = previous?.models.find((model) => model.modelId === modelId);
     const start = prior ?? {
@@ -345,10 +360,9 @@ function reviewedModelPositions(state, formationId, context, referenceEventId, o
       elevationThousandths: 0,
       rotationMilliDegrees: 0,
     };
-    const endpoint =
-      context === "movement"
-        ? { ...start, centerXThousandths: start.centerXThousandths + 1_000 }
-        : start;
+    const endpoint = pathMovement
+      ? { ...start, centerXThousandths: start.centerXThousandths + 1_000 }
+      : start;
     const point = (model) => ({
       centerXThousandths: model.centerXThousandths,
       centerYThousandths: model.centerYThousandths,
@@ -357,9 +371,11 @@ function reviewedModelPositions(state, formationId, context, referenceEventId, o
     });
     return {
       ...endpoint,
-      path: context === "movement" ? [point(start), point(endpoint)] : [point(endpoint)],
-      distanceMovedThousandths: context === "movement" ? 1_000 : 0,
-      maximumDistanceThousandths: context === "movement" ? 12_000 : 0,
+      path: pathMovement ? [point(start), point(endpoint)] : [point(endpoint)],
+      distanceMovedThousandths: pathMovement ? 1_000 : 0,
+      maximumDistanceThousandths: pathMovement
+        ? (pending?.maximumDistanceThousandths ?? 12_000)
+        : 0,
     };
   });
   return {
@@ -379,11 +395,61 @@ function reviewedModelPositions(state, formationId, context, referenceEventId, o
     terrainClearanceReviewed: true,
     coherencyReviewed: true,
     engagementRangeReviewed: true,
-    reconcilesStaleStart: false,
+    reconcilesStaleStart: Boolean(pending?.reconcilesStaleStart),
     reviewedByPlayer: true,
     method: "manual",
     reviewReason: "Every live model path, endpoint, clearance, coherency, and range was checked",
     ...overrides,
+  };
+}
+
+function successfulChargeOptions(targetFormationId) {
+  return {
+    successful: true,
+    rolls: [3, 4],
+    rollModifier: 0,
+    chargeDistanceThousandths: 7_000,
+    targetFacts: [
+      {
+        formationId: targetFormationId,
+        startDistanceThousandths: 8_000,
+        endsWithinEngagementRange: true,
+      },
+    ],
+    phaseStartEligibilityConfirmed: true,
+    phaseStartEligibilityReason: "Eligible at the start of the Charge phase",
+    startedOutsideEngagementRange: true,
+    maximumModelMoveThousandths: 7_000,
+    unitCoherencyConfirmed: true,
+    nonTargetEngagementRangeAvoided: true,
+    allModelsCloserToTarget: true,
+    baseContactMaximized: true,
+    movementReviewedByPlayer: true,
+    movementReviewReason: "Every charging model endpoint was reviewed",
+    failureReason: "",
+  };
+}
+
+function enemyFightMoveOptions(stage) {
+  return {
+    destination: "enemy",
+    maximumModelMoveThousandths: 3_000,
+    movementReviewedByPlayer: true,
+    movementReviewReason: `Every ${stage} endpoint was reviewed`,
+    baseContactModelsStationary: true,
+    unitCoherencyConfirmed: true,
+    endsWithinEngagementRange: true,
+    allMovedModelsCloserToEnemy: true,
+    baseContactMaximized: true,
+    enemyDestinationImpossible: false,
+    objectiveId: "",
+    endsWithinObjectiveRange: false,
+    allMovedModelsCloserToObjective: false,
+    objectiveDestinationImpossible: false,
+    outcomeReason: "",
+    meleeAttacksCompleteConfirmed: stage === "consolidation",
+    meleeAttacksCompletionReason:
+      stage === "consolidation" ? "All eligible melee attacks were resolved" : "",
   };
 }
 
@@ -821,6 +887,379 @@ test("records a reserve unit's first exact position before its set-up reaction w
     replayed.currentModelPositionsByFormation.get(formationId).context,
     "reserve_arrival",
   );
+});
+
+test("records exact Charge, Pile In, and Consolidation paths before play continues", () => {
+  const chargeTargets = list(
+    "list-charge-targets",
+    40,
+    "Necrons",
+    "Canoptek Doomstalker",
+    "doomstalker",
+  );
+  let state = exactMissionSetup("exact-charge-fight-position", chargeTargets, defenders);
+  state = configureBattleTableGeometry(
+    state,
+    reviewedTableGeometry(state),
+    "charge-table-geometry",
+    state.events.length + 1,
+  );
+  state = configureBattleTerrainFootprints(
+    state,
+    reviewedTerrainFootprints(state),
+    "charge-terrain-footprints",
+    state.events.length + 1,
+  );
+  state = deployAllOnBattlefield(state);
+  state = startBattle(state, "player-2", "charge-battle-started", state.events.length + 1);
+  state = changeBattleResource(
+    state,
+    {
+      playerId: "player-1",
+      resourceId: "command_points",
+      name: "Command Points",
+      delta: 1,
+      reason: "Heroic Intervention geometry scenario",
+    },
+    "charge-grant-intervention-cp",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, "movement", "move_units");
+  const chargerId = "player-2:brutalis";
+  const targetId = "player-1:doomstalker";
+  state = completeFormationMovement(
+    state,
+    chargerId,
+    "stationary",
+    "charge-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, "charge", "charge_moves");
+  state = declareFormationCharge(
+    state,
+    chargerId,
+    [targetId],
+    {
+      targetFacts: [{ formationId: targetId, startDistanceThousandths: 8_000 }],
+      phaseStartEligibilityConfirmed: true,
+      phaseStartEligibilityReason: "Eligible at the start of the Charge phase",
+      startedOutsideEngagementRange: true,
+    },
+    "exact-charge-declared",
+    state.events.length + 1,
+  );
+  state = passFireOverwatch(
+    state,
+    "No Fire Overwatch declared against the charge",
+    "exact-charge-overwatch-passed",
+    state.events.length + 1,
+  );
+  state = recordFormationCharge(
+    state,
+    chargerId,
+    [targetId],
+    successfulChargeOptions(targetId),
+    "exact-charge-resolved",
+    state.events.length + 1,
+  );
+  let replayed = replayBattleState(state);
+  assert.deepEqual(replayed.pendingModelPosition, {
+    formationId: chargerId,
+    context: "charge",
+    referenceEventId: "exact-charge-resolved",
+    fireOverwatchTrigger: "",
+    reconcilesStaleStart: false,
+    maximumDistanceThousandths: 7_000,
+  });
+  assert.throws(
+    () =>
+      passHeroicIntervention(
+        state,
+        "Cannot react before exact endpoints",
+        "exact-charge-premature-intervention",
+        state.events.length + 1,
+      ),
+    /per-model position snapshot/i,
+  );
+  const invalidChargePosition = reviewedModelPositions(
+    state,
+    chargerId,
+    "charge",
+    "exact-charge-resolved",
+  );
+  assert.throws(
+    () =>
+      recordModelPositions(
+        state,
+        chargerId,
+        {
+          ...invalidChargePosition,
+          models: invalidChargePosition.models.map((model) => ({
+            ...model,
+            maximumDistanceThousandths: 6_999,
+          })),
+        },
+        "exact-charge-invalid-allowance",
+        state.events.length + 1,
+      ),
+    /movement allowance/i,
+  );
+  state = recordModelPositions(
+    state,
+    chargerId,
+    reviewedModelPositions(state, chargerId, "charge", "exact-charge-resolved"),
+    "exact-charge-positioned",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.currentModelPositionsByFormation.get(chargerId).context, "charge");
+  assert.equal(replayed.pendingHeroicIntervention?.chargingFormationId, chargerId);
+  state = resolveHeroicIntervention(
+    state,
+    targetId,
+    {
+      successful: true,
+      rolls: [3, 4],
+      rollModifier: 0,
+      chargeDistanceThousandths: 7_000,
+      startDistanceThousandths: 6_000,
+      targetEligibilityConfirmed: true,
+      targetEligibilityReason: "Within 6 inches and eligible to charge the triggering unit",
+      startedOutsideEngagementRange: true,
+      maximumModelMoveThousandths: 5_000,
+      endsWithinEngagementRange: true,
+      unitCoherencyConfirmed: true,
+      nonTargetEngagementRangeAvoided: true,
+      allModelsCloserToTarget: true,
+      baseContactMaximized: true,
+      movementReviewedByPlayer: true,
+      movementReviewReason: "Every intervening model endpoint was reviewed",
+    },
+    "exact-heroic-intervention",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).pendingModelPosition?.context, "heroic_intervention");
+  state = recordModelPositions(
+    state,
+    targetId,
+    reviewedModelPositions(state, targetId, "heroic_intervention", "exact-heroic-intervention"),
+    "exact-heroic-positioned",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, "fight", "fights_first");
+  if (replayBattleState(state).clock.priorityPlayerId !== "player-2") {
+    state = passFightPriority(
+      state,
+      "No eligible defending Fights First formation",
+      "exact-charge-priority-passed",
+      state.events.length + 1,
+    );
+  }
+  state = startFormationActivation(
+    state,
+    chargerId,
+    {},
+    "exact-fight-activation",
+    state.events.length + 1,
+  );
+  state = recordFightMove(
+    state,
+    "pile_in",
+    enemyFightMoveOptions("pile_in"),
+    "exact-pile-in",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).pendingModelPosition?.context, "pile_in");
+  state = recordModelPositions(
+    state,
+    chargerId,
+    reviewedModelPositions(state, chargerId, "pile_in", "exact-pile-in"),
+    "exact-pile-in-positioned",
+    state.events.length + 1,
+  );
+  state = recordFightMove(
+    state,
+    "consolidation",
+    enemyFightMoveOptions("consolidation"),
+    "exact-consolidation",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).pendingModelPosition?.context, "consolidation");
+  state = recordModelPositions(
+    state,
+    chargerId,
+    reviewedModelPositions(state, chargerId, "consolidation", "exact-consolidation"),
+    "exact-consolidation-positioned",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.pendingModelPosition, null);
+  assert.equal(replayed.modelPositionHistoryByFormation.get(chargerId).length, 4);
+  assert.equal(replayed.modelPositionHistoryByFormation.get(targetId).length, 2);
+  assert.equal(replayed.geometryStaleFormationIds.has(chargerId), false);
+});
+
+test("records exact disembarkation positions before the set-up reaction window", () => {
+  const trukk = catalogueUnit("Trukk");
+  const boyz = catalogueUnit("Boyz");
+  const transportList = {
+    id: "list-exact-disembark",
+    createdAt: 1,
+    updatedAt: 41,
+    name: "Exact disembarkation",
+    factionId: trukk.factionId,
+    units: [
+      {
+        id: "trukk",
+        unitId: trukk.id,
+        name: trukk.name,
+        modelCount: 1,
+        weapons: [],
+      },
+      {
+        id: "boyz",
+        unitId: boyz.id,
+        name: boyz.name,
+        modelCount: 10,
+        weapons: [],
+        transportId: "trukk",
+      },
+    ],
+  };
+  const orkMissionOverrides = {
+    ...exactMissionOverrides,
+    players: {
+      "player-1": { detachmentSourceId: "000000852" },
+      "player-2": exactMissionOverrides.players["player-2"],
+    },
+  };
+  let state = initializeBattleForLists({
+    catalogue,
+    firstList: transportList,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: orkMissionOverrides,
+    id: "exact-disembark-position",
+  });
+  state = configureBattleMission(
+    state,
+    {
+      name: "A · Take and Hold · Tipping Point",
+      pointsLimit: 2_000,
+      deploymentFirstPlayerId: "player-1",
+      commandPointsPerCommandPhase: 1,
+      startingCommandPoints: { "player-1": 0, "player-2": 0 },
+      objectives: Array.from({ length: 5 }, (_, index) => ({
+        id: `objective-${index + 1}`,
+        name: `Objective ${index + 1}`,
+      })),
+    },
+    "exact-disembark-mission",
+    state.events.length + 1,
+  );
+  state = configureBattleTableGeometry(
+    state,
+    reviewedTableGeometry(state),
+    "disembark-table-geometry",
+    state.events.length + 1,
+  );
+  state = configureBattleTerrainFootprints(
+    state,
+    reviewedTerrainFootprints(state),
+    "disembark-terrain-footprints",
+    state.events.length + 1,
+  );
+  state = declareFormationDeployment(
+    state,
+    "player-1:trukk",
+    "battlefield",
+    {},
+    "declare-disembark-trukk",
+    state.events.length + 1,
+  );
+  state = declareFormationDeployment(
+    state,
+    "player-1:boyz",
+    "embarked",
+    { transportFormationId: "player-1:trukk" },
+    "declare-disembark-boyz",
+    state.events.length + 1,
+  );
+  state = declareFormationDeployment(
+    state,
+    "player-2:brutalis",
+    "battlefield",
+    {},
+    "declare-disembark-brutalis",
+    state.events.length + 1,
+  );
+  while (!replayBattleState(state).deploymentComplete) {
+    const replayed = replayBattleState(state);
+    const formation = [...replayed.formations.values()].find(
+      (candidate) =>
+        candidate.playerId === replayed.deploymentPriorityPlayerId &&
+        !replayed.deployedFormationIds.has(candidate.id) &&
+        replayed.deploymentByFormation.get(candidate.id)?.location === "battlefield",
+    );
+    assert.ok(formation);
+    state = deployFormation(
+      state,
+      formation.id,
+      { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
+      `deploy-${formation.id}`,
+      state.events.length + 1,
+    );
+    const pending = replayBattleState(state).pendingDeploymentPlacement;
+    if (pending) {
+      state = recordDeploymentModelPlacements(
+        state,
+        pending.formationId,
+        reviewedDeploymentModelPlacements(state, pending.formationId, pending.referenceEventId),
+        `place-${pending.formationId}`,
+        state.events.length + 1,
+      );
+    }
+  }
+  state = startBattle(state, "player-1", "disembark-battle-started", state.events.length + 1);
+  state = advanceTo(state, "movement", "move_units");
+  state = disembarkFormation(
+    state,
+    "player-1:boyz",
+    "player-1:trukk",
+    {
+      placementConfirmed: true,
+      placementReason: "Every model was set up wholly within 3 inches",
+    },
+    "exact-boyz-disembarked",
+    state.events.length + 1,
+  );
+  let replayed = replayBattleState(state);
+  assert.equal(replayed.pendingModelPosition?.context, "disembarkation");
+  assert.equal(replayed.pendingFireOverwatch?.trigger, "set_up");
+  assert.throws(
+    () =>
+      passFireOverwatch(
+        state,
+        "Cannot react before exact positions",
+        "disembark-premature-overwatch",
+        state.events.length + 1,
+      ),
+    /per-model position snapshot/i,
+  );
+  state = recordModelPositions(
+    state,
+    "player-1:boyz",
+    reviewedModelPositions(state, "player-1:boyz", "disembarkation", "exact-boyz-disembarked"),
+    "exact-boyz-positioned",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.pendingModelPosition, null);
+  assert.equal(replayed.currentModelPositionsByFormation.get("player-1:boyz").models.length, 10);
+  assert.equal(replayed.geometryStaleFormationIds.has("player-1:boyz"), false);
+  assert.equal(replayed.pendingFireOverwatch?.trigger, "set_up");
 });
 
 test("requires exact first positions after Rapid Ingress before play can continue", () => {
@@ -1424,6 +1863,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacyTerrainFootprintsThroughSequence: 3,
     legacyModelPlacementsThroughSequence: 3,
     legacyModelPositionsThroughSequence: 3,
+    legacyExtendedModelPositionsThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -1462,6 +1902,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacyTerrainFootprintsThroughSequence: 3,
     legacyModelPlacementsThroughSequence: 3,
     legacyModelPositionsThroughSequence: 3,
+    legacyExtendedModelPositionsThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -1505,6 +1946,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacyTerrainFootprintsThroughSequence: 2,
     legacyModelPlacementsThroughSequence: 2,
     legacyModelPositionsThroughSequence: 2,
+    legacyExtendedModelPositionsThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -1541,6 +1983,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacyTerrainFootprintsThroughSequence: 2,
     legacyModelPlacementsThroughSequence: 2,
     legacyModelPositionsThroughSequence: 2,
+    legacyExtendedModelPositionsThroughSequence: 2,
   });
 });
 
@@ -1576,6 +2019,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacyTerrainFootprintsThroughSequence: 2,
     legacyModelPlacementsThroughSequence: 2,
     legacyModelPositionsThroughSequence: 2,
+    legacyExtendedModelPositionsThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -1617,6 +2061,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacyTerrainFootprintsThroughSequence: 2,
     legacyModelPlacementsThroughSequence: 2,
     legacyModelPositionsThroughSequence: 2,
+    legacyExtendedModelPositionsThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -1653,6 +2098,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacyTerrainFootprintsThroughSequence: 2,
     legacyModelPlacementsThroughSequence: 2,
     legacyModelPositionsThroughSequence: 2,
+    legacyExtendedModelPositionsThroughSequence: 2,
   });
 });
 
@@ -1688,6 +2134,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacyTerrainFootprintsThroughSequence: 2,
     legacyModelPlacementsThroughSequence: 2,
     legacyModelPositionsThroughSequence: 2,
+    legacyExtendedModelPositionsThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -2121,6 +2568,45 @@ test("migrates version-27 placement snapshots without inventing movement history
   assert.equal(migrated.version, BATTLE_STATE_VERSION);
   assert.equal(migrated.migration.sourceVersion, 27);
   assert.equal(migrated.migration.legacyModelPositionsThroughSequence, legacyEventCount);
+  assert.equal(migrated.migration.legacyExtendedModelPositionsThroughSequence, legacyEventCount);
+  assert.equal(replayed.pendingModelPosition, null);
+  assert.equal(replayed.modelPositionHistoryByFormation.get("player-2:brutalis").length, 1);
+});
+
+test("migrates version-28 paths without inventing extended physical movement snapshots", () => {
+  let versionTwentyEight = exactMissionSetup("version-28-extended-model-positions");
+  versionTwentyEight = configureBattleTableGeometry(
+    versionTwentyEight,
+    reviewedTableGeometry(versionTwentyEight),
+    "version-28-table-geometry",
+    versionTwentyEight.events.length + 1,
+  );
+  versionTwentyEight = configureBattleTerrainFootprints(
+    versionTwentyEight,
+    reviewedTerrainFootprints(versionTwentyEight),
+    "version-28-terrain-footprints",
+    versionTwentyEight.events.length + 1,
+  );
+  versionTwentyEight = deployAllOnBattlefield(versionTwentyEight);
+  versionTwentyEight.version = 28;
+  delete versionTwentyEight.migration;
+  const legacyEventCount = versionTwentyEight.events.length;
+  const migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: normalizeBattleState(versionTwentyEight),
+    id: versionTwentyEight.id,
+  });
+  const replayed = replayBattleState(migrated);
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 28);
+  assert.equal(migrated.migration.legacyModelPositionsThroughSequence, 0);
+  assert.equal(migrated.migration.legacyExtendedModelPositionsThroughSequence, legacyEventCount);
   assert.equal(replayed.pendingModelPosition, null);
   assert.equal(replayed.modelPositionHistoryByFormation.get("player-2:brutalis").length, 1);
 });

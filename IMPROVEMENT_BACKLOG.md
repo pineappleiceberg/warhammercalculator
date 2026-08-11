@@ -27,9 +27,9 @@ state.
 
 ## Prioritized backlog
 
-1. Extend canonical version-28 position history through Charge, Pile In,
-   Consolidation, disembarkation, Emergency Disembarkation, and embarkation;
-   then make terrain height and Ruin-wall subgeometry, cover, visibility,
+1. Extend canonical position history through Emergency Disembarkation and
+   embarkation, including multiple forced passenger formations; then make
+   terrain height and Ruin-wall subgeometry, cover, visibility,
    coherency, objective range, and Engagement Range executable from those exact
    footprints instead of review-only facts.
 2. Implement source-locked mission scoring and secondary-card/action tracking
@@ -39,6 +39,20 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced exact guided geometry to battle-state version 29 across
+  successful Charge and Heroic Intervention moves, non-zero Pile In and
+  Consolidation moves, and normal disembarkation. Source-locked games now pause
+  each action before its reaction, attack, or completion boundary until every
+  surviving stable model identity has a reviewed path or endpoint. Charge and
+  Fight snapshots must use the exact maximum distance from their referenced
+  action; mismatched contexts, stages, unsuccessful references, stale starts,
+  survivor identities, endpoints, paths, and allowances fail closed.
+  Disembarking units record their first tabletop footprints before the set-up
+  Fire Overwatch window. Version-28 histories migrate without invented extended
+  movement, while custom games retain the lightweight confirmation workflow.
+  Guided Play, replay/API serialization, and the existing ACSL-specified
+  C/WebAssembly aggregate validator share integration and differential coverage.
 
 - 2026-08-11: Advanced exact guided geometry to battle-state version 28 with
   replayable per-model movement and Reinforcement positions. Normal, Advance,

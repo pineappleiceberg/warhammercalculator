@@ -46,6 +46,7 @@ import {
   disembarkFormation,
   embarkFormation,
   normalizeBattleState,
+  modelPositionContextUsesPath,
   passFightPriority,
   passCounterOffensive,
   passFireOverwatch,
@@ -3303,9 +3304,9 @@ export default function PlayMode() {
         }
         return Math.round(value * 1000);
       };
-      const movement = pending.context === "movement";
-      const candidates = movement ? (previous?.models ?? []) : formation.modelInstances;
-      if (movement && !previous) throw new Error("Movement has no prior model positions");
+      const pathMovement = modelPositionContextUsesPath(pending.context);
+      const candidates = pathMovement ? (previous?.models ?? []) : formation.modelInstances;
+      if (pathMovement && !previous) throw new Error("Movement has no prior model positions");
       const point = (model: {
         centerXThousandths: number;
         centerYThousandths: number;
@@ -3324,11 +3325,11 @@ export default function PlayMode() {
         })
         .map((candidate: { modelId?: string; id?: string }) => {
           const modelId = candidate.modelId ?? candidate.id ?? "";
-          const prior = movement
+          const prior = pathMovement
             ? previous.models.find((model: { modelId: string }) => model.modelId === modelId)
             : null;
           const start =
-            movement && pending.reconcilesStaleStart
+            pathMovement && pending.reconcilesStaleStart
               ? {
                   centerXThousandths: measurement(
                     `position-start-x-${modelId}`,
@@ -3343,7 +3344,7 @@ export default function PlayMode() {
                   elevationThousandths: measurement(`position-start-z-${modelId}`, 24, true),
                   rotationMilliDegrees: rotation(`position-start-rotation-${modelId}`),
                 }
-              : movement
+              : pathMovement
                 ? point(prior)
                 : null;
           const endpoint = {
@@ -3391,24 +3392,24 @@ export default function PlayMode() {
             });
           return {
             modelId,
-            measurementBasis: movement
+            measurementBasis: pathMovement
               ? prior.measurementBasis
               : String(data.get(`position-basis-${modelId}`) || "base"),
-            shape: movement
+            shape: pathMovement
               ? prior.shape
               : String(data.get(`position-shape-${modelId}`) || "circle"),
-            widthThousandths: movement
+            widthThousandths: pathMovement
               ? prior.widthThousandths
               : measurement(`position-width-${modelId}`, 30),
-            depthThousandths: movement
+            depthThousandths: pathMovement
               ? prior.depthThousandths
               : measurement(`position-depth-${modelId}`, 30),
             ...endpoint,
-            path: movement ? [start, ...intermediatePath, endpoint] : [endpoint],
-            distanceMovedThousandths: movement
+            path: pathMovement ? [start, ...intermediatePath, endpoint] : [endpoint],
+            distanceMovedThousandths: pathMovement
               ? measurement(`position-distance-${modelId}`, 120, true)
               : 0,
-            maximumDistanceThousandths: movement
+            maximumDistanceThousandths: pathMovement
               ? measurement(`position-maximum-${modelId}`, 120, true)
               : 0,
           };
@@ -3443,7 +3444,7 @@ export default function PlayMode() {
         battleState.events.length + 1,
       );
       setBattleState(next);
-      setStatus(`${formation.name} per-model ${movement ? "paths" : "positions"} recorded`);
+      setStatus(`${formation.name} per-model ${pathMovement ? "paths" : "positions"} recorded`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Model positions could not be recorded");
     }
@@ -7237,7 +7238,9 @@ export default function PlayMode() {
                   <div>
                     <strong>
                       Record {pendingModelPositionFormation.name} per-model{" "}
-                      {pendingModelPosition.context === "movement" ? "paths" : "positions"}
+                      {modelPositionContextUsesPath(pendingModelPosition.context)
+                        ? `${pendingModelPosition.context.replaceAll("_", " ")} paths`
+                        : `${pendingModelPosition.context.replaceAll("_", " ")} positions`}
                     </strong>
                     <span>
                       Preserve each surviving model identity. Distances are the farthest distance
@@ -7250,7 +7253,7 @@ export default function PlayMode() {
                       </span>
                     )}
                   </div>
-                  {(pendingModelPosition.context === "movement"
+                  {(modelPositionContextUsesPath(pendingModelPosition.context)
                     ? (pendingModelPositionPrevious?.models ?? [])
                     : pendingModelPositionFormation.modelInstances
                   ).map(
@@ -7280,7 +7283,9 @@ export default function PlayMode() {
                           segment.modelIds.indexOf(modelId) <
                             pendingModelPositionFormation.health[segment.id].modelsRemaining,
                       );
-                      const movement = pendingModelPosition.context === "movement";
+                      const pathMovement = modelPositionContextUsesPath(
+                        pendingModelPosition.context,
+                      );
                       return (
                         <fieldset key={modelId}>
                           <legend>
@@ -7295,7 +7300,7 @@ export default function PlayMode() {
                             />
                             This exact model is still in the formation
                           </label>
-                          {movement ? (
+                          {pathMovement ? (
                             <>
                               <span>
                                 Locked {candidate.measurementBasis} · {candidate.shape} ·{" "}
@@ -7407,7 +7412,9 @@ export default function PlayMode() {
                               max={replayedBattle.tableGeometry.battlefieldWidthThousandths / 1000}
                               step="0.001"
                               defaultValue={
-                                movement ? (candidate.centerXThousandths ?? 0) / 1000 : undefined
+                                pathMovement
+                                  ? (candidate.centerXThousandths ?? 0) / 1000
+                                  : undefined
                               }
                             />
                           </label>
@@ -7420,7 +7427,9 @@ export default function PlayMode() {
                               max={replayedBattle.tableGeometry.battlefieldHeightThousandths / 1000}
                               step="0.001"
                               defaultValue={
-                                movement ? (candidate.centerYThousandths ?? 0) / 1000 : undefined
+                                pathMovement
+                                  ? (candidate.centerYThousandths ?? 0) / 1000
+                                  : undefined
                               }
                             />
                           </label>
@@ -7433,7 +7442,7 @@ export default function PlayMode() {
                               max="24"
                               step="0.001"
                               defaultValue={
-                                movement ? (candidate.elevationThousandths ?? 0) / 1000 : 0
+                                pathMovement ? (candidate.elevationThousandths ?? 0) / 1000 : 0
                               }
                             />
                           </label>
@@ -7446,11 +7455,11 @@ export default function PlayMode() {
                               max="179.999"
                               step="0.001"
                               defaultValue={
-                                movement ? (candidate.rotationMilliDegrees ?? 0) / 1000 : 0
+                                pathMovement ? (candidate.rotationMilliDegrees ?? 0) / 1000 : 0
                               }
                             />
                           </label>
-                          {movement && (
+                          {pathMovement && (
                             <>
                               <label>
                                 <span>Intermediate path points</span>
@@ -7468,6 +7477,12 @@ export default function PlayMode() {
                                   min="0"
                                   max="120"
                                   step="0.001"
+                                  defaultValue={
+                                    pendingModelPosition.maximumDistanceThousandths !== undefined
+                                      ? pendingModelPosition.maximumDistanceThousandths / 1000
+                                      : undefined
+                                  }
+                                  readOnly={pendingModelPosition.context !== "movement"}
                                 />
                               </label>
                               <label>
@@ -7524,7 +7539,9 @@ export default function PlayMode() {
                   </label>
                   <button type="submit">
                     Lock reviewed{" "}
-                    {pendingModelPosition.context === "movement" ? "paths" : "positions"}
+                    {modelPositionContextUsesPath(pendingModelPosition.context)
+                      ? "paths"
+                      : "positions"}
                   </button>
                 </form>
               )}

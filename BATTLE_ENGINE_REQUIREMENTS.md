@@ -143,15 +143,17 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    exact 20 A-T mission combinations, eight terrain layouts, and their allowed
    pairings. Next replace guided mission scoring and physical terrain boundaries
    with executable handlers as their state becomes representable.
-7. **In progress:** version 27 records the canonical 60-by-44-inch battlefield,
+7. **In progress:** version 29 records the canonical 60-by-44-inch battlefield,
    exact mission/layout binding, objective centres, official terrain-section
    inventory, twelve rotated and non-overlapping area-terrain outlines,
    single/separate section grouping, stable coordinate origin, review method,
    and player confirmation before an exact Chapter Approved deployment. Each
    battlefield deployment now also locks every stable model identity to a base
    or baseless hull footprint, centre, elevation, and rotation before deployment
-   can alternate or the battle can start. Next carry those identities through
-   movement paths, Reserve arrivals, charge endpoints, and casualties; add terrain
+   can alternate or the battle can start. Normal movement, Reserve arrivals,
+   Charge, Heroic Intervention, Pile In, Consolidation, normal disembarkation,
+   and casualty staleness now preserve those identities in replayable snapshots.
+   Next cover Emergency Disembarkation and embarkation; add terrain
    height and Ruin-wall subgeometry; and derive visibility, cover, coherency,
    objective range, and Engagement Range while retaining explicit overrides.
 8. Deliver the complete guided battle workflow and full-game replay corpus.
