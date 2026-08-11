@@ -275,13 +275,13 @@ export function deriveBattleRuleSelectionPlan(matrix, players, lists, overrides 
     mission: {
       sourceId: overrides.missionSourceId?.trim() || "unselected",
       ruleIds: overrides.missionRuleIds ?? [
-        fallbackRuleId("mission", overrides.missionSourceId || "unselected"),
+        catalogueRuleId(matrixRuleIds, "mission", overrides.missionSourceId || "unselected"),
       ],
     },
     terrain: {
       sourceId: overrides.terrainSourceId?.trim() || "unselected",
       ruleIds: overrides.terrainRuleIds ?? [
-        fallbackRuleId("terrain", overrides.terrainSourceId || "unselected"),
+        catalogueRuleId(matrixRuleIds, "terrain", overrides.terrainSourceId || "unselected"),
       ],
     },
     acknowledgements: { ...(overrides.acknowledgements ?? {}) },

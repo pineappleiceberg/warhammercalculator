@@ -1036,16 +1036,17 @@ rule IDs at `POST /api/v1/rules/coverage/check`. For example:
       "id": "core.charge-resolution",
       "acknowledgement": "Players will review the measured charge move"
     },
-    "mission.pariah-nexus"
+    "mission.catalogue-chapter-approved-2025-26-v1-4-a"
   ]
 }
 ```
 
-The final mission entry is rejected because it is not yet source-locked in the
-matrix. The C predicate, WebAssembly export, JavaScript validator, API health
-check, and deployment probe share the same four-state fail-closed rule. The
-hosted coverage checker independently compares every JavaScript decision with
-the WebAssembly predicate before returning it.
+The mission entry is guided: it passes only with a reason-backed acknowledgement
+that players will resolve the mission card at the physical table. The C
+predicate, WebAssembly export, JavaScript validator, API health check, and
+deployment probe share the same four-state fail-closed rule. The hosted coverage
+checker independently compares every JavaScript decision with the WebAssembly
+predicate before returning it.
 
 Battle-state version 24 applies that contract before a new battle starts. Its
 append-only setup event records both players' exact faction, detachment,
@@ -1063,11 +1064,16 @@ enhancements by both detachment and eligible datasheets, while canonical setup
 rejects cross-faction, cross-detachment, bearer-ineligible, and duplicate
 selections. The hosted API exposes the same discovery data through
 `GET /api/v1/detachments?faction=...` and
-`GET /api/v1/enhancements?detachment=...&unit=...`. The guided-review reason
+`GET /api/v1/enhancements?detachment=...&unit=...`. Chapter Approved 2025-26
+Tournament Companion v1.4 contributes the exact 20 A-T mission combinations and
+eight terrain layouts. Guided Play filters layouts to the selected mission's
+published compatibility set and canonical setup rejects mismatched pairs. The
+static catalogue is `/chapter-approved-2025-26-v1.4.json`; the hosted API exposes
+`GET /api/v1/missions` and `GET /api/v1/terrain?mission=...`. The guided-review reason
 records that players will resolve non-executable text at the physical table; it
 does not label that text executable. Unknown catalogue IDs still fail closed.
-Terrain and mission rules remain explicit blockers until their source sets are
-ingested.
+Mission-card scoring text and physical terrain geometry remain guided, not
+executable.
 
 A catalogue matchup can use exact catalogue IDs or unambiguous names:
 

@@ -139,7 +139,9 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    absent, stale, unsupported, or unacknowledged rule before a new battle starts.
    The pinned structured snapshot now supplies exact guided mappings for all 26
    faction, 262 detachment, 927 enhancement, and 1,712 datasheet identities.
-   Next add pinned mission and terrain mappings, then replace guided boundaries
+   Chapter Approved 2025-26 Tournament Companion v1.4 additionally supplies the
+   exact 20 A-T mission combinations, eight terrain layouts, and their allowed
+   pairings. Next replace guided mission scoring and physical terrain boundaries
    with executable handlers as their state becomes representable.
 7. Add table geometry and player-supplied measurement and visibility facts.
 8. Deliver the complete guided battle workflow and full-game replay corpus.

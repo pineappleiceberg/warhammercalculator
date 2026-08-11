@@ -98,6 +98,7 @@ import {
   assessRuleCoverage,
   normalizeRuleCoverageMatrix,
 } from "../lib/rule-coverage.mjs";
+import { normalizeMissionPackCatalogue } from "../lib/mission-pack.mjs";
 
 interface Env {
   ASSETS: Fetcher;
@@ -387,6 +388,7 @@ const API_HEADERS = {
 let cataloguePromise: Promise<Catalogue> | null = null;
 let calculatorPromise: Promise<CalculatorExports> | null = null;
 let ruleCoveragePromise: Promise<ReturnType<typeof normalizeRuleCoverageMatrix>> | null = null;
+let missionPackPromise: Promise<ReturnType<typeof normalizeMissionPackCatalogue>> | null = null;
 
 class ServiceUnavailableError extends Error {
   constructor(
@@ -488,6 +490,30 @@ async function loadRuleCoverage(request: Request, env: Env) {
       );
     });
   return ruleCoveragePromise;
+}
+
+async function loadMissionPack(request: Request, env: Env) {
+  missionPackPromise ??= env.ASSETS.fetch(
+    new Request(new URL("/chapter-approved-2025-26-v1.4.json", request.url)),
+  )
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new ServiceUnavailableError(
+          "Mission pack catalogue is unavailable",
+          "MISSION_PACK_UNAVAILABLE",
+        );
+      }
+      return normalizeMissionPackCatalogue(await response.json());
+    })
+    .catch((error: unknown) => {
+      missionPackPromise = null;
+      if (error instanceof ServiceUnavailableError) throw error;
+      throw new ServiceUnavailableError(
+        "Mission pack catalogue is invalid",
+        "MISSION_PACK_INVALID",
+      );
+    });
+  return missionPackPromise;
 }
 
 async function checkedRuleCoverage(request: Request, env: Env, rules: unknown) {
@@ -2449,6 +2475,8 @@ async function handleApi(request: Request, env: Env) {
           detachments: "GET /api/v1/detachments?faction={factionId}",
           enhancements:
             "GET /api/v1/enhancements?detachment={detachmentId}&unit={optionalDatasheetId}",
+          missions: "GET /api/v1/missions",
+          terrain: "GET /api/v1/terrain?mission={missionId}",
           units: "GET /api/v1/units?faction={factionId}&kind={attacker|target|all}",
           weapons: "GET /api/v1/weapons?unit={datasheetId}",
           loadout: "GET /api/v1/loadout?unit={datasheetId}",
@@ -2571,6 +2599,27 @@ async function handleApi(request: Request, env: Env) {
             (!unit || entry.eligibleDatasheetIds.includes(unit)),
         ),
         sourceUpdatedAt: catalogue.sourceUpdatedAt,
+      });
+    }
+
+    if (url.pathname === "/api/v1/missions" && request.method === "GET") {
+      const pack = await loadMissionPack(request, env);
+      return json({
+        data: pack.missions,
+        pack: { id: pack.id, name: pack.name, edition: pack.edition, version: pack.version },
+      });
+    }
+
+    if (url.pathname === "/api/v1/terrain" && request.method === "GET") {
+      const missionId = url.searchParams.get("mission");
+      if (!missionId) return apiError("Missing required mission query parameter");
+      const pack = await loadMissionPack(request, env);
+      const mission = pack.missions.find((entry) => entry.id === missionId);
+      if (!mission) return apiError("Mission is outside the source-locked mission pack", 404);
+      return json({
+        data: pack.terrainLayouts.filter((entry) => mission.terrainLayoutIds.includes(entry.id)),
+        mission,
+        pack: { id: pack.id, version: pack.version },
       });
     }
 

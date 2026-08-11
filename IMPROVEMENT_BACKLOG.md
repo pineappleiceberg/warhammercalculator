@@ -27,18 +27,29 @@ state.
 
 ## Prioritized backlog
 
-1. Pin one coherent tournament mission pack and its terrain layouts, then add
-   exact mission and terrain selectors plus reason-backed guided coverage so a
-   real matchup can pass the version-24 setup gate. Faction, detachment,
-   enhancement, and datasheet identities are now exact and guided; mission and
-   terrain remain the setup blockers.
-2. Expand reviewable table geometry beyond the version-8 ranged measurement to
+1. Expand reviewable table geometry beyond the version-8 ranged measurement to
    movement paths, charge endpoints, cover, coherency, Engagement Range,
-   terrain, and objective facts.
+   the selected source-locked terrain layout, deployment zones, and objective
+   facts.
+2. Implement source-locked mission scoring and secondary-card/action tracking
+   for the selected Chapter Approved combination while keeping unavailable card
+   text fail-closed.
 3. Deliver full guided-game replay scenarios before adding deterministic
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Pinned the final 10th-edition Chapter Approved 2025-26 Tournament
+  Companion v1.4 by official URL, SHA-256, retrieval date, and reviewed pages.
+  The checked catalogue preserves all 20 A-T Primary Mission/deployment
+  combinations, all eight recommended terrain layouts, and their exact
+  compatibility relationships without copying paid mission-card prose. The
+  version-24 coverage snapshot now contains 2,970 rules, with every mission and
+  layout classified as guided. Guided Play uses exact mission and filtered
+  terrain menus; canonical setup rejects unknown and incompatible pairs. Static
+  clients and the hosted API expose the same discovery data, and deployment
+  health verifies the published catalogue. Physical geometry and mission-card
+  scoring remain explicitly guided and are the next correctness boundaries.
 
 - 2026-08-11: Ingested the pinned 10th-edition army-rule export into SQLite
   schema 78: 262 exact detachment identities, 284 detachment abilities, 927

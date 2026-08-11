@@ -62,6 +62,9 @@ const legacySetup = JSON.parse(
 const coverageSource = JSON.parse(
   await readFile(new URL("../../data/battle-rule-coverage.json", import.meta.url), "utf8"),
 );
+const missionPackCatalogue = JSON.parse(
+  await readFile(new URL("../../data/chapter-approved-2025-26-v1.4.json", import.meta.url), "utf8"),
+);
 for (const category of ["faction", "detachment", "datasheet", "mission", "terrain"]) {
   coverageSource.rules.push({
     id: `${category}.test`,
@@ -155,6 +158,47 @@ function setup(state = null) {
     id: "battle-setup-test",
   });
 }
+
+test("canonical setup accepts only source-compatible mission and terrain selections", () => {
+  const overrides = {
+    guidedReason: "Players will resolve guided source rules at the physical table",
+    players: {
+      "player-1": { detachmentSourceId: "000000818" },
+      "player-2": { detachmentSourceId: "000000750" },
+    },
+    missionSourceId: "chapter-approved-2025-26-v1.4-a",
+    terrainSourceId: "chapter-approved-2025-26-v1.4-layout-1",
+  };
+  const state = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: overrides,
+    id: "source-locked-mission",
+  });
+  assert.equal(replayBattleState(state).ruleCoverage.report.permitted, true);
+
+  assert.throws(
+    () =>
+      initializeBattleForLists({
+        catalogue,
+        firstList: attackers,
+        secondList: defenders,
+        rulesSnapshot: "catalogue:test",
+        ruleCoverageMatrix,
+        missionPackCatalogue,
+        ruleSelectionOverrides: {
+          ...overrides,
+          terrainSourceId: "chapter-approved-2025-26-v1.4-layout-5",
+        },
+        id: "incompatible-mission-terrain",
+      }),
+    /not source-compatible/,
+  );
+});
 
 function deployAllOnBattlefield(state) {
   let next = state;

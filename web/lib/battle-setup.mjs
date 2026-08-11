@@ -37,6 +37,7 @@ import {
   savedFormationGroups,
   savedFormationTargetSequence,
 } from "./formations.mjs";
+import { validateMissionTerrainSelection } from "./mission-pack.mjs";
 import { transportAssignmentReport } from "./transport.mjs";
 
 function listRevision(list) {
@@ -470,12 +471,27 @@ function validateArmyRuleCatalogueSelections(catalogue, players, lists, override
   });
 }
 
+function validateMissionPackSelections(missionPackCatalogue, overrides) {
+  if (overrides.missionRuleIds !== undefined && overrides.terrainRuleIds !== undefined) return;
+  const missionId = overrides.missionSourceId?.trim() ?? "";
+  const terrainId = overrides.terrainSourceId?.trim() ?? "";
+  if (!missionId && !terrainId) return;
+  if (!missionId || missionId === "unselected" || !terrainId || terrainId === "unselected") {
+    return;
+  }
+  if (!missionPackCatalogue) {
+    throw new Error("The source-locked mission pack catalogue is required");
+  }
+  validateMissionTerrainSelection(missionPackCatalogue, missionId, terrainId);
+}
+
 export function initializeBattleForLists({
   catalogue,
   firstList,
   secondList,
   rulesSnapshot,
   ruleCoverageMatrix,
+  missionPackCatalogue = null,
   ruleSelectionOverrides = {},
   state = null,
   id = "battle-current",
@@ -609,6 +625,7 @@ export function initializeBattleForLists({
     return next;
   }
   validateArmyRuleCatalogueSelections(catalogue, next.players, lists, ruleSelectionOverrides);
+  validateMissionPackSelections(missionPackCatalogue, ruleSelectionOverrides);
   const plan = deriveBattleRuleSelectionPlan(
     ruleCoverageMatrix,
     next.players,

@@ -1,0 +1,360 @@
+{
+  "schemaVersion": 1,
+  "id": "chapter-approved-2025-26-v1.4",
+  "name": "Chapter Approved 2025-26 Tournament Companion",
+  "edition": "Warhammer 40,000 10th Edition",
+  "version": "1.4",
+  "source": {
+    "id": "chapter-approved-tournament-companion-2025-26-v1.4",
+    "title": "Chapter Approved Tournament Companion",
+    "url": "https://assets.warhammer-community.com/eng_07-01_warhammer_40000_core_rules_chapter_approved_tournament-companion-sqc1af88bj-vzxhp9xmid.pdf",
+    "retrievedAt": "2026-08-11",
+    "sha256": "a71972b1b05e63c1089dd8fcc3e0b9e2c4025c0cbfdd4bc0222fb95e46ef48f8",
+    "pages": [
+      6,
+      7,
+      8,
+      9,
+      10,
+      11
+    ]
+  },
+  "missions": [
+    {
+      "id": "chapter-approved-2025-26-v1.4-a",
+      "code": "A",
+      "primaryMission": "Take and Hold",
+      "deployment": "Tipping Point",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-1",
+        "chapter-approved-2025-26-v1.4-layout-2",
+        "chapter-approved-2025-26-v1.4-layout-4",
+        "chapter-approved-2025-26-v1.4-layout-6",
+        "chapter-approved-2025-26-v1.4-layout-7",
+        "chapter-approved-2025-26-v1.4-layout-8"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-b",
+      "code": "B",
+      "primaryMission": "Supply Drop",
+      "deployment": "Tipping Point",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-1",
+        "chapter-approved-2025-26-v1.4-layout-2",
+        "chapter-approved-2025-26-v1.4-layout-4",
+        "chapter-approved-2025-26-v1.4-layout-6",
+        "chapter-approved-2025-26-v1.4-layout-7",
+        "chapter-approved-2025-26-v1.4-layout-8"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-c",
+      "code": "C",
+      "primaryMission": "Linchpin",
+      "deployment": "Tipping Point",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-1",
+        "chapter-approved-2025-26-v1.4-layout-2",
+        "chapter-approved-2025-26-v1.4-layout-4",
+        "chapter-approved-2025-26-v1.4-layout-6",
+        "chapter-approved-2025-26-v1.4-layout-7",
+        "chapter-approved-2025-26-v1.4-layout-8"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-d",
+      "code": "D",
+      "primaryMission": "Scorched Earth",
+      "deployment": "Tipping Point",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-1",
+        "chapter-approved-2025-26-v1.4-layout-2",
+        "chapter-approved-2025-26-v1.4-layout-4",
+        "chapter-approved-2025-26-v1.4-layout-6",
+        "chapter-approved-2025-26-v1.4-layout-7",
+        "chapter-approved-2025-26-v1.4-layout-8"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-e",
+      "code": "E",
+      "primaryMission": "Take and Hold",
+      "deployment": "Hammer and Anvil",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-1",
+        "chapter-approved-2025-26-v1.4-layout-7",
+        "chapter-approved-2025-26-v1.4-layout-8"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-f",
+      "code": "F",
+      "primaryMission": "Hidden Supplies",
+      "deployment": "Hammer and Anvil",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-1",
+        "chapter-approved-2025-26-v1.4-layout-7",
+        "chapter-approved-2025-26-v1.4-layout-8"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-g",
+      "code": "G",
+      "primaryMission": "Purge the Foe",
+      "deployment": "Hammer and Anvil",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-1",
+        "chapter-approved-2025-26-v1.4-layout-7",
+        "chapter-approved-2025-26-v1.4-layout-8"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-h",
+      "code": "H",
+      "primaryMission": "Supply Drop",
+      "deployment": "Hammer and Anvil",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-1",
+        "chapter-approved-2025-26-v1.4-layout-7",
+        "chapter-approved-2025-26-v1.4-layout-8"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-i",
+      "code": "I",
+      "primaryMission": "Hidden Supplies",
+      "deployment": "Search and Destroy",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-1",
+        "chapter-approved-2025-26-v1.4-layout-2",
+        "chapter-approved-2025-26-v1.4-layout-3",
+        "chapter-approved-2025-26-v1.4-layout-4",
+        "chapter-approved-2025-26-v1.4-layout-6"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-j",
+      "code": "J",
+      "primaryMission": "Linchpin",
+      "deployment": "Search and Destroy",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-1",
+        "chapter-approved-2025-26-v1.4-layout-2",
+        "chapter-approved-2025-26-v1.4-layout-3",
+        "chapter-approved-2025-26-v1.4-layout-4",
+        "chapter-approved-2025-26-v1.4-layout-6"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-k",
+      "code": "K",
+      "primaryMission": "Scorched Earth",
+      "deployment": "Search and Destroy",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-1",
+        "chapter-approved-2025-26-v1.4-layout-2",
+        "chapter-approved-2025-26-v1.4-layout-3",
+        "chapter-approved-2025-26-v1.4-layout-4",
+        "chapter-approved-2025-26-v1.4-layout-6"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-l",
+      "code": "L",
+      "primaryMission": "Take and Hold",
+      "deployment": "Search and Destroy",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-1",
+        "chapter-approved-2025-26-v1.4-layout-2",
+        "chapter-approved-2025-26-v1.4-layout-3",
+        "chapter-approved-2025-26-v1.4-layout-4",
+        "chapter-approved-2025-26-v1.4-layout-6"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-m",
+      "code": "M",
+      "primaryMission": "Purge the Foe",
+      "deployment": "Crucible of Battle",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-1",
+        "chapter-approved-2025-26-v1.4-layout-2",
+        "chapter-approved-2025-26-v1.4-layout-4",
+        "chapter-approved-2025-26-v1.4-layout-6",
+        "chapter-approved-2025-26-v1.4-layout-8"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-n",
+      "code": "N",
+      "primaryMission": "Hidden Supplies",
+      "deployment": "Crucible of Battle",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-1",
+        "chapter-approved-2025-26-v1.4-layout-2",
+        "chapter-approved-2025-26-v1.4-layout-4",
+        "chapter-approved-2025-26-v1.4-layout-6",
+        "chapter-approved-2025-26-v1.4-layout-8"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-o",
+      "code": "O",
+      "primaryMission": "Terraform",
+      "deployment": "Crucible of Battle",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-1",
+        "chapter-approved-2025-26-v1.4-layout-2",
+        "chapter-approved-2025-26-v1.4-layout-4",
+        "chapter-approved-2025-26-v1.4-layout-6",
+        "chapter-approved-2025-26-v1.4-layout-8"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-p",
+      "code": "P",
+      "primaryMission": "Scorched Earth",
+      "deployment": "Crucible of Battle",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-1",
+        "chapter-approved-2025-26-v1.4-layout-2",
+        "chapter-approved-2025-26-v1.4-layout-4",
+        "chapter-approved-2025-26-v1.4-layout-6",
+        "chapter-approved-2025-26-v1.4-layout-8"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-q",
+      "code": "Q",
+      "primaryMission": "Supply Drop",
+      "deployment": "Sweeping Engagement",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-3",
+        "chapter-approved-2025-26-v1.4-layout-5"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-r",
+      "code": "R",
+      "primaryMission": "Terraform",
+      "deployment": "Sweeping Engagement",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-3",
+        "chapter-approved-2025-26-v1.4-layout-5"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-s",
+      "code": "S",
+      "primaryMission": "Linchpin",
+      "deployment": "Dawn of War",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-5"
+      ],
+      "sourcePage": 6
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-t",
+      "code": "T",
+      "primaryMission": "Purge the Foe",
+      "deployment": "Dawn of War",
+      "terrainLayoutIds": [
+        "chapter-approved-2025-26-v1.4-layout-5"
+      ],
+      "sourcePage": 6
+    }
+  ],
+  "terrainLayouts": [
+    {
+      "id": "chapter-approved-2025-26-v1.4-layout-1",
+      "number": 1,
+      "name": "Terrain Layout 1",
+      "sourcePages": [
+        7,
+        8
+      ]
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-layout-2",
+      "number": 2,
+      "name": "Terrain Layout 2",
+      "sourcePages": [
+        7,
+        8
+      ]
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-layout-3",
+      "number": 3,
+      "name": "Terrain Layout 3",
+      "sourcePages": [
+        7,
+        9
+      ]
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-layout-4",
+      "number": 4,
+      "name": "Terrain Layout 4",
+      "sourcePages": [
+        7,
+        9
+      ]
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-layout-5",
+      "number": 5,
+      "name": "Terrain Layout 5",
+      "sourcePages": [
+        7,
+        10
+      ]
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-layout-6",
+      "number": 6,
+      "name": "Terrain Layout 6",
+      "sourcePages": [
+        7,
+        10
+      ]
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-layout-7",
+      "number": 7,
+      "name": "Terrain Layout 7",
+      "sourcePages": [
+        7,
+        11
+      ]
+    },
+    {
+      "id": "chapter-approved-2025-26-v1.4-layout-8",
+      "number": 8,
+      "name": "Terrain Layout 8",
+      "sourcePages": [
+        7,
+        11
+      ]
+    }
+  ]
+}
