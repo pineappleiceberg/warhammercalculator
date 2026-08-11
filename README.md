@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 14 as soon as both lists are selected. Every
+creates battle-state version 15 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -792,8 +792,26 @@ and Lethal Hits, and records every attack against the interrupted action.
 Guided Play exposes the decision and physical-table review, while the replay
 API independently checks the reviewed reaction against an ACSL-specified
 C/WebAssembly predicate. Version-13 and older histories retain an explicit
-migration boundary. Hazardous Fire Overwatch currently fails closed until its
-Charge-phase deferred self-damage can be represented in the event log.
+migration boundary.
+Version 15 makes Hazardous self-damage canonical. Each locked weapon profile
+records whether it is Hazardous and each exact model segment records its model
+keywords. Once a unit has resolved all of its attacks, replay requires one D6
+test for every Hazardous weapon copy that selected targets. Failed tests resolve
+one at a time and enforce the published selection order: a wounded equipped
+model first, otherwise an equipped non-Character, otherwise an equipped
+Character. This eligibility includes every model carrying a Hazardous weapon,
+not only bearers of the weapons used for those attacks. The selected model
+suffers three mortal wounds; applicable Feel No
+Pain rolls use the browser CSPRNG, and excess Hazardous damage never spills to
+another model. Fire Overwatch tests taken in the opponent's Charge phase are
+recorded immediately after shooting, but their mortal wounds are blocked from
+allocation until after the triggering unit's Charge move resolves. Hazardous
+damage and Heroic Intervention can then be resolved in either order, preserving
+the active player's Core Rules sequencing choice.
+JavaScript replay, native C health replay, WebAssembly, and the worker API share
+the same allocation outcome, while an ACSL contract specifies and proves the
+failed-test damage predicate. Version-14 and older histories retain an explicit
+Hazardous migration boundary.
 The guided timeline records battle round, first or second player turn, active
 and priority player, phase, and step. It covers Command, Movement, Shooting,
 Charge, and Fight through five rounds. Pending bounded choices stop both attacks

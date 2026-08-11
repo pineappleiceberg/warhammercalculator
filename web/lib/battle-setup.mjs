@@ -5,6 +5,7 @@ import {
   CHARGE_MOVE_BATTLE_STATE_VERSION,
   FIGHT_MOVE_BATTLE_STATE_VERSION,
   FIRE_OVERWATCH_BATTLE_STATE_VERSION,
+  HAZARDOUS_BATTLE_STATE_VERSION,
   HEROIC_INTERVENTION_BATTLE_STATE_VERSION,
   ROSTER_BATTLE_STATE_VERSION,
   TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
@@ -141,6 +142,16 @@ function weaponInventoryProfileIdentity(inventory = []) {
   }));
 }
 
+function weaponInventoryPreHazardousIdentity(inventory = []) {
+  return weaponInventoryProfileIdentity(inventory).map((group) => ({
+    ...group,
+    profiles: group.profiles.map(({ hasHazardous, ...profile }) => {
+      void hasHazardous;
+      return profile;
+    }),
+  }));
+}
+
 function uniqueSetupEventId(used, playerIndex, formationIndex) {
   const base = `battle-setup-${playerIndex + 1}-${formationIndex + 1}`;
   let id = base;
@@ -196,7 +207,22 @@ function registerCompleteRosters(catalogue, state, firstList, secondList, equipm
       ) !== JSON.stringify(weaponInventoryProfileIdentity(formation.weaponInventory)),
   );
   const lockedInventoryVersion = state.migration?.sourceVersion ?? state.version;
-  if (inventoryMismatch && lockedInventoryVersion >= WEAPON_INVENTORY_BATTLE_STATE_VERSION) {
+  const hazardousMetadataOnlyMismatch =
+    lockedInventoryVersion < HAZARDOUS_BATTLE_STATE_VERSION &&
+    desired.every(
+      (formation) =>
+        !existingById.has(formation.id) ||
+        JSON.stringify(
+          weaponInventoryPreHazardousIdentity(
+            existingById.get(formation.id).formation.weaponInventory,
+          ),
+        ) === JSON.stringify(weaponInventoryPreHazardousIdentity(formation.weaponInventory)),
+    );
+  if (
+    inventoryMismatch &&
+    lockedInventoryVersion >= WEAPON_INVENTORY_BATTLE_STATE_VERSION &&
+    !hazardousMetadataOnlyMismatch
+  ) {
     throw new Error("Saved roster weapon inventory no longer matches its locked battle formation");
   }
   const needsEventRewrite =
@@ -368,6 +394,10 @@ export function initializeBattleForLists({
             sourceVersion < FIRE_OVERWATCH_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyFireOverwatchThroughSequence ?? 0),
+          legacyHazardousThroughSequence:
+            sourceVersion < HAZARDOUS_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyHazardousThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

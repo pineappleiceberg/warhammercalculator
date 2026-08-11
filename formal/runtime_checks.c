@@ -190,5 +190,11 @@ int main(void) {
     assert(!whc_fire_overwatch_is_valid(
         WHC_FIRE_OVERWATCH_SET_UP, WHC_BATTLE_PHASE_MOVEMENT, 24001u,
         WHC_FIRE_OVERWATCH_FLAGS_MASK));
+    assert(whc_hazardous_resolution_is_valid(1u, 0u, false, 3u, 0u, 0u, 0u, 3u, true,
+                                              WHC_HAZARDOUS_FLAGS_MASK));
+    assert(whc_hazardous_resolution_is_valid(1u, 0u, false, 5u, 5u, 3u, 2u, 1u, false,
+                                              WHC_HAZARDOUS_FLAGS_MASK));
+    assert(!whc_hazardous_resolution_is_valid(2u, 0u, false, 3u, 0u, 0u, 0u, 3u, true,
+                                               WHC_HAZARDOUS_FLAGS_MASK));
     return 0;
 }

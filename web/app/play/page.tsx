@@ -25,6 +25,7 @@ import {
   battleUnusedWeaponCount,
   battleFormationHealth,
   battleFormationWasTargeted,
+  hazardousBearerOptions,
   changeBattleResource,
   completeFormationMovement,
   completeFormationActivation,
@@ -42,13 +43,17 @@ import {
   passFireOverwatch,
   passHeroicIntervention,
   recordFormationCharge,
+  recordHazardousTests,
   recordFightMove,
   recordRangedTargetEligibility,
   replayBattleState,
   rollChargeDice,
+  rollHazardousFeelNoPain,
+  rollHazardousTests,
   resolveDestroyedTransport,
   resolveBattleChoice,
   resolveHeroicIntervention,
+  resolveHazardousDamage,
   revertLatestAttack,
   scoreBattlePoints,
   setBattleObjectiveControl,
@@ -209,6 +214,8 @@ export default function PlayMode() {
   const [fireOverwatchOutOfPhaseConfirmed, setFireOverwatchOutOfPhaseConfirmed] = useState(false);
   const [fireOverwatchOutOfPhaseReason, setFireOverwatchOutOfPhaseReason] = useState("");
   const [fireOverwatchPassReason, setFireOverwatchPassReason] = useState("");
+  const [hazardousBearerId, setHazardousBearerId] = useState("");
+  const [hazardousSelectionReason, setHazardousSelectionReason] = useState("");
   const [heroicFormationId, setHeroicFormationId] = useState("");
   const [heroicDice, setHeroicDice] = useState<[number, number]>([3, 4]);
   const [heroicRollModifier, setHeroicRollModifier] = useState(0);
@@ -893,6 +900,14 @@ export default function PlayMode() {
   );
   const pendingBattleChoices = replayedBattle ? [...replayedBattle.pendingChoices.values()] : [];
   const pendingFireOverwatch = replayedBattle?.pendingFireOverwatch ?? null;
+  const pendingHazardous = replayedBattle?.pendingHazardous ?? null;
+  const hazardousOptions =
+    battleState && pendingHazardous?.due ? hazardousBearerOptions(battleState) : [];
+  const selectedHazardousBearerId = hazardousOptions.some(
+    (candidate: { id: string }) => candidate.id === hazardousBearerId,
+  )
+    ? hazardousBearerId
+    : (hazardousOptions[0]?.id ?? "");
   const fireOverwatchFormationOptions = pendingFireOverwatch
     ? [...replayedBattle.formations.values()].filter((candidate) => {
         const keywords = candidate.keywords.map((keyword: string) => keyword.toLowerCase());
@@ -2236,14 +2251,6 @@ export default function PlayMode() {
     let rolled: RollResult | OrderedVolleyRollResult;
     let declaredWeaponCount = 0;
     try {
-      if (
-        resolvingFireOverwatch &&
-        weaponProfile.abilities.some((ability) => ability.name.toLowerCase() === "hazardous")
-      ) {
-        throw new Error(
-          "Hazardous Fire Overwatch is fail-closed until its self-damage and Charge-phase deferral are replayed",
-        );
-      }
       if (targetFormationModels.ambiguousComponents.length > 0) {
         throw new Error(
           `Set an exact model composition for ${targetFormationModels.ambiguousComponents.join(
@@ -3063,10 +3070,16 @@ export default function PlayMode() {
         profile.targetDistance,
         successful,
       );
+      const replayedCharge = replayBattleState(next);
+      const hazardousNowDue = replayedCharge.pendingHazardous?.due;
       setStatus(
-        successful
-          ? `Successful charge · ${chargeDice.join(" + ")} · Heroic Intervention response required`
-          : `Failed charge · ${chargeDice.join(" + ")} · ${chargeDistance.toFixed(3)}″`,
+        hazardousNowDue && replayedCharge.pendingHeroicIntervention
+          ? "Charge resolved · choose whether to resolve Hazardous damage or Heroic Intervention first"
+          : hazardousNowDue
+            ? `Charge resolved · allocate deferred Fire Overwatch Hazardous damage now`
+            : successful
+              ? `Successful charge · ${chargeDice.join(" + ")} · Heroic Intervention response required`
+              : `Failed charge · ${chargeDice.join(" + ")} · ${chargeDistance.toFixed(3)}″`,
       );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Charge could not be recorded");
@@ -3312,21 +3325,73 @@ export default function PlayMode() {
   const finishFormationActivation = () => {
     if (!battleState) return;
     try {
-      const finishingFireOverwatch =
-        replayBattleState(battleState).activeActivation?.source === "fire_overwatch";
-      const next = completeFormationActivation(
-        battleState,
-        crypto.randomUUID(),
-        battleState.events.length + 1,
-      );
+      let next = battleState;
+      let replayed = replayBattleState(next);
+      const finishingFireOverwatch = replayed.activeActivation?.source === "fire_overwatch";
+      if (
+        replayed.activeActivation?.hazardousTestCount > 0 &&
+        !replayed.activeActivation.hazardousTestsRecorded
+      ) {
+        next = recordHazardousTests(
+          next,
+          rollHazardousTests(replayed.activeActivation.hazardousTestCount),
+          crypto.randomUUID(),
+          next.events.length + 1,
+        );
+        replayed = replayBattleState(next);
+        if (replayed.pendingHazardous?.due) {
+          setBattleState(next);
+          setHazardousSelectionReason("");
+          setStatus("Hazardous tests rolled · allocate each failed test before finishing");
+          return;
+        }
+      }
+      next = completeFormationActivation(next, crypto.randomUUID(), next.events.length + 1);
       setBattleState(next);
       setStatus(
-        finishingFireOverwatch
-          ? "Fire Overwatch complete · continue the interrupted action"
-          : "Formation activation completed",
+        finishingFireOverwatch && replayBattleState(next).pendingHazardous
+          ? "Fire Overwatch complete · Hazardous damage waits for the charging unit's Charge move"
+          : finishingFireOverwatch
+            ? "Fire Overwatch complete · continue the interrupted action"
+            : "Formation activation completed",
       );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Activation could not be completed");
+    }
+  };
+
+  const resolvePendingHazardous = () => {
+    if (!battleState) return;
+    try {
+      const options = hazardousBearerOptions(battleState);
+      const selectedSegmentId = options.length > 0 ? selectedHazardousBearerId : "";
+      const feelNoPainRolls = selectedSegmentId
+        ? rollHazardousFeelNoPain(battleState, selectedSegmentId)
+        : [];
+      const next = resolveHazardousDamage(
+        battleState,
+        {
+          selectedSegmentId,
+          feelNoPainRolls,
+          selectionReason:
+            hazardousSelectionReason.trim() ||
+            (options.length > 0
+              ? "Controlling player selected this eligible Hazardous weapon bearer"
+              : "No surviving model equipped with a used Hazardous weapon remains"),
+        },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      const remaining = replayBattleState(next).pendingHazardous;
+      setBattleState(next);
+      setHazardousSelectionReason("");
+      setStatus(
+        remaining?.due
+          ? `${remaining.failedTestIndices.length} failed Hazardous test${remaining.failedTestIndices.length === 1 ? "" : "s"} remain`
+          : "Hazardous mortal wounds resolved",
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Hazardous damage could not be resolved");
     }
   };
 
@@ -5653,7 +5718,11 @@ export default function PlayMode() {
                           : "Consolidation pending"
                       }`
                     : activeFormationActivation.source === "fire_overwatch"
-                      ? "Only the visible triggering unit can be targeted · unmodified 6s hit · critical hits only on 6s"
+                      ? `Only the visible triggering unit can be targeted · unmodified 6s hit · critical hits only on 6s${
+                          activeFormationActivation.hazardousTestCount > 0
+                            ? ` · ${activeFormationActivation.hazardousTestCount} Hazardous test${activeFormationActivation.hazardousTestCount === 1 ? "" : "s"} required`
+                            : ""
+                        }`
                       : activeFormationActivation.weaponRestriction === "assault_only"
                         ? "Assault weapons only"
                         : "Resolve every selected weapon before finishing"}
@@ -5662,12 +5731,65 @@ export default function PlayMode() {
                   type="button"
                   disabled={
                     Boolean(pendingDestroyedTransport) ||
+                    Boolean(pendingHazardous?.due) ||
                     (activeFormationActivation.activationType === "fight" &&
                       !activeFormationActivation.consolidation)
                   }
                   onClick={finishFormationActivation}
                 >
-                  Finish activation
+                  {activeFormationActivation.hazardousTestCount > 0 &&
+                  !activeFormationActivation.hazardousTestsRecorded
+                    ? "Roll Hazardous and finish"
+                    : "Finish activation"}
+                </button>
+              </div>
+            )}
+            {battleClock.status === "active" && pendingHazardous?.due && (
+              <div className="action-tracker" aria-labelledby="hazardous-heading">
+                <strong id="hazardous-heading">Resolve Hazardous mortal wounds</strong>
+                <span>
+                  Failed test {pendingHazardous.failedTestIndices[0] + 1} ·{" "}
+                  {pendingHazardous.failedTestIndices.length} unresolved. Select a wounded eligible
+                  bearer first; otherwise select a non-Character bearer before a Character. The
+                  selected model suffers 3 mortal wounds, with no spillover.
+                </span>
+                {hazardousOptions.length > 0 ? (
+                  <label>
+                    <span>Eligible weapon bearer</span>
+                    <select
+                      value={selectedHazardousBearerId}
+                      onChange={(event) => setHazardousBearerId(event.target.value)}
+                    >
+                      {hazardousOptions.map(
+                        (candidate: {
+                          id: string;
+                          modelName: string;
+                          unitName: string;
+                          modelsRemaining: number;
+                          wounds: number;
+                          woundsLost: number;
+                          feelNoPain: number;
+                        }) => (
+                          <option key={candidate.id} value={candidate.id}>
+                            {candidate.unitName} · {candidate.modelName} ·{" "}
+                            {candidate.wounds - candidate.woundsLost}/{candidate.wounds} wounds
+                            {candidate.feelNoPain ? ` · FNP ${candidate.feelNoPain}+` : ""}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                ) : (
+                  <span>No surviving model equipped with a used Hazardous weapon remains.</span>
+                )}
+                <input
+                  value={hazardousSelectionReason}
+                  maxLength={300}
+                  placeholder="Optional selection note"
+                  onChange={(event) => setHazardousSelectionReason(event.target.value)}
+                />
+                <button type="button" onClick={resolvePendingHazardous}>
+                  Roll Feel No Pain and resolve this failure
                 </button>
               </div>
             )}

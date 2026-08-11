@@ -476,6 +476,7 @@ function battleModelInstances(segments) {
       savedUnitId: segment.savedUnitId,
       unitName: segment.unitName,
       modelName: segment.model.name,
+      keywords: segment.model.keywords ?? [],
       ordinal: index + 1,
     })),
   );
@@ -540,6 +541,7 @@ export function battleSegmentsForWeaponBearers(modelInstances, weaponInventory, 
       unitName: base.unitName,
       modelName: base.model.name,
       role: base.role,
+      keywords: base.model.keywords ?? [],
       wounds: base.model.wounds ?? 1,
       feelNoPain: base.model.feelNoPain ?? 0,
       startingModels: modelIds.length,
@@ -645,6 +647,7 @@ export function savedFormationBattleRegistration(
                     : 0,
                 hasAssault: abilities.has("assault"),
                 hasIndirect: abilities.has("indirect fire"),
+                hasHazardous: abilities.has("hazardous"),
               };
             }),
           },

@@ -26,15 +26,18 @@ import {
   disembarkFormation,
   embarkFormation,
   normalizeBattleState,
+  hazardousBearerOptions,
   passFireOverwatch,
   passHeroicIntervention,
   passFightPriority,
   registerBattleFormation,
   recordFormationCharge,
+  recordHazardousTests,
   recordFormationMovement,
   recordFightMove,
   recordRangedTargetEligibility,
   replayBattleState,
+  resolveHazardousDamage,
   resolveHeroicIntervention,
   resolveDestroyedTransport,
   revertLatestAttack,
@@ -95,6 +98,7 @@ const formation = {
       unitName: "Bodyguard",
       modelName: "Guard",
       role: "bodyguard",
+      keywords: [],
       wounds: 3,
       startingModels: 2,
     },
@@ -104,6 +108,7 @@ const formation = {
       unitName: "Leader",
       modelName: "Leader",
       role: "leader",
+      keywords: ["Character"],
       wounds: 5,
       startingModels: 1,
     },
@@ -117,6 +122,20 @@ const attackerFormation = {
   sourceFormationId: "formation-9",
   name: "Tank",
 };
+
+function hazardousFormation(source, id = source.id) {
+  return {
+    ...source,
+    id,
+    weaponInventory: source.weaponInventory.map((group) => ({
+      ...group,
+      profiles: group.profiles.map((profile) => ({
+        ...profile,
+        hasHazardous: Boolean(profile.hasHazardous) || profile.weaponId === "test-ranged-weapon",
+      })),
+    })),
+  };
+}
 
 function successfulChargeOptions(targetFormationId, overrides = {}) {
   return {
@@ -574,7 +593,7 @@ test("pins the official battle-state rules source", () => {
   assert.equal(battleRuleSources.version, 1);
   assert.deepEqual(
     battleRuleSources.sources[0].pages,
-    [7, 8, 16, 17, 18, 19, 23, 26, 29, 32, 33, 34, 35, 39, 43, 53, 57, 60],
+    [7, 8, 9, 16, 17, 18, 19, 23, 26, 29, 32, 33, 34, 35, 39, 43, 53, 57, 60],
   );
   assert.equal(
     battleRuleSources.sources[0].sha256,
@@ -584,7 +603,7 @@ test("pins the official battle-state rules source", () => {
     (source) => source.id === "core-rules-updates-10e-2025-10",
   );
   assert.ok(updates);
-  assert.deepEqual(updates.pages, [10]);
+  assert.deepEqual(updates.pages, [7, 8, 10]);
   assert.equal(updates.sha256, "27960a4d4affecd450af69c54d7583bcc2941b00ba5845f5786a630bdec7f4ba");
   assert.equal(
     updates.usedFor.some((usage) => /Heroic Intervention/i.test(usage)),
@@ -594,6 +613,13 @@ test("pins the official battle-state rules source", () => {
     updates.usedFor.some(
       (usage) =>
         /Fire Overwatch/i.test(usage) && /unmodified 6/i.test(usage) && /Firing Deck/i.test(usage),
+    ),
+    true,
+  );
+  assert.equal(
+    updates.usedFor.some(
+      (usage) =>
+        /Hazardous/i.test(usage) && /bearer priority/i.test(usage) && /spillover/i.test(usage),
     ),
     true,
   );
@@ -1632,6 +1658,127 @@ test("resolves Fire Overwatch at a move trigger with atomic CP and target lockin
   assert.equal(replayBattleState(state).pendingFireOverwatch, null);
 });
 
+test("records exact Hazardous tests and applies non-spilling bearer damage", () => {
+  const shooter = hazardousFormation({
+    ...attackerFormation,
+    weaponInventory: [
+      {
+        ...attackerFormation.weaponInventory[0],
+        sourceSavedUnitId: "unit-2",
+        count: 1,
+      },
+      {
+        sourceSavedUnitId: "unit-1",
+        groupId: "unused-hazardous-group",
+        name: "Unused hazardous weapon",
+        count: 2,
+        profiles: [
+          {
+            weaponId: "unused-hazardous-weapon",
+            name: "Unused hazardous weapon",
+            type: "Ranged",
+            publishedRangeThousandths: 24000,
+            hasAssault: false,
+            hasIndirect: false,
+            hasHazardous: true,
+          },
+        ],
+      },
+    ],
+  });
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), shooter, "hazard-register-shooter", 1),
+    formation,
+    "hazard-register-target",
+    2,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "hazard-start", 3);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "hazard-to-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    shooter.id,
+    "stationary",
+    "hazard-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, battleAttackWindow, "hazard-to-shooting");
+  state = startFormationActivation(
+    state,
+    shooter.id,
+    {},
+    "hazard-activation",
+    state.events.length + 1,
+  );
+  state = recordVisibleRangedTarget(state, shooter.id, formation.id);
+  state = appendResolvedAttack(state, {
+    id: "hazard-attack",
+    at: state.events.length + 1,
+    attackerFormationId: shooter.id,
+    targetFormationId: formation.id,
+    segmentIds: ["bodyguard", "leader"],
+    targets,
+    initialWoundsLost: 0,
+    result: { appliedDamage: 0, modelsDestroyed: 0 },
+    summary: {
+      attacker: shooter.name,
+      weapon: "Test ranged weapon",
+      target: formation.name,
+      damage: 0,
+      successful: 0,
+    },
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Visible and in Range",
+    targetEligibilityEventId: state.events.at(-1).id,
+    weaponId: "test-ranged-weapon",
+    declaredWeaponCount: 1,
+    weaponSourceFormationId: shooter.id,
+    sourceSavedUnitId: "unit-2",
+    weaponGroupId: "test-ranged-group",
+  });
+  assert.equal(replayBattleState(state).activeActivation.hazardousTestCount, 1);
+  assert.throws(
+    () => completeFormationActivation(state, "hazard-too-early", state.events.length + 1),
+    /Hazardous test/i,
+  );
+  state = recordHazardousTests(
+    state,
+    [{ initialRoll: 1, reroll: 0, rerollReason: "" }],
+    "hazard-tests",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).pendingHazardous.due, true);
+  assert.deepEqual(
+    hazardousBearerOptions(state).map((candidate) => candidate.id),
+    ["bodyguard"],
+  );
+  state = resolveHazardousDamage(
+    state,
+    {
+      selectedSegmentId: "bodyguard",
+      feelNoPainRolls: [],
+      selectionReason: "Controlling player selected an eligible non-Character bearer",
+    },
+    "hazard-damage",
+    state.events.length + 1,
+  );
+  assert.deepEqual(battleFormationHealth(state, shooter.id).bodyguard, {
+    modelsRemaining: 1,
+    woundsLost: 0,
+  });
+  assert.equal(replayBattleState(state).pendingHazardous, null);
+  state = completeFormationActivation(state, "hazard-complete", state.events.length + 1);
+  assert.equal(replayBattleState(state).activeActivation, null);
+
+  const tampered = structuredClone(state);
+  tampered.events.find((event) => event.id === "hazard-damage").summary.damage = 2;
+  assert.throws(() => normalizeBattleState(tampered), /Hazardous mortal wounds/i);
+});
+
 test("rejects Fire Overwatch when the selected unit has no surviving ranged weapon", () => {
   const unarmed = {
     ...formation,
@@ -1759,6 +1906,155 @@ test("opens Fire Overwatch immediately after a reviewed charge declaration", () 
     replayBattleState(state).chargeByFormation.get(attackerFormation.id).successful,
     true,
   );
+});
+
+test("defers Fire Overwatch Hazardous damage until the charging unit ends its Charge move", () => {
+  const shooter = hazardousFormation(formation);
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), attackerFormation, "deferred-register-charger", 1),
+    shooter,
+    "deferred-register-shooter",
+    2,
+  );
+  state = configureBattleMission(
+    state,
+    {
+      name: "Deferred Hazardous test",
+      commandPointsPerCommandPhase: 0,
+      startingCommandPoints: { "player-1": 0, "player-2": 1 },
+      objectives: [],
+    },
+    "deferred-mission",
+    3,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "deferred-start", 4);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "deferred-to-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    attackerFormation.id,
+    "stationary",
+    "deferred-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "charge" && clock.step === "charge_moves",
+    "deferred-to-charge",
+  );
+  state = declareFormationCharge(
+    state,
+    attackerFormation.id,
+    [shooter.id],
+    {
+      targetFacts: [{ formationId: shooter.id, startDistanceThousandths: 8000 }],
+      phaseStartEligibilityConfirmed: true,
+      phaseStartEligibilityReason: "Eligible at the start of the Charge phase",
+      startedOutsideEngagementRange: true,
+    },
+    "deferred-charge-declared",
+    state.events.length + 1,
+  );
+  state = startFireOverwatch(
+    state,
+    shooter.id,
+    {
+      distanceThousandths: 8000,
+      targetVisible: true,
+      shootingEligibilityConfirmed: true,
+      shootingEligibilityReason: "Eligible to shoot if it were the Shooting phase",
+      outOfPhaseRestrictionsConfirmed: true,
+      outOfPhaseRestrictionsReason: "Shooting-phase-only rules and Firing Deck excluded",
+    },
+    "deferred-overwatch",
+    state.events.length + 1,
+  );
+  state = recordVisibleRangedTarget(state, shooter.id, attackerFormation.id);
+  state = appendResolvedAttack(state, {
+    id: "deferred-overwatch-attack",
+    at: state.events.length + 1,
+    attackerFormationId: shooter.id,
+    targetFormationId: attackerFormation.id,
+    segmentIds: ["bodyguard", "leader"],
+    targets,
+    initialWoundsLost: 0,
+    result: { appliedDamage: 0, modelsDestroyed: 0 },
+    summary: {
+      attacker: shooter.name,
+      weapon: "Test ranged weapon",
+      target: attackerFormation.name,
+      damage: 0,
+      successful: 0,
+    },
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Visible triggering charger within 24 inches",
+    targetEligibilityEventId: state.events.at(-1).id,
+    weaponId: "test-ranged-weapon",
+    declaredWeaponCount: 1,
+    weaponSourceFormationId: shooter.id,
+    sourceSavedUnitId: "unit-1",
+    weaponGroupId: "test-ranged-group",
+  });
+  state = recordHazardousTests(
+    state,
+    [{ initialRoll: 1, reroll: 0, rerollReason: "" }],
+    "deferred-tests",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).pendingHazardous.due, false);
+  assert.throws(
+    () =>
+      resolveHazardousDamage(
+        state,
+        { selectedSegmentId: "bodyguard", selectionReason: "Too early" },
+        "deferred-too-early",
+        state.events.length + 1,
+      ),
+    /ready to resolve/i,
+  );
+  state = completeFormationActivation(
+    state,
+    "deferred-overwatch-complete",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(state).pendingHazardous.due, false);
+  state = recordFormationCharge(
+    state,
+    attackerFormation.id,
+    [shooter.id],
+    successfulChargeOptions(shooter.id),
+    "deferred-charge-resolved",
+    state.events.length + 1,
+  );
+  let replayed = replayBattleState(state);
+  assert.equal(replayed.pendingHazardous.due, true);
+  assert.equal(replayed.pendingHeroicIntervention.triggerChargeEventId, "deferred-charge-resolved");
+  const heroicFirst = passHeroicIntervention(
+    state,
+    "Active player chose to resolve Heroic Intervention before Hazardous damage",
+    "deferred-heroic-first",
+    state.events.length + 1,
+  );
+  assert.equal(replayBattleState(heroicFirst).pendingHeroicIntervention, null);
+  assert.equal(replayBattleState(heroicFirst).pendingHazardous.due, true);
+  state = resolveHazardousDamage(
+    state,
+    {
+      selectedSegmentId: "bodyguard",
+      feelNoPainRolls: [],
+      selectionReason: "Controlling player selected an eligible non-Character bearer",
+    },
+    "deferred-damage",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.pendingHazardous, null);
+  assert.equal(replayed.pendingHeroicIntervention.triggerChargeEventId, "deferred-charge-resolved");
+  assert.equal(battleFormationHealth(state, shooter.id).bodyguard.modelsRemaining, 1);
 });
 
 test("forces Fire Overwatch hit and critical thresholds without discarding weapon rules", () => {

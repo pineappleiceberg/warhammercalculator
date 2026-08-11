@@ -260,6 +260,37 @@ bool whc_fire_overwatch_is_valid(uint32_t trigger, uint32_t phase,
     return phase == WHC_BATTLE_PHASE_MOVEMENT;
 }
 
+bool whc_hazardous_resolution_is_valid(uint32_t initial_roll, uint32_t reroll,
+                                        bool reroll_explained, uint32_t remaining_wounds,
+                                        uint32_t feel_no_pain, uint32_t feel_no_pain_roll_count,
+                                        uint32_t ignored_wounds, uint32_t applied_damage,
+                                        bool model_destroyed, uint32_t flags) {
+    const uint32_t final_roll = reroll == 0u ? initial_roll : reroll;
+
+    if (initial_roll < 1u || initial_roll > 6u || reroll > 6u ||
+        (reroll != 0u && !reroll_explained) || final_roll != 1u || remaining_wounds == 0u ||
+        remaining_wounds > 1024u ||
+        (feel_no_pain != 0u && (feel_no_pain < 2u || feel_no_pain > 6u)) ||
+        flags != WHC_HAZARDOUS_FLAGS_MASK) {
+        return false;
+    }
+    if (feel_no_pain == 0u) {
+        const uint32_t expected = remaining_wounds < 3u ? remaining_wounds : 3u;
+        if (feel_no_pain_roll_count != 0u || ignored_wounds != 0u ||
+            applied_damage != expected) {
+            return false;
+        }
+    } else if (feel_no_pain_roll_count < 1u || feel_no_pain_roll_count > 3u ||
+               ignored_wounds > feel_no_pain_roll_count ||
+               applied_damage != feel_no_pain_roll_count - ignored_wounds ||
+               (applied_damage != remaining_wounds &&
+                (applied_damage >= remaining_wounds || feel_no_pain_roll_count != 3u))) {
+        return false;
+    }
+    return model_destroyed ? applied_damage == remaining_wounds
+                           : applied_damage < remaining_wounds;
+}
+
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,
                                      const uint32_t *events, uint32_t event_count,
                                      uint32_t *health) {
@@ -300,7 +331,8 @@ bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_
         }
 
         memcpy(next, current, segment_count * WHC_BATTLE_HEALTH_FIELDS * sizeof(uint32_t));
-        if (kind == WHC_BATTLE_EVENT_ATTACK || kind == WHC_BATTLE_EVENT_TRANSPORT_DAMAGE) {
+        if (kind == WHC_BATTLE_EVENT_ATTACK || kind == WHC_BATTLE_EVENT_TRANSPORT_DAMAGE ||
+            kind == WHC_BATTLE_EVENT_HAZARDOUS_DAMAGE) {
             bool seen[WHC_MAX_BATTLE_SEGMENTS] = {false};
             uint64_t damage = 0u;
             uint64_t destroyed = 0u;

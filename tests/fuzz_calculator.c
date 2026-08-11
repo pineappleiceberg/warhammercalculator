@@ -185,6 +185,18 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     uint32_t overwatch_flags;
     bool overwatch_valid;
     bool expected_overwatch_valid;
+    uint32_t hazardous_initial_roll;
+    uint32_t hazardous_reroll;
+    bool hazardous_reroll_explained;
+    uint32_t hazardous_remaining_wounds;
+    uint32_t hazardous_feel_no_pain;
+    uint32_t hazardous_roll_count;
+    uint32_t hazardous_ignored;
+    uint32_t hazardous_damage;
+    bool hazardous_destroyed;
+    uint32_t hazardous_flags;
+    bool hazardous_valid;
+    bool expected_hazardous_valid;
 
     while (index < weapon_count) {
         generate_weapon(&input, &weapons[index]);
@@ -281,8 +293,17 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     memset(battle_events, 0, sizeof(battle_events));
     battle_damage = next_byte(&input) % battle_profiles[0];
     battle_events[0] = WHC_BATTLE_EVENT_VERSION;
-    battle_events[1] =
-        next_byte(&input) % 2u == 0u ? WHC_BATTLE_EVENT_ATTACK : WHC_BATTLE_EVENT_TRANSPORT_DAMAGE;
+    switch (next_byte(&input) % 3u) {
+    case 0u:
+        battle_events[1] = WHC_BATTLE_EVENT_ATTACK;
+        break;
+    case 1u:
+        battle_events[1] = WHC_BATTLE_EVENT_TRANSPORT_DAMAGE;
+        break;
+    default:
+        battle_events[1] = WHC_BATTLE_EVENT_HAZARDOUS_DAMAGE;
+        break;
+    }
     battle_events[2] = 1u;
     battle_events[4] = battle_damage;
     battle_events[6] = 0u;
@@ -390,5 +411,46 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
               ? overwatch_phase == WHC_BATTLE_PHASE_CHARGE
               : overwatch_phase == WHC_BATTLE_PHASE_MOVEMENT));
     assert(overwatch_valid == expected_overwatch_valid);
+    hazardous_initial_roll = next_byte(&input);
+    hazardous_reroll = next_byte(&input);
+    hazardous_reroll_explained = next_byte(&input) % 2u != 0u;
+    hazardous_remaining_wounds = next_u16(&input);
+    hazardous_feel_no_pain = next_byte(&input);
+    hazardous_roll_count = next_byte(&input);
+    hazardous_ignored = next_byte(&input);
+    hazardous_damage = next_byte(&input);
+    hazardous_destroyed = next_byte(&input) % 2u != 0u;
+    hazardous_flags = next_byte(&input);
+    hazardous_valid = whc_hazardous_resolution_is_valid(
+        hazardous_initial_roll, hazardous_reroll, hazardous_reroll_explained,
+        hazardous_remaining_wounds, hazardous_feel_no_pain, hazardous_roll_count,
+        hazardous_ignored, hazardous_damage, hazardous_destroyed, hazardous_flags);
+    const uint32_t hazardous_final_roll =
+        hazardous_reroll == 0u ? hazardous_initial_roll : hazardous_reroll;
+    const bool hazardous_common =
+        hazardous_initial_roll >= 1u && hazardous_initial_roll <= 6u &&
+        hazardous_reroll <= 6u &&
+        (hazardous_reroll == 0u || hazardous_reroll_explained) &&
+        hazardous_final_roll == 1u && hazardous_remaining_wounds > 0u &&
+        hazardous_remaining_wounds <= 1024u &&
+        (hazardous_feel_no_pain == 0u ||
+         (hazardous_feel_no_pain >= 2u && hazardous_feel_no_pain <= 6u)) &&
+        hazardous_flags == WHC_HAZARDOUS_FLAGS_MASK;
+    const bool hazardous_damage_valid =
+        hazardous_feel_no_pain == 0u
+            ? hazardous_roll_count == 0u && hazardous_ignored == 0u &&
+                  hazardous_damage ==
+                      (hazardous_remaining_wounds < 3u ? hazardous_remaining_wounds : 3u)
+            : hazardous_roll_count >= 1u && hazardous_roll_count <= 3u &&
+                  hazardous_ignored <= hazardous_roll_count &&
+                  hazardous_damage == hazardous_roll_count - hazardous_ignored &&
+                  (hazardous_damage == hazardous_remaining_wounds ||
+                   (hazardous_damage < hazardous_remaining_wounds &&
+                    hazardous_roll_count == 3u));
+    expected_hazardous_valid =
+        hazardous_common && hazardous_damage_valid &&
+        (hazardous_destroyed ? hazardous_damage == hazardous_remaining_wounds
+                             : hazardous_damage < hazardous_remaining_wounds);
+    assert(hazardous_valid == expected_hazardous_valid);
     return 0;
 }

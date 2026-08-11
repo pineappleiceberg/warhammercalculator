@@ -64,6 +64,9 @@
 #define WHC_FIRE_OVERWATCH_HITS_ON_UNMODIFIED_SIX 16u
 #define WHC_FIRE_OVERWATCH_CRITICAL_HITS_ON_SIX 32u
 #define WHC_FIRE_OVERWATCH_FLAGS_MASK 63u
+#define WHC_HAZARDOUS_SELECTED_BEARER 1u
+#define WHC_HAZARDOUS_SELECTION_PRIORITY 2u
+#define WHC_HAZARDOUS_FLAGS_MASK 3u
 
 enum whc_fire_overwatch_trigger {
     WHC_FIRE_OVERWATCH_SET_UP = 1u,
@@ -95,7 +98,8 @@ enum whc_battle_phase {
 enum whc_battle_event_kind {
     WHC_BATTLE_EVENT_ATTACK = 1u,
     WHC_BATTLE_EVENT_REVERT = 2u,
-    WHC_BATTLE_EVENT_TRANSPORT_DAMAGE = 3u
+    WHC_BATTLE_EVENT_TRANSPORT_DAMAGE = 3u,
+    WHC_BATTLE_EVENT_HAZARDOUS_DAMAGE = 4u
 };
 
 /*@ requires 1 <= segment_count && segment_count <= WHC_MAX_BATTLE_SEGMENTS;
@@ -290,6 +294,31 @@ bool whc_heroic_intervention_is_valid(uint32_t die_one, uint32_t die_two, int32_
 */
 bool whc_fire_overwatch_is_valid(uint32_t trigger, uint32_t phase,
                                  uint32_t distance_thousandths, uint32_t flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        initial_roll >= 1 && initial_roll <= 6 &&
+        reroll <= 6 && (reroll == 0 || reroll_explained) &&
+        (reroll == 0 ? initial_roll == 1 : reroll == 1) &&
+        remaining_wounds > 0 && remaining_wounds <= 1024 &&
+        (feel_no_pain == 0 || (feel_no_pain >= 2 && feel_no_pain <= 6)) &&
+        flags == WHC_HAZARDOUS_FLAGS_MASK &&
+        (feel_no_pain == 0
+             ? feel_no_pain_roll_count == 0 && ignored_wounds == 0 &&
+                   applied_damage == (remaining_wounds < 3 ? remaining_wounds : 3)
+             : feel_no_pain_roll_count >= 1 && feel_no_pain_roll_count <= 3 &&
+                   ignored_wounds <= feel_no_pain_roll_count &&
+                   applied_damage == feel_no_pain_roll_count - ignored_wounds &&
+                   (applied_damage == remaining_wounds ||
+                    (applied_damage < remaining_wounds && feel_no_pain_roll_count == 3))) &&
+        (model_destroyed ? applied_damage == remaining_wounds
+                         : applied_damage < remaining_wounds);
+*/
+bool whc_hazardous_resolution_is_valid(uint32_t initial_roll, uint32_t reroll,
+                                        bool reroll_explained, uint32_t remaining_wounds,
+                                        uint32_t feel_no_pain, uint32_t feel_no_pain_roll_count,
+                                        uint32_t ignored_wounds, uint32_t applied_damage,
+                                        bool model_destroyed, uint32_t flags);
 
 /*@ requires first_player_index <= 1;
     requires \valid(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));

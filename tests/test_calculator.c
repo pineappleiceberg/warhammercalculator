@@ -1521,6 +1521,41 @@ static void test_fire_overwatch(void) {
         WHC_FIRE_OVERWATCH_FLAGS_MASK & ~WHC_FIRE_OVERWATCH_TARGET_VISIBLE));
 }
 
+/*@ terminates \true; */
+static void test_hazardous_resolution(void) {
+    uint32_t profiles[WHC_BATTLE_PROFILE_FIELDS] = {3u, 2u};
+    uint32_t events[WHC_BATTLE_EVENT_FIELDS] = {0u};
+    uint32_t health[WHC_BATTLE_HEALTH_FIELDS] = {99u, 99u};
+
+    assert(whc_hazardous_resolution_is_valid(1u, 0u, false, 2u, 0u, 0u, 0u, 2u,
+                                              true, WHC_HAZARDOUS_FLAGS_MASK));
+    assert(whc_hazardous_resolution_is_valid(1u, 0u, false, 5u, 5u, 3u, 2u, 1u,
+                                              false, WHC_HAZARDOUS_FLAGS_MASK));
+    assert(whc_hazardous_resolution_is_valid(2u, 1u, true, 2u, 5u, 2u, 0u, 2u,
+                                              true, WHC_HAZARDOUS_FLAGS_MASK));
+    assert(whc_hazardous_resolution_is_valid(1u, 0u, false, 1u, 5u, 3u, 3u, 0u,
+                                              false, WHC_HAZARDOUS_FLAGS_MASK));
+    assert(!whc_hazardous_resolution_is_valid(2u, 0u, false, 3u, 0u, 0u, 0u, 3u,
+                                               true, WHC_HAZARDOUS_FLAGS_MASK));
+    assert(!whc_hazardous_resolution_is_valid(1u, 2u, true, 3u, 0u, 0u, 0u, 3u,
+                                               true, WHC_HAZARDOUS_FLAGS_MASK));
+    assert(!whc_hazardous_resolution_is_valid(1u, 0u, false, 2u, 5u, 3u, 0u, 3u,
+                                               false, WHC_HAZARDOUS_FLAGS_MASK));
+
+    events[0] = WHC_BATTLE_EVENT_VERSION;
+    events[1] = WHC_BATTLE_EVENT_HAZARDOUS_DAMAGE;
+    events[2] = 1u;
+    events[4] = 3u;
+    events[5] = 1u;
+    events[WHC_BATTLE_EVENT_HEADER_FIELDS] = 0u;
+    events[WHC_BATTLE_EVENT_HEADER_FIELDS + 1u] = 2u;
+    events[WHC_BATTLE_EVENT_HEADER_FIELDS + 2u] = 0u;
+    events[WHC_BATTLE_EVENT_HEADER_FIELDS + 3u] = 1u;
+    events[WHC_BATTLE_EVENT_HEADER_FIELDS + 4u] = 0u;
+    assert(whc_replay_battle_health_events(profiles, 1u, events, 1u, health));
+    assert(health[0] == 1u && health[1] == 0u);
+}
+
 /*@ assigns \nothing;
  */
 static void test_battle_clock(void) {
@@ -1587,6 +1622,7 @@ int main(void) {
     test_fight_move();
     test_heroic_intervention();
     test_fire_overwatch();
+    test_hazardous_resolution();
     test_battle_clock();
     puts("all tests passed");
     return 0;

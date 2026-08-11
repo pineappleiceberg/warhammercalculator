@@ -103,8 +103,14 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    setup, movement-start, movement-end, and charge-declaration windows; audited
    CP and once-per-turn use; non-Titanic, range, visibility, surviving-weapon,
    target-lock, and unmodified-6 enforcement; out-of-phase review; and explicit
-   decline paths. Hazardous Fire Overwatch remains fail-closed until deferred
-   self-damage is replayable. Remaining work
+   decline paths. Hazardous weapons now lock their exact bearer and profile
+   identity, roll one replayed test per used copy, enforce wounded/non-Character/
+   Character priority across every surviving Hazardous bearer in the unit,
+   apply three non-spilling mortal wounds with Feel No Pain, and defer Fire
+   Overwatch allocation until the triggering charger
+   ends its Charge move. When deferred Hazardous damage and Heroic Intervention
+   become due together, the active player chooses their resolution order and
+   both remain mandatory until resolved. Remaining work
    includes compatible unassigned Transport changes, transport-specific
    exceptions, remaining reactions and Stratagem windows, full geometry-backed
    target eligibility, and geometry-backed engagement.

@@ -19,10 +19,12 @@ import {
   recordFormationCharge,
   recordFormationMovement,
   recordFightMove,
+  recordHazardousTests,
   recordRangedTargetEligibility,
   registerBattleFormation,
   replayBattleState,
   resolveHeroicIntervention,
+  resolveHazardousDamage,
   resolveBattleChoice,
   resolveDestroyedTransport,
   scoreBattlePoints,
@@ -2987,7 +2989,7 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 14);
+  assert.equal(body.data.schemaVersion, 15);
   assert.equal(body.data.charges[0].canonicalMovement, true);
   assert.deepEqual(body.data.charges[0].rolls, [3, 4]);
   assert.equal(body.data.charges[0].chargeDistanceThousandths, 7000);
@@ -3049,6 +3051,7 @@ test("cross-checks Fire Overwatch reactions through the C and WebAssembly API", 
             publishedRangeThousandths: 24000,
             hasAssault: false,
             hasIndirect: false,
+            hasHazardous: true,
           },
         ],
       },
@@ -3060,6 +3063,7 @@ test("cross-checks Fire Overwatch reactions through the C and WebAssembly API", 
         unitName: "Overwatch shooter",
         modelName: "Overwatch shooter",
         role: "standalone",
+        keywords: ["Infantry"],
         wounds: 3,
         startingModels: 1,
       },
@@ -3164,7 +3168,7 @@ test("cross-checks Fire Overwatch reactions through the C and WebAssembly API", 
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 14);
+  assert.equal(body.data.schemaVersion, 15);
   assert.equal(body.data.pendingFireOverwatch, null);
   assert.equal(body.data.fireOverwatches.length, 1);
   assert.equal(body.data.fireOverwatches[0].trigger, "normal_move_start");
@@ -3188,6 +3192,96 @@ test("cross-checks Fire Overwatch reactions through the C and WebAssembly API", 
       .resources.find((resource) => resource.id === "command_points").value,
     0,
   );
+
+  let hazardousState = recordRangedTargetEligibility(
+    state,
+    {
+      attackerFormationId: shooter.id,
+      targetFormationId: mover.id,
+      weaponId: "overwatch-gun",
+      weaponName: "Overwatch gun",
+      weaponSourceFormationId: shooter.id,
+      sourceSavedUnitId: "overwatch-shooter",
+      weaponGroupId: "overwatch-gun-group",
+      publishedRangeThousandths: 24000,
+      effectiveRangeThousandths: 24000,
+      measuredDistanceThousandths: 12000,
+      visible: true,
+      fullyVisible: false,
+      indirectFire: false,
+      weaponHasIndirect: false,
+      eligibleWeaponCount: 1,
+      method: "manual",
+      reviewedByPlayer: true,
+      reviewReason: "Visible triggering unit within 24 inches",
+    },
+    "overwatch-target-fact",
+    state.events.length,
+  );
+  hazardousState = appendResolvedAttack(hazardousState, {
+    id: "overwatch-hazardous-attack",
+    at: hazardousState.events.length,
+    attackerFormationId: shooter.id,
+    targetFormationId: mover.id,
+    segmentIds: ["overwatch-mover-model"],
+    targets: [{ wounds: 10, modelCount: 1 }],
+    initialWoundsLost: 0,
+    result: { appliedDamage: 0, modelsDestroyed: 0 },
+    summary: {
+      attacker: shooter.name,
+      weapon: "Overwatch gun",
+      target: mover.name,
+      damage: 0,
+      successful: 0,
+    },
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Visible triggering unit within 24 inches",
+    targetEligibilityEventId: hazardousState.events.at(-1).id,
+    weaponId: "overwatch-gun",
+    declaredWeaponCount: 1,
+    weaponSourceFormationId: shooter.id,
+    sourceSavedUnitId: "overwatch-shooter",
+    weaponGroupId: "overwatch-gun-group",
+  });
+  hazardousState = recordHazardousTests(
+    hazardousState,
+    [{ initialRoll: 1, reroll: 0, rerollReason: "" }],
+    "overwatch-hazardous-tests",
+    hazardousState.events.length,
+  );
+  hazardousState = resolveHazardousDamage(
+    hazardousState,
+    {
+      selectedSegmentId: "overwatch-shooter-model",
+      feelNoPainRolls: [],
+      selectionReason: "Only eligible Hazardous bearer",
+    },
+    "overwatch-hazardous-damage",
+    hazardousState.events.length,
+  );
+  const hazardousResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: hazardousState, formationId: shooter.id }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(
+    hazardousResponse.status,
+    200,
+    JSON.stringify(await hazardousResponse.clone().json()),
+  );
+  const hazardousBody = await hazardousResponse.json();
+  assert.deepEqual(hazardousBody.data.health["overwatch-shooter-model"], {
+    modelsRemaining: 0,
+    woundsLost: 0,
+  });
+  assert.equal(hazardousBody.data.hazardousTests[0].failedTestIndices[0], 0);
+  assert.equal(hazardousBody.data.hazardousDamageResolutions[0].summary.damage, 3);
+  assert.equal(hazardousBody.data.pendingHazardous, null);
 
   const declined = passFireOverwatch(
     pendingState,
@@ -3422,7 +3516,7 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 14);
+  assert.equal(body.data.schemaVersion, 15);
   assert.deepEqual(body.data.weaponDeclarations, [
     {
       attackEventId: "destroy-transport",

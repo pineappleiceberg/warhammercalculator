@@ -27,9 +27,8 @@ state.
 
 ## Prioritized backlog
 
-1. Add replayed Hazardous self-damage, including Fire Overwatch's Charge-phase
-   deferral, then continue the legal-action engine with the remaining reactions,
-   cover, and Stratagem windows; then expand
+1. Continue the legal-action engine with the remaining reactions, cover, and
+   Stratagem windows; then expand
    Transport changes beyond the roster's locked assigned carrier and execute
    transport-specific exceptions.
 2. Build and enforce the source-locked faction, detachment, enhancement,
@@ -42,6 +41,25 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced guided play to battle-state version 15 with canonical
+  Hazardous self-damage. Locked weapon profiles and exact bearer segments now
+  preserve Hazardous identity and model keywords. Replay requires one test for
+  every used Hazardous weapon copy, records optional reason-bearing re-rolls,
+  resolves failed tests one at a time in wounded/non-Character/Character
+  priority across all surviving Hazardous bearers in the unit (including those
+  whose weapons were not used), applies three mortal wounds to the selected
+  model with Feel No Pain, and prevents spillover. Charge-phase Fire Overwatch records tests after
+  shooting but defers mortal-wound allocation until the triggering charger ends
+  its Charge move; when Heroic Intervention shares that timing, both actions
+  remain pending so the active player chooses their resolution order.
+  Guided Play rolls tests and Feel No Pain with rejection-sampled browser CSPRNG
+  values. The replay API includes pending, deferred, tested, and damaged state,
+  and native health replay plus an ACSL-specified C/WebAssembly predicate
+  independently cross-check the JavaScript result. Version-14 and older
+  histories migrate behind an explicit Hazardous boundary. Native, UI, API,
+  migration, tamper, Wasm differential, fuzz, provenance, and formal regressions
+  cover the cycle.
 
 - 2026-08-11: Advanced guided play to battle-state version 14 with canonical
   Fire Overwatch. Enemy setup, Normal/Advance/Fall Back starts and ends, and

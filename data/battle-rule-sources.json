@@ -9,11 +9,12 @@
       "retrievedAt": "2026-08-10",
       "sha256": "4d0e8019cbfddd6f46781d5b4ed31d46fb21eb2d0d10a0f6fabefac0ce054364",
       "pages": [
-        7, 8, 16, 17, 18, 19, 23, 26, 29, 32, 33, 34, 35, 39, 43, 53, 57, 60
+        7, 8, 9, 16, 17, 18, 19, 23, 26, 29, 32, 33, 34, 35, 39, 43, 53, 57, 60
       ],
       "usedFor": [
         "measuring distances between the closest base or hull points",
         "model, unit, and full visibility",
+        "active-player ordering for rules resolved at the same time",
         "ranged target selection by weapon range and visibility",
         "Indirect Fire targeting of non-visible units",
         "charge eligibility, target distance, 2D6 roll, movement, Engagement Range, coherency, and base contact",
@@ -40,10 +41,11 @@
       "url": "https://assets.warhammer-community.com/eng_22-10_warhammer40000_core_rules_updates-kikyythcsl-5iydvuj9w6.pdf",
       "retrievedAt": "2026-08-10",
       "sha256": "27960a4d4affecd450af69c54d7583bcc2941b00ba5845f5786a630bdec7f4ba",
-      "pages": [10],
+      "pages": [7, 8, 10],
       "usedFor": [
         "Heroic Intervention timing, target eligibility, 6-inch range, 1CP cost, Walker restriction, sole target, out-of-phase Charge resolution, and suppressed Charge bonus",
-        "Fire Overwatch timing after setup, move starts and ends, and charge declarations; 24-inch visible-target eligibility; 1CP cost; once-per-turn limit; Titanic exclusion; unmodified 6 Hit and Critical Hit thresholds; out-of-phase rule and Firing Deck exclusions; and delayed Charge-phase Hazardous resolution"
+        "Fire Overwatch timing after setup, move starts and ends, and charge declarations; 24-inch visible-target eligibility; 1CP cost; once-per-turn limit; Titanic exclusion; unmodified 6 Hit and Critical Hit thresholds; out-of-phase rule and Firing Deck exclusions",
+        "Hazardous test count, failed-test bearer priority, three mortal wounds allocated without spillover, and Fire Overwatch Charge-phase deferral until after the charging unit ends its Charge move"
       ]
     }
   ]

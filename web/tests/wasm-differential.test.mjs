@@ -23,6 +23,7 @@ import {
   chargeResolutionIsValid,
   fightMoveIsValid,
   fireOverwatchIsValid,
+  hazardousResolutionIsValid,
   heroicInterventionIsValid,
   normalizeBattleState,
   rangedTargetEligibilityIsValid,
@@ -98,6 +99,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_fight_move_is_valid, "function");
   assert.equal(typeof calculator._whc_heroic_intervention_is_valid, "function");
   assert.equal(typeof calculator._whc_fire_overwatch_is_valid, "function");
+  assert.equal(typeof calculator._whc_hazardous_resolution_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
 });
@@ -204,6 +206,25 @@ test("WebAssembly and JavaScript agree on Fire Overwatch eligibility", () => {
     assert.equal(
       Boolean(calculator._whc_fire_overwatch_is_valid(...values)),
       fireOverwatchIsValid(trigger, phase, distance, flags),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on Hazardous damage resolution", () => {
+  const cases = [
+    [1, 0, false, 3, 0, 0, 0, 3, true, 3],
+    [1, 0, false, 5, 5, 3, 2, 1, false, 3],
+    [2, 1, true, 2, 5, 2, 0, 2, true, 3],
+    [1, 0, false, 1, 5, 3, 3, 0, false, 3],
+    [2, 0, false, 3, 0, 0, 0, 3, true, 3],
+    [1, 2, true, 3, 0, 0, 0, 3, true, 3],
+    [1, 0, false, 2, 5, 3, 0, 3, false, 3],
+    [1, 0, false, 3, 0, 0, 0, 3, true, 2],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_hazardous_resolution_is_valid(...values)),
+      hazardousResolutionIsValid(...values),
     );
   }
 });

@@ -60,6 +60,8 @@ import {
   fireOverwatchFlags,
   fireOverwatchIsValid,
   FIRE_OVERWATCH_TRIGGERS,
+  HAZARDOUS_FLAGS,
+  hazardousResolutionIsValid,
   heroicInterventionChargeFlags,
   heroicInterventionFlags,
   heroicInterventionIsValid,
@@ -318,6 +320,7 @@ type CalculatorExports = {
   whc_fight_move_is_valid(...values: number[]): number;
   whc_heroic_intervention_is_valid(...values: number[]): number;
   whc_fire_overwatch_is_valid(...values: number[]): number;
+  whc_hazardous_resolution_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -460,6 +463,7 @@ async function loadCalculator() {
       typeof calculator.whc_fight_move_is_valid !== "function" ||
       typeof calculator.whc_heroic_intervention_is_valid !== "function" ||
       typeof calculator.whc_fire_overwatch_is_valid !== "function" ||
+      typeof calculator.whc_hazardous_resolution_is_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -596,6 +600,14 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         after: { modelsRemaining: number; woundsLost: number };
       }>;
     };
+    hazardousAllocation?: {
+      summary: { damage: number; modelsDestroyed: number };
+      allocation: {
+        segmentId: string;
+        before: { modelsRemaining: number; woundsLost: number };
+        after: { modelsRemaining: number; woundsLost: number };
+      };
+    };
   }> = [];
   const attackIndices = new Map<string, number>();
   for (const event of state.events) {
@@ -609,6 +621,15 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         (passenger) => passenger.formationId === requestedFormationId,
       );
       if (transportPassenger) selectedEvents.push({ event, transportPassenger });
+    } else if (
+      event.type === "hazardous_damage_resolved" &&
+      event.formationId === requestedFormationId &&
+      event.allocation
+    ) {
+      selectedEvents.push({
+        event,
+        hazardousAllocation: { summary: event.summary, allocation: event.allocation },
+      });
     }
   }
 
@@ -622,7 +643,7 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
     profiles[index * profileFields + 1] = segment.startingModels;
   });
   const events = new Uint32Array(selectedEvents.length * eventFields);
-  selectedEvents.forEach(({ event, transportPassenger }, index) => {
+  selectedEvents.forEach(({ event, transportPassenger, hazardousAllocation }, index) => {
     const offset = index * eventFields;
     events[offset] = event.version;
     if (event.type === "attack_resolved") {
@@ -660,6 +681,20 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         events[allocationOffset + 3] = allocation.after.modelsRemaining;
         events[allocationOffset + 4] = allocation.after.woundsLost;
       });
+    } else if (event.type === "hazardous_damage_resolved" && hazardousAllocation) {
+      const allocation = hazardousAllocation.allocation;
+      const segmentIndex = segmentIndices.get(allocation.segmentId);
+      if (segmentIndex === undefined) throw new Error("Hazardous allocation segment is unknown");
+      events[offset + 1] = 4;
+      events[offset + 2] = 1;
+      events[offset + 4] = hazardousAllocation.summary.damage;
+      events[offset + 5] = hazardousAllocation.summary.modelsDestroyed;
+      const allocationOffset = offset + eventHeaderFields;
+      events[allocationOffset] = segmentIndex;
+      events[allocationOffset + 1] = allocation.before.modelsRemaining;
+      events[allocationOffset + 2] = allocation.before.woundsLost;
+      events[allocationOffset + 3] = allocation.after.modelsRemaining;
+      events[allocationOffset + 4] = allocation.after.woundsLost;
     }
   });
 
@@ -1004,6 +1039,80 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         clock: event.clock,
       };
     });
+    const hazardousTestsById = new Map(replayed.hazardousTests.map((event) => [event.id, event]));
+    const hazardousDamageResolutions = replayed.hazardousDamageResolutions.map((event) => {
+      if (!event.allocation) {
+        return {
+          eventId: event.id,
+          testEventId: event.testEventId,
+          testIndex: event.testIndex,
+          formationId: event.formationId,
+          selectedSegmentId: null,
+          noEligibleBearer: true,
+          selectionReason: event.selectionReason,
+          feelNoPainRolls: [],
+          summary: event.summary,
+          clock: event.clock,
+        };
+      }
+      const test = hazardousTestsById.get(event.testEventId)?.tests[event.testIndex];
+      const segment = formation.segments.find(
+        (candidate) => candidate.id === event.allocation?.segmentId,
+      );
+      if (!test || !segment) {
+        throw new ServiceUnavailableError(
+          "Hazardous damage references unavailable canonical facts",
+          "HAZARDOUS_DIVERGENCE",
+        );
+      }
+      const remainingWounds = segment.wounds - event.allocation.before.woundsLost;
+      const ignoredWounds = event.feelNoPainRolls.filter(
+        (roll) => segment.feelNoPain > 0 && roll >= segment.feelNoPain,
+      ).length;
+      const values = [
+        test.initialRoll,
+        test.reroll,
+        test.rerollReason ? 1 : 0,
+        remainingWounds,
+        segment.feelNoPain,
+        event.feelNoPainRolls.length,
+        ignoredWounds,
+        event.summary.damage,
+        event.summary.modelsDestroyed ? 1 : 0,
+        HAZARDOUS_FLAGS.mask,
+      ];
+      const javascriptValid = hazardousResolutionIsValid(
+        test.initialRoll,
+        test.reroll,
+        Boolean(test.rerollReason),
+        remainingWounds,
+        segment.feelNoPain,
+        event.feelNoPainRolls.length,
+        ignoredWounds,
+        event.summary.damage,
+        Boolean(event.summary.modelsDestroyed),
+        HAZARDOUS_FLAGS.mask,
+      );
+      const nativeValid = Boolean(calculator.whc_hazardous_resolution_is_valid(...values));
+      if (!javascriptValid || javascriptValid !== nativeValid) {
+        throw new ServiceUnavailableError(
+          "Hazardous resolution diverged from the C/WebAssembly predicate",
+          "HAZARDOUS_DIVERGENCE",
+        );
+      }
+      return {
+        eventId: event.id,
+        testEventId: event.testEventId,
+        testIndex: event.testIndex,
+        formationId: event.formationId,
+        selectedSegmentId: event.selectedSegmentId,
+        noEligibleBearer: false,
+        selectionReason: event.selectionReason,
+        feelNoPainRolls: event.feelNoPainRolls,
+        summary: event.summary,
+        clock: event.clock,
+      };
+    });
     const serializeFightMove = (event: CanonicalFightMoveEvent | null) => {
       if (!event) return null;
       const values = [
@@ -1101,6 +1210,18 @@ async function replayFormationHealth(candidate: unknown, requestedFormationId: u
         reason: event.reason,
         clock: event.clock,
       })),
+      pendingHazardous: replayed.pendingHazardous ? { ...replayed.pendingHazardous } : null,
+      hazardousTests: replayed.hazardousTests.map((event) => ({
+        eventId: event.id,
+        activationEventId: event.activationEventId,
+        formationId: event.formationId,
+        tests: event.tests,
+        failedTestIndices: event.failedTestIndices,
+        deferredUntilChargeMove: event.deferredUntilChargeMove,
+        triggerChargeEventId: event.triggerChargeEventId || null,
+        clock: event.clock,
+      })),
+      hazardousDamageResolutions,
       pendingHeroicIntervention: replayed.pendingHeroicIntervention
         ? { ...replayed.pendingHeroicIntervention }
         : null,

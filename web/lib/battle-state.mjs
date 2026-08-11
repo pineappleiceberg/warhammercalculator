@@ -11,7 +11,8 @@ import {
 } from "./battle-clock.mjs";
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 
-export const BATTLE_STATE_VERSION = 14;
+export const BATTLE_STATE_VERSION = 15;
+export const HAZARDOUS_BATTLE_STATE_VERSION = 15;
 export const FIRE_OVERWATCH_BATTLE_STATE_VERSION = 14;
 export const HEROIC_INTERVENTION_BATTLE_STATE_VERSION = 13;
 export const FIGHT_MOVE_BATTLE_STATE_VERSION = 12;
@@ -82,6 +83,60 @@ export const FIRE_OVERWATCH_FLAGS = Object.freeze({
   hitsOnUnmodifiedSix: 16,
   criticalHitsOnSix: 32,
 });
+
+export const HAZARDOUS_FLAGS = Object.freeze({
+  selectedBearer: 1,
+  selectionPriority: 2,
+  mask: 3,
+});
+
+export function hazardousResolutionIsValid(
+  initialRoll,
+  reroll,
+  rerollExplained,
+  remainingWounds,
+  feelNoPain,
+  feelNoPainRollCount,
+  ignoredWounds,
+  appliedDamage,
+  modelDestroyed,
+  flags,
+) {
+  const finalRoll = reroll === 0 ? initialRoll : reroll;
+  if (
+    initialRoll < 1 ||
+    initialRoll > 6 ||
+    reroll < 0 ||
+    reroll > 6 ||
+    (reroll !== 0 && !rerollExplained) ||
+    finalRoll !== 1 ||
+    remainingWounds < 1 ||
+    remainingWounds > 1024 ||
+    (feelNoPain !== 0 && (feelNoPain < 2 || feelNoPain > 6)) ||
+    flags !== HAZARDOUS_FLAGS.mask
+  ) {
+    return false;
+  }
+  if (feelNoPain === 0) {
+    if (
+      feelNoPainRollCount !== 0 ||
+      ignoredWounds !== 0 ||
+      appliedDamage !== Math.min(3, remainingWounds)
+    ) {
+      return false;
+    }
+  } else if (
+    feelNoPainRollCount < 1 ||
+    feelNoPainRollCount > 3 ||
+    ignoredWounds > feelNoPainRollCount ||
+    appliedDamage !== feelNoPainRollCount - ignoredWounds ||
+    (appliedDamage !== remainingWounds &&
+      (appliedDamage >= remainingWounds || feelNoPainRollCount !== 3))
+  ) {
+    return false;
+  }
+  return modelDestroyed ? appliedDamage === remainingWounds : appliedDamage < remainingWounds;
+}
 
 export function fireOverwatchFlags(event) {
   return (
@@ -660,6 +715,9 @@ function normalizeSegment(candidate) {
     unitName: boundedString(segment.unitName, "Segment unit name"),
     modelName: boundedString(segment.modelName, "Segment model name"),
     role: boundedString(segment.role, "Segment role", 40),
+    keywords: normalizeStringArray(segment.keywords ?? [], "Segment keywords", 100).map((keyword) =>
+      keyword.toLowerCase(),
+    ),
     wounds,
     feelNoPain,
     startingModels,
@@ -707,6 +765,9 @@ function normalizeModelInstances(value) {
       savedUnitId: boundedString(model.savedUnitId, "Battle model saved unit id", 100),
       unitName: boundedString(model.unitName, "Battle model unit name"),
       modelName: boundedString(model.modelName, "Battle model name"),
+      keywords: normalizeStringArray(model.keywords ?? [], "Battle model keywords", 100).map(
+        (keyword) => keyword.toLowerCase(),
+      ),
       ordinal: nonnegativeInteger(model.ordinal, "Battle model ordinal", 1000),
     };
   });
@@ -750,6 +811,7 @@ function normalizeWeaponProfile(candidate) {
     publishedRangeThousandths,
     hasAssault: Boolean(profile.hasAssault),
     hasIndirect: Boolean(profile.hasIndirect),
+    hasHazardous: Boolean(profile.hasHazardous),
   };
 }
 
@@ -978,6 +1040,7 @@ function segmentsForBearerAssignments(formation, weaponInventory) {
       unitName: source.unitName,
       modelName: source.modelName,
       role: source.role,
+      keywords: source.keywords,
       wounds: source.wounds,
       feelNoPain: source.feelNoPain,
       startingModels: modelIds.length,
@@ -996,6 +1059,7 @@ function prepareExactFormationRegistration(formation) {
       savedUnitId: segment.savedUnitId,
       unitName: segment.unitName,
       modelName: segment.modelName,
+      keywords: segment.keywords ?? [],
       ordinal: index + 1,
     })),
   );
@@ -1200,6 +1264,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     ].includes(event.type)
   ) {
     throw new Error("Fire Overwatch reactions require battle-state version 14");
+  }
+  if (
+    stateVersion < HAZARDOUS_BATTLE_STATE_VERSION &&
+    ["hazardous_tests_recorded", "hazardous_damage_resolved"].includes(event.type)
+  ) {
+    throw new Error("Hazardous resolution requires battle-state version 15");
   }
   if (event.type === "formation_registered") {
     const formation = normalizeFormation(event.formation, stateVersion);
@@ -2024,6 +2094,81 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
+  if (event.type === "hazardous_tests_recorded") {
+    normalized.activationEventId = boundedString(
+      event.activationEventId,
+      "Hazardous activation event id",
+      100,
+    );
+    normalized.formationId = boundedString(event.formationId, "Hazardous formation id", 100);
+    if (!formations.byId.has(normalized.formationId)) {
+      throw new Error("Hazardous tests reference an unregistered formation");
+    }
+    if (!Array.isArray(event.tests) || event.tests.length < 1 || event.tests.length > 1000) {
+      throw new Error("Hazardous tests must contain 1 to 1000 rolls");
+    }
+    normalized.tests = event.tests.map((candidate) => {
+      const test = record(candidate, "Each Hazardous test must be an object");
+      const initialRoll = nonnegativeInteger(test.initialRoll, "Hazardous initial roll", 6);
+      const reroll = nonnegativeInteger(test.reroll ?? 0, "Hazardous re-roll", 6);
+      if (initialRoll < 1 || (reroll !== 0 && reroll < 1)) {
+        throw new Error("Hazardous rolls must be D6 results");
+      }
+      const rerollReason = reroll
+        ? boundedString(test.rerollReason, "Hazardous re-roll reason", 300).trim()
+        : "";
+      if (reroll && !rerollReason) {
+        throw new Error("A Hazardous re-roll requires its source rule or Stratagem");
+      }
+      return { initialRoll, reroll, rerollReason };
+    });
+    normalized.deferredUntilChargeMove = Boolean(event.deferredUntilChargeMove);
+    normalized.triggerChargeEventId = normalized.deferredUntilChargeMove
+      ? boundedString(event.triggerChargeEventId, "Hazardous trigger Charge event id", 100)
+      : "";
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "hazardous_damage_resolved") {
+    normalized.testEventId = boundedString(event.testEventId, "Hazardous test event id", 100);
+    normalized.testIndex = nonnegativeInteger(event.testIndex, "Hazardous test index", 999);
+    normalized.formationId = boundedString(event.formationId, "Hazardous formation id", 100);
+    const formation = formations.byId.get(normalized.formationId);
+    if (!formation) throw new Error("Hazardous damage references an unregistered formation");
+    normalized.selectedSegmentId = event.selectedSegmentId
+      ? boundedString(event.selectedSegmentId, "Hazardous selected segment id", 100)
+      : "";
+    normalized.noEligibleBearer = Boolean(event.noEligibleBearer);
+    normalized.selectionReason = boundedString(
+      event.selectionReason,
+      "Hazardous bearer selection reason",
+      300,
+    ).trim();
+    normalized.feelNoPainRolls = normalizeDieRolls(
+      event.feelNoPainRolls ?? [],
+      "Hazardous Feel No Pain rolls",
+    );
+    const summary = record(event.summary, "Hazardous summary must be an object");
+    normalized.summary = {
+      damage: nonnegativeInteger(summary.damage, "Hazardous applied damage", 3),
+      modelsDestroyed: nonnegativeInteger(summary.modelsDestroyed, "Hazardous destroyed models", 1),
+    };
+    if (event.allocation === null || event.allocation === undefined) {
+      normalized.allocation = null;
+    } else {
+      const allocation = record(event.allocation, "Hazardous allocation must be an object");
+      const segmentId = boundedString(allocation.segmentId, "Hazardous allocation segment id", 100);
+      const segment = formation.segments.find((candidate) => candidate.id === segmentId);
+      if (!segment) throw new Error("Hazardous allocation references an unknown segment");
+      normalized.allocation = {
+        segmentId,
+        before: normalizeHealth(allocation.before, segment, "Hazardous allocation before"),
+        after: normalizeHealth(allocation.after, segment, "Hazardous allocation after"),
+      };
+    }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
   if (event.type === "fight_priority_passed") {
     normalized.playerId = boundedString(event.playerId, "Passing player id", 100);
     if (!formations.players.has(normalized.playerId)) {
@@ -2246,6 +2391,7 @@ export function normalizeBattleState(candidate) {
       CHARGE_MOVE_BATTLE_STATE_VERSION,
       FIGHT_MOVE_BATTLE_STATE_VERSION,
       HEROIC_INTERVENTION_BATTLE_STATE_VERSION,
+      FIRE_OVERWATCH_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -2292,6 +2438,7 @@ export function normalizeBattleState(candidate) {
         CHARGE_MOVE_BATTLE_STATE_VERSION,
         FIGHT_MOVE_BATTLE_STATE_VERSION,
         HEROIC_INTERVENTION_BATTLE_STATE_VERSION,
+        FIRE_OVERWATCH_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -2373,6 +2520,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyFireOverwatchThroughSequence = nonnegativeInteger(
         migration.legacyFireOverwatchThroughSequence,
         "Legacy Fire Overwatch event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= HAZARDOUS_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyHazardousThroughSequence = nonnegativeInteger(
+        migration.legacyHazardousThroughSequence,
+        "Legacy Hazardous event sequence",
         events.length,
       );
     }
@@ -2576,8 +2730,77 @@ function randomDie(sides, randomUint32 = secureRandomUint32) {
   return (value % sides) + 1;
 }
 
+function hazardousFinalRoll(test) {
+  return test.reroll || test.initialRoll;
+}
+
+function hazardousWeaponGroupIds(formation) {
+  return new Set(
+    formation.weaponInventory
+      .filter((group) => group.profiles.some((profile) => profile.hasHazardous))
+      .map((group) => group.groupId),
+  );
+}
+
+function segmentHasHazardousBearer(segment, hazardousGroupIds) {
+  return (segment.weaponCopies ?? []).some(
+    (copy) => hazardousGroupIds.has(copy.groupId) && copy.count > 0,
+  );
+}
+
+function hazardousSelectionOptions(formation) {
+  const hazardousGroupIds = hazardousWeaponGroupIds(formation);
+  const eligible = formation.segments.filter(
+    (segment) =>
+      formation.health[segment.id].modelsRemaining > 0 &&
+      segmentHasHazardousBearer(segment, hazardousGroupIds),
+  );
+  const wounded = eligible.filter((segment) => formation.health[segment.id].woundsLost > 0);
+  if (wounded.length > 0) return wounded;
+  const nonCharacters = eligible.filter(
+    (segment) => !(segment.keywords ?? []).includes("character"),
+  );
+  return nonCharacters.length > 0 ? nonCharacters : eligible;
+}
+
+function hazardousHealthAfter(segment, before, feelNoPainRolls) {
+  const remainingWounds = segment.wounds - before.woundsLost;
+  let damage = 0;
+  let ignored = 0;
+  if (segment.feelNoPain === 0) {
+    damage = Math.min(3, remainingWounds);
+  } else {
+    for (const roll of feelNoPainRolls) {
+      if (roll >= segment.feelNoPain) ignored += 1;
+      else damage += 1;
+      if (damage === remainingWounds) break;
+    }
+  }
+  const destroyed = damage === remainingWounds;
+  return {
+    remainingWounds,
+    ignored,
+    damage,
+    destroyed,
+    after: destroyed
+      ? { modelsRemaining: before.modelsRemaining - 1, woundsLost: 0 }
+      : { modelsRemaining: before.modelsRemaining, woundsLost: before.woundsLost + damage },
+  };
+}
+
 export function rollChargeDice(randomUint32 = secureRandomUint32) {
   return [randomDie(6, randomUint32), randomDie(6, randomUint32)];
+}
+
+export function rollHazardousTests(count, randomUint32 = secureRandomUint32) {
+  if (!Number.isSafeInteger(count) || count < 1 || count > 1000) {
+    throw new Error("Hazardous test count must be from 1 to 1000");
+  }
+  return Array.from({ length: count }, () => ({
+    initialRoll: randomDie(6, randomUint32),
+    reroll: 0,
+    rerollReason: "",
+  }));
 }
 
 function transportAllocationOrder(formation, health, firstSegmentId = "") {
@@ -2717,9 +2940,12 @@ export function replayBattleState(state) {
   const heroicInterventionPasses = [];
   const usedHeroicInterventionKeys = new Set();
   const completedActivations = new Set();
+  const hazardousTests = [];
+  const hazardousDamageResolutions = [];
   let activeActivation = null;
   let pendingFireOverwatch = null;
   let pendingHeroicIntervention = null;
+  let pendingHazardous = null;
   let deploymentPriorityPlayerId = "";
   let clock = setupBattleClock();
   let mission = defaultMission(state.players);
@@ -2749,6 +2975,10 @@ export function replayBattleState(state) {
     state.version < FIRE_OVERWATCH_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyFireOverwatchThroughSequence ?? 0);
+  const legacyHazardousThroughSequence =
+    state.version < HAZARDOUS_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyHazardousThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -2762,8 +2992,30 @@ export function replayBattleState(state) {
       throw new Error("Destroyed Transport passengers must disembark immediately");
     }
     if (
+      pendingHazardous &&
+      ((pendingHazardous.due &&
+        event.type !== "hazardous_damage_resolved" &&
+        !(
+          pendingHeroicIntervention &&
+          ["heroic_intervention_resolved", "heroic_intervention_passed"].includes(event.type)
+        )) ||
+        (!pendingHazardous.due &&
+          ![
+            activeActivation?.id === pendingHazardous.activationEventId
+              ? "activation_completed"
+              : "charge_recorded",
+          ].includes(event.type)))
+    ) {
+      throw new Error(
+        pendingHazardous.due
+          ? "Resolve the pending Hazardous mortal wounds first"
+          : "Hazardous mortal wounds remain deferred until the charging unit ends its Charge move",
+      );
+    }
+    if (
       pendingHeroicIntervention &&
-      !["heroic_intervention_resolved", "heroic_intervention_passed"].includes(event.type)
+      !["heroic_intervention_resolved", "heroic_intervention_passed"].includes(event.type) &&
+      !(pendingHazardous?.due && event.type === "hazardous_damage_resolved")
     ) {
       throw new Error("Resolve or pass the pending Heroic Intervention window first");
     }
@@ -2780,10 +3032,18 @@ export function replayBattleState(state) {
         "attack_resolved",
         "attack_reverted",
         "transport_destroyed_resolved",
+        "hazardous_tests_recorded",
+        "hazardous_damage_resolved",
         "activation_completed",
       ].includes(event.type)
     ) {
       throw new Error("Finish the Fire Overwatch activation before continuing the trigger");
+    }
+    if (
+      activeActivation?.hazardousTestsRecorded &&
+      !["hazardous_damage_resolved", "activation_completed"].includes(event.type)
+    ) {
+      throw new Error("Hazardous tests close this activation's attack sequence");
     }
     if (event.type === "formation_registered") {
       if (state.version >= TIMELINE_BATTLE_STATE_VERSION && clock.status !== "setup") {
@@ -3601,8 +3861,11 @@ export function replayBattleState(state) {
         throw new Error("Only the active player's formation can charge");
       }
       if (formationDestroyed(formation)) throw new Error("A destroyed formation cannot charge");
+      const declaration =
+        event.sequence > legacyFireOverwatchThroughSequence
+          ? chargeDeclarationsByFormation.get(event.formationId)
+          : null;
       if (event.sequence > legacyFireOverwatchThroughSequence) {
-        const declaration = chargeDeclarationsByFormation.get(event.formationId);
         if (
           !declaration ||
           !sameBattleClock(declaration.clock, clock) ||
@@ -3705,13 +3968,23 @@ export function replayBattleState(state) {
         throw new Error("A unit that disembarked after movement cannot declare a charge this turn");
       }
       chargeByFormation.set(event.formationId, event);
+      const deferredHazardousNowDue = Boolean(
+        pendingHazardous &&
+          !pendingHazardous.due &&
+          pendingHazardous.triggerChargeEventId === declaration?.id &&
+          event.formationId === declaration?.formationId,
+      );
+      if (deferredHazardousNowDue) {
+        pendingHazardous = { ...pendingHazardous, due: true, chargeResolutionEventId: event.id };
+      }
       if (event.successful && event.sequence > legacyHeroicInterventionThroughSequence) {
-        pendingHeroicIntervention = {
+        const reaction = {
           triggerChargeEventId: event.id,
           chargingFormationId: event.formationId,
           responderPlayerId: otherPlayerId(state.players, clock.activePlayerId),
           clock: { ...clock },
         };
+        pendingHeroicIntervention = reaction;
       }
       continue;
     }
@@ -3817,6 +4090,9 @@ export function replayBattleState(state) {
         activationType: "shooting",
         weaponRestriction: "all",
         attackCount: 0,
+        hazardousTestCount: 0,
+        hazardousGroupIds: [],
+        hazardousTestsRecorded: false,
         pileIn: null,
         consolidation: null,
       };
@@ -4030,6 +4306,9 @@ export function replayBattleState(state) {
         ...event,
         weaponRestriction,
         attackCount: 0,
+        hazardousTestCount: 0,
+        hazardousGroupIds: [],
+        hazardousTestsRecorded: false,
         pileIn: null,
         consolidation: null,
       };
@@ -4084,6 +4363,139 @@ export function replayBattleState(state) {
       });
       continue;
     }
+    if (event.type === "hazardous_tests_recorded") {
+      if (
+        !activeActivation ||
+        activeActivation.id !== event.activationEventId ||
+        activeActivation.formationId !== event.formationId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Hazardous tests do not belong to the active formation activation");
+      }
+      if (activeActivation.hazardousTestsRecorded) {
+        throw new Error("Hazardous tests have already been recorded for this activation");
+      }
+      if (
+        activeActivation.hazardousTestCount < 1 ||
+        event.tests.length !== activeActivation.hazardousTestCount
+      ) {
+        throw new Error("Hazardous test count must equal the Hazardous weapons used");
+      }
+      const deferredUntilChargeMove =
+        activeActivation.source === "fire_overwatch" &&
+        activeActivation.trigger === "charge_declared";
+      if (
+        event.deferredUntilChargeMove !== deferredUntilChargeMove ||
+        event.triggerChargeEventId !==
+          (deferredUntilChargeMove ? activeActivation.triggerEventId : "")
+      ) {
+        throw new Error("Hazardous Fire Overwatch deferral does not match its Charge trigger");
+      }
+      const failedTestIndices = event.tests
+        .map((test, index) => (hazardousFinalRoll(test) === 1 ? index : -1))
+        .filter((index) => index >= 0);
+      hazardousTests.push({
+        ...event,
+        hazardousGroupIds: [...activeActivation.hazardousGroupIds],
+        failedTestIndices,
+      });
+      activeActivation = {
+        ...activeActivation,
+        hazardousTestsRecorded: true,
+        hazardousTestEventId: event.id,
+      };
+      if (failedTestIndices.length > 0) {
+        pendingHazardous = {
+          testEventId: event.id,
+          activationEventId: event.activationEventId,
+          formationId: event.formationId,
+          hazardousGroupIds: [...activeActivation.hazardousGroupIds],
+          failedTestIndices,
+          resolvedTestIndices: [],
+          deferredUntilChargeMove,
+          triggerChargeEventId: event.triggerChargeEventId,
+          due: !deferredUntilChargeMove,
+          clock: { ...clock },
+        };
+      }
+      continue;
+    }
+    if (event.type === "hazardous_damage_resolved") {
+      if (
+        !pendingHazardous ||
+        !pendingHazardous.due ||
+        event.testEventId !== pendingHazardous.testEventId ||
+        event.formationId !== pendingHazardous.formationId ||
+        event.testIndex !== pendingHazardous.failedTestIndices[0] ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Hazardous damage does not match the next pending failed test");
+      }
+      const formation = formations.get(event.formationId);
+      const testEvent = hazardousTests.find((candidate) => candidate.id === event.testEventId);
+      const test = testEvent?.tests[event.testIndex];
+      if (!formation || !test || hazardousFinalRoll(test) !== 1) {
+        throw new Error("Hazardous damage references an invalid failed test");
+      }
+      const options = hazardousSelectionOptions(formation);
+      if (options.length === 0) {
+        if (
+          !event.noEligibleBearer ||
+          event.selectedSegmentId ||
+          event.allocation ||
+          event.feelNoPainRolls.length > 0 ||
+          event.summary.damage !== 0 ||
+          event.summary.modelsDestroyed !== 0 ||
+          !event.selectionReason
+        ) {
+          throw new Error("Hazardous failure with no surviving bearer must record no damage");
+        }
+      } else {
+        const segment = options.find((candidate) => candidate.id === event.selectedSegmentId);
+        if (
+          !segment ||
+          event.noEligibleBearer ||
+          !event.allocation ||
+          event.allocation.segmentId !== segment.id ||
+          !event.selectionReason
+        ) {
+          throw new Error("Hazardous bearer selection violates the mandatory priority order");
+        }
+        const before = formation.health[segment.id];
+        if (!sameHealth(before, event.allocation.before)) {
+          throw new Error("Hazardous allocation does not match replayed bearer health");
+        }
+        const outcome = hazardousHealthAfter(segment, before, event.feelNoPainRolls);
+        if (
+          !hazardousResolutionIsValid(
+            test.initialRoll,
+            test.reroll,
+            Boolean(test.rerollReason),
+            outcome.remainingWounds,
+            segment.feelNoPain,
+            event.feelNoPainRolls.length,
+            outcome.ignored,
+            outcome.damage,
+            outcome.destroyed,
+            HAZARDOUS_FLAGS.mask,
+          ) ||
+          !sameHealth(event.allocation.after, outcome.after) ||
+          event.summary.damage !== outcome.damage ||
+          event.summary.modelsDestroyed !== (outcome.destroyed ? 1 : 0)
+        ) {
+          throw new Error("Hazardous mortal wounds do not match the rolls and selected bearer");
+        }
+        formation.health[segment.id] = { ...outcome.after };
+      }
+      hazardousDamageResolutions.push(event);
+      const resolvedTestIndices = [...pendingHazardous.resolvedTestIndices, event.testIndex];
+      const failedTestIndices = pendingHazardous.failedTestIndices.slice(1);
+      pendingHazardous =
+        failedTestIndices.length > 0
+          ? { ...pendingHazardous, failedTestIndices, resolvedTestIndices }
+          : null;
+      continue;
+    }
     if (event.type === "activation_completed") {
       if (!activeActivation) throw new Error("No formation activation is in progress");
       if (!sameBattleClock(event.clock, clock)) {
@@ -4104,6 +4516,12 @@ export function replayBattleState(state) {
           "A Fight activation must record Pile In and Consolidation before completion",
         );
       }
+      if (activeActivation.hazardousTestCount > 0 && !activeActivation.hazardousTestsRecorded) {
+        throw new Error("Resolve every required Hazardous test before finishing the activation");
+      }
+      if (pendingHazardous && !pendingHazardous.deferredUntilChargeMove) {
+        throw new Error("Resolve Hazardous mortal wounds before finishing the activation");
+      }
       if (event.activationType === "fight") {
         fightMovementsByActivation.set(activeActivation.id, {
           formationId: activeActivation.formationId,
@@ -4120,6 +4538,9 @@ export function replayBattleState(state) {
         if (formationDestroyed(target)) {
           movementStartsByFormation.delete(activeActivation.targetFormationId);
           chargeDeclarationsByFormation.delete(activeActivation.targetFormationId);
+          if (pendingHazardous?.activationEventId === activeActivation.id) {
+            pendingHazardous = { ...pendingHazardous, due: true };
+          }
         }
       }
       activeActivation = null;
@@ -4370,6 +4791,29 @@ export function replayBattleState(state) {
           }
         }
       }
+      let hazardousWeaponUsed = false;
+      if (
+        event.sequence > legacyHazardousThroughSequence &&
+        activeActivation &&
+        event.weaponSourceFormationId &&
+        event.sourceSavedUnitId &&
+        event.weaponGroupId &&
+        event.weaponId
+      ) {
+        const source = formations.get(event.weaponSourceFormationId);
+        const locked = source
+          ? formationWeaponProfile(
+              source,
+              event.sourceSavedUnitId,
+              event.weaponGroupId,
+              event.weaponId,
+            )
+          : null;
+        if (!locked) {
+          throw new Error("Attack weapon is absent from the locked Hazardous inventory");
+        }
+        hazardousWeaponUsed = locked.profile.hasHazardous;
+      }
       const formation = formations.get(event.targetFormationId);
       if (!formation) throw new Error("Attack target formation is not registered");
       const wasDestroyed = formationDestroyed(formation);
@@ -4422,7 +4866,16 @@ export function replayBattleState(state) {
       activeAttackIds.push(event.id);
       targetedFormationIds.add(event.targetFormationId);
       if (activeActivation) {
-        activeActivation = { ...activeActivation, attackCount: activeActivation.attackCount + 1 };
+        activeActivation = {
+          ...activeActivation,
+          attackCount: activeActivation.attackCount + 1,
+          hazardousTestCount:
+            activeActivation.hazardousTestCount +
+            (hazardousWeaponUsed ? event.declaredWeaponCount : 0),
+          hazardousGroupIds: hazardousWeaponUsed
+            ? [...new Set([...activeActivation.hazardousGroupIds, event.weaponGroupId])].sort()
+            : activeActivation.hazardousGroupIds,
+        };
         if (activeActivation.activationType === "fight") {
           const movement = fightMovementsByActivation.get(activeActivation.id);
           if (movement) {
@@ -4479,9 +4932,50 @@ export function replayBattleState(state) {
         ? activeActivation.activationType === "fight" && reverted.weaponType === "Melee"
         : reverted.activationEventId === activeActivation.id)
     ) {
+      const revertedSource = formations.get(reverted.weaponSourceFormationId);
+      const revertedInventory = revertedSource
+        ? formationWeaponProfile(
+            revertedSource,
+            reverted.sourceSavedUnitId,
+            reverted.weaponGroupId,
+            reverted.weaponId,
+          )
+        : null;
+      const revertedHazardousCount = revertedInventory?.profile.hasHazardous
+        ? reverted.declaredWeaponCount
+        : 0;
+      const hazardousGroupStillUsed = activeAttackIds.some((id) => {
+        const attack = attacks.get(id);
+        if (
+          !attack ||
+          attack.activationEventId !== activeActivation.id ||
+          attack.weaponGroupId !== reverted.weaponGroupId
+        ) {
+          return false;
+        }
+        const source = formations.get(attack.weaponSourceFormationId);
+        return Boolean(
+          source &&
+            formationWeaponProfile(
+              source,
+              attack.sourceSavedUnitId,
+              attack.weaponGroupId,
+              attack.weaponId,
+            )?.profile.hasHazardous,
+        );
+      });
       activeActivation = {
         ...activeActivation,
         attackCount: Math.max(0, activeActivation.attackCount - 1),
+        hazardousTestCount: Math.max(
+          0,
+          activeActivation.hazardousTestCount - revertedHazardousCount,
+        ),
+        hazardousGroupIds: hazardousGroupStillUsed
+          ? activeActivation.hazardousGroupIds
+          : activeActivation.hazardousGroupIds.filter(
+              (groupId) => groupId !== reverted.weaponGroupId,
+            ),
       };
       if (activeActivation.activationType === "fight") {
         const movement = fightMovementsByActivation.get(activeActivation.id);
@@ -4559,6 +5053,9 @@ export function replayBattleState(state) {
     pendingFireOverwatch,
     fireOverwatches,
     fireOverwatchPasses,
+    pendingHazardous,
+    hazardousTests,
+    hazardousDamageResolutions,
     pendingHeroicIntervention,
     heroicInterventions,
     heroicInterventionPasses,
@@ -5519,6 +6016,108 @@ export function completeFormationActivation(state, id, at) {
     type: "activation_completed",
     formationId: replayed.activeActivation.formationId,
     activationType: replayed.activeActivation.activationType,
+    clock: replayed.clock,
+  });
+}
+
+export function recordHazardousTests(state, tests, id, at) {
+  const replayed = replayBattleState(state);
+  const activation = replayed.activeActivation;
+  if (!activation) throw new Error("No formation activation is in progress");
+  const deferredUntilChargeMove =
+    activation.source === "fire_overwatch" && activation.trigger === "charge_declared";
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "hazardous_tests_recorded",
+    activationEventId: activation.id,
+    formationId: activation.formationId,
+    tests,
+    deferredUntilChargeMove,
+    triggerChargeEventId: deferredUntilChargeMove ? activation.triggerEventId : "",
+    clock: replayed.clock,
+  });
+}
+
+export function hazardousBearerOptions(state) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingHazardous;
+  if (!pending?.due) return [];
+  const formation = replayed.formations.get(pending.formationId);
+  if (!formation) return [];
+  return hazardousSelectionOptions(formation).map((segment) => ({
+    id: segment.id,
+    modelName: segment.modelName,
+    unitName: segment.unitName,
+    role: segment.role,
+    keywords: [...segment.keywords],
+    modelsRemaining: formation.health[segment.id].modelsRemaining,
+    woundsLost: formation.health[segment.id].woundsLost,
+    wounds: segment.wounds,
+    feelNoPain: segment.feelNoPain,
+  }));
+}
+
+export function rollHazardousFeelNoPain(state, segmentId, randomUint32 = secureRandomUint32) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingHazardous;
+  if (!pending?.due) throw new Error("No Hazardous damage is ready to resolve");
+  const formation = replayed.formations.get(pending.formationId);
+  const options = formation ? hazardousSelectionOptions(formation) : [];
+  const segment = options.find((candidate) => candidate.id === segmentId);
+  if (!segment) throw new Error("Select an eligible Hazardous weapon bearer");
+  if (segment.feelNoPain === 0) return [];
+  const before = formation.health[segment.id];
+  const remainingWounds = segment.wounds - before.woundsLost;
+  const rolls = [];
+  let damage = 0;
+  while (rolls.length < 3 && damage < remainingWounds) {
+    const roll = randomDie(6, randomUint32);
+    rolls.push(roll);
+    if (roll < segment.feelNoPain) damage += 1;
+  }
+  return rolls;
+}
+
+export function resolveHazardousDamage(
+  state,
+  { selectedSegmentId = "", feelNoPainRolls = [], selectionReason = "" } = {},
+  id,
+  at,
+) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingHazardous;
+  if (!pending?.due) throw new Error("No Hazardous damage is ready to resolve");
+  const formation = replayed.formations.get(pending.formationId);
+  if (!formation) throw new Error("Hazardous formation is unavailable");
+  const options = hazardousSelectionOptions(formation);
+  const segment = options.find((candidate) => candidate.id === selectedSegmentId);
+  let allocation = null;
+  let summary = { damage: 0, modelsDestroyed: 0 };
+  if (options.length > 0) {
+    if (!segment) throw new Error("Select an eligible Hazardous weapon bearer");
+    const before = { ...formation.health[segment.id] };
+    const outcome = hazardousHealthAfter(segment, before, feelNoPainRolls);
+    allocation = { segmentId: segment.id, before, after: outcome.after };
+    summary = { damage: outcome.damage, modelsDestroyed: outcome.destroyed ? 1 : 0 };
+  }
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "hazardous_damage_resolved",
+    testEventId: pending.testEventId,
+    testIndex: pending.failedTestIndices[0],
+    formationId: pending.formationId,
+    selectedSegmentId: segment?.id ?? "",
+    noEligibleBearer: options.length === 0,
+    selectionReason,
+    feelNoPainRolls,
+    summary,
+    allocation,
     clock: replayed.clock,
   });
 }
