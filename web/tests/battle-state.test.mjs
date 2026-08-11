@@ -7,10 +7,12 @@ import {
   activeBattleAttacks,
   advanceBattleClock,
   appendResolvedAttack as appendResolvedAttackEvent,
+  battleEmbarkationOptions,
   battleFormationEmbarkedTransport,
   arriveFromReserves,
   battleFormationIsOnBattlefield,
   battleFormationHealth,
+  battleTransportOccupancy,
   battleUnusedWeaponCount,
   battleCanDeclareRangedAttack,
   battleCanResolveAttack,
@@ -184,6 +186,24 @@ function successfulChargeOptions(targetFormationId, overrides = {}) {
   };
 }
 
+function testTransportOption(transportFormationId, sourceSavedUnitIds, capacity = 12) {
+  return {
+    transportFormationId,
+    assignments: sourceSavedUnitIds.map((sourceSavedUnitId) => ({
+      sourceSavedUnitId,
+      modelCost: 1,
+      poolPosition: 0,
+      poolKind: "primary",
+      poolCapacity: capacity,
+      poolLabel: "primary",
+      sharedAllowancePosition: null,
+      sharedAllowanceMaximumModels: null,
+      sharedAllowancePrimaryCapacityWhileUsed: null,
+      sharedAllowanceNestedPassengerPolicy: null,
+    })),
+  };
+}
+
 function enemyFightMoveOptions(stage, overrides = {}) {
   return {
     destination: "enemy",
@@ -261,6 +281,7 @@ const passengerFormation = {
   name: "Passengers",
   weaponInventory: testWeaponInventory("passengers"),
   assignedTransportFormationId: transportFormation.id,
+  transportOptions: [testTransportOption(transportFormation.id, ["passengers"])],
   keywords: ["Infantry"],
   segments: [
     {
@@ -282,6 +303,9 @@ const mixedPassengerFormation = {
   sourceFormationId: "mixed-passengers",
   name: "Mixed Passengers",
   weaponInventory: testWeaponInventory("mixed-bodyguard"),
+  transportOptions: [
+    testTransportOption(transportFormation.id, ["mixed-bodyguard", "mixed-leader"]),
+  ],
   segments: [
     {
       ...passengerFormation.segments[0],
@@ -1132,6 +1156,419 @@ test("replays starting occupancy and normal embark and disembark timing", () => 
         state.events.length + 1,
       ),
     /started the Movement phase embarked/,
+  );
+});
+
+test("allows compatible unassigned Transport changes and enforces live capacity", () => {
+  const alternateTransport = {
+    ...transportFormation,
+    id: "player-1:alternate-transport",
+    sourceFormationId: "alternate-transport",
+    name: "Alternate Transport",
+    segments: [
+      {
+        ...transportFormation.segments[0],
+        id: "alternate-transport-model",
+        savedUnitId: "alternate-transport",
+      },
+    ],
+    weaponInventory: testWeaponInventory("alternate-transport"),
+  };
+  const flexiblePassenger = {
+    ...passengerFormation,
+    assignedTransportFormationId: transportFormation.id,
+    transportOptions: [
+      testTransportOption(transportFormation.id, ["passengers"], 2),
+      testTransportOption(alternateTransport.id, ["passengers"], 2),
+    ],
+  };
+  const extraPassenger = {
+    ...passengerFormation,
+    id: "player-1:extra-passenger",
+    sourceFormationId: "extra-passenger",
+    name: "Extra Passenger",
+    assignedTransportFormationId: "",
+    transportOptions: [testTransportOption(alternateTransport.id, ["extra-passenger"], 2)],
+    weaponInventory: testWeaponInventory("extra-passenger"),
+    segments: [
+      {
+        ...passengerFormation.segments[0],
+        id: "extra-passenger-model",
+        savedUnitId: "extra-passenger",
+        startingModels: 1,
+      },
+    ],
+  };
+  let state = newBattle();
+  for (const [registered, id] of [
+    [transportFormation, "register-original-transport"],
+    [alternateTransport, "register-alternate-transport"],
+    [flexiblePassenger, "register-flexible-passenger"],
+    [extraPassenger, "register-extra-passenger"],
+    [formation, "register-capacity-enemy"],
+  ]) {
+    state = registerBattleFormation(state, registered, id, state.events.length + 1);
+  }
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "start-transport-change", 20);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "transport-change-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    flexiblePassenger.id,
+    "normal",
+    "flexible-passenger-moved",
+    state.events.length + 1,
+  );
+  assert.deepEqual(
+    battleEmbarkationOptions(state, flexiblePassenger.id).map((option) => [
+      option.transportFormationId,
+      option.assigned,
+      option.available,
+    ]),
+    [
+      [transportFormation.id, true, true],
+      [alternateTransport.id, false, true],
+    ],
+  );
+  state = embarkFormation(
+    state,
+    flexiblePassenger.id,
+    alternateTransport.id,
+    { rangeConfirmed: true, rangeReason: "Every model ended within 3 inches" },
+    "embark-unassigned-transport",
+    state.events.length + 1,
+  );
+  assert.equal(
+    battleFormationEmbarkedTransport(state, flexiblePassenger.id),
+    alternateTransport.id,
+  );
+  assert.deepEqual(battleTransportOccupancy(state, alternateTransport.id).poolLoads, [
+    { position: 0, kind: "primary", label: "primary", capacity: 2, used: 2 },
+  ]);
+  state = recordFormationMovement(
+    state,
+    extraPassenger.id,
+    "normal",
+    "extra-passenger-moved",
+    state.events.length + 1,
+  );
+  const blocked = battleEmbarkationOptions(state, extraPassenger.id)[0];
+  assert.equal(blocked.available, false);
+  assert.match(blocked.reason, /use 3 of 2 spaces/i);
+  assert.throws(
+    () =>
+      embarkFormation(
+        state,
+        extraPassenger.id,
+        alternateTransport.id,
+        { rangeConfirmed: true, rangeReason: "Every model ended within 3 inches" },
+        "over-capacity-embarkation",
+        state.events.length + 1,
+      ),
+    /use 3 of 2 spaces/i,
+  );
+});
+
+test("recomputes Transport capacity from surviving models before embarkation", () => {
+  const casualtyTransport = {
+    ...transportFormation,
+    id: "player-1:casualty-transport",
+    sourceFormationId: "casualty-transport",
+    name: "Casualty Transport",
+    segments: [
+      {
+        ...transportFormation.segments[0],
+        id: "casualty-transport-model",
+        savedUnitId: "casualty-transport",
+      },
+    ],
+    weaponInventory: testWeaponInventory("casualty-transport"),
+  };
+  const casualtyPassenger = {
+    ...passengerFormation,
+    assignedTransportFormationId: "",
+    transportOptions: [testTransportOption(casualtyTransport.id, ["passengers"], 2)],
+  };
+  const occupyingPassenger = {
+    ...passengerFormation,
+    id: "player-1:occupying-passenger",
+    sourceFormationId: "occupying-passenger",
+    name: "Occupying Passenger",
+    assignedTransportFormationId: casualtyTransport.id,
+    transportOptions: [testTransportOption(casualtyTransport.id, ["occupying-passenger"], 2)],
+    weaponInventory: testWeaponInventory("occupying-passenger"),
+    segments: [
+      {
+        ...passengerFormation.segments[0],
+        id: "occupying-passenger-model",
+        savedUnitId: "occupying-passenger",
+        startingModels: 1,
+      },
+    ],
+  };
+  let state = newBattle();
+  for (const [registered, id] of [
+    [casualtyTransport, "register-casualty-transport"],
+    [casualtyPassenger, "register-casualty-passenger"],
+    [occupyingPassenger, "register-occupying-passenger"],
+    [formation, "register-casualty-attacker"],
+  ]) {
+    state = registerBattleFormation(state, registered, id, state.events.length + 1);
+  }
+  for (const registered of replayBattleState(state).formations.values()) {
+    const embarked = registered.id === occupyingPassenger.id;
+    state = declareFormationDeployment(
+      state,
+      registered.id,
+      embarked ? "embarked" : "battlefield",
+      embarked ? { transportFormationId: casualtyTransport.id } : {},
+      `declare-casualty-${registered.id}`,
+      state.events.length + 1,
+    );
+  }
+  while (!replayBattleState(state).deploymentComplete) {
+    const replayed = replayBattleState(state);
+    const next = [...replayed.formations.values()].find(
+      (registered) =>
+        registered.playerId === replayed.deploymentPriorityPlayerId &&
+        replayed.deploymentByFormation.get(registered.id)?.location === "battlefield" &&
+        !replayed.deployedFormationIds.has(registered.id),
+    );
+    assert.ok(next);
+    state = deployFormation(
+      state,
+      next.id,
+      { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
+      `deploy-casualty-${next.id}`,
+      state.events.length + 1,
+    );
+  }
+  state = startBattle(state, "player-2", "start-casualty-capacity", state.events.length + 1);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "casualty-attacker-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    formation.id,
+    "stationary",
+    "casualty-attacker-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, battleAttackWindow, "casualty-attacker-shooting");
+  state = startFormationActivation(
+    state,
+    formation.id,
+    {},
+    "casualty-attacker-activation",
+    state.events.length + 1,
+  );
+  state = recordVisibleRangedTarget(state, formation.id, casualtyPassenger.id);
+  const declarationEventId = state.events.at(-1).id;
+  state = closeRangedTargetDeclarations(
+    state,
+    "casualty-targets-declared",
+    state.events.length + 1,
+  );
+  state = passGoToGround(
+    state,
+    "Defending player declined the Stratagem",
+    "casualty-go-to-ground-pass",
+    state.events.length + 1,
+  );
+  state = appendResolvedAttackEvent(state, {
+    id: "destroy-one-passenger",
+    at: state.events.length + 1,
+    attackerFormationId: formation.id,
+    targetFormationId: casualtyPassenger.id,
+    segmentIds: ["passenger-models"],
+    targets: [{ wounds: 2, modelCount: 2 }],
+    initialWoundsLost: 0,
+    result: { appliedDamage: 2, modelsDestroyed: 1 },
+    summary: {
+      attacker: formation.name,
+      weapon: "Test ranged weapon",
+      target: casualtyPassenger.name,
+      damage: 2,
+      successful: 1,
+    },
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Visible and in range",
+    targetEligibilityEventId: declarationEventId,
+    weaponId: "test-ranged-weapon",
+    declaredWeaponCount: 1,
+    weaponSourceFormationId: formation.id,
+    sourceSavedUnitId: "unit-1",
+    weaponGroupId: "test-ranged-group",
+  });
+  state = completeFormationActivation(state, "complete-casualty-attack", state.events.length + 1);
+  assert.equal(
+    battleFormationHealth(state, casualtyPassenger.id)["passenger-models"].modelsRemaining,
+    1,
+  );
+  state = advanceTo(
+    state,
+    (clock) =>
+      clock.activePlayerId === "player-1" &&
+      clock.phase === "movement" &&
+      clock.step === "move_units",
+    "casualty-passenger-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    casualtyPassenger.id,
+    "normal",
+    "casualty-passenger-moved",
+    state.events.length + 1,
+  );
+  assert.equal(battleEmbarkationOptions(state, casualtyPassenger.id)[0].available, true);
+  state = embarkFormation(
+    state,
+    casualtyPassenger.id,
+    casualtyTransport.id,
+    { rangeConfirmed: true, rangeReason: "Surviving model ended within 3 inches" },
+    "embark-after-casualty",
+    state.events.length + 1,
+  );
+  assert.equal(battleTransportOccupancy(state, casualtyTransport.id).poolLoads[0].used, 2);
+});
+
+test("enforces independent pools, alternative modes, and shared-capacity reductions", () => {
+  const pooledTransport = {
+    ...transportFormation,
+    id: "player-1:pooled-transport",
+    sourceFormationId: "pooled-transport",
+    name: "Pooled Transport",
+    segments: [
+      {
+        ...transportFormation.segments[0],
+        id: "pooled-transport-model",
+        savedUnitId: "pooled-transport",
+      },
+    ],
+    weaponInventory: testWeaponInventory("pooled-transport"),
+  };
+  const makePassenger = (id, models, assignment) => ({
+    ...passengerFormation,
+    id: `player-1:${id}`,
+    sourceFormationId: id,
+    name: id,
+    assignedTransportFormationId: "",
+    weaponInventory: testWeaponInventory(id),
+    transportOptions: [
+      {
+        transportFormationId: pooledTransport.id,
+        assignments: [{ ...assignment, sourceSavedUnitId: id }],
+      },
+    ],
+    segments: [
+      {
+        ...passengerFormation.segments[0],
+        id: `${id}-models`,
+        savedUnitId: id,
+        startingModels: models,
+      },
+    ],
+  });
+  const baseAssignment = {
+    modelCost: 1,
+    poolPosition: 0,
+    poolKind: "primary",
+    poolCapacity: 6,
+    poolLabel: "Infantry",
+    sharedAllowancePosition: null,
+    sharedAllowanceMaximumModels: null,
+    sharedAllowancePrimaryCapacityWhileUsed: null,
+    sharedAllowanceNestedPassengerPolicy: null,
+  };
+  const primary = makePassenger("primary-passengers", 4, baseAssignment);
+  const additional = makePassenger("additional-passenger", 1, {
+    ...baseAssignment,
+    poolPosition: 1,
+    poolKind: "additional",
+    poolCapacity: 1,
+    poolLabel: "Dreadnought",
+  });
+  const alternative = makePassenger("alternative-passenger", 1, {
+    ...baseAssignment,
+    poolPosition: 2,
+    poolKind: "alternative",
+    poolCapacity: 1,
+    poolLabel: "Vehicle mode",
+  });
+  const shared = makePassenger("shared-passenger", 1, {
+    ...baseAssignment,
+    sharedAllowancePosition: 1,
+    sharedAllowanceMaximumModels: 1,
+    sharedAllowancePrimaryCapacityWhileUsed: 3,
+  });
+  let state = newBattle();
+  for (const [registered, id] of [
+    [pooledTransport, "register-pooled-transport"],
+    [primary, "register-primary-passengers"],
+    [additional, "register-additional-passenger"],
+    [alternative, "register-alternative-passenger"],
+    [shared, "register-shared-passenger"],
+  ]) {
+    state = registerBattleFormation(state, registered, id, state.events.length + 1);
+  }
+  state = declareFormationDeployment(
+    state,
+    pooledTransport.id,
+    "battlefield",
+    {},
+    "declare-pooled-transport",
+    state.events.length + 1,
+  );
+  for (const passenger of [primary, additional]) {
+    state = declareFormationDeployment(
+      state,
+      passenger.id,
+      "embarked",
+      { transportFormationId: pooledTransport.id },
+      `declare-${passenger.sourceFormationId}`,
+      state.events.length + 1,
+    );
+  }
+  assert.deepEqual(
+    battleTransportOccupancy(state, pooledTransport.id).poolLoads.map((pool) => [
+      pool.kind,
+      pool.used,
+      pool.capacity,
+    ]),
+    [
+      ["primary", 4, 6],
+      ["additional", 1, 1],
+    ],
+  );
+  assert.throws(
+    () =>
+      declareFormationDeployment(
+        state,
+        alternative.id,
+        "embarked",
+        { transportFormationId: pooledTransport.id },
+        "declare-alternative-passenger",
+        state.events.length + 1,
+      ),
+    /mutually exclusive Transport modes/i,
+  );
+  assert.throws(
+    () =>
+      declareFormationDeployment(
+        state,
+        shared.id,
+        "embarked",
+        { transportFormationId: pooledTransport.id },
+        "declare-shared-passenger",
+        state.events.length + 1,
+      ),
+    /use 5 of 3 spaces/i,
   );
 });
 

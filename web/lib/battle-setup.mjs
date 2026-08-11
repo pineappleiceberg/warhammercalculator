@@ -13,6 +13,7 @@ import {
   TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
   TIMELINE_BATTLE_STATE_VERSION,
   TRANSPORT_BATTLE_STATE_VERSION,
+  TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION,
   WEAPON_BEARER_BATTLE_STATE_VERSION,
   WEAPON_INVENTORY_BATTLE_STATE_VERSION,
   createBattleState,
@@ -63,7 +64,13 @@ function upgradePlayers(state, firstList, secondList) {
   }));
 }
 
-function registrationFor(formation, player, equipmentOverride, assignedTransportFormationId = "") {
+function registrationFor(
+  formation,
+  player,
+  equipmentOverride,
+  assignedTransportFormationId = "",
+  transportOptions = [],
+) {
   const equipment = equipmentOverride ?? savedFormationDefensiveEquipmentDefaults(formation);
   const targetSequence = savedFormationTargetSequence(formation, "", equipment);
   if (targetSequence.ambiguousComponents.length > 0) {
@@ -80,7 +87,72 @@ function registrationFor(formation, player, equipmentOverride, assignedTransport
     targetSequence,
     equipment,
     assignedTransportFormationId,
+    transportOptions,
   );
+}
+
+function exactTransportOptions(catalogue, list, formations, formationIdBySavedUnitId) {
+  const clearedList = {
+    ...list,
+    units: list.units.map((unit) => ({ ...unit, transportId: "" })),
+  };
+  const optionsByFormationId = new Map(formations.map((formation) => [formation.id, []]));
+  for (const passengerFormation of formations) {
+    const passengerSavedUnitIds = new Set(
+      passengerFormation.components.map((component) => component.unit.id),
+    );
+    for (const transportFormation of formations) {
+      const transportComponents = transportFormation.components.filter(
+        (component) => component.catalogueUnit?.transport?.exactRules,
+      );
+      if (
+        transportComponents.length !== 1 ||
+        passengerSavedUnitIds.has(transportComponents[0].unit.id)
+      ) {
+        continue;
+      }
+      const transportComponent = transportComponents[0];
+      const hypothetical = {
+        ...clearedList,
+        units: clearedList.units.map((unit) =>
+          passengerSavedUnitIds.has(unit.id)
+            ? { ...unit, modelCount: 0, transportId: transportComponent.unit.id }
+            : unit,
+        ),
+      };
+      const report = transportAssignmentReport(catalogue, hypothetical);
+      if (report.errors.length > 0) continue;
+      const assignments = report.assignments.filter(
+        (assignment) =>
+          passengerSavedUnitIds.has(assignment.passengerUnit.id) &&
+          assignment.transportUnit.id === transportComponent.unit.id,
+      );
+      if (
+        assignments.length !== passengerSavedUnitIds.size ||
+        new Set(assignments.map((assignment) => assignment.passengerUnit.id)).size !==
+          passengerSavedUnitIds.size
+      ) {
+        continue;
+      }
+      optionsByFormationId.get(passengerFormation.id).push({
+        transportFormationId: formationIdBySavedUnitId.get(transportComponent.unit.id),
+        assignments: assignments.map((assignment) => ({
+          sourceSavedUnitId: assignment.passengerUnit.id,
+          modelCost: assignment.modelCost,
+          poolPosition: assignment.poolPosition,
+          poolKind: assignment.poolKind,
+          poolCapacity: assignment.poolCapacity,
+          poolLabel: assignment.poolLabel,
+          sharedAllowancePosition: assignment.sharedAllowancePosition,
+          sharedAllowanceMaximumModels: assignment.sharedAllowanceMaximumModels,
+          sharedAllowancePrimaryCapacityWhileUsed:
+            assignment.sharedAllowancePrimaryCapacityWhileUsed,
+          sharedAllowanceNestedPassengerPolicy: assignment.sharedAllowanceNestedPassengerPolicy,
+        })),
+      });
+    }
+  }
+  return optionsByFormationId;
 }
 
 function desiredRegistrations(catalogue, state, firstList, secondList, equipmentOverrides = {}) {
@@ -96,6 +168,12 @@ function desiredRegistrations(catalogue, state, firstList, secondList, equipment
       formations.flatMap((formation) =>
         formation.components.map((component) => [component.unit.id, formation.id]),
       ),
+    );
+    const transportOptionsByFormationId = exactTransportOptions(
+      catalogue,
+      list,
+      formations,
+      formationIdBySavedUnitId,
     );
     const assignedTransportByFormationId = new Map();
     for (const assignment of report.assignments) {
@@ -118,6 +196,10 @@ function desiredRegistrations(catalogue, state, firstList, secondList, equipment
         player,
         equipmentOverrides[id],
         assignedSourceId ? `${player.id}:${assignedSourceId}` : "",
+        (transportOptionsByFormationId.get(formation.id) ?? []).map((option) => ({
+          ...option,
+          transportFormationId: `${player.id}:${option.transportFormationId}`,
+        })),
       );
     });
   });
@@ -172,6 +254,7 @@ function legacyAggregateBearerFormation(existing, desired) {
     keywords: desired.keywords,
     defensiveEquipmentCounts: existing.defensiveEquipmentCounts ?? desired.defensiveEquipmentCounts,
     assignedTransportFormationId: desired.assignedTransportFormationId,
+    transportOptions: desired.transportOptions,
     weaponBearerTracking: "legacy_aggregate",
     modelInstances: [],
     weaponInventory: historicalInventory.map((group) => ({
@@ -263,6 +346,7 @@ function registerCompleteRosters(catalogue, state, firstList, secondList, equipm
             defensiveEquipmentCounts: formation.defensiveEquipmentCounts,
             weaponInventory: formation.weaponInventory,
             assignedTransportFormationId: formation.assignedTransportFormationId,
+            transportOptions: formation.transportOptions,
             segments: formation.segments,
           },
         };
@@ -368,6 +452,10 @@ export function initializeBattleForLists({
             sourceVersion < TRANSPORT_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyTransportThroughSequence ?? 0),
+          legacyTransportCompatibilityThroughSequence:
+            sourceVersion < TRANSPORT_COMPATIBILITY_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyTransportCompatibilityThroughSequence ?? 0),
           legacyTargetEligibilityThroughSequence:
             sourceVersion < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
               ? next.events.length

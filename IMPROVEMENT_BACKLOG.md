@@ -27,8 +27,7 @@ state.
 
 ## Prioritized backlog
 
-1. Expand Transport changes beyond the roster's locked assigned carrier and
-   execute transport-specific exceptions, then continue the remaining
+1. Execute remaining Transport-specific exceptions, then continue the remaining
    reactions, cover, and Stratagem windows.
 2. Build and enforce the source-locked faction, detachment, enhancement,
    Stratagem, terrain, and mission coverage matrix described by the complete
@@ -40,6 +39,23 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced guided play to battle-state version 18 with immutable
+  source-compatible Transport choices instead of treating a roster preset as a
+  rules restriction. Setup derives every compatible friendly carrier for the
+  complete formation, including Attached formation components, and Guided Play
+  offers those alternatives during deployment and later embarkation while still
+  identifying the roster preset. Replay recalculates occupied space from each
+  component's surviving models, preserves independent capacity pools, rejects
+  mixed alternative modes, applies shared model allowances and primary-capacity
+  reductions, and keeps nested passengers from being double-counted by an outer
+  carrier. Compatibility and live occupancy are exposed by the replay API. A
+  shared ACSL-specified capacity predicate is differentially checked across C,
+  WebAssembly, JavaScript, and the API, with native, migration, casualty,
+  compound-pool, fuzz, and rendered workflow regressions. Version-17 histories
+  migrate behind an explicit Transport-compatibility boundary. Official Core
+  Rules page 17 is source-locked for the friendly compatible Transport and live
+  capacity requirements.
 
 - 2026-08-11: Advanced guided play to battle-state version 17 with immutable,
   activation-wide Shooting declarations. Every weapon copy, selected profile,

@@ -20,6 +20,7 @@ import {
   advanceBattleClock,
   appendResolvedAttack,
   arriveFromReserves,
+  battleEmbarkationOptions,
   battleCanDeclareRangedAttack,
   battleCanResolveAttack,
   battleFormation,
@@ -271,6 +272,7 @@ export default function PlayMode() {
   const [reservePlacementReason, setReservePlacementReason] = useState("");
   const [transportPlacementConfirmed, setTransportPlacementConfirmed] = useState(false);
   const [transportPlacementReason, setTransportPlacementReason] = useState("");
+  const [selectedEmbarkTransportId, setSelectedEmbarkTransportId] = useState("");
   const [deadlyDemiseResolvedConfirmed, setDeadlyDemiseResolvedConfirmed] = useState(false);
   const [destroyedTransportOptions, setDestroyedTransportOptions] = useState<
     Record<string, { emergency: boolean; unplacedModels: number; firstSegmentId: string }>
@@ -814,15 +816,22 @@ export default function PlayMode() {
   const selectedEmbarkedTransportId = attackerBattleFormationId
     ? (replayedBattle?.embarkedByFormation.get(attackerBattleFormationId) ?? "")
     : "";
-  const selectedBattleFormation = attackerBattleFormationId
-    ? replayedBattle?.formations.get(attackerBattleFormationId)
-    : undefined;
-  const assignedTransportFormationId = selectedBattleFormation?.assignedTransportFormationId ?? "";
-  const assignedTransportOnBattlefield = Boolean(
-    assignedTransportFormationId &&
-      battleState &&
-      battleFormationIsOnBattlefield(battleState, assignedTransportFormationId),
+  const embarkationOptions =
+    battleState && attackerBattleFormationId
+      ? battleEmbarkationOptions(battleState, attackerBattleFormationId)
+      : [];
+  const availableEmbarkationOptions = embarkationOptions.filter(
+    (option: { available: boolean }) => option.available,
   );
+  const activeEmbarkTransportId = availableEmbarkationOptions.some(
+    (option: { transportFormationId: string }) =>
+      option.transportFormationId === selectedEmbarkTransportId,
+  )
+    ? selectedEmbarkTransportId
+    : (availableEmbarkationOptions.find((option: { assigned: boolean }) => option.assigned)
+        ?.transportFormationId ??
+      availableEmbarkationOptions[0]?.transportFormationId ??
+      "");
   const pendingDestroyedTransport = replayedBattle
     ? [...replayedBattle.pendingTransportDestructions.values()][0]
     : undefined;
@@ -2798,11 +2807,15 @@ export default function PlayMode() {
       const data = new FormData(event.currentTarget);
       let next = battleState;
       for (const formation of replayedBattle.formations.values()) {
-        const location = String(data.get(`location-${formation.id}`) || "battlefield");
+        const locationChoice = String(data.get(`location-${formation.id}`) || "battlefield");
+        const location = locationChoice.startsWith("embarked:") ? "embarked" : locationChoice;
         const transportFormationId =
-          location === "embarked" ? formation.assignedTransportFormationId : "";
+          location === "embarked" ? locationChoice.slice("embarked:".length) : "";
         const transportLocation = transportFormationId
-          ? String(data.get(`location-${transportFormationId}`) || "battlefield")
+          ? String(data.get(`location-${transportFormationId}`) || "battlefield").replace(
+              /^embarked:.+$/,
+              "embarked",
+            )
           : "";
         const inReserves =
           ["reserves", "strategic_reserves"].includes(location) ||
@@ -3148,12 +3161,12 @@ export default function PlayMode() {
   };
 
   const recordSelectedEmbarkation = () => {
-    if (!battleState || !attackerBattleFormationId || !assignedTransportFormationId) return;
+    if (!battleState || !attackerBattleFormationId || !activeEmbarkTransportId) return;
     try {
       const next = embarkFormation(
         battleState,
         attackerBattleFormationId,
-        assignedTransportFormationId,
+        activeEmbarkTransportId,
         {
           rangeConfirmed: transportPlacementConfirmed,
           rangeReason: transportPlacementReason.trim(),
@@ -3164,6 +3177,7 @@ export default function PlayMode() {
       setBattleState(next);
       setTransportPlacementConfirmed(false);
       setTransportPlacementReason("");
+      setSelectedEmbarkTransportId("");
       setStatus(`${attackerFormation?.name ?? "Formation"} embarked`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Formation could not embark");
@@ -6438,9 +6452,51 @@ export default function PlayMode() {
                         ["normal", "advance", "fall_back"].includes(
                           selectedMovement?.movement ?? "",
                         ) &&
-                        assignedTransportOnBattlefield &&
+                        embarkationOptions.length > 0 &&
+                        availableEmbarkationOptions.length === 0 &&
+                        !selectedDisembarkedCurrentPhase && (
+                          <span>
+                            No compatible Transport can currently receive this formation:{" "}
+                            {embarkationOptions
+                              .map(
+                                (option: { name: string; reason: string }) =>
+                                  `${option.name} — ${option.reason}`,
+                              )
+                              .join("; ")}
+                          </span>
+                        )}
+                      {selectedMovementCurrent &&
+                        ["normal", "advance", "fall_back"].includes(
+                          selectedMovement?.movement ?? "",
+                        ) &&
+                        availableEmbarkationOptions.length > 0 &&
                         !selectedDisembarkedCurrentPhase && (
                           <>
+                            <label>
+                              <span>Compatible Transport</span>
+                              <select
+                                value={activeEmbarkTransportId}
+                                onChange={(event) =>
+                                  setSelectedEmbarkTransportId(event.target.value)
+                                }
+                              >
+                                {availableEmbarkationOptions.map(
+                                  (option: {
+                                    transportFormationId: string;
+                                    name: string;
+                                    assigned: boolean;
+                                  }) => (
+                                    <option
+                                      key={option.transportFormationId}
+                                      value={option.transportFormationId}
+                                    >
+                                      {option.name}
+                                      {option.assigned ? " · roster preset" : ""}
+                                    </option>
+                                  ),
+                                )}
+                              </select>
+                            </label>
                             <label className="confirmation-row">
                               <input
                                 type="checkbox"
@@ -6449,7 +6505,7 @@ export default function PlayMode() {
                                   setTransportPlacementConfirmed(event.target.checked)
                                 }
                               />
-                              Every model ended the move within 3 inches of the assigned Transport
+                              Every model ended the move within 3 inches of the selected Transport
                             </label>
                             <input
                               value={transportPlacementReason}
@@ -6459,7 +6515,7 @@ export default function PlayMode() {
                             />
                             <button type="button" onClick={recordSelectedEmbarkation}>
                               Embark in{" "}
-                              {replayedBattle.formations.get(assignedTransportFormationId)?.name ??
+                              {replayedBattle.formations.get(activeEmbarkTransportId)?.name ??
                                 "Transport"}
                             </button>
                           </>
@@ -7199,7 +7255,7 @@ export default function PlayMode() {
                     <strong>Declare battle formations</strong>
                     <span>
                       Put every formation on the battlefield, in Reserves, in Strategic Reserves, or
-                      inside its assigned Transport before either player deploys a model.
+                      inside a compatible friendly Transport before either player deploys a model.
                     </span>
                   </div>
                   {[...replayedBattle.formations.values()].map((formation) => (
@@ -7213,12 +7269,21 @@ export default function PlayMode() {
                         <span>Starting location</span>
                         <select name={"location-" + formation.id} defaultValue="battlefield">
                           <option value="battlefield">Battlefield</option>
-                          {formation.assignedTransportFormationId && (
-                            <option value="embarked">
-                              Embarked in{" "}
-                              {replayedBattle.formations.get(formation.assignedTransportFormationId)
-                                ?.name ?? "assigned Transport"}
-                            </option>
+                          {formation.transportOptions.map(
+                            (option: { transportFormationId: string }) => (
+                              <option
+                                key={option.transportFormationId}
+                                value={`embarked:${option.transportFormationId}`}
+                              >
+                                Embarked in{" "}
+                                {replayedBattle.formations.get(option.transportFormationId)?.name ??
+                                  "compatible Transport"}
+                                {formation.assignedTransportFormationId ===
+                                option.transportFormationId
+                                  ? " · roster preset"
+                                  : ""}
+                              </option>
+                            ),
                           )}
                           <option value="reserves">Reserves (source rule)</option>
                           <option value="strategic_reserves">Strategic Reserves</option>

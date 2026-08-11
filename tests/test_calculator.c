@@ -1594,6 +1594,20 @@ static void test_ranged_declaration(void) {
 
 /*@ assigns \nothing;
  */
+static void test_transport_load(void) {
+    assert(whc_transport_load_is_valid(12u, 12u, 0u, 0u, 1u));
+    assert(whc_transport_load_is_valid(4u, 6u, 1u, 1u, 1u));
+    assert(whc_transport_load_is_valid(0u, 12u, 0u, 0u, 0u));
+    assert(!whc_transport_load_is_valid(13u, 12u, 0u, 0u, 1u));
+    assert(!whc_transport_load_is_valid(4u, 6u, 2u, 1u, 1u));
+    assert(whc_transport_load_is_valid(4u, 6u, 0u, 1u, 1u));
+    assert(!whc_transport_load_is_valid(4u, 6u, 1u, 0u, 1u));
+    assert(!whc_transport_load_is_valid(4u, 6u, 0u, 0u, 2u));
+    assert(!whc_transport_load_is_valid(0u, 0u, 0u, 0u, 0u));
+}
+
+/*@ assigns \nothing;
+ */
 static void test_battle_clock(void) {
     uint32_t current[WHC_BATTLE_CLOCK_FIELDS] = {0u};
     uint32_t next[WHC_BATTLE_CLOCK_FIELDS] = {0u};
@@ -1661,6 +1675,7 @@ int main(void) {
     test_hazardous_resolution();
     test_go_to_ground();
     test_ranged_declaration();
+    test_transport_load();
     test_battle_clock();
     puts("all tests passed");
     return 0;

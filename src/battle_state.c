@@ -315,6 +315,14 @@ bool whc_ranged_declaration_is_valid(uint32_t declaration_count,
            flags == WHC_RANGED_DECLARATION_FLAGS_MASK;
 }
 
+bool whc_transport_load_is_valid(uint32_t used_capacity, uint32_t capacity,
+                                 uint32_t allowance_models, uint32_t allowance_maximum,
+                                 uint32_t mode_count) {
+    return capacity > 0u && used_capacity <= capacity && mode_count <= 1u &&
+           ((allowance_maximum == 0u && allowance_models == 0u) ||
+            (allowance_maximum > 0u && allowance_models <= allowance_maximum));
+}
+
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,
                                      const uint32_t *events, uint32_t event_count,
                                      uint32_t *health) {

@@ -2991,7 +2991,7 @@ test("cross-checks structured charge movement through the C and WebAssembly API"
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 17);
+  assert.equal(body.data.schemaVersion, 18);
   assert.equal(body.data.charges[0].canonicalMovement, true);
   assert.deepEqual(body.data.charges[0].rolls, [3, 4]);
   assert.equal(body.data.charges[0].chargeDistanceThousandths, 7000);
@@ -3170,7 +3170,7 @@ test("cross-checks Fire Overwatch reactions through the C and WebAssembly API", 
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 17);
+  assert.equal(body.data.schemaVersion, 18);
   assert.equal(body.data.pendingFireOverwatch, null);
   assert.equal(body.data.fireOverwatches.length, 1);
   assert.equal(body.data.fireOverwatches[0].trigger, "normal_move_start");
@@ -3482,7 +3482,7 @@ test("cross-checks Go to Ground reaction and phase effect through the C and WebA
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 17);
+  assert.equal(body.data.schemaVersion, 18);
   assert.equal(body.data.pendingGoToGround, null);
   assert.equal(body.data.readyRangedAttack.triggerEventId, "gtg-target-selected");
   assert.equal(body.data.rangedDeclarations.sets.length, 1);
@@ -3528,6 +3528,25 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
     name: "Passenger",
     assignedTransportFormationId: "transport",
     keywords: ["Infantry"],
+    transportOptions: [
+      {
+        transportFormationId: "transport",
+        assignments: [
+          {
+            sourceSavedUnitId: "passenger",
+            modelCost: 1,
+            poolPosition: 0,
+            poolKind: "primary",
+            poolCapacity: 12,
+            poolLabel: "Transport capacity",
+            sharedAllowancePosition: null,
+            sharedAllowanceMaximumModels: null,
+            sharedAllowancePrimaryCapacityWhileUsed: null,
+            sharedAllowanceNestedPassengerPolicy: null,
+          },
+        ],
+      },
+    ],
     segments: [
       {
         id: "passenger-model",
@@ -3604,6 +3623,25 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
     8,
   );
   state = startBattle(state, "player-2", "start", 9);
+  const occupancyWorker = await loadWorker();
+  const occupancyResponse = await occupancyWorker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: state, formationId: "passenger" }),
+    }),
+    testEnv,
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  assert.equal(
+    occupancyResponse.status,
+    200,
+    JSON.stringify(await occupancyResponse.clone().json()),
+  );
+  const occupancyBody = await occupancyResponse.json();
+  assert.deepEqual(occupancyBody.data.transports.occupancy[0].occupantFormationIds, ["passenger"]);
+  assert.equal(occupancyBody.data.transports.occupancy[0].poolLoads[0].used, 1);
+  assert.equal(occupancyBody.data.transports.occupancy[0].poolLoads[0].capacity, 12);
   while (
     !(
       replayBattleState(state).clock.phase === "movement" &&
@@ -3726,7 +3764,12 @@ test("cross-checks destroyed Transport passenger damage through WebAssembly", as
   );
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
-  assert.equal(body.data.schemaVersion, 17);
+  assert.equal(body.data.schemaVersion, 18);
+  assert.equal(body.data.transports.compatibility.length, 1);
+  assert.equal(body.data.transports.compatibility[0].formationId, "passenger");
+  assert.equal(body.data.transports.compatibility[0].transportFormationId, "transport");
+  assert.equal(body.data.transports.compatibility[0].assigned, true);
+  assert.equal(body.data.transports.occupancy.length, 1);
   assert.deepEqual(body.data.weaponDeclarations, [
     {
       attackEventId: "destroy-transport",
