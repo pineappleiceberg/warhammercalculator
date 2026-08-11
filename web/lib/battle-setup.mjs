@@ -2,6 +2,7 @@ import {
   ACTION_BATTLE_STATE_VERSION,
   BATTLE_EVENT_VERSION,
   BATTLE_STATE_VERSION,
+  EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION,
   CHARGE_MOVE_BATTLE_STATE_VERSION,
   COUNTER_OFFENSIVE_BATTLE_STATE_VERSION,
   FIGHT_MOVE_BATTLE_STATE_VERSION,
@@ -628,6 +629,10 @@ export function initializeBattleForLists({
             sourceVersion < MODEL_POSITION_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyModelPositionsThroughSequence ?? 0),
+          legacyExtendedModelPositionsThroughSequence:
+            sourceVersion < EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyExtendedModelPositionsThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

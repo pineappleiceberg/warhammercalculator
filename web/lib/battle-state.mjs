@@ -13,7 +13,8 @@ import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 import { normalizeBattleRuleCoverageBinding } from "./battle-rule-selection.mjs";
 import { chapterApprovedTableBinding } from "./mission-pack.mjs";
 
-export const BATTLE_STATE_VERSION = 28;
+export const BATTLE_STATE_VERSION = 29;
+export const EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION = 29;
 export const MODEL_POSITION_BATTLE_STATE_VERSION = 28;
 export const MODEL_PLACEMENT_BATTLE_STATE_VERSION = 27;
 export const TERRAIN_FOOTPRINT_BATTLE_STATE_VERSION = 26;
@@ -85,6 +86,22 @@ const TERRAIN_FOOTPRINT_METHODS = TABLE_GEOMETRY_METHODS;
 const MODEL_PLACEMENT_METHODS = TABLE_GEOMETRY_METHODS;
 const MODEL_MEASUREMENT_BASES = Object.freeze(["base", "model"]);
 const MODEL_FOOTPRINT_SHAPES = Object.freeze(["circle", "ellipse", "rectangle"]);
+const MODEL_PATH_POSITION_CONTEXTS = Object.freeze([
+  "movement",
+  "charge",
+  "heroic_intervention",
+  "pile_in",
+  "consolidation",
+]);
+const MODEL_SETUP_POSITION_CONTEXTS = Object.freeze([
+  "reserve_arrival",
+  "rapid_ingress",
+  "disembarkation",
+]);
+
+export function modelPositionContextUsesPath(context) {
+  return MODEL_PATH_POSITION_CONTEXTS.includes(context);
+}
 export const TABLE_GEOMETRY_FLAGS = Object.freeze({
   reviewedByPlayer: 1,
   sourceLocked: 2,
@@ -288,7 +305,7 @@ export function modelPositionSetFacts(set, formation, previousSet = null) {
       model,
     ]),
   );
-  const movement = set?.context === "movement";
+  const movement = modelPositionContextUsesPath(set?.context);
   const paths = models.filter(
     (model) =>
       Array.isArray(model?.path) &&
@@ -1881,14 +1898,21 @@ function normalizeModelPositionSet(candidate, formation) {
       ? boundedString(set.reviewReason, "Model position review", 500).trim()
       : "",
   };
-  if (!["movement", "reserve_arrival", "rapid_ingress"].includes(normalized.context)) {
+  if (
+    ![...MODEL_PATH_POSITION_CONTEXTS, ...MODEL_SETUP_POSITION_CONTEXTS].includes(
+      normalized.context,
+    )
+  ) {
     throw new Error("Model position context is unsupported");
   }
-  if (normalized.context === "movement" && models.some((model) => model.path.length < 2)) {
+  if (
+    modelPositionContextUsesPath(normalized.context) &&
+    models.some((model) => model.path.length < 2)
+  ) {
     throw new Error("Movement model positions require a start and endpoint");
   }
   if (
-    normalized.context !== "movement" &&
+    !modelPositionContextUsesPath(normalized.context) &&
     models.some(
       (model) =>
         model.path.length !== 1 ||
@@ -4350,6 +4374,8 @@ export function normalizeBattleState(candidate) {
       TABLE_GEOMETRY_BATTLE_STATE_VERSION,
       TERRAIN_FOOTPRINT_BATTLE_STATE_VERSION,
       MODEL_PLACEMENT_BATTLE_STATE_VERSION,
+      MODEL_POSITION_BATTLE_STATE_VERSION,
+      EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -4410,6 +4436,7 @@ export function normalizeBattleState(candidate) {
         TABLE_GEOMETRY_BATTLE_STATE_VERSION,
         TERRAIN_FOOTPRINT_BATTLE_STATE_VERSION,
         MODEL_PLACEMENT_BATTLE_STATE_VERSION,
+        MODEL_POSITION_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -4582,6 +4609,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyModelPositionsThroughSequence = nonnegativeInteger(
         migration.legacyModelPositionsThroughSequence,
         "Legacy model positions event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyExtendedModelPositionsThroughSequence = nonnegativeInteger(
+        migration.legacyExtendedModelPositionsThroughSequence,
+        "Legacy extended model positions event sequence",
         events.length,
       );
     }
@@ -5439,6 +5473,10 @@ export function replayBattleState(state) {
     state.version < MODEL_POSITION_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyModelPositionsThroughSequence ?? 0);
+  const legacyExtendedModelPositionsThroughSequence =
+    state.version < EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyExtendedModelPositionsThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -5693,10 +5731,13 @@ export function replayBattleState(state) {
     if (pendingModelPosition && event.type !== "model_positions_recorded") {
       throw new Error("Record the pending per-model position snapshot before continuing");
     }
+    const resolvesPendingModelPosition =
+      Boolean(pendingModelPosition) && event.type === "model_positions_recorded";
     if (pendingTransportDestructions.size > 0 && event.type !== "transport_destroyed_resolved") {
       throw new Error("Destroyed Transport passengers must disembark immediately");
     }
     if (
+      !resolvesPendingModelPosition &&
       pendingHazardous &&
       ((pendingHazardous.due &&
         event.type !== "hazardous_damage_resolved" &&
@@ -5718,6 +5759,7 @@ export function replayBattleState(state) {
       );
     }
     if (
+      !resolvesPendingModelPosition &&
       pendingHeroicIntervention &&
       !["heroic_intervention_resolved", "heroic_intervention_passed"].includes(event.type) &&
       !(pendingHazardous?.due && event.type === "hazardous_damage_resolved")
@@ -5725,6 +5767,7 @@ export function replayBattleState(state) {
       throw new Error("Resolve or pass the pending Heroic Intervention window first");
     }
     if (
+      !resolvesPendingModelPosition &&
       pendingFireOverwatch &&
       !["fire_overwatch_started", "fire_overwatch_passed"].includes(event.type)
     ) {
@@ -6121,6 +6164,11 @@ export function replayBattleState(state) {
         movement: "movement_recorded",
         reserve_arrival: "reserve_arrived",
         rapid_ingress: "rapid_ingress_resolved",
+        disembarkation: "formation_disembarked",
+        charge: "charge_recorded",
+        heroic_intervention: "heroic_intervention_resolved",
+        pile_in: "fight_move_recorded",
+        consolidation: "fight_move_recorded",
       }[event.position.context];
       if (
         !reference ||
@@ -6129,6 +6177,27 @@ export function replayBattleState(state) {
         reference.sequence >= event.sequence
       ) {
         throw new Error("Model positions reference the wrong formation action");
+      }
+      if (
+        (["charge", "heroic_intervention"].includes(event.position.context) &&
+          !reference.successful) ||
+        (["pile_in", "consolidation"].includes(event.position.context) &&
+          reference.stage !== event.position.context) ||
+        (["pile_in", "consolidation"].includes(event.position.context) &&
+          reference.destination === "none")
+      ) {
+        throw new Error("Model positions do not match the referenced physical movement");
+      }
+      const referencedMaximum = modelPositionContextUsesPath(event.position.context)
+        ? reference.maximumModelMoveThousandths
+        : 0;
+      if (
+        event.position.context !== "movement" &&
+        event.position.models.some(
+          (model) => model.maximumDistanceThousandths !== referencedMaximum,
+        )
+      ) {
+        throw new Error("Model positions do not match the referenced movement allowance");
       }
       if (
         event.position.missionSourceId !== tableGeometry.missionSourceId ||
@@ -6745,7 +6814,21 @@ export function replayBattleState(state) {
       embarkedByFormation.delete(event.formationId);
       deployedFormationIds.add(event.formationId);
       disembarkedByFormation.set(event.formationId, event);
-      if (currentModelPositionsByFormation.has(event.formationId)) {
+      const requiresModelPosition =
+        event.sequence > legacyExtendedModelPositionsThroughSequence &&
+        battleRuleCoverageRequiresTableGeometry(ruleCoverage) &&
+        formation.weaponBearerTracking === "exact";
+      if (requiresModelPosition) {
+        pendingModelPosition = {
+          formationId: event.formationId,
+          context: "disembarkation",
+          referenceEventId: event.id,
+          fireOverwatchTrigger: "",
+          reconcilesStaleStart: false,
+          maximumDistanceThousandths: 0,
+        };
+        geometryStaleFormationIds.add(event.formationId);
+      } else if (currentModelPositionsByFormation.has(event.formationId)) {
         geometryStaleFormationIds.add(event.formationId);
       }
       if (currentTransportMovement?.movement === "normal") {
@@ -7187,7 +7270,26 @@ export function replayBattleState(state) {
         throw new Error("A unit that disembarked after movement cannot declare a charge this turn");
       }
       chargeByFormation.set(event.formationId, event);
-      if (event.successful && currentModelPositionsByFormation.has(event.formationId)) {
+      const requiresModelPosition =
+        event.successful &&
+        event.sequence > legacyExtendedModelPositionsThroughSequence &&
+        battleRuleCoverageRequiresTableGeometry(ruleCoverage) &&
+        formation.weaponBearerTracking === "exact";
+      if (requiresModelPosition) {
+        if (!currentModelPositionsByFormation.has(event.formationId)) {
+          throw new Error("Charge movement requires a prior per-model position snapshot");
+        }
+        const reconcilesStaleStart = geometryStaleFormationIds.has(event.formationId);
+        pendingModelPosition = {
+          formationId: event.formationId,
+          context: "charge",
+          referenceEventId: event.id,
+          fireOverwatchTrigger: "",
+          reconcilesStaleStart,
+          maximumDistanceThousandths: event.maximumModelMoveThousandths,
+        };
+        geometryStaleFormationIds.add(event.formationId);
+      } else if (event.successful && currentModelPositionsByFormation.has(event.formationId)) {
         geometryStaleFormationIds.add(event.formationId);
       }
       const deferredHazardousNowDue = Boolean(
@@ -7463,7 +7565,26 @@ export function replayBattleState(state) {
         overrideReason: event.stratagemEligibilityOverrideReason,
       };
       chargeByFormation.set(formation.id, chargeEvent);
-      if (event.successful && currentModelPositionsByFormation.has(formation.id)) {
+      const requiresModelPosition =
+        event.successful &&
+        event.sequence > legacyExtendedModelPositionsThroughSequence &&
+        battleRuleCoverageRequiresTableGeometry(ruleCoverage) &&
+        formation.weaponBearerTracking === "exact";
+      if (requiresModelPosition) {
+        if (!currentModelPositionsByFormation.has(formation.id)) {
+          throw new Error("Heroic Intervention requires a prior per-model position snapshot");
+        }
+        const reconcilesStaleStart = geometryStaleFormationIds.has(formation.id);
+        pendingModelPosition = {
+          formationId: formation.id,
+          context: "heroic_intervention",
+          referenceEventId: event.id,
+          fireOverwatchTrigger: "",
+          reconcilesStaleStart,
+          maximumDistanceThousandths: event.maximumModelMoveThousandths,
+        };
+        geometryStaleFormationIds.add(formation.id);
+      } else if (event.successful && currentModelPositionsByFormation.has(formation.id)) {
         geometryStaleFormationIds.add(formation.id);
       }
       heroicInterventions.push(chargeEvent);
@@ -7708,7 +7829,29 @@ export function replayBattleState(state) {
         consolidation: activeActivation.consolidation,
         attackCount: activeActivation.attackCount,
       });
-      if (event.destination !== "none" && currentModelPositionsByFormation.has(event.formationId)) {
+      const requiresModelPosition =
+        event.destination !== "none" &&
+        event.sequence > legacyExtendedModelPositionsThroughSequence &&
+        battleRuleCoverageRequiresTableGeometry(ruleCoverage) &&
+        formations.get(event.formationId).weaponBearerTracking === "exact";
+      if (requiresModelPosition) {
+        if (!currentModelPositionsByFormation.has(event.formationId)) {
+          throw new Error("Fight movement requires a prior per-model position snapshot");
+        }
+        const reconcilesStaleStart = geometryStaleFormationIds.has(event.formationId);
+        pendingModelPosition = {
+          formationId: event.formationId,
+          context: event.stage,
+          referenceEventId: event.id,
+          fireOverwatchTrigger: "",
+          reconcilesStaleStart,
+          maximumDistanceThousandths: event.maximumModelMoveThousandths,
+        };
+        geometryStaleFormationIds.add(event.formationId);
+      } else if (
+        event.destination !== "none" &&
+        currentModelPositionsByFormation.has(event.formationId)
+      ) {
         geometryStaleFormationIds.add(event.formationId);
       }
       continue;

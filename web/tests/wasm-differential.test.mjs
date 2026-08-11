@@ -159,6 +159,10 @@ test("WebAssembly and JavaScript agree on canonical table geometry", () => {
   };
   const cases = [
     base,
+    ...["charge", "heroic_intervention", "pile_in", "consolidation"].map((context) => ({
+      ...base,
+      context,
+    })),
     { ...base, battlefieldWidthThousandths: 44_000 },
     {
       ...base,

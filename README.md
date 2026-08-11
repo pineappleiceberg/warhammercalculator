@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 28 as soon as both lists are selected. Every
+creates battle-state version 29 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -695,10 +695,17 @@ models; undo restores freshness when the identities match again. If a Charge,
 Pile In, Consolidation, or other reviewed physical move made the saved start
 stale, the next movement event explicitly records that reconciliation and each
 model's verified start instead of silently treating old coordinates as current.
+Version 29 carries the same stable identities through successful Charge and
+Heroic Intervention moves, non-zero Pile In and Consolidation moves, and normal
+disembarkation. Each action blocks later reactions, attacks, or activation
+completion until its per-model snapshot exists. Charge and Fight paths lock
+each model's maximum distance to the referenced resolved action; disembarkation
+records new footprints and endpoints before its set-up Fire Overwatch window.
 Version-25
 games migrate without invented terrain footprints, version-26 games migrate
 without invented deployment positions, and version-27 games migrate without
-invented movement history. Custom missions keep the existing confirmation-based
+invented movement history. Version-28 games retain their recorded paths without
+inventing later physical-movement snapshots. Custom missions keep the existing confirmation-based
 workflow. Board-edge and enemy-distance checks, Deep Strike, and source-rule
 eligibility remain fail-closed behind explicit reason-bearing player
 confirmations until those geometry layers are executable. The official Core Rules source identity, retrieval date,
@@ -1000,7 +1007,7 @@ attacking. Undo appends a compensating event instead of deleting history.
 Validated JSON battle exports and imports preserve the rules snapshot and fail
 closed when the referenced saved lists or loaded catalogue do not match.
 The same version-1 flat event ABI for formation-health replay runs in native C
-and WebAssembly for version-1 through version-28 JSON battle envelopes.
+and WebAssembly for version-1 through version-29 JSON battle envelopes.
 It validates attack transitions, damage and casualty totals, the one-wounded-model
 invariant, and last-in-first-out compensating undo without modifying its output
 when an event stream is invalid. `POST /api/v1/battle/replay` accepts
@@ -1015,7 +1022,8 @@ Fight activation, current/completed activation state, deployment
 declarations and order, battlefield/off-battlefield identities, Reserve
 arrivals, Reserves destroyed at battle end, reviewed per-model deployment
 placements, current per-model positions, replayable position history, stale
-casualty-identity warnings, pending movement or arrival snapshots, resolved Transport deployment
+casualty-identity warnings, pending movement, Charge, Fight, arrival, or
+disembarkation snapshots, resolved Transport deployment
 ancestry, per-formation Dedicated Transport and Aircraft/Hover setup reports,
 empty Dedicated Transports destroyed in round one, current Transport occupancy,
 disembarkations, mandatory destroyed-Transport state, and recorded passenger
@@ -1109,16 +1117,18 @@ static catalogue is `/chapter-approved-2025-26-v1.4.json`; the hosted API expose
 `GET /api/v1/missions` and `GET /api/v1/terrain?mission=...`. The guided-review reason
 records that players will resolve non-executable text at the physical table; it
 does not label that text executable. Unknown catalogue IDs still fail closed.
-Mission-card scoring text, terrain height subregions, Ruin wall geometry, and
-post-deployment model movement remain guided. The version-27 table frame makes the exact mission/layout identity,
+Mission-card scoring text, terrain height subregions, Ruin wall geometry,
+Emergency Disembarkation, and embarkation remain guided. The version-29
+geometry history makes the exact mission/layout identity,
 battlefield dimensions, objective centres, and published terrain-section
 inventory executable and replayable before deployment. It also records the
 twelve rotated area-terrain outlines, rejects out-of-bounds or overlapping
 placements, and preserves the source's single/separate section grouping.
 It additionally records every deployed model's reviewed base or hull footprint,
-centre, elevation, and rotation before the next placement. JavaScript,
+centre, elevation, rotation, and supported physical movement path before the
+next timed action. JavaScript,
 C/WebAssembly, and the replay API check the same aggregate contracts; versions
-1-26 retain explicit migration boundaries instead of receiving invented
+1-28 retain explicit migration boundaries instead of receiving invented
 coordinates, terrain footprints, or model positions.
 
 A catalogue matchup can use exact catalogue IDs or unambiguous names:
