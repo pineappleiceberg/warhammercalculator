@@ -27,10 +27,10 @@
     }
   ],
   "sourceManifestVersion": 1,
-  "stateDigest": "19dcaa1214651611fcf8c00d6e331cb9d35a70db5644a8c4db86da9fc271eb93",
-  "expectedDigest": "2f5c92e3ac9792c6d45856c700943a5fc007c51b5f7d67249c78a134674e75b9",
+  "stateDigest": "71ed6e26fc336f76409b5e2795bcd3052471795f6e7599bb1136a36332475dbd",
+  "expectedDigest": "effc6d923cea91f86957ccabf48c96e129c48a03eb05822e0b029b112e0d6ffe",
   "expected": {
-    "stateVersion": 44,
+    "stateVersion": 45,
     "eventCount": 228,
     "eventTypeCounts": {
       "activation_completed": 1,
@@ -331,10 +331,10 @@
     ]
   },
   "state": {
-    "version": 44,
+    "version": 45,
     "id": "golden-attached-aeldari-vs-orks-v1",
     "createdAt": 0,
-    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:44",
+    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:45",
     "players": [
       {
         "id": "player-1",
@@ -1336,7 +1336,7 @@
         "type": "rule_coverage_configured",
         "coverage": {
           "schemaVersion": 1,
-          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v44",
+          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v45",
           "sourceLocks": [
             {
               "id": "core-rules-10e",
@@ -1473,7 +1473,7 @@
             }
           },
           "report": {
-            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v44",
+            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v45",
             "permitted": true,
             "results": [
               {

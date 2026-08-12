@@ -1,5 +1,6 @@
 import {
   ACTION_BATTLE_STATE_VERSION,
+  BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION,
   BATTLE_EVENT_VERSION,
   BATTLE_STATE_VERSION,
   DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION,
@@ -740,6 +741,10 @@ export function initializeBattleForLists({
             sourceVersion < SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyShadowInTheWarpThroughSequence ?? 0),
+          legacyBattleShockComparatorThroughSequence:
+            sourceVersion < BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyBattleShockComparatorThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

@@ -12,6 +12,8 @@
         7,
         8,
         9,
+        11,
+        12,
         13,
         15,
         16,
@@ -79,7 +81,8 @@
         "Go to Ground timing, Infantry target, 1CP cost, 6+ invulnerable save, Benefit of Cover, and phase duration",
         "Smokescreen timing after target selection, Smoke target, 1CP cost, Benefit of Cover, Stealth, and phase duration",
         "Rapid Ingress timing at the end of the opponent's Movement phase, Reserve target, 1CP cost, normal battle-round eligibility, Reinforcements-step arrival, and Strategic Reserves placement",
-        "Benefit of Cover save modifier at attack allocation for each target model, AP 0 restriction for 3+ or better saves, non-cumulative effect, and Ignores Cover interaction"
+        "Benefit of Cover save modifier at attack allocation for each target model, AP 0 restriction for 3+ or better saves, non-cumulative effect, and Ignores Cover interaction",
+        "Battle-shock tests pass when the adjusted 2D6 result is greater than or equal to the best Leadership characteristic and fail otherwise"
       ]
     },
     {

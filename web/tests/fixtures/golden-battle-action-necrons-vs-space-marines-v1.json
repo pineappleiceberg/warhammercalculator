@@ -23,10 +23,10 @@
     }
   ],
   "sourceManifestVersion": 1,
-  "stateDigest": "5df93f32060d599d6dcb76fe3feca2f063e30ca83f6b2e7e56ab215c20c53d48",
-  "expectedDigest": "e5778513ca79f555c99ec8b7c43f0ddf4ca305c7a9415530f53929da2c8f5e7c",
+  "stateDigest": "53515d8c08c4b879cb836c042c5c474a06a8e4e7a25423fdad0d3d1dd9b8290e",
+  "expectedDigest": "1adf58fef4f220e10d33018f338ad3b17882b3a54f23da68d9019a7058b77adf",
   "expected": {
-    "stateVersion": 44,
+    "stateVersion": 45,
     "eventCount": 260,
     "eventTypeCounts": {
       "activation_completed": 4,
@@ -301,10 +301,10 @@
     ]
   },
   "state": {
-    "version": 44,
+    "version": 45,
     "id": "golden-action-necrons-vs-space-marines-v1",
     "createdAt": 0,
-    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:44",
+    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:45",
     "players": [
       {
         "id": "player-1",
@@ -632,7 +632,7 @@
         "type": "rule_coverage_configured",
         "coverage": {
           "schemaVersion": 1,
-          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v44",
+          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v45",
           "sourceLocks": [
             {
               "id": "core-rules-10e",
@@ -752,7 +752,7 @@
             }
           },
           "report": {
-            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v44",
+            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v45",
             "permitted": true,
             "results": [
               {

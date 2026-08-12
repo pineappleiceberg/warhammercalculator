@@ -40,7 +40,8 @@ import {
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 44;
+export const BATTLE_STATE_VERSION = 45;
+export const BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION = 45;
 export const SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION = 44;
 export const REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION = 43;
 export const OATH_OF_MOMENT_BATTLE_STATE_VERSION = 42;
@@ -5507,6 +5508,7 @@ export function normalizeBattleState(candidate) {
       OATH_OF_MOMENT_BATTLE_STATE_VERSION,
       REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION,
       SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION,
+      BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
     throw new Error(`Unsupported battle state version: ${String(state.version)}`);
@@ -5582,6 +5584,7 @@ export function normalizeBattleState(candidate) {
         DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION,
         OATH_OF_MOMENT_BATTLE_STATE_VERSION,
         REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION,
+        SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -5852,6 +5855,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyShadowInTheWarpThroughSequence = nonnegativeInteger(
         migration.legacyShadowInTheWarpThroughSequence,
         "Legacy Shadow in the Warp event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyBattleShockComparatorThroughSequence = nonnegativeInteger(
+        migration.legacyBattleShockComparatorThroughSequence,
+        "Legacy reversed Battle-shock comparator event sequence",
         events.length,
       );
     }
@@ -7191,6 +7201,10 @@ export function replayBattleState(state) {
     state.version < REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyReanimationProtocolsThroughSequence ?? 0);
+  const legacyBattleShockComparatorThroughSequence =
+    state.version < BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyBattleShockComparatorThroughSequence ?? 0);
   const legacyTerrainVisibilityThroughSequence =
     state.version < TERRAIN_VISIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -8821,7 +8835,11 @@ export function replayBattleState(state) {
         playerUsesSynapseBattleShock(formation.playerId) && event.ownSynapseProximity.within;
       const expectedDiceCount = ownSynapseApplies ? 3 : 2;
       const rawRoll = event.dice.reduce((total, die) => total + die, 0);
-      const failed = rawRoll - (event.shadowSynapseProximity.within ? 1 : 0) > event.leadership;
+      const adjustedRoll = rawRoll - (event.shadowSynapseProximity.within ? 1 : 0);
+      const failed =
+        event.sequence <= legacyBattleShockComparatorThroughSequence
+          ? adjustedRoll > event.leadership
+          : adjustedRoll < event.leadership;
       if (
         event.dice.length !== expectedDiceCount ||
         event.failed !== failed ||
@@ -14905,7 +14923,7 @@ export function resolveShadowInTheWarpTest(
   );
   const dice = Array.from({ length: ownSynapseApplies ? 3 : 2 }, () => randomDie(6, randomUint32));
   const rawRoll = dice.reduce((total, die) => total + die, 0);
-  const failed = rawRoll - (shadowSynapseProximity.within ? 1 : 0) > target.leadership;
+  const failed = rawRoll - (shadowSynapseProximity.within ? 1 : 0) < target.leadership;
   return appendEvent(state, {
     version: BATTLE_EVENT_VERSION,
     id,
@@ -14970,7 +14988,7 @@ export function shadowInTheWarpTestIsValid(
     commandPhase === 1 &&
     targetOnBattlefield === 1;
   const expectedDiceCount = targetFactionTyranids === 1 && targetWithinOwnSynapse === 1 ? 3 : 2;
-  const expectedFailure = rawRoll - targetWithinSourceSynapse > leadership ? 1 : 0;
+  const expectedFailure = rawRoll - targetWithinSourceSynapse < leadership ? 1 : 0;
   return (
     prerequisites &&
     diceCount === expectedDiceCount &&

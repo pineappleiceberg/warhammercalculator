@@ -2913,6 +2913,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacyMandatoryArmyRulesThroughSequence: 3,
     legacyReanimationProtocolsThroughSequence: 3,
     legacyShadowInTheWarpThroughSequence: 3,
+    legacyBattleShockComparatorThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -2965,6 +2966,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacyMandatoryArmyRulesThroughSequence: 3,
     legacyReanimationProtocolsThroughSequence: 3,
     legacyShadowInTheWarpThroughSequence: 3,
+    legacyBattleShockComparatorThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -3022,6 +3024,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacyMandatoryArmyRulesThroughSequence: 2,
     legacyReanimationProtocolsThroughSequence: 2,
     legacyShadowInTheWarpThroughSequence: 2,
+    legacyBattleShockComparatorThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -3072,6 +3075,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacyMandatoryArmyRulesThroughSequence: 2,
     legacyReanimationProtocolsThroughSequence: 2,
     legacyShadowInTheWarpThroughSequence: 2,
+    legacyBattleShockComparatorThroughSequence: 2,
   });
 });
 
@@ -3121,6 +3125,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacyMandatoryArmyRulesThroughSequence: 2,
     legacyReanimationProtocolsThroughSequence: 2,
     legacyShadowInTheWarpThroughSequence: 2,
+    legacyBattleShockComparatorThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -3176,6 +3181,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacyMandatoryArmyRulesThroughSequence: 2,
     legacyReanimationProtocolsThroughSequence: 2,
     legacyShadowInTheWarpThroughSequence: 2,
+    legacyBattleShockComparatorThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -3226,6 +3232,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacyMandatoryArmyRulesThroughSequence: 2,
     legacyReanimationProtocolsThroughSequence: 2,
     legacyShadowInTheWarpThroughSequence: 2,
+    legacyBattleShockComparatorThroughSequence: 2,
   });
 });
 
@@ -3275,6 +3282,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacyMandatoryArmyRulesThroughSequence: 2,
     legacyReanimationProtocolsThroughSequence: 2,
     legacyShadowInTheWarpThroughSequence: 2,
+    legacyBattleShockComparatorThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -4493,6 +4501,41 @@ test("migrates version-43 battles without inventing Shadow in the Warp activatio
   const replayed = replayBattleState(migrated);
   assert.equal(replayed.shadowInTheWarpActivations.length, 0);
   assert.equal(replayed.shadowInTheWarpResolutions.length, 0);
+});
+
+test("migrates version-44 battles behind the legacy Battle-shock comparator boundary", () => {
+  const current = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    id: "version-44-battle-shock-comparator-state",
+  });
+  const versionFortyFour = normalizeBattleState({
+    ...current,
+    version: 44,
+  });
+  const migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: versionFortyFour,
+    id: versionFortyFour.id,
+  });
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 44);
+  assert.equal(
+    migrated.migration.legacyBattleShockComparatorThroughSequence,
+    Math.max(...versionFortyFour.events.map((event) => event.sequence)),
+  );
+  replayBattleState(migrated);
 });
 
 test("marks exact geometry stale when casualties change live model identities and clears on undo", () => {

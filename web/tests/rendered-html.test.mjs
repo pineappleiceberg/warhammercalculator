@@ -319,7 +319,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const coverage = (await coverageResponse.json()).data;
   assert.equal(
     coverage.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v44",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v45",
   );
   assert.equal(coverage.sourceLocked, true);
   assert.equal(coverage.rules.length, coveredRuleCoverageMatrix.rules.length);
@@ -2943,7 +2943,26 @@ test("replays Shadow in the Warp through the public API and C/Wasm predicate", a
   assert.equal(activation.sourceFactionId, "TYR");
   assert.equal(activation.sourceAbilityId, "000000707");
   assert.deepEqual(activation.resolutions[0].dice, [6, 5]);
-  assert.equal(activation.resolutions[0].failed, true);
+  assert.equal(activation.resolutions[0].failed, false);
+  assert.equal(activation.resolutions[0].comparisonMode, "core-10e-pass-greater-than-or-equal");
+
+  const legacyState = structuredClone(shadowGoldenBattleReplay.state);
+  legacyState.version = 44;
+  legacyState.events.find((event) => event.type === "shadow_in_the_warp_test_resolved").failed =
+    true;
+  const legacyResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: legacyState, formationId }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(legacyResponse.status, 200, JSON.stringify(await legacyResponse.clone().json()));
+  const legacyActivation = (await legacyResponse.json()).data.factionRules.shadowInTheWarp[0];
+  assert.equal(legacyActivation.resolutions[0].failed, true);
+  assert.equal(legacyActivation.resolutions[0].comparisonMode, "legacy-v44-reversed");
 });
 
 test("replays the action-heavy golden battle and casualties through the public API and C ABI", async () => {

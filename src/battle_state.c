@@ -641,7 +641,7 @@ bool whc_shadow_in_the_warp_test_is_valid(
                          dice_count == expected_dice_count && raw_roll >= dice_count &&
                          raw_roll <= dice_count * 6u;
     const uint32_t expected_failed =
-        bounded && raw_roll - target_within_source_synapse > leadership ? 1u : 0u;
+        bounded && raw_roll - target_within_source_synapse < leadership ? 1u : 0u;
 
     return source_faction_tyranids == 1u && once_per_battle_available == 1u &&
            source_ability_on_battlefield == 1u && command_phase == 1u &&

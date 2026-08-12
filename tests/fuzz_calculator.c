@@ -756,7 +756,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
                              dice_count == expected_dice && raw_roll >= dice_count &&
                              raw_roll <= dice_count * 6u;
         const uint32_t expected_failed =
-            bounded && raw_roll - source_synapse > leadership ? 1u : 0u;
+            bounded && raw_roll - source_synapse < leadership ? 1u : 0u;
         const bool expected = source_faction == 1u && available == 1u &&
                               source_on_battlefield == 1u && command_phase == 1u &&
                               target_on_battlefield == 1u && bounded &&

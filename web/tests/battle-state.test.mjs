@@ -1225,8 +1225,8 @@ test("pins the official battle-state rules source", () => {
   assert.deepEqual(
     battleRuleSources.sources[0].pages,
     [
-      7, 8, 9, 13, 15, 16, 17, 18, 19, 20, 23, 25, 26, 29, 32, 33, 34, 35, 39, 41, 42, 43, 44, 45,
-      46, 47, 48, 53, 56, 57, 58, 60,
+      7, 8, 9, 11, 12, 13, 15, 16, 17, 18, 19, 20, 23, 25, 26, 29, 32, 33, 34, 35, 39, 41, 42, 43,
+      44, 45, 46, 47, 48, 53, 56, 57, 58, 60,
     ],
   );
   assert.equal(
@@ -1265,6 +1265,15 @@ test("pins the official battle-state rules source", () => {
     battleRuleSources.sources[0].usedFor.some(
       (usage) =>
         /Smokescreen/i.test(usage) && /Smoke target/i.test(usage) && /Stealth/i.test(usage),
+    ),
+    true,
+  );
+  assert.equal(
+    battleRuleSources.sources[0].usedFor.some(
+      (usage) =>
+        /Battle-shock tests pass/i.test(usage) &&
+        /greater than or equal/i.test(usage) &&
+        /Leadership/i.test(usage),
     ),
     true,
   );
@@ -4457,7 +4466,7 @@ test("unleashes source-locked Shadow in the Warp in either Command phase with au
     () => advanceBattleClock(state, "skip-shadow-test", state.events.length + 1),
     /pending Shadow in the Warp|Resolve every pending Shadow/i,
   );
-  const random = [5, 4];
+  const random = [3, 3];
   state = resolveShadowInTheWarpTest(
     state,
     target.id,
@@ -4472,10 +4481,10 @@ test("unleashes source-locked Shadow in the Warp in either Command phase with au
   );
   const replayed = replayBattleState(state);
   const resolution = replayed.shadowInTheWarpResolutions[0];
-  assert.deepEqual(resolution.dice, [6, 5]);
-  assert.equal(resolution.failed, true);
+  assert.deepEqual(resolution.dice, [4, 4]);
+  assert.equal(resolution.failed, false);
   assert.equal(resolution.battleShockedBefore, false);
-  assert.equal(replayed.battleShockedFormations.has(target.id), true);
+  assert.equal(replayed.battleShockedFormations.has(target.id), false);
   assert.equal(battleShadowInTheWarpState(state, "player-1").pending, null);
   assert.throws(
     () =>
@@ -4489,8 +4498,15 @@ test("unleashes source-locked Shadow in the Warp in either Command phase with au
     /once per battle/i,
   );
   const tampered = structuredClone(state);
-  tampered.events.find((event) => event.id === "resolve-shadow-test").failed = false;
+  tampered.events.find((event) => event.id === "resolve-shadow-test").failed = true;
   assert.throws(() => replayBattleState(tampered), /not canonical/i);
+
+  const legacy = structuredClone(state);
+  legacy.version = 44;
+  const legacyResolution = legacy.events.find((event) => event.id === "resolve-shadow-test");
+  legacyResolution.dice = [6, 5];
+  legacyResolution.failed = true;
+  assert.equal(replayBattleState(legacy).shadowInTheWarpResolutions[0].failed, true);
 });
 
 test("resolves Counter-offensive atomically and forces its formation to fight next", () => {

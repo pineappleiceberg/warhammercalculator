@@ -3,7 +3,7 @@
   "schemaVersion": 1,
   "scenarioId": "tyranids-neurotyrant-vs-space-marines-intercessors-shadow",
   "title": "Neurotyrant vs Intercessors · complete Shadow in the Warp battle",
-  "description": "A source-locked Chapter Approved five-round replay that resolves Shadow in the Warp from exact Tyranids and target profiles, CSPRNG-compatible recorded dice, reviewed geometry, Battle-shock state, every phase step, and capped scoring.",
+  "description": "A source-locked Chapter Approved five-round replay that resolves Shadow in the Warp from exact Tyranids and target profiles, CSPRNG-compatible recorded dice, reviewed geometry, a Core Rules Battle-shock result, every phase step, and capped scoring.",
   "listPair": [
     {
       "playerId": "player-1",
@@ -23,10 +23,10 @@
     }
   ],
   "sourceManifestVersion": 1,
-  "stateDigest": "5b190d0b8b50bfa9848dea2725e3be35e5f1d86f66099a919ab5dc6adaa2433f",
-  "expectedDigest": "55059bfde1b2a5b90ab23f711cb54f5d7e6841d0f8bb4c407cf4b0631f82e8c0",
+  "stateDigest": "aa33cfc6c75f52611a46d091d3fabe3fb33fea43b70512e5c446a08ec7f4bd8e",
+  "expectedDigest": "b24e02f41ed90879da14e95a0bb0e8201f04cd1eac20ec6d6b5ca6582583f7f7",
   "expected": {
-    "stateVersion": 44,
+    "stateVersion": 45,
     "eventCount": 213,
     "eventTypeCounts": {
       "battle_started": 1,
@@ -282,10 +282,10 @@
     ]
   },
   "state": {
-    "version": 44,
+    "version": 45,
     "id": "golden-tyranids-vs-space-marines-v1",
     "createdAt": 0,
-    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:44",
+    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:45",
     "players": [
       {
         "id": "player-1",
@@ -561,7 +561,7 @@
         "type": "rule_coverage_configured",
         "coverage": {
           "schemaVersion": 1,
-          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v44",
+          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v45",
           "sourceLocks": [
             {
               "id": "core-rules-10e",
@@ -685,7 +685,7 @@
             }
           },
           "report": {
-            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v44",
+            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v45",
             "permitted": true,
             "results": [
               {
@@ -1637,7 +1637,7 @@
         "leadership": 6,
         "shadowSynapseProximity": { "within": false, "source": "geometry", "reason": "" },
         "ownSynapseProximity": { "within": false, "source": "geometry", "reason": "" },
-        "failed": true,
+        "failed": false,
         "battleShockedBefore": false,
         "clock": {
           "status": "active",
