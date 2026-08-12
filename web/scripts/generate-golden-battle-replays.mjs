@@ -7,6 +7,7 @@ import {
   BATTLE_STATE_VERSION,
   TABLE_GEOMETRY_CONSTANTS,
   advanceBattleClock,
+  arriveFromReserves,
   appendResolvedAttack,
   closeRangedTargetDeclarations,
   completeFormationActivation,
@@ -29,12 +30,14 @@ import {
   passRapidIngress,
   passSmokescreen,
   recordFightMove,
+  recordFormationMovement,
   recordFormationCharge,
   recordDeploymentModelPlacements,
   recordModelPositions,
   recordRangedTargetEligibility,
   replayBattleState,
   resolveGoToGround,
+  resolveMissionAction,
   resolveSecondaryTurnEnd,
   scoreMissionPoints,
   scoreSecondaryMissionCard,
@@ -43,6 +46,7 @@ import {
   startFireOverwatch,
   startFormationActivation,
   startFormationMovement,
+  startMissionAction,
 } from "../lib/battle-state.mjs";
 import { initializeBattleForLists } from "../lib/battle-setup.mjs";
 import { goldenBattleReplaySummary } from "../lib/golden-battle-replay.mjs";
@@ -54,6 +58,10 @@ const fixtureUrl = new URL(
 );
 const actionFixtureUrl = new URL(
   "../tests/fixtures/golden-battle-action-necrons-vs-space-marines-v1.json",
+  import.meta.url,
+);
+const attachedFixtureUrl = new URL(
+  "../tests/fixtures/golden-battle-attached-aeldari-vs-orks-v1.json",
   import.meta.url,
 );
 const catalogue = JSON.parse(
@@ -117,6 +125,47 @@ function oneUnitList({
   };
 }
 
+function savedCatalogueUnit({
+  unitName,
+  savedUnitId,
+  modelCount,
+  weaponSelections = [],
+  attachedToId = "",
+}) {
+  const source = catalogueUnit(unitName);
+  const weapons = weaponSelections.map((selection) => {
+    const weapon = source.weapons.find(
+      (candidate) =>
+        candidate.name === selection.name && (!selection.type || candidate.type === selection.type),
+    );
+    assert.ok(weapon, `Missing ${unitName} ${selection.type ?? ""} weapon ${selection.name}`);
+    return {
+      weaponId: weapon.id,
+      groupId: weapon.groupId,
+      name: weapon.groupName,
+      count: selection.count,
+    };
+  });
+  return {
+    id: savedUnitId,
+    unitId: source.id,
+    name: source.name,
+    modelCount: modelCount ?? source.suggestedModelCount,
+    weapons,
+    ...(attachedToId ? { attachedToId } : {}),
+  };
+}
+
+function catalogueList({ id, updatedAt, name, factionId, units }) {
+  assert.ok(
+    units.every(
+      (unit) =>
+        catalogue.units.find((source) => source.id === unit.unitId)?.factionId === factionId,
+    ),
+  );
+  return { id, createdAt: 1, updatedAt, name, factionId, units };
+}
+
 const attackers = oneUnitList({
   id: "golden-necrons",
   updatedAt: 10,
@@ -157,6 +206,75 @@ const actionDefenders = oneUnitList({
   ],
 });
 
+const attachedAttackers = catalogueList({
+  id: "golden-attached-aeldari",
+  updatedAt: 50,
+  name: "Golden Attached Aeldari",
+  factionId: "AE",
+  units: [
+    savedCatalogueUnit({
+      unitName: "Guardian Defenders",
+      savedUnitId: "guardians",
+      modelCount: 11,
+      weaponSelections: [
+        { name: "Shuriken catapult", count: 10 },
+        { name: "Bright lance", count: 1 },
+        { name: "Close combat weapon", count: 11 },
+      ],
+    }),
+    savedCatalogueUnit({
+      unitName: "Farseer",
+      savedUnitId: "farseer",
+      modelCount: 1,
+      attachedToId: "guardians",
+      weaponSelections: [
+        { name: "Eldritch Storm", count: 1 },
+        { name: "Witchblade", type: "Melee", count: 1 },
+      ],
+    }),
+    savedCatalogueUnit({
+      unitName: "Rangers",
+      savedUnitId: "rangers",
+      modelCount: 5,
+    }),
+  ],
+});
+
+const attachedDefenders = catalogueList({
+  id: "golden-attached-orks",
+  updatedAt: 60,
+  name: "Golden Attached Orks",
+  factionId: "ORK",
+  units: [
+    savedCatalogueUnit({
+      unitName: "Boyz",
+      savedUnitId: "boyz",
+      modelCount: 10,
+      weaponSelections: [
+        { name: "Slugga", count: 9 },
+        { name: "Rokkit launcha", count: 1 },
+        { name: "Choppa", count: 9 },
+        { name: "Power klaw", count: 1 },
+      ],
+    }),
+    savedCatalogueUnit({
+      unitName: "Warboss",
+      savedUnitId: "warboss",
+      modelCount: 1,
+      attachedToId: "boyz",
+      weaponSelections: [
+        { name: "Kombi-weapon", count: 1 },
+        { name: "Power klaw", count: 1 },
+      ],
+    }),
+    savedCatalogueUnit({
+      unitName: "Mek",
+      savedUnitId: "mek",
+      modelCount: 1,
+    }),
+  ],
+});
+
 const exactMissionOverrides = {
   guidedReason: "Players reviewed every guided source rule for the golden replay",
   players: {
@@ -165,6 +283,16 @@ const exactMissionOverrides = {
   },
   missionSourceId: "chapter-approved-2025-26-v1.4-a",
   terrainSourceId: "chapter-approved-2025-26-v1.4-layout-1",
+};
+
+const attachedMissionOverrides = {
+  guidedReason: "Players reviewed every guided source rule for the attached replay",
+  players: {
+    "player-1": { detachmentSourceId: "000001020" },
+    "player-2": { detachmentSourceId: "000000856" },
+  },
+  missionSourceId: "chapter-approved-2025-26-v1.4-b",
+  terrainSourceId: "chapter-approved-2025-26-v1.4-layout-2",
 };
 
 function addFixedSecondaryPlans(state) {
@@ -226,7 +354,11 @@ function addActionSecondaryPlans(state) {
   return next;
 }
 
-function reviewedTableGeometry(state) {
+function reviewedTableGeometry(
+  state,
+  selection = exactMissionOverrides,
+  deploymentName = "Tipping Point",
+) {
   const objectivePositions = replayBattleState(state).mission.objectives.map(
     (objective, index) => ({
       objectiveId: objective.id,
@@ -235,9 +367,9 @@ function reviewedTableGeometry(state) {
     }),
   );
   return {
-    missionSourceId: exactMissionOverrides.missionSourceId,
-    terrainSourceId: exactMissionOverrides.terrainSourceId,
-    deploymentName: "Tipping Point",
+    missionSourceId: selection.missionSourceId,
+    terrainSourceId: selection.terrainSourceId,
+    deploymentName,
     battlefieldWidthThousandths: TABLE_GEOMETRY_CONSTANTS.widthThousandths,
     battlefieldHeightThousandths: TABLE_GEOMETRY_CONSTANTS.heightThousandths,
     origin: "attacker-left-near",
@@ -360,18 +492,24 @@ function reviewedDeploymentModelPlacements(
     battlefieldWidthThousandths: geometry.battlefieldWidthThousandths,
     battlefieldHeightThousandths: geometry.battlefieldHeightThousandths,
     origin: geometry.origin,
-    models: formation.modelInstances.map((model, index) => ({
-      modelId: model.id,
-      measurementBasis: "base",
-      shape: "circle",
-      widthThousandths: 1_000,
-      depthThousandths: 1_000,
-      centerXThousandths: baseX + index * 2_000,
-      centerYThousandths: baseY,
-      elevationThousandths: 0,
-      rotationMilliDegrees: 0,
-      silhouette: reviewedSilhouette(),
-    })),
+    models: formation.modelInstances.map((model, index) => {
+      const rowWidth =
+        formation.modelInstances.length >= 7
+          ? Math.ceil(formation.modelInstances.length / 2)
+          : formation.modelInstances.length;
+      return {
+        modelId: model.id,
+        measurementBasis: "base",
+        shape: "circle",
+        widthThousandths: 1_000,
+        depthThousandths: 1_000,
+        centerXThousandths: baseX + (index % rowWidth) * 2_000,
+        centerYThousandths: baseY + Math.floor(index / rowWidth) * 2_000,
+        elevationThousandths: 0,
+        rotationMilliDegrees: 0,
+        silhouette: reviewedSilhouette(),
+      };
+    }),
     measurementBoundariesReviewed: true,
     positionsReviewed: true,
     noModelOverlapReviewed: true,
@@ -382,23 +520,82 @@ function reviewedDeploymentModelPlacements(
   };
 }
 
-function deployAll(state, placementByFormationId = {}) {
+function reviewedReserveArrivalPositions(state, formationId, referenceEventId, { baseX, baseY }) {
+  const replayed = replayBattleState(state);
+  const formation = replayed.formations.get(formationId);
+  const geometry = replayed.tableGeometry;
+  assert.ok(formation);
+  assert.ok(geometry);
+  return {
+    context: "reserve_arrival",
+    referenceEventId,
+    missionSourceId: geometry.missionSourceId,
+    terrainSourceId: geometry.terrainSourceId,
+    battlefieldWidthThousandths: geometry.battlefieldWidthThousandths,
+    battlefieldHeightThousandths: geometry.battlefieldHeightThousandths,
+    origin: geometry.origin,
+    models: formation.modelInstances.map((model, index) => {
+      const endpoint = {
+        centerXThousandths: baseX + index * 2_000,
+        centerYThousandths: baseY,
+        elevationThousandths: 0,
+        rotationMilliDegrees: 0,
+      };
+      return {
+        modelId: model.id,
+        measurementBasis: "base",
+        shape: "circle",
+        widthThousandths: 1_000,
+        depthThousandths: 1_000,
+        verticalExtentThousandths: 0,
+        ...endpoint,
+        path: [endpoint],
+        distanceMovedThousandths: 0,
+        maximumDistanceThousandths: 0,
+        silhouette: reviewedSilhouette(),
+      };
+    }),
+    measurementBoundariesReviewed: true,
+    positionsReviewed: true,
+    noModelOverlapReviewed: true,
+    objectiveClearanceReviewed: true,
+    pathsReviewed: true,
+    terrainClearanceReviewed: true,
+    coherencyReviewed: true,
+    engagementRangeReviewed: true,
+    reconcilesStaleStart: false,
+    reviewedByPlayer: true,
+    method: "manual",
+    reviewReason:
+      "Reserve arrival endpoints, spacing, terrain, enemy distance, and coherency were checked",
+  };
+}
+
+function deployAll(state, placementByFormationId = {}, deploymentByFormationId = {}) {
   let next = state;
   for (const formation of replayBattleState(next).formations.values()) {
     const aircraft = formation.deploymentTraits.aircraft;
     const hover = formation.deploymentTraits.hover;
-    const location = aircraft && !hover ? "reserves" : "battlefield";
+    const override = deploymentByFormationId[formation.id] ?? null;
+    const location = override?.location ?? (aircraft && !hover ? "reserves" : "battlefield");
     next = declareFormationDeployment(
       next,
       formation.id,
       location,
-      aircraft
+      override
         ? {
-            aircraftMode: hover ? "hover" : "aircraft",
-            eligibilityConfirmed: location === "reserves",
-            eligibilityReason: location === "reserves" ? "Aircraft must start in Reserves" : "",
+            points: override.points ?? 0,
+            earliestBattleRound: override.earliestBattleRound,
+            eligibilityConfirmed: true,
+            eligibilityReason: override.eligibilityReason,
           }
-        : {},
+        : aircraft
+          ? {
+              aircraftMode: hover ? "hover" : "aircraft",
+              eligibilityConfirmed: location === "reserves",
+              eligibilityReason: location === "reserves" ? "Aircraft must start in Reserves" : "",
+            }
+          : {},
       `declare-${formation.id}`,
       next.events.length + 1,
     );
@@ -546,6 +743,39 @@ function formationBySource(state, sourceFormationId) {
   );
   assert.ok(formation, `Missing formation ${sourceFormationId}`);
   return formation;
+}
+
+function confirmFixtureWeaponBearers(state, formation) {
+  let next = state;
+  let current = formation;
+  for (const group of current.weaponInventory) {
+    if (group.bearerAssignmentsReviewed) continue;
+    const candidates = current.modelInstances.filter(
+      (model) => model.savedUnitId === group.sourceSavedUnitId,
+    );
+    let preferred = candidates;
+    if (/bright lance/i.test(group.name)) {
+      preferred = candidates.filter((model) => /heavy weapon platform/i.test(model.modelName));
+    } else if (/power klaw/i.test(group.name) && group.sourceSavedUnitId === "boyz") {
+      preferred = candidates.filter((model) => /boss nob/i.test(model.modelName));
+    }
+    if (preferred.length === 0) preferred = candidates;
+    const bearerModelIds = Array.from(
+      { length: group.count },
+      (_, index) => preferred[index % preferred.length].id,
+    );
+    next = configureBattleWeaponBearers(
+      next,
+      current.id,
+      group.sourceSavedUnitId,
+      group.groupId,
+      bearerModelIds,
+      `attached-bearers-${current.id}-${group.groupId}`,
+      next.events.length + 1,
+    );
+    current = replayBattleState(next).formations.get(current.id);
+  }
+  return next;
 }
 
 function advanceToClock(state, predicate, prefix) {
@@ -1426,8 +1656,457 @@ function buildActionFixture() {
   };
 }
 
+function buildAttachedFixture() {
+  let state = initializeBattleForLists({
+    catalogue,
+    firstList: attachedAttackers,
+    secondList: attachedDefenders,
+    rulesSnapshot: `profile-data:${catalogue.sourceUpdatedAt}|battle-state:${BATTLE_STATE_VERSION}`,
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: attachedMissionOverrides,
+    id: "golden-attached-aeldari-vs-orks-v1",
+  });
+  state = configureBattleMission(
+    state,
+    {
+      name: "B · Supply Drop · Tipping Point",
+      pointsLimit: 2_000,
+      deploymentFirstPlayerId: "player-1",
+      commandPointsPerCommandPhase: 1,
+      startingCommandPoints: { "player-1": 0, "player-2": 0 },
+      objectives: Array.from({ length: 5 }, (_, index) => ({
+        id: `objective-${index + 1}`,
+        name: `Objective ${index + 1}`,
+      })),
+    },
+    "attached-mission-configured",
+    state.events.length + 1,
+  );
+  state = configureSecondaryMissionPlan(
+    state,
+    {
+      playerId: "player-1",
+      mode: "tactical",
+      fixedCards: [],
+      tacticalDeckSize: 1,
+      cardRulesAvailability: "player-supplied-physical-deck",
+      reviewedByPlayer: true,
+      reviewReason: "The physical Tactical card and its Mission Action were locked for this replay",
+    },
+    "attached-secondary-plan-player-1",
+    state.events.length + 1,
+  );
+  state = configureSecondaryMissionPlan(
+    state,
+    {
+      playerId: "player-2",
+      mode: "fixed",
+      fixedCards: [
+        { id: "player-2:fixed:1", name: "Golden attached fixed card 1" },
+        { id: "player-2:fixed:2", name: "Golden attached fixed card 2" },
+      ],
+      tacticalDeckSize: 0,
+      cardRulesAvailability: "player-supplied-physical-deck",
+      reviewedByPlayer: true,
+      reviewReason: "The physical Fixed Secondary cards were locked for this replay",
+    },
+    "attached-secondary-plan-player-2",
+    state.events.length + 1,
+  );
+  state = configureBattleTableGeometry(
+    state,
+    reviewedTableGeometry(state, attachedMissionOverrides),
+    "attached-table-geometry-recorded",
+    state.events.length + 1,
+  );
+  state = configureBattleTerrainFootprints(
+    state,
+    reviewedTerrainFootprints(state),
+    "attached-terrain-footprints-recorded",
+    state.events.length + 1,
+  );
+  state = configureBattleTerrainVisibility(
+    state,
+    reviewedTerrainVisibility(state),
+    "attached-terrain-visibility-recorded",
+    state.events.length + 1,
+  );
+
+  for (const formation of [...replayBattleState(state).formations.values()]) {
+    state = confirmFixtureWeaponBearers(
+      state,
+      replayBattleState(state).formations.get(formation.id),
+    );
+  }
+  let guardians = formationBySource(state, "guardians");
+  let rangers = formationBySource(state, "rangers");
+  let boyz = formationBySource(state, "boyz");
+  const mek = formationBySource(state, "mek");
+  state = deployAll(
+    state,
+    {
+      [guardians.id]: { baseX: 2_000, baseY: 2_000 },
+      [boyz.id]: { baseX: 34_000, baseY: 40_000 },
+      [mek.id]: { baseX: 2_000, baseY: 40_000 },
+    },
+    {
+      [rangers.id]: {
+        location: "strategic_reserves",
+        points: 55,
+        earliestBattleRound: 2,
+        eligibilityReason:
+          "The Rangers were assigned to Strategic Reserves within the source limit",
+      },
+    },
+  );
+  state = startBattle(state, "player-1", "attached-battle-started", state.events.length + 1);
+  state = drawSecondaryMissionCard(
+    state,
+    "player-1",
+    { id: "player-1:tactical:action", name: "Golden physical-card Mission Action" },
+    "attached-action-card-drawn",
+    state.events.length + 1,
+  );
+
+  state = advanceToClock(
+    state,
+    (clock) =>
+      clock.activePlayerId === "player-1" && clock.phase === "command" && clock.step === "end",
+    "attached-to-command-end",
+  );
+  state = startMissionAction(
+    state,
+    {
+      playerId: "player-1",
+      formationId: guardians.id,
+      cardId: "player-1:tactical:action",
+      actionKey: "physical-card-action",
+      actionName: "Golden physical-card Mission Action",
+      simultaneousUnitLimit: 1,
+      facts: {
+        aircraft: false,
+        battleShocked: false,
+        objectiveControl: 21,
+        withinEngagementRange: false,
+        titanicCharacter: false,
+        advancedOrFellBack: false,
+        eligibleToShoot: true,
+        alreadyShot: false,
+        timingReviewed: true,
+        cardRulesReviewed: true,
+        unitLimitAvailable: true,
+        reviewReason: "The physical card timing, objective, and unit eligibility were reviewed",
+      },
+    },
+    "attached-mission-action-started",
+    state.events.length + 1,
+  );
+  state = advanceToClock(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "attached-to-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    guardians.id,
+    "stationary",
+    "attached-guardians-remained-stationary",
+    state.events.length + 1,
+  );
+  state = advanceToClock(
+    state,
+    (clock) => clock.phase === "shooting" && clock.step === "resolve_attacks",
+    "attached-to-action-completion",
+  );
+  state = resolveMissionAction(
+    state,
+    guardians.id,
+    true,
+    "The physical card completion condition was reviewed",
+    "attached-mission-action-completed",
+    state.events.length + 1,
+  );
+  state = advanceToClock(
+    state,
+    (clock) => clock.phase === "fight" && clock.step === "end",
+    "attached-to-player-1-turn-end",
+  );
+  state = scoreSecondaryMissionCard(
+    state,
+    "player-1",
+    "player-1:tactical:action",
+    5,
+    "The completed physical-card Mission Action was reviewed for scoring",
+    "attached-action-card-scored",
+    state.events.length + 1,
+  );
+  state = resolveSecondaryTurnEnd(
+    state,
+    "player-1",
+    { achievedCardIds: ["player-1:tactical:action"] },
+    "attached-player-1-secondary-turn-ended",
+    state.events.length + 1,
+  );
+  state = advanceBattleClock(state, "attached-to-player-2-turn", state.events.length + 1);
+  state = advanceToClock(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "attached-to-ork-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    boyz.id,
+    "stationary",
+    "attached-orks-remained-stationary",
+    state.events.length + 1,
+  );
+  state = advanceToClock(
+    state,
+    (clock) => clock.phase === "shooting" && clock.step === "resolve_attacks",
+    "attached-to-ork-shooting",
+  );
+  guardians = formationBySource(state, "guardians");
+  boyz = formationBySource(state, "boyz");
+  state = startFormationActivation(
+    state,
+    boyz.id,
+    {},
+    "attached-orks-shooting-started",
+    state.events.length + 1,
+  );
+  state = recordReviewedRangedTarget(
+    state,
+    {
+      attacker: boyz,
+      target: guardians,
+      sourceSavedUnitId: "boyz",
+      weaponName: "Slugga",
+      measuredDistanceThousandths: 10_000,
+      declaredCount: 9,
+    },
+    "attached-slugga-target-recorded",
+  );
+  state = recordReviewedRangedTarget(
+    state,
+    {
+      attacker: boyz,
+      target: guardians,
+      sourceSavedUnitId: "boyz",
+      weaponName: "Rokkit launcha",
+      measuredDistanceThousandths: 10_000,
+      declaredCount: 1,
+    },
+    "attached-rokkit-target-recorded",
+  );
+  state = closeRangedTargetDeclarations(
+    state,
+    "attached-kombi-targets-closed",
+    state.events.length + 1,
+    "go_to_ground_first",
+  );
+  if (replayBattleState(state).pendingGoToGround) {
+    state = resolveGoToGround(
+      state,
+      guardians.id,
+      "attached-go-to-ground-resolved",
+      state.events.length + 1,
+    );
+  }
+  if (replayBattleState(state).pendingSmokescreen) {
+    state = passSmokescreen(
+      state,
+      "The target did not have Smokescreen",
+      "attached-smokescreen-passed",
+      state.events.length + 1,
+    );
+  }
+  state = appendReviewedAttack(state, {
+    attacker: boyz,
+    target: guardians,
+    sourceSavedUnitId: "boyz",
+    weaponName: "Slugga",
+    weaponType: "Ranged",
+    declaredWeaponCount: 9,
+    appliedDamage: 9,
+    modelsDestroyed: 9,
+    successful: 9,
+    targetEligibilityEventId: "attached-slugga-target-recorded",
+    id: "attached-guardian-casualties-resolved",
+  });
+  guardians = formationBySource(state, "guardians");
+  state = appendReviewedAttack(state, {
+    attacker: boyz,
+    target: guardians,
+    sourceSavedUnitId: "boyz",
+    weaponName: "Rokkit launcha",
+    weaponType: "Ranged",
+    declaredWeaponCount: 1,
+    appliedDamage: 3,
+    modelsDestroyed: 2,
+    successful: 2,
+    targetEligibilityEventId: "attached-rokkit-target-recorded",
+    id: "attached-mixed-casualties-resolved",
+  });
+  state = completeFormationActivation(
+    state,
+    "attached-orks-shooting-completed",
+    state.events.length + 1,
+  );
+
+  let reserveArrived = false;
+  let battleReadyScored = false;
+  const resolvedTacticalTurns = new Set(["1:1:player-1"]);
+  while (replayBattleState(state).clock.status !== "complete") {
+    let replayed = replayBattleState(state);
+    if (replayed.pendingFireOverwatch) {
+      state = passFireOverwatch(
+        state,
+        "No formation used Fire Overwatch in the attached replay",
+        `attached-fire-overwatch-pass-${state.events.length + 1}`,
+        state.events.length + 1,
+      );
+      continue;
+    }
+    if (replayed.pendingRapidIngress) {
+      state = passRapidIngress(
+        state,
+        "No formation used Rapid Ingress in the attached replay",
+        `attached-rapid-ingress-pass-${state.events.length + 1}`,
+        state.events.length + 1,
+      );
+      replayed = replayBattleState(state);
+    }
+    const clock = replayed.clock;
+    const turnKey = `${clock.battleRound}:${clock.turn}:${clock.activePlayerId}`;
+    if (
+      !reserveArrived &&
+      clock.battleRound === 2 &&
+      clock.activePlayerId === "player-1" &&
+      clock.phase === "movement" &&
+      clock.step === "reinforcements"
+    ) {
+      rangers = formationBySource(state, "rangers");
+      state = arriveFromReserves(
+        state,
+        rangers.id,
+        { placementConfirmed: true, placementReason: "Reviewed legal Strategic Reserves edge" },
+        "attached-rangers-arrived",
+        state.events.length + 1,
+      );
+      state = recordModelPositions(
+        state,
+        rangers.id,
+        reviewedReserveArrivalPositions(state, rangers.id, "attached-rangers-arrived", {
+          baseX: 48_000,
+          baseY: 2_000,
+        }),
+        "attached-rangers-positioned",
+        state.events.length + 1,
+      );
+      reserveArrived = true;
+      continue;
+    }
+    if (
+      !battleReadyScored &&
+      clock.battleRound === 5 &&
+      clock.turn === 2 &&
+      clock.phase === "fight" &&
+      clock.step === "end"
+    ) {
+      for (const playerId of ["player-1", "player-2"]) {
+        state = scoreMissionPoints(
+          state,
+          playerId,
+          "battle_ready",
+          10,
+          "Golden attached replay Battle Ready review",
+          `attached-battle-ready-${playerId}`,
+          state.events.length + 1,
+        );
+      }
+      battleReadyScored = true;
+    }
+    if (clock.phase === "fight" && clock.step === "end" && !resolvedTacticalTurns.has(turnKey)) {
+      state = resolveSecondaryTurnEnd(
+        state,
+        "player-1",
+        {},
+        `attached-tactical-turn-ended-${turnKey}`,
+        state.events.length + 1,
+      );
+      resolvedTacticalTurns.add(turnKey);
+    }
+    state = advanceBattleClock(
+      state,
+      `attached-clock-${state.events.length + 1}`,
+      state.events.length + 1,
+    );
+  }
+
+  const expected = goldenBattleReplaySummary(state);
+  const replayed = replayBattleState(state);
+  assert.equal(expected.finalClock.status, "complete");
+  assert.equal(expected.phaseStepCoverage.length, 170);
+  assert.equal(expected.eventTypeCounts.mission_action_started, 1);
+  assert.equal(expected.eventTypeCounts.mission_action_completed, 1);
+  assert.equal(expected.eventTypeCounts.reserve_arrived, 1);
+  assert.equal(expected.eventTypeCounts.attack_resolved, 2);
+  const boyzSource = catalogueUnit("Boyz");
+  const sluggaSource = boyzSource.weapons.find((weapon) => weapon.name === "Slugga");
+  const rokkitSource = boyzSource.weapons.find((weapon) => weapon.name === "Rokkit launcha");
+  assert.deepEqual(
+    { attacks: sluggaSource?.attacks, damage: sluggaSource?.damage },
+    { attacks: "1", damage: "1" },
+  );
+  assert.deepEqual(
+    { attacks: rokkitSource?.attacks, damage: rokkitSource?.damage },
+    { attacks: "D3", damage: "3" },
+  );
+  assert.equal(replayed.ruleCoverage.plan.players[0].faction.sourceId, "AE");
+  assert.equal(replayed.ruleCoverage.plan.players[0].detachment.sourceId, "000001020");
+  assert.equal(replayed.ruleCoverage.plan.players[1].faction.sourceId, "ORK");
+  assert.equal(replayed.ruleCoverage.plan.players[1].detachment.sourceId, "000000856");
+  return {
+    schema: "whc-golden-battle-replay",
+    schemaVersion: 1,
+    scenarioId: "aeldari-farseer-guardians-vs-orks-warboss-boyz-attached",
+    title: "Farseer with Guardian Defenders vs Warboss with Boyz · attached mixed-profile battle",
+    description:
+      "A source-locked Chapter Approved replay with two attached Leader/bodyguard formations, mixed model profiles, reviewed physical-card Mission Action, explicit faction and detachment selections, Strategic Reserves arrival, and bodyguard-first multi-profile casualty allocation.",
+    listPair: [
+      {
+        playerId: "player-1",
+        listId: attachedAttackers.id,
+        factionId: attachedAttackers.factionId,
+        savedUnitId: "guardians",
+        datasheetId: catalogueUnit("Guardian Defenders").id,
+        datasheetName: "Guardian Defenders",
+        attachedSavedUnitId: "farseer",
+        attachedDatasheetId: catalogueUnit("Farseer").id,
+      },
+      {
+        playerId: "player-2",
+        listId: attachedDefenders.id,
+        factionId: attachedDefenders.factionId,
+        savedUnitId: "boyz",
+        datasheetId: catalogueUnit("Boyz").id,
+        datasheetName: "Boyz",
+        attachedSavedUnitId: "warboss",
+        attachedDatasheetId: catalogueUnit("Warboss").id,
+      },
+    ],
+    sourceManifestVersion: sourceManifest.version,
+    stateDigest: digest(state),
+    expectedDigest: digest(expected),
+    expected,
+    state,
+  };
+}
+
 const fixture = buildFixture();
 const actionFixture = buildActionFixture();
+const attachedFixture = buildAttachedFixture();
 const formatFixture = (value) =>
   format(JSON.stringify(value), {
     parser: "json",
@@ -1437,9 +2116,11 @@ const formatFixture = (value) =>
   });
 const serialized = await formatFixture(fixture);
 const actionSerialized = await formatFixture(actionFixture);
+const attachedSerialized = await formatFixture(attachedFixture);
 if (process.argv.includes("--check")) {
   const existing = await readFile(fixtureUrl, "utf8");
   const existingAction = await readFile(actionFixtureUrl, "utf8");
+  const existingAttached = await readFile(attachedFixtureUrl, "utf8");
   if (existing !== serialized) {
     throw new Error("Golden battle replay fixture is stale; regenerate it before committing");
   }
@@ -1448,9 +2129,15 @@ if (process.argv.includes("--check")) {
       "Action-heavy golden battle replay fixture is stale; regenerate it before committing",
     );
   }
+  if (existingAttached !== attachedSerialized) {
+    throw new Error(
+      "Attached mixed-profile golden battle replay fixture is stale; regenerate it before committing",
+    );
+  }
 } else {
   await writeFile(fixtureUrl, serialized);
   await writeFile(actionFixtureUrl, actionSerialized);
+  await writeFile(attachedFixtureUrl, attachedSerialized);
 }
 
 console.log(
@@ -1458,4 +2145,7 @@ console.log(
 );
 console.log(
   `${actionFixture.scenarioId}: ${actionFixture.expected.eventCount} events, ${actionFixture.expected.phaseStepCoverage.length} active clock states, ${actionFixture.stateDigest}`,
+);
+console.log(
+  `${attachedFixture.scenarioId}: ${attachedFixture.expected.eventCount} events, ${attachedFixture.expected.phaseStepCoverage.length} active clock states, ${attachedFixture.stateDigest}`,
 );

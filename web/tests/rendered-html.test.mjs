@@ -79,6 +79,12 @@ const actionGoldenBattleReplay = JSON.parse(
     "utf8",
   ),
 );
+const attachedGoldenBattleReplay = JSON.parse(
+  await readFile(
+    new URL("./fixtures/golden-battle-attached-aeldari-vs-orks-v1.json", import.meta.url),
+    "utf8",
+  ),
+);
 
 function createD1Mock() {
   const rows = [];
@@ -2937,6 +2943,33 @@ test("replays the action-heavy golden battle and casualties through the public A
       result.data.objectives.find((objective) => objective.id === "objective-3").controllerPlayerId,
       "player-2",
     );
+    assert.equal(result.data.missionTracking.categoryPoints["player-1"].secondary, 5);
+  }
+});
+
+test("replays attached mixed-profile casualties and Reserve arrival through the public API and C ABI", async () => {
+  const worker = await loadWorker();
+  const context = { waitUntil() {}, passThroughOnException() {} };
+  for (const expectedFormation of attachedGoldenBattleReplay.expected.formations) {
+    const response = await worker.fetch(
+      new Request("http://localhost/api/v1/battle/replay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          battleState: attachedGoldenBattleReplay.state,
+          formationId: expectedFormation.id,
+        }),
+      }),
+      testEnv,
+      context,
+    );
+    assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+    const result = await response.json();
+    assert.deepEqual(result.data.clock, attachedGoldenBattleReplay.expected.finalClock);
+    assert.deepEqual(result.data.health, expectedFormation.health);
+    assert.equal(result.data.activeAttackIds.length, 2);
+    assert.equal(result.data.deployment.complete, true);
+    assert.equal(result.data.missionTracking.completedActions.length, 1);
     assert.equal(result.data.missionTracking.categoryPoints["player-1"].secondary, 5);
   }
 });
