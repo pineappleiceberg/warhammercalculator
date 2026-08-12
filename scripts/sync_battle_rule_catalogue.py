@@ -58,6 +58,7 @@ GENERATED_PREFIXES = (
     "datasheet.catalogue-",
     "mission.catalogue-",
     "terrain.catalogue-",
+    "faction.oath-of-moment",
 )
 
 
@@ -76,16 +77,33 @@ def token(value):
 
 def generated_rule(category, source_id, name):
     executable_orks = category == "faction" and source_id == "ORK"
+    executable = executable_orks
     return {
         "id": f"{category}.catalogue-{token(source_id)}",
         "category": category,
         "name": f"{name} {category} rules",
-        "status": "executable" if executable_orks else "guided",
+        "status": "executable" if executable else "guided",
         "introducedBattleStateVersion": 40 if executable_orks else 24,
         "sources": [
             {
                 "id": SOURCE_ID,
                 "records": [{"type": category, "id": source_id}],
+            }
+        ],
+    }
+
+
+def oath_of_moment_rule():
+    return {
+        "id": "faction.oath-of-moment",
+        "category": "faction",
+        "name": "Oath of Moment",
+        "status": "executable",
+        "introducedBattleStateVersion": 42,
+        "sources": [
+            {
+                "id": SOURCE_ID,
+                "records": [{"type": "faction", "id": "SM:ability:000008350"}],
             }
         ],
     }
@@ -196,6 +214,7 @@ def expected_documents():
             "exact enhancement identities selected for each detachment",
             "exact datasheet identities and source-linked rules selected by saved units",
             "published per-model Objective Control characteristics used by exact battle formations",
+            "exact Oath of Moment target-selection timing and Hit-roll re-roll effect",
         ],
     }
     sources["sources"] = [entry for entry in sources["sources"] if entry["id"] != SOURCE_ID]
@@ -225,7 +244,7 @@ def expected_documents():
     sources["sources"].append(mission_source_entry)
 
     coverage["snapshotId"] = (
-        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v41"
+        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v42"
     )
     coverage["sourceLocks"] = [
         lock for lock in coverage["sourceLocks"] if lock["id"] != SOURCE_ID
@@ -245,6 +264,7 @@ def expected_documents():
     coverage["rules"].extend(
         generated_rule("faction", entry["id"], entry["name"]) for entry in factions
     )
+    coverage["rules"].append(oath_of_moment_rule())
     coverage["rules"].extend(
         generated_rule("detachment", entry["id"], entry["name"]) for entry in detachments
     )

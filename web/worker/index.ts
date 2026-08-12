@@ -72,6 +72,7 @@ import {
   battleFormation,
   battleFormationHealth,
   battleGrimResolveFormationFacts,
+  battleOathOfMomentAttackFacts,
   battleWaaaghFormationFacts,
   battleSurvivingWeaponCount,
   chargeResolutionFlags,
@@ -401,6 +402,7 @@ type CalculatorExports = {
   whc_visibility_facts_are_valid(...values: number[]): number;
   whc_waaagh_state_is_valid(...values: number[]): number;
   whc_grim_resolve_model_objective_control_is_valid(...values: number[]): number;
+  whc_oath_of_moment_attack_state_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -1977,11 +1979,29 @@ async function replayFormationHealth(
         return [{ ...facts, models }];
       })
       .sort((left, right) => left.formationId.localeCompare(right.formationId));
+    const oathOfMoment = [...replayed.formations.values()]
+      .map((formation) => {
+        const facts = battleOathOfMomentAttackFacts(state, formation.id, replayed);
+        const nativeValid = Boolean(
+          calculator.whc_oath_of_moment_attack_state_is_valid(...facts.values),
+        );
+        if (nativeValid !== facts.valid || !facts.valid) {
+          throw new ServiceUnavailableError(
+            "Oath of Moment state diverged from the C/WebAssembly predicate",
+            "OATH_OF_MOMENT_STATE_DIVERGENCE",
+          );
+        }
+        const { values, ...publicFacts } = facts;
+        void values;
+        return publicFacts;
+      })
+      .filter((facts) => facts.sourceLocked)
+      .sort((left, right) => left.formationId.localeCompare(right.formationId));
     return {
       schemaVersion: state.version,
       rulesSnapshot: state.rulesSnapshot,
       ruleCoverage: replayed.ruleCoverage,
-      factionRules: { waaagh },
+      factionRules: { waaagh, oathOfMoment },
       detachmentRules: { grimResolve },
       tableGeometry: replayed.tableGeometry,
       terrainFootprints: replayed.terrainFootprints,

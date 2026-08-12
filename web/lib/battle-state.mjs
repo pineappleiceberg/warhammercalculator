@@ -36,7 +36,8 @@ import {
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 41;
+export const BATTLE_STATE_VERSION = 42;
+export const OATH_OF_MOMENT_BATTLE_STATE_VERSION = 42;
 export const DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION = 41;
 export const FACTION_RULE_STATE_BATTLE_STATE_VERSION = 40;
 export const SIMPLE_TERRAIN_BATTLE_STATE_VERSION = 39;
@@ -3076,6 +3077,9 @@ function normalizeFormation(candidate, stateVersion) {
     ...(stateVersion >= FACTION_RULE_STATE_BATTLE_STATE_VERSION
       ? { hasWaaaghAbility: Boolean(formation.hasWaaaghAbility) }
       : {}),
+    ...(stateVersion >= OATH_OF_MOMENT_BATTLE_STATE_VERSION
+      ? { hasOathOfMomentAbility: Boolean(formation.hasOathOfMomentAbility) }
+      : {}),
     segments,
   };
   if (
@@ -3493,6 +3497,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     throw new Error("Executable detachment-rule state requires battle-state version 41");
   }
   if (
+    stateVersion < OATH_OF_MOMENT_BATTLE_STATE_VERSION &&
+    event.type === "oath_of_moment_selected"
+  ) {
+    throw new Error("Executable Oath of Moment state requires battle-state version 42");
+  }
+  if (
     stateVersion < MISSION_TRACKING_BATTLE_STATE_VERSION &&
     [
       "secondary_plan_configured",
@@ -3583,6 +3593,7 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
       previous.sourceFormationId !== formation.sourceFormationId ||
       previous.assignedTransportFormationId !== formation.assignedTransportFormationId ||
       previous.hasWaaaghAbility !== formation.hasWaaaghAbility ||
+      previous.hasOathOfMomentAbility !== formation.hasOathOfMomentAbility ||
       JSON.stringify(previous.deploymentTraits) !== JSON.stringify(formation.deploymentTraits) ||
       JSON.stringify(previous.transportOptions) !== JSON.stringify(formation.transportOptions) ||
       JSON.stringify(weaponInventoryProfileIdentity(previous.weaponInventory)) !==
@@ -3815,6 +3826,29 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.sourceAbilityId = boundedString(
       event.sourceAbilityId,
       "Grim Resolve source ability id",
+      30,
+    );
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "oath_of_moment_selected") {
+    normalized.playerId = boundedString(event.playerId, "Oath of Moment player id", 100);
+    if (!formations.players.has(normalized.playerId)) {
+      throw new Error("Oath of Moment player is unknown");
+    }
+    normalized.formationId = boundedString(
+      event.formationId,
+      "Oath of Moment target formation id",
+      100,
+    );
+    normalized.sourceFactionId = boundedString(
+      event.sourceFactionId,
+      "Oath of Moment source faction id",
+      30,
+    );
+    normalized.sourceAbilityId = boundedString(
+      event.sourceAbilityId,
+      "Oath of Moment source ability id",
       30,
     );
     normalized.clock = normalizeClock(event.clock, formations.players);
@@ -5308,6 +5342,7 @@ export function normalizeBattleState(candidate) {
       SIMPLE_TERRAIN_BATTLE_STATE_VERSION,
       FACTION_RULE_STATE_BATTLE_STATE_VERSION,
       DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION,
+      OATH_OF_MOMENT_BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
     throw new Error(`Unsupported battle state version: ${String(state.version)}`);
@@ -5380,6 +5415,7 @@ export function normalizeBattleState(candidate) {
         MISSION_TRACKING_BATTLE_STATE_VERSION,
         SIMPLE_TERRAIN_BATTLE_STATE_VERSION,
         FACTION_RULE_STATE_BATTLE_STATE_VERSION,
+        DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -5632,6 +5668,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= OATH_OF_MOMENT_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyMandatoryArmyRulesThroughSequence = nonnegativeInteger(
+        migration.legacyMandatoryArmyRulesThroughSequence,
+        "Legacy mandatory army-rule event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -5643,6 +5686,7 @@ export function normalizeBattleState(candidate) {
     normalized.migration?.sourceVersion !== TERRAIN_CLEARANCE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== SIMPLE_TERRAIN_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== FACTION_RULE_STATE_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== OBJECTIVE_CONTROL_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== SPATIAL_FACTS_BATTLE_STATE_VERSION &&
@@ -6755,6 +6799,9 @@ export function replayBattleState(state) {
   const grimResolveSelections = [];
   const grimResolveSelectionsByPlayer = new Map();
   const grimResolveSelectionKeys = new Set();
+  const oathOfMomentSelections = [];
+  const oathOfMomentSelectionsByPlayer = new Map();
+  const oathOfMomentSelectionKeys = new Set();
   let tableGeometry = null;
   let terrainFootprints = null;
   let terrainVisibility = null;
@@ -6862,6 +6909,10 @@ export function replayBattleState(state) {
     state.version < DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyDetachmentRulesThroughSequence ?? 0);
+  const legacyMandatoryArmyRulesThroughSequence =
+    state.version < OATH_OF_MOMENT_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyMandatoryArmyRulesThroughSequence ?? 0);
   const legacyTerrainVisibilityThroughSequence =
     state.version < TERRAIN_VISIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -6888,6 +6939,14 @@ export function replayBattleState(state) {
     return Boolean(
       detachment?.sourceId === "000000834" &&
         detachment.ruleIds?.includes("detachment.catalogue-000000834"),
+    );
+  };
+  const playerUsesOathOfMoment = (playerId) => {
+    const faction = ruleCoverage?.plan?.players?.find(
+      (player) => player.playerId === playerId,
+    )?.faction;
+    return Boolean(
+      faction?.sourceId === "SM" && faction.ruleIds?.includes("faction.oath-of-moment"),
     );
   };
   const grimResolveEligibleFormation = (formation, playerId) =>
@@ -8190,6 +8249,38 @@ export function replayBattleState(state) {
       grimResolveSelectionsByPlayer.set(event.playerId, event);
       continue;
     }
+    if (event.type === "oath_of_moment_selected") {
+      if (
+        clock.status !== "active" ||
+        clock.phase !== "command" ||
+        clock.step !== "start" ||
+        clock.activePlayerId !== event.playerId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error(
+          "Oath of Moment can only select a target at the start of your Command phase",
+        );
+      }
+      if (
+        !playerUsesOathOfMoment(event.playerId) ||
+        event.sourceFactionId !== "SM" ||
+        event.sourceAbilityId !== "000008350"
+      ) {
+        throw new Error("Oath of Moment requires the source-locked Adeptus Astartes faction rule");
+      }
+      const formation = formations.get(event.formationId);
+      if (!formation || formation.playerId === event.playerId) {
+        throw new Error("Oath of Moment must select one unit from the opponent's army");
+      }
+      const selectionKey = battleTurnKey(clock);
+      if (oathOfMomentSelectionKeys.has(selectionKey)) {
+        throw new Error("Oath of Moment can select only one target in each Command phase");
+      }
+      oathOfMomentSelectionKeys.add(selectionKey);
+      oathOfMomentSelections.push(event);
+      oathOfMomentSelectionsByPlayer.set(event.playerId, event);
+      continue;
+    }
     if (event.type === "clock_advanced") {
       if (pendingChoices.size > 0) {
         throw new Error("Pending choices must be resolved before advancing the battle");
@@ -8203,6 +8294,15 @@ export function replayBattleState(state) {
       const expected = nextBattleClock(clock, state.players);
       if (!sameBattleClock(event.to, expected)) {
         throw new Error("Battle clock advance is not canonical");
+      }
+      if (
+        event.sequence > legacyMandatoryArmyRulesThroughSequence &&
+        clock.phase === "command" &&
+        clock.step === "start" &&
+        playerUsesOathOfMoment(clock.activePlayerId) &&
+        !oathOfMomentSelectionKeys.has(battleTurnKey(clock))
+      ) {
+        throw new Error("Select one enemy unit for Oath of Moment before continuing");
       }
       if (
         event.sequence > legacyMissionTrackingThroughSequence &&
@@ -8270,6 +8370,10 @@ export function replayBattleState(state) {
       }
       if (commandPhaseStarted(expected)) {
         grimResolveSelectionsByPlayer.delete(expected.activePlayerId);
+        oathOfMomentSelectionsByPlayer.delete(expected.activePlayerId);
+      }
+      if (expected.status === "complete") {
+        oathOfMomentSelectionsByPlayer.clear();
       }
       if (state.version >= TRACKER_BATTLE_STATE_VERSION && commandPhaseStarted(expected)) {
         awardCommandPhasePoints(resources, state.players, mission);
@@ -11459,6 +11563,8 @@ export function replayBattleState(state) {
     activeWaaaghPlayerIds,
     grimResolveSelections,
     grimResolveSelectionsByPlayer,
+    oathOfMomentSelections,
+    oathOfMomentSelectionsByPlayer,
     tableGeometry,
     terrainFootprints,
     terrainVisibility,
@@ -12094,6 +12200,121 @@ export function battleGrimResolveFormationFacts(state, formationId, replayedBatt
     battleShocked: battleShocked === 1,
     models,
     valid: models.every((model) => model.valid),
+  };
+}
+
+export function selectOathOfMomentTarget(state, playerId, formationId, id, at) {
+  const replayed = replayBattleState(state);
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "oath_of_moment_selected",
+    playerId,
+    formationId,
+    sourceFactionId: "SM",
+    sourceAbilityId: "000008350",
+    clock: replayed.clock,
+  });
+}
+
+export function battleOathOfMomentState(state, playerId, replayedBattle = null) {
+  const replayed = replayedBattle ?? replayBattleState(state);
+  const faction = replayed.ruleCoverage?.plan.players.find(
+    (player) => player.playerId === playerId,
+  )?.faction;
+  const sourceLocked = Boolean(
+    faction?.sourceId === "SM" && faction.ruleIds.includes("faction.oath-of-moment"),
+  );
+  const selectedThisCommand = replayed.oathOfMomentSelections.find(
+    (selection) =>
+      selection.playerId === playerId &&
+      replayed.clock.status === "active" &&
+      selection.clock.battleRound === replayed.clock.battleRound &&
+      selection.clock.turn === replayed.clock.turn &&
+      selection.clock.activePlayerId === replayed.clock.activePlayerId,
+  );
+  const eligibleFormationIds = [...replayed.formations.values()]
+    .filter((formation) => formation.playerId !== playerId)
+    .map((formation) => formation.id)
+    .sort();
+  return {
+    sourceLocked,
+    activeTargetFormationId:
+      replayed.oathOfMomentSelectionsByPlayer.get(playerId)?.formationId ?? "",
+    selectedThisCommand: selectedThisCommand ?? null,
+    eligibleFormationIds,
+    available: Boolean(
+      sourceLocked &&
+        replayed.clock.status === "active" &&
+        replayed.clock.phase === "command" &&
+        replayed.clock.step === "start" &&
+        replayed.clock.activePlayerId === playerId &&
+        eligibleFormationIds.length > 0 &&
+        !selectedThisCommand,
+    ),
+  };
+}
+
+export function oathOfMomentAttackStateIsValid(
+  sourceFaction,
+  activeTarget,
+  selectedAtCommandStart,
+  targetIsOpponent,
+  attackerHasAbility,
+  hitReroll,
+) {
+  const flags = [
+    sourceFaction,
+    activeTarget,
+    selectedAtCommandStart,
+    targetIsOpponent,
+    attackerHasAbility,
+    hitReroll,
+  ];
+  if (flags.some((value) => !Number.isInteger(value) || value < 0 || value > 1)) {
+    return false;
+  }
+  return (
+    (activeTarget === 0 || sourceFaction === 1) &&
+    selectedAtCommandStart === activeTarget &&
+    targetIsOpponent === activeTarget &&
+    hitReroll === (activeTarget === 1 && attackerHasAbility === 1 ? 1 : 0)
+  );
+}
+
+export function battleOathOfMomentAttackFacts(state, formationId, replayedBattle = null) {
+  const replayed = replayedBattle ?? replayBattleState(state);
+  const formation = replayed.formations.get(formationId);
+  if (!formation) throw new Error("Oath of Moment attacker formation is not registered");
+  const oath = battleOathOfMomentState(state, formation.playerId, replayed);
+  const selection = replayed.oathOfMomentSelectionsByPlayer.get(formation.playerId) ?? null;
+  const target = selection ? replayed.formations.get(selection.formationId) : null;
+  const sourceFaction = oath.sourceLocked ? 1 : 0;
+  const activeTarget = selection ? 1 : 0;
+  const selectedAtCommandStart =
+    selection?.clock.phase === "command" && selection.clock.step === "start" ? 1 : 0;
+  const targetIsOpponent = target && target.playerId !== formation.playerId ? 1 : 0;
+  const attackerHasAbility = formation.hasOathOfMomentAbility ? 1 : 0;
+  const hitReroll = activeTarget === 1 && attackerHasAbility === 1 ? 1 : 0;
+  const values = [
+    sourceFaction,
+    activeTarget,
+    selectedAtCommandStart,
+    targetIsOpponent,
+    attackerHasAbility,
+    hitReroll,
+  ];
+  return {
+    formationId,
+    playerId: formation.playerId,
+    sourceLocked: sourceFaction === 1,
+    hasAbility: attackerHasAbility === 1,
+    activeTargetFormationId: selection?.formationId ?? "",
+    hitReroll: hitReroll === 1,
+    values,
+    valid: oathOfMomentAttackStateIsValid(...values),
   };
 }
 

@@ -702,5 +702,23 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
                    source_detachment, eligible_adeptus_astartes, selected, battle_shocked,
                    base_objective_control, resolved_objective_control) == expected);
     }
+    {
+        const uint32_t source_faction = next_byte(&input) % 3u;
+        const uint32_t active_target = next_byte(&input) % 3u;
+        const uint32_t selected_at_start = next_byte(&input) % 3u;
+        const uint32_t target_is_opponent = next_byte(&input) % 3u;
+        const uint32_t attacker_has_ability = next_byte(&input) % 3u;
+        const uint32_t hit_reroll = next_byte(&input) % 3u;
+        const uint32_t benefit = active_target == 1u && attacker_has_ability == 1u ? 1u : 0u;
+        const bool expected =
+            source_faction <= 1u && active_target <= 1u && selected_at_start <= 1u &&
+            target_is_opponent <= 1u && attacker_has_ability <= 1u && hit_reroll <= 1u &&
+            (active_target == 0u || source_faction == 1u) &&
+            selected_at_start == active_target && target_is_opponent == active_target &&
+            hit_reroll == benefit;
+        assert(whc_oath_of_moment_attack_state_is_valid(
+                   source_faction, active_target, selected_at_start, target_is_opponent,
+                   attacker_has_ability, hit_reroll) == expected);
+    }
     return 0;
 }

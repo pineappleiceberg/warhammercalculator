@@ -187,7 +187,10 @@ const exactMissionOverrides = {
   guidedReason: "Players will resolve guided source rules at the physical table",
   players: {
     "player-1": { detachmentSourceId: "000000818" },
-    "player-2": { detachmentSourceId: "000000750" },
+    "player-2": {
+      factionRuleIds: ["faction.test"],
+      detachmentSourceId: "000000750",
+    },
   },
   missionSourceId: "chapter-approved-2025-26-v1.4-a",
   terrainSourceId: "chapter-approved-2025-26-v1.4-layout-1",
@@ -2877,6 +2880,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacyTerrainClearanceThroughSequence: 3,
     legacyMissionTrackingThroughSequence: 3,
     legacyDetachmentRulesThroughSequence: 3,
+    legacyMandatoryArmyRulesThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -2926,6 +2930,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacyTerrainClearanceThroughSequence: 3,
     legacyMissionTrackingThroughSequence: 3,
     legacyDetachmentRulesThroughSequence: 3,
+    legacyMandatoryArmyRulesThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -2980,6 +2985,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacyTerrainClearanceThroughSequence: 2,
     legacyMissionTrackingThroughSequence: 2,
     legacyDetachmentRulesThroughSequence: 2,
+    legacyMandatoryArmyRulesThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -3027,6 +3033,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacyTerrainClearanceThroughSequence: 2,
     legacyMissionTrackingThroughSequence: 2,
     legacyDetachmentRulesThroughSequence: 2,
+    legacyMandatoryArmyRulesThroughSequence: 2,
   });
 });
 
@@ -3073,6 +3080,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacyTerrainClearanceThroughSequence: 2,
     legacyMissionTrackingThroughSequence: 2,
     legacyDetachmentRulesThroughSequence: 2,
+    legacyMandatoryArmyRulesThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -3125,6 +3133,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacyTerrainClearanceThroughSequence: 2,
     legacyMissionTrackingThroughSequence: 2,
     legacyDetachmentRulesThroughSequence: 2,
+    legacyMandatoryArmyRulesThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -3172,6 +3181,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacyTerrainClearanceThroughSequence: 2,
     legacyMissionTrackingThroughSequence: 2,
     legacyDetachmentRulesThroughSequence: 2,
+    legacyMandatoryArmyRulesThroughSequence: 2,
   });
 });
 
@@ -3218,6 +3228,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacyTerrainClearanceThroughSequence: 2,
     legacyMissionTrackingThroughSequence: 2,
     legacyDetachmentRulesThroughSequence: 2,
+    legacyMandatoryArmyRulesThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -4325,6 +4336,43 @@ test("migrates version-40 battles without inventing detachment-rule selections",
   const replayed = replayBattleState(migrated);
   assert.equal(replayed.grimResolveSelections.length, 0);
   assert.equal(replayed.grimResolveSelectionsByPlayer.size, 0);
+});
+
+test("migrates version-41 battles without inventing Oath of Moment selections", () => {
+  const current = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    id: "version-41-oath-state",
+  });
+  const versionFortyOne = normalizeBattleState({
+    ...current,
+    version: 41,
+  });
+  const migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: versionFortyOne,
+    id: versionFortyOne.id,
+  });
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 41);
+  assert.equal(
+    migrated.migration.legacyMandatoryArmyRulesThroughSequence,
+    Math.max(...versionFortyOne.events.map((event) => event.sequence)),
+  );
+  const replayed = replayBattleState(migrated);
+  assert.equal(replayed.oathOfMomentSelections.length, 0);
+  assert.equal(replayed.oathOfMomentSelectionsByPlayer.size, 0);
 });
 
 test("marks exact geometry stale when casualties change live model identities and clears on undo", () => {

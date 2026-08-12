@@ -33,9 +33,9 @@ test("published coverage matrix is source-locked and identical to its data sourc
   assert.equal(matrix.sourceLocked, true);
   assert.equal(
     matrix.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v41",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v42",
   );
-  assert.equal(matrix.rules.length, 2970);
+  assert.equal(matrix.rules.length, 2971);
   assert.deepEqual(
     new Set(matrix.rules.map((rule) => rule.category)),
     new Set([
@@ -61,6 +61,23 @@ test("published coverage matrix is source-locked and identical to its data sourc
         {
           id: "wahapedia-profile-export-2026-06-13",
           records: [{ type: "faction", id: "NEC" }],
+        },
+      ],
+    },
+  );
+  assert.equal(matrix.rules.find((rule) => rule.id === "faction.catalogue-sm")?.status, "guided");
+  assert.deepEqual(
+    matrix.rules.find((rule) => rule.id === "faction.oath-of-moment"),
+    {
+      id: "faction.oath-of-moment",
+      category: "faction",
+      name: "Oath of Moment",
+      status: "executable",
+      introducedBattleStateVersion: 42,
+      sources: [
+        {
+          id: "wahapedia-profile-export-2026-06-13",
+          records: [{ type: "faction", id: "SM:ability:000008350" }],
         },
       ],
     },
@@ -114,6 +131,10 @@ test("saved list identities select exact guided catalogue rules", () => {
     terrainSourceId: "chapter-approved-2025-26-v1.4-layout-1",
   });
   assert.deepEqual(plan.players[0].faction.ruleIds, ["faction.catalogue-nec"]);
+  assert.deepEqual(plan.players[1].faction.ruleIds, [
+    "faction.catalogue-sm",
+    "faction.oath-of-moment",
+  ]);
   assert.deepEqual(plan.players[0].datasheets[0].ruleIds, ["datasheet.catalogue-000000545"]);
   assert.deepEqual(plan.players[0].detachment.ruleIds, ["detachment.catalogue-000000818"]);
   assert.deepEqual(plan.players[0].enhancements.ruleIds, ["enhancement.catalogue-000008554003"]);

@@ -681,6 +681,11 @@ export function savedFormationBattleRegistration(
       (preset) => preset.requiresWaaaghActive === true,
     ),
   );
+  const hasOathOfMomentAbility = formation.components.some((component) =>
+    (component.catalogueUnit?.combatPresets ?? []).some(
+      (preset) => preset.requiresOathTarget === true,
+    ),
+  );
   return {
     id,
     playerId,
@@ -690,6 +695,7 @@ export function savedFormationBattleRegistration(
     transportOptions,
     keywords: formationKeywords,
     hasWaaaghAbility,
+    hasOathOfMomentAbility,
     deploymentTraits: {
       dedicatedTransport: normalizedFormationKeywords.has("dedicated transport"),
       aircraft: normalizedFormationKeywords.has("aircraft"),

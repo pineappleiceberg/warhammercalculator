@@ -326,6 +326,10 @@ int main(void) {
     assert(whc_terrain_clearance_facts_are_valid(3u, 2u, 12u, 10u, 11u, 6u, 4u, 2u, 0u));
     assert(!whc_terrain_clearance_facts_are_valid(3u, 3u, 12u, 12u, 12u, 6u, 5u, 0u,
                                                    WHC_TERRAIN_CLEARANCE_FLAGS_MASK));
+    assert(whc_oath_of_moment_attack_state_is_valid(0u, 0u, 0u, 0u, 0u, 0u));
+    assert(whc_oath_of_moment_attack_state_is_valid(1u, 1u, 1u, 1u, 1u, 1u));
+    assert(whc_oath_of_moment_attack_state_is_valid(1u, 1u, 1u, 1u, 0u, 0u));
+    assert(!whc_oath_of_moment_attack_state_is_valid(0u, 1u, 1u, 1u, 1u, 1u));
     assert(whc_objective_control_facts_are_valid(
         2u, 2u, 4u, 1u, 1u, 0u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
     assert(whc_objective_control_facts_are_valid(

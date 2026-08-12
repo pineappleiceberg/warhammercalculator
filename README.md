@@ -804,6 +804,17 @@ The replay API exposes per-model base and resolved OC only for armies using that
 detachment and independently checks every value against the ACSL-specified
 C/WebAssembly predicate. Version-40 and older histories retain an explicit
 migration boundary and never receive invented selections.
+Version 42 makes Oath of Moment target selection a source-locked executable
+Space Marines faction transition. Guided Play requires one opposing formation
+to be selected at the start of each owning Command phase, keeps it active until
+the start of the next owning Command phase, and synchronizes the selection into
+the existing editable attack profile so compatible models receive their Hit
+re-roll. The replay API independently cross-checks the active target and ability
+boundary through C/WebAssembly. The broader Space Marines faction catalogue
+remains guided: the Codex-only +1 Wound condition still uses the separate
+editable eligibility state because detachment choice and excluded chapter
+keywords are not yet fully executable. Version-41 and older histories retain an
+explicit migration boundary and never receive invented Oath selections.
 Version-25
 games migrate without invented terrain footprints, version-26 games migrate
 without invented deployment positions, and version-27 games migrate without
@@ -1470,7 +1481,9 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 1. Add source-backed faction and detachment state transitions to canonical
    battle replay, apply their consequences to attacks, objectives, and bounded
    resources, and lock each transition into another full-game faction/mission
-   fixture. Continue the corpus across every supported faction and mission.
+   fixture. Next, source-lock Necrons Reanimation Protocols and its per-model
+   healing/allocation boundary; then continue the corpus across every supported
+   faction and mission.
 2. Add reviewed curved movement-surface primitives only when panels and simple
    polygon solids cannot represent a supported physical terrain set exactly.
 3. Add deterministic automated policies and calibrated batch battle simulation
@@ -1504,6 +1517,9 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
   Secondary plans. The tracker enforces published lifecycle and VP caps, but
   individual card names, conditions, timing, and completion remain reviewed
   physical-card input; unavailable card text is never inferred.
+- Canonical Oath of Moment selection supplies its Hit re-roll automatically.
+  Its optional Codex +1 Wound clause remains editable until the complete
+  detachment and excluded-chapter eligibility test is source-locked.
 
 ## 10th edition profile database
 
