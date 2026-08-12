@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { checkDeployment } from "../scripts/check-deployment.mjs";
 
@@ -39,15 +40,9 @@ const ruleCoverage = {
   ],
 };
 
-const missionPack = {
-  schemaVersion: 1,
-  id: "chapter-approved-2025-26-v1.4",
-  edition: "Warhammer 40,000 10th Edition",
-  version: "1.4",
-  source: { sha256: "b".repeat(64) },
-  missions: Array.from({ length: 20 }, (_, index) => ({ id: `mission-${index}` })),
-  terrainLayouts: Array.from({ length: 8 }, (_, index) => ({ id: `terrain-${index}` })),
-};
+const missionPack = JSON.parse(
+  await readFile(new URL("../public/chapter-approved-2025-26-v1.4.json", import.meta.url), "utf8"),
+);
 
 function healthyFetch(request) {
   const url = new URL(request);
@@ -88,6 +83,7 @@ test("accepts healthy API and static deployments", async () => {
   assert.equal(staticSite.status, "ok");
   assert.equal(staticSite.checks.length, 5);
   assert.equal(api.baseUrl, "https://example.test/calculator/");
+  assert.equal(staticSite.checks.find((entry) => entry.name === "mission-pack").schemaVersion, 2);
 });
 
 test("identifies HTTP, profile schema, and Wasm deployment failures", async () => {
