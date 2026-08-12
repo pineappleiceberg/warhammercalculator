@@ -27,16 +27,32 @@ state.
 
 ## Prioritized backlog
 
-1. Add an on-table action-heavy source-locked replay pair covering exact
-   movement, ranged attacks, Charge, Fight, reactions, casualties, objective
-   changes, and Tactical Secondary lifecycle. Then extend the corpus across
-   representative factions, missions, and composition boundaries.
+1. Extend the source-locked replay corpus with an attached Leader/bodyguard and
+   mixed-profile unit pair, a different faction and mission card, Reserves,
+   physical-card Mission Actions, faction/detachment rule decisions, and
+   multi-model casualty allocation. Then continue across every supported
+   faction, mission, and composition boundary.
 2. Add reviewed curved surface primitives only when a supported physical terrain
    set cannot be represented exactly by panels and simple polygon solids.
 3. Add deterministic automated policies and calibrated batch battle simulation
    only after the guided replay corpus closes the same rules boundaries.
 
 ## Completed cycles
+
+- 2026-08-12: Added the first action-heavy, source-locked full-game replay. A
+  Canoptek Doomstalker versus five Intercessors now records exact deployment and
+  movement geometry, Fire Overwatch, Go to Ground, four ranged/melee attack
+  resolutions, three Intercessor casualties, a successful Charge, Pile In and
+  Consolidation for both sides, three objective-control changes, two Tactical
+  draws, scoring, discard, every one of the 170 active clock states, and final
+  Battle Ready scoring in 244 append-only events. The fixture is SHA-256 bound,
+  regenerated in CI, and replayed for both formations through the public API
+  and C/WebAssembly health and clock ABIs. This broader replay exposed and fixed
+  two cross-surface defects: C clock verification now validates each canonical
+  transition from its action-mutated `from` state, and Tactical card scores no
+  longer masquerade as a Fixed-card high score in tracker facts. The next
+  corpus boundary is attached/mixed composition, Mission Actions, Reserves,
+  and explicit faction/detachment decisions on another faction/mission pair.
 
 - 2026-08-12: Established the current full-game golden replay format and first
   real-catalogue fixture. A Necrons Doom Scythe and Space Marines Brutalis

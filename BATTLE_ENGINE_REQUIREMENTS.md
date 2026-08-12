@@ -181,13 +181,16 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    Secondary plans, Tactical card lifecycle, New Orders, and universal Actions
    are executable; individual physical card conditions remain reason-backed
    player input because their card text is unavailable.
-8. **In progress:** the version-39 golden replay envelope, source and expected
-   SHA-256 binding, real Necrons-versus-Space-Marines catalogue identities,
-   exact Chapter Approved setup, all 170 active clock states, capped scoring,
-   final state, generator check, tamper tests, and API-to-C/WebAssembly clock
-   replay are complete. Add action-heavy ranged, Charge, Fight, reaction,
-   casualty, objective-control, and Tactical Secondary fixtures, then extend
-   representative pairs across every supported faction and mission boundary.
+8. **In progress:** two version-39 golden replays now bind source and expected
+   SHA-256 digests to real Necrons-versus-Space-Marines catalogue identities and
+   exact Chapter Approved setup. The second 244-event replay adds exact
+   movement, Fire Overwatch, Go to Ground, ranged and melee casualties, Charge,
+   both Fight activations, objective transfer, Tactical lifecycle, all 170
+   active clock states, final state, generator checks, tamper tests, and
+   API-to-C/WebAssembly clock and health replay. Add attached Leader/bodyguard,
+   mixed-profile allocation, Reserves, Mission Actions, faction/detachment
+   decisions, and different faction/mission pairs until every supported
+   boundary has representative source-locked evidence.
 9. Add deterministic automated policies, batch battle simulation, and calibrated
    matchup reporting.
 10. Prove the cross-surface release gate and maintain it for every rules update.
