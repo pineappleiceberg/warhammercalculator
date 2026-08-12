@@ -93,7 +93,7 @@ import {
 import { resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
 import { ruleCoverageIsPermitted } from "../lib/rule-coverage.mjs";
 import { spatialFactValuesAreValid } from "../lib/spatial-facts.mjs";
-import { visibilityFactValuesAreValid } from "../lib/visibility-facts.mjs";
+import { convexSilhouetteIsValid, visibilityFactValuesAreValid } from "../lib/visibility-facts.mjs";
 
 globalThis.require = createRequire(import.meta.url);
 globalThis.__dirname = dirname(fileURLToPath(import.meta.url));
@@ -140,8 +140,65 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_model_position_set_is_valid, "function");
   assert.equal(typeof calculator._whc_spatial_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_visibility_facts_are_valid, "function");
+  assert.equal(typeof calculator._whc_convex_silhouette_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
+});
+
+test("WebAssembly and JavaScript agree on reviewed convex silhouettes", () => {
+  const cases = [
+    {
+      vertices: [
+        { xOffsetThousandths: -500, yOffsetThousandths: -500 },
+        { xOffsetThousandths: 500, yOffsetThousandths: -500 },
+        { xOffsetThousandths: 500, yOffsetThousandths: 500 },
+        { xOffsetThousandths: -500, yOffsetThousandths: 500 },
+      ],
+      flags: 1,
+    },
+    {
+      vertices: [
+        { xOffsetThousandths: -500, yOffsetThousandths: 500 },
+        { xOffsetThousandths: 500, yOffsetThousandths: 500 },
+        { xOffsetThousandths: 500, yOffsetThousandths: -500 },
+        { xOffsetThousandths: -500, yOffsetThousandths: -500 },
+      ],
+      flags: 1,
+    },
+    {
+      vertices: [
+        { xOffsetThousandths: -500, yOffsetThousandths: -500 },
+        { xOffsetThousandths: 500, yOffsetThousandths: -500 },
+        { xOffsetThousandths: 0, yOffsetThousandths: 0 },
+        { xOffsetThousandths: 500, yOffsetThousandths: 500 },
+        { xOffsetThousandths: -500, yOffsetThousandths: 500 },
+      ],
+      flags: 1,
+    },
+    {
+      vertices: [
+        { xOffsetThousandths: -500, yOffsetThousandths: -500 },
+        { xOffsetThousandths: 500, yOffsetThousandths: -500 },
+        { xOffsetThousandths: 500, yOffsetThousandths: 500 },
+      ],
+      flags: 0,
+    },
+  ];
+  for (const { vertices, flags } of cases) {
+    const words = Int32Array.from(
+      vertices.flatMap((vertex) => [vertex.xOffsetThousandths, vertex.yOffsetThousandths]),
+    );
+    const pointer = calculator._malloc(words.byteLength);
+    try {
+      new Int32Array(calculator.HEAPU8.buffer, pointer, words.length).set(words);
+      assert.equal(
+        Boolean(calculator._whc_convex_silhouette_is_valid(pointer, vertices.length, flags)),
+        convexSilhouetteIsValid(vertices, flags),
+      );
+    } finally {
+      calculator._free(pointer);
+    }
+  }
 });
 
 test("WebAssembly and JavaScript agree on executable spatial-fact summaries", () => {

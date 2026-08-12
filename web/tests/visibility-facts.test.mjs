@@ -2,11 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  convexSilhouetteIsValid,
   deriveVisibilityFacts,
   terrainVisibilityGeometryIsValid,
   visibilityFactValues,
   visibilityFactValuesAreValid,
 } from "../lib/visibility-facts.mjs";
+
+const CONVEX_SQUARE = [
+  { xOffsetThousandths: -500, yOffsetThousandths: -500 },
+  { xOffsetThousandths: 500, yOffsetThousandths: -500 },
+  { xOffsetThousandths: 500, yOffsetThousandths: 500 },
+  { xOffsetThousandths: -500, yOffsetThousandths: 500 },
+];
 
 function formation(id, playerId, modelId, keywords = []) {
   return {
@@ -42,6 +50,18 @@ function model(modelId, centerXThousandths, centerYThousandths, elevationThousan
       sightPoints: [{ xOffsetThousandths: 0, yOffsetThousandths: 0, heightThousandths: 2000 }],
       envelopeReviewed: true,
       sightPointsReviewed: true,
+    },
+  };
+}
+
+function withConvexSilhouette(candidate, convexVertices = CONVEX_SQUARE) {
+  return {
+    ...candidate,
+    silhouette: {
+      ...candidate.silhouette,
+      geometryMode: "convex_prism",
+      convexVertices,
+      convexReviewed: true,
     },
   };
 }
@@ -156,6 +176,89 @@ test("validated wall panels require measured endpoints, height, openings, and co
     ),
     false,
   );
+});
+
+test("reviewed convex silhouette vertices must be strictly convex and counter-clockwise", () => {
+  assert.equal(convexSilhouetteIsValid(CONVEX_SQUARE), true);
+  assert.equal(convexSilhouetteIsValid([...CONVEX_SQUARE].reverse()), false);
+  assert.equal(
+    convexSilhouetteIsValid([
+      CONVEX_SQUARE[0],
+      CONVEX_SQUARE[1],
+      { xOffsetThousandths: 0, yOffsetThousandths: 0 },
+      CONVEX_SQUARE[2],
+      CONVEX_SQUARE[3],
+    ]),
+    false,
+  );
+});
+
+test("a reviewed convex prism avoids false line-of-sight blocking by its coarse envelope", () => {
+  const observerFormation = formation("observer", "player-1", "observer-model");
+  const targetFormation = formation("target", "player-2", "target-model");
+  const blockerFormation = formation("blocker", "player-1", "blocker-model");
+  const blocker = withConvexSilhouette(model("blocker-model", 5000, 2000));
+  blocker.silhouette.widthThousandths = 4000;
+  blocker.silhouette.depthThousandths = 4000;
+  blocker.silhouette.heightThousandths = 500;
+  blocker.silhouette.sightPoints = [
+    { xOffsetThousandths: 0, yOffsetThousandths: 750, heightThousandths: 250 },
+  ];
+  blocker.silhouette.convexVertices = [
+    { xOffsetThousandths: -500, yOffsetThousandths: 500 },
+    { xOffsetThousandths: 500, yOffsetThousandths: 500 },
+    { xOffsetThousandths: 0, yOffsetThousandths: 1000 },
+  ];
+  const result = deriveVisibilityFacts({
+    formations: new Map([
+      [observerFormation.id, observerFormation],
+      [targetFormation.id, targetFormation],
+      [blockerFormation.id, blockerFormation],
+    ]),
+    positions: new Map([
+      [observerFormation.id, { models: [model("observer-model", 1000, 0)] }],
+      [targetFormation.id, { models: [model("target-model", 9000, 0)] }],
+      [blockerFormation.id, { models: [blocker] }],
+    ]),
+    terrainFootprints: terrainFootprints(footprint(20_000, 20_000)),
+    terrainVisibility: terrainVisibility(),
+  })
+    .get("observer")
+    .get("target");
+  assert.equal(result.visibility.status, "visible");
+  assert.equal(result.fullVisibility.status, "fully_visible");
+});
+
+test("an asymmetric convex prism rotates in the same frame as its model", () => {
+  const observerFormation = formation("observer", "player-1", "observer-model");
+  const targetFormation = formation("target", "player-2", "target-model");
+  const blockerFormation = formation("blocker", "player-2", "blocker-model");
+  const blocker = withConvexSilhouette(model("blocker-model", 5000, 1500), [
+    { xOffsetThousandths: 1000, yOffsetThousandths: -500 },
+    { xOffsetThousandths: 2000, yOffsetThousandths: 0 },
+    { xOffsetThousandths: 1000, yOffsetThousandths: 500 },
+  ]);
+  blocker.rotationMilliDegrees = 90_000;
+  blocker.silhouette.shape = "rectangle";
+  blocker.silhouette.widthThousandths = 4000;
+  const result = deriveVisibilityFacts({
+    formations: new Map([
+      [observerFormation.id, observerFormation],
+      [targetFormation.id, targetFormation],
+      [blockerFormation.id, blockerFormation],
+    ]),
+    positions: new Map([
+      [observerFormation.id, { models: [model("observer-model", 1000, 3000)] }],
+      [targetFormation.id, { models: [model("target-model", 9000, 3000)] }],
+      [blockerFormation.id, { models: [blocker] }],
+    ]),
+    terrainFootprints: terrainFootprints(footprint(20_000, 20_000)),
+    terrainVisibility: terrainVisibility(),
+  })
+    .get("observer")
+    .get("target");
+  assert.equal(result.visibility.status, "unknown");
+  assert.equal(result.visibleModelPairCount, 0);
 });
 
 test("a reviewed sight ray through an exact wall opening proves model visibility", () => {

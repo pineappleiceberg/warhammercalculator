@@ -1752,6 +1752,23 @@ static void test_battle_clock(void) {
     assert(next[0] == 91u);
 }
 
+/*@ assigns \nothing;
+ */
+static void test_convex_silhouette(void) {
+    const int32_t square[] = {-500, -500, 500, -500, 500, 500, -500, 500};
+    const int32_t clockwise[] = {-500, 500, 500, 500, 500, -500, -500, -500};
+    const int32_t concave[] = {-500, -500, 500, -500, 0, 0, 500, 500, -500, 500};
+    const int32_t out_of_range[] = {-30001, -500, 500, -500, 500, 500, -500, 500};
+
+    assert(whc_convex_silhouette_is_valid(square, 4u, WHC_CONVEX_SILHOUETTE_REVIEWED));
+    assert(!whc_convex_silhouette_is_valid(clockwise, 4u, WHC_CONVEX_SILHOUETTE_REVIEWED));
+    assert(!whc_convex_silhouette_is_valid(concave, 5u, WHC_CONVEX_SILHOUETTE_REVIEWED));
+    assert(!whc_convex_silhouette_is_valid(out_of_range, 4u,
+                                           WHC_CONVEX_SILHOUETTE_REVIEWED));
+    assert(!whc_convex_silhouette_is_valid(square, 4u, 0u));
+    assert(!whc_convex_silhouette_is_valid(NULL, 4u, WHC_CONVEX_SILHOUETTE_REVIEWED));
+}
+
 /*@ terminates \true;
     ensures \result == 0;
 */
@@ -1798,6 +1815,7 @@ int main(void) {
     test_transport_deployment_chain();
     test_initial_deployment();
     test_battle_clock();
+    test_convex_silhouette();
     assert(whc_table_geometry_is_valid(60000u, 44000u, 5u, 5u, 12u, 4u, 2u, 6u,
                                        WHC_TABLE_GEOMETRY_FLAGS_MASK));
     assert(!whc_table_geometry_is_valid(44000u, 60000u, 5u, 5u, 12u, 4u, 2u, 6u,

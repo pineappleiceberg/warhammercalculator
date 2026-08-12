@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 33 as soon as both lists are selected. Every
+creates battle-state version 34 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -753,6 +753,17 @@ while C/WebAssembly independently validates their partition and resolution
 flags. Later casualties retain the declared model order and cover state without
 resurrecting destroyed models. Version-32 games migrate behind an explicit
 boundary without fabricated decisions.
+Version 34 optionally replaces a model's coarse primitive silhouette with a
+reviewed convex vertical prism. Players enter three to sixteen strictly convex
+counter-clockwise local outline vertices inside the existing reviewed envelope;
+the values remain editable and rotate with the model. Exact segment/prism tests
+remove false line-of-sight blockers caused by empty space inside a coarse
+envelope. Full visibility uses conservative enclosing-volume separation and is
+claimed only when an observer sight point safely excludes every model and
+terrain obstruction. Invalid, unreviewed, concave, clockwise, oversized, or
+out-of-envelope outlines fail closed. Version-33 games retain their primitive
+silhouettes without fabricated convex vertices, and C/WebAssembly independently
+validates the same vertex and review constraints used by replay and the API.
 Version-25
 games migrate without invented terrain footprints, version-26 games migrate
 without invented deployment positions, and version-27 games migrate without

@@ -18,11 +18,13 @@ import {
   TERRAIN_VISIBILITY_FEATURES,
   TERRAIN_VISIBILITY_LIMITS,
   TERRAIN_VISIBILITY_METHODS,
+  convexSilhouetteIsValid,
   silhouetteReady,
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 33;
+export const BATTLE_STATE_VERSION = 34;
+export const CONVEX_SILHOUETTE_BATTLE_STATE_VERSION = 34;
 export const RANGED_GEOMETRY_BATTLE_STATE_VERSION = 33;
 export const TERRAIN_VISIBILITY_BATTLE_STATE_VERSION = 32;
 export const SPATIAL_FACTS_BATTLE_STATE_VERSION = 31;
@@ -2032,7 +2034,7 @@ function normalizeModelSilhouette(candidate) {
     if (!horizontalInside) throw new Error("Model sight point is outside its silhouette envelope");
     return normalized;
   });
-  return {
+  const normalized = {
     shape,
     widthThousandths,
     depthThousandths,
@@ -2058,6 +2060,63 @@ function normalizeModelSilhouette(candidate) {
     envelopeReviewed: Boolean(silhouette.envelopeReviewed),
     sightPointsReviewed: Boolean(silhouette.sightPointsReviewed),
   };
+  if (
+    silhouette.geometryMode !== undefined ||
+    silhouette.convexVertices !== undefined ||
+    silhouette.convexReviewed !== undefined
+  ) {
+    const geometryMode = boundedString(
+      silhouette.geometryMode,
+      "Model silhouette geometry mode",
+      20,
+    );
+    if (!["primitive", "convex_prism"].includes(geometryMode)) {
+      throw new Error("Model silhouette geometry mode is unsupported");
+    }
+    const convexVertices = Array.isArray(silhouette.convexVertices)
+      ? silhouette.convexVertices.map((candidateVertex) => {
+          const vertex = record(candidateVertex, "Each convex silhouette vertex must be an object");
+          const normalizedVertex = {
+            xOffsetThousandths: boundedInteger(
+              vertex.xOffsetThousandths,
+              "Convex silhouette x-offset",
+              -30_000,
+              30_000,
+            ),
+            yOffsetThousandths: boundedInteger(
+              vertex.yOffsetThousandths,
+              "Convex silhouette y-offset",
+              -30_000,
+              30_000,
+            ),
+          };
+          const horizontalInside =
+            shape === "rectangle"
+              ? Math.abs(normalizedVertex.xOffsetThousandths) <= widthThousandths / 2 &&
+                Math.abs(normalizedVertex.yOffsetThousandths) <= depthThousandths / 2
+              : (normalizedVertex.xOffsetThousandths / (widthThousandths / 2)) ** 2 +
+                  (normalizedVertex.yOffsetThousandths / (depthThousandths / 2)) ** 2 <=
+                1 + 1e-9;
+          if (!horizontalInside) {
+            throw new Error("Convex silhouette vertex is outside its reviewed envelope");
+          }
+          return normalizedVertex;
+        })
+      : [];
+    const convexReviewed = Boolean(silhouette.convexReviewed);
+    if (
+      geometryMode === "convex_prism" &&
+      (!convexReviewed || !convexSilhouetteIsValid(convexVertices, 1))
+    ) {
+      throw new Error(
+        "A convex-prism silhouette requires 3 to 16 strictly convex counter-clockwise reviewed vertices",
+      );
+    }
+    normalized.geometryMode = geometryMode;
+    normalized.convexVertices = convexVertices;
+    normalized.convexReviewed = convexReviewed;
+  }
+  return normalized;
 }
 
 function normalizeModelPlacementSet(candidate, formation) {
@@ -4788,6 +4847,7 @@ export function normalizeBattleState(candidate) {
       TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION,
       SPATIAL_FACTS_BATTLE_STATE_VERSION,
       TERRAIN_VISIBILITY_BATTLE_STATE_VERSION,
+      RANGED_GEOMETRY_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -4853,6 +4913,7 @@ export function normalizeBattleState(candidate) {
         TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION,
         SPATIAL_FACTS_BATTLE_STATE_VERSION,
         TERRAIN_VISIBILITY_BATTLE_STATE_VERSION,
+        RANGED_GEOMETRY_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -5063,6 +5124,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= CONVEX_SILHOUETTE_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyConvexSilhouettesThroughSequence = nonnegativeInteger(
+        migration.legacyConvexSilhouettesThroughSequence,
+        "Legacy convex silhouette event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -5072,6 +5140,7 @@ export function normalizeBattleState(candidate) {
         event.formation.weaponBearerTracking === "legacy_aggregate",
     ) &&
     normalized.migration?.sourceVersion !== SPATIAL_FACTS_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== RANGED_GEOMETRY_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== TERRAIN_VISIBILITY_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION &&

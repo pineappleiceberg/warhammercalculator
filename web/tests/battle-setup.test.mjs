@@ -2505,6 +2505,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacySpatialFactsThroughSequence: 3,
     legacyTerrainVisibilityThroughSequence: 3,
     legacyRangedGeometryThroughSequence: 3,
+    legacyConvexSilhouettesThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -2548,6 +2549,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacySpatialFactsThroughSequence: 3,
     legacyTerrainVisibilityThroughSequence: 3,
     legacyRangedGeometryThroughSequence: 3,
+    legacyConvexSilhouettesThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -2596,6 +2598,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacySpatialFactsThroughSequence: 2,
     legacyTerrainVisibilityThroughSequence: 2,
     legacyRangedGeometryThroughSequence: 2,
+    legacyConvexSilhouettesThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -2637,6 +2640,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacySpatialFactsThroughSequence: 2,
     legacyTerrainVisibilityThroughSequence: 2,
     legacyRangedGeometryThroughSequence: 2,
+    legacyConvexSilhouettesThroughSequence: 2,
   });
 });
 
@@ -2677,6 +2681,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacySpatialFactsThroughSequence: 2,
     legacyTerrainVisibilityThroughSequence: 2,
     legacyRangedGeometryThroughSequence: 2,
+    legacyConvexSilhouettesThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -2723,6 +2728,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacySpatialFactsThroughSequence: 2,
     legacyTerrainVisibilityThroughSequence: 2,
     legacyRangedGeometryThroughSequence: 2,
+    legacyConvexSilhouettesThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -2764,6 +2770,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacySpatialFactsThroughSequence: 2,
     legacyTerrainVisibilityThroughSequence: 2,
     legacyRangedGeometryThroughSequence: 2,
+    legacyConvexSilhouettesThroughSequence: 2,
   });
 });
 
@@ -2804,6 +2811,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacySpatialFactsThroughSequence: 2,
     legacyTerrainVisibilityThroughSequence: 2,
     legacyRangedGeometryThroughSequence: 2,
+    legacyConvexSilhouettesThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -3518,6 +3526,56 @@ test("migrates version-32 visibility games without inventing ranged geometry dec
   assert.equal(
     migrated.events.some((event) => event.geometryDecision),
     false,
+  );
+});
+
+test("migrates version-33 geometry without inventing reviewed convex silhouettes", () => {
+  let versionThirtyThree = exactMissionSetup("version-33-convex-silhouettes");
+  versionThirtyThree = configureBattleTableGeometry(
+    versionThirtyThree,
+    reviewedTableGeometry(versionThirtyThree),
+    "version-33-table-geometry",
+    versionThirtyThree.events.length + 1,
+  );
+  versionThirtyThree = configureBattleTerrainFootprints(
+    versionThirtyThree,
+    reviewedTerrainFootprints(versionThirtyThree),
+    "version-33-terrain-footprints",
+    versionThirtyThree.events.length + 1,
+  );
+  versionThirtyThree = deployAllOnBattlefield(versionThirtyThree);
+  const legacyEventCount = versionThirtyThree.events.length;
+  versionThirtyThree = {
+    ...versionThirtyThree,
+    version: 33,
+    migration: undefined,
+  };
+  const migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: normalizeBattleState(versionThirtyThree),
+    id: versionThirtyThree.id,
+  });
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 33);
+  assert.equal(migrated.migration.legacyConvexSilhouettesThroughSequence, legacyEventCount);
+  const silhouettes = migrated.events
+    .flatMap((event) => event.positions?.models ?? event.placement?.models ?? [])
+    .map((model) => model.silhouette)
+    .filter(Boolean);
+  assert.ok(silhouettes.length > 0);
+  assert.ok(
+    silhouettes.every(
+      (silhouette) =>
+        silhouette.geometryMode === undefined &&
+        silhouette.convexVertices === undefined &&
+        silhouette.convexReviewed === undefined,
+    ),
   );
 });
 

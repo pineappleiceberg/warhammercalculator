@@ -25,6 +25,9 @@ int main(void) {
     uint32_t invalid_battle_event[WHC_BATTLE_EVENT_FIELDS] = {0u};
     uint32_t battle_clock[WHC_BATTLE_CLOCK_FIELDS] = {0u};
     uint32_t next_battle_clock[WHC_BATTLE_CLOCK_FIELDS] = {0u};
+    int32_t convex_silhouette[8] = {-1000, -1000, 1000, -1000, 1000, 1000, -1000, 1000};
+    int32_t concave_silhouette[10] = {-1000, -1000, 1000, -1000, 0, 0, 1000, 1000,
+                                      -1000, 1000};
 
     /*@ loop invariant 2 <= save && save <= 8;
         loop assigns save;
@@ -156,6 +159,11 @@ int main(void) {
         2u, 1u, 3u, 3u, 0u,
         WHC_RANGED_GEOMETRY_DIRECT_VISIBLE | WHC_RANGED_GEOMETRY_VISIBILITY_PROOF |
             WHC_RANGED_GEOMETRY_REVIEWED_BY_PLAYER));
+    assert(whc_convex_silhouette_is_valid(convex_silhouette, 4u,
+                                          WHC_CONVEX_SILHOUETTE_REVIEWED));
+    assert(!whc_convex_silhouette_is_valid(concave_silhouette, 5u,
+                                           WHC_CONVEX_SILHOUETTE_REVIEWED));
+    assert(!whc_convex_silhouette_is_valid(convex_silhouette, 4u, 0u));
     assert(whc_weapon_inventory_declaration_is_valid(
         2u, 1u, 1u, 1u, WHC_WEAPON_ASSAULT | WHC_WEAPON_INDIRECT, WHC_WEAPON_INDIRECT));
     assert(!whc_weapon_inventory_declaration_is_valid(2u, 1u, 2u, 1u, WHC_WEAPON_ASSAULT,
