@@ -146,6 +146,10 @@
       "sha256": "a71972b1b05e63c1089dd8fcc3e0b9e2c4025c0cbfdd4bc0222fb95e46ef48f8",
       "artifact": "chapter-approved-2025-26-v1.4.json",
       "pages": [
+        2,
+        3,
+        4,
+        5,
         6,
         7,
         8,
@@ -156,7 +160,10 @@
       "usedFor": [
         "exact Chapter Approved Tournament Mission A-T identities, Primary Mission names, and deployment modes",
         "exact compatibility between each tournament mission and recommended terrain layouts",
-        "exact Terrain Layout 1-8 identities and their published measurement maps"
+        "exact Terrain Layout 1-8 identities and their published measurement maps",
+        "exact Fixed and Tactical Secondary Mission lifecycle, New Orders timing and cost, and Victory Point caps",
+        "exact universal Action eligibility, continuation, failure, and simultaneous-unit-limit procedures",
+        "explicitly unavailable individual mission-card text that remains player supplied from the physical deck"
       ]
     }
   ]

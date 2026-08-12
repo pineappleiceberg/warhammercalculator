@@ -50,6 +50,7 @@ import {
   objectiveControlFactValues,
   objectiveControlFactValuesAreValid,
 } from "../lib/objective-control-facts.mjs";
+import { missionTrackerFactsAreValid } from "../lib/mission-tracker.mjs";
 import { visibilityFactValues, visibilityFactValuesAreValid } from "../lib/visibility-facts.mjs";
 import { resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
 import {
@@ -89,6 +90,7 @@ import {
   heroicInterventionChargeFlags,
   heroicInterventionFlags,
   heroicInterventionIsValid,
+  missionTrackerFacts,
   normalizeBattleState,
   rangedDeclarationIsValid,
   rapidIngressFlags,
@@ -392,6 +394,7 @@ type CalculatorExports = {
   whc_spatial_facts_are_valid(...values: number[]): number;
   whc_endpoint_clearance_facts_are_valid(...values: number[]): number;
   whc_terrain_clearance_facts_are_valid(...values: number[]): number;
+  whc_mission_tracker_facts_are_valid(...values: number[]): number;
   whc_objective_control_facts_are_valid(...values: number[]): number;
   whc_visibility_facts_are_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
@@ -631,6 +634,7 @@ async function loadCalculator() {
       typeof calculator.whc_spatial_facts_are_valid !== "function" ||
       typeof calculator.whc_endpoint_clearance_facts_are_valid !== "function" ||
       typeof calculator.whc_terrain_clearance_facts_are_valid !== "function" ||
+      typeof calculator.whc_mission_tracker_facts_are_valid !== "function" ||
       typeof calculator.whc_objective_control_facts_are_valid !== "function" ||
       typeof calculator.whc_visibility_facts_are_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
@@ -1073,6 +1077,17 @@ async function replayFormationHealth(
         throw new ServiceUnavailableError(
           "Terrain clearance diverged from the C/WebAssembly predicate",
           "TERRAIN_CLEARANCE_DIVERGENCE",
+        );
+      }
+    }
+    for (const player of state.players) {
+      const fact = missionTrackerFacts(state, player.id);
+      const javascriptValid = missionTrackerFactsAreValid(...fact.values);
+      const nativeValid = Boolean(calculator.whc_mission_tracker_facts_are_valid(...fact.values));
+      if (!javascriptValid || javascriptValid !== nativeValid) {
+        throw new ServiceUnavailableError(
+          "Mission tracker diverged from the C/WebAssembly predicate",
+          "MISSION_TRACKER_DIVERGENCE",
         );
       }
     }
@@ -1929,6 +1944,41 @@ async function replayFormationHealth(
       endpointClearanceFacts: replayed.endpointClearanceFacts,
       terrainClearanceFacts: Object.fromEntries(replayed.terrainClearanceFactsByFormation),
       objectiveControlFacts: Object.fromEntries(replayed.objectiveControlFacts),
+      missionTracking: {
+        plans: Object.fromEntries(replayed.secondaryPlans),
+        drawnCards: Object.fromEntries(
+          [...replayed.secondaryDrawnCards].map(([playerId, cards]) => [
+            playerId,
+            [...cards.values()],
+          ]),
+        ),
+        activeCards: Object.fromEntries(
+          [...replayed.secondaryActiveCards].map(([playerId, cards]) => [
+            playerId,
+            [...cards.values()],
+          ]),
+        ),
+        discardedCardIds: Object.fromEntries(
+          [...replayed.secondaryDiscardedCardIds].map(([playerId, cardIds]) => [
+            playerId,
+            [...cardIds].sort(),
+          ]),
+        ),
+        cardPoints: Object.fromEntries(replayed.secondaryCardPoints),
+        categoryPoints: Object.fromEntries(replayed.missionCategoryPoints),
+        turnEndReviews: Object.fromEntries(
+          [...replayed.secondaryTurnEndReviews].map(([turn, playerIds]) => [
+            turn,
+            [...playerIds].sort(),
+          ]),
+        ),
+        activeActions: [...replayed.activeMissionActions.values()],
+        completedActions: replayed.completedMissionActions,
+        failedActions: replayed.failedMissionActions,
+        facts: Object.fromEntries(
+          state.players.map((player) => [player.id, missionTrackerFacts(state, player.id)]),
+        ),
+      },
       visibilityFacts: Object.fromEntries(
         [...replayed.visibilityFactsByFormation].map(([formationId, targets]) => [
           formationId,

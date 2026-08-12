@@ -27,18 +27,31 @@ state.
 
 ## Prioritized backlog
 
-1. Implement source-locked mission scoring and secondary-card/action tracking
-   for the selected Chapter Approved combination while keeping unavailable card
-   text fail-closed.
-2. Expand reviewed terrain beyond convex footprints, panels, openings, and
+1. Expand reviewed terrain beyond convex footprints, panels, openings, and
    elevated surfaces where a supported layout needs concave or curved movement
    geometry.
-3. Add a reviewed geometry-inspection view that shows the model envelope, path
+2. Add a reviewed geometry-inspection view that shows the model envelope, path
    segment, terrain solid, and reason behind every clearance proof or fallback.
-4. Deliver full guided-game replay scenarios before adding deterministic
+3. Deliver full guided-game replay scenarios before adding deterministic
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-12: Advanced source-locked Chapter Approved play to battle-state
+  version 38. Both players now lock Fixed or Tactical Secondary Mission plans
+  before an exact game starts. Tactical draws, the two-active-card limit, deck
+  exhaustion, one-use-per-Command-phase New Orders with its 1 CP cost,
+  achieved and voluntary turn-end discards, and the active player's 1 CP gain
+  are replayable. Primary, Secondary, Fixed-card, Battle Ready, and 100-point
+  total caps are enforced rather than merely displayed. Physical card names,
+  scoring conditions, Action timings, and completion conditions remain
+  reason-backed player input because individual card text is unavailable.
+  Universal Action eligibility, simultaneous-unit limits, movement,
+  battlefield departure, destruction, shooting, and Charge interactions are
+  replayed; attack undo restores an Action failed by the reverted destruction.
+  Guided Play, persistence, API output, native C, WebAssembly, and an
+  ACSL-specified cross-surface summary validator share lifecycle, cap,
+  migration, tamper, and differential coverage.
 
 - 2026-08-12: Advanced exact terrain movement to battle-state version 37. Each
   terrain section now records its movement semantics, complete panel/opening

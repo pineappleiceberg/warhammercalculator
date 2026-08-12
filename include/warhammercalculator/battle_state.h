@@ -143,6 +143,13 @@
 #define WHC_SPATIAL_FACTS_FLAGS_MASK 7u
 #define WHC_ENDPOINT_CLEARANCE_FLAGS_MASK 3u
 #define WHC_TERRAIN_CLEARANCE_FLAGS_MASK 7u
+#define WHC_MISSION_TRACKER_PLAN_REVIEWED 1u
+#define WHC_MISSION_TRACKER_SOURCE_LOCKED 2u
+#define WHC_MISSION_TRACKER_CARD_RULES_PLAYER_SUPPLIED 4u
+#define WHC_MISSION_TRACKER_FLAGS_MASK 7u
+#define WHC_MISSION_SECONDARY_NONE 0u
+#define WHC_MISSION_SECONDARY_FIXED 1u
+#define WHC_MISSION_SECONDARY_TACTICAL 2u
 #define WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK 7u
 #define WHC_VISIBILITY_FACTS_EXECUTABLE 1u
 #define WHC_VISIBILITY_FACTS_SOURCE_LOCKED 2u
@@ -593,15 +600,11 @@ bool whc_table_geometry_is_valid(uint32_t battlefield_width_thousandths,
         six_by_four_count + ten_by_five_count + twelve_by_six_count == footprint_count &&
         flags == WHC_TERRAIN_FOOTPRINT_FLAGS_MASK;
 */
-bool whc_terrain_footprint_set_is_valid(uint32_t footprint_count,
-                                        uint32_t positioned_footprint_count,
-                                        uint32_t unique_footprint_count,
-                                        uint32_t in_bounds_footprint_count,
-                                        uint32_t grouped_footprint_count,
-                                        uint32_t overlap_pair_count,
-                                        uint32_t six_by_four_count,
-                                        uint32_t ten_by_five_count,
-                                        uint32_t twelve_by_six_count, uint32_t flags);
+bool whc_terrain_footprint_set_is_valid(
+    uint32_t footprint_count, uint32_t positioned_footprint_count, uint32_t unique_footprint_count,
+    uint32_t in_bounds_footprint_count, uint32_t grouped_footprint_count,
+    uint32_t overlap_pair_count, uint32_t six_by_four_count, uint32_t ten_by_five_count,
+    uint32_t twelve_by_six_count, uint32_t flags);
 
 /*@ assigns \nothing;
     ensures \result <==>
@@ -617,15 +620,12 @@ bool whc_terrain_footprint_set_is_valid(uint32_t footprint_count,
         baseless_model_count == placement_count - based_model_count &&
         flags == WHC_MODEL_PLACEMENT_FLAGS_MASK;
 */
-bool whc_model_placement_set_is_valid(uint32_t expected_model_count,
-                                      uint32_t placement_count,
-                                      uint32_t unique_model_count,
-                                      uint32_t recognized_model_count,
+bool whc_model_placement_set_is_valid(uint32_t expected_model_count, uint32_t placement_count,
+                                      uint32_t unique_model_count, uint32_t recognized_model_count,
                                       uint32_t positioned_model_count,
                                       uint32_t in_bounds_model_count,
                                       uint32_t dimensioned_model_count,
-                                      uint32_t supported_shape_count,
-                                      uint32_t based_model_count,
+                                      uint32_t supported_shape_count, uint32_t based_model_count,
                                       uint32_t baseless_model_count, uint32_t flags);
 
 /*@ assigns \nothing;
@@ -654,12 +654,11 @@ bool whc_model_position_set_is_valid(
     uint32_t live_model_count, uint32_t position_count, uint32_t unique_model_count,
     uint32_t recognized_model_count, uint32_t positioned_model_count,
     uint32_t in_bounds_model_count, uint32_t dimensioned_model_count,
-    uint32_t supported_shape_count, uint32_t based_model_count,
-    uint32_t baseless_model_count, uint32_t segment_count, uint32_t matched_segment_count,
-    uint32_t path_model_count, uint32_t path_start_count, uint32_t path_endpoint_count,
-    uint32_t path_in_bounds_count, uint32_t footprint_match_count,
-    uint32_t distance_within_limit_count, uint32_t distance_covers_path_count,
-    uint32_t flags);
+    uint32_t supported_shape_count, uint32_t based_model_count, uint32_t baseless_model_count,
+    uint32_t segment_count, uint32_t matched_segment_count, uint32_t path_model_count,
+    uint32_t path_start_count, uint32_t path_endpoint_count, uint32_t path_in_bounds_count,
+    uint32_t footprint_match_count, uint32_t distance_within_limit_count,
+    uint32_t distance_covers_path_count, uint32_t flags);
 
 /*@ assigns \nothing;
     ensures \result <==>
@@ -673,8 +672,7 @@ bool whc_model_position_set_is_valid(
         flags == WHC_SPATIAL_FACTS_FLAGS_MASK;
 */
 bool whc_spatial_facts_are_valid(uint32_t model_count, uint32_t ready_model_count,
-                                 uint32_t required_neighbour_count,
-                                 uint32_t coherent_model_count,
+                                 uint32_t required_neighbour_count, uint32_t coherent_model_count,
                                  uint32_t enemy_model_pair_count, uint32_t objective_count,
                                  uint32_t objective_in_range_count, uint32_t flags);
 
@@ -688,10 +686,11 @@ bool whc_spatial_facts_are_valid(uint32_t model_count, uint32_t ready_model_coun
         flags == (ready_model_count == model_count ? 1 : 0) +
                  (ready_objective_count == objective_count ? 2 : 0);
 */
-bool whc_endpoint_clearance_facts_are_valid(
-    uint32_t model_count, uint32_t ready_model_count, uint32_t objective_count,
-    uint32_t ready_objective_count, uint32_t model_overlap_pair_count,
-    uint32_t objective_overlap_pair_count, uint32_t flags);
+bool whc_endpoint_clearance_facts_are_valid(uint32_t model_count, uint32_t ready_model_count,
+                                            uint32_t objective_count,
+                                            uint32_t ready_objective_count,
+                                            uint32_t model_overlap_pair_count,
+                                            uint32_t objective_overlap_pair_count, uint32_t flags);
 
 /*@ assigns \nothing;
     ensures \result <==>
@@ -706,11 +705,41 @@ bool whc_endpoint_clearance_facts_are_valid(
         (flags != WHC_TERRAIN_CLEARANCE_FLAGS_MASK ||
          checked_path_segment_count == path_segment_count);
 */
-bool whc_terrain_clearance_facts_are_valid(
-    uint32_t model_count, uint32_t ready_model_count, uint32_t section_count,
-    uint32_t ready_section_count, uint32_t supported_section_count,
-    uint32_t path_segment_count, uint32_t checked_path_segment_count,
-    uint32_t collision_count, uint32_t flags);
+bool whc_terrain_clearance_facts_are_valid(uint32_t model_count, uint32_t ready_model_count,
+                                           uint32_t section_count, uint32_t ready_section_count,
+                                           uint32_t supported_section_count,
+                                           uint32_t path_segment_count,
+                                           uint32_t checked_path_segment_count,
+                                           uint32_t collision_count, uint32_t flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        mode <= WHC_MISSION_SECONDARY_TACTICAL && configured <= 1 &&
+        fixed_card_count <= 2 && deck_size <= 64 && drawn_count <= deck_size &&
+        discarded_count <= drawn_count && active_count <= 2 &&
+        primary_points <= 50 && secondary_points <= 40 &&
+        fixed_card_high_score <= 20 && battle_ready_points <= 10 &&
+        total_points <= 100 &&
+        primary_points + secondary_points + battle_ready_points == total_points &&
+        active_action_count <= 1000 && valid_action_count == active_action_count &&
+        (flags & ~WHC_MISSION_TRACKER_FLAGS_MASK) == 0 &&
+        ((configured == 0 && mode == WHC_MISSION_SECONDARY_NONE &&
+          fixed_card_count == 0 && deck_size == 0 && drawn_count == 0 &&
+          discarded_count == 0 && active_count == 0 && flags == 0) ||
+         (configured == 1 && flags == WHC_MISSION_TRACKER_FLAGS_MASK &&
+          ((mode == WHC_MISSION_SECONDARY_FIXED && fixed_card_count == 2 &&
+            deck_size == 0 && drawn_count == 0) ||
+           (mode == WHC_MISSION_SECONDARY_TACTICAL && fixed_card_count == 0 &&
+            deck_size > 0 && fixed_card_high_score == 0))));
+*/
+bool whc_mission_tracker_facts_are_valid(uint32_t mode, uint32_t configured,
+                                         uint32_t fixed_card_count, uint32_t deck_size,
+                                         uint32_t drawn_count, uint32_t discarded_count,
+                                         uint32_t active_count, uint32_t primary_points,
+                                         uint32_t secondary_points, uint32_t fixed_card_high_score,
+                                         uint32_t battle_ready_points, uint32_t total_points,
+                                         uint32_t active_action_count, uint32_t valid_action_count,
+                                         uint32_t flags);
 
 /*@ assigns \nothing;
     ensures \result <==>
@@ -723,10 +752,10 @@ bool whc_terrain_clearance_facts_are_valid(
          (top_score_player_count >= 2 &&
           controller_count == 0 && contested == 1));
 */
-bool whc_objective_control_facts_are_valid(
-    uint32_t player_count, uint32_t score_entry_count, uint32_t top_score,
-    uint32_t top_score_player_count, uint32_t controller_count, uint32_t contested,
-    uint32_t flags);
+bool whc_objective_control_facts_are_valid(uint32_t player_count, uint32_t score_entry_count,
+                                           uint32_t top_score, uint32_t top_score_player_count,
+                                           uint32_t controller_count, uint32_t contested,
+                                           uint32_t flags);
 
 /*@ assigns \nothing;
     ensures \result <==>
@@ -744,12 +773,13 @@ bool whc_objective_control_facts_are_valid(
         cover_yes_count + cover_no_count + cover_unknown_count == target_model_count &&
         flags == WHC_VISIBILITY_FACTS_FLAGS_MASK;
 */
-bool whc_visibility_facts_are_valid(
-    uint32_t model_pair_count, uint32_t ready_model_pair_count,
-    uint32_t visible_model_pair_count, uint32_t fully_visible_model_pair_count,
-    uint32_t not_fully_visible_model_pair_count, uint32_t unknown_model_pair_count,
-    uint32_t target_model_count, uint32_t cover_yes_count, uint32_t cover_no_count,
-    uint32_t cover_unknown_count, uint32_t flags);
+bool whc_visibility_facts_are_valid(uint32_t model_pair_count, uint32_t ready_model_pair_count,
+                                    uint32_t visible_model_pair_count,
+                                    uint32_t fully_visible_model_pair_count,
+                                    uint32_t not_fully_visible_model_pair_count,
+                                    uint32_t unknown_model_pair_count, uint32_t target_model_count,
+                                    uint32_t cover_yes_count, uint32_t cover_no_count,
+                                    uint32_t cover_unknown_count, uint32_t flags);
 
 /*@ requires vertices == \null || vertex_count < WHC_CONVEX_SILHOUETTE_MIN_VERTICES ||
              vertex_count > WHC_CONVEX_SILHOUETTE_MAX_VERTICES ||
@@ -772,8 +802,7 @@ bool whc_visibility_facts_are_valid(
                  vertices[edge * 2 + 1]) *
                     (vertices[point * 2] - vertices[edge * 2]) > 0;
 */
-bool whc_convex_silhouette_is_valid(const int32_t *vertices, uint32_t vertex_count,
-                                    uint32_t flags);
+bool whc_convex_silhouette_is_valid(const int32_t *vertices, uint32_t vertex_count, uint32_t flags);
 
 /*@ assigns \nothing;
     ensures \result <==>
@@ -795,9 +824,11 @@ bool whc_convex_silhouette_is_valid(const int32_t *vertices, uint32_t vertex_cou
           ((flags & WHC_RANGED_GEOMETRY_FULL_VISIBILITY_MASK) == 96 ||
            (flags & WHC_RANGED_GEOMETRY_FULL_VISIBILITY_MASK) == 160)));
 */
-bool whc_ranged_geometry_resolution_is_valid(
-    uint32_t observer_count, uint32_t proven_observer_count, uint32_t target_model_count,
-    uint32_t cover_proven_count, uint32_t cover_override_count, uint32_t flags);
+bool whc_ranged_geometry_resolution_is_valid(uint32_t observer_count,
+                                             uint32_t proven_observer_count,
+                                             uint32_t target_model_count,
+                                             uint32_t cover_proven_count,
+                                             uint32_t cover_override_count, uint32_t flags);
 
 /*@ requires first_player_index <= 1;
     requires \valid(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));

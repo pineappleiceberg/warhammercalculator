@@ -1763,8 +1763,7 @@ static void test_convex_silhouette(void) {
     assert(whc_convex_silhouette_is_valid(square, 4u, WHC_CONVEX_SILHOUETTE_REVIEWED));
     assert(!whc_convex_silhouette_is_valid(clockwise, 4u, WHC_CONVEX_SILHOUETTE_REVIEWED));
     assert(!whc_convex_silhouette_is_valid(concave, 5u, WHC_CONVEX_SILHOUETTE_REVIEWED));
-    assert(!whc_convex_silhouette_is_valid(out_of_range, 4u,
-                                           WHC_CONVEX_SILHOUETTE_REVIEWED));
+    assert(!whc_convex_silhouette_is_valid(out_of_range, 4u, WHC_CONVEX_SILHOUETTE_REVIEWED));
     assert(!whc_convex_silhouette_is_valid(square, 4u, 0u));
     assert(!whc_convex_silhouette_is_valid(NULL, 4u, WHC_CONVEX_SILHOUETTE_REVIEWED));
 }
@@ -1844,44 +1843,55 @@ int main(void) {
                                              WHC_MODEL_PLACEMENT_FLAGS_MASK - 1u));
     assert(!whc_model_placement_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u, UINT32_MAX, 6u,
                                              WHC_MODEL_PLACEMENT_FLAGS_MASK));
-    assert(whc_model_position_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u, 4u, 1u, 2u,
-                                           2u, 5u, 5u, 5u, 5u, 5u, 5u, 5u,
-                                           WHC_MODEL_POSITION_FLAGS_MASK));
-    assert(!whc_model_position_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u, 4u, 1u,
-                                            2u, 1u, 5u, 5u, 5u, 5u, 5u, 5u, 5u,
+    assert(whc_model_position_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u, 4u, 1u, 2u, 2u, 5u, 5u,
+                                           5u, 5u, 5u, 5u, 5u, WHC_MODEL_POSITION_FLAGS_MASK));
+    assert(!whc_model_position_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u, 4u, 1u, 2u, 1u, 5u, 5u,
+                                            5u, 5u, 5u, 5u, 5u, WHC_MODEL_POSITION_FLAGS_MASK));
+    assert(!whc_model_position_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u, 4u, 1u, 2u, 2u, 5u, 5u,
+                                            5u, 5u, 5u, 5u, 4u, WHC_MODEL_POSITION_FLAGS_MASK));
+    assert(!whc_model_position_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u, UINT32_MAX, 6u, 2u, 2u,
+                                            5u, 5u, 5u, 5u, 5u, 5u, 5u,
                                             WHC_MODEL_POSITION_FLAGS_MASK));
-    assert(!whc_model_position_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u, 4u, 1u,
-                                            2u, 2u, 5u, 5u, 5u, 5u, 5u, 5u, 4u,
-                                            WHC_MODEL_POSITION_FLAGS_MASK));
-    assert(!whc_model_position_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u,
-                                            UINT32_MAX, 6u, 2u, 2u, 5u, 5u, 5u, 5u, 5u,
-                                            5u, 5u, WHC_MODEL_POSITION_FLAGS_MASK));
     assert(whc_endpoint_clearance_facts_are_valid(5u, 5u, 4u, 4u, 0u, 0u,
-                                                   WHC_ENDPOINT_CLEARANCE_FLAGS_MASK));
+                                                  WHC_ENDPOINT_CLEARANCE_FLAGS_MASK));
     assert(whc_endpoint_clearance_facts_are_valid(5u, 5u, 4u, 4u, 2u, 3u,
-                                                   WHC_ENDPOINT_CLEARANCE_FLAGS_MASK));
+                                                  WHC_ENDPOINT_CLEARANCE_FLAGS_MASK));
     assert(whc_endpoint_clearance_facts_are_valid(5u, 4u, 4u, 4u, 6u, 16u, 2u));
     assert(!whc_endpoint_clearance_facts_are_valid(5u, 4u, 4u, 4u, 7u, 0u, 2u));
     assert(!whc_endpoint_clearance_facts_are_valid(5u, 5u, 4u, 4u, 0u, 0u, 2u));
     assert(!whc_endpoint_clearance_facts_are_valid(1001u, 1001u, 4u, 4u, 0u, 0u,
-                                                    WHC_ENDPOINT_CLEARANCE_FLAGS_MASK));
+                                                   WHC_ENDPOINT_CLEARANCE_FLAGS_MASK));
     assert(whc_terrain_clearance_facts_are_valid(5u, 5u, 12u, 12u, 12u, 15u, 15u, 0u,
-                                                  WHC_TERRAIN_CLEARANCE_FLAGS_MASK));
+                                                 WHC_TERRAIN_CLEARANCE_FLAGS_MASK));
     assert(whc_terrain_clearance_facts_are_valid(5u, 4u, 12u, 10u, 11u, 15u, 8u, 2u, 0u));
     assert(!whc_terrain_clearance_facts_are_valid(5u, 5u, 12u, 12u, 12u, 15u, 14u, 0u,
-                                                   WHC_TERRAIN_CLEARANCE_FLAGS_MASK));
+                                                  WHC_TERRAIN_CLEARANCE_FLAGS_MASK));
     assert(!whc_terrain_clearance_facts_are_valid(5u, 5u, 12u, 12u, 12u, 4u, 4u, 0u,
-                                                   WHC_TERRAIN_CLEARANCE_FLAGS_MASK));
-    assert(whc_objective_control_facts_are_valid(
-        2u, 2u, 6u, 1u, 1u, 0u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
-    assert(whc_objective_control_facts_are_valid(
-        2u, 2u, 6u, 2u, 0u, 1u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
-    assert(whc_objective_control_facts_are_valid(
-        2u, 2u, 0u, 2u, 0u, 1u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
-    assert(!whc_objective_control_facts_are_valid(
-        2u, 2u, 0u, 0u, 0u, 0u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
-    assert(!whc_objective_control_facts_are_valid(
-        2u, 2u, 6u, 2u, 1u, 0u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
+                                                  WHC_TERRAIN_CLEARANCE_FLAGS_MASK));
+    assert(whc_mission_tracker_facts_are_valid(WHC_MISSION_SECONDARY_FIXED, 1u, 2u, 0u, 0u, 0u, 2u,
+                                               30u, 20u, 10u, 10u, 60u, 1u, 1u,
+                                               WHC_MISSION_TRACKER_FLAGS_MASK));
+    assert(whc_mission_tracker_facts_are_valid(WHC_MISSION_SECONDARY_TACTICAL, 1u, 0u, 12u, 5u, 3u,
+                                               2u, 50u, 40u, 0u, 10u, 100u, 0u, 0u,
+                                               WHC_MISSION_TRACKER_FLAGS_MASK));
+    assert(whc_mission_tracker_facts_are_valid(WHC_MISSION_SECONDARY_NONE, 0u, 0u, 0u, 0u, 0u, 0u,
+                                               0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u));
+    assert(!whc_mission_tracker_facts_are_valid(WHC_MISSION_SECONDARY_FIXED, 1u, 2u, 0u, 0u, 0u, 2u,
+                                                50u, 41u, 20u, 10u, 101u, 0u, 0u,
+                                                WHC_MISSION_TRACKER_FLAGS_MASK));
+    assert(!whc_mission_tracker_facts_are_valid(WHC_MISSION_SECONDARY_TACTICAL, 1u, 0u, 12u, 5u, 3u,
+                                                2u, 20u, 20u, 1u, 10u, 50u, 0u, 0u,
+                                                WHC_MISSION_TRACKER_FLAGS_MASK));
+    assert(whc_objective_control_facts_are_valid(2u, 2u, 6u, 1u, 1u, 0u,
+                                                 WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
+    assert(whc_objective_control_facts_are_valid(2u, 2u, 6u, 2u, 0u, 1u,
+                                                 WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
+    assert(whc_objective_control_facts_are_valid(2u, 2u, 0u, 2u, 0u, 1u,
+                                                 WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
+    assert(!whc_objective_control_facts_are_valid(2u, 2u, 0u, 0u, 0u, 0u,
+                                                  WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
+    assert(!whc_objective_control_facts_are_valid(2u, 2u, 6u, 2u, 1u, 0u,
+                                                  WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
     puts("all tests passed");
 
     return 0;

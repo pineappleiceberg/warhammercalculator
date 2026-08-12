@@ -18,6 +18,39 @@ MISSION_PACK_PATH = ROOT / "data" / "chapter-approved-2025-26-v1.4.json"
 PUBLIC_MISSION_PACK_PATH = ROOT / "web" / "public" / "chapter-approved-2025-26-v1.4.json"
 SOURCE_ID = "wahapedia-profile-export-2026-06-13"
 MISSION_SOURCE_ID = "chapter-approved-tournament-companion-2025-26-v1.4"
+MISSION_PROCEDURES = {
+    "sourcePages": [2, 3, 4, 5],
+    "battleRounds": 5,
+    "victoryPointCaps": {
+        "total": 100,
+        "primary": 50,
+        "secondary": 40,
+        "fixedPerCard": 20,
+        "battleReady": 10,
+    },
+    "secondaryMissions": {
+        "fixedCardCount": 2,
+        "tacticalMaximumActive": 2,
+        "newOrdersCommandPointCost": 1,
+        "activeCardsDiscardAfterScoring": True,
+        "activePlayerVoluntaryDiscardCommandPointGain": 1,
+        "exhaustedDeckCannotGenerate": True,
+    },
+    "actions": {
+        "aircraftCannotStart": True,
+        "battleShockedCannotStart": True,
+        "zeroObjectiveControlCannotStart": True,
+        "engagementRangeBlocksUnlessTitanicCharacter": True,
+        "advancedOrFellBackCannotStart": True,
+        "mustBeEligibleToShoot": True,
+        "alreadyShotCannotStart": True,
+        "nonTitanicCannotShootWhilePerforming": True,
+        "cannotChargeWhilePerforming": True,
+        "movementOrLeavingBattlefieldFails": True,
+        "pileInAndConsolidationDoNotFail": True,
+    },
+    "cardRulesAvailability": "player-supplied-physical-deck",
+}
 GENERATED_PREFIXES = (
     "faction.catalogue-",
     "detachment.catalogue-",
@@ -104,7 +137,7 @@ def expected_documents():
         raise ValueError("Rules catalogue contains an enhancement with an unknown detachment")
 
     if (
-        mission_pack.get("schemaVersion") != 1
+        mission_pack.get("schemaVersion") != 2
         or mission_pack.get("edition") != "Warhammer 40,000 10th Edition"
         or mission_pack.get("version") != "1.4"
         or mission_pack.get("source", {}).get("id") != MISSION_SOURCE_ID
@@ -114,8 +147,10 @@ def expected_documents():
     if not re.fullmatch(r"[0-9a-f]{64}", mission_source.get("sha256", "")):
         raise ValueError("Mission pack source checksum is invalid")
     source_pages = mission_source.get("pages")
-    if source_pages != [6, 7, 8, 9, 10, 11]:
+    if source_pages != [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]:
         raise ValueError("Mission pack source pages are not the reviewed source boundary")
+    if mission_pack.get("procedures") != MISSION_PROCEDURES:
+        raise ValueError("Mission procedures do not match the reviewed source lock")
     terrain_layouts = mission_pack.get("terrainLayouts", [])
     missions = mission_pack.get("missions", [])
     if len(terrain_layouts) != 8 or len(missions) != 20:
@@ -178,6 +213,9 @@ def expected_documents():
             "exact Chapter Approved Tournament Mission A-T identities, Primary Mission names, and deployment modes",
             "exact compatibility between each tournament mission and recommended terrain layouts",
             "exact Terrain Layout 1-8 identities and their published measurement maps",
+            "exact Fixed and Tactical Secondary Mission lifecycle, New Orders timing and cost, and Victory Point caps",
+            "exact universal Action eligibility, continuation, failure, and simultaneous-unit-limit procedures",
+            "explicitly unavailable individual mission-card text that remains player supplied from the physical deck",
         ],
     }
     sources["sources"] = [
@@ -186,7 +224,7 @@ def expected_documents():
     sources["sources"].append(mission_source_entry)
 
     coverage["snapshotId"] = (
-        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v24"
+        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v38"
     )
     coverage["sourceLocks"] = [
         lock for lock in coverage["sourceLocks"] if lock["id"] != SOURCE_ID
