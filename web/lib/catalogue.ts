@@ -45,6 +45,7 @@ export type CatalogueModel = {
   reduction: number;
   damageDivisor: number;
   wounds: number | null;
+  objectiveControl: number | null;
   keywords: string[];
 };
 export type CatalogueComposition = {

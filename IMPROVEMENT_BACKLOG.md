@@ -27,9 +27,9 @@ state.
 
 ## Prioritized backlog
 
-1. Make movement clearance, model/objective overlap, and objective control
-   executable from exact per-model geometry and current Objective Control,
-   Battle-shock, and contested-unit state.
+1. Make movement clearance and model/model or model/objective overlap executable
+   from the existing exact paths, footprints, terrain sections, and objective
+   markers, retaining reviewed fallbacks for geometry that is not represented.
 2. Implement source-locked mission scoring and secondary-card/action tracking
    for the selected Chapter Approved combination while keeping unavailable card
    text fail-closed.
@@ -39,6 +39,20 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced exact objective state to battle-state version 35. The
+  checked catalogue now carries the published Objective Control characteristic
+  for all 1,868 model profiles into exact mixed and Attached battle formations.
+  Replay sums every surviving model currently within range of each marker,
+  applies Battle-shock as OC 0, treats every equal total (including 0-0) as
+  contested, and establishes control only at the end of a phase or turn. Guided
+  Play and the replay API expose per-player and per-formation contributions. A
+  player-recorded override remains
+  available for guided flavour rules and can be cleared back to the geometric
+  result. Missing geometry or legacy OC fails closed; version-34 games retain
+  absent characteristics rather than receiving current catalogue values.
+  JavaScript and an ACSL-specified C/WebAssembly predicate share source-data,
+  casualty, Battle-shock, tie, override, migration, malformed, and API coverage.
 
 - 2026-08-11: Advanced reviewed model geometry to battle-state version 34.
   Players can optionally replace a model's conservative primitive envelope with

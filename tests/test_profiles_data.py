@@ -5872,6 +5872,26 @@ class ProfileDataTests(unittest.TestCase):
             export(DATABASE, exported)
             self.assertEqual(exported.read_bytes(), CATALOGUE.read_bytes())
 
+    def test_browser_catalogue_preserves_source_objective_control(self):
+        catalogue = json.loads(CATALOGUE.read_text(encoding="utf-8"))
+        actual = {
+            model["id"]: model["objectiveControl"]
+            for unit in catalogue["units"]
+            for model in unit["models"]
+        }
+        with closing(sqlite3.connect(DATABASE)) as connection:
+            expected = dict(
+                connection.execute(
+                    """SELECT id, objective_control FROM model_profiles
+                       WHERE is_catalogue_model = 1"""
+                )
+            )
+        self.assertEqual(actual, expected)
+        warriors = next(
+            unit for unit in catalogue["units"] if unit["name"] == "Necron Warriors"
+        )
+        self.assertEqual(warriors["models"][0]["objectiveControl"], 2)
+
     def test_browser_catalogue_locks_hover_setup_eligibility(self):
         catalogue = json.loads(CATALOGUE.read_text(encoding="utf-8"))
         with closing(sqlite3.connect(DATABASE)) as connection:

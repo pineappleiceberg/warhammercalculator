@@ -33,6 +33,7 @@ import {
   battleFormationWasTargeted,
   hazardousBearerOptions,
   changeBattleResource,
+  clearBattleObjectiveControlOverride,
   closeRangedTargetDeclarations,
   completeFormationMovement,
   completeFormationActivation,
@@ -4085,6 +4086,23 @@ export default function PlayMode() {
       setStatus("Objective control recorded");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Objective control could not be recorded");
+    }
+  };
+
+  const clearObjectiveControlOverride = (objectiveId: string) => {
+    if (!battleState) return;
+    try {
+      setBattleState(
+        clearBattleObjectiveControlOverride(
+          battleState,
+          objectiveId,
+          crypto.randomUUID(),
+          battleState.events.length + 1,
+        ),
+      );
+      setStatus("Objective control returned to geometry");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Objective override could not be cleared");
     }
   };
 
@@ -10286,6 +10304,20 @@ export default function PlayMode() {
                 {battleObjectives.map((objective) => (
                   <div key={objective.id}>
                     <strong>{objective.name}</strong>
+                    <span>
+                      {objective.controlSource === "rules_initial"
+                        ? "Contested at battle start"
+                        : objective.executable
+                          ? `End of ${objective.resolvedAtClock?.phase ?? "phase"} · ${objective.scores
+                              .map(
+                                (score: { playerId: string; score: number }) =>
+                                  `${battleState.players.find((player) => player.id === score.playerId)?.name}: ${score.score}`,
+                              )
+                              .join(" · ")}`
+                          : objective.controlSource === "player_recorded"
+                            ? "Player-reviewed fallback"
+                            : "Control unknown — record a reviewed fallback"}
+                    </span>
                     <div>
                       {battleState.players.map((player) => (
                         <button
@@ -10314,6 +10346,15 @@ export default function PlayMode() {
                       >
                         Uncontrolled
                       </button>
+                      {objective.controlSource === "player_recorded" && (
+                        <button
+                          type="button"
+                          disabled={battleClock.status !== "active"}
+                          onClick={() => clearObjectiveControlOverride(objective.id)}
+                        >
+                          Clear review
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

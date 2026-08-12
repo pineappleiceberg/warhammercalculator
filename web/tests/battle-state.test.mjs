@@ -19,6 +19,7 @@ import {
   battleCanResolveAttack,
   battleCanStartFormationActivation,
   changeBattleResource,
+  clearBattleObjectiveControlOverride,
   closeRangedTargetDeclarations,
   completeFormationMovement,
   completeFormationActivation,
@@ -4361,7 +4362,16 @@ test("replays mission, CP, VP, objectives, Battle-shock, and bounded resources",
   assert.equal(replayed.resources.get("player-1").get("command_points").value, 2);
   assert.equal(replayed.resources.get("player-1").get("victory_points").value, 5);
   assert.equal(replayed.objectives.get("centre").controllerPlayerId, "player-1");
+  assert.equal(replayed.objectives.get("centre").controlSource, "player_recorded");
   assert.equal(replayed.battleShockedFormations.has(formation.id), true);
+  state = clearBattleObjectiveControlOverride(
+    state,
+    "centre",
+    "clear-control",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.objectives.get("centre").controlSource, "unknown");
 
   while (
     !(

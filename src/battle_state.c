@@ -503,6 +503,17 @@ bool whc_spatial_facts_are_valid(uint32_t model_count, uint32_t ready_model_coun
            objective_in_range_count <= objective_count && flags == WHC_SPATIAL_FACTS_FLAGS_MASK;
 }
 
+bool whc_objective_control_facts_are_valid(
+    uint32_t player_count, uint32_t score_entry_count, uint32_t top_score,
+    uint32_t top_score_player_count, uint32_t controller_count, uint32_t contested,
+    uint32_t flags) {
+    return player_count == 2u && score_entry_count == player_count && top_score <= 1000000u &&
+           top_score_player_count <= player_count && controller_count <= 1u && contested <= 1u &&
+           flags == WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK &&
+           ((top_score_player_count == 1u && controller_count == 1u && contested == 0u) ||
+            (top_score_player_count >= 2u && controller_count == 0u && contested == 1u));
+}
+
 bool whc_visibility_facts_are_valid(
     uint32_t model_pair_count, uint32_t ready_model_pair_count,
     uint32_t visible_model_pair_count, uint32_t fully_visible_model_pair_count,

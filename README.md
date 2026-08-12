@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 34 as soon as both lists are selected. Every
+creates battle-state version 35 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -721,7 +721,7 @@ ACSL-specified C/WebAssembly predicate. Stale casualty geometry and legacy
 baseless hulls without a measured height report `unknown` instead of producing a
 guess. Version-30 histories gain an explicit migration boundary and zero-valued
 legacy hull heights; no missing baseless height is invented. Visibility, Benefit
-of Cover, terrain clearance, and objective control remain separately reviewed
+of Cover and terrain clearance remain separately reviewed
 when their required geometry is unavailable.
 Version 32 adds reviewed 3D terrain and model geometry without turning uncertain
 measurements into rules claims. Every source-locked area-terrain section records
@@ -764,6 +764,19 @@ terrain obstruction. Invalid, unreviewed, concave, clockwise, oversized, or
 out-of-envelope outlines fail closed. Version-33 games retain their primitive
 silhouettes without fabricated convex vertices, and C/WebAssembly independently
 validates the same vertex and review constraints used by replay and the API.
+Version 35 carries every published model Objective Control characteristic from
+the checked SQLite catalogue into exact mixed and Attached formations. Replay
+sums the OC of each surviving model within range of a marker and treats every
+Battle-shocked formation as OC 0. At the end of each phase or turn, the player
+with the higher total takes control; every tie, including 0-0, is contested.
+Guided Play shows the exact adjudicated per-player score and the replay API also
+includes current model and formation contributions.
+Players can still record a clearly labelled override for a guided flavour rule
+and later clear it back to geometry. Missing current positions, stale casualty
+geometry, unmatched model identities, or legacy OC produce `unknown` instead of
+a guessed controller. Version-34 games migrate without receiving fabricated
+characteristics from the newer catalogue; C/WebAssembly independently validates
+each executable classification.
 Version-25
 games migrate without invented terrain footprints, version-26 games migrate
 without invented deployment positions, and version-27 games migrate without
@@ -1057,7 +1070,8 @@ setup records the mission name, objective-marker count, starting Command Points,
 and the amount both players gain at the start of every Command phase. Play Mode
 tracks each player's Command Points and Victory Points, categorizes primary,
 secondary, correction, and other scoring events, and records objective control
-as controlled, contested, or uncontrolled. Battle-shock is attached to the exact
+as a reviewed fallback. Version 35 replaces that fallback with exact geometry
+and current OC whenever all inputs are available. Battle-shock is attached to the exact
 saved formation and clears automatically at the start of that formation owner's
 next Command phase. Named custom resources can be uncapped or given an enforced
 maximum for faction and detachment currencies. Every change is an integrity-
@@ -1070,7 +1084,7 @@ attacking. Undo appends a compensating event instead of deleting history.
 Validated JSON battle exports and imports preserve the rules snapshot and fail
 closed when the referenced saved lists or loaded catalogue do not match.
 The same version-1 flat event ABI for formation-health replay runs in native C
-and WebAssembly for version-1 through version-30 JSON battle envelopes.
+and WebAssembly for version-1 through version-35 JSON battle envelopes.
 It validates attack transitions, damage and casualty totals, the one-wounded-model
 invariant, and last-in-first-out compensating undo without modifying its output
 when an event stream is invalid. `POST /api/v1/battle/replay` accepts
@@ -1079,7 +1093,8 @@ replays the selected formation through Wasm, cross-checks the result against the
 web replay, independently cross-checks every guided clock transition through
 the C/WebAssembly clock, and returns per-segment health, active attack IDs, the
 current clock, pending-choice IDs, active effects, mission, per-player resources,
-objective control, Battle-shocked formation IDs, categorized scoring history,
+objective control, exact OC totals and contributions, Battle-shocked formation
+IDs, categorized scoring history,
 movement and charge outcomes, canonical Pile In and Consolidation facts for each
 Fight activation, current/completed activation state, deployment
 declarations and order, battlefield/off-battlefield identities, Reserve
@@ -1406,13 +1421,11 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 
 ## Prioritized correctness backlog
 
-1. Replace conservative silhouette boxes with reviewed convex or mesh geometry
-   where needed to prove partial occlusion and full visibility without false
-   certainty.
-2. Derive movement and placement terrain clearance from the shared 3D geometry,
+1. Derive movement and placement terrain clearance from the shared 3D geometry,
    including climb, overhang, and irregular-surface cases.
-3. Make objective control executable from current model geometry and OC, then
-   connect it to source-backed mission scoring without inventing mission text.
+2. Prove model/model and model/objective non-overlap at every required endpoint.
+3. Connect exact objective control to source-backed mission scoring without
+   inventing unavailable mission-card text.
 4. Add a reviewed visibility-inspection view that highlights the exact bearer,
    target model, ray, and terrain feature behind every proof or fallback.
 

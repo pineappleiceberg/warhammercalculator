@@ -2902,6 +2902,7 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
         modelName: "Geometry observer",
         role: "standalone",
         wounds: 2,
+        objectiveControl: 3,
         startingModels: 1,
       },
     ],
@@ -2920,6 +2921,7 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
         modelName: "Geometry target",
         role: "standalone",
         wounds: 10,
+        objectiveControl: 2,
         startingModels: 1,
       },
     ],
@@ -3304,6 +3306,13 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
   assert.equal(body.data.spatialFacts[target.id].executable, true);
   assert.equal(body.data.spatialFacts[target.id].coherency.status, "coherent");
   assert.equal(body.data.spatialFacts[target.id].engagementRange.status, "clear");
+  assert.ok(
+    Object.values(body.data.objectiveControlFacts).every(
+      (fact) => fact.executable && ["controlled", "contested"].includes(fact.status),
+    ),
+    JSON.stringify(body.data.objectiveControlFacts),
+  );
+  assert.ok(body.data.objectives.every((objective) => objective.controlSource === "geometry"));
   assert.equal(body.data.pendingModelPosition, null);
   assert.deepEqual(body.data.pendingModelPositions, []);
 });
