@@ -27,15 +27,31 @@ state.
 
 ## Prioritized backlog
 
-1. Deliver complete source-locked guided-game replay fixtures for representative
-   supported list pairs, including every setup, phase, scoring, and end-state
-   transition.
+1. Add an on-table action-heavy source-locked replay pair covering exact
+   movement, ranged attacks, Charge, Fight, reactions, casualties, objective
+   changes, and Tactical Secondary lifecycle. Then extend the corpus across
+   representative factions, missions, and composition boundaries.
 2. Add reviewed curved surface primitives only when a supported physical terrain
    set cannot be represented exactly by panels and simple polygon solids.
 3. Add deterministic automated policies and calibrated batch battle simulation
    only after the guided replay corpus closes the same rules boundaries.
 
 ## Completed cycles
+
+- 2026-08-12: Established the current full-game golden replay format and first
+  real-catalogue fixture. A Necrons Doom Scythe and Space Marines Brutalis
+  Dreadnought pair now binds the current battle-state version and four source
+  checksums, selects exact faction, detachment, datasheet, Chapter Approved
+  mission, and terrain identities, records reviewed battlefield geometry,
+  deployment, and Reserve decisions, visits every one of the 170 active phase/step states
+  across five rounds, resolves every offered Rapid Ingress window, applies
+  capped Primary, Fixed Secondary, and Battle Ready scoring, and reaches the
+  canonical complete state in 209 append-only events. SHA-256-bound state and
+  expected summaries reject corpus drift and tampering. The worker replay API
+  sends the same complete clock and selected formation through C/WebAssembly,
+  while CI regenerates the fixture in check mode before the full suite. The
+  next corpus fixture must exercise on-table combat and Tactical missions rather
+  than treating clock completeness as complete battle-rule coverage.
 
 - 2026-08-12: Made executable battlefield geometry inspectable without changing
   battle-state serialization. Guided Play can select a formation and exact model

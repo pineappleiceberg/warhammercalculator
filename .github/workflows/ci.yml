@@ -100,6 +100,9 @@ jobs:
       - name: Lint web source
         working-directory: web
         run: npm run lint
+      - name: Verify source-locked golden replay fixtures
+        working-directory: web
+        run: npm run test:fixtures
       - name: Test worker and API build
         working-directory: web
         run: npm test
