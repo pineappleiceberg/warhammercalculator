@@ -856,8 +856,16 @@ equality as a pass. Guided Play shows each mandatory roll and the public replay
 API independently checks the same transition through the ACSL-specified
 C/WebAssembly predicate. Version-45 and older histories retain an explicit
 migration boundary and receive no invented tests. Battle-shocked Objective
-Control and Stratagem restrictions remain executable; mandatory Desperate
-Escape tests when a Battle-shocked unit Falls Back are the next open consequence.
+Control and Stratagem restrictions remain executable.
+Version 47 makes the Battle-shocked Fall Back consequence executable. Selecting
+a Battle-shocked unit to Fall Back creates a mandatory pre-move Desperate Escape
+window, rolls one cryptographically random D6 for every surviving model, and
+destroys one controller-selected surviving model identity for every 1-2. Replay
+blocks movement, reactions, and clock advancement until all tests and exact
+casualties are recorded. Guided Play exposes the rolls and bounded casualty
+selection, while the replay API verifies every test through the ACSL-specified
+C/WebAssembly predicate. Version-46 and older histories retain an explicit
+migration boundary and receive no invented tests or casualties.
 Version-25
 games migrate without invented terrain footprints, version-26 games migrate
 without invented deployment positions, and version-27 games migrate without
@@ -1522,12 +1530,11 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 
 ## Prioritized correctness backlog
 
-1. Make Battle-shocked Fall Back fully executable with mandatory Desperate
-   Escape tests, exact model destruction, Character/Monster/Vehicle dice, and
-   source-locked native, Wasm, API, migration, and full-game tests.
-2. Split surviving Leader and Bodyguard units into independent live formations
+1. Split surviving Leader and Bodyguard units into independent live formations
    when an Attached unit separates so Battle-shock and every later action can
    apply independently to each resulting unit.
+2. Execute Desperate Escape tests triggered by physically moving over enemy
+   models, including the Titanic and Fly exemptions and once-per-model boundary.
 3. Add reviewed curved movement-surface primitives only when panels and simple
    polygon solids cannot represent a supported physical terrain set exactly.
 4. Source-lock another high-impact faction or detachment transition and extend
@@ -1572,8 +1579,9 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
   destroyed-Bodyguard boundary.
 - Canonical Shadow in the Warp resolves its global once-per-battle Battle-shock
   tests and both Synapse proximity effects. The ordinary Command-phase
-  Battle-shock step and other Synapse-dependent abilities remain guided until
-  their complete timing and consequence boundaries are executable.
+  Battle-shock step and Battle-shocked Fall Back consequence are executable;
+  other Synapse-dependent abilities remain guided until their complete timing
+  and consequence boundaries are executable.
 
 ## 10th edition profile database
 

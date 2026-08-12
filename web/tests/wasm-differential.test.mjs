@@ -23,6 +23,7 @@ import {
   chargeResolutionIsValid,
   commandBattleShockTestIsValid,
   counterOffensiveIsValid,
+  desperateEscapeTestIsValid,
   fightMoveIsValid,
   fireOverwatchIsValid,
   goToGroundIsValid,
@@ -136,6 +137,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_heroic_intervention_is_valid, "function");
   assert.equal(typeof calculator._whc_fire_overwatch_is_valid, "function");
   assert.equal(typeof calculator._whc_hazardous_resolution_is_valid, "function");
+  assert.equal(typeof calculator._whc_desperate_escape_test_is_valid, "function");
   assert.equal(typeof calculator._whc_go_to_ground_is_valid, "function");
   assert.equal(typeof calculator._whc_smokescreen_is_valid, "function");
   assert.equal(typeof calculator._whc_rapid_ingress_is_valid, "function");
@@ -1057,6 +1059,23 @@ test("WebAssembly and JavaScript agree on Hazardous damage resolution", () => {
     assert.equal(
       Boolean(calculator._whc_hazardous_resolution_is_valid(...values)),
       hazardousResolutionIsValid(...values),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on Desperate Escape tests", () => {
+  const cases = [
+    [1, 0, false, true],
+    [2, 6, true, false],
+    [6, 1, true, true],
+    [0, 0, false, true],
+    [3, 0, false, true],
+    [2, 6, false, false],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_desperate_escape_test_is_valid(...values)),
+      desperateEscapeTestIsValid(...values),
     );
   }
 });

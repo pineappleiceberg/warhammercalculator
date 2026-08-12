@@ -197,6 +197,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     uint32_t hazardous_flags;
     bool hazardous_valid;
     bool expected_hazardous_valid;
+    uint32_t desperate_initial_roll;
+    uint32_t desperate_reroll;
+    bool desperate_reroll_explained;
+    bool desperate_failed;
     uint32_t go_to_ground_phase;
     uint32_t go_to_ground_cp_before;
     uint32_t go_to_ground_cost;
@@ -514,6 +518,18 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         (hazardous_destroyed ? hazardous_damage == hazardous_remaining_wounds
                              : hazardous_damage < hazardous_remaining_wounds);
     assert(hazardous_valid == expected_hazardous_valid);
+    desperate_initial_roll = next_byte(&input);
+    desperate_reroll = next_byte(&input);
+    desperate_reroll_explained = next_byte(&input) % 2u != 0u;
+    desperate_failed = next_byte(&input) % 2u != 0u;
+    const uint32_t desperate_final_roll =
+        desperate_reroll == 0u ? desperate_initial_roll : desperate_reroll;
+    assert(whc_desperate_escape_test_is_valid(desperate_initial_roll, desperate_reroll,
+                                               desperate_reroll_explained, desperate_failed) ==
+           (desperate_initial_roll >= 1u && desperate_initial_roll <= 6u &&
+            desperate_reroll <= 6u &&
+            (desperate_reroll == 0u || desperate_reroll_explained) &&
+            desperate_failed == (desperate_final_roll <= 2u)));
     go_to_ground_phase = next_byte(&input);
     go_to_ground_cp_before = next_u16(&input);
     go_to_ground_cost = next_byte(&input);

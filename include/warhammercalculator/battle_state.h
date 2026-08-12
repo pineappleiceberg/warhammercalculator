@@ -218,7 +218,8 @@ enum whc_battle_event_kind {
     WHC_BATTLE_EVENT_TRANSPORT_DAMAGE = 3u,
     WHC_BATTLE_EVENT_HAZARDOUS_DAMAGE = 4u,
     WHC_BATTLE_EVENT_REANIMATION_HEAL = 5u,
-    WHC_BATTLE_EVENT_REANIMATION_RETURN = 6u
+    WHC_BATTLE_EVENT_REANIMATION_RETURN = 6u,
+    WHC_BATTLE_EVENT_DESPERATE_ESCAPE = 7u
 };
 
 /*@ requires 1 <= segment_count && segment_count <= WHC_MAX_BATTLE_SEGMENTS;
@@ -440,6 +441,15 @@ bool whc_hazardous_resolution_is_valid(uint32_t initial_roll, uint32_t reroll,
                                        uint32_t feel_no_pain, uint32_t feel_no_pain_roll_count,
                                        uint32_t ignored_wounds, uint32_t applied_damage,
                                        bool model_destroyed, uint32_t flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        initial_roll >= 1 && initial_roll <= 6 &&
+        reroll <= 6 && (reroll == 0 || reroll_explained) &&
+        failed == ((reroll == 0 ? initial_roll : reroll) <= 2);
+*/
+bool whc_desperate_escape_test_is_valid(uint32_t initial_roll, uint32_t reroll,
+                                        bool reroll_explained, bool failed);
 
 /*@ assigns \nothing;
     ensures \result <==>

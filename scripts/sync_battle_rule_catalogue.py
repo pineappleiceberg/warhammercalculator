@@ -67,6 +67,7 @@ GENERATED_PREFIXES = (
     "faction.shadow-in-the-warp",
     "faction.synapse-battle-shock",
     "core.command-battle-shock",
+    "core.desperate-escape",
 )
 
 
@@ -167,6 +168,17 @@ def command_battle_shock_rule():
     }
 
 
+def desperate_escape_rule():
+    return {
+        "id": "core.desperate-escape",
+        "category": "core",
+        "name": "Battle-shocked Fall Back and Desperate Escape",
+        "status": "executable",
+        "introducedBattleStateVersion": 47,
+        "sources": [{"id": "core-rules-10e", "pages": [11, 14]}],
+    }
+
+
 def generated_pdf_rule(category, source_id, name, pages):
     return {
         "id": f"{category}.catalogue-{token(source_id)}",
@@ -193,7 +205,7 @@ def expected_documents():
     )
     if core_source is None:
         raise ValueError("Core Rules source lock is missing")
-    core_source["pages"] = sorted(set(core_source["pages"]) | {11, 12})
+    core_source["pages"] = sorted(set(core_source["pages"]) | {11, 12, 14})
     battle_shock_comparator_source = (
         "Battle-shock tests pass when the adjusted 2D6 result is greater than or equal "
         "to the best Leadership characteristic and fail otherwise"
@@ -206,6 +218,12 @@ def expected_documents():
     )
     if command_battle_shock_source not in core_source["usedFor"]:
         core_source["usedFor"].append(command_battle_shock_source)
+    desperate_escape_source = (
+        "mandatory one-D6-per-model Desperate Escape tests before a Battle-shocked unit Falls "
+        "Back, with each 1-2 destroying a controller-selected surviving model"
+    )
+    if desperate_escape_source not in core_source["usedFor"]:
+        core_source["usedFor"].append(desperate_escape_source)
 
     updates_source = next(
         (entry for entry in sources["sources"] if entry["id"] == "core-rules-updates-10e-2025-10"),
@@ -373,7 +391,7 @@ def expected_documents():
     sources["sources"].append(tyranids_source_entry)
 
     coverage["snapshotId"] = (
-        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v46"
+        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v47"
     )
     coverage["sourceLocks"] = [
         lock for lock in coverage["sourceLocks"] if lock["id"] != SOURCE_ID
@@ -414,6 +432,7 @@ def expected_documents():
         tyranids_battle_shock_rule("faction.synapse-battle-shock", "Synapse Battle-shock")
     )
     coverage["rules"].append(command_battle_shock_rule())
+    coverage["rules"].append(desperate_escape_rule())
     coverage["rules"].extend(
         generated_rule("detachment", entry["id"], entry["name"]) for entry in detachments
     )

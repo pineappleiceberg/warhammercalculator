@@ -1616,6 +1616,15 @@ static void test_hazardous_resolution(void) {
     assert(health[0] == 1u && health[1] == 0u);
 }
 
+static void test_desperate_escape(void) {
+    assert(whc_desperate_escape_test_is_valid(1u, 0u, false, true));
+    assert(whc_desperate_escape_test_is_valid(2u, 6u, true, false));
+    assert(whc_desperate_escape_test_is_valid(6u, 1u, true, true));
+    assert(!whc_desperate_escape_test_is_valid(0u, 0u, false, true));
+    assert(!whc_desperate_escape_test_is_valid(3u, 0u, false, true));
+    assert(!whc_desperate_escape_test_is_valid(2u, 6u, false, false));
+}
+
 static void test_go_to_ground(void) {
     assert(whc_go_to_ground_is_valid(WHC_BATTLE_PHASE_SHOOTING, 2u, 1u, 1u, false, false,
                                      WHC_GO_TO_GROUND_FLAGS_MASK));
@@ -1883,6 +1892,7 @@ int main(void) {
     test_heroic_intervention();
     test_fire_overwatch();
     test_hazardous_resolution();
+    test_desperate_escape();
     test_go_to_ground();
     test_counter_offensive();
     test_smokescreen();
