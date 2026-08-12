@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from "node:url";
+import {
+  MISSION_PACK_SCHEMA_VERSION,
+  normalizeMissionPackCatalogue,
+} from "../lib/mission-pack.mjs";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
@@ -179,25 +183,20 @@ async function checkMissionPack(fetchImpl, baseUrl, timeoutMs) {
         error.code = "INVALID_MISSION_PACK_JSON";
         throw error;
       }
-      if (
-        body?.schemaVersion !== 1 ||
-        body?.edition !== "Warhammer 40,000 10th Edition" ||
-        body?.version !== "1.4" ||
-        typeof body?.source?.sha256 !== "string" ||
-        !Array.isArray(body?.missions) ||
-        body.missions.length !== 20 ||
-        !Array.isArray(body?.terrainLayouts) ||
-        body.terrainLayouts.length !== 8
-      ) {
+      let catalogue;
+      try {
+        catalogue = normalizeMissionPackCatalogue(body);
+      } catch {
         const error = new Error("Mission pack catalogue schema is incomplete");
         error.code = "INVALID_MISSION_PACK_SCHEMA";
         throw error;
       }
       return {
-        id: body.id,
-        version: body.version,
-        missions: body.missions.length,
-        terrainLayouts: body.terrainLayouts.length,
+        schemaVersion: MISSION_PACK_SCHEMA_VERSION,
+        id: catalogue.id,
+        version: catalogue.version,
+        missions: catalogue.missions.length,
+        terrainLayouts: catalogue.terrainLayouts.length,
       };
     },
   );
