@@ -27,17 +27,32 @@ state.
 
 ## Prioritized backlog
 
-1. Extend the source-locked replay corpus with an attached Leader/bodyguard and
-   mixed-profile unit pair, a different faction and mission card, Reserves,
-   physical-card Mission Actions, faction/detachment rule decisions, and
-   multi-model casualty allocation. Then continue across every supported
-   faction, mission, and composition boundary.
+1. Add source-backed faction and detachment state transitions to canonical
+   battle replay, apply their consequences to attacks, objectives, and bounded
+   resources, and lock each transition into another full-game faction/mission
+   fixture. Then continue across every supported faction, mission, and
+   composition boundary.
 2. Add reviewed curved surface primitives only when a supported physical terrain
    set cannot be represented exactly by panels and simple polygon solids.
 3. Add deterministic automated policies and calibrated batch battle simulation
    only after the guided replay corpus closes the same rules boundaries.
 
 ## Completed cycles
+
+- 2026-08-12: Added the first full-game attached and mixed-profile golden
+  replay. A Farseer attached to Guardian Defenders faces a Warboss attached to
+  Boyz under source-locked Aeldari Guardian Battlehost, Orks Green Tide, Supply
+  Drop, and Terrain Layout 2 identities. The 227-event replay preserves both
+  Leaders as distinct models, exact Guardian/platform and Boy/Nob profiles,
+  reviewed weapon bearers, a completed and scored physical-card Mission Action,
+  a legal round-two Rangers Strategic Reserves arrival, every active clock
+  state, and final Battle Ready scoring. A physically possible ordered Slugga
+  and Rokkit volley removes all eleven Bodyguard models across one-wound and
+  two-wound profiles while proving that the attached Farseer cannot receive
+  damage first. SHA-256 fixture generation, source-lock checks, JavaScript
+  replay, public API replay, and C/WebAssembly health and clock checks cover all
+  four formations. The next corpus boundary is executable faction/detachment
+  state changes and their downstream combat, objective, and resource effects.
 
 - 2026-08-12: Added the first action-heavy, source-locked full-game replay. A
   Canoptek Doomstalker versus five Intercessors now records exact deployment and

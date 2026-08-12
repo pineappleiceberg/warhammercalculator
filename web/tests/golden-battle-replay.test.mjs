@@ -23,6 +23,12 @@ const actionFixture = JSON.parse(
     "utf8",
   ),
 );
+const attachedFixture = JSON.parse(
+  await readFile(
+    new URL("./fixtures/golden-battle-attached-aeldari-vs-orks-v1.json", import.meta.url),
+    "utf8",
+  ),
+);
 const sourceManifest = JSON.parse(
   await readFile(new URL("../../data/battle-rule-sources.json", import.meta.url), "utf8"),
 );
@@ -59,7 +65,7 @@ test("replays a source-locked real-catalogue pair through every battle phase and
 
 test("pins every golden replay source checksum to the authoritative manifest", () => {
   const manifestLocks = new Map(sourceManifest.sources.map((source) => [source.id, source.sha256]));
-  for (const candidateFixture of [fixture, actionFixture]) {
+  for (const candidateFixture of [fixture, actionFixture, attachedFixture]) {
     const event = candidateFixture.state.events.find(
       (candidate) => candidate.type === "rule_coverage_configured",
     );
@@ -72,6 +78,79 @@ test("pins every golden replay source checksum to the authoritative manifest", (
       })),
     );
   }
+});
+
+test("replays attached Leaders, mixed profiles, a Mission Action, and Strategic Reserves", async () => {
+  const { replayed, summary } = await validateGoldenBattleReplay(attachedFixture, sourceManifest);
+  assert.equal(attachedFixture.stateDigest, digest(attachedFixture.state));
+  assert.equal(attachedFixture.expectedDigest, digest(attachedFixture.expected));
+  assert.equal(summary.phaseStepCoverage.length, 170);
+  assert.equal(summary.eventTypeCounts.mission_action_started, 1);
+  assert.equal(summary.eventTypeCounts.mission_action_completed, 1);
+  assert.equal(summary.eventTypeCounts.reserve_arrived, 1);
+  assert.equal(summary.eventTypeCounts.attack_resolved, 2);
+  assert.deepEqual(
+    replayed.ruleCoverage.plan.players.map((player) => ({
+      faction: player.faction.sourceId,
+      detachment: player.detachment.sourceId,
+    })),
+    [
+      { faction: "AE", detachment: "000001020" },
+      { faction: "ORK", detachment: "000000856" },
+    ],
+  );
+
+  const guardians = summary.formations.find((formation) => formation.id === "player-1:guardians");
+  const rangers = summary.formations.find((formation) => formation.id === "player-1:rangers");
+  assert.deepEqual(guardians.health, {
+    "guardians:363:loadout:1": { modelsRemaining: 0, woundsLost: 0 },
+    "guardians:364:loadout:1": { modelsRemaining: 0, woundsLost: 0 },
+    "farseer:357:loadout:1": { modelsRemaining: 1, woundsLost: 0 },
+  });
+  assert.equal(guardians.destroyed, false);
+  assert.equal(rangers.deploymentLocation, "strategic_reserves");
+  assert.equal(rangers.deployed, true);
+  assert.equal(rangers.offBattlefield, false);
+
+  const attacks = attachedFixture.state.events.filter((event) => event.type === "attack_resolved");
+  assert.deepEqual(
+    attacks.map((event) => ({
+      weapon: event.summary.weapon,
+      damage: event.summary.damage,
+      destroyed: event.summary.modelsDestroyed,
+      remaining: event.allocations.map((allocation) => [
+        allocation.segmentId,
+        allocation.after.modelsRemaining,
+        allocation.after.woundsLost,
+      ]),
+    })),
+    [
+      {
+        weapon: "Slugga",
+        damage: 9,
+        destroyed: 9,
+        remaining: [
+          ["guardians:363:loadout:1", 1, 0],
+          ["guardians:364:loadout:1", 1, 0],
+          ["farseer:357:loadout:1", 1, 0],
+        ],
+      },
+      {
+        weapon: "Rokkit launcha",
+        damage: 3,
+        destroyed: 2,
+        remaining: [
+          ["guardians:363:loadout:1", 0, 0],
+          ["guardians:364:loadout:1", 0, 0],
+          ["farseer:357:loadout:1", 1, 0],
+        ],
+      },
+    ],
+  );
+  assert.equal(replayed.completedMissionActions.length, 1);
+  assert.equal(replayed.secondaryCardPoints.get("player-1:player-1:tactical:action"), 5);
+  assert.equal(missionTrackerFacts(attachedFixture.state, "player-1").valid, true);
+  assert.equal(missionTrackerFacts(attachedFixture.state, "player-2").valid, true);
 });
 
 test("replays source-locked movement, reactions, combat, casualties, objectives, and Tactical cards", async () => {
