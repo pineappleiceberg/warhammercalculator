@@ -75,12 +75,13 @@ def token(value):
 
 
 def generated_rule(category, source_id, name):
+    executable_orks = category == "faction" and source_id == "ORK"
     return {
         "id": f"{category}.catalogue-{token(source_id)}",
         "category": category,
         "name": f"{name} {category} rules",
-        "status": "guided",
-        "introducedBattleStateVersion": 24,
+        "status": "executable" if executable_orks else "guided",
+        "introducedBattleStateVersion": 40 if executable_orks else 24,
         "sources": [
             {
                 "id": SOURCE_ID,
@@ -224,7 +225,7 @@ def expected_documents():
     sources["sources"].append(mission_source_entry)
 
     coverage["snapshotId"] = (
-        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v39"
+        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v40"
     )
     coverage["sourceLocks"] = [
         lock for lock in coverage["sourceLocks"] if lock["id"] != SOURCE_ID

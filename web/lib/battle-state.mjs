@@ -36,7 +36,8 @@ import {
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 39;
+export const BATTLE_STATE_VERSION = 40;
+export const FACTION_RULE_STATE_BATTLE_STATE_VERSION = 40;
 export const SIMPLE_TERRAIN_BATTLE_STATE_VERSION = 39;
 export const MISSION_TRACKING_BATTLE_STATE_VERSION = 38;
 export const TERRAIN_CLEARANCE_BATTLE_STATE_VERSION = 37;
@@ -3071,6 +3072,9 @@ function normalizeFormation(candidate, stateVersion) {
     keywords: normalizeStringArray(formation.keywords ?? [], "Formation keywords", 100).map(
       (keyword) => keyword.toLowerCase(),
     ),
+    ...(stateVersion >= FACTION_RULE_STATE_BATTLE_STATE_VERSION
+      ? { hasWaaaghAbility: Boolean(formation.hasWaaaghAbility) }
+      : {}),
     segments,
   };
   if (
@@ -3478,6 +3482,9 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   ) {
     throw new Error("Rule coverage configuration requires battle-state version 24");
   }
+  if (stateVersion < FACTION_RULE_STATE_BATTLE_STATE_VERSION && event.type === "waaagh_called") {
+    throw new Error("Executable faction-rule state requires battle-state version 40");
+  }
   if (
     stateVersion < MISSION_TRACKING_BATTLE_STATE_VERSION &&
     [
@@ -3568,6 +3575,7 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
       previous.playerId !== formation.playerId ||
       previous.sourceFormationId !== formation.sourceFormationId ||
       previous.assignedTransportFormationId !== formation.assignedTransportFormationId ||
+      previous.hasWaaaghAbility !== formation.hasWaaaghAbility ||
       JSON.stringify(previous.deploymentTraits) !== JSON.stringify(formation.deploymentTraits) ||
       JSON.stringify(previous.transportOptions) !== JSON.stringify(formation.transportOptions) ||
       JSON.stringify(weaponInventoryProfileIdentity(previous.weaponInventory)) !==
@@ -3771,6 +3779,18 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     if (!formations.players.has(normalized.firstPlayerId)) {
       throw new Error("First player is unknown");
     }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "waaagh_called") {
+    normalized.playerId = boundedString(event.playerId, "Waaagh! player id", 100);
+    if (!formations.players.has(normalized.playerId)) throw new Error("Waaagh! player is unknown");
+    normalized.sourceFactionId = boundedString(
+      event.sourceFactionId,
+      "Waaagh! source faction id",
+      30,
+    );
+    normalized.sourceRuleId = boundedString(event.sourceRuleId, "Waaagh! source rule id", 100);
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
@@ -5260,6 +5280,7 @@ export function normalizeBattleState(candidate) {
       TERRAIN_CLEARANCE_BATTLE_STATE_VERSION,
       MISSION_TRACKING_BATTLE_STATE_VERSION,
       SIMPLE_TERRAIN_BATTLE_STATE_VERSION,
+      FACTION_RULE_STATE_BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
     throw new Error(`Unsupported battle state version: ${String(state.version)}`);
@@ -5330,6 +5351,7 @@ export function normalizeBattleState(candidate) {
         ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION,
         TERRAIN_CLEARANCE_BATTLE_STATE_VERSION,
         MISSION_TRACKING_BATTLE_STATE_VERSION,
+        SIMPLE_TERRAIN_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -5584,6 +5606,7 @@ export function normalizeBattleState(candidate) {
         event.formation.weaponBearerTracking === "legacy_aggregate",
     ) &&
     normalized.migration?.sourceVersion !== TERRAIN_CLEARANCE_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== SIMPLE_TERRAIN_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== OBJECTIVE_CONTROL_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== SPATIAL_FACTS_BATTLE_STATE_VERSION &&
@@ -6691,6 +6714,8 @@ export function replayBattleState(state) {
   let pendingModelPosition = null;
   const queuedModelPositions = [];
   let ruleCoverage = null;
+  const waaaghCallsByPlayer = new Map();
+  const activeWaaaghPlayerIds = new Set();
   let tableGeometry = null;
   let terrainFootprints = null;
   let terrainVisibility = null;
@@ -8032,6 +8057,34 @@ export function replayBattleState(state) {
       }
       continue;
     }
+    if (event.type === "waaagh_called") {
+      if (
+        clock.status !== "active" ||
+        clock.phase !== "command" ||
+        clock.step !== "start" ||
+        clock.activePlayerId !== event.playerId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Waaagh! can only be called at the start of your Command phase");
+      }
+      const faction = ruleCoverage?.plan?.players?.find(
+        (player) => player.playerId === event.playerId,
+      )?.faction;
+      if (
+        faction?.sourceId !== "ORK" ||
+        !faction.ruleIds?.includes("faction.catalogue-ork") ||
+        event.sourceFactionId !== "ORK" ||
+        event.sourceRuleId !== "faction.catalogue-ork"
+      ) {
+        throw new Error("Waaagh! requires the source-locked Orks faction rule");
+      }
+      if (waaaghCallsByPlayer.has(event.playerId)) {
+        throw new Error("Waaagh! can only be called once per battle");
+      }
+      waaaghCallsByPlayer.set(event.playerId, event);
+      activeWaaaghPlayerIds.add(event.playerId);
+      continue;
+    }
     if (event.type === "clock_advanced") {
       if (pendingChoices.size > 0) {
         throw new Error("Pending choices must be resolved before advancing the battle");
@@ -8095,6 +8148,9 @@ export function replayBattleState(state) {
         throw new Error("Battle clock advance has an incorrect effect-expiry set");
       }
       for (const id of expiredEffectIds) effects.delete(id);
+      if (commandPhaseStarted(expected) && activeWaaaghPlayerIds.has(expected.activePlayerId)) {
+        activeWaaaghPlayerIds.delete(expected.activePlayerId);
+      }
       if (state.version >= TRACKER_BATTLE_STATE_VERSION && commandPhaseStarted(expected)) {
         awardCommandPhasePoints(resources, state.players, mission);
         for (const [formationId] of battleShockedFormations) {
@@ -9197,10 +9253,14 @@ export function replayBattleState(state) {
         throw new Error("Record this formation's movement before declaring a charge");
       }
       if (
-        ["advance", "fall_back"].includes(currentMovement?.movement) &&
+        currentMovement?.movement === "advance" &&
+        !(activeWaaaghPlayerIds.has(formation.playerId) && formation.hasWaaaghAbility === true) &&
         !event.eligibilityOverride
       ) {
-        throw new Error("A formation that Advanced or Fell Back requires a charge rule override");
+        throw new Error("A formation that Advanced requires an active charge rule");
+      }
+      if (currentMovement?.movement === "fall_back" && !event.eligibilityOverride) {
+        throw new Error("A formation that Fell Back requires a charge rule override");
       }
       if (
         (currentMovement?.fromMovedTransport || currentMovement?.fromDestroyedTransport) &&
@@ -9335,11 +9395,15 @@ export function replayBattleState(state) {
         );
       }
       if (
-        ["advance", "fall_back"].includes(currentMovement?.movement) &&
+        currentMovement?.movement === "advance" &&
+        !(activeWaaaghPlayerIds.has(formation.playerId) && formation.hasWaaaghAbility === true) &&
         !event.eligibilityOverride
       ) {
+        throw new Error("A formation that Advanced requires an active charge rule");
+      }
+      if (currentMovement?.movement === "fall_back" && !event.eligibilityOverride) {
         throw new Error(
-          `A formation that ${currentMovement.movement === "advance" ? "Advanced" : "Fell Back"} requires an explicit charge eligibility override`,
+          "A formation that Fell Back requires an explicit charge eligibility override",
         );
       }
       if (
@@ -11270,6 +11334,8 @@ export function replayBattleState(state) {
     activeAttackIds,
     clock,
     ruleCoverage,
+    waaaghCallsByPlayer,
+    activeWaaaghPlayerIds,
     tableGeometry,
     terrainFootprints,
     terrainVisibility,
@@ -11673,6 +11739,100 @@ export function advanceBattleClock(state, id, at) {
     to,
     expiredEffectIds,
   });
+}
+
+export function callWaaagh(state, playerId, id, at) {
+  const replayed = replayBattleState(state);
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "waaagh_called",
+    playerId,
+    sourceFactionId: "ORK",
+    sourceRuleId: "faction.catalogue-ork",
+    clock: replayed.clock,
+  });
+}
+
+export function battleWaaaghState(state, playerId) {
+  const replayed = replayBattleState(state);
+  const called = replayed.waaaghCallsByPlayer.get(playerId) ?? null;
+  return {
+    available: !called,
+    active: replayed.activeWaaaghPlayerIds.has(playerId),
+    called,
+  };
+}
+
+export function waaaghStateIsValid(
+  callCount,
+  active,
+  sourceFactionOrks,
+  calledAtCommandStart,
+  formationHasAbility,
+  advancedChargeAllowed,
+  meleeAttacksModifier,
+  meleeStrengthModifier,
+  grantedInvulnerableSave,
+) {
+  const benefits = active === 1 && formationHasAbility === 1 ? 1 : 0;
+  return (
+    Number.isInteger(callCount) &&
+    callCount >= 0 &&
+    callCount <= 1 &&
+    [
+      active,
+      sourceFactionOrks,
+      calledAtCommandStart,
+      formationHasAbility,
+      advancedChargeAllowed,
+    ].every((value) => value === 0 || value === 1) &&
+    (callCount === 0 || (sourceFactionOrks === 1 && calledAtCommandStart === 1)) &&
+    (active === 0 || callCount === 1) &&
+    advancedChargeAllowed === benefits &&
+    meleeAttacksModifier === benefits &&
+    meleeStrengthModifier === benefits &&
+    grantedInvulnerableSave === (benefits === 1 ? 5 : 0)
+  );
+}
+
+export function battleWaaaghFormationFacts(state, formationId) {
+  const replayed = replayBattleState(state);
+  const formation = replayed.formations.get(formationId);
+  if (!formation) throw new Error("Waaagh! formation is not registered");
+  const call = replayed.waaaghCallsByPlayer.get(formation.playerId) ?? null;
+  const faction = replayed.ruleCoverage?.plan.players.find(
+    (player) => player.playerId === formation.playerId,
+  )?.faction;
+  const active = replayed.activeWaaaghPlayerIds.has(formation.playerId) ? 1 : 0;
+  const hasAbility = formation.hasWaaaghAbility ? 1 : 0;
+  const benefits = active === 1 && hasAbility === 1 ? 1 : 0;
+  const values = [
+    call ? 1 : 0,
+    active,
+    faction?.sourceId === "ORK" && faction.ruleIds.includes("faction.catalogue-ork") ? 1 : 0,
+    call?.clock.phase === "command" && call.clock.step === "start" ? 1 : 0,
+    hasAbility,
+    benefits,
+    benefits,
+    benefits,
+    benefits === 1 ? 5 : 0,
+  ];
+  return {
+    formationId,
+    playerId: formation.playerId,
+    called: Boolean(call),
+    active: active === 1,
+    hasAbility: hasAbility === 1,
+    advancedChargeAllowed: benefits === 1,
+    meleeAttacksModifier: benefits,
+    meleeStrengthModifier: benefits,
+    grantedInvulnerableSave: benefits === 1 ? 5 : 0,
+    values,
+    valid: waaaghStateIsValid(...values),
+  };
 }
 
 export function openBattleChoice(state, choice, id, at) {

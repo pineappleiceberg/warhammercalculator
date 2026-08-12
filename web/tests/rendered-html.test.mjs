@@ -313,7 +313,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const coverage = (await coverageResponse.json()).data;
   assert.equal(
     coverage.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v39",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v40",
   );
   assert.equal(coverage.sourceLocked, true);
   assert.equal(coverage.rules.length, coveredRuleCoverageMatrix.rules.length);
@@ -2971,6 +2971,12 @@ test("replays attached mixed-profile casualties and Reserve arrival through the 
     assert.equal(result.data.deployment.complete, true);
     assert.equal(result.data.missionTracking.completedActions.length, 1);
     assert.equal(result.data.missionTracking.categoryPoints["player-1"].secondary, 5);
+    const waaagh = result.data.factionRules.waaagh.find(
+      (entry) => entry.formationId === expectedFormation.id,
+    );
+    assert.equal(waaagh.called, expectedFormation.id.startsWith("player-2:"));
+    assert.equal(waaagh.active, false);
+    assert.equal(waaagh.valid, true);
   }
 });
 

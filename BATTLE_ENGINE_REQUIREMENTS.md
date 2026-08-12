@@ -143,7 +143,7 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    exact 20 A-T mission combinations, eight terrain layouts, and their allowed
    pairings. Next replace guided mission scoring and physical terrain boundaries
    with executable handlers as their state becomes representable.
-7. **In progress:** version 39 records the canonical 60-by-44-inch battlefield,
+7. **In progress:** version 40 records the canonical 60-by-44-inch battlefield,
    exact mission/layout binding, objective centres, official terrain-section
    inventory, twelve rotated and non-overlapping area-terrain outlines,
    single/separate section grouping, stable coordinate origin, review method,
@@ -181,18 +181,20 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    Secondary plans, Tactical card lifecycle, New Orders, and universal Actions
    are executable; individual physical card conditions remain reason-backed
    player input because their card text is unavailable.
-8. **In progress:** three version-39 golden replays now bind source and expected
+8. **In progress:** three version-40 golden replays now bind source and expected
    SHA-256 digests to real Necrons-versus-Space-Marines catalogue identities and
    exact Chapter Approved setup. The second 244-event replay adds exact
    movement, Fire Overwatch, Go to Ground, ranged and melee casualties, Charge,
    both Fight activations, objective transfer, Tactical lifecycle, all 170
    active clock states, final state, generator checks, tamper tests, and
-   API-to-C/WebAssembly clock and health replay. The third 227-event replay adds
+   API-to-C/WebAssembly clock and health replay. The third 228-event replay adds
    Aeldari-versus-Orks source identities, two attached Leader/bodyguard
    formations, exact mixed profiles and reviewed bearers, Bodyguard-first
    ordered casualty allocation, a physical-card Mission Action, round-two
-   Strategic Reserves arrival, and a different mission and terrain layout. Add
-   executable source-backed faction/detachment state transitions and continue
+   Strategic Reserves arrival, a canonical once-per-battle Waaagh! call, and a
+   different mission and terrain layout. Waaagh! is now the first executable
+   source-backed faction transition across replay, guided UI, API, and
+   C/WebAssembly. Add executable detachment state transitions and continue
    different faction/mission pairs until every supported boundary has
    representative source-locked evidence.
 9. Add deterministic automated policies, batch battle simulation, and calibrated

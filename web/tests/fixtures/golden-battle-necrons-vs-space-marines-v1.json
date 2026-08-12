@@ -23,10 +23,10 @@
     }
   ],
   "sourceManifestVersion": 1,
-  "stateDigest": "9c370ab2c42171ba0f6fb9082201446b29400f95fdf0d51df2977f6703b2c236",
-  "expectedDigest": "c341130e02e2336c040014229e4dd8ed529f17ef7c437c12ada00a25eae7a7ec",
+  "stateDigest": "ec0b9828cefd51174eabf6f9b57a70ab5914bd1f146d79ee96c43ffc33cdac6f",
+  "expectedDigest": "0520eff64fa75b3918ed0ccc88a92a97b0093600dfdaa5a90b7b7728af3b05da",
   "expected": {
-    "stateVersion": 39,
+    "stateVersion": 40,
     "eventCount": 209,
     "eventTypeCounts": {
       "battle_started": 1,
@@ -276,10 +276,10 @@
     ]
   },
   "state": {
-    "version": 39,
+    "version": 40,
     "id": "golden-necrons-vs-space-marines-v1",
     "createdAt": 0,
-    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:39",
+    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:40",
     "players": [
       {
         "id": "player-1",
@@ -308,6 +308,7 @@
           "name": "Doom Scythe",
           "assignedTransportFormationId": "",
           "keywords": ["necrons", "vehicle", "fly", "doom scythe", "aircraft"],
+          "hasWaaaghAbility": false,
           "segments": [
             {
               "id": "doom-scythe:328:loadout:1",
@@ -385,6 +386,7 @@
             "brutalis dreadnought",
             "deathwing"
           ],
+          "hasWaaaghAbility": false,
           "segments": [
             {
               "id": "brutalis:117:loadout:1",
@@ -444,7 +446,7 @@
         "type": "rule_coverage_configured",
         "coverage": {
           "schemaVersion": 1,
-          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v39",
+          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v40",
           "sourceLocks": [
             {
               "id": "core-rules-10e",
@@ -550,7 +552,7 @@
             }
           },
           "report": {
-            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v39",
+            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v40",
             "permitted": true,
             "results": [
               {

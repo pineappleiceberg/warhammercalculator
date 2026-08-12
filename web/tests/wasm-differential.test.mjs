@@ -152,12 +152,21 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_endpoint_clearance_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_terrain_clearance_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_mission_tracker_facts_are_valid, "function");
+  assert.equal(typeof calculator._whc_waaagh_state_is_valid, "function");
   assert.equal(typeof calculator._whc_objective_control_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_visibility_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_convex_silhouette_is_valid, "function");
   assert.equal(typeof calculator._whc_simple_terrain_surface_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
+});
+
+test("Waaagh! state predicate matches source-locked active and inactive facts", () => {
+  assert.equal(calculator._whc_waaagh_state_is_valid(0, 0, 0, 0, 0, 0, 0, 0, 0), 1);
+  assert.equal(calculator._whc_waaagh_state_is_valid(1, 1, 1, 1, 1, 1, 1, 1, 5), 1);
+  assert.equal(calculator._whc_waaagh_state_is_valid(1, 1, 1, 1, 0, 0, 0, 0, 0), 1);
+  assert.equal(calculator._whc_waaagh_state_is_valid(1, 0, 1, 1, 1, 1, 1, 1, 5), 0);
+  assert.equal(calculator._whc_waaagh_state_is_valid(2, 1, 1, 1, 1, 1, 1, 1, 5), 0);
 });
 
 test("WebAssembly and JavaScript agree on reviewed simple terrain surfaces", () => {

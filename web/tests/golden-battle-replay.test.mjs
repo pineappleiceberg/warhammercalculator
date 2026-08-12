@@ -89,6 +89,9 @@ test("replays attached Leaders, mixed profiles, a Mission Action, and Strategic 
   assert.equal(summary.eventTypeCounts.mission_action_completed, 1);
   assert.equal(summary.eventTypeCounts.reserve_arrived, 1);
   assert.equal(summary.eventTypeCounts.attack_resolved, 2);
+  assert.equal(summary.eventTypeCounts.waaagh_called, 1);
+  assert.equal(replayed.waaaghCallsByPlayer.get("player-2").sourceRuleId, "faction.catalogue-ork");
+  assert.equal(replayed.activeWaaaghPlayerIds.size, 0);
   assert.deepEqual(
     replayed.ruleCoverage.plan.players.map((player) => ({
       faction: player.faction.sourceId,

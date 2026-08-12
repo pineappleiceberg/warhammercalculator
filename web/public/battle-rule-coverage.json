@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v39",
+  "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v40",
   "edition": "Warhammer 40,000 10th Edition",
   "updatedAt": "2026-08-11",
   "sourceLocks": [
@@ -587,8 +587,8 @@
       "id": "faction.catalogue-ork",
       "category": "faction",
       "name": "Orks faction rules",
-      "status": "guided",
-      "introducedBattleStateVersion": 24,
+      "status": "executable",
+      "introducedBattleStateVersion": 40,
       "sources": [
         {
           "id": "wahapedia-profile-export-2026-06-13",

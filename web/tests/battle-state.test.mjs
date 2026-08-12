@@ -18,6 +18,8 @@ import {
   battleCanDeclareRangedAttack,
   battleCanResolveAttack,
   battleCanStartFormationActivation,
+  battleWaaaghState,
+  callWaaagh,
   changeBattleResource,
   clearBattleObjectiveControlOverride,
   closeRangedTargetDeclarations,
@@ -412,6 +414,33 @@ function newBattle() {
     rulesSnapshot: "catalogue:test",
     players,
     ruleCoverage: coveredBattleRuleBinding(players),
+  });
+}
+
+function newOrksBattle() {
+  const state = newBattle();
+  const coverage = structuredClone(state.events[0].coverage);
+  coverage.plan.players[0].faction = {
+    sourceId: "ORK",
+    ruleIds: ["faction.catalogue-ork"],
+  };
+  const factionIndex = coverage.report.results.findIndex((result) => result.id === "faction.test");
+  const factionResult = coverage.report.results[factionIndex];
+  const detachmentResult = coverage.report.results.find(
+    (result) => result.id === "detachment.test",
+  );
+  const datasheetResult = coverage.report.results.find((result) => result.id === "datasheet.test");
+  coverage.report.results.splice(
+    factionIndex,
+    3,
+    { ...factionResult, id: "faction.catalogue-ork", name: "Orks faction rules" },
+    detachmentResult,
+    datasheetResult,
+    factionResult,
+  );
+  return normalizeBattleState({
+    ...state,
+    events: [{ ...state.events[0], coverage }],
   });
 }
 
@@ -3952,6 +3981,105 @@ test("records charge eligibility and alternates replayed Fight priority", () => 
   );
   state = completeFormationActivation(state, "fight-complete", state.events.length + 1);
   assert.equal(replayBattleState(state).clock.priorityPlayerId, "player-2");
+});
+
+test("executes the source-locked Waaagh! timing, duration, and Advance charge rule", () => {
+  const orks = { ...attackerFormation, hasWaaaghAbility: true };
+  let state = registerBattleFormation(
+    registerBattleFormation(newOrksBattle(), orks, "register-orks", 1),
+    formation,
+    "register-target",
+    2,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "start-waaagh", 3);
+  state = callWaaagh(state, "player-1", "call-waaagh", state.events.length + 1);
+  assert.deepEqual(
+    {
+      available: battleWaaaghState(state, "player-1").available,
+      active: battleWaaaghState(state, "player-1").active,
+    },
+    { available: false, active: true },
+  );
+  assert.throws(
+    () => callWaaagh(state, "player-1", "call-waaagh-again", state.events.length + 1),
+    /once per battle/i,
+  );
+  while (
+    !(
+      replayBattleState(state).clock.phase === "movement" &&
+      replayBattleState(state).clock.step === "move_units"
+    )
+  ) {
+    state = advanceBattleClock(
+      state,
+      `waaagh-to-move-${state.events.length}`,
+      state.events.length + 1,
+    );
+  }
+  state = recordFormationMovement(
+    state,
+    orks.id,
+    "advance",
+    "waaagh-advance",
+    state.events.length + 1,
+  );
+  while (
+    !(
+      replayBattleState(state).clock.phase === "charge" &&
+      replayBattleState(state).clock.step === "charge_moves"
+    )
+  ) {
+    state = advanceBattleClock(
+      state,
+      `waaagh-to-charge-${state.events.length}`,
+      state.events.length + 1,
+    );
+  }
+  assert.doesNotThrow(() =>
+    recordFormationCharge(
+      state,
+      orks.id,
+      [formation.id],
+      successfulChargeOptions(formation.id),
+      "waaagh-charge",
+      state.events.length + 1,
+    ),
+  );
+});
+
+test("rejects Waaagh! without its source, outside its timing, and after expiry", () => {
+  let nonOrks = registerBattleFormation(newBattle(), attackerFormation, "register-non-orks", 1);
+  nonOrks = registerBattleFormation(nonOrks, formation, "register-non-orks-target", 2);
+  nonOrks = startBattle(deployAllOnBattlefield(nonOrks), "player-1", "start-non-orks", 3);
+  assert.throws(
+    () => callWaaagh(nonOrks, "player-1", "invalid-faction-waaagh", 4),
+    /source-locked Orks/i,
+  );
+
+  let state = registerBattleFormation(newOrksBattle(), attackerFormation, "register-orks", 1);
+  state = registerBattleFormation(state, formation, "register-orks-target", 2);
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "start-orks", 3);
+  state = callWaaagh(state, "player-1", "valid-waaagh", 4);
+  do {
+    state = advanceBattleClock(
+      state,
+      `waaagh-expiry-${state.events.length}`,
+      state.events.length + 1,
+    );
+  } while (
+    !(
+      replayBattleState(state).clock.activePlayerId === "player-1" &&
+      replayBattleState(state).clock.battleRound === 2 &&
+      replayBattleState(state).clock.phase === "command" &&
+      replayBattleState(state).clock.step === "start"
+    )
+  );
+  assert.equal(battleWaaaghState(state, "player-1").active, false);
+  assert.equal(battleWaaaghState(state, "player-1").available, false);
+  assert.throws(
+    () => callWaaagh(state, "player-1", "expired-second-waaagh", state.events.length + 1),
+    /once per battle/i,
+  );
 });
 
 test("resolves Counter-offensive atomically and forces its formation to fight next", () => {

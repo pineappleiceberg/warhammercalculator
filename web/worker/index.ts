@@ -71,6 +71,7 @@ import {
   battleInitialDeploymentRules,
   battleFormation,
   battleFormationHealth,
+  battleWaaaghFormationFacts,
   battleSurvivingWeaponCount,
   chargeResolutionFlags,
   chargeResolutionIsValid,
@@ -397,6 +398,7 @@ type CalculatorExports = {
   whc_mission_tracker_facts_are_valid(...values: number[]): number;
   whc_objective_control_facts_are_valid(...values: number[]): number;
   whc_visibility_facts_are_valid(...values: number[]): number;
+  whc_waaagh_state_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -1928,10 +1930,26 @@ async function replayFormationHealth(
         return publicReport;
       })
       .sort((left, right) => left.formationId.localeCompare(right.formationId));
+    const waaagh = [...replayed.formations.keys()]
+      .map((formationId) => {
+        const facts = battleWaaaghFormationFacts(state, formationId);
+        const nativeValid = Boolean(calculator.whc_waaagh_state_is_valid(...facts.values));
+        if (nativeValid !== facts.valid || !facts.valid) {
+          throw new ServiceUnavailableError(
+            "Waaagh! state diverged from the C/WebAssembly predicate",
+            "WAAAGH_STATE_DIVERGENCE",
+          );
+        }
+        const { values, ...publicFacts } = facts;
+        void values;
+        return publicFacts;
+      })
+      .sort((left, right) => left.formationId.localeCompare(right.formationId));
     return {
       schemaVersion: state.version,
       rulesSnapshot: state.rulesSnapshot,
       ruleCoverage: replayed.ruleCoverage,
+      factionRules: { waaagh },
       tableGeometry: replayed.tableGeometry,
       terrainFootprints: replayed.terrainFootprints,
       terrainVisibility: replayed.terrainVisibility,

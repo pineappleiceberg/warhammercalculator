@@ -748,6 +748,31 @@ bool whc_mission_tracker_facts_are_valid(uint32_t mode, uint32_t configured,
 
 /*@ assigns \nothing;
     ensures \result <==>
+        call_count <= 1 && active <= 1 && source_faction_orks <= 1 &&
+        called_at_command_start <= 1 && formation_has_ability <= 1 &&
+        advanced_charge_allowed <= 1 &&
+        (call_count == 0 || (source_faction_orks == 1 && called_at_command_start == 1)) &&
+        (active == 0 || call_count == 1) &&
+        advanced_charge_allowed ==
+            (active == 1 && formation_has_ability == 1 ? 1 : 0) &&
+        melee_attacks_modifier ==
+            (active == 1 && formation_has_ability == 1 ? 1 : 0) &&
+        melee_strength_modifier ==
+            (active == 1 && formation_has_ability == 1 ? 1 : 0) &&
+        granted_invulnerable_save ==
+            (active == 1 && formation_has_ability == 1 ? 5 : 0);
+*/
+bool whc_waaagh_state_is_valid(uint32_t call_count, uint32_t active,
+                               uint32_t source_faction_orks,
+                               uint32_t called_at_command_start,
+                               uint32_t formation_has_ability,
+                               uint32_t advanced_charge_allowed,
+                               uint32_t melee_attacks_modifier,
+                               uint32_t melee_strength_modifier,
+                               uint32_t granted_invulnerable_save);
+
+/*@ assigns \nothing;
+    ensures \result <==>
         player_count == 2 && score_entry_count == player_count &&
         top_score <= 1000000 && top_score_player_count <= player_count &&
         controller_count <= 1 && contested <= 1 &&

@@ -1904,7 +1904,14 @@ int main(void) {
                                                 WHC_MISSION_TRACKER_FLAGS_MASK));
     assert(!whc_mission_tracker_facts_are_valid(WHC_MISSION_SECONDARY_TACTICAL, 1u, 0u, 12u, 5u, 3u,
                                                 2u, 20u, 20u, 1u, 10u, 50u, 0u, 0u,
-                                                WHC_MISSION_TRACKER_FLAGS_MASK));
+                                                 WHC_MISSION_TRACKER_FLAGS_MASK));
+    assert(whc_waaagh_state_is_valid(0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u));
+    assert(whc_waaagh_state_is_valid(1u, 1u, 1u, 1u, 1u, 1u, 1u, 1u, 5u));
+    assert(whc_waaagh_state_is_valid(1u, 1u, 1u, 1u, 0u, 0u, 0u, 0u, 0u));
+    assert(!whc_waaagh_state_is_valid(2u, 1u, 1u, 1u, 1u, 1u, 1u, 1u, 5u));
+    assert(!whc_waaagh_state_is_valid(1u, 1u, 0u, 1u, 1u, 1u, 1u, 1u, 5u));
+    assert(!whc_waaagh_state_is_valid(1u, 1u, 1u, 0u, 1u, 1u, 1u, 1u, 5u));
+    assert(!whc_waaagh_state_is_valid(1u, 0u, 1u, 1u, 1u, 1u, 1u, 1u, 5u));
     assert(whc_objective_control_facts_are_valid(2u, 2u, 6u, 1u, 1u, 0u,
                                                  WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
     assert(whc_objective_control_facts_are_valid(2u, 2u, 6u, 2u, 0u, 1u,
