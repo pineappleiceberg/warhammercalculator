@@ -290,7 +290,7 @@ def export(database: Path, output: Path) -> None:
         for row in connection.execute(
             """SELECT model.id, model.datasheet_id, model.name, model.toughness,
                       model.save_target, model.invulnerable_save_target,
-                      model.wounds, model.source_model_profile_id,
+                      model.wounds, model.objective_control, model.source_model_profile_id,
                       model.composition_position,
                       model.composition_component_position
                FROM model_profiles AS model
@@ -315,6 +315,7 @@ def export(database: Path, output: Path) -> None:
                     "reduction": 0,
                     "damageDivisor": 1,
                     "wounds": row["wounds"],
+                    "objectiveControl": row["objective_control"],
                     "keywords": keywords.get(row["datasheet_id"], []),
                     **(
                         {

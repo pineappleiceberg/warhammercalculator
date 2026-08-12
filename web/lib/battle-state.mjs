@@ -12,6 +12,7 @@ import {
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 import { normalizeBattleRuleCoverageBinding } from "./battle-rule-selection.mjs";
 import { chapterApprovedTableBinding } from "./mission-pack.mjs";
+import { deriveObjectiveControlFacts } from "./objective-control-facts.mjs";
 import { deriveSpatialFacts } from "./spatial-facts.mjs";
 import {
   deriveVisibilityFacts,
@@ -23,7 +24,8 @@ import {
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 34;
+export const BATTLE_STATE_VERSION = 35;
+export const OBJECTIVE_CONTROL_BATTLE_STATE_VERSION = 35;
 export const CONVEX_SILHOUETTE_BATTLE_STATE_VERSION = 34;
 export const RANGED_GEOMETRY_BATTLE_STATE_VERSION = 33;
 export const TERRAIN_VISIBILITY_BATTLE_STATE_VERSION = 32;
@@ -2562,6 +2564,10 @@ function normalizeSegment(candidate) {
       keyword.toLowerCase(),
     ),
     wounds,
+    objectiveControl:
+      segment.objectiveControl == null
+        ? null
+        : nonnegativeInteger(segment.objectiveControl, "Segment Objective Control", 1000),
     feelNoPain,
     startingModels,
   };
@@ -3014,6 +3020,7 @@ function segmentsForBearerAssignments(formation, weaponInventory) {
       role: source.role,
       keywords: source.keywords,
       wounds: source.wounds,
+      objectiveControl: source.objectiveControl,
       feelNoPain: source.feelNoPain,
       startingModels: modelIds.length,
       modelIds,
@@ -3180,6 +3187,7 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
       "resource_changed",
       "score_recorded",
       "objective_control_changed",
+      "objective_control_override_cleared",
       "battleshock_changed",
     ].includes(event.type)
   ) {
@@ -3446,6 +3454,11 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     if (normalized.controllerPlayerId && normalized.contested) {
       throw new Error("A controlled objective cannot also be contested");
     }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "objective_control_override_cleared") {
+    normalized.objectiveId = boundedString(event.objectiveId, "Objective id", 100);
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
@@ -4848,6 +4861,7 @@ export function normalizeBattleState(candidate) {
       SPATIAL_FACTS_BATTLE_STATE_VERSION,
       TERRAIN_VISIBILITY_BATTLE_STATE_VERSION,
       RANGED_GEOMETRY_BATTLE_STATE_VERSION,
+      CONVEX_SILHOUETTE_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -4914,6 +4928,7 @@ export function normalizeBattleState(candidate) {
         SPATIAL_FACTS_BATTLE_STATE_VERSION,
         TERRAIN_VISIBILITY_BATTLE_STATE_VERSION,
         RANGED_GEOMETRY_BATTLE_STATE_VERSION,
+        CONVEX_SILHOUETTE_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -5131,6 +5146,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= OBJECTIVE_CONTROL_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyObjectiveControlThroughSequence = nonnegativeInteger(
+        migration.legacyObjectiveControlThroughSequence,
+        "Legacy objective control event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -5140,6 +5162,7 @@ export function normalizeBattleState(candidate) {
         event.formation.weaponBearerTracking === "legacy_aggregate",
     ) &&
     normalized.migration?.sourceVersion !== SPATIAL_FACTS_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== CONVEX_SILHOUETTE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== RANGED_GEOMETRY_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== TERRAIN_VISIBILITY_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION &&
@@ -5534,11 +5557,22 @@ function trackerResources(players, mission) {
   );
 }
 
-function trackerObjectives(mission) {
+function trackerObjectives(mission, players) {
   return new Map(
     mission.objectives.map((objective) => [
       objective.id,
-      { ...objective, controllerPlayerId: "", contested: false },
+      {
+        ...objective,
+        controllerPlayerId: "",
+        contested: true,
+        controlSource: "rules_initial",
+        executable: true,
+        recorded: false,
+        scores: players.map((player) => ({ playerId: player.id, score: 0 })),
+        contributions: [],
+        unavailableReasons: [],
+        resolvedAtClock: null,
+      },
     ]),
   );
 }
@@ -6219,7 +6253,7 @@ export function replayBattleState(state) {
   let clock = setupBattleClock();
   let mission = defaultMission(state.players);
   let resources = trackerResources(state.players, mission);
-  let objectives = trackerObjectives(mission);
+  let objectives = trackerObjectives(mission, state.players);
   const legacyUntimedThroughSequence =
     state.version < TIMELINE_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -6596,6 +6630,48 @@ export function replayBattleState(state) {
   const enqueueModelPosition = (pending) => {
     if (pendingModelPosition) queuedModelPositions.push(pending);
     else pendingModelPosition = pending;
+  };
+  const settleObjectiveControl = (resolvedAtClock) => {
+    const spatialFacts = deriveSpatialFacts({
+      formations,
+      positions: currentModelPositionsByFormation,
+      staleFormationIds: geometryStaleFormationIds,
+      objectives: tableGeometry?.objectivePositions ?? [],
+    });
+    const eligibleFormationIds = new Set(
+      [...formations.keys()].filter(
+        (formationId) =>
+          formationIsOnBattlefield(
+            formationId,
+            deploymentByFormation,
+            deployedFormationIds,
+            embarkedByFormation,
+          ) && !formationDestroyed(formations.get(formationId)),
+      ),
+    );
+    const facts = deriveObjectiveControlFacts({
+      players: state.players,
+      objectives: tableGeometry?.objectivePositions ?? [],
+      formations,
+      eligibleFormationIds,
+      spatialFactsByFormation: spatialFacts,
+      battleShockedFormationIds: new Set(battleShockedFormations.keys()),
+    });
+    for (const [objectiveId, tracked] of objectives) {
+      if (tracked.recorded) continue;
+      const fact = facts.get(objectiveId);
+      objectives.set(objectiveId, {
+        ...tracked,
+        controllerPlayerId: fact?.executable ? fact.controllerPlayerId : "",
+        contested: fact?.executable ? fact.contested : false,
+        controlSource: fact?.executable ? "geometry" : "unknown",
+        executable: Boolean(fact?.executable),
+        scores: fact?.executable ? fact.scores : [],
+        contributions: fact?.executable ? fact.contributions : [],
+        unavailableReasons: fact?.unavailableReasons ?? ["objective_geometry_unavailable"],
+        resolvedAtClock: { ...resolvedAtClock },
+      });
+    }
   };
   for (const event of state.events) {
     if (
@@ -7367,6 +7443,9 @@ export function replayBattleState(state) {
       if (!sameBattleClock(event.to, expected)) {
         throw new Error("Battle clock advance is not canonical");
       }
+      if (expected.status === "complete" || expected.phase !== clock.phase) {
+        settleObjectiveControl(clock);
+      }
       const expiredEffectIds = [...effects.values()]
         .filter((effect) => effectExpiresOnAdvance(effect, clock, expected))
         .map((effect) => effect.id)
@@ -7465,7 +7544,7 @@ export function replayBattleState(state) {
           resources.get(player.id).set(resource.id, resource);
         }
       }
-      objectives = trackerObjectives(mission);
+      objectives = trackerObjectives(mission, state.players);
       continue;
     }
     if (event.type === "resource_changed") {
@@ -7514,6 +7593,30 @@ export function replayBattleState(state) {
         ...objective,
         controllerPlayerId: event.controllerPlayerId,
         contested: event.contested,
+        controlSource: "player_recorded",
+        executable: false,
+        recorded: true,
+        unavailableReasons: ["player_recorded_override"],
+      });
+      continue;
+    }
+    if (event.type === "objective_control_override_cleared") {
+      if (clock.status !== "active" || !sameBattleClock(event.clock, clock)) {
+        throw new Error("Objective control override cleared outside its battle timing window");
+      }
+      const objective = objectives.get(event.objectiveId);
+      if (!objective) throw new Error("Objective control override references an unknown objective");
+      objectives.set(event.objectiveId, {
+        ...objective,
+        controllerPlayerId: "",
+        contested: false,
+        controlSource: "unknown",
+        executable: false,
+        recorded: false,
+        scores: [],
+        contributions: [],
+        unavailableReasons: ["awaiting_objective_control_checkpoint"],
+        resolvedAtClock: null,
       });
       continue;
     }
@@ -10179,6 +10282,21 @@ export function replayBattleState(state) {
     staleFormationIds: geometryStaleFormationIds,
     objectives: tableGeometry?.objectivePositions ?? [],
   });
+  const objectiveControlEligibleFormationIds = new Set(
+    [...formations.keys()].filter(
+      (formationId) =>
+        !offBattlefieldFormationIds.has(formationId) &&
+        !formationDestroyed(formations.get(formationId)),
+    ),
+  );
+  const objectiveControlFacts = deriveObjectiveControlFacts({
+    players: state.players,
+    objectives: tableGeometry?.objectivePositions ?? [],
+    formations,
+    eligibleFormationIds: objectiveControlEligibleFormationIds,
+    spatialFactsByFormation,
+    battleShockedFormationIds: new Set(battleShockedFormations.keys()),
+  });
   const visibilityFactsByFormation = deriveVisibilityFacts({
     formations,
     positions: currentModelPositionsByFormation,
@@ -10212,6 +10330,7 @@ export function replayBattleState(state) {
     currentModelPositionsByFormation,
     geometryStaleFormationIds,
     spatialFactsByFormation,
+    objectiveControlFacts,
     visibilityFactsByFormation,
     pendingDeploymentPlacement,
     pendingModelPosition,
@@ -10725,6 +10844,19 @@ export function setBattleObjectiveControl(
     objectiveId,
     controllerPlayerId,
     contested,
+    clock,
+  });
+}
+
+export function clearBattleObjectiveControlOverride(state, objectiveId, id, at) {
+  const clock = replayBattleState(state).clock;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "objective_control_override_cleared",
+    objectiveId,
     clock,
   });
 }

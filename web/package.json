@@ -10,7 +10,7 @@
     "build": "vinext build",
     "build:pages": "vite build --config vite.pages.config.ts",
     "start": "vinext start",
-    "test": "npm run build && node --import ./tests/register-wasm-loader.mjs --test tests/agent-parameters.test.mjs tests/attachments.test.mjs tests/battle-clock.test.mjs tests/battle-setup.test.mjs tests/battle-state.test.mjs tests/deployment-health.test.mjs tests/mission-pack.test.mjs tests/rendered-html.test.mjs tests/spatial-facts.test.mjs tests/visibility-facts.test.mjs tests/wasm-differential.test.mjs tests/persistence.test.mjs tests/rule-coverage.test.mjs tests/transport.test.mjs",
+    "test": "npm run build && node --import ./tests/register-wasm-loader.mjs --test tests/agent-parameters.test.mjs tests/attachments.test.mjs tests/battle-clock.test.mjs tests/battle-setup.test.mjs tests/battle-state.test.mjs tests/deployment-health.test.mjs tests/mission-pack.test.mjs tests/objective-control-facts.test.mjs tests/rendered-html.test.mjs tests/spatial-facts.test.mjs tests/visibility-facts.test.mjs tests/wasm-differential.test.mjs tests/persistence.test.mjs tests/rule-coverage.test.mjs tests/transport.test.mjs",
     "test:pages": "npm run build:pages && node --test tests/pages.test.mjs",
     "lint": "eslint app build db examples lib scripts static-site tests worker drizzle.config.ts eslint.config.mjs next.config.ts postcss.config.mjs vite.config.ts vite.pages.config.ts",
     "format": "prettier --write . --ignore-unknown --ignore-path .gitignore --ignore-path .prettierignore",

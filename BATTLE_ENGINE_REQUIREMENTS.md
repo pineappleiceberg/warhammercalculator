@@ -143,7 +143,7 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    exact 20 A-T mission combinations, eight terrain layouts, and their allowed
    pairings. Next replace guided mission scoring and physical terrain boundaries
    with executable handlers as their state becomes representable.
-7. **In progress:** version 34 records the canonical 60-by-44-inch battlefield,
+7. **In progress:** version 35 records the canonical 60-by-44-inch battlefield,
    exact mission/layout binding, objective centres, official terrain-section
    inventory, twelve rotated and non-overlapping area-terrain outlines,
    single/separate section grouping, stable coordinate origin, review method,
@@ -159,12 +159,15 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    independently before play can continue. Reviewed terrain panels, openings,
    primitive or optional convex-prism model silhouettes, coherency, objective
    range, Engagement Range, directional visibility, and per-model Benefit of
-   Cover are now executable and replayed.
+   Cover are now executable and replayed. Published per-model Objective Control,
+   surviving model identity, marker range, Battle-shock OC 0, player totals,
+   contested ties including 0-0, end-of-phase or end-of-turn timing, and reviewed
+   overrides now derive canonical objective state.
    Ranged target declarations bind exact weapon bearers or Transport observers
    to those facts, require an explicit review when a proof is unknown, and carry
    model-specific cover into ordered damage allocation. Next derive terrain
-   movement clearance and execute objective control
-   and mission scoring while retaining explicit reviewed fallbacks.
+   movement clearance and physical overlap, then execute mission scoring while
+   retaining explicit reviewed fallbacks.
 8. Deliver the complete guided battle workflow and full-game replay corpus.
 9. Add deterministic automated policies, batch battle simulation, and calibrated
    matchup reporting.

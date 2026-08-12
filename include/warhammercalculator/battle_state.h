@@ -141,6 +141,7 @@
 #define WHC_SPATIAL_FACTS_SOURCE_LOCKED 2u
 #define WHC_SPATIAL_FACTS_EXECUTABLE 4u
 #define WHC_SPATIAL_FACTS_FLAGS_MASK 7u
+#define WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK 7u
 #define WHC_VISIBILITY_FACTS_EXECUTABLE 1u
 #define WHC_VISIBILITY_FACTS_SOURCE_LOCKED 2u
 #define WHC_VISIBILITY_FACTS_FLAGS_MASK 3u
@@ -674,6 +675,22 @@ bool whc_spatial_facts_are_valid(uint32_t model_count, uint32_t ready_model_coun
                                  uint32_t coherent_model_count,
                                  uint32_t enemy_model_pair_count, uint32_t objective_count,
                                  uint32_t objective_in_range_count, uint32_t flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        player_count == 2 && score_entry_count == player_count &&
+        top_score <= 1000000 && top_score_player_count <= player_count &&
+        controller_count <= 1 && contested <= 1 &&
+        flags == WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK &&
+        ((top_score_player_count == 1 &&
+          controller_count == 1 && contested == 0) ||
+         (top_score_player_count >= 2 &&
+          controller_count == 0 && contested == 1));
+*/
+bool whc_objective_control_facts_are_valid(
+    uint32_t player_count, uint32_t score_entry_count, uint32_t top_score,
+    uint32_t top_score_player_count, uint32_t controller_count, uint32_t contested,
+    uint32_t flags);
 
 /*@ assigns \nothing;
     ensures \result <==>

@@ -1856,6 +1856,16 @@ int main(void) {
     assert(!whc_model_position_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u,
                                             UINT32_MAX, 6u, 2u, 2u, 5u, 5u, 5u, 5u, 5u,
                                             5u, 5u, WHC_MODEL_POSITION_FLAGS_MASK));
+    assert(whc_objective_control_facts_are_valid(
+        2u, 2u, 6u, 1u, 1u, 0u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
+    assert(whc_objective_control_facts_are_valid(
+        2u, 2u, 6u, 2u, 0u, 1u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
+    assert(whc_objective_control_facts_are_valid(
+        2u, 2u, 0u, 2u, 0u, 1u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
+    assert(!whc_objective_control_facts_are_valid(
+        2u, 2u, 0u, 0u, 0u, 0u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
+    assert(!whc_objective_control_facts_are_valid(
+        2u, 2u, 6u, 2u, 1u, 0u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
     puts("all tests passed");
 
     return 0;

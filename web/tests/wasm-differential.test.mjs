@@ -93,6 +93,7 @@ import {
 import { resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
 import { ruleCoverageIsPermitted } from "../lib/rule-coverage.mjs";
 import { spatialFactValuesAreValid } from "../lib/spatial-facts.mjs";
+import { objectiveControlFactValuesAreValid } from "../lib/objective-control-facts.mjs";
 import { convexSilhouetteIsValid, visibilityFactValuesAreValid } from "../lib/visibility-facts.mjs";
 
 globalThis.require = createRequire(import.meta.url);
@@ -139,6 +140,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_model_placement_set_is_valid, "function");
   assert.equal(typeof calculator._whc_model_position_set_is_valid, "function");
   assert.equal(typeof calculator._whc_spatial_facts_are_valid, "function");
+  assert.equal(typeof calculator._whc_objective_control_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_visibility_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_convex_silhouette_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
@@ -216,6 +218,24 @@ test("WebAssembly and JavaScript agree on executable spatial-fact summaries", ()
     assert.equal(
       Boolean(calculator._whc_spatial_facts_are_valid(...values)),
       spatialFactValuesAreValid(...values),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on objective-control classifications", () => {
+  const cases = [
+    [2, 2, 0, 2, 0, 1, 7],
+    [2, 2, 5, 1, 1, 0, 7],
+    [2, 2, 5, 2, 0, 1, 7],
+    [2, 2, 5, 2, 1, 0, 7],
+    [2, 2, 0, 2, 0, 1, 7],
+    [3, 3, 5, 1, 1, 0, 7],
+    [2, 2, 5, 1, 1, 0, 3],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_objective_control_facts_are_valid(...values)),
+      objectiveControlFactValuesAreValid(...values),
     );
   }
 });

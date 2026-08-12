@@ -23,6 +23,7 @@ import {
   ROSTER_BATTLE_STATE_VERSION,
   MODEL_PLACEMENT_BATTLE_STATE_VERSION,
   MODEL_POSITION_BATTLE_STATE_VERSION,
+  OBJECTIVE_CONTROL_BATTLE_STATE_VERSION,
   TARGET_ELIGIBILITY_BATTLE_STATE_VERSION,
   TABLE_GEOMETRY_BATTLE_STATE_VERSION,
   TERRAIN_FOOTPRINT_BATTLE_STATE_VERSION,
@@ -263,7 +264,8 @@ function sameSegments(left, right) {
     left.length === right.length &&
     left.every((segment, index) =>
       Object.entries(segment).every(
-        ([key, value]) => key === "feelNoPain" || value === right[index]?.[key],
+        ([key, value]) =>
+          key === "feelNoPain" || key === "objectiveControl" || value === right[index]?.[key],
       ),
     )
   );
@@ -402,7 +404,10 @@ function registerCompleteRosters(catalogue, state, firstList, secondList, equipm
             weaponInventory: formation.weaponInventory,
             assignedTransportFormationId: formation.assignedTransportFormationId,
             transportOptions: formation.transportOptions,
-            segments: formation.segments,
+            segments:
+              state.version < OBJECTIVE_CONTROL_BATTLE_STATE_VERSION
+                ? existing.formation.segments
+                : formation.segments,
           },
         };
       }
@@ -692,6 +697,10 @@ export function initializeBattleForLists({
             sourceVersion < CONVEX_SILHOUETTE_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyConvexSilhouettesThroughSequence ?? 0),
+          legacyObjectiveControlThroughSequence:
+            sourceVersion < OBJECTIVE_CONTROL_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyObjectiveControlThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

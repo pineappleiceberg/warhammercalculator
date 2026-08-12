@@ -159,6 +159,7 @@ def expected_documents():
             "exact detachment identities and their complete ability and Stratagem sets",
             "exact enhancement identities selected for each detachment",
             "exact datasheet identities and source-linked rules selected by saved units",
+            "published per-model Objective Control characteristics used by exact battle formations",
         ],
     }
     sources["sources"] = [entry for entry in sources["sources"] if entry["id"] != SOURCE_ID]

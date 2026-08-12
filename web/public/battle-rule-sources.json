@@ -44,6 +44,7 @@
         "unit coherency within 2 inches horizontally and 5 inches vertically, including the two-neighbour requirement for units of seven or more models",
         "Engagement Range within 1 inch horizontally and 5 inches vertically",
         "objective-marker range within 3 inches horizontally and 5 inches vertically using the recommended 40 mm marker",
+        "objective control at the end of each phase or turn by summing the Objective Control characteristics of models in range, with Battle-shocked units contributing zero and every equal total including 0-0 contesting the marker",
         "model, unit, and full visibility",
         "true line of sight from any physical part of an observing model to any physical part of a target model, with bases treated as part of the model and reviewed convex-prism silhouettes used when supplied",
         "Ruin outside-to-outside visibility blocking, visibility into and out of Ruins, and Aircraft and Towering exceptions",
@@ -122,7 +123,8 @@
         "exact faction identities selected by saved lists",
         "exact detachment identities and their complete ability and Stratagem sets",
         "exact enhancement identities selected for each detachment",
-        "exact datasheet identities and source-linked rules selected by saved units"
+        "exact datasheet identities and source-linked rules selected by saved units",
+        "published per-model Objective Control characteristics used by exact battle formations"
       ]
     },
     {

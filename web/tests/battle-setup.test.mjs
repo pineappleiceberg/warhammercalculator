@@ -841,6 +841,48 @@ test("requires a reviewed exact-model placement snapshot after each battlefield 
   assert.equal(replayBattleState(state).deploymentComplete, true);
 });
 
+test("derives exact objective control from registered OC and reviewed model geometry", () => {
+  let state = exactMissionSetup("exact-objective-control");
+  state = configureBattleTableGeometry(
+    state,
+    reviewedTableGeometry(state),
+    "objective-control-table-geometry",
+    state.events.length + 1,
+  );
+  state = configureBattleTerrainFootprints(
+    state,
+    reviewedTerrainFootprints(state),
+    "objective-control-terrain-footprints",
+    state.events.length + 1,
+  );
+  state = deployAllOnBattlefield(state);
+  let replayed = replayBattleState(state);
+  assert.ok(
+    [...replayed.formations.values()]
+      .flatMap((formation) => formation.segments)
+      .every(
+        (segment) =>
+          Number.isSafeInteger(segment.objectiveControl) && segment.objectiveControl >= 0,
+      ),
+  );
+  assert.ok([...replayed.objectiveControlFacts.values()].every((fact) => fact.executable));
+  assert.ok(
+    [...replayed.objectives.values()].every(
+      (objective) => objective.controlSource === "rules_initial" && objective.contested === true,
+    ),
+  );
+  state = startBattle(state, "player-1", "objective-control-start", state.events.length + 1);
+  state = advanceTo(state, "movement", "start");
+  replayed = replayBattleState(state);
+  for (const [objectiveId, fact] of replayed.objectiveControlFacts) {
+    const objective = replayed.objectives.get(objectiveId);
+    assert.equal(objective.controlSource, "geometry");
+    assert.equal(objective.controllerPlayerId, fact.controllerPlayerId);
+    assert.equal(objective.contested, fact.contested);
+    assert.deepEqual(objective.scores, fact.scores);
+  }
+});
+
 test("records exact model paths before opening the end-of-move reaction window", () => {
   let state = exactMissionSetup("exact-model-movement");
   state = configureBattleTableGeometry(
@@ -2506,6 +2548,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacyTerrainVisibilityThroughSequence: 3,
     legacyRangedGeometryThroughSequence: 3,
     legacyConvexSilhouettesThroughSequence: 3,
+    legacyObjectiveControlThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -2550,6 +2593,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacyTerrainVisibilityThroughSequence: 3,
     legacyRangedGeometryThroughSequence: 3,
     legacyConvexSilhouettesThroughSequence: 3,
+    legacyObjectiveControlThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -2599,6 +2643,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacyTerrainVisibilityThroughSequence: 2,
     legacyRangedGeometryThroughSequence: 2,
     legacyConvexSilhouettesThroughSequence: 2,
+    legacyObjectiveControlThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -2641,6 +2686,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacyTerrainVisibilityThroughSequence: 2,
     legacyRangedGeometryThroughSequence: 2,
     legacyConvexSilhouettesThroughSequence: 2,
+    legacyObjectiveControlThroughSequence: 2,
   });
 });
 
@@ -2682,6 +2728,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacyTerrainVisibilityThroughSequence: 2,
     legacyRangedGeometryThroughSequence: 2,
     legacyConvexSilhouettesThroughSequence: 2,
+    legacyObjectiveControlThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -2729,6 +2776,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacyTerrainVisibilityThroughSequence: 2,
     legacyRangedGeometryThroughSequence: 2,
     legacyConvexSilhouettesThroughSequence: 2,
+    legacyObjectiveControlThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -2771,6 +2819,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacyTerrainVisibilityThroughSequence: 2,
     legacyRangedGeometryThroughSequence: 2,
     legacyConvexSilhouettesThroughSequence: 2,
+    legacyObjectiveControlThroughSequence: 2,
   });
 });
 
@@ -2812,6 +2861,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacyTerrainVisibilityThroughSequence: 2,
     legacyRangedGeometryThroughSequence: 2,
     legacyConvexSilhouettesThroughSequence: 2,
+    legacyObjectiveControlThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -3575,6 +3625,79 @@ test("migrates version-33 geometry without inventing reviewed convex silhouettes
         silhouette.geometryMode === undefined &&
         silhouette.convexVertices === undefined &&
         silhouette.convexReviewed === undefined,
+    ),
+  );
+});
+
+test("migrates version-34 games without inventing Objective Control characteristics", () => {
+  let versionThirtyFour = exactMissionSetup("version-34-objective-control");
+  versionThirtyFour = configureBattleTableGeometry(
+    versionThirtyFour,
+    reviewedTableGeometry(versionThirtyFour),
+    "version-34-table-geometry",
+    versionThirtyFour.events.length + 1,
+  );
+  versionThirtyFour = configureBattleTerrainFootprints(
+    versionThirtyFour,
+    reviewedTerrainFootprints(versionThirtyFour),
+    "version-34-terrain-footprints",
+    versionThirtyFour.events.length + 1,
+  );
+  versionThirtyFour = deployAllOnBattlefield(versionThirtyFour);
+  const legacyEventCount = versionThirtyFour.events.length;
+  versionThirtyFour = {
+    ...versionThirtyFour,
+    version: 34,
+    migration: undefined,
+    events: versionThirtyFour.events.map((event) =>
+      event.type !== "formation_registered"
+        ? event
+        : {
+            ...event,
+            formation: {
+              ...event.formation,
+              segments: event.formation.segments.map(({ objectiveControl, ...segment }) => {
+                void objectiveControl;
+                return segment;
+              }),
+            },
+          },
+    ),
+  };
+  const legacyObjective = versionThirtyFour.events.find(
+    (event) => event.type === "table_geometry_recorded",
+  ).geometry.objectivePositions[0];
+  const legacyPlacement = versionThirtyFour.events.find(
+    (event) => event.type === "model_placements_recorded",
+  ).placement.models[0];
+  legacyPlacement.centerXThousandths = legacyObjective.xThousandths;
+  legacyPlacement.centerYThousandths = legacyObjective.yThousandths;
+  const migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: normalizeBattleState(versionThirtyFour),
+    id: versionThirtyFour.id,
+  });
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 34);
+  assert.equal(migrated.migration.legacyObjectiveControlThroughSequence, legacyEventCount);
+  assert.ok(
+    migrated.events
+      .filter((event) => event.type === "formation_registered")
+      .flatMap((event) => event.formation.segments)
+      .every((segment) => segment.objectiveControl === null),
+  );
+  const facts = [...replayBattleState(migrated).objectiveControlFacts.values()];
+  assert.ok(facts.some((fact) => !fact.executable));
+  assert.ok(
+    facts.every(
+      (fact) =>
+        !fact.executable || (fact.status === "contested" && fact.contributions.length === 0),
     ),
   );
 });
