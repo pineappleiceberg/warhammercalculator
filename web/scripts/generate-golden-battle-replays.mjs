@@ -1271,7 +1271,7 @@ function buildShadowFixture() {
     scenarioId: "tyranids-neurotyrant-vs-space-marines-intercessors-shadow",
     title: "Neurotyrant vs Intercessors · complete Shadow in the Warp battle",
     description:
-      "A source-locked Chapter Approved five-round replay that resolves Shadow in the Warp from exact Tyranids and target profiles, CSPRNG-compatible recorded dice, reviewed geometry, Battle-shock state, every phase step, and capped scoring.",
+      "A source-locked Chapter Approved five-round replay that resolves Shadow in the Warp from exact Tyranids and target profiles, CSPRNG-compatible recorded dice, reviewed geometry, a Core Rules Battle-shock result, every phase step, and capped scoring.",
     listPair: [
       {
         playerId: "player-1",

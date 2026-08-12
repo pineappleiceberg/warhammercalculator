@@ -842,7 +842,7 @@ bool whc_reanimation_protocols_transition_is_valid(
         dice_count ==
             (target_faction_tyranids == 1 && target_within_own_synapse == 1 ? 3 : 2) &&
         raw_roll >= dice_count && raw_roll <= dice_count * 6 &&
-        failed == (raw_roll - target_within_source_synapse > leadership ? 1 : 0) &&
+        failed == (raw_roll - target_within_source_synapse < leadership ? 1 : 0) &&
         battle_shocked_after == (battle_shocked_before == 1 || failed == 1 ? 1 : 0);
 */
 bool whc_shadow_in_the_warp_test_is_valid(

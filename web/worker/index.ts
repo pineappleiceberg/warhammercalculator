@@ -101,6 +101,7 @@ import {
   rapidIngressFlags,
   rapidIngressIsValid,
   rapidIngressPlacementIsLegal,
+  BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION,
   RULE_COVERAGE_BATTLE_STATE_VERSION,
   rangedTargetEligibilityIsValid,
   rangedGeometryResolutionIsValid,
@@ -2075,6 +2076,10 @@ async function replayFormationHealth(
       const resolutions = replayed.shadowInTheWarpResolutions
         .filter((resolution) => resolution.activationEventId === activation.id)
         .map((resolution) => {
+          const legacyComparator =
+            state.version < BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION ||
+            resolution.sequence <=
+              (state.migration?.legacyBattleShockComparatorThroughSequence ?? 0);
           const formation = replayed.formations.get(resolution.formationId)!;
           const targetFaction = replayed.ruleCoverage?.plan.players.find(
             (player) => player.playerId === formation.playerId,
@@ -2095,15 +2100,22 @@ async function replayFormationHealth(
             resolution.failed ? 1 : 0,
             resolution.battleShockedBefore || resolution.failed ? 1 : 0,
           ];
-          const javascriptValid = shadowInTheWarpTestIsValid(...values);
-          const nativeValid = Boolean(calculator.whc_shadow_in_the_warp_test_is_valid(...values));
-          if (!javascriptValid || nativeValid !== javascriptValid) {
-            throw new ServiceUnavailableError(
-              "Shadow in the Warp diverged from the C/WebAssembly predicate",
-              "SHADOW_IN_THE_WARP_DIVERGENCE",
-            );
+          if (!legacyComparator) {
+            const javascriptValid = shadowInTheWarpTestIsValid(...values);
+            const nativeValid = Boolean(calculator.whc_shadow_in_the_warp_test_is_valid(...values));
+            if (!javascriptValid || nativeValid !== javascriptValid) {
+              throw new ServiceUnavailableError(
+                "Shadow in the Warp diverged from the C/WebAssembly predicate",
+                "SHADOW_IN_THE_WARP_DIVERGENCE",
+              );
+            }
           }
-          return resolution;
+          return {
+            ...resolution,
+            comparisonMode: legacyComparator
+              ? "legacy-v44-reversed"
+              : "core-10e-pass-greater-than-or-equal",
+          };
         });
       return { ...activation, resolutions };
     });

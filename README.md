@@ -838,6 +838,14 @@ ACSL-specified C/WebAssembly predicate, and a complete five-round Tyranids
 fixture locks the behavior into replay. Version-43 and older histories retain
 an explicit migration boundary and never receive an invented activation or
 test result.
+Version 45 corrects the Battle-shock comparator used by Shadow in the Warp to
+the Core Rules boundary: the adjusted roll passes when it is greater than or
+equal to Leadership and fails only when it is lower. The Synapse-range -1 is
+applied before that comparison, and equality is locked by native C,
+WebAssembly, JavaScript replay, API, and full-game regression tests. Imported
+version-44 histories retain their already-recorded reversed result behind an
+explicit migration boundary and the API labels that legacy comparison mode;
+all newly recorded version-45 tests use the corrected rule.
 Version-25
 games migrate without invented terrain footprints, version-26 games migrate
 without invented deployment positions, and version-27 games migrate without
@@ -1501,17 +1509,17 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 
 ## Prioritized correctness backlog
 
-1. Add source-backed faction and detachment state transitions to canonical
-   battle replay, apply their consequences to attacks, objectives, and bounded
-   resources, and lock each transition into another full-game faction/mission
-   fixture. Waaagh!, Grim Resolve, Oath of Moment, Reanimation Protocols, Shadow
-   in the Warp, and Shadow-specific Synapse Battle-shock dice are executable;
-   next, source-lock another high-impact army or detachment
-   transition and continue the corpus across every supported faction and
-   mission.
+1. Make the ordinary Command-phase Battle-shock step executable, including
+   Below Half-strength for single-model, ordinary, and Attached units; best
+   surviving Leadership; Synapse dice; expiration at the start of the owning
+   Command phase; and the complete OC, Fall Back, and Stratagem consequences.
+   Lock both passing equality and failure into native, Wasm, API, migration,
+   and full-game tests.
 2. Add reviewed curved movement-surface primitives only when panels and simple
    polygon solids cannot represent a supported physical terrain set exactly.
-3. Add deterministic automated policies and calibrated batch battle simulation
+3. Source-lock another high-impact faction or detachment transition and extend
+   the full-game corpus across every supported faction and mission.
+4. Add deterministic automated policies and calibrated batch battle simulation
    after the guided replay corpus closes the same mandatory rule boundaries.
 
 ## Current boundaries

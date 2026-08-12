@@ -203,9 +203,10 @@ test("Reanimation Protocols predicate matches healing and returning one wound", 
 
 test("Shadow in the Warp predicate matches Synapse dice, penalty, and sticky Battle-shock", () => {
   const validate = calculator._whc_shadow_in_the_warp_test_is_valid;
-  assert.equal(validate(1, 1, 1, 1, 1, 0, 0, 0, 2, 8, 7, 0, 1, 1), 1);
-  assert.equal(validate(1, 1, 1, 1, 1, 1, 1, 1, 3, 8, 7, 1, 0, 1), 1);
-  assert.equal(validate(1, 0, 1, 1, 1, 0, 0, 0, 2, 8, 7, 0, 1, 1), 0);
+  assert.equal(validate(1, 1, 1, 1, 1, 0, 0, 0, 2, 8, 7, 0, 0, 0), 1);
+  assert.equal(validate(1, 1, 1, 1, 1, 0, 0, 0, 2, 7, 7, 0, 0, 0), 1);
+  assert.equal(validate(1, 1, 1, 1, 1, 1, 1, 1, 3, 7, 7, 1, 1, 1), 1);
+  assert.equal(validate(1, 0, 1, 1, 1, 0, 0, 0, 2, 8, 7, 0, 0, 0), 0);
   assert.equal(validate(1, 1, 1, 1, 1, 1, 1, 0, 2, 8, 7, 0, 1, 1), 0);
 });
 

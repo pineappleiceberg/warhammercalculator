@@ -146,6 +146,7 @@ def tyranids_battle_shock_rule(rule_id, name):
                 "id": SOURCE_ID,
                 "records": [{"type": "faction", "id": f"TYR:ability:{ability_id}"}],
             },
+            {"id": "core-rules-10e", "pages": [11, 12]},
             {"id": TYRANIDS_FACTION_PACK_SOURCE_ID, "pages": [19, 21]},
         ],
     }
@@ -170,6 +171,20 @@ def expected_documents():
     mission_pack = load_json(MISSION_PACK_PATH)
     if profiles.get("sourceUpdatedAt") != profile_lock.get("sourceUpdatedAt"):
         raise ValueError("Profile catalogue and source lock have different snapshots")
+
+    core_source = next(
+        (entry for entry in sources["sources"] if entry["id"] == "core-rules-10e"),
+        None,
+    )
+    if core_source is None:
+        raise ValueError("Core Rules source lock is missing")
+    core_source["pages"] = sorted(set(core_source["pages"]) | {11, 12})
+    battle_shock_comparator_source = (
+        "Battle-shock tests pass when the adjusted 2D6 result is greater than or equal "
+        "to the best Leadership characteristic and fail otherwise"
+    )
+    if battle_shock_comparator_source not in core_source["usedFor"]:
+        core_source["usedFor"].append(battle_shock_comparator_source)
 
     factions = sorted(profiles.get("factions", []), key=lambda entry: entry["id"])
     detachments = sorted(profiles.get("detachments", []), key=lambda entry: entry["id"])
@@ -323,7 +338,7 @@ def expected_documents():
     sources["sources"].append(tyranids_source_entry)
 
     coverage["snapshotId"] = (
-        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v44"
+        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v45"
     )
     coverage["sourceLocks"] = [
         lock for lock in coverage["sourceLocks"] if lock["id"] != SOURCE_ID

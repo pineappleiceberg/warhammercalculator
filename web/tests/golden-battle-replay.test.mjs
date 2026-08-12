@@ -95,7 +95,7 @@ test("replays a complete source-locked Shadow in the Warp battle", async () => {
   assert.equal(summary.eventTypeCounts.shadow_in_the_warp_test_resolved, 1);
   assert.equal(replayed.shadowInTheWarpActivations.length, 1);
   assert.deepEqual(replayed.shadowInTheWarpResolutions[0].dice, [6, 5]);
-  assert.equal(replayed.shadowInTheWarpResolutions[0].failed, true);
+  assert.equal(replayed.shadowInTheWarpResolutions[0].failed, false);
   assert.equal(replayed.battleShockedFormations.has("player-2:shadow-intercessors"), false);
   assert.equal(replayed.ruleCoverage.plan.players[0].faction.sourceId, "TYR");
 });

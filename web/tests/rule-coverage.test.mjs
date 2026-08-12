@@ -33,7 +33,7 @@ test("published coverage matrix is source-locked and identical to its data sourc
   assert.equal(matrix.sourceLocked, true);
   assert.equal(
     matrix.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v44",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v45",
   );
   assert.equal(matrix.rules.length, 2974);
   assert.deepEqual(
@@ -116,6 +116,7 @@ test("published coverage matrix is source-locked and identical to its data sourc
             id: "wahapedia-profile-export-2026-06-13",
             records: [{ type: "faction", id: `TYR:ability:${abilityId}` }],
           },
+          { id: "core-rules-10e", pages: [11, 12] },
           { id: "tyranids-faction-pack-v1.0", pages: [19, 21] },
         ],
       },
