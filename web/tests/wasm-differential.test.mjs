@@ -21,6 +21,7 @@ import { parseAgentProfile } from "../lib/agent-parameters.mjs";
 import {
   battleFormationHealth,
   chargeResolutionIsValid,
+  commandBattleShockTestIsValid,
   counterOffensiveIsValid,
   fightMoveIsValid,
   fireOverwatchIsValid,
@@ -157,6 +158,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_oath_of_moment_attack_state_is_valid, "function");
   assert.equal(typeof calculator._whc_reanimation_protocols_transition_is_valid, "function");
   assert.equal(typeof calculator._whc_shadow_in_the_warp_test_is_valid, "function");
+  assert.equal(typeof calculator._whc_command_battle_shock_test_is_valid, "function");
   assert.equal(typeof calculator._whc_objective_control_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_visibility_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_convex_silhouette_is_valid, "function");
@@ -208,6 +210,21 @@ test("Shadow in the Warp predicate matches Synapse dice, penalty, and sticky Bat
   assert.equal(validate(1, 1, 1, 1, 1, 1, 1, 1, 3, 7, 7, 1, 1, 1), 1);
   assert.equal(validate(1, 0, 1, 1, 1, 0, 0, 0, 2, 8, 7, 0, 0, 0), 0);
   assert.equal(validate(1, 1, 1, 1, 1, 1, 1, 0, 2, 8, 7, 0, 1, 1), 0);
+});
+
+test("Command Battle-shock predicate agrees across JavaScript and WebAssembly", () => {
+  const validate = calculator._whc_command_battle_shock_test_is_valid;
+  const cases = [
+    [1, 1, 10, 5, 0, 0, 0, 0, 2, 7, 7, 0],
+    [1, 1, 10, 4, 0, 0, 0, 0, 2, 7, 7, 0],
+    [1, 1, 1, 1, 12, 6, 0, 0, 2, 7, 7, 0],
+    [1, 1, 1, 1, 12, 5, 1, 1, 3, 6, 7, 1],
+    [1, 1, 1, 1, 12, 5, 1, 1, 2, 6, 7, 1],
+    [1, 0, 10, 4, 0, 0, 0, 0, 2, 6, 7, 1],
+  ];
+  for (const values of cases) {
+    assert.equal(Boolean(validate(...values)), commandBattleShockTestIsValid(...values));
+  }
 });
 
 test("WebAssembly and JavaScript agree on reviewed simple terrain surfaces", () => {

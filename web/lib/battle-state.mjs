@@ -40,7 +40,8 @@ import {
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 45;
+export const BATTLE_STATE_VERSION = 46;
+export const COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION = 46;
 export const BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION = 45;
 export const SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION = 44;
 export const REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION = 43;
@@ -3242,6 +3243,7 @@ function segmentsForBearerAssignments(formation, weaponInventory) {
       role: source.role,
       keywords: source.keywords,
       wounds: source.wounds,
+      leadership: source.leadership,
       objectiveControl: source.objectiveControl,
       feelNoPain: source.feelNoPain,
       startingModels: modelIds.length,
@@ -3535,6 +3537,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     ["shadow_in_the_warp_unleashed", "shadow_in_the_warp_test_resolved"].includes(event.type)
   ) {
     throw new Error("Executable Shadow in the Warp requires battle-state version 44");
+  }
+  if (
+    stateVersion < COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION &&
+    event.type === "command_battle_shock_resolved"
+  ) {
+    throw new Error("Executable Command Battle-shock requires battle-state version 46");
   }
   if (
     stateVersion < MISSION_TRACKING_BATTLE_STATE_VERSION &&
@@ -4014,6 +4022,61 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     );
     normalized.failed = Boolean(event.failed);
     normalized.battleShockedBefore = Boolean(event.battleShockedBefore);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "command_battle_shock_resolved") {
+    normalized.formationId = boundedString(
+      event.formationId,
+      "Command Battle-shock formation id",
+      100,
+    );
+    if (!formations.byId.has(normalized.formationId)) {
+      throw new Error("Command Battle-shock formation is unknown");
+    }
+    normalized.unitKey = boundedString(event.unitKey, "Command Battle-shock unit key", 200);
+    normalized.startingStrength = boundedInteger(
+      event.startingStrength,
+      "Command Battle-shock Starting Strength",
+      1,
+      1000,
+    );
+    normalized.currentStrength = boundedInteger(
+      event.currentStrength,
+      "Command Battle-shock current strength",
+      1,
+      normalized.startingStrength,
+    );
+    normalized.singleModelWounds = nonnegativeInteger(
+      event.singleModelWounds,
+      "Command Battle-shock single-model Wounds",
+      1024,
+    );
+    normalized.singleModelWoundsRemaining = nonnegativeInteger(
+      event.singleModelWoundsRemaining,
+      "Command Battle-shock single-model wounds remaining",
+      normalized.singleModelWounds || 1024,
+    );
+    normalized.leadership = boundedInteger(event.leadership, "Battle-shock Leadership", 2, 12);
+    normalized.dice = normalizeDieRolls(event.dice, "Command Battle-shock dice");
+    if (![2, 3].includes(normalized.dice.length)) {
+      throw new Error("A Command Battle-shock test requires two or three D6 results");
+    }
+    const proximity = record(event.synapseProximity, "Synapse proximity must be an object");
+    normalized.synapseProximity = {
+      within: Boolean(proximity.within),
+      source: boundedString(proximity.source, "Synapse proximity source", 20),
+      reason: proximity.reason
+        ? boundedString(proximity.reason, "Synapse proximity reason", 300)
+        : "",
+    };
+    if (!["geometry", "reviewed", "not_applicable"].includes(normalized.synapseProximity.source)) {
+      throw new Error("Synapse proximity source is unsupported");
+    }
+    if (normalized.synapseProximity.source === "reviewed" && !normalized.synapseProximity.reason) {
+      throw new Error("Reviewed Synapse proximity requires a reason");
+    }
+    normalized.failed = Boolean(event.failed);
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
@@ -5509,6 +5572,7 @@ export function normalizeBattleState(candidate) {
       REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION,
       SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION,
       BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION,
+      COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
     throw new Error(`Unsupported battle state version: ${String(state.version)}`);
@@ -5585,6 +5649,7 @@ export function normalizeBattleState(candidate) {
         OATH_OF_MOMENT_BATTLE_STATE_VERSION,
         REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION,
         SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION,
+        BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -5865,6 +5930,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyCommandBattleShockThroughSequence = nonnegativeInteger(
+        migration.legacyCommandBattleShockThroughSequence,
+        "Legacy Command Battle-shock event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -5876,6 +5948,7 @@ export function normalizeBattleState(candidate) {
     normalized.migration?.sourceVersion !== TERRAIN_CLEARANCE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== SIMPLE_TERRAIN_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== FACTION_RULE_STATE_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== OBJECTIVE_CONTROL_BATTLE_STATE_VERSION &&
@@ -5920,6 +5993,84 @@ function initialHealth(formation) {
       { modelsRemaining: segment.startingModels, woundsLost: 0 },
     ]),
   );
+}
+
+function commandBattleShockUnitFacts(formation) {
+  const liveSegments = formation.segments.filter(
+    (segment) => formation.health[segment.id].modelsRemaining > 0,
+  );
+  if (liveSegments.length === 0) return [];
+  const leaders = formation.segments.filter((segment) => segment.role === "leader");
+  const nonLeaders = formation.segments.filter((segment) => segment.role !== "leader");
+  const liveLeaders = leaders.filter((segment) => formation.health[segment.id].modelsRemaining > 0);
+  const liveNonLeaders = nonLeaders.filter(
+    (segment) => formation.health[segment.id].modelsRemaining > 0,
+  );
+  let groups;
+  if (
+    leaders.length > 0 &&
+    nonLeaders.length > 0 &&
+    liveLeaders.length > 0 &&
+    liveNonLeaders.length > 0
+  ) {
+    groups = [{ key: `${formation.id}:attached`, segments: formation.segments }];
+  } else if (leaders.length > 0 && liveNonLeaders.length === 0) {
+    const bySavedUnit = new Map();
+    for (const segment of liveLeaders) {
+      const group = bySavedUnit.get(segment.savedUnitId) ?? [];
+      group.push(segment);
+      bySavedUnit.set(segment.savedUnitId, group);
+    }
+    groups = [...bySavedUnit].map(([savedUnitId, segments]) => ({
+      key: `${formation.id}:leader:${savedUnitId}`,
+      segments,
+    }));
+  } else if (leaders.length > 0 && liveLeaders.length === 0) {
+    groups = [{ key: `${formation.id}:bodyguard`, segments: nonLeaders }];
+  } else {
+    groups = [{ key: `${formation.id}:standalone`, segments: formation.segments }];
+  }
+  return groups.flatMap((group) => {
+    const surviving = group.segments.filter(
+      (segment) => formation.health[segment.id].modelsRemaining > 0,
+    );
+    if (surviving.length === 0) return [];
+    const startingStrength = group.segments.reduce(
+      (total, segment) => total + segment.startingModels,
+      0,
+    );
+    const currentStrength = surviving.reduce(
+      (total, segment) => total + formation.health[segment.id].modelsRemaining,
+      0,
+    );
+    const singleSegment = startingStrength === 1 ? surviving[0] : null;
+    const singleModelWounds = singleSegment?.wounds ?? 0;
+    const singleModelWoundsRemaining = singleSegment
+      ? singleSegment.wounds - formation.health[singleSegment.id].woundsLost
+      : 0;
+    return [
+      {
+        formationId: formation.id,
+        unitKey: group.key,
+        name:
+          group.key.endsWith(":attached") || group.key.endsWith(":standalone")
+            ? formation.name
+            : surviving
+                .map((segment) => segment.unitName)
+                .filter((value, index, all) => all.indexOf(value) === index)
+                .join(" + "),
+        startingStrength,
+        currentStrength,
+        singleModelWounds,
+        singleModelWoundsRemaining,
+        leadership: Math.min(...surviving.map((segment) => segment.leadership)),
+        belowHalfStrength:
+          startingStrength === 1
+            ? singleModelWoundsRemaining * 2 < singleModelWounds
+            : currentStrength * 2 < startingStrength,
+      },
+    ];
+  });
 }
 
 function reanimationProtocolGroups(formation) {
@@ -7086,6 +7237,8 @@ export function replayBattleState(state) {
   const shadowInTheWarpResolutions = [];
   const shadowInTheWarpPlayerIds = new Set();
   let pendingShadowInTheWarp = null;
+  const commandBattleShockResolutions = [];
+  const commandBattleShockResolvedUnitKeys = new Set();
   let tableGeometry = null;
   let terrainFootprints = null;
   let terrainVisibility = null;
@@ -7205,6 +7358,10 @@ export function replayBattleState(state) {
     state.version < BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyBattleShockComparatorThroughSequence ?? 0);
+  const legacyCommandBattleShockThroughSequence =
+    state.version < COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyCommandBattleShockThroughSequence ?? 0);
   const legacyTerrainVisibilityThroughSequence =
     state.version < TERRAIN_VISIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -8868,6 +9025,77 @@ export function replayBattleState(state) {
       }
       continue;
     }
+    if (event.type === "command_battle_shock_resolved") {
+      if (
+        clock.status !== "active" ||
+        clock.phase !== "command" ||
+        clock.step !== "battle_shock" ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Command Battle-shock resolved outside its Battle-shock step");
+      }
+      const formation = formations.get(event.formationId);
+      if (formation?.playerId !== clock.activePlayerId || !liveOnBattlefieldFormation(formation)) {
+        throw new Error(
+          "Command Battle-shock requires a living active-player unit on the battlefield",
+        );
+      }
+      const facts = commandBattleShockUnitFacts(formation).find(
+        (candidate) => candidate.unitKey === event.unitKey,
+      );
+      if (!facts?.belowHalfStrength) {
+        throw new Error(
+          "Only a unit that is Below Half-strength takes this Command Battle-shock test",
+        );
+      }
+      const resolutionKey = `${battleTurnKey(clock)}:${event.unitKey}`;
+      if (commandBattleShockResolvedUnitKeys.has(resolutionKey)) {
+        throw new Error("This unit has already taken its Command Battle-shock test");
+      }
+      const usesSynapse = playerUsesSynapseBattleShock(formation.playerId);
+      const expectedSynapse = usesSynapse
+        ? withinSynapseRange(formation.id, formation.playerId)
+        : false;
+      if (
+        event.startingStrength !== facts.startingStrength ||
+        event.currentStrength !== facts.currentStrength ||
+        event.singleModelWounds !== facts.singleModelWounds ||
+        event.singleModelWoundsRemaining !== facts.singleModelWoundsRemaining ||
+        event.leadership !== facts.leadership
+      ) {
+        throw new Error("Command Battle-shock strength or Leadership facts are not canonical");
+      }
+      if (
+        (!usesSynapse &&
+          (event.synapseProximity.source !== "not_applicable" || event.synapseProximity.within)) ||
+        (usesSynapse && expectedSynapse === null && event.synapseProximity.source !== "reviewed") ||
+        (usesSynapse &&
+          expectedSynapse !== null &&
+          (event.synapseProximity.source !== "geometry" ||
+            event.synapseProximity.within !== expectedSynapse))
+      ) {
+        throw new Error("Command Battle-shock Synapse proximity is not canonical");
+      }
+      const synapseApplies = usesSynapse && event.synapseProximity.within;
+      const diceCount = synapseApplies ? 3 : 2;
+      const rawRoll = event.dice.reduce((total, die) => total + die, 0);
+      const failed = rawRoll < event.leadership;
+      if (event.dice.length !== diceCount || event.failed !== failed) {
+        throw new Error("Command Battle-shock result is not canonical");
+      }
+      commandBattleShockResolvedUnitKeys.add(resolutionKey);
+      commandBattleShockResolutions.push(event);
+      if (failed) {
+        battleShockedFormations.set(event.formationId, {
+          formationId: event.formationId,
+          unitKey: event.unitKey,
+          reason: "Failed Command Battle-shock test",
+          appliedAt: event.clock,
+          sourceEventId: event.id,
+        });
+      }
+      continue;
+    }
     if (event.type === "clock_advanced") {
       if (pendingChoices.size > 0) {
         throw new Error("Pending choices must be resolved before advancing the battle");
@@ -8880,6 +9108,26 @@ export function replayBattleState(state) {
       }
       if (pendingShadowInTheWarp) {
         throw new Error("Resolve every Shadow in the Warp Battle-shock test before continuing");
+      }
+      if (
+        event.sequence > legacyCommandBattleShockThroughSequence &&
+        clock.phase === "command" &&
+        clock.step === "battle_shock"
+      ) {
+        const unresolved = [...formations.values()].flatMap((formation) =>
+          formation.playerId === clock.activePlayerId && liveOnBattlefieldFormation(formation)
+            ? commandBattleShockUnitFacts(formation).filter(
+                (facts) =>
+                  facts.belowHalfStrength &&
+                  !commandBattleShockResolvedUnitKeys.has(
+                    `${battleTurnKey(clock)}:${facts.unitKey}`,
+                  ),
+              )
+            : [],
+        );
+        if (unresolved.length > 0) {
+          throw new Error("Resolve every required Command Battle-shock test before continuing");
+        }
       }
       if (!sameBattleClock(event.from, clock)) {
         throw new Error("Battle clock advance does not match replayed state");
@@ -12185,6 +12433,34 @@ export function replayBattleState(state) {
         }),
       }
     : null;
+  const commandBattleShockPending =
+    clock.status === "active" && clock.phase === "command" && clock.step === "battle_shock"
+      ? [...formations.values()].flatMap((formation) => {
+          if (
+            formation.playerId !== clock.activePlayerId ||
+            !liveOnBattlefieldFormation(formation)
+          ) {
+            return [];
+          }
+          return commandBattleShockUnitFacts(formation)
+            .filter(
+              (facts) =>
+                facts.belowHalfStrength &&
+                !commandBattleShockResolvedUnitKeys.has(`${battleTurnKey(clock)}:${facts.unitKey}`),
+            )
+            .map((facts) => {
+              const usesSynapse = playerUsesSynapseBattleShock(formation.playerId);
+              const synapseWithin = usesSynapse
+                ? withinSynapseRange(formation.id, formation.playerId)
+                : false;
+              return {
+                ...facts,
+                synapseWithin,
+                diceCount: usesSynapse && synapseWithin === true ? 3 : 2,
+              };
+            });
+        })
+      : [];
   return {
     formations,
     activeAttackIds,
@@ -12203,6 +12479,8 @@ export function replayBattleState(state) {
     shadowInTheWarpResolutions,
     shadowInTheWarpPlayerIds,
     pendingShadowInTheWarp: shadowInTheWarpPendingState,
+    commandBattleShockResolutions,
+    pendingCommandBattleShock: commandBattleShockPending,
     tableGeometry,
     terrainFootprints,
     terrainVisibility,
@@ -14996,6 +15274,119 @@ export function shadowInTheWarpTestIsValid(
     rawRoll <= diceCount * 6 &&
     failed === expectedFailure &&
     battleShockedAfter === (battleShockedBefore === 1 || failed === 1 ? 1 : 0)
+  );
+}
+
+export function resolveCommandBattleShockTest(
+  state,
+  unitKey,
+  review = {},
+  id,
+  at,
+  randomUint32 = secureRandomUint32,
+) {
+  const replayed = replayBattleState(state);
+  const target = replayed.pendingCommandBattleShock.find(
+    (candidate) => candidate.unitKey === unitKey,
+  );
+  if (!target) throw new Error("There is no pending Command Battle-shock test for that unit");
+  const targetFormation = replayed.formations.get(target.formationId);
+  const targetFaction = replayed.ruleCoverage?.plan.players.find(
+    (player) => player.playerId === targetFormation.playerId,
+  )?.faction;
+  const usesSynapse = Boolean(
+    targetFaction?.sourceId === "TYR" &&
+      targetFaction.ruleIds.includes("faction.synapse-battle-shock"),
+  );
+  let synapseProximity;
+  if (target.synapseWithin !== null) {
+    synapseProximity = {
+      within: target.synapseWithin,
+      source: usesSynapse ? "geometry" : "not_applicable",
+      reason: "",
+    };
+  } else {
+    if (typeof review.synapseWithin !== "boolean" || !review.reason) {
+      throw new Error("Review Synapse proximity because exact model geometry is unavailable");
+    }
+    synapseProximity = {
+      within: review.synapseWithin,
+      source: "reviewed",
+      reason: review.reason,
+    };
+  }
+  const dice = Array.from({ length: usesSynapse && synapseProximity.within ? 3 : 2 }, () =>
+    randomDie(6, randomUint32),
+  );
+  const failed = dice.reduce((total, die) => total + die, 0) < target.leadership;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "command_battle_shock_resolved",
+    formationId: target.formationId,
+    unitKey,
+    startingStrength: target.startingStrength,
+    currentStrength: target.currentStrength,
+    singleModelWounds: target.singleModelWounds,
+    singleModelWoundsRemaining: target.singleModelWoundsRemaining,
+    leadership: target.leadership,
+    dice,
+    synapseProximity,
+    failed,
+    clock: replayed.clock,
+  });
+}
+
+export function commandBattleShockTestIsValid(
+  onBattlefield,
+  atBattleShockStep,
+  startingStrength,
+  currentStrength,
+  singleModelWounds,
+  singleModelWoundsRemaining,
+  tyranidsSynapse,
+  withinSynapse,
+  diceCount,
+  rawRoll,
+  leadership,
+  failed,
+) {
+  const flags = [onBattlefield, atBattleShockStep, tyranidsSynapse, withinSynapse, failed];
+  if (
+    flags.some((value) => value !== 0 && value !== 1) ||
+    !Number.isSafeInteger(startingStrength) ||
+    !Number.isSafeInteger(currentStrength) ||
+    startingStrength < 1 ||
+    startingStrength > 1000 ||
+    currentStrength < 1 ||
+    currentStrength > startingStrength ||
+    !Number.isSafeInteger(singleModelWounds) ||
+    !Number.isSafeInteger(singleModelWoundsRemaining) ||
+    singleModelWounds < 0 ||
+    singleModelWounds > 1024 ||
+    singleModelWoundsRemaining < 0 ||
+    singleModelWoundsRemaining > singleModelWounds ||
+    !Number.isSafeInteger(leadership) ||
+    leadership < 2 ||
+    leadership > 12
+  ) {
+    return false;
+  }
+  const belowHalf =
+    startingStrength === 1
+      ? singleModelWounds > 0 && singleModelWoundsRemaining * 2 < singleModelWounds
+      : currentStrength * 2 < startingStrength;
+  const expectedDiceCount = tyranidsSynapse === 1 && withinSynapse === 1 ? 3 : 2;
+  return (
+    onBattlefield === 1 &&
+    atBattleShockStep === 1 &&
+    belowHalf &&
+    diceCount === expectedDiceCount &&
+    rawRoll >= diceCount &&
+    rawRoll <= diceCount * 6 &&
+    failed === (rawRoll < leadership ? 1 : 0)
   );
 }
 

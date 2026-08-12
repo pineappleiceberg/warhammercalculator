@@ -23,10 +23,10 @@
     }
   ],
   "sourceManifestVersion": 1,
-  "stateDigest": "e25215191e174a93bbc72597f593186bd35936905164ef412da1cdf9ed590c08",
-  "expectedDigest": "c507815bfe54a6b4904338d8edd2ae05e36ecf7b2b5b724e4b65699ac4aa9cf2",
+  "stateDigest": "18663ea27594522e29a78c4bb60bcb8cdd72b22356da4aafb489718346402488",
+  "expectedDigest": "59941bffd54d087b7df40036adaede7b4948c658318a53e00015885f676e27e0",
   "expected": {
-    "stateVersion": 45,
+    "stateVersion": 46,
     "eventCount": 214,
     "eventTypeCounts": {
       "battle_started": 1,
@@ -279,10 +279,10 @@
     ]
   },
   "state": {
-    "version": 45,
+    "version": 46,
     "id": "golden-necrons-vs-space-marines-v1",
     "createdAt": 0,
-    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:45",
+    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:46",
     "players": [
       {
         "id": "player-1",
@@ -457,7 +457,7 @@
         "type": "rule_coverage_configured",
         "coverage": {
           "schemaVersion": 1,
-          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v45",
+          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v46",
           "sourceLocks": [
             {
               "id": "core-rules-10e",
@@ -496,7 +496,8 @@
                 "core.ranged-target-declarations",
                 "core.charge-resolution",
                 "core.fight-movement",
-                "core.hazardous"
+                "core.hazardous",
+                "core.command-battle-shock"
               ],
               "stratagemRuleIds": [
                 "stratagem.heroic-intervention",
@@ -577,7 +578,7 @@
             }
           },
           "report": {
-            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v45",
+            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v46",
             "permitted": true,
             "results": [
               {
@@ -672,6 +673,17 @@
                 "id": "core.hazardous",
                 "category": "core",
                 "name": "Hazardous tests and self-damage",
+                "status": "executable",
+                "sourceLocked": true,
+                "acknowledgementRequired": false,
+                "acknowledged": false,
+                "permitted": true,
+                "reason": "covered"
+              },
+              {
+                "id": "core.command-battle-shock",
+                "category": "core",
+                "name": "Command-phase Battle-shock",
                 "status": "executable",
                 "sourceLocked": true,
                 "acknowledgementRequired": false,

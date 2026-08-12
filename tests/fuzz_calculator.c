@@ -465,17 +465,16 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     overwatch_flags = next_byte(&input);
     overwatch_valid = whc_fire_overwatch_is_valid(overwatch_trigger, overwatch_phase,
                                                   overwatch_distance, overwatch_flags);
-    expected_overwatch_valid =
-        overwatch_trigger >= WHC_FIRE_OVERWATCH_SET_UP &&
-        overwatch_trigger <= WHC_FIRE_OVERWATCH_CHARGE_DECLARED &&
-        (overwatch_phase == WHC_BATTLE_PHASE_MOVEMENT ||
-         overwatch_phase == WHC_BATTLE_PHASE_CHARGE) &&
-        overwatch_distance > 0u && overwatch_distance <= 24000u &&
-        overwatch_flags == WHC_FIRE_OVERWATCH_FLAGS_MASK &&
-        (overwatch_trigger == WHC_FIRE_OVERWATCH_SET_UP ||
-         (overwatch_trigger == WHC_FIRE_OVERWATCH_CHARGE_DECLARED
-              ? overwatch_phase == WHC_BATTLE_PHASE_CHARGE
-              : overwatch_phase == WHC_BATTLE_PHASE_MOVEMENT));
+    expected_overwatch_valid = overwatch_trigger >= WHC_FIRE_OVERWATCH_SET_UP &&
+                               overwatch_trigger <= WHC_FIRE_OVERWATCH_CHARGE_DECLARED &&
+                               (overwatch_phase == WHC_BATTLE_PHASE_MOVEMENT ||
+                                overwatch_phase == WHC_BATTLE_PHASE_CHARGE) &&
+                               overwatch_distance > 0u && overwatch_distance <= 24000u &&
+                               overwatch_flags == WHC_FIRE_OVERWATCH_FLAGS_MASK &&
+                               (overwatch_trigger == WHC_FIRE_OVERWATCH_SET_UP ||
+                                (overwatch_trigger == WHC_FIRE_OVERWATCH_CHARGE_DECLARED
+                                     ? overwatch_phase == WHC_BATTLE_PHASE_CHARGE
+                                     : overwatch_phase == WHC_BATTLE_PHASE_MOVEMENT));
     assert(overwatch_valid == expected_overwatch_valid);
     hazardous_initial_roll = next_byte(&input);
     hazardous_reroll = next_byte(&input);
@@ -489,16 +488,14 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     hazardous_flags = next_byte(&input);
     hazardous_valid = whc_hazardous_resolution_is_valid(
         hazardous_initial_roll, hazardous_reroll, hazardous_reroll_explained,
-        hazardous_remaining_wounds, hazardous_feel_no_pain, hazardous_roll_count,
-        hazardous_ignored, hazardous_damage, hazardous_destroyed, hazardous_flags);
+        hazardous_remaining_wounds, hazardous_feel_no_pain, hazardous_roll_count, hazardous_ignored,
+        hazardous_damage, hazardous_destroyed, hazardous_flags);
     const uint32_t hazardous_final_roll =
         hazardous_reroll == 0u ? hazardous_initial_roll : hazardous_reroll;
     const bool hazardous_common =
-        hazardous_initial_roll >= 1u && hazardous_initial_roll <= 6u &&
-        hazardous_reroll <= 6u &&
-        (hazardous_reroll == 0u || hazardous_reroll_explained) &&
-        hazardous_final_roll == 1u && hazardous_remaining_wounds > 0u &&
-        hazardous_remaining_wounds <= 1024u &&
+        hazardous_initial_roll >= 1u && hazardous_initial_roll <= 6u && hazardous_reroll <= 6u &&
+        (hazardous_reroll == 0u || hazardous_reroll_explained) && hazardous_final_roll == 1u &&
+        hazardous_remaining_wounds > 0u && hazardous_remaining_wounds <= 1024u &&
         (hazardous_feel_no_pain == 0u ||
          (hazardous_feel_no_pain >= 2u && hazardous_feel_no_pain <= 6u)) &&
         hazardous_flags == WHC_HAZARDOUS_FLAGS_MASK;
@@ -511,8 +508,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
                   hazardous_ignored <= hazardous_roll_count &&
                   hazardous_damage == hazardous_roll_count - hazardous_ignored &&
                   (hazardous_damage == hazardous_remaining_wounds ||
-                   (hazardous_damage < hazardous_remaining_wounds &&
-                    hazardous_roll_count == 3u));
+                   (hazardous_damage < hazardous_remaining_wounds && hazardous_roll_count == 3u));
     expected_hazardous_valid =
         hazardous_common && hazardous_damage_valid &&
         (hazardous_destroyed ? hazardous_damage == hazardous_remaining_wounds
@@ -526,9 +522,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     go_to_ground_battle_shocked = next_byte(&input) % 2u != 0u;
     go_to_ground_flags = next_byte(&input);
     go_to_ground_valid = whc_go_to_ground_is_valid(
-        go_to_ground_phase, go_to_ground_cp_before, go_to_ground_cost,
-        go_to_ground_cp_after, go_to_ground_already_used, go_to_ground_battle_shocked,
-        go_to_ground_flags);
+        go_to_ground_phase, go_to_ground_cp_before, go_to_ground_cost, go_to_ground_cp_after,
+        go_to_ground_already_used, go_to_ground_battle_shocked, go_to_ground_flags);
     expected_go_to_ground_valid =
         go_to_ground_phase == WHC_BATTLE_PHASE_SHOOTING && go_to_ground_cp_before >= 1u &&
         go_to_ground_cp_before <= 100000u && go_to_ground_cost == 1u &&
@@ -537,9 +532,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         go_to_ground_flags == WHC_GO_TO_GROUND_FLAGS_MASK;
     assert(go_to_ground_valid == expected_go_to_ground_valid);
     counter_offensive_valid = whc_counter_offensive_is_valid(
-        go_to_ground_phase, go_to_ground_cp_before, go_to_ground_cost,
-        go_to_ground_cp_after, go_to_ground_already_used, go_to_ground_battle_shocked,
-        go_to_ground_flags);
+        go_to_ground_phase, go_to_ground_cp_before, go_to_ground_cost, go_to_ground_cp_after,
+        go_to_ground_already_used, go_to_ground_battle_shocked, go_to_ground_flags);
     expected_counter_offensive_valid =
         go_to_ground_phase == WHC_BATTLE_PHASE_FIGHT && go_to_ground_cp_before >= 2u &&
         go_to_ground_cp_before <= 100000u && go_to_ground_cost == 2u &&
@@ -548,9 +542,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         go_to_ground_flags == WHC_COUNTER_OFFENSIVE_FLAGS_MASK;
     assert(counter_offensive_valid == expected_counter_offensive_valid);
     smokescreen_valid = whc_smokescreen_is_valid(
-        go_to_ground_phase, go_to_ground_cp_before, go_to_ground_cost,
-        go_to_ground_cp_after, go_to_ground_already_used, go_to_ground_battle_shocked,
-        go_to_ground_flags);
+        go_to_ground_phase, go_to_ground_cp_before, go_to_ground_cost, go_to_ground_cp_after,
+        go_to_ground_already_used, go_to_ground_battle_shocked, go_to_ground_flags);
     expected_smokescreen_valid =
         go_to_ground_phase == WHC_BATTLE_PHASE_SHOOTING && go_to_ground_cp_before >= 1u &&
         go_to_ground_cp_before <= 100000u && go_to_ground_cost == 1u &&
@@ -563,16 +556,14 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     rapid_ingress_earliest_round = next_byte(&input);
     rapid_ingress_first_round_allowed = next_byte(&input) % 2u != 0u;
     rapid_ingress_valid = whc_rapid_ingress_is_valid(
-        go_to_ground_phase, rapid_ingress_step, rapid_ingress_round,
-        rapid_ingress_earliest_round, go_to_ground_cp_before, go_to_ground_cost,
-        go_to_ground_cp_after, go_to_ground_already_used, go_to_ground_battle_shocked,
-        rapid_ingress_first_round_allowed, go_to_ground_flags);
+        go_to_ground_phase, rapid_ingress_step, rapid_ingress_round, rapid_ingress_earliest_round,
+        go_to_ground_cp_before, go_to_ground_cost, go_to_ground_cp_after, go_to_ground_already_used,
+        go_to_ground_battle_shocked, rapid_ingress_first_round_allowed, go_to_ground_flags);
     expected_rapid_ingress_valid =
         go_to_ground_phase == WHC_BATTLE_PHASE_MOVEMENT &&
         rapid_ingress_step == WHC_MOVEMENT_STEP_END && rapid_ingress_round >= 1u &&
         rapid_ingress_round <= 5u && rapid_ingress_earliest_round >= 1u &&
-        rapid_ingress_earliest_round <= 5u &&
-        rapid_ingress_round >= rapid_ingress_earliest_round &&
+        rapid_ingress_earliest_round <= 5u && rapid_ingress_round >= rapid_ingress_earliest_round &&
         (rapid_ingress_round != 1u || rapid_ingress_first_round_allowed) &&
         go_to_ground_cp_before >= 1u && go_to_ground_cp_before <= 100000u &&
         go_to_ground_cost == 1u &&
@@ -603,9 +594,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         profile_run_count, unique_target_profile_count, declaration_flags);
     expected_declaration_valid =
         declaration_count >= 1u && declaration_count <= 256u &&
-        unique_declaration_count == declaration_count &&
-        target_run_count == unique_target_count && unique_target_count >= 1u &&
-        unique_target_count <= declaration_count &&
+        unique_declaration_count == declaration_count && target_run_count == unique_target_count &&
+        unique_target_count >= 1u && unique_target_count <= declaration_count &&
         profile_run_count == unique_target_profile_count &&
         unique_target_profile_count >= unique_target_count &&
         unique_target_profile_count <= declaration_count &&
@@ -650,12 +640,11 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     setup_aircraft_mode = next_byte(&input);
     setup_root_location = next_byte(&input);
     setup_valid = whc_initial_deployment_is_valid(
-        setup_is_dedicated_transport, setup_starting_passenger_count,
-        setup_is_aircraft, setup_has_hover, setup_aircraft_mode,
-        setup_root_location);
+        setup_is_dedicated_transport, setup_starting_passenger_count, setup_is_aircraft,
+        setup_has_hover, setup_aircraft_mode, setup_root_location);
     expected_setup_valid =
-        setup_is_dedicated_transport <= 1u && setup_is_aircraft <= 1u &&
-        setup_has_hover <= 1u && setup_aircraft_mode <= WHC_AIRCRAFT_MODE_HOVER &&
+        setup_is_dedicated_transport <= 1u && setup_is_aircraft <= 1u && setup_has_hover <= 1u &&
+        setup_aircraft_mode <= WHC_AIRCRAFT_MODE_HOVER &&
         setup_root_location <= WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES &&
         ((!setup_is_aircraft && setup_aircraft_mode == WHC_AIRCRAFT_MODE_NONE) ||
          (setup_is_aircraft &&
@@ -683,13 +672,12 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         const uint32_t strength_modifier = next_byte(&input);
         const uint32_t invulnerable = next_byte(&input);
         const uint32_t benefits = active == 1u && has_ability == 1u ? 1u : 0u;
-        const bool expected =
-            call_count <= 1u && active <= 1u && source_orks <= 1u && called_at_start <= 1u &&
-            has_ability <= 1u && charge_allowed <= 1u &&
-            (call_count == 0u || (source_orks == 1u && called_at_start == 1u)) &&
-            (active == 0u || call_count == 1u) && charge_allowed == benefits &&
-            attacks_modifier == benefits && strength_modifier == benefits &&
-            invulnerable == (benefits == 1u ? 5u : 0u);
+        const bool expected = call_count <= 1u && active <= 1u && source_orks <= 1u &&
+                              called_at_start <= 1u && has_ability <= 1u && charge_allowed <= 1u &&
+                              (call_count == 0u || (source_orks == 1u && called_at_start == 1u)) &&
+                              (active == 0u || call_count == 1u) && charge_allowed == benefits &&
+                              attacks_modifier == benefits && strength_modifier == benefits &&
+                              invulnerable == (benefits == 1u ? 5u : 0u);
         assert(whc_waaagh_state_is_valid(call_count, active, source_orks, called_at_start,
                                          has_ability, charge_allowed, attacks_modifier,
                                          strength_modifier, invulnerable) == expected);
@@ -701,15 +689,13 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         const uint32_t battle_shocked = next_byte(&input);
         const uint32_t base_objective_control = next_byte(&input);
         const uint32_t resolved_objective_control = next_byte(&input);
-        const uint32_t eligible =
-            source_detachment == 1u && eligible_adeptus_astartes == 1u;
+        const uint32_t eligible = source_detachment == 1u && eligible_adeptus_astartes == 1u;
         const uint32_t replacement =
             battle_shocked == 1u ? (eligible ? 1u : 0u) : base_objective_control;
         const uint32_t modifier = eligible && selected == 1u ? 1u : 0u;
-        const bool expected =
-            source_detachment <= 1u && eligible_adeptus_astartes <= 1u && selected <= 1u &&
-            battle_shocked <= 1u && (!selected || eligible) &&
-            resolved_objective_control == replacement + modifier;
+        const bool expected = source_detachment <= 1u && eligible_adeptus_astartes <= 1u &&
+                              selected <= 1u && battle_shocked <= 1u && (!selected || eligible) &&
+                              resolved_objective_control == replacement + modifier;
         assert(whc_grim_resolve_model_objective_control_is_valid(
                    source_detachment, eligible_adeptus_astartes, selected, battle_shocked,
                    base_objective_control, resolved_objective_control) == expected);
@@ -725,9 +711,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         const bool expected =
             source_faction <= 1u && active_target <= 1u && selected_at_start <= 1u &&
             target_is_opponent <= 1u && attacker_has_ability <= 1u && hit_reroll <= 1u &&
-            (active_target == 0u || source_faction == 1u) &&
-            selected_at_start == active_target && target_is_opponent == active_target &&
-            hit_reroll == benefit;
+            (active_target == 0u || source_faction == 1u) && selected_at_start == active_target &&
+            target_is_opponent == active_target && hit_reroll == benefit;
         assert(whc_oath_of_moment_attack_state_is_valid(
                    source_faction, active_target, selected_at_start, target_is_opponent,
                    attacker_has_ability, hit_reroll) == expected);
@@ -750,8 +735,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         const bool flags_valid = target_tyranids <= 1u && own_synapse <= 1u &&
                                  source_synapse <= 1u && shocked_before <= 1u && failed <= 1u &&
                                  shocked_after <= 1u;
-        const uint32_t expected_dice =
-            target_tyranids == 1u && own_synapse == 1u ? 3u : 2u;
+        const uint32_t expected_dice = target_tyranids == 1u && own_synapse == 1u ? 3u : 2u;
         const bool bounded = flags_valid && leadership >= 2u && leadership <= 12u &&
                              dice_count == expected_dice && raw_roll >= dice_count &&
                              raw_roll <= dice_count * 6u;
@@ -759,14 +743,44 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
             bounded && raw_roll - source_synapse < leadership ? 1u : 0u;
         const bool expected = source_faction == 1u && available == 1u &&
                               source_on_battlefield == 1u && command_phase == 1u &&
-                              target_on_battlefield == 1u && bounded &&
-                              failed == expected_failed &&
+                              target_on_battlefield == 1u && bounded && failed == expected_failed &&
                               shocked_after == (shocked_before == 1u || failed == 1u ? 1u : 0u);
         assert(whc_shadow_in_the_warp_test_is_valid(
                    source_faction, available, source_on_battlefield, command_phase,
-                   target_on_battlefield, target_tyranids, own_synapse, source_synapse,
-                   dice_count, raw_roll, leadership, shocked_before, failed, shocked_after) ==
-               expected);
+                   target_on_battlefield, target_tyranids, own_synapse, source_synapse, dice_count,
+                   raw_roll, leadership, shocked_before, failed, shocked_after) == expected);
+    }
+    {
+        const uint32_t on_battlefield = next_byte(&input) % 3u;
+        const uint32_t battle_shock_step = next_byte(&input) % 3u;
+        const uint32_t starting_strength = next_byte(&input) % 12u;
+        const uint32_t current_strength = next_byte(&input) % 12u;
+        const uint32_t model_wounds = next_byte(&input) % 15u;
+        const uint32_t wounds_remaining = next_byte(&input) % 15u;
+        const uint32_t tyranids_synapse = next_byte(&input) % 3u;
+        const uint32_t within_synapse = next_byte(&input) % 3u;
+        const uint32_t dice_count = next_byte(&input) % 5u;
+        const uint32_t raw_roll = next_byte(&input) % 24u;
+        const uint32_t leadership = next_byte(&input) % 15u;
+        const uint32_t failed = next_byte(&input) % 3u;
+        const bool bounded = starting_strength >= 1u && current_strength >= 1u &&
+                             current_strength <= starting_strength &&
+                             wounds_remaining <= model_wounds && tyranids_synapse <= 1u &&
+                             within_synapse <= 1u && failed <= 1u && leadership >= 2u &&
+                             leadership <= 12u;
+        const bool below_half =
+            bounded &&
+            (starting_strength == 1u ? model_wounds > 0u && wounds_remaining * 2u < model_wounds
+                                     : current_strength * 2u < starting_strength);
+        const uint32_t expected_dice = tyranids_synapse == 1u && within_synapse == 1u ? 3u : 2u;
+        const bool expected = on_battlefield == 1u && battle_shock_step == 1u && below_half &&
+                              dice_count == expected_dice && raw_roll >= dice_count &&
+                              raw_roll <= dice_count * 6u &&
+                              failed == (raw_roll < leadership ? 1u : 0u);
+        assert(whc_command_battle_shock_test_is_valid(
+                   on_battlefield, battle_shock_step, starting_strength, current_strength,
+                   model_wounds, wounds_remaining, tyranids_synapse, within_synapse, dice_count,
+                   raw_roll, leadership, failed) == expected);
     }
     return 0;
 }
