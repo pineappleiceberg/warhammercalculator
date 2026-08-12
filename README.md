@@ -1099,7 +1099,7 @@ attacking. Undo appends a compensating event instead of deleting history.
 Validated JSON battle exports and imports preserve the rules snapshot and fail
 closed when the referenced saved lists or loaded catalogue do not match.
 The same version-1 flat event ABI for formation-health replay runs in native C
-and WebAssembly for version-1 through version-35 JSON battle envelopes.
+and WebAssembly for version-1 through version-39 JSON battle envelopes.
 It validates attack transitions, damage and casualty totals, the one-wounded-model
 invariant, and last-in-first-out compensating undo without modifying its output
 when an event stream is invalid. `POST /api/v1/battle/replay` accepts
@@ -1124,6 +1124,25 @@ disembarkations, mandatory destroyed-Transport state, and recorded passenger
 rolls and casualties. The
 portable ABI supports the same 32 formation segments and 10,000-event bound as
 the saved web schema.
+
+The full-game golden corpus begins with a current version-39 Chapter Approved
+fixture for a real Necrons Doom Scythe and Space Marines Brutalis Dreadnought
+pair. It pins the Core Rules, Rules Updates, profile export, mission pack,
+faction, detachment, datasheet, mission, and terrain identities; records the
+reviewed tournament frame, terrain, model placement, deployment declarations,
+Fixed Secondary plans, and Reserve decisions; visits all 170 active clock
+states across five rounds; applies capped Primary, Secondary, and Battle Ready
+scoring; and finishes in a canonical complete state. SHA-256 digests bind both
+the event log and its expected replay summary. The fixture verifier rejects
+digest drift, stale expected state, source-lock changes, and non-canonical clock
+transitions. The public replay API independently walks that exact log through
+the C/WebAssembly clock and health ABI. Regenerate or verify the corpus with:
+
+```sh
+cd web
+node scripts/generate-golden-battle-replays.mjs
+npm run test:fixtures
+```
 On narrow screens, Play Mode groups the attacker and target into guided steps,
 collapses optional overrides, and keeps the resolve action above the device safe
 area. Selects and action controls use touch-sized targets. Battle status and the
@@ -1436,8 +1455,9 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 
 ## Prioritized correctness backlog
 
-1. Add complete source-locked full-game replay fixtures for representative
-   supported list pairs before automated play policies or batch simulation.
+1. Expand the source-locked full-game corpus with an on-table action-heavy pair
+   covering movement, ranged attacks, Charge, Fight, reactions, casualties,
+   objective changes, and Tactical Secondary lifecycle before automated play.
 2. Add reviewed curved movement-surface primitives only when panels and simple
    polygon solids cannot represent a supported physical terrain set exactly.
 3. Add deterministic automated policies and calibrated batch battle simulation

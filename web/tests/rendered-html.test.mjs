@@ -67,6 +67,12 @@ const projectRoot = new URL("../", import.meta.url);
 const goldenBattleReplay = JSON.parse(
   await readFile(new URL("./fixtures/battle-replay-v1.json", import.meta.url), "utf8"),
 );
+const completeGoldenBattleReplay = JSON.parse(
+  await readFile(
+    new URL("./fixtures/golden-battle-necrons-vs-space-marines-v1.json", import.meta.url),
+    "utf8",
+  ),
+);
 
 function createD1Mock() {
   const rows = [];
@@ -2875,6 +2881,28 @@ test("replays canonical battle health through the C and WebAssembly API", async 
   );
   assert.equal(rejected.status, 400);
   assert.equal((await rejected.json()).error.code, "INVALID_REQUEST");
+});
+
+test("replays the complete source-locked golden battle through the public API and C clock", async () => {
+  const worker = await loadWorker();
+  const context = { waitUntil() {}, passThroughOnException() {} };
+  const formationId = completeGoldenBattleReplay.expected.formations[1].id;
+  const response = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: completeGoldenBattleReplay.state, formationId }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.data.schemaVersion, completeGoldenBattleReplay.state.version);
+  assert.deepEqual(result.data.clock, completeGoldenBattleReplay.expected.finalClock);
+  assert.deepEqual(result.data.health, completeGoldenBattleReplay.expected.formations[1].health);
+  assert.equal(result.data.scoringEvents.length, 20);
+  assert.equal(result.data.deployment.complete, true);
 });
 
 test("replays source-locked table geometry through the JavaScript and C/WebAssembly API", async () => {
