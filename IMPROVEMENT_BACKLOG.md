@@ -27,14 +27,29 @@ state.
 
 ## Prioritized backlog
 
-1. Add a reviewed geometry-inspection view that shows the model envelope, path
-   segment, terrain solid, and reason behind every clearance proof or fallback.
-2. Add reviewed curved surface primitives when a supported physical terrain set
-   cannot be represented exactly by panels and simple polygon solids.
-3. Deliver full guided-game replay scenarios before adding deterministic
-   automated policies and calibrated batch battle simulation.
+1. Deliver complete source-locked guided-game replay fixtures for representative
+   supported list pairs, including every setup, phase, scoring, and end-state
+   transition.
+2. Add reviewed curved surface primitives only when a supported physical terrain
+   set cannot be represented exactly by panels and simple polygon solids.
+3. Add deterministic automated policies and calibrated batch battle simulation
+   only after the guided replay corpus closes the same rules boundaries.
 
 ## Completed cycles
+
+- 2026-08-12: Made executable battlefield geometry inspectable without changing
+  battle-state serialization. Guided Play can select a formation and exact model
+  to plot its reviewed path, start and end envelope, terrain footprints, panels,
+  polygon solids, collision highlights, endpoint support, and every recorded
+  clearance reason. The same inspector selects an observer/target model pair,
+  plots the sampled line-of-sight witness and conservative full-visibility
+  corridor, identifies the first terrain or model blocker, and summarizes all
+  tested blocked rays. Versioned validators and copyable JSON exports make both
+  proof forms machine-readable. Adversarial movement traces are fairly bounded
+  per model and globally while the complete ruling still runs and reports any
+  omitted display checks explicitly. Movement, visibility, replay, UI, API,
+  C/WebAssembly summary, formal, CI, and deployment gates share regression
+  coverage.
 
 - 2026-08-12: Advanced reviewed terrain movement to battle-state version 39.
   Elevated floors, ceilings, and overhangs can now use either legacy convex

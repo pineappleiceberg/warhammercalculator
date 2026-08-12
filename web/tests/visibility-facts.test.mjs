@@ -9,6 +9,8 @@ import {
   terrainVisibilityGeometryIsValid,
   visibilityFactValues,
   visibilityFactValuesAreValid,
+  visibilityInspectionExport,
+  visibilityInspectionIsValid,
 } from "../lib/visibility-facts.mjs";
 
 const CONVEX_SQUARE = [
@@ -443,6 +445,20 @@ test("a reviewed sight ray through an exact wall opening proves model visibility
   assert.equal(result.visibility.status, "visible");
   assert.equal(result.fullVisibility.status, "unknown");
   assert.equal(result.cover.status, "mixed_or_unknown");
+  const pair = result.modelPairs[0];
+  assert.equal(pair.inspection.visibility.status, "visible");
+  assert.equal(pair.inspection.visibility.witnessRay.clear, true);
+  assert.equal(pair.inspection.visibility.witnessRay.reason, "sampled_ray_clear");
+  assert.equal(visibilityInspectionIsValid(pair.inspection), true);
+  const exported = visibilityInspectionExport({
+    observerFormationName: "Observer",
+    targetFormationName: "Target",
+    pair,
+    terrainFootprints: terrainFootprints(),
+    terrainVisibility: terrainVisibility(),
+  });
+  assert.equal(exported.schema, "whc-visibility-inspection");
+  assert.equal(exported.observerModelId, "observer-model");
 });
 
 test("an opaque panel withholds a visibility claim instead of declaring a model invisible", () => {
@@ -450,6 +466,20 @@ test("an opaque panel withholds a visibility claim instead of declaring a model 
   assert.equal(result.visibility.status, "unknown");
   assert.equal(result.visibleModelPairCount, 0);
   assert.equal(result.unknownModelPairCount, 1);
+  const inspection = result.modelPairs[0].inspection;
+  assert.equal(inspection.visibility.witnessRay.status, "blocked");
+  assert.equal(inspection.visibility.witnessRay.obstacleId, "wall-1");
+  assert.equal(inspection.visibility.witnessRay.reason, "terrain_panel_blocks_ray");
+  assert.deepEqual(inspection.visibility.blockerSummary, [
+    {
+      reason: "terrain_panel_blocks_ray",
+      sectionId: "section-1",
+      obstacleType: "panel",
+      obstacleId: "wall-1",
+      count: 1,
+    },
+  ]);
+  assert.equal(visibilityInspectionIsValid(inspection), true);
 });
 
 test("clear complete 3D space proves visibility, full visibility, and no terrain cover", () => {
@@ -462,6 +492,7 @@ test("clear complete 3D space proves visibility, full visibility, and no terrain
   assert.equal(result.fullVisibility.status, "fully_visible");
   assert.equal(result.cover.status, "no_benefit_of_cover");
   assert.deepEqual(result.cover.noModelIds, ["target-model"]);
+  assert.equal(result.modelPairs[0].inspection.fullVisibility.reason, "target_corridor_clear");
   assert.equal(visibilityFactValuesAreValid(...visibilityFactValues(result)), true);
 });
 

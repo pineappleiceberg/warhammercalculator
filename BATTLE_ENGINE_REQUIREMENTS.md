@@ -172,7 +172,12 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    panels, openings, and convex or concave simple-polygon elevated solids: replay checks deployment
    endpoints, whole-model wall crossings, climbing height, overhangs, supported
    endpoints, and Ruins keyword restrictions. Missing geometry, unsupported pivots, and legacy paths
-   stay explicit reviewed fallbacks. Source-locked Chapter Approved scoring,
+   stay explicit reviewed fallbacks. Guided Play and replay output expose a
+   versioned inspection witness for each movement segment and observer/target
+   model pair: exact envelopes, paths, sampled rays, conservative visibility
+   corridors, implicated terrain or model blockers, stable reason codes, and
+   copyable reviewed inputs. Bounded display traces report omissions explicitly
+   without weakening the complete ruling. Source-locked Chapter Approved scoring,
    Secondary plans, Tactical card lifecycle, New Orders, and universal Actions
    are executable; individual physical card conditions remain reason-backed
    player input because their card text is unavailable.

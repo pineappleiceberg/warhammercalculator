@@ -1201,6 +1201,272 @@ select:focus {
   color: var(--ink);
 }
 
+.geometry-inspector {
+  margin-top: 0.75rem;
+  border: 1px solid #55534d;
+  background: #242321;
+  color: var(--paper-light);
+}
+
+.geometry-inspector > summary,
+.geometry-formation > summary,
+.geometry-model > summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.75rem;
+  cursor: pointer;
+}
+
+.geometry-inspector > summary span,
+.geometry-formation > summary span,
+.geometry-model > summary span,
+.geometry-model-facts small {
+  color: #aaa69d;
+  font-size: 0.75rem;
+}
+
+.geometry-inspector-body {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0 0.75rem 0.75rem;
+}
+
+.geometry-inspector-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: end;
+}
+
+.geometry-inspector-controls label {
+  display: grid;
+  gap: 0.3rem;
+  color: #aaa69d;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.geometry-inspector-controls select {
+  min-width: 0;
+  padding: 0.55rem;
+  border: 1px solid #55534d;
+  background: #151513;
+  color: var(--paper-light);
+}
+
+.geometry-inspector-controls button {
+  min-height: 2.35rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--gold);
+  background: transparent;
+  color: var(--paper-light);
+}
+
+.geometry-copy-status {
+  color: #aaa69d;
+}
+
+.visibility-inspector {
+  display: grid;
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #55534d;
+}
+
+.visibility-inspector-heading,
+.geometry-copy-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.visibility-inspector-heading > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.visibility-inspector-heading span,
+.geometry-copy-row small {
+  color: #aaa69d;
+  font-size: 0.75rem;
+}
+
+.visibility-inspector-heading select {
+  min-width: min(22rem, 100%);
+  padding: 0.55rem;
+  border: 1px solid #55534d;
+  background: #151513;
+  color: var(--paper-light);
+}
+
+.geometry-ray {
+  stroke: #a8c19d;
+  stroke-width: 180;
+}
+
+.geometry-ray.geometry-unknown {
+  stroke: var(--gold);
+  stroke-dasharray: 380 220;
+}
+
+.geometry-corridor {
+  fill: color-mix(in srgb, #7c8598 12%, transparent);
+  stroke: #7c8598;
+  stroke-dasharray: 360 240;
+  stroke-width: 130;
+}
+
+.geometry-copy-row button {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--gold);
+  background: transparent;
+  color: var(--paper-light);
+}
+
+.geometry-formation,
+.geometry-model,
+.geometry-segment {
+  border: 1px solid #55534d;
+  background: #1d1c1a;
+}
+
+.geometry-model {
+  margin: 0 0.75rem 0.75rem;
+}
+
+.geometry-review-reasons {
+  margin: 0 0.75rem 0.75rem;
+  color: var(--gold);
+  font-size: 0.8rem;
+}
+
+.geometry-plot {
+  display: block;
+  width: calc(100% - 1.5rem);
+  max-height: 30rem;
+  margin: 0 0.75rem 0.75rem;
+  border: 1px solid #55534d;
+  background: #151513;
+}
+
+.geometry-table {
+  fill: #1d1c1a;
+  stroke: #aaa69d;
+  stroke-width: 180;
+}
+
+.geometry-footprint {
+  fill: color-mix(in srgb, var(--gold) 12%, transparent);
+  stroke: color-mix(in srgb, var(--gold) 62%, transparent);
+  stroke-width: 140;
+}
+
+.geometry-obstacle {
+  stroke: #c4bfb4;
+  stroke-linecap: round;
+  stroke-width: 320;
+}
+
+.geometry-surface {
+  fill: color-mix(in srgb, #7c8598 35%, transparent);
+  stroke: #aeb6c7;
+  stroke-width: 180;
+}
+
+.geometry-path {
+  fill: none;
+  stroke: var(--green);
+  stroke-dasharray: 420 260;
+  stroke-width: 220;
+}
+
+.geometry-envelope {
+  fill: color-mix(in srgb, var(--green) 22%, transparent);
+  stroke: #a8c19d;
+  stroke-width: 180;
+}
+
+.geometry-envelope.geometry-start {
+  fill: transparent;
+  stroke: #aaa69d;
+  stroke-dasharray: 300 220;
+}
+
+.geometry-collision,
+.geometry-path.geometry-collision,
+.geometry-envelope.geometry-collision {
+  fill: color-mix(in srgb, var(--red) 38%, transparent);
+  stroke: #e16e78;
+}
+
+.geometry-unknown,
+.geometry-path.geometry-unknown,
+.geometry-envelope.geometry-unknown {
+  stroke: var(--gold);
+}
+
+.geometry-status {
+  font-family: var(--font-geist-mono), monospace;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.geometry-status.geometry-clear,
+.geometry-clear > strong {
+  color: #a8c19d;
+}
+
+.geometry-status.geometry-collision,
+.geometry-collision > strong {
+  color: #e16e78;
+}
+
+.geometry-status.geometry-unknown,
+.geometry-unknown > strong {
+  color: var(--gold);
+}
+
+.geometry-model-facts {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0 0.75rem 0.75rem;
+  font-size: 0.82rem;
+}
+
+.geometry-segment > summary {
+  padding: 0.55rem 0.65rem;
+  cursor: pointer;
+}
+
+.geometry-segment small {
+  display: block;
+  padding: 0.55rem 0.65rem 0;
+}
+
+.geometry-segment ul {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.55rem 0.65rem 0.7rem 1.8rem;
+}
+
+@media (max-width: 700px) {
+  .geometry-inspector > summary,
+  .geometry-inspector-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .geometry-inspector > summary {
+    display: grid;
+  }
+}
+
 .saved-roster-warning {
   color: var(--gold);
   font-weight: 700;

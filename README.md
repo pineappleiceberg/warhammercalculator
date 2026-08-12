@@ -703,6 +703,14 @@ models; undo restores freshness when the identities match again. If a Charge,
 Pile In, Consolidation, or other reviewed physical move made the saved start
 stale, the next movement event explicitly records that reconciliation and each
 model's verified start instead of silently treating old coordinates as current.
+Version 39 also accepts reviewed concave simple-polygon floors and overhangs
+without filling their cut-outs. Guided Play's geometry inspector plots the exact
+model envelope, path, panels, polygon solids, endpoint support, sampled
+observer-to-target sight ray, and conservative full-visibility corridor. Every
+proof, blocker, ambiguity, or fallback keeps a stable reason code. Movement and
+line-of-sight inspections can be copied as versioned JSON with their complete
+reviewed terrain inputs; display traces are bounded under adversarial inputs
+without truncating the underlying ruling.
 Version 29 carries the same stable identities through successful Charge and
 Heroic Intervention moves, non-zero Pile In and Consolidation moves, and normal
 disembarkation. Each action blocks later reactions, attacks, or activation
@@ -1428,12 +1436,12 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 
 ## Prioritized correctness backlog
 
-1. Add a reviewed geometry-inspection view that highlights the exact bearer,
-   target model, ray, and terrain feature behind every proof or fallback.
-2. Add reviewed curved movement-surface primitives when panels and simple
+1. Add complete source-locked full-game replay fixtures for representative
+   supported list pairs before automated play policies or batch simulation.
+2. Add reviewed curved movement-surface primitives only when panels and simple
    polygon solids cannot represent a supported physical terrain set exactly.
-3. Add complete source-locked full-game replay fixtures before automated play
-   policies or batch battle simulation.
+3. Add deterministic automated policies and calibrated batch battle simulation
+   after the guided replay corpus closes the same mandatory rule boundaries.
 
 ## Current boundaries
 

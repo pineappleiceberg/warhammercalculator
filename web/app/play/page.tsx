@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { WorkflowNav } from "../../components/workflow-nav";
 import { CombatPresetSelector } from "../../components/combat-preset-selector";
 import { SupportPresetSelector } from "../../components/support-preset-selector";
+import { GeometryInspector } from "./geometry-inspector";
 import { fetchArmyLists, type ArmyListRecord } from "../../lib/army-list";
 import {
   DEFAULT_PROFILE,
@@ -6820,6 +6821,35 @@ export default function PlayMode() {
                 </small>
               </div>
             )}
+            {replayedBattle?.terrainVisibility &&
+              replayedBattle.terrainFootprints &&
+              (replayedBattle.terrainClearanceFactsByFormation.size > 0 ||
+                selectedVisibilityFacts) && (
+                <GeometryInspector
+                  inspections={[...replayedBattle.terrainClearanceFactsByFormation.entries()]
+                    .filter(([, fact]) => fact.inspection)
+                    .map(([formationId, fact]) => ({
+                      formationName:
+                        replayedBattle.formations.get(formationId)?.name ?? formationId,
+                      inspection: fact.inspection,
+                    }))}
+                  terrainFootprints={replayedBattle.terrainFootprints}
+                  terrainVisibility={replayedBattle.terrainVisibility}
+                  visibilityFacts={selectedVisibilityFacts}
+                  observerFormationName={
+                    attackerBattleFormationId
+                      ? (replayedBattle.formations.get(attackerBattleFormationId)?.name ??
+                        attackerBattleFormationId)
+                      : "Observer"
+                  }
+                  targetFormationName={
+                    targetBattleFormationId
+                      ? (replayedBattle.formations.get(targetBattleFormationId)?.name ??
+                        targetBattleFormationId)
+                      : "Target"
+                  }
+                />
+              )}
             {(attackerSpatialFacts || targetSpatialFacts) && (
               <div className="loadout-warnings" data-testid="executable-spatial-facts">
                 <strong>Measured battlefield facts</strong>
