@@ -4248,6 +4248,32 @@ test("migrates version-38 mission tracking without inventing concave terrain", (
   );
 });
 
+test("migrates version-39 battles without inventing faction-rule activations", () => {
+  const current = exactMissionSetup("version-39-faction-state", attackers, defenders, false);
+  const versionThirtyNine = normalizeBattleState({
+    ...current,
+    version: 39,
+    migration: undefined,
+  });
+  const migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: versionThirtyNine,
+    id: versionThirtyNine.id,
+  });
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 39);
+  const replayed = replayBattleState(migrated);
+  assert.equal(replayed.waaaghCallsByPlayer.size, 0);
+  assert.equal(replayed.activeWaaaghPlayerIds.size, 0);
+  assert.ok([...replayed.formations.values()].every((formation) => !formation.hasWaaaghAbility));
+});
+
 test("marks exact geometry stale when casualties change live model identities and clears on undo", () => {
   let legacy = exactMissionSetup("version-28-casualty-geometry", attackers, defenders, false);
   legacy = configureBattleTableGeometry(

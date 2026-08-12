@@ -25,6 +25,7 @@ import {
   battleEmbarkationOptions,
   battleCanDeclareRangedAttack,
   battleCanResolveAttack,
+  battleWaaaghState,
   battleFormation,
   battleFormationIsOnBattlefield,
   battleUnusedWeaponCount,
@@ -34,6 +35,7 @@ import {
   battleFormationWasTargeted,
   hazardousBearerOptions,
   changeBattleResource,
+  callWaaagh,
   clearBattleObjectiveControlOverride,
   closeRangedTargetDeclarations,
   completeFormationMovement,
@@ -1404,6 +1406,16 @@ export default function PlayMode() {
   const targetFormationBattleShocked = Boolean(
     targetBattleFormationId && replayedBattle?.battleShockedFormations.has(targetBattleFormationId),
   );
+  const attackerFormationWaaaghActive = Boolean(
+    attackerBattleFormationId &&
+      replayedBattle?.activeWaaaghPlayerIds.has(attackerPlayerId) &&
+      replayedBattle.formations.get(attackerBattleFormationId)?.hasWaaaghAbility,
+  );
+  const targetFormationWaaaghActive = Boolean(
+    targetBattleFormationId &&
+      replayedBattle?.activeWaaaghPlayerIds.has(targetPlayerId) &&
+      replayedBattle.formations.get(targetBattleFormationId)?.hasWaaaghAbility,
+  );
   const targetBattleHealth =
     battleState && targetBattleFormationId
       ? battleFormationHealth(battleState, targetBattleFormationId)
@@ -1993,6 +2005,40 @@ export default function PlayMode() {
     );
     setResult(null);
   };
+
+  useEffect(() => {
+    if (
+      battleClock?.status !== "active" ||
+      (profile.attackerWaaaghActive === attackerFormationWaaaghActive &&
+        profile.targetWaaaghActive === targetFormationWaaaghActive)
+    ) {
+      return;
+    }
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      refreshProfile(
+        weaponId,
+        targetModelId,
+        profileId,
+        activeAttackerPresetIds,
+        activeTargetPresetIds,
+        profile.targetDistance,
+        profile.attackerCharged,
+        profile.attackerBattleShocked,
+        profile.targetBattleShocked,
+        profile.targetStrengthState,
+        profile.attackerRemainedStationary,
+        profile.attackerAttached,
+        profile.targetAttached,
+        attackerFormationWaaaghActive,
+        targetFormationWaaaghActive,
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  });
 
   const chooseWeapon = (id: string) => {
     const nextFiringDeckChoice = parseFiringDeckWeaponValue(id);
@@ -4463,6 +4509,22 @@ export default function PlayMode() {
     }
   };
 
+  const callPlayerWaaagh = (playerId: string) => {
+    if (!battleState) return;
+    try {
+      const next = callWaaagh(
+        battleState,
+        playerId,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setStatus("Waaagh! is active until the start of this player's next Command phase");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Waaagh! could not be called");
+    }
+  };
+
   const recordSelectedMovement = (movement: "stationary" | "normal" | "advance" | "fall_back") => {
     if (!battleState || !attackerBattleFormationId) return;
     try {
@@ -6708,6 +6770,7 @@ export default function PlayMode() {
                       aria-label="Attacker is gaining Waaagh! benefits"
                       type="checkbox"
                       checked={profile.attackerWaaaghActive}
+                      disabled={battleClock?.status === "active"}
                       onChange={(event) =>
                         refreshProfile(
                           weaponId,
@@ -6735,6 +6798,7 @@ export default function PlayMode() {
                       aria-label="Target is gaining Waaagh! benefits"
                       type="checkbox"
                       checked={profile.targetWaaaghActive}
+                      disabled={battleClock?.status === "active"}
                       onChange={(event) =>
                         refreshProfile(
                           weaponId,
@@ -7549,23 +7613,49 @@ export default function PlayMode() {
                 </button>
               )}
               {battleClock.status === "active" && (
-                <button
-                  type="button"
-                  disabled={
-                    pendingBattleChoices.length > 0 ||
-                    Boolean(activeFormationActivation) ||
-                    Boolean(pendingDestroyedTransport) ||
-                    Boolean(pendingFireOverwatch) ||
-                    replayedBattle.movementStartsByFormation.size > 0 ||
-                    replayedBattle.chargeDeclarationsByFormation.size > 0 ||
-                    Boolean(pendingHeroicIntervention) ||
-                    Boolean(pendingRapidIngress) ||
-                    Boolean(pendingCounterOffensive)
-                  }
-                  onClick={advanceGuidedBattle}
-                >
-                  Next step
-                </button>
+                <>
+                  {battleState.players.map((player) => {
+                    const faction = replayedBattle.ruleCoverage?.plan.players.find(
+                      (candidate: { playerId: string }) => candidate.playerId === player.id,
+                    )?.faction;
+                    const waaagh = battleWaaaghState(battleState, player.id);
+                    const canCall = Boolean(
+                      faction?.sourceId === "ORK" &&
+                        faction.ruleIds.includes("faction.catalogue-ork") &&
+                        waaagh.available &&
+                        battleClock.activePlayerId === player.id &&
+                        battleClock.phase === "command" &&
+                        battleClock.step === "start",
+                    );
+                    if (faction?.sourceId !== "ORK") return null;
+                    return canCall ? (
+                      <button key={player.id} type="button" onClick={() => callPlayerWaaagh(player.id)}>
+                        Call Waaagh! · {player.name}
+                      </button>
+                    ) : waaagh.active ? (
+                      <strong key={player.id}>Waaagh! active · {player.name}</strong>
+                    ) : waaagh.available ? null : (
+                      <span key={player.id}>Waaagh! spent · {player.name}</span>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    disabled={
+                      pendingBattleChoices.length > 0 ||
+                      Boolean(activeFormationActivation) ||
+                      Boolean(pendingDestroyedTransport) ||
+                      Boolean(pendingFireOverwatch) ||
+                      replayedBattle.movementStartsByFormation.size > 0 ||
+                      replayedBattle.chargeDeclarationsByFormation.size > 0 ||
+                      Boolean(pendingHeroicIntervention) ||
+                      Boolean(pendingRapidIngress) ||
+                      Boolean(pendingCounterOffensive)
+                    }
+                    onClick={advanceGuidedBattle}
+                  >
+                    Next step
+                  </button>
+                </>
               )}
             </div>
             {sourceLockedMissionTracking && battleClock.status === "setup" && (

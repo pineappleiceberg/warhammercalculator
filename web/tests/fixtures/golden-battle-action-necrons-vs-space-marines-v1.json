@@ -23,10 +23,10 @@
     }
   ],
   "sourceManifestVersion": 1,
-  "stateDigest": "ccd0b47a083c8124cec04b0a1b9b8faeece08c3dacbed19a2ba0d0d8e7d0e4ba",
-  "expectedDigest": "b9e7dddb730192e2a8b8813bca415359ae85253c4d4fbf45670aa7a0ef22848f",
+  "stateDigest": "c8e8bcc3d8432ee81cfa3b71cb1c8d8f0b47edc3c9afe879c4f1be7cb6f137d0",
+  "expectedDigest": "e0fce85ddaf58a23abb22f8d173f5dd428157ea0aeec9d672bdea1b35ed19380",
   "expected": {
-    "stateVersion": 39,
+    "stateVersion": 40,
     "eventCount": 244,
     "eventTypeCounts": {
       "activation_completed": 4,
@@ -295,10 +295,10 @@
     ]
   },
   "state": {
-    "version": 39,
+    "version": 40,
     "id": "golden-action-necrons-vs-space-marines-v1",
     "createdAt": 0,
-    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:39",
+    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:40",
     "players": [
       {
         "id": "player-1",
@@ -327,6 +327,7 @@
           "name": "Canoptek Doomstalker",
           "assignedTransportFormationId": "",
           "keywords": ["necrons", "vehicle", "walker", "doomstalker", "canoptek"],
+          "hasWaaaghAbility": false,
           "segments": [
             {
               "id": "doomstalker:961:loadout:1",
@@ -427,6 +428,7 @@
             "imperium",
             "infantry"
           ],
+          "hasWaaaghAbility": false,
           "segments": [
             {
               "id": "intercessors:728:loadout:1",
@@ -616,7 +618,7 @@
         "type": "rule_coverage_configured",
         "coverage": {
           "schemaVersion": 1,
-          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v39",
+          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v40",
           "sourceLocks": [
             {
               "id": "core-rules-10e",
@@ -722,7 +724,7 @@
             }
           },
           "report": {
-            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v39",
+            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v40",
             "permitted": true,
             "results": [
               {
@@ -1350,6 +1352,7 @@
             "imperium",
             "infantry"
           ],
+          "hasWaaaghAbility": false,
           "segments": [
             {
               "id": "intercessors:728:loadout:1",
@@ -1552,6 +1555,7 @@
             "imperium",
             "infantry"
           ],
+          "hasWaaaghAbility": false,
           "segments": [
             {
               "id": "intercessors:728:loadout:1",

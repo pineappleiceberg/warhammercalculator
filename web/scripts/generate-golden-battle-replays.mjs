@@ -9,6 +9,7 @@ import {
   advanceBattleClock,
   arriveFromReserves,
   appendResolvedAttack,
+  callWaaagh,
   closeRangedTargetDeclarations,
   completeFormationActivation,
   completeFormationMovement,
@@ -1849,6 +1850,7 @@ function buildAttachedFixture() {
     state.events.length + 1,
   );
   state = advanceBattleClock(state, "attached-to-player-2-turn", state.events.length + 1);
+  state = callWaaagh(state, "player-2", "attached-orks-called-waaagh", state.events.length + 1);
   state = advanceToClock(
     state,
     (clock) => clock.phase === "movement" && clock.step === "move_units",

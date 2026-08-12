@@ -660,5 +660,27 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
             (setup_root_location == WHC_DEPLOYMENT_ROOT_BATTLEFIELD ||
              setup_root_location == WHC_DEPLOYMENT_ROOT_STRATEGIC_RESERVES)))));
     assert(setup_valid == expected_setup_valid);
+    {
+        const uint32_t call_count = next_byte(&input);
+        const uint32_t active = next_byte(&input);
+        const uint32_t source_orks = next_byte(&input);
+        const uint32_t called_at_start = next_byte(&input);
+        const uint32_t has_ability = next_byte(&input);
+        const uint32_t charge_allowed = next_byte(&input);
+        const uint32_t attacks_modifier = next_byte(&input);
+        const uint32_t strength_modifier = next_byte(&input);
+        const uint32_t invulnerable = next_byte(&input);
+        const uint32_t benefits = active == 1u && has_ability == 1u ? 1u : 0u;
+        const bool expected =
+            call_count <= 1u && active <= 1u && source_orks <= 1u && called_at_start <= 1u &&
+            has_ability <= 1u && charge_allowed <= 1u &&
+            (call_count == 0u || (source_orks == 1u && called_at_start == 1u)) &&
+            (active == 0u || call_count == 1u) && charge_allowed == benefits &&
+            attacks_modifier == benefits && strength_modifier == benefits &&
+            invulnerable == (benefits == 1u ? 5u : 0u);
+        assert(whc_waaagh_state_is_valid(call_count, active, source_orks, called_at_start,
+                                         has_ability, charge_allowed, attacks_modifier,
+                                         strength_modifier, invulnerable) == expected);
+    }
     return 0;
 }

@@ -39,10 +39,25 @@ state.
 
 ## Completed cycles
 
+- 2026-08-12: Advanced canonical faction-rule replay to battle-state version 40
+  with Orks' Waaagh! as the first executable army transition. A source-locked
+  ORK player can call it once per battle only at the start of their Command
+  phase; replay keeps it active through the opposing turn and expires it at the
+  start of that player's next Command phase. Only formations whose locked
+  source profiles contain the ability gain the Advance-charge exception, +1
+  melee Attacks, +1 melee Strength, and granted 5+ invulnerable save; Fall Back
+  remains disallowed. Guided Play owns the call/spent state and disables manual
+  combat toggles during an active battle. The replay API exposes per-formation
+  state checked against an ACSL-specified C/WebAssembly predicate. Native,
+  differential, migration, tamper, UI, API, fuzz, and formal gates cover the
+  transition, and the Aeldari-versus-Orks golden replay now source-locks the
+  call in 228 append-only events. The next boundary is an executable
+  detachment-level choice with objective or bounded-resource consequences.
+
 - 2026-08-12: Added the first full-game attached and mixed-profile golden
   replay. A Farseer attached to Guardian Defenders faces a Warboss attached to
   Boyz under source-locked Aeldari Guardian Battlehost, Orks Green Tide, Supply
-  Drop, and Terrain Layout 2 identities. The 227-event replay preserves both
+  Drop, and Terrain Layout 2 identities. The 228-event replay preserves both
   Leaders as distinct models, exact Guardian/platform and Boy/Nob profiles,
   reviewed weapon bearers, a completed and scored physical-card Mission Action,
   a legal round-two Rangers Strategic Reserves arrival, every active clock
@@ -51,7 +66,8 @@ state.
   two-wound profiles while proving that the attached Farseer cannot receive
   damage first. SHA-256 fixture generation, source-lock checks, JavaScript
   replay, public API replay, and C/WebAssembly health and clock checks cover all
-  four formations. The next corpus boundary is executable faction/detachment
+  four formations and now records the Orks player's canonical Waaagh! call. The
+  next corpus boundary is executable detachment
   state changes and their downstream combat, objective, and resource effects.
 
 - 2026-08-12: Added the first action-heavy, source-locked full-game replay. A

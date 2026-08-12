@@ -676,6 +676,11 @@ export function savedFormationBattleRegistration(
   const normalizedFormationKeywords = new Set(
     formationKeywords.map((keyword) => keyword.toLowerCase()),
   );
+  const hasWaaaghAbility = formation.components.some((component) =>
+    (component.catalogueUnit?.combatPresets ?? []).some(
+      (preset) => preset.requiresWaaaghActive === true,
+    ),
+  );
   return {
     id,
     playerId,
@@ -684,6 +689,7 @@ export function savedFormationBattleRegistration(
     assignedTransportFormationId,
     transportOptions,
     keywords: formationKeywords,
+    hasWaaaghAbility,
     deploymentTraits: {
       dedicatedTransport: normalizedFormationKeywords.has("dedicated transport"),
       aircraft: normalizedFormationKeywords.has("aircraft"),

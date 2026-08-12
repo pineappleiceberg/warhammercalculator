@@ -556,6 +556,25 @@ bool whc_mission_tracker_facts_are_valid(uint32_t mode, uint32_t configured,
            fixed_card_high_score == 0u;
 }
 
+bool whc_waaagh_state_is_valid(uint32_t call_count, uint32_t active,
+                               uint32_t source_faction_orks,
+                               uint32_t called_at_command_start,
+                               uint32_t formation_has_ability,
+                               uint32_t advanced_charge_allowed,
+                               uint32_t melee_attacks_modifier,
+                               uint32_t melee_strength_modifier,
+                               uint32_t granted_invulnerable_save) {
+    const uint32_t benefits = active == 1u && formation_has_ability == 1u ? 1u : 0u;
+
+    return call_count <= 1u && active <= 1u && source_faction_orks <= 1u &&
+           called_at_command_start <= 1u && formation_has_ability <= 1u &&
+           advanced_charge_allowed <= 1u &&
+           (call_count == 0u || (source_faction_orks == 1u && called_at_command_start == 1u)) &&
+           (active == 0u || call_count == 1u) && advanced_charge_allowed == benefits &&
+           melee_attacks_modifier == benefits && melee_strength_modifier == benefits &&
+           granted_invulnerable_save == (benefits == 1u ? 5u : 0u);
+}
+
 bool whc_objective_control_facts_are_valid(uint32_t player_count, uint32_t score_entry_count,
                                            uint32_t top_score, uint32_t top_score_player_count,
                                            uint32_t controller_count, uint32_t contested,
