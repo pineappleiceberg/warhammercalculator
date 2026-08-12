@@ -525,6 +525,30 @@ bool whc_visibility_facts_are_valid(
            flags == WHC_VISIBILITY_FACTS_FLAGS_MASK;
 }
 
+bool whc_ranged_geometry_resolution_is_valid(
+    uint32_t observer_count, uint32_t proven_observer_count, uint32_t target_model_count,
+    uint32_t cover_proven_count, uint32_t cover_override_count, uint32_t flags) {
+    const uint32_t visibility = flags & WHC_RANGED_GEOMETRY_VISIBILITY_MASK;
+    const uint32_t indirect = flags & WHC_RANGED_GEOMETRY_INDIRECT_MASK;
+    const uint32_t full_visibility = flags & WHC_RANGED_GEOMETRY_FULL_VISIBILITY_MASK;
+    const bool visibility_valid =
+        (visibility == 9u && proven_observer_count == observer_count) ||
+        (visibility == 17u && proven_observer_count < observer_count) ||
+        (indirect == 6u && proven_observer_count < observer_count);
+    const bool full_visibility_valid =
+        full_visibility == 0u ||
+        ((flags & WHC_RANGED_GEOMETRY_DIRECT_VISIBLE) != 0u &&
+         (full_visibility == 96u || full_visibility == 160u));
+
+    return observer_count > 0u && observer_count <= 1000u &&
+           proven_observer_count <= observer_count && target_model_count > 0u &&
+           target_model_count <= 1000u && cover_proven_count <= target_model_count &&
+           cover_override_count == target_model_count - cover_proven_count &&
+           (flags & ~WHC_RANGED_GEOMETRY_FLAGS_MASK) == 0u &&
+           (flags & WHC_RANGED_GEOMETRY_REVIEWED_BY_PLAYER) != 0u && visibility_valid &&
+           full_visibility_valid;
+}
+
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,
                                      const uint32_t *events, uint32_t event_count,
                                      uint32_t *health) {

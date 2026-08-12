@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 32 as soon as both lists are selected. Every
+creates battle-state version 33 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -740,6 +740,19 @@ the executable visibility and cover partitions independently, and the replay API
 returns both the reviewed geometry and all directional facts. Version-31 games
 migrate without fabricated terrain heights, walls, openings, silhouettes, or
 visibility results and can add their first reviewed geometry after migration.
+Version 33 binds those facts to actual ranged attacks. Each declared weapon copy
+records its surviving bearer identity; Firing Deck attacks use the Transport's
+live models as observers. A direct target is legal only when every required
+observer has a proven clear ray or the player records an explicit tabletop
+review. Indirect Fire remains limited to a non-visible target and a weapon that
+has the ability. Each live target model receives its own ordered allocation
+entry and its own proof-backed Benefit of Cover value; unresolved cover uses the
+editable profile only with a recorded review. Replay recomputes and checks the
+observer, bearer, target-model, visibility, full-visibility, and cover bindings,
+while C/WebAssembly independently validates their partition and resolution
+flags. Later casualties retain the declared model order and cover state without
+resurrecting destroyed models. Version-32 games migrate behind an explicit
+boundary without fabricated decisions.
 Version-25
 games migrate without invented terrain footprints, version-26 games migrate
 without invented deployment positions, and version-27 games migrate without
@@ -1382,16 +1395,15 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 
 ## Prioritized correctness backlog
 
-1. Bind proven v32 visibility and model-level cover facts into ranged-target
-   eligibility and attack allocation while preserving an explicit reviewed
-   override whenever the proof is unknown.
-2. Replace conservative silhouette boxes with reviewed convex or mesh geometry
+1. Replace conservative silhouette boxes with reviewed convex or mesh geometry
    where needed to prove partial occlusion and full visibility without false
    certainty.
-3. Derive movement and placement terrain clearance from the shared 3D geometry,
+2. Derive movement and placement terrain clearance from the shared 3D geometry,
    including climb, overhang, and irregular-surface cases.
-4. Make objective control executable from current model geometry and OC, then
+3. Make objective control executable from current model geometry and OC, then
    connect it to source-backed mission scoring without inventing mission text.
+4. Add a reviewed visibility-inspection view that highlights the exact bearer,
+   target model, ray, and terrain feature behind every proof or fallback.
 
 ## Current boundaries
 
@@ -1406,7 +1418,7 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
   loses ordinary excess damage, and caps results at the target unit's wounds.
 - Applied-damage means are derived from the Q31 probability distribution;
   uncapped expected damage remains an exact reduced fraction.
-- Ordered volleys support up to 32 weapon profiles and 16 consecutive target
+- Ordered volleys support up to 32 weapon profiles and 64 consecutive target
   profile segments. The caller chooses both orders, and existing wounds,
   casualties, defensive characteristics, and lost overkill carry through the
   sequence.

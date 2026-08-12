@@ -27,6 +27,8 @@ import {
   battleFormation,
   battleFormationIsOnBattlefield,
   battleUnusedWeaponCount,
+  battleRangedGeometryDecision,
+  buildModelLevelTargetSequence,
   battleFormationHealth,
   battleFormationWasTargeted,
   hazardousBearerOptions,
@@ -2634,23 +2636,25 @@ export default function PlayMode() {
       const target = replayed.formations.get(declaration.targetFormationId);
       if (!target) throw new Error("The declared target is unavailable");
       const snapshot = declaration.attackSnapshot;
+      const liveModelIds = new Set(
+        target.segments.flatMap((segment: { id: string; modelIds: string[] }) =>
+          segment.modelIds.slice(0, target.health[segment.id].modelsRemaining),
+        ),
+      );
       const surviving = snapshot.segmentIds
         .map((segmentId: string, index: number) => ({
           segmentId,
+          targetModelId: snapshot.targetModelIds?.[index] ?? "",
           target: snapshot.targets[index],
           health: target.health[segmentId],
           index,
         }))
-        .filter((entry: { health?: { modelsRemaining: number } }) =>
-          Boolean(entry.health && entry.health.modelsRemaining > 0),
-        )
-        .sort(
-          (
-            first: { health: { woundsLost: number }; index: number },
-            second: { health: { woundsLost: number }; index: number },
-          ) =>
-            Number(second.health.woundsLost > 0) - Number(first.health.woundsLost > 0) ||
-            first.index - second.index,
+        .filter((entry: { health?: { modelsRemaining: number }; targetModelId: string }) =>
+          Boolean(
+            entry.health &&
+              entry.health.modelsRemaining > 0 &&
+              (!snapshot.targetModelIds || liveModelIds.has(entry.targetModelId)),
+          ),
         );
       if (surviving.length < 1) {
         throw new Error("The declared target has already been destroyed");
@@ -2659,7 +2663,7 @@ export default function PlayMode() {
       const currentTargets = surviving.map(
         (entry: { target: Record<string, unknown>; health: { modelsRemaining: number } }) => ({
           ...entry.target,
-          modelCount: entry.health.modelsRemaining,
+          modelCount: snapshot.targetModelIds ? 1 : entry.health.modelsRemaining,
         }),
       ) as Parameters<typeof simulateOrderedVolley>[1];
       const initialWoundsLost = surviving[0].health.woundsLost;
@@ -2906,6 +2910,30 @@ export default function PlayMode() {
           weaponGroupId,
         );
         const declarationId = crypto.randomUUID();
+        const geometryDecision = battleRangedGeometryDecision(nextBattleState, {
+          attackerFormationId: `${attackerPlayerId}:${attackerFormation.id}`,
+          targetFormationId: targetBattleFormationId,
+          weaponSourceFormationId,
+          sourceSavedUnitId,
+          weaponGroupId,
+          eligibleWeaponCount,
+          declaredWeaponCount,
+          requestedVisible: targetVisible,
+          requestedFullyVisible: targetFullyVisible,
+          indirectFire: !targetVisible && profile.indirect,
+          weaponHasIndirect,
+          reviewedByPlayer: targetEligibilityReviewed,
+          visibilityOverrideReason: targetMeasurementReason.trim(),
+          fullVisibilityOverrideReason: targetMeasurementReason.trim(),
+          coverOverrideReason: targetMeasurementReason.trim(),
+          fallbackTargetCover: profile.targetCover,
+        });
+        const modelTargetSequence = buildModelLevelTargetSequence(
+          replayedBeforeAttack.formations.get(targetBattleFormationId),
+          targetFormationModels.orderedSegments.map((segment) => segment.id),
+          orderedTargets,
+          geometryDecision.cover,
+        );
         nextBattleState = recordRangedTargetEligibility(
           nextBattleState,
           {
@@ -2927,8 +2955,9 @@ export default function PlayMode() {
             declaredWeaponCount,
             attackSnapshot: {
               attackProfiles,
-              targets: orderedTargets,
-              segmentIds: targetFormationModels.orderedSegments.map((segment) => segment.id),
+              targets: modelTargetSequence.targets,
+              segmentIds: modelTargetSequence.segmentIds,
+              targetModelIds: modelTargetSequence.targetModelIds,
               initialWoundsLost: targetFormationModels.initialWoundsLost,
               weaponHasAssault,
               summary: {
@@ -2941,6 +2970,10 @@ export default function PlayMode() {
             reviewedByPlayer: targetEligibilityReviewed,
             reviewReason: targetMeasurementReason.trim(),
             rangeOverrideReason: rangeOverrideReason.trim(),
+            visibilityOverrideReason: targetMeasurementReason.trim(),
+            fullVisibilityOverrideReason: targetMeasurementReason.trim(),
+            coverOverrideReason: targetMeasurementReason.trim(),
+            fallbackTargetCover: profile.targetCover,
           },
           declarationId,
           nextBattleState.events.length + 1,
@@ -2997,6 +3030,10 @@ export default function PlayMode() {
               reviewedByPlayer: targetEligibilityReviewed,
               reviewReason: targetMeasurementReason.trim(),
               rangeOverrideReason: rangeOverrideReason.trim(),
+              visibilityOverrideReason: targetMeasurementReason.trim(),
+              fullVisibilityOverrideReason: targetMeasurementReason.trim(),
+              coverOverrideReason: targetMeasurementReason.trim(),
+              fallbackTargetCover: profile.targetCover,
             },
             targetEligibilityEventId,
             nextBattleState.events.length + 1,
@@ -3023,6 +3060,27 @@ export default function PlayMode() {
           throw new Error("The ranged target reaction window did not produce a ready attack");
         }
       }
+      const resolvedTargetSequence =
+        weaponProfile.type === "Ranged"
+          ? (() => {
+              const eligibility =
+                replayBattleState(nextBattleState).targetEligibilityFacts.get(
+                  targetEligibilityEventId,
+                );
+              if (!eligibility?.geometryDecision) {
+                throw new Error("Ranged target geometry decision is unavailable");
+              }
+              return buildModelLevelTargetSequence(
+                replayBattleState(nextBattleState).formations.get(targetBattleFormationId),
+                targetFormationModels.orderedSegments.map((segment) => segment.id),
+                orderedTargets,
+                eligibility.geometryDecision.cover,
+              );
+            })()
+          : {
+              segmentIds: targetFormationModels.orderedSegments.map((segment) => segment.id),
+              targets: orderedTargets,
+            };
       const goToGroundEffect = replayedBeforeAttack.activeGoToGroundEffects.find(
         (effect: { targetFormationId: string }) =>
           effect.targetFormationId === targetBattleFormationId,
@@ -3038,7 +3096,7 @@ export default function PlayMode() {
       const { attackProfiles: resolvedAttackProfiles, targets: resolvedTargets } =
         applyGoToGroundAttackEffects(
           smokescreenAttackProfiles,
-          orderedTargets,
+          resolvedTargetSequence.targets,
           Boolean(goToGroundEffect),
         );
       rolled = simulateOrderedVolley(
@@ -3052,7 +3110,7 @@ export default function PlayMode() {
         at: nextBattleState.events.length + 1,
         attackerFormationId: `${attackerPlayerId}:${attackerFormation.id}`,
         targetFormationId: targetBattleFormationId,
-        segmentIds: targetFormationModels.orderedSegments.map((segment) => segment.id),
+        segmentIds: resolvedTargetSequence.segmentIds,
         targets: resolvedTargets,
         initialWoundsLost: targetFormationModels.initialWoundsLost,
         result: rolled,
@@ -6912,6 +6970,11 @@ export default function PlayMode() {
                         id: string;
                         declaredWeaponCount: number;
                         attackSnapshot: { summary: { weapon: string; target: string } };
+                        geometryDecision?: {
+                          visibilityResolution: string;
+                          observerModelIds: string[];
+                          cover: Array<{ resolution: string }>;
+                        };
                       },
                       index: number,
                     ) => (
@@ -6921,6 +6984,24 @@ export default function PlayMode() {
                           {declaration.declaredWeaponCount} into{" "}
                           {declaration.attackSnapshot.summary.target}
                         </span>
+                        {declaration.geometryDecision && (
+                          <small>
+                            Visibility:{" "}
+                            {declaration.geometryDecision.visibilityResolution.replaceAll("_", " ")}{" "}
+                            for {declaration.geometryDecision.observerModelIds.length} observer
+                            {declaration.geometryDecision.observerModelIds.length === 1
+                              ? ""
+                              : "s"}{" "}
+                            ·{" "}
+                            {
+                              declaration.geometryDecision.cover.filter(
+                                (entry) => entry.resolution === "geometry_proof",
+                              ).length
+                            }
+                            /{declaration.geometryDecision.cover.length} model cover decisions
+                            proven
+                          </small>
+                        )}
                         {readyRangedAttacks.length === 0 && (
                           <button
                             type="button"

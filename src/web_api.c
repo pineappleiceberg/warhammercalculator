@@ -282,6 +282,7 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
         target_input->allocated_attack_damage_replacement > UINT16_MAX ||
         target_input->allocated_attack_damage_replacement_uses > UINT16_MAX ||
         target_input->allocated_attack_damage_replacement_skip > UINT16_MAX ||
+        target_input->benefit_of_cover > 1u ||
         target_models == 0u ||
         ((input->rule_flags & WHC_RULE_INDIRECT_NOT_VISIBLE) != 0u &&
          (input->rule_flags & WHC_RULE_TORRENT) != 0u)) {
@@ -433,7 +434,8 @@ static bool whc_build_volley_profiles(const struct whc_web_weapon_input *input,
     target->allocated_attack_damage_replacement_skip =
         (uint16_t)target_input->allocated_attack_damage_replacement_skip;
 
-    target_has_cover = (input->rule_flags & WHC_RULE_TARGET_COVER) != 0u ||
+    target_has_cover = target_input->benefit_of_cover != 0u ||
+                       (input->rule_flags & WHC_RULE_TARGET_COVER) != 0u ||
                        (input->rule_flags & WHC_RULE_INDIRECT_NOT_VISIBLE) != 0u;
     if ((input->rule_flags & WHC_RULE_IGNORES_COVER) != 0u) {
         target_has_cover = false;

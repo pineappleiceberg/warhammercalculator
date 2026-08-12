@@ -2,6 +2,7 @@ import {
   ACTION_BATTLE_STATE_VERSION,
   BATTLE_EVENT_VERSION,
   BATTLE_STATE_VERSION,
+  RANGED_GEOMETRY_BATTLE_STATE_VERSION,
   TERRAIN_VISIBILITY_BATTLE_STATE_VERSION,
   EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION,
   SPATIAL_FACTS_BATTLE_STATE_VERSION,
@@ -682,6 +683,10 @@ export function initializeBattleForLists({
             sourceVersion < TERRAIN_VISIBILITY_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyTerrainVisibilityThroughSequence ?? 0),
+          legacyRangedGeometryThroughSequence:
+            sourceVersion < RANGED_GEOMETRY_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyRangedGeometryThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

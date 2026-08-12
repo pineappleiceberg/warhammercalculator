@@ -144,6 +144,18 @@ int main(void) {
     assert(whc_ranged_target_eligibility_is_valid(
         48000u, 48000u, 32000u, 1u, 1u,
         WHC_TARGET_INDIRECT_FIRE | WHC_TARGET_WEAPON_HAS_INDIRECT | WHC_TARGET_REVIEWED_BY_PLAYER));
+    assert(whc_ranged_geometry_resolution_is_valid(
+        2u, 2u, 3u, 3u, 0u,
+        WHC_RANGED_GEOMETRY_DIRECT_VISIBLE | WHC_RANGED_GEOMETRY_VISIBILITY_PROOF |
+            WHC_RANGED_GEOMETRY_REVIEWED_BY_PLAYER));
+    assert(whc_ranged_geometry_resolution_is_valid(
+        2u, 0u, 3u, 2u, 1u,
+        WHC_RANGED_GEOMETRY_INDIRECT_FIRE | WHC_RANGED_GEOMETRY_WEAPON_HAS_INDIRECT |
+            WHC_RANGED_GEOMETRY_REVIEWED_BY_PLAYER));
+    assert(!whc_ranged_geometry_resolution_is_valid(
+        2u, 1u, 3u, 3u, 0u,
+        WHC_RANGED_GEOMETRY_DIRECT_VISIBLE | WHC_RANGED_GEOMETRY_VISIBILITY_PROOF |
+            WHC_RANGED_GEOMETRY_REVIEWED_BY_PLAYER));
     assert(whc_weapon_inventory_declaration_is_valid(
         2u, 1u, 1u, 1u, WHC_WEAPON_ASSAULT | WHC_WEAPON_INDIRECT, WHC_WEAPON_INDIRECT));
     assert(!whc_weapon_inventory_declaration_is_valid(2u, 1u, 2u, 1u, WHC_WEAPON_ASSAULT,

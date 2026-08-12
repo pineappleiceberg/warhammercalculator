@@ -30,6 +30,7 @@ export type OrderedTargetSegment = {
   allocatedAttackDamageReplacementUses: number;
   allocatedAttackDamageReplacementSkip: number;
   modelCount: number;
+  benefitOfCover?: boolean;
 };
 
 export type OrderedVolleySummary = {
@@ -168,6 +169,7 @@ function targetValues(target: OrderedTargetSegment) {
     target.allocatedAttackDamageReplacement,
     target.allocatedAttackDamageReplacementUses,
     target.allocatedAttackDamageReplacementSkip,
+    target.benefitOfCover ? 1 : 0,
   ];
 }
 
@@ -302,7 +304,7 @@ export async function calculateOrderedVolley(
 
   const calculator = await loadCalculator();
   const weaponFields = 37;
-  const targetFields = 13;
+  const targetFields = 14;
   const weaponsPointer = calculator._malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
   const summaryPointer = calculator._malloc(10 * 4);
@@ -370,7 +372,7 @@ export async function estimateOrderedVolleyComplexity(
   }
   const calculator = await loadCalculator();
   const weaponFields = 37;
-  const targetFields = 13;
+  const targetFields = 14;
   const weaponsPointer = calculator._malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
   const outputPointer = calculator._malloc(6 * 4);

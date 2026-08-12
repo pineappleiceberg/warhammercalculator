@@ -166,6 +166,7 @@ export type VolleyTarget = {
   allocatedAttackDamageReplacementUses: number;
   allocatedAttackDamageReplacementSkip: number;
   modelCount: number;
+  benefitOfCover?: boolean;
 };
 
 export type OrderedVolleyRollResult = {
@@ -1121,7 +1122,7 @@ export function simulateOrderedVolley(
         target.save,
         target.invulnerable,
         profile.ap,
-        (profile.targetCover || profile.indirect) && !profile.ignoresCover,
+        (target.benefitOfCover || profile.targetCover || profile.indirect) && !profile.ignoresCover,
       );
       line.woundsOn = woundsOn;
       line.savesOn = savesOn;
