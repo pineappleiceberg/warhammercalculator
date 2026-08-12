@@ -36,7 +36,8 @@ import {
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 42;
+export const BATTLE_STATE_VERSION = 43;
+export const REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION = 43;
 export const OATH_OF_MOMENT_BATTLE_STATE_VERSION = 42;
 export const DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION = 41;
 export const FACTION_RULE_STATE_BATTLE_STATE_VERSION = 40;
@@ -3080,6 +3081,15 @@ function normalizeFormation(candidate, stateVersion) {
     ...(stateVersion >= OATH_OF_MOMENT_BATTLE_STATE_VERSION
       ? { hasOathOfMomentAbility: Boolean(formation.hasOathOfMomentAbility) }
       : {}),
+    ...(stateVersion >= REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION
+      ? {
+          reanimationProtocolSavedUnitIds: normalizeStringArray(
+            formation.reanimationProtocolSavedUnitIds ?? [],
+            "Reanimation Protocols saved unit ids",
+            100,
+          ),
+        }
+      : {}),
     segments,
   };
   if (
@@ -3503,6 +3513,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     throw new Error("Executable Oath of Moment state requires battle-state version 42");
   }
   if (
+    stateVersion < REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION &&
+    ["reanimation_protocols_activated", "reanimation_wound_resolved"].includes(event.type)
+  ) {
+    throw new Error("Executable Reanimation Protocols require battle-state version 43");
+  }
+  if (
     stateVersion < MISSION_TRACKING_BATTLE_STATE_VERSION &&
     [
       "secondary_plan_configured",
@@ -3594,6 +3610,8 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
       previous.assignedTransportFormationId !== formation.assignedTransportFormationId ||
       previous.hasWaaaghAbility !== formation.hasWaaaghAbility ||
       previous.hasOathOfMomentAbility !== formation.hasOathOfMomentAbility ||
+      JSON.stringify(previous.reanimationProtocolSavedUnitIds) !==
+        JSON.stringify(formation.reanimationProtocolSavedUnitIds) ||
       JSON.stringify(previous.deploymentTraits) !== JSON.stringify(formation.deploymentTraits) ||
       JSON.stringify(previous.transportOptions) !== JSON.stringify(formation.transportOptions) ||
       JSON.stringify(weaponInventoryProfileIdentity(previous.weaponInventory)) !==
@@ -3851,6 +3869,61 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
       "Oath of Moment source ability id",
       30,
     );
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "reanimation_protocols_activated") {
+    normalized.playerId = boundedString(event.playerId, "Reanimation Protocols player id", 100);
+    if (!formations.players.has(normalized.playerId)) {
+      throw new Error("Reanimation Protocols player is unknown");
+    }
+    normalized.formationId = boundedString(
+      event.formationId,
+      "Reanimation Protocols formation id",
+      100,
+    );
+    if (!formations.byId.has(normalized.formationId)) {
+      throw new Error("Reanimation Protocols formation is unknown");
+    }
+    normalized.unitKey = boundedString(event.unitKey, "Reanimation Protocols unit key", 200);
+    normalized.roll = nonnegativeInteger(event.roll, "Reanimation Protocols roll", 3);
+    if (normalized.roll < 1) throw new Error("Reanimation Protocols roll must be from 1 to 3");
+    normalized.sourceFactionId = boundedString(
+      event.sourceFactionId,
+      "Reanimation Protocols source faction id",
+      30,
+    );
+    normalized.sourceAbilityId = boundedString(
+      event.sourceAbilityId,
+      "Reanimation Protocols source ability id",
+      30,
+    );
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "reanimation_wound_resolved") {
+    normalized.activationEventId = boundedString(
+      event.activationEventId,
+      "Reanimation Protocols activation event id",
+      100,
+    );
+    normalized.formationId = boundedString(
+      event.formationId,
+      "Reanimation Protocols formation id",
+      100,
+    );
+    const formation = formations.byId.get(normalized.formationId);
+    if (!formation) throw new Error("Reanimation Protocols formation is unknown");
+    normalized.unitKey = boundedString(event.unitKey, "Reanimation Protocols unit key", 200);
+    normalized.segmentId = boundedString(event.segmentId, "Reanimated segment id", 200);
+    const segment = formation.segments.find((candidate) => candidate.id === normalized.segmentId);
+    if (!segment) throw new Error("Reanimation Protocols segment is unknown");
+    normalized.action = boundedString(event.action, "Reanimation Protocols action", 20);
+    if (!["heal", "return"].includes(normalized.action)) {
+      throw new Error("Reanimation Protocols action must heal or return a model");
+    }
+    normalized.before = normalizeHealth(event.before, segment, "Reanimation before");
+    normalized.after = normalizeHealth(event.after, segment, "Reanimation after");
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
@@ -5343,6 +5416,7 @@ export function normalizeBattleState(candidate) {
       FACTION_RULE_STATE_BATTLE_STATE_VERSION,
       DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION,
       OATH_OF_MOMENT_BATTLE_STATE_VERSION,
+      REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
     throw new Error(`Unsupported battle state version: ${String(state.version)}`);
@@ -5416,6 +5490,7 @@ export function normalizeBattleState(candidate) {
         SIMPLE_TERRAIN_BATTLE_STATE_VERSION,
         FACTION_RULE_STATE_BATTLE_STATE_VERSION,
         DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION,
+        OATH_OF_MOMENT_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -5675,6 +5750,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyReanimationProtocolsThroughSequence = nonnegativeInteger(
+        migration.legacyReanimationProtocolsThroughSequence,
+        "Legacy Reanimation Protocols event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -5730,6 +5812,92 @@ function initialHealth(formation) {
       { modelsRemaining: segment.startingModels, woundsLost: 0 },
     ]),
   );
+}
+
+function reanimationProtocolGroups(formation) {
+  const enabledSavedUnitIds = new Set(formation.reanimationProtocolSavedUnitIds ?? []);
+  const enabledSegments = formation.segments.filter((segment) =>
+    enabledSavedUnitIds.has(segment.savedUnitId),
+  );
+  if (enabledSegments.length === 0) return [];
+  const bodyguardSegments = enabledSegments.filter((segment) =>
+    ["bodyguard", "joined"].includes(segment.role),
+  );
+  if (bodyguardSegments.length > 0) {
+    const bodyguardAlive = bodyguardSegments.some(
+      (segment) => formation.health[segment.id].modelsRemaining > 0,
+    );
+    if (bodyguardAlive) {
+      const liveLeaderSegments = enabledSegments.filter(
+        (segment) => segment.role === "leader" && formation.health[segment.id].modelsRemaining > 0,
+      );
+      return [
+        {
+          unitKey: `${formation.id}:bodyguard`,
+          name: formation.name,
+          segmentIds: [...bodyguardSegments, ...liveLeaderSegments].map((segment) => segment.id),
+          returnableSegmentIds: bodyguardSegments.map((segment) => segment.id),
+        },
+      ];
+    }
+    const leaderSavedUnitIds = [
+      ...new Set(
+        enabledSegments
+          .filter(
+            (segment) =>
+              segment.role === "leader" && formation.health[segment.id].modelsRemaining > 0,
+          )
+          .map((segment) => segment.savedUnitId),
+      ),
+    ];
+    return leaderSavedUnitIds.map((savedUnitId) => {
+      const segments = enabledSegments.filter(
+        (segment) => segment.role === "leader" && segment.savedUnitId === savedUnitId,
+      );
+      return {
+        unitKey: `${formation.id}:leader:${savedUnitId}`,
+        name: segments[0]?.unitName ?? formation.name,
+        segmentIds: segments.map((segment) => segment.id),
+        returnableSegmentIds: segments.map((segment) => segment.id),
+      };
+    });
+  }
+  if (!enabledSegments.some((segment) => formation.health[segment.id].modelsRemaining > 0)) {
+    return [];
+  }
+  return [
+    {
+      unitKey: `${formation.id}:standalone`,
+      name: formation.name,
+      segmentIds: enabledSegments.map((segment) => segment.id),
+      returnableSegmentIds: enabledSegments.map((segment) => segment.id),
+    },
+  ];
+}
+
+function reanimationProtocolOptions(formation, group) {
+  const woundedSegmentIds = group.segmentIds.filter(
+    (segmentId) => formation.health[segmentId].woundsLost > 0,
+  );
+  if (woundedSegmentIds.length > 0) {
+    return woundedSegmentIds.map((segmentId) => ({ segmentId, action: "heal" }));
+  }
+  return group.returnableSegmentIds
+    .filter((segmentId) => {
+      const segment = formation.segments.find((candidate) => candidate.id === segmentId);
+      return formation.health[segmentId].modelsRemaining < segment.startingModels;
+    })
+    .map((segmentId) => ({ segmentId, action: "return" }));
+}
+
+function reanimationProtocolHealthAfter(segment, before, action) {
+  if (action === "heal") {
+    return { modelsRemaining: before.modelsRemaining, woundsLost: before.woundsLost - 1 };
+  }
+  return {
+    modelsRemaining: before.modelsRemaining + 1,
+    woundsLost: segment.wounds - 1,
+  };
 }
 
 function formationSourceModelsRemaining(formation, sourceSavedUnitId) {
@@ -6802,6 +6970,10 @@ export function replayBattleState(state) {
   const oathOfMomentSelections = [];
   const oathOfMomentSelectionsByPlayer = new Map();
   const oathOfMomentSelectionKeys = new Set();
+  const reanimationProtocolActivations = [];
+  const reanimationProtocolResolutions = [];
+  const reanimationProtocolActivationKeys = new Set();
+  let pendingReanimationProtocols = null;
   let tableGeometry = null;
   let terrainFootprints = null;
   let terrainVisibility = null;
@@ -6913,6 +7085,10 @@ export function replayBattleState(state) {
     state.version < OATH_OF_MOMENT_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyMandatoryArmyRulesThroughSequence ?? 0);
+  const legacyReanimationProtocolsThroughSequence =
+    state.version < REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyReanimationProtocolsThroughSequence ?? 0);
   const legacyTerrainVisibilityThroughSequence =
     state.version < TERRAIN_VISIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -6949,6 +7125,36 @@ export function replayBattleState(state) {
       faction?.sourceId === "SM" && faction.ruleIds?.includes("faction.oath-of-moment"),
     );
   };
+  const playerUsesReanimationProtocols = (playerId) => {
+    const faction = ruleCoverage?.plan?.players?.find(
+      (player) => player.playerId === playerId,
+    )?.faction;
+    return Boolean(
+      faction?.sourceId === "NEC" && faction.ruleIds?.includes("faction.reanimation-protocols"),
+    );
+  };
+  const reanimationActivationKey = (formationId, unitKey) =>
+    `${battleTurnKey(clock)}:${formationId}:${unitKey}`;
+  const currentReanimationProtocolUnits = (playerId) =>
+    [...formations.values()].flatMap((formation) => {
+      if (
+        formation.playerId !== playerId ||
+        !formationIsOnBattlefield(
+          formation.id,
+          deploymentByFormation,
+          deployedFormationIds,
+          embarkedByFormation,
+        ) ||
+        formationDestroyed(formation)
+      ) {
+        return [];
+      }
+      return reanimationProtocolGroups(formation).map((group) => ({
+        formationId: formation.id,
+        playerId,
+        ...group,
+      }));
+    });
   const grimResolveEligibleFormation = (formation, playerId) =>
     Boolean(
       formation &&
@@ -8281,12 +8487,100 @@ export function replayBattleState(state) {
       oathOfMomentSelectionsByPlayer.set(event.playerId, event);
       continue;
     }
+    if (event.type === "reanimation_protocols_activated") {
+      if (
+        pendingReanimationProtocols ||
+        clock.status !== "active" ||
+        clock.phase !== "command" ||
+        clock.step !== "end" ||
+        clock.activePlayerId !== event.playerId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Reanimation Protocols activate at the end of your Command phase");
+      }
+      if (
+        !playerUsesReanimationProtocols(event.playerId) ||
+        event.sourceFactionId !== "NEC" ||
+        event.sourceAbilityId !== "000008369"
+      ) {
+        throw new Error("Reanimation Protocols require the source-locked Necrons faction rule");
+      }
+      const formation = formations.get(event.formationId);
+      const group = reanimationProtocolGroups(formation).find(
+        (candidate) => candidate.unitKey === event.unitKey,
+      );
+      if (!group || formation.playerId !== event.playerId) {
+        throw new Error("Reanimation Protocols must activate for a surviving on-table unit");
+      }
+      const key = reanimationActivationKey(event.formationId, event.unitKey);
+      if (reanimationProtocolActivationKeys.has(key)) {
+        throw new Error("A unit's Reanimation Protocols activate once at this Command phase end");
+      }
+      reanimationProtocolActivationKeys.add(key);
+      reanimationProtocolActivations.push(event);
+      pendingReanimationProtocols = {
+        activationEventId: event.id,
+        formationId: event.formationId,
+        playerId: event.playerId,
+        unitKey: event.unitKey,
+        roll: event.roll,
+        remaining: event.roll,
+        resolved: 0,
+        group,
+        options: reanimationProtocolOptions(formation, group),
+      };
+      if (pendingReanimationProtocols.options.length === 0) {
+        pendingReanimationProtocols = null;
+      }
+      continue;
+    }
+    if (event.type === "reanimation_wound_resolved") {
+      const pending = pendingReanimationProtocols;
+      if (
+        !pending ||
+        pending.remaining < 1 ||
+        event.activationEventId !== pending.activationEventId ||
+        event.formationId !== pending.formationId ||
+        event.unitKey !== pending.unitKey ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Reanimated wound does not match the pending activation");
+      }
+      const formation = formations.get(event.formationId);
+      const option = pending.options.find(
+        (candidate) => candidate.segmentId === event.segmentId && candidate.action === event.action,
+      );
+      const segment = formation.segments.find((candidate) => candidate.id === event.segmentId);
+      if (
+        !option ||
+        !sameHealth(formation.health[event.segmentId], event.before) ||
+        !sameHealth(
+          reanimationProtocolHealthAfter(segment, event.before, event.action),
+          event.after,
+        )
+      ) {
+        throw new Error("Reanimation Protocols resolution is not canonical");
+      }
+      formation.health[event.segmentId] = { ...event.after };
+      reanimationProtocolResolutions.push(event);
+      refreshGeometryStaleness(event.formationId);
+      const remaining = pending.remaining - 1;
+      const options = reanimationProtocolOptions(formation, pending.group);
+      pendingReanimationProtocols =
+        remaining > 0 && options.length > 0
+          ? { ...pending, remaining, resolved: pending.resolved + 1, options }
+          : null;
+      continue;
+    }
     if (event.type === "clock_advanced") {
       if (pendingChoices.size > 0) {
         throw new Error("Pending choices must be resolved before advancing the battle");
       }
       if (activeActivation) {
         throw new Error("The active formation must finish its activation before advancing");
+      }
+      if (pendingReanimationProtocols) {
+        throw new Error("Resolve the pending Reanimation Protocols wounds before continuing");
       }
       if (!sameBattleClock(event.from, clock)) {
         throw new Error("Battle clock advance does not match replayed state");
@@ -8303,6 +8597,22 @@ export function replayBattleState(state) {
         !oathOfMomentSelectionKeys.has(battleTurnKey(clock))
       ) {
         throw new Error("Select one enemy unit for Oath of Moment before continuing");
+      }
+      if (
+        event.sequence > legacyReanimationProtocolsThroughSequence &&
+        clock.phase === "command" &&
+        clock.step === "end" &&
+        playerUsesReanimationProtocols(clock.activePlayerId)
+      ) {
+        const unresolved = currentReanimationProtocolUnits(clock.activePlayerId).find(
+          (unit) =>
+            !reanimationProtocolActivationKeys.has(
+              reanimationActivationKey(unit.formationId, unit.unitKey),
+            ),
+        );
+        if (unresolved) {
+          throw new Error("Activate Reanimation Protocols for every surviving on-table unit");
+        }
       }
       if (
         event.sequence > legacyMissionTrackingThroughSequence &&
@@ -11565,6 +11875,9 @@ export function replayBattleState(state) {
     grimResolveSelectionsByPlayer,
     oathOfMomentSelections,
     oathOfMomentSelectionsByPlayer,
+    reanimationProtocolActivations,
+    reanimationProtocolResolutions,
+    pendingReanimationProtocols,
     tableGeometry,
     terrainFootprints,
     terrainVisibility,
@@ -14078,6 +14391,173 @@ export function registerBattleFormation(state, formation, id, at) {
 
 export function battleFormationHealth(state, formationId) {
   return replayBattleState(state).formations.get(formationId)?.health ?? null;
+}
+
+export function battleReanimationProtocolsState(state, playerId, replayedBattle = null) {
+  const replayed = replayedBattle ?? replayBattleState(state);
+  const faction = replayed.ruleCoverage?.plan.players.find(
+    (player) => player.playerId === playerId,
+  )?.faction;
+  const sourceLocked = Boolean(
+    faction?.sourceId === "NEC" && faction.ruleIds.includes("faction.reanimation-protocols"),
+  );
+  const eligibleUnits = [...replayed.formations.values()].flatMap((formation) => {
+    if (
+      formation.playerId !== playerId ||
+      !formationIsOnBattlefield(
+        formation.id,
+        replayed.deploymentByFormation,
+        replayed.deployedFormationIds,
+        replayed.embarkedByFormation,
+      ) ||
+      formationDestroyed(formation)
+    ) {
+      return [];
+    }
+    return reanimationProtocolGroups(formation).map((group) => ({
+      formationId: formation.id,
+      playerId,
+      ...group,
+      damaged: group.segmentIds.some((segmentId) => {
+        const segment = formation.segments.find((candidate) => candidate.id === segmentId);
+        const health = formation.health[segmentId];
+        return health.woundsLost > 0 || health.modelsRemaining < segment.startingModels;
+      }),
+      activated: replayed.reanimationProtocolActivations.some(
+        (activation) =>
+          activation.playerId === playerId &&
+          activation.formationId === formation.id &&
+          activation.unitKey === group.unitKey &&
+          activation.clock.battleRound === replayed.clock.battleRound &&
+          activation.clock.turn === replayed.clock.turn &&
+          activation.clock.activePlayerId === replayed.clock.activePlayerId,
+      ),
+    }));
+  });
+  return {
+    sourceLocked,
+    available: Boolean(
+      sourceLocked &&
+        replayed.clock.status === "active" &&
+        replayed.clock.phase === "command" &&
+        replayed.clock.step === "end" &&
+        replayed.clock.activePlayerId === playerId,
+    ),
+    eligibleUnits,
+    pending: replayed.pendingReanimationProtocols,
+  };
+}
+
+export function activateReanimationProtocols(
+  state,
+  playerId,
+  formationId,
+  unitKey,
+  id,
+  at,
+  randomUint32 = secureRandomUint32,
+) {
+  const replayed = replayBattleState(state);
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "reanimation_protocols_activated",
+    playerId,
+    formationId,
+    unitKey,
+    roll: randomDie(3, randomUint32),
+    sourceFactionId: "NEC",
+    sourceAbilityId: "000008369",
+    clock: replayed.clock,
+  });
+}
+
+export function resolveReanimationWound(state, segmentId, action, id, at) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingReanimationProtocols;
+  if (!pending) throw new Error("There is no pending Reanimation Protocols wound");
+  const formation = replayed.formations.get(pending.formationId);
+  const segment = formation.segments.find((candidate) => candidate.id === segmentId);
+  const before = formation.health[segmentId];
+  if (!segment || !before) throw new Error("Reanimation Protocols segment is unknown");
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "reanimation_wound_resolved",
+    activationEventId: pending.activationEventId,
+    formationId: pending.formationId,
+    unitKey: pending.unitKey,
+    segmentId,
+    action,
+    before,
+    after: reanimationProtocolHealthAfter(segment, before, action),
+    clock: replayed.clock,
+  });
+}
+
+export function reanimationProtocolsTransitionIsValid(
+  sourceFaction,
+  formationHasAbility,
+  onBattlefield,
+  atCommandEnd,
+  activationRoll,
+  remaining,
+  action,
+  woundsPerModel,
+  startingModels,
+  beforeModels,
+  beforeWoundsLost,
+  afterModels,
+  afterWoundsLost,
+) {
+  if (
+    ![sourceFaction, formationHasAbility, onBattlefield, atCommandEnd].every(
+      (value) => value === 0 || value === 1,
+    ) ||
+    !Number.isSafeInteger(activationRoll) ||
+    activationRoll < 1 ||
+    activationRoll > 3 ||
+    !Number.isSafeInteger(remaining) ||
+    remaining < 1 ||
+    remaining > activationRoll ||
+    ![1, 2].includes(action) ||
+    ![
+      woundsPerModel,
+      startingModels,
+      beforeModels,
+      beforeWoundsLost,
+      afterModels,
+      afterWoundsLost,
+    ].every(Number.isSafeInteger) ||
+    woundsPerModel < 1 ||
+    startingModels < 1 ||
+    beforeModels < 1 ||
+    beforeModels > startingModels ||
+    beforeWoundsLost < 0 ||
+    beforeWoundsLost >= woundsPerModel ||
+    afterModels < 1 ||
+    afterModels > startingModels ||
+    afterWoundsLost < 0 ||
+    afterWoundsLost >= woundsPerModel ||
+    sourceFaction !== 1 ||
+    formationHasAbility !== 1 ||
+    onBattlefield !== 1 ||
+    atCommandEnd !== 1
+  ) {
+    return false;
+  }
+  return action === 1
+    ? beforeWoundsLost > 0 &&
+        afterModels === beforeModels &&
+        afterWoundsLost + 1 === beforeWoundsLost
+    : beforeWoundsLost === 0 &&
+        beforeModels < startingModels &&
+        afterModels === beforeModels + 1 &&
+        afterWoundsLost === woundsPerModel - 1;
 }
 
 export function battleFormation(state, formationId) {

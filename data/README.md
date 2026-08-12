@@ -139,6 +139,14 @@ The main tables are:
   both benefits as one manual toggle. Battle-state version 42 source-locks the
   Command-phase target selection and feeds that selected target into the Hit
   re-roll state; the narrower +1 Wound eligibility remains separately editable
+- Necrons datasheets preserve their stable Reanimation Protocols faction-ability
+  identity in the browser catalogue. Battle-state version 43 uses that identity
+  to require one end-of-Command-phase activation for every eligible surviving
+  unit, resolve a secure D3 one wound at a time, heal wounded models before
+  returning destroyed models, and enforce the official FAQ boundary for a
+  surviving Leader whose Bodyguard unit has been destroyed. The structured
+  ability export and the official FAQ version, page, retrieval date, URL, and
+  SHA-256 digest are pinned in the battle-rule source manifest
 - direct objective-marker rules carry `requires_source_on_objective` or
   `requires_target_on_objective`. Seventeen baseline/upgrade abilities are split
   so their re-roll of 1 remains automatic while the full re-roll requires the

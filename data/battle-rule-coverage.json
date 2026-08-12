@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v42",
+  "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-v43",
   "edition": "Warhammer 40,000 10th Edition",
   "updatedAt": "2026-08-11",
   "sourceLocks": [
@@ -19,6 +19,10 @@
     {
       "id": "chapter-approved-tournament-companion-2025-26-v1.4",
       "sha256": "a71972b1b05e63c1089dd8fcc3e0b9e2c4025c0cbfdd4bc0222fb95e46ef48f8"
+    },
+    {
+      "id": "codex-necrons-faq-v1.2",
+      "sha256": "52d2b25f175e2a5ef760402a18683544e281be6a9e693ffe1389b9bb6eed7c6d"
     }
   ],
   "statuses": [
@@ -795,6 +799,30 @@
               "type": "faction",
               "id": "SM:ability:000008350"
             }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "faction.reanimation-protocols",
+      "category": "faction",
+      "name": "Reanimation Protocols",
+      "status": "executable",
+      "introducedBattleStateVersion": 43,
+      "sources": [
+        {
+          "id": "wahapedia-profile-export-2026-06-13",
+          "records": [
+            {
+              "type": "faction",
+              "id": "NEC:ability:000008369"
+            }
+          ]
+        },
+        {
+          "id": "codex-necrons-faq-v1.2",
+          "pages": [
+            2
           ]
         }
       ]

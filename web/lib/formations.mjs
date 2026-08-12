@@ -686,6 +686,9 @@ export function savedFormationBattleRegistration(
       (preset) => preset.requiresOathTarget === true,
     ),
   );
+  const reanimationProtocolSavedUnitIds = formation.components
+    .filter((component) => (component.catalogueUnit?.factionAbilityIds ?? []).includes("000008369"))
+    .map((component) => component.unit.id);
   return {
     id,
     playerId,
@@ -696,6 +699,7 @@ export function savedFormationBattleRegistration(
     keywords: formationKeywords,
     hasWaaaghAbility,
     hasOathOfMomentAbility,
+    reanimationProtocolSavedUnitIds,
     deploymentTraits: {
       dedicatedTransport: normalizedFormationKeywords.has("dedicated transport"),
       aircraft: normalizedFormationKeywords.has("aircraft"),

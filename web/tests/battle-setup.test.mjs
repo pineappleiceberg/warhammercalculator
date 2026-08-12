@@ -5,11 +5,13 @@ import test from "node:test";
 import {
   BATTLE_STATE_VERSION,
   TABLE_GEOMETRY_CONSTANTS,
+  activateReanimationProtocols,
   advanceBattleClock,
   appendResolvedAttack,
   arriveFromReserves,
   battleFormation,
   battleFormationHealth,
+  battleReanimationProtocolsState,
   changeBattleResource,
   configureBattleMission,
   configureBattleRuleCoverage,
@@ -34,6 +36,7 @@ import {
   replayBattleState,
   resolveHeroicIntervention,
   resolveRapidIngress,
+  resolveReanimationWound,
   completeFormationMovement,
   completeFormationActivation,
   closeRangedTargetDeclarations,
@@ -554,8 +557,35 @@ function enemyFightMoveOptions(stage) {
 function advanceTo(state, phase, step) {
   let next = state;
   for (let guard = 0; guard < 30; guard += 1) {
-    const clock = replayBattleState(next).clock;
+    let replayed = replayBattleState(next);
+    const clock = replayed.clock;
     if (clock.phase === phase && clock.step === step) return next;
+    const reanimation = battleReanimationProtocolsState(next, clock.activePlayerId, replayed);
+    for (const unit of (reanimation.available ? reanimation.eligibleUnits : []).filter(
+      (candidate) => !candidate.activated,
+    )) {
+      next = activateReanimationProtocols(
+        next,
+        unit.playerId,
+        unit.formationId,
+        unit.unitKey,
+        `advance-reanimation-${next.events.length + 1}`,
+        next.events.length + 1,
+        () => 0,
+      );
+      replayed = replayBattleState(next);
+      while (replayed.pendingReanimationProtocols) {
+        const option = replayed.pendingReanimationProtocols.options[0];
+        next = resolveReanimationWound(
+          next,
+          option.segmentId,
+          option.action,
+          `advance-reanimation-wound-${next.events.length + 1}`,
+          next.events.length + 1,
+        );
+        replayed = replayBattleState(next);
+      }
+    }
     next = advanceBattleClock(next, `advance-${next.events.length + 1}`, next.events.length + 1);
   }
   throw new Error(`Did not reach ${phase}/${step}`);
@@ -2881,6 +2911,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacyMissionTrackingThroughSequence: 3,
     legacyDetachmentRulesThroughSequence: 3,
     legacyMandatoryArmyRulesThroughSequence: 3,
+    legacyReanimationProtocolsThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -2931,6 +2962,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacyMissionTrackingThroughSequence: 3,
     legacyDetachmentRulesThroughSequence: 3,
     legacyMandatoryArmyRulesThroughSequence: 3,
+    legacyReanimationProtocolsThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -2986,6 +3018,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacyMissionTrackingThroughSequence: 2,
     legacyDetachmentRulesThroughSequence: 2,
     legacyMandatoryArmyRulesThroughSequence: 2,
+    legacyReanimationProtocolsThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -3034,6 +3067,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacyMissionTrackingThroughSequence: 2,
     legacyDetachmentRulesThroughSequence: 2,
     legacyMandatoryArmyRulesThroughSequence: 2,
+    legacyReanimationProtocolsThroughSequence: 2,
   });
 });
 
@@ -3081,6 +3115,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacyMissionTrackingThroughSequence: 2,
     legacyDetachmentRulesThroughSequence: 2,
     legacyMandatoryArmyRulesThroughSequence: 2,
+    legacyReanimationProtocolsThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -3134,6 +3169,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacyMissionTrackingThroughSequence: 2,
     legacyDetachmentRulesThroughSequence: 2,
     legacyMandatoryArmyRulesThroughSequence: 2,
+    legacyReanimationProtocolsThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -3182,6 +3218,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacyMissionTrackingThroughSequence: 2,
     legacyDetachmentRulesThroughSequence: 2,
     legacyMandatoryArmyRulesThroughSequence: 2,
+    legacyReanimationProtocolsThroughSequence: 2,
   });
 });
 
@@ -3229,6 +3266,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacyMissionTrackingThroughSequence: 2,
     legacyDetachmentRulesThroughSequence: 2,
     legacyMandatoryArmyRulesThroughSequence: 2,
+    legacyReanimationProtocolsThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -4373,6 +4411,43 @@ test("migrates version-41 battles without inventing Oath of Moment selections", 
   const replayed = replayBattleState(migrated);
   assert.equal(replayed.oathOfMomentSelections.length, 0);
   assert.equal(replayed.oathOfMomentSelectionsByPlayer.size, 0);
+});
+
+test("migrates version-42 battles without inventing Reanimation Protocols activations", () => {
+  const current = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    id: "version-42-reanimation-state",
+  });
+  const versionFortyTwo = normalizeBattleState({
+    ...current,
+    version: 42,
+  });
+  const migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: versionFortyTwo,
+    id: versionFortyTwo.id,
+  });
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 42);
+  assert.equal(
+    migrated.migration.legacyReanimationProtocolsThroughSequence,
+    Math.max(...versionFortyTwo.events.map((event) => event.sequence)),
+  );
+  const replayed = replayBattleState(migrated);
+  assert.equal(replayed.reanimationProtocolActivations.length, 0);
+  assert.equal(replayed.reanimationProtocolResolutions.length, 0);
 });
 
 test("marks exact geometry stale when casualties change live model identities and clears on undo", () => {

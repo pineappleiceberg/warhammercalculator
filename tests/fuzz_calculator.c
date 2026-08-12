@@ -366,11 +366,23 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     battle_events[9] = battle_profiles[1];
     battle_events[10] = battle_damage;
     battle_event_count = 1u;
-    if (next_byte(&input) % 2u != 0u) {
+    const uint8_t followup = next_byte(&input) % 3u;
+    if (followup == 1u) {
         const uint32_t revert = WHC_BATTLE_EVENT_FIELDS;
         battle_events[revert] = WHC_BATTLE_EVENT_VERSION;
         battle_events[revert + 1u] = WHC_BATTLE_EVENT_REVERT;
         battle_events[revert + 3u] = 0u;
+        battle_event_count = 2u;
+    } else if (followup == 2u && battle_damage > 0u) {
+        const uint32_t heal = WHC_BATTLE_EVENT_FIELDS;
+        battle_events[heal] = WHC_BATTLE_EVENT_VERSION;
+        battle_events[heal + 1u] = WHC_BATTLE_EVENT_REANIMATION_HEAL;
+        battle_events[heal + 2u] = 1u;
+        battle_events[heal + WHC_BATTLE_EVENT_HEADER_FIELDS] = 0u;
+        battle_events[heal + WHC_BATTLE_EVENT_HEADER_FIELDS + 1u] = battle_profiles[1];
+        battle_events[heal + WHC_BATTLE_EVENT_HEADER_FIELDS + 2u] = battle_damage;
+        battle_events[heal + WHC_BATTLE_EVENT_HEADER_FIELDS + 3u] = battle_profiles[1];
+        battle_events[heal + WHC_BATTLE_EVENT_HEADER_FIELDS + 4u] = battle_damage - 1u;
         battle_event_count = 2u;
     }
     if (next_byte(&input) % 4u == 0u) {

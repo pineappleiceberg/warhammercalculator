@@ -26,8 +26,7 @@ int main(void) {
     uint32_t battle_clock[WHC_BATTLE_CLOCK_FIELDS] = {0u};
     uint32_t next_battle_clock[WHC_BATTLE_CLOCK_FIELDS] = {0u};
     int32_t convex_silhouette[8] = {-1000, -1000, 1000, -1000, 1000, 1000, -1000, 1000};
-    int32_t concave_silhouette[10] = {-1000, -1000, 1000, -1000, 0, 0, 1000, 1000,
-                                      -1000, 1000};
+    int32_t concave_silhouette[10] = {-1000, -1000, 1000, -1000, 0, 0, 1000, 1000, -1000, 1000};
 
     /*@ loop invariant 2 <= save && save <= 8;
         loop assigns save;
@@ -147,22 +146,20 @@ int main(void) {
     assert(whc_ranged_target_eligibility_is_valid(
         48000u, 48000u, 32000u, 1u, 1u,
         WHC_TARGET_INDIRECT_FIRE | WHC_TARGET_WEAPON_HAS_INDIRECT | WHC_TARGET_REVIEWED_BY_PLAYER));
-    assert(whc_ranged_geometry_resolution_is_valid(
-        2u, 2u, 3u, 3u, 0u,
-        WHC_RANGED_GEOMETRY_DIRECT_VISIBLE | WHC_RANGED_GEOMETRY_VISIBILITY_PROOF |
-            WHC_RANGED_GEOMETRY_REVIEWED_BY_PLAYER));
-    assert(whc_ranged_geometry_resolution_is_valid(
-        2u, 0u, 3u, 2u, 1u,
-        WHC_RANGED_GEOMETRY_INDIRECT_FIRE | WHC_RANGED_GEOMETRY_WEAPON_HAS_INDIRECT |
-            WHC_RANGED_GEOMETRY_REVIEWED_BY_PLAYER));
-    assert(!whc_ranged_geometry_resolution_is_valid(
-        2u, 1u, 3u, 3u, 0u,
-        WHC_RANGED_GEOMETRY_DIRECT_VISIBLE | WHC_RANGED_GEOMETRY_VISIBILITY_PROOF |
-            WHC_RANGED_GEOMETRY_REVIEWED_BY_PLAYER));
-    assert(whc_convex_silhouette_is_valid(convex_silhouette, 4u,
-                                          WHC_CONVEX_SILHOUETTE_REVIEWED));
-    assert(!whc_convex_silhouette_is_valid(concave_silhouette, 5u,
-                                           WHC_CONVEX_SILHOUETTE_REVIEWED));
+    assert(whc_ranged_geometry_resolution_is_valid(2u, 2u, 3u, 3u, 0u,
+                                                   WHC_RANGED_GEOMETRY_DIRECT_VISIBLE |
+                                                       WHC_RANGED_GEOMETRY_VISIBILITY_PROOF |
+                                                       WHC_RANGED_GEOMETRY_REVIEWED_BY_PLAYER));
+    assert(whc_ranged_geometry_resolution_is_valid(2u, 0u, 3u, 2u, 1u,
+                                                   WHC_RANGED_GEOMETRY_INDIRECT_FIRE |
+                                                       WHC_RANGED_GEOMETRY_WEAPON_HAS_INDIRECT |
+                                                       WHC_RANGED_GEOMETRY_REVIEWED_BY_PLAYER));
+    assert(!whc_ranged_geometry_resolution_is_valid(2u, 1u, 3u, 3u, 0u,
+                                                    WHC_RANGED_GEOMETRY_DIRECT_VISIBLE |
+                                                        WHC_RANGED_GEOMETRY_VISIBILITY_PROOF |
+                                                        WHC_RANGED_GEOMETRY_REVIEWED_BY_PLAYER));
+    assert(whc_convex_silhouette_is_valid(convex_silhouette, 4u, WHC_CONVEX_SILHOUETTE_REVIEWED));
+    assert(!whc_convex_silhouette_is_valid(concave_silhouette, 5u, WHC_CONVEX_SILHOUETTE_REVIEWED));
     assert(!whc_convex_silhouette_is_valid(convex_silhouette, 4u, 0u));
     assert(whc_weapon_inventory_declaration_is_valid(
         2u, 1u, 1u, 1u, WHC_WEAPON_ASSAULT | WHC_WEAPON_INDIRECT, WHC_WEAPON_INDIRECT));
@@ -296,50 +293,49 @@ int main(void) {
                                              WHC_MODEL_PLACEMENT_FLAGS_MASK));
     assert(!whc_model_placement_set_is_valid(3u, 3u, 3u, 3u, 3u, 3u, 3u, 3u, UINT32_MAX, 4u,
                                              WHC_MODEL_PLACEMENT_FLAGS_MASK));
-    assert(whc_model_position_set_is_valid(3u, 3u, 3u, 3u, 3u, 3u, 3u, 3u, 2u, 1u, 2u,
-                                           2u, 3u, 3u, 3u, 3u, 3u, 3u, 3u,
-                                           WHC_MODEL_POSITION_FLAGS_MASK));
-    assert(!whc_model_position_set_is_valid(3u, 3u, 3u, 3u, 3u, 3u, 3u, 3u, 2u, 1u,
-                                            2u, 2u, 3u, 3u, 3u, 2u, 3u, 3u, 3u,
+    assert(whc_model_position_set_is_valid(3u, 3u, 3u, 3u, 3u, 3u, 3u, 3u, 2u, 1u, 2u, 2u, 3u, 3u,
+                                           3u, 3u, 3u, 3u, 3u, WHC_MODEL_POSITION_FLAGS_MASK));
+    assert(!whc_model_position_set_is_valid(3u, 3u, 3u, 3u, 3u, 3u, 3u, 3u, 2u, 1u, 2u, 2u, 3u, 3u,
+                                            3u, 2u, 3u, 3u, 3u, WHC_MODEL_POSITION_FLAGS_MASK));
+    assert(!whc_model_position_set_is_valid(3u, 3u, 3u, 3u, 3u, 3u, 3u, 3u, 2u, 1u, 2u, 2u, 3u, 3u,
+                                            3u, 3u, 3u, 3u, 2u, WHC_MODEL_POSITION_FLAGS_MASK));
+    assert(!whc_model_position_set_is_valid(3u, 3u, 3u, 3u, 3u, 3u, 3u, 3u, UINT32_MAX, 4u, 2u, 2u,
+                                            3u, 3u, 3u, 3u, 3u, 3u, 3u,
                                             WHC_MODEL_POSITION_FLAGS_MASK));
-    assert(!whc_model_position_set_is_valid(3u, 3u, 3u, 3u, 3u, 3u, 3u, 3u, 2u, 1u,
-                                            2u, 2u, 3u, 3u, 3u, 3u, 3u, 3u, 2u,
-                                            WHC_MODEL_POSITION_FLAGS_MASK));
-    assert(!whc_model_position_set_is_valid(3u, 3u, 3u, 3u, 3u, 3u, 3u, 3u,
-                                            UINT32_MAX, 4u, 2u, 2u, 3u, 3u, 3u, 3u, 3u,
-                                            3u, 3u, WHC_MODEL_POSITION_FLAGS_MASK));
-    assert(whc_spatial_facts_are_valid(3u, 3u, 1u, 3u, 2u, 5u, 1u,
-                                       WHC_SPATIAL_FACTS_FLAGS_MASK));
-    assert(whc_spatial_facts_are_valid(7u, 7u, 2u, 6u, 0u, 5u, 0u,
-                                       WHC_SPATIAL_FACTS_FLAGS_MASK));
-    assert(!whc_spatial_facts_are_valid(7u, 6u, 2u, 6u, 0u, 5u, 0u,
-                                        WHC_SPATIAL_FACTS_FLAGS_MASK));
-    assert(!whc_spatial_facts_are_valid(7u, 7u, 1u, 6u, 0u, 5u, 0u,
-                                        WHC_SPATIAL_FACTS_FLAGS_MASK));
+    assert(whc_spatial_facts_are_valid(3u, 3u, 1u, 3u, 2u, 5u, 1u, WHC_SPATIAL_FACTS_FLAGS_MASK));
+    assert(whc_spatial_facts_are_valid(7u, 7u, 2u, 6u, 0u, 5u, 0u, WHC_SPATIAL_FACTS_FLAGS_MASK));
+    assert(!whc_spatial_facts_are_valid(7u, 6u, 2u, 6u, 0u, 5u, 0u, WHC_SPATIAL_FACTS_FLAGS_MASK));
+    assert(!whc_spatial_facts_are_valid(7u, 7u, 1u, 6u, 0u, 5u, 0u, WHC_SPATIAL_FACTS_FLAGS_MASK));
     assert(whc_endpoint_clearance_facts_are_valid(3u, 3u, 5u, 5u, 0u, 0u,
-                                                   WHC_ENDPOINT_CLEARANCE_FLAGS_MASK));
+                                                  WHC_ENDPOINT_CLEARANCE_FLAGS_MASK));
     assert(whc_endpoint_clearance_facts_are_valid(3u, 2u, 5u, 5u, 1u, 10u, 2u));
     assert(!whc_endpoint_clearance_facts_are_valid(3u, 2u, 5u, 5u, 2u, 0u, 2u));
     assert(!whc_endpoint_clearance_facts_are_valid(3u, 3u, 5u, 5u, 0u, 0u, 2u));
     assert(whc_terrain_clearance_facts_are_valid(3u, 3u, 12u, 12u, 12u, 6u, 6u, 0u,
-                                                  WHC_TERRAIN_CLEARANCE_FLAGS_MASK));
+                                                 WHC_TERRAIN_CLEARANCE_FLAGS_MASK));
     assert(whc_terrain_clearance_facts_are_valid(3u, 2u, 12u, 10u, 11u, 6u, 4u, 2u, 0u));
     assert(!whc_terrain_clearance_facts_are_valid(3u, 3u, 12u, 12u, 12u, 6u, 5u, 0u,
-                                                   WHC_TERRAIN_CLEARANCE_FLAGS_MASK));
+                                                  WHC_TERRAIN_CLEARANCE_FLAGS_MASK));
     assert(whc_oath_of_moment_attack_state_is_valid(0u, 0u, 0u, 0u, 0u, 0u));
     assert(whc_oath_of_moment_attack_state_is_valid(1u, 1u, 1u, 1u, 1u, 1u));
     assert(whc_oath_of_moment_attack_state_is_valid(1u, 1u, 1u, 1u, 0u, 0u));
     assert(!whc_oath_of_moment_attack_state_is_valid(0u, 1u, 1u, 1u, 1u, 1u));
-    assert(whc_objective_control_facts_are_valid(
-        2u, 2u, 4u, 1u, 1u, 0u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
-    assert(whc_objective_control_facts_are_valid(
-        2u, 2u, 4u, 2u, 0u, 1u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
-    assert(whc_objective_control_facts_are_valid(
-        2u, 2u, 0u, 2u, 0u, 1u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
-    assert(!whc_objective_control_facts_are_valid(
-        2u, 2u, 0u, 0u, 0u, 0u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
-    assert(!whc_objective_control_facts_are_valid(
-        2u, 2u, 4u, 2u, 1u, 0u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
+    assert(whc_reanimation_protocols_transition_is_valid(1u, 1u, 1u, 1u, 3u, 3u, 1u, 3u, 3u, 2u, 1u,
+                                                         2u, 0u));
+    assert(whc_reanimation_protocols_transition_is_valid(1u, 1u, 1u, 1u, 3u, 2u, 2u, 3u, 3u, 2u, 0u,
+                                                         3u, 2u));
+    assert(!whc_reanimation_protocols_transition_is_valid(1u, 1u, 0u, 1u, 3u, 2u, 2u, 3u, 3u, 2u,
+                                                          0u, 3u, 2u));
+    assert(whc_objective_control_facts_are_valid(2u, 2u, 4u, 1u, 1u, 0u,
+                                                 WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
+    assert(whc_objective_control_facts_are_valid(2u, 2u, 4u, 2u, 0u, 1u,
+                                                 WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
+    assert(whc_objective_control_facts_are_valid(2u, 2u, 0u, 2u, 0u, 1u,
+                                                 WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
+    assert(!whc_objective_control_facts_are_valid(2u, 2u, 0u, 0u, 0u, 0u,
+                                                  WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
+    assert(!whc_objective_control_facts_are_valid(2u, 2u, 4u, 2u, 1u, 0u,
+                                                  WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
     assert(whc_visibility_facts_are_valid(6u, 6u, 2u, 3u, 1u, 2u, 3u, 1u, 1u, 1u,
                                           WHC_VISIBILITY_FACTS_FLAGS_MASK));
     assert(!whc_visibility_facts_are_valid(6u, 5u, 2u, 3u, 1u, 2u, 3u, 1u, 1u, 1u,

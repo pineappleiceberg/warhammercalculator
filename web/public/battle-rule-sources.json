@@ -134,7 +134,8 @@
         "exact enhancement identities selected for each detachment",
         "exact datasheet identities and source-linked rules selected by saved units",
         "published per-model Objective Control characteristics used by exact battle formations",
-        "exact Oath of Moment target-selection timing and Hit-roll re-roll effect"
+        "exact Oath of Moment target-selection timing and Hit-roll re-roll effect",
+        "exact Reanimation Protocols timing, D3 roll, wound restoration, and destroyed-model return order"
       ]
     },
     {
@@ -165,6 +166,21 @@
         "exact Fixed and Tactical Secondary Mission lifecycle, New Orders timing and cost, and Victory Point caps",
         "exact universal Action eligibility, continuation, failure, and simultaneous-unit-limit procedures",
         "explicitly unavailable individual mission-card text that remains player supplied from the physical deck"
+      ]
+    },
+    {
+      "id": "codex-necrons-faq-v1.2",
+      "title": "Codex: Necrons FAQ and Errata",
+      "edition": "Warhammer 40,000 10th Edition",
+      "version": "1.2",
+      "url": "https://assets.warhammer-community.com/warhammer40000_faqs%26errata_necrons_eng_16.10.pdf",
+      "retrievedAt": "2026-08-12",
+      "sha256": "52d2b25f175e2a5ef760402a18683544e281be6a9e693ffe1389b9bb6eed7c6d",
+      "pages": [
+        2
+      ],
+      "usedFor": [
+        "exact Attached-unit boundary that prevents a destroyed Bodyguard unit from activating Reanimation Protocols solely because its Leader remains on the battlefield"
       ]
     }
   ]

@@ -18,6 +18,8 @@ MISSION_PACK_PATH = ROOT / "data" / "chapter-approved-2025-26-v1.4.json"
 PUBLIC_MISSION_PACK_PATH = ROOT / "web" / "public" / "chapter-approved-2025-26-v1.4.json"
 SOURCE_ID = "wahapedia-profile-export-2026-06-13"
 MISSION_SOURCE_ID = "chapter-approved-tournament-companion-2025-26-v1.4"
+NECRONS_FAQ_SOURCE_ID = "codex-necrons-faq-v1.2"
+NECRONS_FAQ_SHA256 = "52d2b25f175e2a5ef760402a18683544e281be6a9e693ffe1389b9bb6eed7c6d"
 MISSION_PROCEDURES = {
     "sourcePages": [2, 3, 4, 5],
     "battleRounds": 5,
@@ -59,6 +61,7 @@ GENERATED_PREFIXES = (
     "mission.catalogue-",
     "terrain.catalogue-",
     "faction.oath-of-moment",
+    "faction.reanimation-protocols",
 )
 
 
@@ -105,6 +108,23 @@ def oath_of_moment_rule():
                 "id": SOURCE_ID,
                 "records": [{"type": "faction", "id": "SM:ability:000008350"}],
             }
+        ],
+    }
+
+
+def reanimation_protocols_rule():
+    return {
+        "id": "faction.reanimation-protocols",
+        "category": "faction",
+        "name": "Reanimation Protocols",
+        "status": "executable",
+        "introducedBattleStateVersion": 43,
+        "sources": [
+            {
+                "id": SOURCE_ID,
+                "records": [{"type": "faction", "id": "NEC:ability:000008369"}],
+            },
+            {"id": NECRONS_FAQ_SOURCE_ID, "pages": [2]},
         ],
     }
 
@@ -215,6 +235,7 @@ def expected_documents():
             "exact datasheet identities and source-linked rules selected by saved units",
             "published per-model Objective Control characteristics used by exact battle formations",
             "exact Oath of Moment target-selection timing and Hit-roll re-roll effect",
+            "exact Reanimation Protocols timing, D3 roll, wound restoration, and destroyed-model return order",
         ],
     }
     sources["sources"] = [entry for entry in sources["sources"] if entry["id"] != SOURCE_ID]
@@ -242,9 +263,26 @@ def expected_documents():
         entry for entry in sources["sources"] if entry["id"] != MISSION_SOURCE_ID
     ]
     sources["sources"].append(mission_source_entry)
+    necrons_faq_source_entry = {
+        "id": NECRONS_FAQ_SOURCE_ID,
+        "title": "Codex: Necrons FAQ and Errata",
+        "edition": "Warhammer 40,000 10th Edition",
+        "version": "1.2",
+        "url": "https://assets.warhammer-community.com/warhammer40000_faqs%26errata_necrons_eng_16.10.pdf",
+        "retrievedAt": "2026-08-12",
+        "sha256": NECRONS_FAQ_SHA256,
+        "pages": [2],
+        "usedFor": [
+            "exact Attached-unit boundary that prevents a destroyed Bodyguard unit from activating Reanimation Protocols solely because its Leader remains on the battlefield",
+        ],
+    }
+    sources["sources"] = [
+        entry for entry in sources["sources"] if entry["id"] != NECRONS_FAQ_SOURCE_ID
+    ]
+    sources["sources"].append(necrons_faq_source_entry)
 
     coverage["snapshotId"] = (
-        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v42"
+        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-v43"
     )
     coverage["sourceLocks"] = [
         lock for lock in coverage["sourceLocks"] if lock["id"] != SOURCE_ID
@@ -256,6 +294,12 @@ def expected_documents():
     coverage["sourceLocks"].append(
         {"id": MISSION_SOURCE_ID, "sha256": mission_source["sha256"]}
     )
+    coverage["sourceLocks"] = [
+        lock for lock in coverage["sourceLocks"] if lock["id"] != NECRONS_FAQ_SOURCE_ID
+    ]
+    coverage["sourceLocks"].append(
+        {"id": NECRONS_FAQ_SOURCE_ID, "sha256": NECRONS_FAQ_SHA256}
+    )
     coverage["rules"] = [
         rule
         for rule in coverage["rules"]
@@ -265,6 +309,7 @@ def expected_documents():
         generated_rule("faction", entry["id"], entry["name"]) for entry in factions
     )
     coverage["rules"].append(oath_of_moment_rule())
+    coverage["rules"].append(reanimation_protocols_rule())
     coverage["rules"].extend(
         generated_rule("detachment", entry["id"], entry["name"]) for entry in detachments
     )

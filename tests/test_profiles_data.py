@@ -5892,6 +5892,35 @@ class ProfileDataTests(unittest.TestCase):
         )
         self.assertEqual(warriors["models"][0]["objectiveControl"], 2)
 
+    def test_browser_catalogue_preserves_faction_ability_identity(self):
+        catalogue = json.loads(CATALOGUE.read_text(encoding="utf-8"))
+        ability_id = "000008369"
+        actual = {
+            unit["id"]
+            for unit in catalogue["units"]
+            if ability_id in unit["factionAbilityIds"]
+        }
+        with closing(sqlite3.connect(DATABASE)) as connection:
+            expected = {
+                row[0]
+                for row in connection.execute(
+                    """SELECT DISTINCT datasheet_id
+                       FROM datasheet_abilities
+                       WHERE ability_type = 'Faction' AND ability_id = ?""",
+                    (ability_id,),
+                )
+            }
+        self.assertEqual(actual, expected)
+        self.assertEqual(len(actual), 64)
+        self.assertTrue(
+            all(
+                isinstance(unit["factionAbilityIds"], list)
+                and len(unit["factionAbilityIds"])
+                == len(set(unit["factionAbilityIds"]))
+                for unit in catalogue["units"]
+            )
+        )
+
     def test_browser_catalogue_locks_hover_setup_eligibility(self):
         catalogue = json.loads(CATALOGUE.read_text(encoding="utf-8"))
         with closing(sqlite3.connect(DATABASE)) as connection:

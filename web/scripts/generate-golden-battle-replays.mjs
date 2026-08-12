@@ -6,10 +6,12 @@ import { format } from "prettier";
 import {
   BATTLE_STATE_VERSION,
   TABLE_GEOMETRY_CONSTANTS,
+  activateReanimationProtocols,
   advanceBattleClock,
   arriveFromReserves,
   appendResolvedAttack,
   battleOathOfMomentState,
+  battleReanimationProtocolsState,
   callWaaagh,
   battleGrimResolveState,
   closeRangedTargetDeclarations,
@@ -40,6 +42,7 @@ import {
   recordRangedTargetEligibility,
   replayBattleState,
   resolveGoToGround,
+  resolveReanimationWound,
   resolveMissionAction,
   resolveSecondaryTurnEnd,
   scoreMissionPoints,
@@ -794,9 +797,46 @@ function confirmFixtureWeaponBearers(state, formation) {
 function advanceToClock(state, predicate, prefix) {
   let next = state;
   while (!predicate(replayBattleState(next).clock)) {
-    next = advanceBattleClock(next, `${prefix}-${next.events.length + 1}`, next.events.length + 1);
+    next = advanceFixtureClock(next, `${prefix}-${next.events.length + 1}`);
   }
   return next;
+}
+
+function resolveMandatoryReanimationProtocols(state, prefix) {
+  let next = state;
+  while (true) {
+    const replayed = replayBattleState(next);
+    const facts = battleReanimationProtocolsState(next, replayed.clock.activePlayerId, replayed);
+    const unit = facts.available
+      ? facts.eligibleUnits.find((candidate) => !candidate.activated)
+      : null;
+    if (!unit) return next;
+    next = activateReanimationProtocols(
+      next,
+      unit.playerId,
+      unit.formationId,
+      unit.unitKey,
+      `${prefix}-activate-${next.events.length + 1}`,
+      next.events.length + 1,
+      () => 0,
+    );
+    while (replayBattleState(next).pendingReanimationProtocols) {
+      const pending = replayBattleState(next).pendingReanimationProtocols;
+      const option = pending.options[0];
+      next = resolveReanimationWound(
+        next,
+        option.segmentId,
+        option.action,
+        `${prefix}-resolve-${next.events.length + 1}`,
+        next.events.length + 1,
+      );
+    }
+  }
+}
+
+function advanceFixtureClock(state, id) {
+  const prepared = resolveMandatoryReanimationProtocols(state, id);
+  return advanceBattleClock(prepared, id, prepared.events.length + 1);
 }
 
 function recordReviewedRangedTarget(
@@ -1015,7 +1055,7 @@ function buildFixture() {
         }
       }
     }
-    state = advanceBattleClock(state, `clock-${state.events.length + 1}`, state.events.length + 1);
+    state = advanceFixtureClock(state, `clock-${state.events.length + 1}`);
   }
 
   const expected = goldenBattleReplaySummary(state);
@@ -1451,7 +1491,7 @@ function buildActionFixture() {
     "action-fights-first-pass-2",
     state.events.length + 1,
   );
-  state = advanceBattleClock(state, "action-to-remaining-combatants", state.events.length + 1);
+  state = advanceFixtureClock(state, "action-to-remaining-combatants");
   state = startFormationActivation(
     state,
     intercessors.id,
@@ -1529,7 +1569,7 @@ function buildActionFixture() {
     "action-remaining-pass-2",
     state.events.length + 1,
   );
-  state = advanceBattleClock(state, "action-to-fight-end", state.events.length + 1);
+  state = advanceFixtureClock(state, "action-to-fight-end");
   state = scoreSecondaryMissionCard(
     state,
     "player-1",
@@ -1633,11 +1673,7 @@ function buildActionFixture() {
       );
       resolvedTacticalTurns.add(turnKey);
     }
-    state = advanceBattleClock(
-      state,
-      `action-clock-${state.events.length + 1}`,
-      state.events.length + 1,
-    );
+    state = advanceFixtureClock(state, `action-clock-${state.events.length + 1}`);
   }
 
   const expected = goldenBattleReplaySummary(state);
@@ -1894,7 +1930,7 @@ function buildAttachedFixture() {
     "attached-player-1-secondary-turn-ended",
     state.events.length + 1,
   );
-  state = advanceBattleClock(state, "attached-to-player-2-turn", state.events.length + 1);
+  state = advanceFixtureClock(state, "attached-to-player-2-turn");
   state = callWaaagh(state, "player-2", "attached-orks-called-waaagh", state.events.length + 1);
   state = advanceToClock(
     state,
@@ -2084,11 +2120,7 @@ function buildAttachedFixture() {
       );
       resolvedTacticalTurns.add(turnKey);
     }
-    state = advanceBattleClock(
-      state,
-      `attached-clock-${state.events.length + 1}`,
-      state.events.length + 1,
-    );
+    state = advanceFixtureClock(state, `attached-clock-${state.events.length + 1}`);
   }
 
   const expected = goldenBattleReplaySummary(state);

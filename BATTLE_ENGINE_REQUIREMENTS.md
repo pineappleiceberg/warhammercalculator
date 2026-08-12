@@ -181,9 +181,9 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    Secondary plans, Tactical card lifecycle, New Orders, and universal Actions
    are executable; individual physical card conditions remain reason-backed
    player input because their card text is unavailable.
-8. **In progress:** three version-40 golden replays now bind source and expected
+8. **In progress:** three version-43 golden replays now bind source and expected
    SHA-256 digests to real Necrons-versus-Space-Marines catalogue identities and
-   exact Chapter Approved setup. The second 244-event replay adds exact
+   exact Chapter Approved setup. The second 260-event replay adds exact
    movement, Fire Overwatch, Go to Ground, ranged and melee casualties, Charge,
    both Fight activations, objective transfer, Tactical lifecycle, all 170
    active clock states, final state, generator checks, tamper tests, and
@@ -192,11 +192,13 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    formations, exact mixed profiles and reviewed bearers, Bodyguard-first
    ordered casualty allocation, a physical-card Mission Action, round-two
    Strategic Reserves arrival, a canonical once-per-battle Waaagh! call, and a
-   different mission and terrain layout. Waaagh! is now the first executable
-   source-backed faction transition across replay, guided UI, API, and
-   C/WebAssembly. Add executable detachment state transitions and continue
-   different faction/mission pairs until every supported boundary has
-   representative source-locked evidence.
+   different mission and terrain layout. Waaagh!, Grim Resolve, Oath of Moment,
+   and Reanimation Protocols are executable source-backed transitions across
+   replay, guided UI, API, and C/WebAssembly. Reanimation adds mandatory secure
+   D3 activations, per-model healing and return ordering, and the official
+   destroyed-Bodyguard/surviving-Leader boundary. Continue adding faction and
+   detachment transitions and different faction/mission pairs until every
+   supported boundary has representative source-locked evidence.
 9. Add deterministic automated policies, batch battle simulation, and calibrated
    matchup reporting.
 10. Prove the cross-surface release gate and maintain it for every rules update.

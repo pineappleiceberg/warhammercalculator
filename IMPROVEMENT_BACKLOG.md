@@ -39,6 +39,23 @@ state.
 
 ## Completed cycles
 
+- 2026-08-12: Advanced canonical battle replay to version 43 with source-locked
+  Necrons Reanimation Protocols. At the end of each owning Command phase, every
+  eligible surviving on-table Necrons unit must activate once, use a secure D3,
+  and resolve the result one wound at a time. Replay heals an already-wounded
+  model before returning a destroyed model with one wound, stops at full
+  strength, and preserves mixed profiles and exact model identity. Attached
+  units share healing while a Bodyguard model remains; the official Necrons FAQ
+  boundary prevents a surviving Leader from returning a fully destroyed
+  Bodyguard unit. Versioned migration never invents legacy activations. Guided
+  Play, public API output, native replay event kinds, C/WebAssembly predicates,
+  source manifests, the 214-, 260-, and 228-event golden games, and tamper and
+  differential tests cover the transition. The full 375-test web suite, 48
+  profile-data tests, native tests, a seeded 2,000-run fuzz campaign, 1,192 WP
+  proof obligations, EVA with zero alarms, and E-ACSL checks pass. Next,
+  source-lock another high-impact faction or detachment transition and its
+  downstream combat, objective, or resource effects.
+
 - 2026-08-12: Advanced canonical faction-rule replay to battle-state version 40
   with Orks' Waaagh! as the first executable army transition. A source-locked
   ORK player can call it once per battle only at the start of their Command

@@ -23,10 +23,10 @@
     }
   ],
   "sourceManifestVersion": 1,
-  "stateDigest": "bb7295f07b4bbe26721c138ff76890d2747ae456847d34b72571ff322252afab",
-  "expectedDigest": "45dfc9182259c56b77610dbdeb7567a137d04df68ac360c9a7d6a6ae8662a8b1",
+  "stateDigest": "1d08a0c5cc8ac06cafabda24cd9bc4fcfb36b964f28c5b155f20ba82652bba56",
+  "expectedDigest": "7302dbd7b19a2940e44ec23bd113b73483edee36518cb65c971dc0fab786720e",
   "expected": {
-    "stateVersion": 42,
+    "stateVersion": 43,
     "eventCount": 214,
     "eventTypeCounts": {
       "battle_started": 1,
@@ -271,16 +271,17 @@
     "scoringEventCount": 20,
     "sourceLockIds": [
       "chapter-approved-tournament-companion-2025-26-v1.4",
+      "codex-necrons-faq-v1.2",
       "core-rules-10e",
       "core-rules-updates-10e-2025-10",
       "wahapedia-profile-export-2026-06-13"
     ]
   },
   "state": {
-    "version": 42,
+    "version": 43,
     "id": "golden-necrons-vs-space-marines-v1",
     "createdAt": 0,
-    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:42",
+    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:43",
     "players": [
       {
         "id": "player-1",
@@ -311,6 +312,7 @@
           "keywords": ["necrons", "vehicle", "fly", "doom scythe", "aircraft"],
           "hasWaaaghAbility": false,
           "hasOathOfMomentAbility": false,
+          "reanimationProtocolSavedUnitIds": ["doom-scythe"],
           "segments": [
             {
               "id": "doom-scythe:328:loadout:1",
@@ -390,6 +392,7 @@
           ],
           "hasWaaaghAbility": false,
           "hasOathOfMomentAbility": true,
+          "reanimationProtocolSavedUnitIds": [],
           "segments": [
             {
               "id": "brutalis:117:loadout:1",
@@ -449,7 +452,7 @@
         "type": "rule_coverage_configured",
         "coverage": {
           "schemaVersion": 1,
-          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v42",
+          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-v43",
           "sourceLocks": [
             {
               "id": "core-rules-10e",
@@ -466,6 +469,10 @@
             {
               "id": "chapter-approved-tournament-companion-2025-26-v1.4",
               "sha256": "a71972b1b05e63c1089dd8fcc3e0b9e2c4025c0cbfdd4bc0222fb95e46ef48f8"
+            },
+            {
+              "id": "codex-necrons-faq-v1.2",
+              "sha256": "52d2b25f175e2a5ef760402a18683544e281be6a9e693ffe1389b9bb6eed7c6d"
             }
           ],
           "plan": {
@@ -494,7 +501,10 @@
             "players": [
               {
                 "playerId": "player-1",
-                "faction": { "sourceId": "NEC", "ruleIds": ["faction.catalogue-nec"] },
+                "faction": {
+                  "sourceId": "NEC",
+                  "ruleIds": ["faction.catalogue-nec", "faction.reanimation-protocols"]
+                },
                 "detachment": {
                   "sourceId": "000000818",
                   "ruleIds": ["detachment.catalogue-000000818"]
@@ -558,7 +568,7 @@
             }
           },
           "report": {
-            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v42",
+            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-v43",
             "permitted": true,
             "results": [
               {
@@ -734,6 +744,17 @@
                 "sourceLocked": true,
                 "acknowledgementRequired": true,
                 "acknowledged": true,
+                "permitted": true,
+                "reason": "covered"
+              },
+              {
+                "id": "faction.reanimation-protocols",
+                "category": "faction",
+                "name": "Reanimation Protocols",
+                "status": "executable",
+                "sourceLocked": true,
+                "acknowledgementRequired": false,
+                "acknowledged": false,
                 "permitted": true,
                 "reason": "covered"
               },

@@ -33,9 +33,9 @@ test("published coverage matrix is source-locked and identical to its data sourc
   assert.equal(matrix.sourceLocked, true);
   assert.equal(
     matrix.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v42",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-v43",
   );
-  assert.equal(matrix.rules.length, 2971);
+  assert.equal(matrix.rules.length, 2972);
   assert.deepEqual(
     new Set(matrix.rules.map((rule) => rule.category)),
     new Set([
@@ -79,6 +79,23 @@ test("published coverage matrix is source-locked and identical to its data sourc
           id: "wahapedia-profile-export-2026-06-13",
           records: [{ type: "faction", id: "SM:ability:000008350" }],
         },
+      ],
+    },
+  );
+  assert.deepEqual(
+    matrix.rules.find((rule) => rule.id === "faction.reanimation-protocols"),
+    {
+      id: "faction.reanimation-protocols",
+      category: "faction",
+      name: "Reanimation Protocols",
+      status: "executable",
+      introducedBattleStateVersion: 43,
+      sources: [
+        {
+          id: "wahapedia-profile-export-2026-06-13",
+          records: [{ type: "faction", id: "NEC:ability:000008369" }],
+        },
+        { id: "codex-necrons-faq-v1.2", pages: [2] },
       ],
     },
   );
@@ -130,7 +147,10 @@ test("saved list identities select exact guided catalogue rules", () => {
     missionSourceId: "chapter-approved-2025-26-v1.4-a",
     terrainSourceId: "chapter-approved-2025-26-v1.4-layout-1",
   });
-  assert.deepEqual(plan.players[0].faction.ruleIds, ["faction.catalogue-nec"]);
+  assert.deepEqual(plan.players[0].faction.ruleIds, [
+    "faction.catalogue-nec",
+    "faction.reanimation-protocols",
+  ]);
   assert.deepEqual(plan.players[1].faction.ruleIds, [
     "faction.catalogue-sm",
     "faction.oath-of-moment",
