@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 36 as soon as both lists are selected. Every
+creates battle-state version 37 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -690,9 +690,14 @@ optional intermediate path points, measured farthest-part distance, and reviewed
 maximum distance. The engine rejects missing or duplicate live identities,
 wrong per-segment survivor counts, changed footprints, mismatched path starts or
 endpoints, paths outside the table, distances shorter than the centre path, and
-distances above the reviewed allowance. Terrain and complete-path clearance
-remain explicit reason-bearing tabletop reviews; exact endpoint overlap is
-executable in version 36. Casualties mark the
+distances above the reviewed allowance. Version 37 makes complete-path terrain
+clearance executable when each section has reviewed movement semantics and
+complete measured geometry. Deployment endpoints and the whole model envelope
+are checked against wall panels and openings, convex solids and overhangs, explicit vertical climb
+segments, and supported elevated endpoints. Ruins apply their Infantry, Beast,
+and Fly movement and upper-floor restrictions. Continuous pivots, incomplete
+or reviewed-only terrain semantics, and version-36 paths remain explicit
+reason-bearing tabletop reviews instead of invented proofs. Casualties mark the
 last position snapshot stale until the next snapshot identifies the surviving
 models; undo restores freshness when the identities match again. If a Charge,
 Pile In, Consolidation, or other reviewed physical move made the saved start
@@ -1423,11 +1428,11 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 
 ## Prioritized correctness backlog
 
-1. Derive movement and placement terrain clearance from the shared 3D geometry,
-   including climb, overhang, and irregular-surface cases.
-2. Connect exact objective control to source-backed mission scoring without
+1. Connect exact objective control to source-backed mission scoring without
    inventing unavailable mission-card text.
-3. Add a reviewed visibility-inspection view that highlights the exact bearer,
+2. Expand exact movement geometry beyond convex solids when a supported layout
+   requires concave or curved terrain.
+3. Add a reviewed geometry-inspection view that highlights the exact bearer,
    target model, ray, and terrain feature behind every proof or fallback.
 
 ## Current boundaries

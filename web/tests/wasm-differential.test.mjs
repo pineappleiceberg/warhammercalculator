@@ -96,6 +96,7 @@ import {
   endpointClearanceFactValuesAreValid,
   spatialFactValuesAreValid,
 } from "../lib/spatial-facts.mjs";
+import { terrainClearanceFactValuesAreValid } from "../lib/terrain-clearance-facts.mjs";
 import { objectiveControlFactValuesAreValid } from "../lib/objective-control-facts.mjs";
 import { convexSilhouetteIsValid, visibilityFactValuesAreValid } from "../lib/visibility-facts.mjs";
 
@@ -144,6 +145,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_model_position_set_is_valid, "function");
   assert.equal(typeof calculator._whc_spatial_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_endpoint_clearance_facts_are_valid, "function");
+  assert.equal(typeof calculator._whc_terrain_clearance_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_objective_control_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_visibility_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_convex_silhouette_is_valid, "function");
@@ -241,6 +243,24 @@ test("WebAssembly and JavaScript agree on endpoint-clearance summaries", () => {
     assert.equal(
       Boolean(calculator._whc_endpoint_clearance_facts_are_valid(...values)),
       endpointClearanceFactValuesAreValid(...values),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on terrain-clearance summaries", () => {
+  const cases = [
+    [5, 5, 12, 12, 12, 15, 15, 0, 7],
+    [5, 5, 12, 12, 12, 15, 15, 4, 7],
+    [5, 4, 12, 10, 11, 15, 8, 2, 0],
+    [5, 5, 12, 12, 12, 15, 14, 0, 7],
+    [5, 5, 12, 12, 12, 4, 4, 0, 7],
+    [0, 0, 12, 12, 12, 0, 0, 0, 7],
+    [5, 5, 25, 25, 25, 15, 15, 0, 7],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_terrain_clearance_facts_are_valid(...values)),
+      terrainClearanceFactValuesAreValid(...values),
     );
   }
 });

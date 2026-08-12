@@ -14,17 +14,20 @@ import { normalizeBattleRuleCoverageBinding } from "./battle-rule-selection.mjs"
 import { chapterApprovedTableBinding } from "./mission-pack.mjs";
 import { deriveObjectiveControlFacts } from "./objective-control-facts.mjs";
 import { deriveEndpointClearanceFacts, deriveSpatialFacts } from "./spatial-facts.mjs";
+import { TERRAIN_MOVEMENT_TYPES, deriveTerrainClearanceFacts } from "./terrain-clearance-facts.mjs";
 import {
   deriveVisibilityFacts,
   TERRAIN_VISIBILITY_FEATURES,
   TERRAIN_VISIBILITY_LIMITS,
   TERRAIN_VISIBILITY_METHODS,
   convexSilhouetteIsValid,
+  convexTerrainSurfaceIsValid,
   silhouetteReady,
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 36;
+export const BATTLE_STATE_VERSION = 37;
+export const TERRAIN_CLEARANCE_BATTLE_STATE_VERSION = 37;
 export const ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION = 36;
 export const OBJECTIVE_CONTROL_BATTLE_STATE_VERSION = 35;
 export const CONVEX_SILHOUETTE_BATTLE_STATE_VERSION = 34;
@@ -1855,7 +1858,7 @@ function normalizeTerrainFootprintSet(candidate) {
   return normalized;
 }
 
-function normalizeTerrainVisibilityGeometry(candidate) {
+function normalizeTerrainVisibilityGeometry(candidate, stateVersion) {
   const set = record(candidate, "Terrain visibility geometry must be an object");
   if (
     !Array.isArray(set.sections) ||
@@ -1865,6 +1868,7 @@ function normalizeTerrainVisibilityGeometry(candidate) {
     throw new Error("Terrain visibility geometry must contain 1 to 24 area terrain sections");
   }
   let panelCount = 0;
+  let surfaceCount = 0;
   const sections = set.sections.map((candidateSection) => {
     const section = record(candidateSection, "Each terrain visibility section must be an object");
     const featureType = boundedString(section.featureType, "Terrain feature type", 20);
@@ -1875,7 +1879,7 @@ function normalizeTerrainVisibilityGeometry(candidate) {
       throw new Error("Terrain visibility section panels must be an array");
     }
     panelCount += section.panels.length;
-    return {
+    const normalizedSection = {
       sectionId: boundedString(section.sectionId, "Terrain visibility section id", 100),
       featureType,
       geometryComplete: Boolean(section.geometryComplete),
@@ -1950,15 +1954,77 @@ function normalizeTerrainVisibilityGeometry(candidate) {
         };
       }),
     };
+    if (stateVersion >= TERRAIN_CLEARANCE_BATTLE_STATE_VERSION) {
+      const defaultMovementType =
+        featureType === "ruins" ? "ruins" : featureType === "woods" ? "woods" : "reviewed";
+      normalizedSection.movementType = boundedString(
+        section.movementType ?? defaultMovementType,
+        "Terrain movement type",
+        20,
+      );
+      if (!TERRAIN_MOVEMENT_TYPES.includes(normalizedSection.movementType)) {
+        throw new Error("Terrain movement type is unsupported");
+      }
+      normalizedSection.movementGeometryComplete = Boolean(section.movementGeometryComplete);
+      if (!Array.isArray(section.surfaces ?? [])) {
+        throw new Error("Terrain movement surfaces must be an array");
+      }
+      surfaceCount += (section.surfaces ?? []).length;
+      normalizedSection.surfaces = (section.surfaces ?? []).map((candidateSurface) => {
+        const surface = record(candidateSurface, "Each terrain movement surface must be an object");
+        if (!Array.isArray(surface.vertices)) {
+          throw new Error("Terrain movement surface vertices must be an array");
+        }
+        const vertices = surface.vertices.map((candidateVertex) => {
+          const vertex = record(candidateVertex, "Each terrain surface vertex must be an object");
+          return {
+            xThousandths: nonnegativeInteger(
+              vertex.xThousandths,
+              "Terrain surface x-coordinate",
+              60_000,
+            ),
+            yThousandths: nonnegativeInteger(
+              vertex.yThousandths,
+              "Terrain surface y-coordinate",
+              44_000,
+            ),
+          };
+        });
+        if (!convexTerrainSurfaceIsValid(vertices)) {
+          throw new Error(
+            "Terrain movement surfaces require 3 to 16 strictly convex counter-clockwise vertices",
+          );
+        }
+        return {
+          id: boundedString(surface.id, "Terrain movement surface id", 100),
+          vertices,
+          bottomZThousandths: nonnegativeInteger(
+            surface.bottomZThousandths,
+            "Terrain surface bottom elevation",
+            TERRAIN_VISIBILITY_LIMITS.maximumHeightThousandths,
+          ),
+          topZThousandths: nonnegativeInteger(
+            surface.topZThousandths,
+            "Terrain surface top elevation",
+            TERRAIN_VISIBILITY_LIMITS.maximumHeightThousandths,
+          ),
+          supportsEnding: Boolean(surface.supportsEnding),
+        };
+      });
+    }
+    return normalizedSection;
   });
   if (panelCount > TERRAIN_VISIBILITY_LIMITS.maximumPanels) {
     throw new Error("Terrain visibility geometry can contain at most 256 wall panels");
+  }
+  if (surfaceCount > TERRAIN_VISIBILITY_LIMITS.maximumSurfaces) {
+    throw new Error("Terrain movement geometry can contain at most 256 convex surfaces");
   }
   const method = boundedString(set.method, "Terrain visibility method", 20);
   if (!TERRAIN_VISIBILITY_METHODS.includes(method)) {
     throw new Error("Terrain visibility measurement method is unsupported");
   }
-  return {
+  const normalized = {
     missionSourceId: boundedString(set.missionSourceId, "Visibility mission source id", 200),
     terrainSourceId: boundedString(set.terrainSourceId, "Visibility terrain source id", 200),
     sections,
@@ -1969,6 +2035,10 @@ function normalizeTerrainVisibilityGeometry(candidate) {
       ? boundedString(set.reviewReason, "Terrain visibility review", 500).trim()
       : "",
   };
+  if (stateVersion >= TERRAIN_CLEARANCE_BATTLE_STATE_VERSION) {
+    normalized.allMovementGeometryRecorded = Boolean(set.allMovementGeometryRecorded);
+  }
+  return normalized;
 }
 
 function normalizeModelSilhouette(candidate) {
@@ -3315,7 +3385,10 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     throw new Error("Terrain visibility geometry requires battle-state version 32");
   }
   if (event.type === "terrain_visibility_recorded") {
-    normalized.terrainVisibility = normalizeTerrainVisibilityGeometry(event.terrainVisibility);
+    normalized.terrainVisibility = normalizeTerrainVisibilityGeometry(
+      event.terrainVisibility,
+      stateVersion,
+    );
     return normalized;
   }
   if (
@@ -4864,6 +4937,7 @@ export function normalizeBattleState(candidate) {
       RANGED_GEOMETRY_BATTLE_STATE_VERSION,
       CONVEX_SILHOUETTE_BATTLE_STATE_VERSION,
       OBJECTIVE_CONTROL_BATTLE_STATE_VERSION,
+      ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -4932,6 +5006,7 @@ export function normalizeBattleState(candidate) {
         RANGED_GEOMETRY_BATTLE_STATE_VERSION,
         CONVEX_SILHOUETTE_BATTLE_STATE_VERSION,
         OBJECTIVE_CONTROL_BATTLE_STATE_VERSION,
+        ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -5163,6 +5238,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= TERRAIN_CLEARANCE_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyTerrainClearanceThroughSequence = nonnegativeInteger(
+        migration.legacyTerrainClearanceThroughSequence,
+        "Legacy terrain clearance event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -5171,6 +5253,7 @@ export function normalizeBattleState(candidate) {
         ["formation_registered", "formation_configured"].includes(event.type) &&
         event.formation.weaponBearerTracking === "legacy_aggregate",
     ) &&
+    normalized.migration?.sourceVersion !== TERRAIN_CLEARANCE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== OBJECTIVE_CONTROL_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== SPATIAL_FACTS_BATTLE_STATE_VERSION &&
@@ -6205,8 +6288,10 @@ export function replayBattleState(state) {
   const modelPositionHistoryByFormation = new Map();
   const modelLocationHistoryByFormation = new Map();
   const currentModelPositionsByFormation = new Map();
+  const terrainClearanceFactsByFormation = new Map();
   const geometryStaleFormationIds = new Set();
   const legacyEndpointClearanceFormationIds = new Set();
+  const legacyTerrainClearanceFormationIds = new Set();
   const setupDestroyedFormationIds = new Set();
   const reserveArrivals = new Map();
   const embarkedByFormation = new Map();
@@ -6355,6 +6440,10 @@ export function replayBattleState(state) {
     state.version < ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyEndpointClearanceThroughSequence ?? 0);
+  const legacyTerrainClearanceThroughSequence =
+    state.version < TERRAIN_CLEARANCE_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyTerrainClearanceThroughSequence ?? 0);
   const legacyTerrainVisibilityThroughSequence =
     state.version < TERRAIN_VISIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -6670,6 +6759,48 @@ export function replayBattleState(state) {
       const collision = facts.objectivePairs[0];
       throw new Error(
         `Model endpoint overlaps objective marker: ${collision.modelId} and ${collision.objectiveId}`,
+      );
+    }
+  };
+  const terrainClearanceForPosition = (formationId, position, sequence) => {
+    const formation = formations.get(formationId);
+    const facts = deriveTerrainClearanceFacts({
+      formation,
+      position,
+      terrainFootprints,
+      terrainVisibility,
+      legacy:
+        sequence <= legacyTerrainClearanceThroughSequence ||
+        legacyTerrainClearanceFormationIds.has(formationId),
+    });
+    return {
+      ...facts,
+      reviewedFallback: facts.status === "unknown" && Boolean(position?.terrainClearanceReviewed),
+    };
+  };
+  const terrainPositionFromPlacement = (placement) => ({
+    ...placement,
+    terrainClearanceReviewed: placement.reviewedByPlayer && placement.positionsReviewed,
+    models: placement.models.map((model) => ({
+      ...model,
+      path: [
+        {
+          centerXThousandths: model.centerXThousandths,
+          centerYThousandths: model.centerYThousandths,
+          elevationThousandths: model.elevationThousandths,
+          rotationMilliDegrees: model.rotationMilliDegrees,
+        },
+      ],
+    })),
+  });
+  const requireTerrainClearance = (formationId, position, sequence) => {
+    const facts = terrainClearanceForPosition(formationId, position, sequence);
+    terrainClearanceFactsByFormation.set(formationId, facts);
+    if (sequence <= legacyTerrainClearanceThroughSequence) return;
+    if (facts.collisions.length > 0) {
+      const collision = facts.collisions[0];
+      throw new Error(
+        `Model path intersects terrain: ${collision.modelId} ${collision.reason.replaceAll("_", " ")}`,
       );
     }
   };
@@ -7223,7 +7354,17 @@ export function replayBattleState(state) {
       } else {
         legacyEndpointClearanceFormationIds.delete(event.formationId);
       }
+      if (event.sequence <= legacyTerrainClearanceThroughSequence) {
+        legacyTerrainClearanceFormationIds.add(event.formationId);
+      } else {
+        legacyTerrainClearanceFormationIds.delete(event.formationId);
+      }
       requireEndpointClearance(event.sequence);
+      requireTerrainClearance(
+        event.formationId,
+        terrainPositionFromPlacement(deploymentSnapshot),
+        event.sequence,
+      );
       requireExecutableCoherency(event.formationId, event.sequence);
       if (!migratedPlacement) pendingDeploymentPlacement = null;
       continue;
@@ -7348,7 +7489,9 @@ export function replayBattleState(state) {
       }
       geometryStaleFormationIds.delete(event.formationId);
       legacyEndpointClearanceFormationIds.delete(event.formationId);
+      legacyTerrainClearanceFormationIds.delete(event.formationId);
       requireEndpointClearance(event.sequence);
+      requireTerrainClearance(event.formationId, event.position, event.sequence);
       requireExecutableCoherency(event.formationId, event.sequence);
       pendingModelPosition = queuedModelPositions.shift() ?? null;
       if (completed.fireOverwatchTrigger) {
@@ -10399,6 +10542,7 @@ export function replayBattleState(state) {
     modelPositionHistoryByFormation,
     modelLocationHistoryByFormation,
     currentModelPositionsByFormation,
+    terrainClearanceFactsByFormation,
     geometryStaleFormationIds,
     spatialFactsByFormation,
     endpointClearanceFacts,

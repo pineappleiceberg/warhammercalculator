@@ -321,6 +321,11 @@ int main(void) {
     assert(whc_endpoint_clearance_facts_are_valid(3u, 2u, 5u, 5u, 1u, 10u, 2u));
     assert(!whc_endpoint_clearance_facts_are_valid(3u, 2u, 5u, 5u, 2u, 0u, 2u));
     assert(!whc_endpoint_clearance_facts_are_valid(3u, 3u, 5u, 5u, 0u, 0u, 2u));
+    assert(whc_terrain_clearance_facts_are_valid(3u, 3u, 12u, 12u, 12u, 6u, 6u, 0u,
+                                                  WHC_TERRAIN_CLEARANCE_FLAGS_MASK));
+    assert(whc_terrain_clearance_facts_are_valid(3u, 2u, 12u, 10u, 11u, 6u, 4u, 2u, 0u));
+    assert(!whc_terrain_clearance_facts_are_valid(3u, 3u, 12u, 12u, 12u, 6u, 5u, 0u,
+                                                   WHC_TERRAIN_CLEARANCE_FLAGS_MASK));
     assert(whc_objective_control_facts_are_valid(
         2u, 2u, 4u, 1u, 1u, 0u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
     assert(whc_objective_control_facts_are_valid(

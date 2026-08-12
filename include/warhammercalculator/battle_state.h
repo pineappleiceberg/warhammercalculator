@@ -142,6 +142,7 @@
 #define WHC_SPATIAL_FACTS_EXECUTABLE 4u
 #define WHC_SPATIAL_FACTS_FLAGS_MASK 7u
 #define WHC_ENDPOINT_CLEARANCE_FLAGS_MASK 3u
+#define WHC_TERRAIN_CLEARANCE_FLAGS_MASK 7u
 #define WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK 7u
 #define WHC_VISIBILITY_FACTS_EXECUTABLE 1u
 #define WHC_VISIBILITY_FACTS_SOURCE_LOCKED 2u
@@ -691,6 +692,25 @@ bool whc_endpoint_clearance_facts_are_valid(
     uint32_t model_count, uint32_t ready_model_count, uint32_t objective_count,
     uint32_t ready_objective_count, uint32_t model_overlap_pair_count,
     uint32_t objective_overlap_pair_count, uint32_t flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        model_count > 0 && model_count <= 1000 && ready_model_count <= model_count &&
+        section_count > 0 && section_count <= 24 &&
+        ready_section_count <= section_count && supported_section_count <= section_count &&
+        path_segment_count >= model_count && path_segment_count <= 64000 &&
+        checked_path_segment_count <= path_segment_count && collision_count <= 1000000 &&
+        flags == (ready_model_count == model_count ? 1 : 0) +
+                 (ready_section_count == section_count ? 2 : 0) +
+                 (supported_section_count == section_count ? 4 : 0) &&
+        (flags != WHC_TERRAIN_CLEARANCE_FLAGS_MASK ||
+         checked_path_segment_count == path_segment_count);
+*/
+bool whc_terrain_clearance_facts_are_valid(
+    uint32_t model_count, uint32_t ready_model_count, uint32_t section_count,
+    uint32_t ready_section_count, uint32_t supported_section_count,
+    uint32_t path_segment_count, uint32_t checked_path_segment_count,
+    uint32_t collision_count, uint32_t flags);
 
 /*@ assigns \nothing;
     ensures \result <==>

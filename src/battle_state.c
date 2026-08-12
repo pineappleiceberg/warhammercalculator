@@ -520,6 +520,25 @@ bool whc_endpoint_clearance_facts_are_valid(
            flags == expected_flags;
 }
 
+bool whc_terrain_clearance_facts_are_valid(
+    uint32_t model_count, uint32_t ready_model_count, uint32_t section_count,
+    uint32_t ready_section_count, uint32_t supported_section_count,
+    uint32_t path_segment_count, uint32_t checked_path_segment_count,
+    uint32_t collision_count, uint32_t flags) {
+    const uint32_t expected_flags = (ready_model_count == model_count ? 1u : 0u) +
+                                    (ready_section_count == section_count ? 2u : 0u) +
+                                    (supported_section_count == section_count ? 4u : 0u);
+
+    return model_count > 0u && model_count <= 1000u && ready_model_count <= model_count &&
+           section_count > 0u && section_count <= 24u &&
+           ready_section_count <= section_count && supported_section_count <= section_count &&
+           path_segment_count >= model_count && path_segment_count <= 64000u &&
+           checked_path_segment_count <= path_segment_count && collision_count <= 1000000u &&
+           flags == expected_flags &&
+           (flags != WHC_TERRAIN_CLEARANCE_FLAGS_MASK ||
+            checked_path_segment_count == path_segment_count);
+}
+
 bool whc_objective_control_facts_are_valid(
     uint32_t player_count, uint32_t score_entry_count, uint32_t top_score,
     uint32_t top_score_player_count, uint32_t controller_count, uint32_t contested,

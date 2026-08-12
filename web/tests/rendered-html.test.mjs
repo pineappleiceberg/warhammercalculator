@@ -3024,9 +3024,13 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
       sectionId: footprint.areaTerrainSectionId,
       featureType: "ruins",
       geometryComplete: true,
+      movementType: "ruins",
+      movementGeometryComplete: true,
       panels: [],
+      surfaces: [],
     })),
     allFeaturesRecorded: true,
+    allMovementGeometryRecorded: true,
     reviewedByPlayer: true,
     method: "manual",
     reviewReason: "Players classified every section and checked that no wall panels were present",
@@ -3310,6 +3314,13 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
   assert.equal(body.data.endpointClearanceFacts.status, "clear");
   assert.deepEqual(body.data.endpointClearanceFacts.modelPairs, []);
   assert.deepEqual(body.data.endpointClearanceFacts.objectivePairs, []);
+  assert.deepEqual(Object.keys(body.data.terrainClearanceFacts), [observer.id, target.id]);
+  assert.equal(body.data.terrainClearanceFacts[observer.id].status, "clear");
+  assert.equal(body.data.terrainClearanceFacts[observer.id].executable, true);
+  assert.equal(body.data.terrainClearanceFacts[target.id].status, "clear");
+  assert.equal(body.data.terrainClearanceFacts[target.id].executable, true);
+  assert.equal(body.data.terrainClearanceFacts[target.id].reviewedFallback, false);
+  assert.deepEqual(body.data.terrainClearanceFacts[target.id].unavailableReasons, []);
   assert.ok(
     Object.values(body.data.objectiveControlFacts).every(
       (fact) => fact.executable && ["controlled", "contested"].includes(fact.status),

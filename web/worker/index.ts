@@ -43,6 +43,10 @@ import {
   spatialFactValuesAreValid,
 } from "../lib/spatial-facts.mjs";
 import {
+  terrainClearanceFactValues,
+  terrainClearanceFactValuesAreValid,
+} from "../lib/terrain-clearance-facts.mjs";
+import {
   objectiveControlFactValues,
   objectiveControlFactValuesAreValid,
 } from "../lib/objective-control-facts.mjs";
@@ -387,6 +391,7 @@ type CalculatorExports = {
   whc_model_position_set_is_valid(...values: number[]): number;
   whc_spatial_facts_are_valid(...values: number[]): number;
   whc_endpoint_clearance_facts_are_valid(...values: number[]): number;
+  whc_terrain_clearance_facts_are_valid(...values: number[]): number;
   whc_objective_control_facts_are_valid(...values: number[]): number;
   whc_visibility_facts_are_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
@@ -625,6 +630,7 @@ async function loadCalculator() {
       typeof calculator.whc_model_position_set_is_valid !== "function" ||
       typeof calculator.whc_spatial_facts_are_valid !== "function" ||
       typeof calculator.whc_endpoint_clearance_facts_are_valid !== "function" ||
+      typeof calculator.whc_terrain_clearance_facts_are_valid !== "function" ||
       typeof calculator.whc_objective_control_facts_are_valid !== "function" ||
       typeof calculator.whc_visibility_facts_are_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
@@ -1056,6 +1062,17 @@ async function replayFormationHealth(
         throw new ServiceUnavailableError(
           "Endpoint clearance diverged from the C/WebAssembly predicate",
           "ENDPOINT_CLEARANCE_DIVERGENCE",
+        );
+      }
+    }
+    for (const fact of replayedState.terrainClearanceFactsByFormation.values()) {
+      const values = terrainClearanceFactValues(fact);
+      const javascriptValid = terrainClearanceFactValuesAreValid(...values);
+      const nativeValid = Boolean(calculator.whc_terrain_clearance_facts_are_valid(...values));
+      if (!javascriptValid || javascriptValid !== nativeValid) {
+        throw new ServiceUnavailableError(
+          "Terrain clearance diverged from the C/WebAssembly predicate",
+          "TERRAIN_CLEARANCE_DIVERGENCE",
         );
       }
     }
@@ -1910,6 +1927,7 @@ async function replayFormationHealth(
       geometryStaleFormationIds: [...replayed.geometryStaleFormationIds].sort(),
       spatialFacts: Object.fromEntries(replayed.spatialFactsByFormation),
       endpointClearanceFacts: replayed.endpointClearanceFacts,
+      terrainClearanceFacts: Object.fromEntries(replayed.terrainClearanceFactsByFormation),
       objectiveControlFacts: Object.fromEntries(replayed.objectiveControlFacts),
       visibilityFacts: Object.fromEntries(
         [...replayed.visibilityFactsByFormation].map(([formationId, targets]) => [
