@@ -40,7 +40,8 @@ import {
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 46;
+export const BATTLE_STATE_VERSION = 47;
+export const DESPERATE_ESCAPE_BATTLE_STATE_VERSION = 47;
 export const COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION = 46;
 export const BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION = 45;
 export const SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION = 44;
@@ -1631,6 +1632,20 @@ export function chargeResolutionFlags(event) {
     (event.baseContactMaximized ? CHARGE_RESOLUTION_FLAGS.baseContactMaximized : 0) |
     (event.rollOverrideReason ? CHARGE_RESOLUTION_FLAGS.rollOverrideExplained : 0) |
     (event.failureReason ? CHARGE_RESOLUTION_FLAGS.failureExplained : 0)
+  );
+}
+
+export function desperateEscapeTestIsValid(initialRoll, reroll, rerollExplained, failed) {
+  const finalRoll = reroll || initialRoll;
+  return Boolean(
+    Number.isSafeInteger(initialRoll) &&
+      initialRoll >= 1 &&
+      initialRoll <= 6 &&
+      Number.isSafeInteger(reroll) &&
+      reroll >= 0 &&
+      reroll <= 6 &&
+      (reroll === 0 || rerollExplained) &&
+      failed === finalRoll <= 2,
   );
 }
 
@@ -3545,6 +3560,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     throw new Error("Executable Command Battle-shock requires battle-state version 46");
   }
   if (
+    stateVersion < DESPERATE_ESCAPE_BATTLE_STATE_VERSION &&
+    ["desperate_escape_tests_recorded", "desperate_escape_casualties_resolved"].includes(event.type)
+  ) {
+    throw new Error("Executable Desperate Escape requires battle-state version 47");
+  }
+  if (
     stateVersion < MISSION_TRACKING_BATTLE_STATE_VERSION &&
     [
       "secondary_plan_configured",
@@ -4180,6 +4201,91 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     if (!["normal", "advance", "fall_back"].includes(normalized.movement)) {
       throw new Error("Only a Normal, Advance, or Fall Back move has a start trigger");
     }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "desperate_escape_tests_recorded") {
+    normalized.formationId = boundedString(event.formationId, "Desperate Escape formation id", 100);
+    if (!formations.byId.has(normalized.formationId)) {
+      throw new Error("Desperate Escape formation is not registered");
+    }
+    normalized.movementStartEventId = boundedString(
+      event.movementStartEventId,
+      "Desperate Escape movement start event id",
+      100,
+    );
+    if (!Array.isArray(event.tests) || event.tests.length < 1 || event.tests.length > 1000) {
+      throw new Error("Desperate Escape must contain one to 1000 tests");
+    }
+    normalized.tests = event.tests.map((candidate) => {
+      const test = record(candidate, "Each Desperate Escape test must be an object");
+      return {
+        initialRoll: boundedInteger(test.initialRoll, "Desperate Escape initial roll", 1, 6),
+        reroll: boundedInteger(test.reroll, "Desperate Escape reroll", 0, 6),
+        rerollReason:
+          test.reroll === 0
+            ? ""
+            : boundedString(test.rerollReason, "Desperate Escape reroll reason", 300),
+      };
+    });
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "desperate_escape_casualties_resolved") {
+    normalized.formationId = boundedString(
+      event.formationId,
+      "Desperate Escape casualty formation id",
+      100,
+    );
+    if (!formations.byId.has(normalized.formationId)) {
+      throw new Error("Desperate Escape casualty formation is not registered");
+    }
+    normalized.testEventId = boundedString(
+      event.testEventId,
+      "Desperate Escape test event id",
+      100,
+    );
+    normalized.destroyedModelIds = normalizeStringArray(
+      event.destroyedModelIds,
+      "Desperate Escape destroyed model ids",
+      1000,
+    );
+    if (new Set(normalized.destroyedModelIds).size !== normalized.destroyedModelIds.length) {
+      throw new Error("Desperate Escape destroyed model ids must be unique");
+    }
+    const formation = formations.byId.get(normalized.formationId);
+    if (!Array.isArray(event.allocations) || event.allocations.length < 1) {
+      throw new Error("Desperate Escape casualties require health allocations");
+    }
+    normalized.allocations = event.allocations.map((candidate) => {
+      const allocation = record(candidate, "Each Desperate Escape allocation must be an object");
+      const segmentId = boundedString(
+        allocation.segmentId,
+        "Desperate Escape allocation segment id",
+        100,
+      );
+      const segment = formation.segments.find((entry) => entry.id === segmentId);
+      if (!segment) throw new Error("Desperate Escape allocation segment is unknown");
+      return {
+        segmentId,
+        before: normalizeHealth(allocation.before, segment, "Desperate Escape before"),
+        after: normalizeHealth(allocation.after, segment, "Desperate Escape after"),
+      };
+    });
+    if (
+      new Set(normalized.allocations.map((entry) => entry.segmentId)).size !==
+      normalized.allocations.length
+    ) {
+      throw new Error("Desperate Escape allocations must reference unique segments");
+    }
+    normalized.summary = {
+      damage: nonnegativeInteger(event.summary?.damage, "Desperate Escape damage", 1_000_000),
+      modelsDestroyed: nonnegativeInteger(
+        event.summary?.modelsDestroyed,
+        "Desperate Escape models destroyed",
+        1000,
+      ),
+    };
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
@@ -5573,6 +5679,7 @@ export function normalizeBattleState(candidate) {
       SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION,
       BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION,
       COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION,
+      DESPERATE_ESCAPE_BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
     throw new Error(`Unsupported battle state version: ${String(state.version)}`);
@@ -5650,6 +5757,7 @@ export function normalizeBattleState(candidate) {
         REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION,
         SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION,
         BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION,
+        COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -5937,6 +6045,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= DESPERATE_ESCAPE_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyDesperateEscapeThroughSequence = nonnegativeInteger(
+        migration.legacyDesperateEscapeThroughSequence,
+        "Legacy Desperate Escape event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -5949,6 +6064,7 @@ export function normalizeBattleState(candidate) {
     normalized.migration?.sourceVersion !== SIMPLE_TERRAIN_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== FACTION_RULE_STATE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== OBJECTIVE_CONTROL_BATTLE_STATE_VERSION &&
@@ -6789,6 +6905,23 @@ function liveModelCount(formation) {
   );
 }
 
+function destroySelectedFormationModel(formation, modelId) {
+  const segment = formation.segments.find((candidate) => {
+    const liveCount = formation.health[candidate.id].modelsRemaining;
+    return candidate.modelIds.slice(0, liveCount).includes(modelId);
+  });
+  if (!segment) throw new Error("Desperate Escape selected model is not surviving");
+  const health = formation.health[segment.id];
+  const selectedIndex = segment.modelIds.indexOf(modelId);
+  const finalLiveIndex = health.modelsRemaining - 1;
+  [segment.modelIds[selectedIndex], segment.modelIds[finalLiveIndex]] = [
+    segment.modelIds[finalLiveIndex],
+    segment.modelIds[selectedIndex],
+  ];
+  health.modelsRemaining -= 1;
+  if (selectedIndex === 0 && health.woundsLost > 0) health.woundsLost = 0;
+}
+
 function liveSavedUnitModelCount(formation, savedUnitId) {
   return formation.segments
     .filter((segment) => segment.savedUnitId === savedUnitId)
@@ -7024,6 +7157,17 @@ export function rollHazardousTests(count, randomUint32 = secureRandomUint32) {
   }));
 }
 
+export function rollDesperateEscapeTests(count, randomUint32 = secureRandomUint32) {
+  if (!Number.isSafeInteger(count) || count < 1 || count > 1000) {
+    throw new Error("Desperate Escape test count must be from 1 to 1000");
+  }
+  return Array.from({ length: count }, () => ({
+    initialRoll: randomDie(6, randomUint32),
+    reroll: 0,
+    rerollReason: "",
+  }));
+}
+
 function transportAllocationOrder(formation, health, firstSegmentId = "") {
   const wounded = formation.segments.find((segment) => health[segment.id].woundsLost > 0);
   if (wounded) {
@@ -7177,6 +7321,8 @@ export function replayBattleState(state) {
   const targetEligibilityFacts = new Map();
   const fightMovementsByActivation = new Map();
   const movementStartsByFormation = new Map();
+  const desperateEscapeTests = [];
+  const desperateEscapeCasualtyResolutions = [];
   const chargeDeclarationsByFormation = new Map();
   const fireOverwatches = [];
   const fireOverwatchPasses = [];
@@ -7205,6 +7351,7 @@ export function replayBattleState(state) {
   const resolvedRangedDeclarationIds = new Set();
   let activeActivation = null;
   let pendingFireOverwatch = null;
+  let pendingDesperateEscape = null;
   let pendingHeroicIntervention = null;
   let pendingHazardous = null;
   let pendingGoToGround = null;
@@ -7362,6 +7509,10 @@ export function replayBattleState(state) {
     state.version < COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyCommandBattleShockThroughSequence ?? 0);
+  const legacyDesperateEscapeThroughSequence =
+    state.version < DESPERATE_ESCAPE_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyDesperateEscapeThroughSequence ?? 0);
   const legacyTerrainVisibilityThroughSequence =
     state.version < TERRAIN_VISIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -7527,6 +7678,10 @@ export function replayBattleState(state) {
       failureClock: { ...clock },
     });
   };
+  const liveModelIds = (formation) =>
+    formation.segments.flatMap((segment) =>
+      segment.modelIds.slice(0, formation.health[segment.id].modelsRemaining),
+    );
 
   const declarationWeaponKey = (declaration) =>
     [
@@ -7981,9 +8136,28 @@ export function replayBattleState(state) {
       throw new Error("Resolve or pass the pending Heroic Intervention window first");
     }
     if (
+      pendingDesperateEscape &&
+      ![
+        pendingDesperateEscape.testEventId
+          ? "desperate_escape_casualties_resolved"
+          : "desperate_escape_tests_recorded",
+      ].includes(event.type)
+    ) {
+      throw new Error(
+        pendingDesperateEscape.testEventId
+          ? "Resolve the pending Desperate Escape casualties before continuing"
+          : "Roll the pending Desperate Escape tests before continuing",
+      );
+    }
+    if (
       !resolvesPendingModelPosition &&
       pendingFireOverwatch &&
-      !["fire_overwatch_started", "fire_overwatch_passed"].includes(event.type)
+      ![
+        "fire_overwatch_started",
+        "fire_overwatch_passed",
+        "desperate_escape_tests_recorded",
+        "desperate_escape_casualties_resolved",
+      ].includes(event.type)
     ) {
       throw new Error("Resolve or pass the pending Fire Overwatch window first");
     }
@@ -8055,6 +8229,10 @@ export function replayBattleState(state) {
       if (formations.has(event.formation.id)) throw new Error("Formation is already registered");
       formations.set(event.formation.id, {
         ...event.formation,
+        segments: event.formation.segments.map((segment) => ({
+          ...segment,
+          modelIds: [...(segment.modelIds ?? [])],
+        })),
         health: initialHealth(event.formation),
       });
       continue;
@@ -8068,6 +8246,10 @@ export function replayBattleState(state) {
       }
       formations.set(event.formation.id, {
         ...event.formation,
+        segments: event.formation.segments.map((segment) => ({
+          ...segment,
+          modelIds: [...(segment.modelIds ?? [])],
+        })),
         health: initialHealth(event.formation),
       });
       continue;
@@ -10172,6 +10354,20 @@ export function replayBattleState(state) {
         throw new Error("Formation movement has already started this turn");
       }
       movementStartsByFormation.set(event.formationId, event);
+      if (
+        event.movement === "fall_back" &&
+        event.sequence > legacyDesperateEscapeThroughSequence &&
+        battleShockedFormations.has(event.formationId)
+      ) {
+        pendingDesperateEscape = {
+          formationId: event.formationId,
+          movementStartEventId: event.id,
+          modelCount: liveModelCount(formation),
+          testEventId: "",
+          failedTestCount: 0,
+          clock: { ...clock },
+        };
+      }
       pendingFireOverwatch = {
         triggerEventId: event.id,
         trigger: `${event.movement === "normal" ? "normal_move" : event.movement}_start`,
@@ -10179,6 +10375,100 @@ export function replayBattleState(state) {
         responderPlayerId: otherPlayerId(state.players, clock.activePlayerId),
         clock: { ...clock },
       };
+      continue;
+    }
+    if (event.type === "desperate_escape_tests_recorded") {
+      if (
+        !pendingDesperateEscape ||
+        pendingDesperateEscape.testEventId ||
+        event.formationId !== pendingDesperateEscape.formationId ||
+        event.movementStartEventId !== pendingDesperateEscape.movementStartEventId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Desperate Escape tests do not match the pending Fall Back move");
+      }
+      const formation = formations.get(event.formationId);
+      if (
+        !battleShockedFormations.has(event.formationId) ||
+        event.tests.length !== pendingDesperateEscape.modelCount ||
+        event.tests.length !== liveModelCount(formation)
+      ) {
+        throw new Error("Battle-shocked Desperate Escape requires one test per surviving model");
+      }
+      const failedTestCount = event.tests.filter((test) => {
+        const failed = (test.reroll || test.initialRoll) <= 2;
+        if (
+          !desperateEscapeTestIsValid(
+            test.initialRoll,
+            test.reroll,
+            Boolean(test.rerollReason),
+            failed,
+          )
+        ) {
+          throw new Error("Desperate Escape test result is invalid");
+        }
+        return failed;
+      }).length;
+      desperateEscapeTests.push({ ...event, failedTestCount });
+      pendingDesperateEscape =
+        failedTestCount > 0
+          ? { ...pendingDesperateEscape, testEventId: event.id, failedTestCount }
+          : null;
+      continue;
+    }
+    if (event.type === "desperate_escape_casualties_resolved") {
+      if (
+        !pendingDesperateEscape?.testEventId ||
+        event.formationId !== pendingDesperateEscape.formationId ||
+        event.testEventId !== pendingDesperateEscape.testEventId ||
+        !sameBattleClock(event.clock, clock) ||
+        event.destroyedModelIds.length !== pendingDesperateEscape.failedTestCount
+      ) {
+        throw new Error("Desperate Escape casualties do not match the failed tests");
+      }
+      const formation = formations.get(event.formationId);
+      const before = Object.fromEntries(
+        formation.segments.map((segment) => [segment.id, { ...formation.health[segment.id] }]),
+      );
+      const survivingIds = new Set(liveModelIds(formation));
+      if (event.destroyedModelIds.some((modelId) => !survivingIds.has(modelId))) {
+        throw new Error("Desperate Escape can destroy only selected surviving models");
+      }
+      for (const modelId of event.destroyedModelIds) {
+        destroySelectedFormationModel(formation, modelId);
+      }
+      let damage = 0;
+      let modelsDestroyed = 0;
+      for (const allocation of event.allocations) {
+        const segment = formation.segments.find(
+          (candidate) => candidate.id === allocation.segmentId,
+        );
+        if (
+          !sameHealth(before[segment.id], allocation.before) ||
+          !sameHealth(formation.health[segment.id], allocation.after)
+        ) {
+          throw new Error("Desperate Escape allocation does not match replayed health");
+        }
+        damage +=
+          (allocation.before.modelsRemaining - allocation.after.modelsRemaining) * segment.wounds +
+          allocation.after.woundsLost -
+          allocation.before.woundsLost;
+        modelsDestroyed += allocation.before.modelsRemaining - allocation.after.modelsRemaining;
+      }
+      if (
+        damage !== event.summary.damage ||
+        modelsDestroyed !== event.summary.modelsDestroyed ||
+        modelsDestroyed !== event.destroyedModelIds.length
+      ) {
+        throw new Error("Desperate Escape summary does not match its casualties");
+      }
+      refreshGeometryStaleness(event.formationId);
+      desperateEscapeCasualtyResolutions.push(event);
+      pendingDesperateEscape = null;
+      if (formationDestroyed(formation)) {
+        movementStartsByFormation.delete(event.formationId);
+        pendingFireOverwatch = null;
+      }
       continue;
     }
     if (event.type === "movement_recorded") {
@@ -12543,6 +12833,9 @@ export function replayBattleState(state) {
     targetEligibilityFacts,
     fightMovementsByActivation,
     movementStartsByFormation,
+    pendingDesperateEscape,
+    desperateEscapeTests,
+    desperateEscapeCasualtyResolutions,
     chargeDeclarationsByFormation,
     pendingFireOverwatch,
     fireOverwatches,
@@ -13706,6 +13999,87 @@ export function startFormationMovement(state, formationId, movement, id, at) {
     formationId,
     movement,
     clock,
+  });
+}
+
+export function recordDesperateEscapeTests(
+  state,
+  tests,
+  id,
+  at,
+  randomUint32 = secureRandomUint32,
+) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingDesperateEscape;
+  if (!pending || pending.testEventId) {
+    throw new Error("No Desperate Escape tests are pending");
+  }
+  const resolvedTests = tests ?? rollDesperateEscapeTests(pending.modelCount, randomUint32);
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "desperate_escape_tests_recorded",
+    formationId: pending.formationId,
+    movementStartEventId: pending.movementStartEventId,
+    tests: resolvedTests,
+    clock: replayed.clock,
+  });
+}
+
+export function desperateEscapeCasualtyOptions(state) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingDesperateEscape;
+  const formation = pending ? replayed.formations.get(pending.formationId) : null;
+  if (!pending?.testEventId || !formation) return [];
+  return formation.segments.flatMap((segment) =>
+    segment.modelIds.slice(0, formation.health[segment.id].modelsRemaining).map((modelId) => ({
+      id: modelId,
+      name: `${segment.name} · ${modelId}`,
+      segmentId: segment.id,
+      wounded: segment.modelIds[0] === modelId && formation.health[segment.id].woundsLost > 0,
+    })),
+  );
+}
+
+export function resolveDesperateEscapeCasualties(state, destroyedModelIds, id, at) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingDesperateEscape;
+  if (!pending?.testEventId) throw new Error("No Desperate Escape casualties are pending");
+  const formation = structuredClone(replayed.formations.get(pending.formationId));
+  const before = Object.fromEntries(
+    formation.segments.map((segment) => [segment.id, { ...formation.health[segment.id] }]),
+  );
+  for (const modelId of destroyedModelIds) destroySelectedFormationModel(formation, modelId);
+  const allocations = formation.segments
+    .filter((segment) => !sameHealth(before[segment.id], formation.health[segment.id]))
+    .map((segment) => ({
+      segmentId: segment.id,
+      before: before[segment.id],
+      after: formation.health[segment.id],
+    }));
+  const damage = allocations.reduce((total, allocation) => {
+    const segment = formation.segments.find((candidate) => candidate.id === allocation.segmentId);
+    return (
+      total +
+      (allocation.before.modelsRemaining - allocation.after.modelsRemaining) * segment.wounds +
+      allocation.after.woundsLost -
+      allocation.before.woundsLost
+    );
+  }, 0);
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "desperate_escape_casualties_resolved",
+    formationId: pending.formationId,
+    testEventId: pending.testEventId,
+    destroyedModelIds,
+    allocations,
+    summary: { damage, modelsDestroyed: destroyedModelIds.length },
+    clock: replayed.clock,
   });
 }
 

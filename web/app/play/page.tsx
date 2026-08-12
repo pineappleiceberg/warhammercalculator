@@ -55,6 +55,7 @@ import {
   createBattleState,
   declareFormationCharge,
   declareFormationDeployment,
+  desperateEscapeCasualtyOptions,
   deployFormation,
   disembarkFormation,
   drawSecondaryMissionCard,
@@ -72,6 +73,7 @@ import {
   recordDeploymentModelPlacements,
   recordModelPositions,
   recordHazardousTests,
+  recordDesperateEscapeTests,
   recordFightMove,
   recordRangedTargetEligibility,
   retractRangedTargetDeclaration,
@@ -80,6 +82,7 @@ import {
   rollHazardousFeelNoPain,
   rollHazardousTests,
   resolveDestroyedTransport,
+  resolveDesperateEscapeCasualties,
   resolveMissionAction,
   resolveNewOrders,
   resolveSecondaryTurnEnd,
@@ -488,6 +491,9 @@ export default function PlayMode() {
   const [counterOffensivePassReason, setCounterOffensivePassReason] = useState("");
   const [hazardousBearerId, setHazardousBearerId] = useState("");
   const [hazardousSelectionReason, setHazardousSelectionReason] = useState("");
+  const [desperateEscapeDestroyedModelIds, setDesperateEscapeDestroyedModelIds] = useState<
+    string[]
+  >([]);
   const [heroicFormationId, setHeroicFormationId] = useState("");
   const [heroicDice, setHeroicDice] = useState<[number, number]>([3, 4]);
   const [heroicRollModifier, setHeroicRollModifier] = useState(0);
@@ -1329,6 +1335,11 @@ export default function PlayMode() {
     ? replayedBattle?.deploymentByFormation.get(selectedRapidIngressFormationId)
     : null;
   const pendingHazardous = replayedBattle?.pendingHazardous ?? null;
+  const pendingDesperateEscape = replayedBattle?.pendingDesperateEscape ?? null;
+  const desperateEscapeOptions =
+    battleState && pendingDesperateEscape?.testEventId
+      ? desperateEscapeCasualtyOptions(battleState)
+      : [];
   const hazardousOptions =
     battleState && pendingHazardous?.due ? hazardousBearerOptions(battleState) : [];
   const selectedHazardousBearerId = hazardousOptions.some(
@@ -4769,7 +4780,8 @@ export default function PlayMode() {
               battleState.events.length + 1,
             );
       setBattleState(next);
-      const pendingPosition = replayBattleState(next).pendingModelPosition;
+      const nextReplay = replayBattleState(next);
+      const pendingPosition = nextReplay.pendingModelPosition;
       refreshProfile(
         weaponId,
         targetModelId,
@@ -4788,10 +4800,53 @@ export default function PlayMode() {
           ? `${attackerFormation?.name ?? "Formation"} · remained stationary`
           : movementStarted
             ? `${attackerFormation?.name ?? "Formation"} · ${movement.replace("_", " ")} complete · ${pendingPosition ? "record per-model paths" : "Fire Overwatch response"}`
-            : `${attackerFormation?.name ?? "Formation"} · ${movement.replace("_", " ")} started · Fire Overwatch response`,
+            : `${attackerFormation?.name ?? "Formation"} · ${movement.replace("_", " ")} started · ${nextReplay.pendingDesperateEscape ? "Desperate Escape tests" : "Fire Overwatch response"}`,
       );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Movement could not be recorded");
+    }
+  };
+
+  const rollPendingDesperateEscape = () => {
+    if (!battleState || !pendingDesperateEscape || pendingDesperateEscape.testEventId) return;
+    try {
+      const next = recordDesperateEscapeTests(
+        battleState,
+        null,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      const pending = replayBattleState(next).pendingDesperateEscape;
+      setDesperateEscapeDestroyedModelIds([]);
+      setStatus(
+        pending
+          ? `${pending.failedTestCount} Desperate Escape ${pending.failedTestCount === 1 ? "test failed" : "tests failed"} · select that many casualties`
+          : "All Desperate Escape tests passed · continue the Fall Back sequence",
+      );
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "Desperate Escape tests could not resolve",
+      );
+    }
+  };
+
+  const resolvePendingDesperateEscapeCasualties = () => {
+    if (!battleState || !pendingDesperateEscape?.testEventId) return;
+    try {
+      const next = resolveDesperateEscapeCasualties(
+        battleState,
+        desperateEscapeDestroyedModelIds,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setDesperateEscapeDestroyedModelIds([]);
+      setStatus("Desperate Escape casualties recorded · continue the Fall Back sequence");
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "Desperate Escape casualties could not resolve",
+      );
     }
   };
 
@@ -9349,6 +9404,73 @@ export default function PlayMode() {
                     </>
                   ) : (
                     <>
+                      {pendingDesperateEscape?.formationId === attackerBattleFormationId && (
+                        <div className="action-tracker" aria-labelledby="desperate-escape-heading">
+                          <strong id="desperate-escape-heading">Desperate Escape</strong>
+                          {!pendingDesperateEscape.testEventId ? (
+                            <>
+                              <span>
+                                Battle-shocked Fall Back: roll one D6 for each of the{" "}
+                                {pendingDesperateEscape.modelCount} surviving models before any
+                                model moves. Each 1–2 destroys one model you select.
+                              </span>
+                              <button type="button" onClick={rollPendingDesperateEscape}>
+                                Roll {pendingDesperateEscape.modelCount} Desperate Escape{" "}
+                                {pendingDesperateEscape.modelCount === 1 ? "test" : "tests"}
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <span>
+                                {pendingDesperateEscape.failedTestCount} failed. Select exactly{" "}
+                                {pendingDesperateEscape.failedTestCount} surviving{" "}
+                                {pendingDesperateEscape.failedTestCount === 1 ? "model" : "models"}{" "}
+                                to destroy.
+                              </span>
+                              <div className="choice-grid">
+                                {desperateEscapeOptions.map(
+                                  (option: { id: string; name: string; wounded: boolean }) => {
+                                    const checked = desperateEscapeDestroyedModelIds.includes(
+                                      option.id,
+                                    );
+                                    const limitReached =
+                                      desperateEscapeDestroyedModelIds.length >=
+                                      pendingDesperateEscape.failedTestCount;
+                                    return (
+                                      <label className="confirmation-row" key={option.id}>
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          disabled={!checked && limitReached}
+                                          onChange={() =>
+                                            setDesperateEscapeDestroyedModelIds((current) =>
+                                              checked
+                                                ? current.filter((id) => id !== option.id)
+                                                : [...current, option.id],
+                                            )
+                                          }
+                                        />
+                                        {option.name}
+                                        {option.wounded ? " · wounded" : ""}
+                                      </label>
+                                    );
+                                  },
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                disabled={
+                                  desperateEscapeDestroyedModelIds.length !==
+                                  pendingDesperateEscape.failedTestCount
+                                }
+                                onClick={resolvePendingDesperateEscapeCasualties}
+                              >
+                                Record casualties
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
                       {selectedMovementCurrent ? (
                         <span>Recorded: {selectedMovement?.movement.replace("_", " ")}</span>
                       ) : (

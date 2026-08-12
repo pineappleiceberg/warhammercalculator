@@ -15,6 +15,7 @@
         11,
         12,
         13,
+        14,
         15,
         16,
         17,
@@ -83,7 +84,8 @@
         "Rapid Ingress timing at the end of the opponent's Movement phase, Reserve target, 1CP cost, normal battle-round eligibility, Reinforcements-step arrival, and Strategic Reserves placement",
         "Benefit of Cover save modifier at attack allocation for each target model, AP 0 restriction for 3+ or better saves, non-cumulative effect, and Ignores Cover interaction",
         "Battle-shock tests pass when the adjusted 2D6 result is greater than or equal to the best Leadership characteristic and fail otherwise",
-        "mandatory Command-phase Battle-shock tests for Below Half-strength single-model, ordinary, and Attached units using the best surviving Leadership characteristic"
+        "mandatory Command-phase Battle-shock tests for Below Half-strength single-model, ordinary, and Attached units using the best surviving Leadership characteristic",
+        "mandatory one-D6-per-model Desperate Escape tests before a Battle-shocked unit Falls Back, with each 1-2 destroying a controller-selected surviving model"
       ]
     },
     {

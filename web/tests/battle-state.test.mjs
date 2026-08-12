@@ -38,6 +38,7 @@ import {
   createBattleState,
   declareFormationCharge,
   declareFormationDeployment,
+  desperateEscapeCasualtyOptions,
   deployFormation,
   disembarkFormation,
   drawSecondaryMissionCard,
@@ -54,6 +55,7 @@ import {
   registerBattleFormation,
   recordFormationCharge,
   recordHazardousTests,
+  recordDesperateEscapeTests,
   recordFormationMovement,
   recordFightMove,
   recordRangedTargetEligibility,
@@ -72,6 +74,7 @@ import {
   resolveHeroicIntervention,
   resolveCounterOffensive,
   resolveDestroyedTransport,
+  resolveDesperateEscapeCasualties,
   revertLatestAttack,
   scoreBattlePoints,
   scoreMissionPoints,
@@ -1227,8 +1230,8 @@ test("pins the official battle-state rules source", () => {
   assert.deepEqual(
     battleRuleSources.sources[0].pages,
     [
-      7, 8, 9, 11, 12, 13, 15, 16, 17, 18, 19, 20, 23, 25, 26, 29, 32, 33, 34, 35, 39, 41, 42, 43,
-      44, 45, 46, 47, 48, 53, 56, 57, 58, 60,
+      7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 23, 25, 26, 29, 32, 33, 34, 35, 39, 41, 42,
+      43, 44, 45, 46, 47, 48, 53, 56, 57, 58, 60,
     ],
   );
   assert.equal(
@@ -3511,6 +3514,95 @@ test("resolves Fire Overwatch at a move trigger with atomic CP and target lockin
     state.events.length + 1,
   );
   assert.equal(replayBattleState(state).pendingFireOverwatch, null);
+});
+
+test("resolves mandatory Battle-shocked Fall Back tests before any model moves", () => {
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), attackerFormation, "escape-register-mover", 1),
+    formation,
+    "escape-register-enemy",
+    2,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "escape-start", 3);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "escape-to-movement",
+  );
+  state = setFormationBattleShocked(
+    state,
+    attackerFormation.id,
+    true,
+    "Failed Battle-shock test",
+    "escape-battle-shocked",
+    state.events.length + 1,
+  );
+  state = startFormationMovement(
+    state,
+    attackerFormation.id,
+    "fall_back",
+    "escape-fall-back-start",
+    state.events.length + 1,
+  );
+  let replayed = replayBattleState(state);
+  assert.equal(replayed.pendingDesperateEscape.modelCount, 3);
+  assert.throws(
+    () => passFireOverwatch(state, "Cannot react yet", "escape-overwatch-early", 99),
+    /Desperate Escape tests/i,
+  );
+  state = recordDesperateEscapeTests(
+    state,
+    [
+      { initialRoll: 1, reroll: 0, rerollReason: "" },
+      { initialRoll: 6, reroll: 0, rerollReason: "" },
+      { initialRoll: 2, reroll: 0, rerollReason: "" },
+    ],
+    "escape-tests",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.pendingDesperateEscape.failedTestCount, 2);
+  const casualtyOptions = desperateEscapeCasualtyOptions(state);
+  const bodyguard = casualtyOptions.find((option) => option.segmentId === "bodyguard");
+  const leader = casualtyOptions.find((option) => option.segmentId === "leader");
+  state = resolveDesperateEscapeCasualties(
+    state,
+    [bodyguard.id, leader.id],
+    "escape-casualties",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.pendingDesperateEscape, null);
+  assert.deepEqual(replayed.formations.get(attackerFormation.id).health, {
+    bodyguard: { modelsRemaining: 1, woundsLost: 0 },
+    leader: { modelsRemaining: 0, woundsLost: 0 },
+  });
+  assert.ok(
+    !replayed.formations
+      .get(attackerFormation.id)
+      .segments.flatMap((segment) =>
+        segment.modelIds.slice(
+          0,
+          replayed.formations.get(attackerFormation.id).health[segment.id].modelsRemaining,
+        ),
+      )
+      .some((modelId) => [bodyguard.id, leader.id].includes(modelId)),
+  );
+  state = passFireOverwatch(
+    state,
+    "Opponent declined after casualties",
+    "escape-overwatch-pass",
+    state.events.length + 1,
+  );
+  assert.doesNotThrow(() =>
+    completeFormationMovement(
+      state,
+      attackerFormation.id,
+      "fall_back",
+      "escape-fall-back-complete",
+      state.events.length + 1,
+    ),
+  );
 });
 
 test("records exact Hazardous tests and applies non-spilling bearer damage", () => {

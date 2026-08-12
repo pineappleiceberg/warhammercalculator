@@ -30,6 +30,7 @@ import {
   recordModelPositions,
   recordFightMove,
   recordHazardousTests,
+  recordDesperateEscapeTests,
   recordRangedTargetEligibility,
   registerBattleFormation,
   replayBattleState,
@@ -41,6 +42,7 @@ import {
   resolveRapidIngress,
   resolveBattleChoice,
   resolveDestroyedTransport,
+  resolveDesperateEscapeCasualties,
   scoreBattlePoints,
   setBattleObjectiveControl,
   setFormationBattleShocked,
@@ -319,7 +321,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const coverage = (await coverageResponse.json()).data;
   assert.equal(
     coverage.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v46",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v47",
   );
   assert.equal(coverage.sourceLocked, true);
   assert.equal(coverage.rules.length, coveredRuleCoverageMatrix.rules.length);
@@ -4208,6 +4210,123 @@ test("cross-checks Fire Overwatch reactions through the C and WebAssembly API", 
   assert.equal(declinedBody.data.fireOverwatches.length, 0);
   assert.equal(declinedBody.data.fireOverwatchPasses.length, 1);
   assert.equal(declinedBody.data.fireOverwatchPasses[0].trigger, "normal_move_start");
+});
+
+test("cross-checks Battle-shocked Fall Back and exact Desperate Escape casualties", async () => {
+  const mover = {
+    id: "escape-mover",
+    playerId: "player-1",
+    sourceFormationId: "escape-mover",
+    name: "Battle-shocked movers",
+    keywords: ["Infantry"],
+    segments: [
+      {
+        id: "escape-models",
+        savedUnitId: "escape-mover",
+        unitName: "Battle-shocked movers",
+        modelName: "Mover",
+        role: "standalone",
+        wounds: 2,
+        startingModels: 3,
+      },
+    ],
+  };
+  const enemy = {
+    ...structuredClone(mover),
+    id: "escape-enemy",
+    playerId: "player-2",
+    sourceFormationId: "escape-enemy",
+    name: "Enemy",
+    segments: [{ ...mover.segments[0], id: "escape-enemy-models", startingModels: 1 }],
+  };
+  let state = createBattleState({
+    id: "escape-api",
+    createdAt: 1,
+    rulesSnapshot: "catalogue:test",
+    players: [
+      { id: "player-1", listId: "escape-1", listUpdatedAt: 1, name: "Movers" },
+      { id: "player-2", listId: "escape-2", listUpdatedAt: 1, name: "Enemy" },
+    ],
+  });
+  state = registerBattleFormation(state, mover, "escape-register-mover", 1);
+  state = registerBattleFormation(state, enemy, "escape-register-enemy", 2);
+  state = declareFormationDeployment(state, mover.id, "battlefield", {}, "escape-declare-mover", 3);
+  state = declareFormationDeployment(state, enemy.id, "battlefield", {}, "escape-declare-enemy", 4);
+  state = deployFormation(
+    state,
+    mover.id,
+    { placementConfirmed: true, placementReason: "Deployment zone" },
+    "escape-deploy-mover",
+    5,
+  );
+  state = deployFormation(
+    state,
+    enemy.id,
+    { placementConfirmed: true, placementReason: "Deployment zone" },
+    "escape-deploy-enemy",
+    6,
+  );
+  state = startBattle(state, "player-1", "escape-start", 7);
+  while (
+    replayBattleState(state).clock.phase !== "movement" ||
+    replayBattleState(state).clock.step !== "move_units"
+  ) {
+    state = advanceBattleClock(state, `escape-clock-${state.events.length}`, state.events.length);
+  }
+  state = setFormationBattleShocked(
+    state,
+    mover.id,
+    true,
+    "Failed Battle-shock test",
+    "escape-shocked",
+    state.events.length,
+  );
+  state = startFormationMovement(
+    state,
+    mover.id,
+    "fall_back",
+    "escape-move-start",
+    state.events.length,
+  );
+  state = recordDesperateEscapeTests(
+    state,
+    [
+      { initialRoll: 1, reroll: 0, rerollReason: "" },
+      { initialRoll: 4, reroll: 0, rerollReason: "" },
+      { initialRoll: 2, reroll: 0, rerollReason: "" },
+    ],
+    "escape-tests",
+    state.events.length,
+  );
+  const modelIds = replayBattleState(state).formations.get(mover.id).segments[0].modelIds;
+  state = resolveDesperateEscapeCasualties(
+    state,
+    [modelIds[0], modelIds[2]],
+    "escape-casualties",
+    state.events.length,
+  );
+  const worker = await loadWorker();
+  const response = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: state, formationId: mover.id }),
+    }),
+    testEnv,
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  const body = await response.json();
+  assert.equal(body.data.desperateEscape.length, 1);
+  assert.deepEqual(
+    body.data.desperateEscape[0].tests.map((result) => result.failed),
+    [true, false, true],
+  );
+  assert.deepEqual(body.data.desperateEscape[0].destroyedModelIds, [modelIds[0], modelIds[2]]);
+  assert.deepEqual(body.data.health["escape-models"], {
+    modelsRemaining: 1,
+    woundsLost: 0,
+  });
 });
 
 test("cross-checks Go to Ground and Smokescreen through the C and WebAssembly API", async () => {

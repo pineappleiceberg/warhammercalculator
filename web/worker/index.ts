@@ -76,6 +76,7 @@ import {
   reanimationProtocolsTransitionIsValid,
   shadowInTheWarpTestIsValid,
   commandBattleShockTestIsValid,
+  desperateEscapeTestIsValid,
   battleWaaaghFormationFacts,
   battleSurvivingWeaponCount,
   chargeResolutionFlags,
@@ -385,6 +386,7 @@ type CalculatorExports = {
   whc_heroic_intervention_is_valid(...values: number[]): number;
   whc_fire_overwatch_is_valid(...values: number[]): number;
   whc_hazardous_resolution_is_valid(...values: number[]): number;
+  whc_desperate_escape_test_is_valid(...values: number[]): number;
   whc_go_to_ground_is_valid(...values: number[]): number;
   whc_smokescreen_is_valid(...values: number[]): number;
   whc_rapid_ingress_is_valid(...values: number[]): number;
@@ -632,6 +634,7 @@ async function loadCalculator() {
       typeof calculator.whc_heroic_intervention_is_valid !== "function" ||
       typeof calculator.whc_fire_overwatch_is_valid !== "function" ||
       typeof calculator.whc_hazardous_resolution_is_valid !== "function" ||
+      typeof calculator.whc_desperate_escape_test_is_valid !== "function" ||
       typeof calculator.whc_go_to_ground_is_valid !== "function" ||
       typeof calculator.whc_smokescreen_is_valid !== "function" ||
       typeof calculator.whc_rapid_ingress_is_valid !== "function" ||
@@ -826,6 +829,14 @@ async function replayFormationHealth(
         after: { modelsRemaining: number; woundsLost: number };
       };
     };
+    desperateEscapeAllocation?: {
+      summary: { damage: number; modelsDestroyed: number };
+      allocations: Array<{
+        segmentId: string;
+        before: { modelsRemaining: number; woundsLost: number };
+        after: { modelsRemaining: number; woundsLost: number };
+      }>;
+    };
   }> = [];
   const attackIndices = new Map<string, number>();
   for (const event of state.events) {
@@ -853,6 +864,17 @@ async function replayFormationHealth(
       event.formationId === requestedFormationId
     ) {
       selectedEvents.push({ event });
+    } else if (
+      event.type === "desperate_escape_casualties_resolved" &&
+      event.formationId === requestedFormationId
+    ) {
+      selectedEvents.push({
+        event,
+        desperateEscapeAllocation: {
+          summary: event.summary,
+          allocations: event.allocations,
+        },
+      });
     }
   }
 
@@ -866,73 +888,95 @@ async function replayFormationHealth(
     profiles[index * profileFields + 1] = segment.startingModels;
   });
   const events = new Uint32Array(selectedEvents.length * eventFields);
-  selectedEvents.forEach(({ event, transportPassenger, hazardousAllocation }, index) => {
-    const offset = index * eventFields;
-    events[offset] = event.version;
-    if (event.type === "attack_resolved") {
-      events[offset + 1] = 1;
-      events[offset + 2] = event.allocations.length;
-      events[offset + 4] = event.summary.damage;
-      events[offset + 5] = event.summary.modelsDestroyed;
-      event.allocations.forEach((allocation, allocationIndex) => {
+  selectedEvents.forEach(
+    ({ event, transportPassenger, hazardousAllocation, desperateEscapeAllocation }, index) => {
+      const offset = index * eventFields;
+      events[offset] = event.version;
+      if (event.type === "attack_resolved") {
+        events[offset + 1] = 1;
+        events[offset + 2] = event.allocations.length;
+        events[offset + 4] = event.summary.damage;
+        events[offset + 5] = event.summary.modelsDestroyed;
+        event.allocations.forEach((allocation, allocationIndex) => {
+          const segmentIndex = segmentIndices.get(allocation.segmentId);
+          if (segmentIndex === undefined) throw new Error("Attack allocation segment is unknown");
+          const allocationOffset = offset + eventHeaderFields + allocationIndex * allocationFields;
+          events[allocationOffset] = segmentIndex;
+          events[allocationOffset + 1] = allocation.before.modelsRemaining;
+          events[allocationOffset + 2] = allocation.before.woundsLost;
+          events[allocationOffset + 3] = allocation.after.modelsRemaining;
+          events[allocationOffset + 4] = allocation.after.woundsLost;
+        });
+      } else if (event.type === "attack_reverted") {
+        events[offset + 1] = 2;
+        events[offset + 3] = attackIndices.get(event.revertsEventId) ?? 0xffffffff;
+      } else if (event.type === "transport_destroyed_resolved" && transportPassenger) {
+        events[offset + 1] = 3;
+        events[offset + 2] = transportPassenger.allocations.length;
+        events[offset + 4] = transportPassenger.summary.damage;
+        events[offset + 5] = transportPassenger.summary.modelsDestroyed;
+        transportPassenger.allocations.forEach((allocation, allocationIndex) => {
+          const segmentIndex = segmentIndices.get(allocation.segmentId);
+          if (segmentIndex === undefined) {
+            throw new Error("Transport allocation segment is unknown");
+          }
+          const allocationOffset = offset + eventHeaderFields + allocationIndex * allocationFields;
+          events[allocationOffset] = segmentIndex;
+          events[allocationOffset + 1] = allocation.before.modelsRemaining;
+          events[allocationOffset + 2] = allocation.before.woundsLost;
+          events[allocationOffset + 3] = allocation.after.modelsRemaining;
+          events[allocationOffset + 4] = allocation.after.woundsLost;
+        });
+      } else if (event.type === "hazardous_damage_resolved" && hazardousAllocation) {
+        const allocation = hazardousAllocation.allocation;
         const segmentIndex = segmentIndices.get(allocation.segmentId);
-        if (segmentIndex === undefined) throw new Error("Attack allocation segment is unknown");
-        const allocationOffset = offset + eventHeaderFields + allocationIndex * allocationFields;
+        if (segmentIndex === undefined) throw new Error("Hazardous allocation segment is unknown");
+        events[offset + 1] = 4;
+        events[offset + 2] = 1;
+        events[offset + 4] = hazardousAllocation.summary.damage;
+        events[offset + 5] = hazardousAllocation.summary.modelsDestroyed;
+        const allocationOffset = offset + eventHeaderFields;
         events[allocationOffset] = segmentIndex;
         events[allocationOffset + 1] = allocation.before.modelsRemaining;
         events[allocationOffset + 2] = allocation.before.woundsLost;
         events[allocationOffset + 3] = allocation.after.modelsRemaining;
         events[allocationOffset + 4] = allocation.after.woundsLost;
-      });
-    } else if (event.type === "attack_reverted") {
-      events[offset + 1] = 2;
-      events[offset + 3] = attackIndices.get(event.revertsEventId) ?? 0xffffffff;
-    } else if (event.type === "transport_destroyed_resolved" && transportPassenger) {
-      events[offset + 1] = 3;
-      events[offset + 2] = transportPassenger.allocations.length;
-      events[offset + 4] = transportPassenger.summary.damage;
-      events[offset + 5] = transportPassenger.summary.modelsDestroyed;
-      transportPassenger.allocations.forEach((allocation, allocationIndex) => {
-        const segmentIndex = segmentIndices.get(allocation.segmentId);
+      } else if (event.type === "reanimation_wound_resolved") {
+        const segmentIndex = segmentIndices.get(event.segmentId);
         if (segmentIndex === undefined) {
-          throw new Error("Transport allocation segment is unknown");
+          throw new Error("Reanimation Protocols allocation segment is unknown");
         }
-        const allocationOffset = offset + eventHeaderFields + allocationIndex * allocationFields;
+        events[offset + 1] = event.action === "heal" ? 5 : 6;
+        events[offset + 2] = 1;
+        const allocationOffset = offset + eventHeaderFields;
         events[allocationOffset] = segmentIndex;
-        events[allocationOffset + 1] = allocation.before.modelsRemaining;
-        events[allocationOffset + 2] = allocation.before.woundsLost;
-        events[allocationOffset + 3] = allocation.after.modelsRemaining;
-        events[allocationOffset + 4] = allocation.after.woundsLost;
-      });
-    } else if (event.type === "hazardous_damage_resolved" && hazardousAllocation) {
-      const allocation = hazardousAllocation.allocation;
-      const segmentIndex = segmentIndices.get(allocation.segmentId);
-      if (segmentIndex === undefined) throw new Error("Hazardous allocation segment is unknown");
-      events[offset + 1] = 4;
-      events[offset + 2] = 1;
-      events[offset + 4] = hazardousAllocation.summary.damage;
-      events[offset + 5] = hazardousAllocation.summary.modelsDestroyed;
-      const allocationOffset = offset + eventHeaderFields;
-      events[allocationOffset] = segmentIndex;
-      events[allocationOffset + 1] = allocation.before.modelsRemaining;
-      events[allocationOffset + 2] = allocation.before.woundsLost;
-      events[allocationOffset + 3] = allocation.after.modelsRemaining;
-      events[allocationOffset + 4] = allocation.after.woundsLost;
-    } else if (event.type === "reanimation_wound_resolved") {
-      const segmentIndex = segmentIndices.get(event.segmentId);
-      if (segmentIndex === undefined) {
-        throw new Error("Reanimation Protocols allocation segment is unknown");
+        events[allocationOffset + 1] = event.before.modelsRemaining;
+        events[allocationOffset + 2] = event.before.woundsLost;
+        events[allocationOffset + 3] = event.after.modelsRemaining;
+        events[allocationOffset + 4] = event.after.woundsLost;
+      } else if (
+        event.type === "desperate_escape_casualties_resolved" &&
+        desperateEscapeAllocation
+      ) {
+        events[offset + 1] = 7;
+        events[offset + 2] = desperateEscapeAllocation.allocations.length;
+        events[offset + 4] = desperateEscapeAllocation.summary.damage;
+        events[offset + 5] = desperateEscapeAllocation.summary.modelsDestroyed;
+        desperateEscapeAllocation.allocations.forEach((allocation, allocationIndex) => {
+          const segmentIndex = segmentIndices.get(allocation.segmentId);
+          if (segmentIndex === undefined) {
+            throw new Error("Desperate Escape allocation segment is unknown");
+          }
+          const allocationOffset = offset + eventHeaderFields + allocationIndex * allocationFields;
+          events[allocationOffset] = segmentIndex;
+          events[allocationOffset + 1] = allocation.before.modelsRemaining;
+          events[allocationOffset + 2] = allocation.before.woundsLost;
+          events[allocationOffset + 3] = allocation.after.modelsRemaining;
+          events[allocationOffset + 4] = allocation.after.woundsLost;
+        });
       }
-      events[offset + 1] = event.action === "heal" ? 5 : 6;
-      events[offset + 2] = 1;
-      const allocationOffset = offset + eventHeaderFields;
-      events[allocationOffset] = segmentIndex;
-      events[allocationOffset + 1] = event.before.modelsRemaining;
-      events[allocationOffset + 2] = event.before.woundsLost;
-      events[allocationOffset + 3] = event.after.modelsRemaining;
-      events[allocationOffset + 4] = event.after.woundsLost;
-    }
-  });
+    },
+  );
 
   const calculator = await loadCalculator();
   const profilesPointer = calculator.malloc(profiles.byteLength);
@@ -2153,12 +2197,46 @@ async function replayFormationHealth(
       }
       return resolution;
     });
+    const desperateEscape = replayed.desperateEscapeTests.map((event) => {
+      const tests = event.tests.map((test) => {
+        const failed = (test.reroll || test.initialRoll) <= 2;
+        const values = [test.initialRoll, test.reroll, test.rerollReason ? 1 : 0, failed ? 1 : 0];
+        const javascriptValid = desperateEscapeTestIsValid(
+          test.initialRoll,
+          test.reroll,
+          Boolean(test.rerollReason),
+          failed,
+        );
+        const nativeValid = Boolean(calculator.whc_desperate_escape_test_is_valid(...values));
+        if (!javascriptValid || nativeValid !== javascriptValid) {
+          throw new ServiceUnavailableError(
+            "Desperate Escape diverged from the C/WebAssembly predicate",
+            "DESPERATE_ESCAPE_DIVERGENCE",
+          );
+        }
+        return { ...test, failed };
+      });
+      const casualties = replayed.desperateEscapeCasualtyResolutions.find(
+        (resolution) => resolution.testEventId === event.id,
+      );
+      return {
+        eventId: event.id,
+        formationId: event.formationId,
+        movementStartEventId: event.movementStartEventId,
+        tests,
+        failedTestCount: event.failedTestCount,
+        destroyedModelIds: casualties?.destroyedModelIds ?? [],
+        clock: event.clock,
+        canonical: true,
+      };
+    });
     return {
       schemaVersion: state.version,
       rulesSnapshot: state.rulesSnapshot,
       ruleCoverage: replayed.ruleCoverage,
       factionRules: { waaagh, oathOfMoment, reanimationProtocols, shadowInTheWarp },
       commandBattleShock,
+      desperateEscape,
       detachmentRules: { grimResolve },
       tableGeometry: replayed.tableGeometry,
       terrainFootprints: replayed.terrainFootprints,

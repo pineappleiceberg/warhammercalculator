@@ -289,6 +289,14 @@ bool whc_hazardous_resolution_is_valid(uint32_t initial_roll, uint32_t reroll,
     return model_destroyed ? applied_damage == remaining_wounds : applied_damage < remaining_wounds;
 }
 
+bool whc_desperate_escape_test_is_valid(uint32_t initial_roll, uint32_t reroll,
+                                        bool reroll_explained, bool failed) {
+    const uint32_t final_roll = reroll == 0u ? initial_roll : reroll;
+
+    return initial_roll >= 1u && initial_roll <= 6u && reroll <= 6u &&
+           (reroll == 0u || reroll_explained) && failed == (final_roll <= 2u);
+}
+
 bool whc_go_to_ground_is_valid(uint32_t phase, uint32_t command_points_before,
                                uint32_t command_point_cost, uint32_t command_points_after,
                                bool already_used, bool target_battle_shocked, uint32_t flags) {
@@ -968,7 +976,8 @@ bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_
 
         memcpy(next, current, segment_count * WHC_BATTLE_HEALTH_FIELDS * sizeof(uint32_t));
         if (kind == WHC_BATTLE_EVENT_ATTACK || kind == WHC_BATTLE_EVENT_TRANSPORT_DAMAGE ||
-            kind == WHC_BATTLE_EVENT_HAZARDOUS_DAMAGE) {
+            kind == WHC_BATTLE_EVENT_HAZARDOUS_DAMAGE ||
+            kind == WHC_BATTLE_EVENT_DESPERATE_ESCAPE) {
             bool seen[WHC_MAX_BATTLE_SEGMENTS] = {false};
             uint64_t damage = 0u;
             uint64_t destroyed = 0u;
