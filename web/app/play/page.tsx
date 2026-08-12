@@ -28,6 +28,7 @@ import {
   battleGrimResolveState,
   battleOathOfMomentState,
   battleReanimationProtocolsState,
+  battleShadowInTheWarpState,
   battleWaaaghState,
   battleFormation,
   battleFormationIsOnBattlefield,
@@ -88,6 +89,7 @@ import {
   resolveGoToGround,
   resolveRapidIngress,
   resolveReanimationWound,
+  resolveShadowInTheWarpTest,
   resolveSmokescreen,
   resolveCounterOffensive,
   revertLatestAttack,
@@ -96,6 +98,7 @@ import {
   scoreSecondaryMissionCard,
   selectGrimResolveFormation,
   selectOathOfMomentTarget,
+  unleashShadowInTheWarp,
   setBattleObjectiveControl,
   setFormationBattleShocked,
   startBattle,
@@ -4640,6 +4643,71 @@ export default function PlayMode() {
     }
   };
 
+  const unleashPlayerShadowInTheWarp = (playerId: string, sourceFormationId: string) => {
+    if (!battleState) return;
+    try {
+      const next = unleashShadowInTheWarp(
+        battleState,
+        playerId,
+        sourceFormationId,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      const pending = replayBattleState(next).pendingShadowInTheWarp;
+      setStatus(
+        pending
+          ? `Shadow in the Warp unleashed; ${pending.targets.length} Battle-shock test${pending.targets.length === 1 ? "" : "s"} required`
+          : "Shadow in the Warp unleashed; no enemy units were on the battlefield",
+      );
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "Shadow in the Warp could not be unleashed",
+      );
+    }
+  };
+
+  const rollPlayerShadowInTheWarpTest = (formationId: string) => {
+    if (!battleState) return;
+    try {
+      const pending = replayBattleState(battleState).pendingShadowInTheWarp;
+      const target = pending?.targets.find(
+        (candidate: { formationId: string }) => candidate.formationId === formationId,
+      );
+      if (!target) throw new Error("That unit has no pending Shadow in the Warp test");
+      const needsReview = target.shadowSynapseWithin === null || target.ownSynapseWithin === null;
+      const review = needsReview
+        ? {
+            shadowSynapseWithin:
+              target.shadowSynapseWithin ??
+              window.confirm("Is this unit within 6 inches of the attacking army's SYNAPSE unit?"),
+            ownSynapseWithin:
+              target.ownSynapseWithin ??
+              window.confirm("Is this unit within 6 inches of a friendly SYNAPSE unit?"),
+            reason:
+              window.prompt(
+                "Why was the tabletop distance reviewed manually?",
+                "Measured on table",
+              ) ?? "",
+          }
+        : {};
+      const next = resolveShadowInTheWarpTest(
+        battleState,
+        formationId,
+        review,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      const result = replayBattleState(next).shadowInTheWarpResolutions.at(-1);
+      setStatus(
+        `${replayedBattle.formations.get(formationId)?.name ?? formationId} rolled ${result.dice.join(" + ")}${result.shadowSynapseProximity.within ? " - 1" : ""} against Leadership ${result.leadership}: ${result.failed ? "Battle-shocked" : "passed"}`,
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Battle-shock test could not resolve");
+    }
+  };
+
   const recordSelectedMovement = (movement: "stationary" | "normal" | "advance" | "fall_back") => {
     if (!battleState || !attackerBattleFormationId) return;
     try {
@@ -7821,6 +7889,54 @@ export default function PlayMode() {
                     );
                   })}
                   {battleState.players.map((player) => {
+                    const shadow = battleShadowInTheWarpState(
+                      battleState,
+                      player.id,
+                      replayedBattle,
+                    );
+                    if (!shadow.sourceLocked) return null;
+                    if (shadow.pending) {
+                      const target = shadow.pending.targets[0];
+                      return target ? (
+                        <div key={`shadow-${player.id}`} className="battle-log-actions">
+                          <strong>
+                            Shadow in the Warp · {shadow.pending.targets.length} test
+                            {shadow.pending.targets.length === 1 ? "" : "s"} remaining
+                          </strong>
+                          <button
+                            type="button"
+                            onClick={() => rollPlayerShadowInTheWarpTest(target.formationId)}
+                          >
+                            Roll Battle-shock · {target.name} · {target.diceCount}D6 vs Ld{" "}
+                            {target.leadership}
+                          </button>
+                        </div>
+                      ) : null;
+                    }
+                    if (shadow.available) {
+                      return (
+                        <div key={`shadow-${player.id}`} className="battle-log-actions">
+                          <strong>Shadow in the Warp · choose a source unit:</strong>
+                          {shadow.sourceFormationIds.map((formationId: string) => (
+                            <button
+                              key={formationId}
+                              type="button"
+                              onClick={() => unleashPlayerShadowInTheWarp(player.id, formationId)}
+                            >
+                              Unleash ·{" "}
+                              {replayedBattle.formations.get(formationId)?.name ?? formationId}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    }
+                    return shadow.used ? (
+                      <span key={`shadow-${player.id}`}>
+                        Shadow in the Warp spent · {player.name}
+                      </span>
+                    ) : null;
+                  })}
+                  {battleState.players.map((player) => {
                     const reanimation = battleReanimationProtocolsState(
                       battleState,
                       player.id,
@@ -7891,6 +8007,7 @@ export default function PlayMode() {
                       Boolean(pendingHeroicIntervention) ||
                       Boolean(pendingRapidIngress) ||
                       Boolean(pendingCounterOffensive) ||
+                      Boolean(replayedBattle.pendingShadowInTheWarp) ||
                       battleState.players.some(
                         (player) =>
                           battleGrimResolveState(battleState, player.id, replayedBattle).available,

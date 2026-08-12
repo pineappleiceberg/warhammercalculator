@@ -85,6 +85,7 @@ type CatalogueModel = {
   reduction: number;
   damageDivisor: number;
   wounds: number | null;
+  leadership: number | null;
   keywords: string[];
 };
 type CatalogueCombatPreset = import("../lib/catalogue").CatalogueCombatPreset;

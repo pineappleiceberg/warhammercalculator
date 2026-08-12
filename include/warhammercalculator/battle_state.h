@@ -833,6 +833,28 @@ bool whc_reanimation_protocols_transition_is_valid(
 
 /*@ assigns \nothing;
     ensures \result <==>
+        source_faction_tyranids == 1 && once_per_battle_available == 1 &&
+        source_ability_on_battlefield == 1 && command_phase == 1 &&
+        target_on_battlefield == 1 && target_faction_tyranids <= 1 &&
+        target_within_own_synapse <= 1 && target_within_source_synapse <= 1 &&
+        battle_shocked_before <= 1 && failed <= 1 && battle_shocked_after <= 1 &&
+        leadership >= 2 && leadership <= 12 &&
+        dice_count ==
+            (target_faction_tyranids == 1 && target_within_own_synapse == 1 ? 3 : 2) &&
+        raw_roll >= dice_count && raw_roll <= dice_count * 6 &&
+        failed == (raw_roll - target_within_source_synapse > leadership ? 1 : 0) &&
+        battle_shocked_after == (battle_shocked_before == 1 || failed == 1 ? 1 : 0);
+*/
+bool whc_shadow_in_the_warp_test_is_valid(
+    uint32_t source_faction_tyranids, uint32_t once_per_battle_available,
+    uint32_t source_ability_on_battlefield, uint32_t command_phase,
+    uint32_t target_on_battlefield, uint32_t target_faction_tyranids,
+    uint32_t target_within_own_synapse, uint32_t target_within_source_synapse,
+    uint32_t dice_count, uint32_t raw_roll, uint32_t leadership,
+    uint32_t battle_shocked_before, uint32_t failed, uint32_t battle_shocked_after);
+
+/*@ assigns \nothing;
+    ensures \result <==>
         player_count == 2 && score_entry_count == player_count &&
         top_score <= 1000000 && top_score_player_count <= player_count &&
         controller_count <= 1 && contested <= 1 &&

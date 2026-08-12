@@ -21,7 +21,11 @@ import {
   SECONDARY_MODES,
 } from "./mission-tracker.mjs";
 import { deriveObjectiveControlFacts } from "./objective-control-facts.mjs";
-import { deriveEndpointClearanceFacts, deriveSpatialFacts } from "./spatial-facts.mjs";
+import {
+  deriveEndpointClearanceFacts,
+  deriveSpatialFacts,
+  formationBoundariesWithinDistance,
+} from "./spatial-facts.mjs";
 import { TERRAIN_MOVEMENT_TYPES, deriveTerrainClearanceFacts } from "./terrain-clearance-facts.mjs";
 import {
   deriveVisibilityFacts,
@@ -36,7 +40,8 @@ import {
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 43;
+export const BATTLE_STATE_VERSION = 44;
+export const SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION = 44;
 export const REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION = 43;
 export const OATH_OF_MOMENT_BATTLE_STATE_VERSION = 42;
 export const DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION = 41;
@@ -2736,7 +2741,7 @@ function normalizeEffect(candidate, players) {
   return normalized;
 }
 
-function normalizeSegment(candidate) {
+function normalizeSegment(candidate, stateVersion) {
   const segment = record(candidate, "Each formation segment must be an object");
   const wounds = nonnegativeInteger(segment.wounds, "Segment wounds", 1024);
   const startingModels = nonnegativeInteger(
@@ -2759,6 +2764,9 @@ function normalizeSegment(candidate) {
       keyword.toLowerCase(),
     ),
     wounds,
+    ...(stateVersion >= SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION
+      ? { leadership: boundedInteger(segment.leadership ?? 7, "Segment Leadership", 2, 12) }
+      : {}),
     objectiveControl:
       segment.objectiveControl == null
         ? null
@@ -3035,7 +3043,7 @@ function normalizeFormation(candidate, stateVersion) {
   ) {
     throw new Error("Formation must contain 1 to 32 model segments");
   }
-  const segments = formation.segments.map(normalizeSegment);
+  const segments = formation.segments.map((segment) => normalizeSegment(segment, stateVersion));
   if (new Set(segments.map((segment) => segment.id)).size !== segments.length) {
     throw new Error("Formation segment ids must be unique");
   }
@@ -3089,6 +3097,9 @@ function normalizeFormation(candidate, stateVersion) {
             100,
           ),
         }
+      : {}),
+    ...(stateVersion >= SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION
+      ? { hasShadowInTheWarpAbility: Boolean(formation.hasShadowInTheWarpAbility) }
       : {}),
     segments,
   };
@@ -3519,6 +3530,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     throw new Error("Executable Reanimation Protocols require battle-state version 43");
   }
   if (
+    stateVersion < SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION &&
+    ["shadow_in_the_warp_unleashed", "shadow_in_the_warp_test_resolved"].includes(event.type)
+  ) {
+    throw new Error("Executable Shadow in the Warp requires battle-state version 44");
+  }
+  if (
     stateVersion < MISSION_TRACKING_BATTLE_STATE_VERSION &&
     [
       "secondary_plan_configured",
@@ -3924,6 +3941,78 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     }
     normalized.before = normalizeHealth(event.before, segment, "Reanimation before");
     normalized.after = normalizeHealth(event.after, segment, "Reanimation after");
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "shadow_in_the_warp_unleashed") {
+    normalized.playerId = boundedString(event.playerId, "Shadow in the Warp player id", 100);
+    if (!formations.players.has(normalized.playerId)) {
+      throw new Error("Shadow in the Warp player is unknown");
+    }
+    normalized.sourceFormationId = boundedString(
+      event.sourceFormationId,
+      "Shadow in the Warp source formation id",
+      100,
+    );
+    if (!formations.byId.has(normalized.sourceFormationId)) {
+      throw new Error("Shadow in the Warp source formation is unknown");
+    }
+    normalized.sourceFactionId = boundedString(
+      event.sourceFactionId,
+      "Shadow in the Warp source faction id",
+      30,
+    );
+    normalized.sourceAbilityId = boundedString(
+      event.sourceAbilityId,
+      "Shadow in the Warp source ability id",
+      30,
+    );
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "shadow_in_the_warp_test_resolved") {
+    normalized.activationEventId = boundedString(
+      event.activationEventId,
+      "Shadow in the Warp activation event id",
+      100,
+    );
+    normalized.formationId = boundedString(
+      event.formationId,
+      "Shadow in the Warp target formation id",
+      100,
+    );
+    if (!formations.byId.has(normalized.formationId)) {
+      throw new Error("Shadow in the Warp target formation is unknown");
+    }
+    normalized.dice = normalizeDieRolls(event.dice, "Shadow in the Warp dice");
+    if (![2, 3].includes(normalized.dice.length)) {
+      throw new Error("A Shadow in the Warp test requires two or three D6 results");
+    }
+    normalized.leadership = boundedInteger(event.leadership, "Battle-shock Leadership", 2, 12);
+    const normalizeProximity = (candidate, name) => {
+      const proximity = record(candidate, `${name} proximity must be an object`);
+      const source = boundedString(proximity.source, `${name} proximity source`, 20);
+      if (!["geometry", "reviewed"].includes(source)) {
+        throw new Error(`${name} proximity source must be geometry or reviewed`);
+      }
+      const reason = proximity.reason
+        ? boundedString(proximity.reason, `${name} proximity reason`, 300)
+        : "";
+      if (source === "reviewed" && !reason) {
+        throw new Error(`${name} reviewed proximity requires a reason`);
+      }
+      return { within: Boolean(proximity.within), source, reason };
+    };
+    normalized.shadowSynapseProximity = normalizeProximity(
+      event.shadowSynapseProximity,
+      "Enemy Synapse",
+    );
+    normalized.ownSynapseProximity = normalizeProximity(
+      event.ownSynapseProximity,
+      "Friendly Synapse",
+    );
+    normalized.failed = Boolean(event.failed);
+    normalized.battleShockedBefore = Boolean(event.battleShockedBefore);
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
@@ -5417,6 +5506,7 @@ export function normalizeBattleState(candidate) {
       DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION,
       OATH_OF_MOMENT_BATTLE_STATE_VERSION,
       REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION,
+      SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
     throw new Error(`Unsupported battle state version: ${String(state.version)}`);
@@ -5491,6 +5581,7 @@ export function normalizeBattleState(candidate) {
         FACTION_RULE_STATE_BATTLE_STATE_VERSION,
         DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION,
         OATH_OF_MOMENT_BATTLE_STATE_VERSION,
+        REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -5754,6 +5845,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyReanimationProtocolsThroughSequence = nonnegativeInteger(
         migration.legacyReanimationProtocolsThroughSequence,
         "Legacy Reanimation Protocols event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyShadowInTheWarpThroughSequence = nonnegativeInteger(
+        migration.legacyShadowInTheWarpThroughSequence,
+        "Legacy Shadow in the Warp event sequence",
         events.length,
       );
     }
@@ -6974,6 +7072,10 @@ export function replayBattleState(state) {
   const reanimationProtocolResolutions = [];
   const reanimationProtocolActivationKeys = new Set();
   let pendingReanimationProtocols = null;
+  const shadowInTheWarpActivations = [];
+  const shadowInTheWarpResolutions = [];
+  const shadowInTheWarpPlayerIds = new Set();
+  let pendingShadowInTheWarp = null;
   let tableGeometry = null;
   let terrainFootprints = null;
   let terrainVisibility = null;
@@ -7132,6 +7234,68 @@ export function replayBattleState(state) {
     return Boolean(
       faction?.sourceId === "NEC" && faction.ruleIds?.includes("faction.reanimation-protocols"),
     );
+  };
+  const playerUsesShadowInTheWarp = (playerId) => {
+    const faction = ruleCoverage?.plan?.players?.find(
+      (player) => player.playerId === playerId,
+    )?.faction;
+    return Boolean(
+      faction?.sourceId === "TYR" && faction.ruleIds?.includes("faction.shadow-in-the-warp"),
+    );
+  };
+  const playerUsesSynapseBattleShock = (playerId) => {
+    const faction = ruleCoverage?.plan?.players?.find(
+      (player) => player.playerId === playerId,
+    )?.faction;
+    return Boolean(
+      faction?.sourceId === "TYR" && faction.ruleIds?.includes("faction.synapse-battle-shock"),
+    );
+  };
+  const liveOnBattlefieldFormation = (formation) =>
+    Boolean(
+      formation &&
+        formationIsOnBattlefield(
+          formation.id,
+          deploymentByFormation,
+          deployedFormationIds,
+          embarkedByFormation,
+        ) &&
+        !formationDestroyed(formation),
+    );
+  const currentLeadership = (formation) =>
+    Math.min(
+      ...formation.segments
+        .filter((segment) => formation.health[segment.id].modelsRemaining > 0)
+        .map((segment) => segment.leadership),
+    );
+  const withinSynapseRange = (targetFormationId, synapsePlayerId) => {
+    const target = formations.get(targetFormationId);
+    if (!liveOnBattlefieldFormation(target) || geometryStaleFormationIds.has(targetFormationId)) {
+      return null;
+    }
+    const targetPosition = currentModelPositionsByFormation.get(targetFormationId);
+    const candidates = [...formations.values()].filter(
+      (formation) =>
+        formation.playerId === synapsePlayerId &&
+        formation.keywords.includes("synapse") &&
+        liveOnBattlefieldFormation(formation),
+    );
+    if (candidates.length === 0) return false;
+    let unknown = false;
+    for (const candidate of candidates) {
+      if (geometryStaleFormationIds.has(candidate.id)) {
+        unknown = true;
+        continue;
+      }
+      const within = formationBoundariesWithinDistance(
+        targetPosition,
+        currentModelPositionsByFormation.get(candidate.id),
+        6_000,
+      );
+      if (within === true) return true;
+      if (within === null) unknown = true;
+    }
+    return unknown ? null : false;
   };
   const reanimationActivationKey = (formationId, unitKey) =>
     `${battleTurnKey(clock)}:${formationId}:${unitKey}`;
@@ -7600,6 +7764,9 @@ export function replayBattleState(state) {
     }
   };
   for (const event of state.events) {
+    if (pendingShadowInTheWarp && event.type !== "shadow_in_the_warp_test_resolved") {
+      throw new Error("Resolve every pending Shadow in the Warp test before continuing");
+    }
     if (
       pendingModelPosition &&
       event.type !== "model_positions_recorded" &&
@@ -8572,6 +8739,117 @@ export function replayBattleState(state) {
           : null;
       continue;
     }
+    if (event.type === "shadow_in_the_warp_unleashed") {
+      if (
+        pendingShadowInTheWarp ||
+        clock.status !== "active" ||
+        clock.phase !== "command" ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Shadow in the Warp can only be unleashed in a Command phase");
+      }
+      if (
+        !playerUsesShadowInTheWarp(event.playerId) ||
+        event.sourceFactionId !== "TYR" ||
+        event.sourceAbilityId !== "000000707"
+      ) {
+        throw new Error("Shadow in the Warp requires the source-locked Tyranids faction rule");
+      }
+      if (shadowInTheWarpPlayerIds.has(event.playerId)) {
+        throw new Error("Shadow in the Warp can only be unleashed once per battle");
+      }
+      const source = formations.get(event.sourceFormationId);
+      if (
+        source?.playerId !== event.playerId ||
+        !source.hasShadowInTheWarpAbility ||
+        !liveOnBattlefieldFormation(source)
+      ) {
+        throw new Error("Shadow in the Warp requires a living source unit on the battlefield");
+      }
+      const targetFormationIds = [...formations.values()]
+        .filter(
+          (formation) =>
+            formation.playerId !== event.playerId && liveOnBattlefieldFormation(formation),
+        )
+        .map((formation) => formation.id)
+        .sort();
+      shadowInTheWarpPlayerIds.add(event.playerId);
+      shadowInTheWarpActivations.push(event);
+      pendingShadowInTheWarp =
+        targetFormationIds.length > 0
+          ? {
+              activationEventId: event.id,
+              playerId: event.playerId,
+              remainingFormationIds: targetFormationIds,
+              resolvedFormationIds: [],
+            }
+          : null;
+      continue;
+    }
+    if (event.type === "shadow_in_the_warp_test_resolved") {
+      const pending = pendingShadowInTheWarp;
+      if (
+        !pending ||
+        event.activationEventId !== pending.activationEventId ||
+        !pending.remainingFormationIds.includes(event.formationId) ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Battle-shock test does not match the pending Shadow in the Warp call");
+      }
+      const formation = formations.get(event.formationId);
+      if (!liveOnBattlefieldFormation(formation)) {
+        throw new Error("Shadow in the Warp target left the battlefield before its test");
+      }
+      const expectedLeadership = currentLeadership(formation);
+      if (event.leadership !== expectedLeadership) {
+        throw new Error("Shadow in the Warp Leadership does not match the surviving unit");
+      }
+      const expectedShadowProximity = withinSynapseRange(event.formationId, pending.playerId);
+      const expectedOwnProximity = withinSynapseRange(event.formationId, formation.playerId);
+      for (const [recorded, expected, label] of [
+        [event.shadowSynapseProximity, expectedShadowProximity, "enemy Synapse"],
+        [event.ownSynapseProximity, expectedOwnProximity, "friendly Synapse"],
+      ]) {
+        if (
+          (expected === null && recorded.source !== "reviewed") ||
+          (expected !== null && (recorded.source !== "geometry" || recorded.within !== expected))
+        ) {
+          throw new Error(`Shadow in the Warp ${label} proximity is not canonical`);
+        }
+      }
+      const ownSynapseApplies =
+        playerUsesSynapseBattleShock(formation.playerId) && event.ownSynapseProximity.within;
+      const expectedDiceCount = ownSynapseApplies ? 3 : 2;
+      const rawRoll = event.dice.reduce((total, die) => total + die, 0);
+      const failed = rawRoll - (event.shadowSynapseProximity.within ? 1 : 0) > event.leadership;
+      if (
+        event.dice.length !== expectedDiceCount ||
+        event.failed !== failed ||
+        event.battleShockedBefore !== battleShockedFormations.has(event.formationId)
+      ) {
+        throw new Error("Shadow in the Warp Battle-shock result is not canonical");
+      }
+      if (failed) {
+        battleShockedFormations.set(event.formationId, {
+          formationId: event.formationId,
+          reason: "Shadow in the Warp",
+          appliedAt: event.clock,
+          sourceEventId: event.id,
+        });
+      }
+      shadowInTheWarpResolutions.push(event);
+      pendingShadowInTheWarp = {
+        ...pending,
+        remainingFormationIds: pending.remainingFormationIds.filter(
+          (formationId) => formationId !== event.formationId,
+        ),
+        resolvedFormationIds: [...pending.resolvedFormationIds, event.formationId],
+      };
+      if (pendingShadowInTheWarp.remainingFormationIds.length === 0) {
+        pendingShadowInTheWarp = null;
+      }
+      continue;
+    }
     if (event.type === "clock_advanced") {
       if (pendingChoices.size > 0) {
         throw new Error("Pending choices must be resolved before advancing the battle");
@@ -8581,6 +8859,9 @@ export function replayBattleState(state) {
       }
       if (pendingReanimationProtocols) {
         throw new Error("Resolve the pending Reanimation Protocols wounds before continuing");
+      }
+      if (pendingShadowInTheWarp) {
+        throw new Error("Resolve every Shadow in the Warp Battle-shock test before continuing");
       }
       if (!sameBattleClock(event.from, clock)) {
         throw new Error("Battle clock advance does not match replayed state");
@@ -11864,6 +12145,28 @@ export function replayBattleState(state) {
     terrainFootprints,
     terrainVisibility,
   });
+  const shadowInTheWarpPendingState = pendingShadowInTheWarp
+    ? {
+        ...pendingShadowInTheWarp,
+        targets: pendingShadowInTheWarp.remainingFormationIds.map((formationId) => {
+          const formation = formations.get(formationId);
+          const shadowSynapseWithin = withinSynapseRange(
+            formationId,
+            pendingShadowInTheWarp.playerId,
+          );
+          const ownSynapseWithin = withinSynapseRange(formationId, formation.playerId);
+          return {
+            formationId,
+            name: formation.name,
+            leadership: currentLeadership(formation),
+            shadowSynapseWithin,
+            ownSynapseWithin,
+            diceCount:
+              playerUsesSynapseBattleShock(formation.playerId) && ownSynapseWithin === true ? 3 : 2,
+          };
+        }),
+      }
+    : null;
   return {
     formations,
     activeAttackIds,
@@ -11878,6 +12181,10 @@ export function replayBattleState(state) {
     reanimationProtocolActivations,
     reanimationProtocolResolutions,
     pendingReanimationProtocols,
+    shadowInTheWarpActivations,
+    shadowInTheWarpResolutions,
+    shadowInTheWarpPlayerIds,
+    pendingShadowInTheWarp: shadowInTheWarpPendingState,
     tableGeometry,
     terrainFootprints,
     terrainVisibility,
@@ -14497,6 +14804,181 @@ export function resolveReanimationWound(state, segmentId, action, id, at) {
     after: reanimationProtocolHealthAfter(segment, before, action),
     clock: replayed.clock,
   });
+}
+
+export function battleShadowInTheWarpState(state, playerId, replayedBattle = null) {
+  const replayed = replayedBattle ?? replayBattleState(state);
+  const faction = replayed.ruleCoverage?.plan.players.find(
+    (player) => player.playerId === playerId,
+  )?.faction;
+  const sourceLocked = Boolean(
+    faction?.sourceId === "TYR" && faction.ruleIds.includes("faction.shadow-in-the-warp"),
+  );
+  const sourceFormationIds = [...replayed.formations.values()]
+    .filter(
+      (formation) =>
+        formation.playerId === playerId &&
+        formation.hasShadowInTheWarpAbility &&
+        formationIsOnBattlefield(
+          formation.id,
+          replayed.deploymentByFormation,
+          replayed.deployedFormationIds,
+          replayed.embarkedByFormation,
+        ) &&
+        !formationDestroyed(formation),
+    )
+    .map((formation) => formation.id)
+    .sort();
+  const used = replayed.shadowInTheWarpPlayerIds.has(playerId);
+  return {
+    sourceLocked,
+    used,
+    sourceFormationIds,
+    pending:
+      replayed.pendingShadowInTheWarp?.playerId === playerId
+        ? replayed.pendingShadowInTheWarp
+        : null,
+    available: Boolean(
+      sourceLocked &&
+        !used &&
+        replayed.clock.status === "active" &&
+        replayed.clock.phase === "command" &&
+        sourceFormationIds.length > 0 &&
+        !replayed.pendingShadowInTheWarp,
+    ),
+  };
+}
+
+export function unleashShadowInTheWarp(state, playerId, sourceFormationId, id, at) {
+  const replayed = replayBattleState(state);
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "shadow_in_the_warp_unleashed",
+    playerId,
+    sourceFormationId,
+    sourceFactionId: "TYR",
+    sourceAbilityId: "000000707",
+    clock: replayed.clock,
+  });
+}
+
+export function resolveShadowInTheWarpTest(
+  state,
+  formationId,
+  review = {},
+  id,
+  at,
+  randomUint32 = secureRandomUint32,
+) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingShadowInTheWarp;
+  const target = pending?.targets.find((candidate) => candidate.formationId === formationId);
+  if (!pending || !target) throw new Error("There is no pending test for that formation");
+  const proximity = (within, reviewedWithin, label) => {
+    if (within !== null) return { within, source: "geometry", reason: "" };
+    if (typeof reviewedWithin !== "boolean" || !review.reason) {
+      throw new Error(`Review ${label} proximity because exact model geometry is unavailable`);
+    }
+    return { within: reviewedWithin, source: "reviewed", reason: review.reason };
+  };
+  const shadowSynapseProximity = proximity(
+    target.shadowSynapseWithin,
+    review.shadowSynapseWithin,
+    "enemy Synapse",
+  );
+  const ownSynapseProximity = proximity(
+    target.ownSynapseWithin,
+    review.ownSynapseWithin,
+    "friendly Synapse",
+  );
+  const targetPlayerId = replayed.formations.get(formationId).playerId;
+  const targetFaction = replayed.ruleCoverage?.plan.players.find(
+    (player) => player.playerId === targetPlayerId,
+  )?.faction;
+  const ownSynapseApplies = Boolean(
+    targetFaction?.sourceId === "TYR" &&
+      targetFaction.ruleIds.includes("faction.synapse-battle-shock") &&
+      ownSynapseProximity.within,
+  );
+  const dice = Array.from({ length: ownSynapseApplies ? 3 : 2 }, () => randomDie(6, randomUint32));
+  const rawRoll = dice.reduce((total, die) => total + die, 0);
+  const failed = rawRoll - (shadowSynapseProximity.within ? 1 : 0) > target.leadership;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "shadow_in_the_warp_test_resolved",
+    activationEventId: pending.activationEventId,
+    formationId,
+    dice,
+    leadership: target.leadership,
+    shadowSynapseProximity,
+    ownSynapseProximity,
+    failed,
+    battleShockedBefore: replayed.battleShockedFormations.has(formationId),
+    clock: replayed.clock,
+  });
+}
+
+export function shadowInTheWarpTestIsValid(
+  sourceFaction,
+  oncePerBattleAvailable,
+  sourceAbilityOnBattlefield,
+  commandPhase,
+  targetOnBattlefield,
+  targetFactionTyranids,
+  targetWithinOwnSynapse,
+  targetWithinSourceSynapse,
+  diceCount,
+  rawRoll,
+  leadership,
+  battleShockedBefore,
+  failed,
+  battleShockedAfter,
+) {
+  const flags = [
+    sourceFaction,
+    oncePerBattleAvailable,
+    sourceAbilityOnBattlefield,
+    commandPhase,
+    targetOnBattlefield,
+    targetFactionTyranids,
+    targetWithinOwnSynapse,
+    targetWithinSourceSynapse,
+    battleShockedBefore,
+    failed,
+    battleShockedAfter,
+  ];
+  if (
+    flags.some((value) => value !== 0 && value !== 1) ||
+    !Number.isSafeInteger(diceCount) ||
+    !Number.isSafeInteger(rawRoll) ||
+    !Number.isSafeInteger(leadership) ||
+    leadership < 2 ||
+    leadership > 12
+  ) {
+    return false;
+  }
+  const prerequisites =
+    sourceFaction === 1 &&
+    oncePerBattleAvailable === 1 &&
+    sourceAbilityOnBattlefield === 1 &&
+    commandPhase === 1 &&
+    targetOnBattlefield === 1;
+  const expectedDiceCount = targetFactionTyranids === 1 && targetWithinOwnSynapse === 1 ? 3 : 2;
+  const expectedFailure = rawRoll - targetWithinSourceSynapse > leadership ? 1 : 0;
+  return (
+    prerequisites &&
+    diceCount === expectedDiceCount &&
+    rawRoll >= diceCount &&
+    rawRoll <= diceCount * 6 &&
+    failed === expectedFailure &&
+    battleShockedAfter === (battleShockedBefore === 1 || failed === 1 ? 1 : 0)
+  );
 }
 
 export function reanimationProtocolsTransitionIsValid(

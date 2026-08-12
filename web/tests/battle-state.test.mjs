@@ -24,6 +24,7 @@ import {
   battleOathOfMomentAttackFacts,
   battleOathOfMomentState,
   battleReanimationProtocolsState,
+  battleShadowInTheWarpState,
   callWaaagh,
   activateReanimationProtocols,
   changeBattleResource,
@@ -65,6 +66,7 @@ import {
   resolveGoToGround,
   resolveRapidIngress,
   resolveReanimationWound,
+  resolveShadowInTheWarpTest,
   resolveSmokescreen,
   resolveHeroicIntervention,
   resolveCounterOffensive,
@@ -75,6 +77,7 @@ import {
   scoreSecondaryMissionCard,
   selectGrimResolveFormation,
   selectOathOfMomentTarget,
+  unleashShadowInTheWarp,
   setBattleObjectiveControl,
   setFormationBattleShocked,
   startBattle,
@@ -530,6 +533,41 @@ function newNecronsBattle() {
       id: "faction.reanimation-protocols",
       name: "Reanimation Protocols",
     },
+  );
+  return normalizeBattleState({
+    ...state,
+    events: [{ ...state.events[0], coverage }],
+  });
+}
+
+function newTyranidsBattle() {
+  const state = newBattle();
+  const coverage = structuredClone(state.events[0].coverage);
+  coverage.plan.players[0].faction = {
+    sourceId: "TYR",
+    ruleIds: ["faction.shadow-in-the-warp", "faction.synapse-battle-shock"],
+  };
+  const factionResult = coverage.report.results.find((result) => result.id === "faction.test");
+  const detachmentResult = coverage.report.results.find(
+    (result) => result.id === "detachment.test",
+  );
+  const datasheetResult = coverage.report.results.find((result) => result.id === "datasheet.test");
+  coverage.report.results.splice(
+    coverage.report.results.findIndex((result) => result.id === "faction.test"),
+    3,
+    {
+      ...factionResult,
+      id: "faction.shadow-in-the-warp",
+      name: "Shadow in the Warp",
+    },
+    {
+      ...factionResult,
+      id: "faction.synapse-battle-shock",
+      name: "Synapse Battle-shock",
+    },
+    detachmentResult,
+    datasheetResult,
+    factionResult,
   );
   return normalizeBattleState({
     ...state,
@@ -4383,6 +4421,76 @@ test("requires Oath of Moment at Command start and rejects friendly or unsourced
       ),
     /source-locked Adeptus Astartes/i,
   );
+});
+
+test("unleashes source-locked Shadow in the Warp in either Command phase with auditable tests", () => {
+  const tyranids = {
+    ...attackerFormation,
+    keywords: ["Tyranids", "Synapse", "Monster"],
+    hasShadowInTheWarpAbility: true,
+    segments: attackerFormation.segments.map((segment) => ({ ...segment, leadership: 7 })),
+  };
+  const target = {
+    ...formation,
+    segments: formation.segments.map((segment) => ({ ...segment, leadership: 7 })),
+  };
+  let state = registerBattleFormation(
+    registerBattleFormation(newTyranidsBattle(), tyranids, "register-shadow-source", 1),
+    target,
+    "register-shadow-target",
+    2,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-2", "start-shadow", 3);
+  assert.equal(battleShadowInTheWarpState(state, "player-1").available, true);
+  state = unleashShadowInTheWarp(
+    state,
+    "player-1",
+    tyranids.id,
+    "unleash-shadow",
+    state.events.length + 1,
+  );
+  let shadow = battleShadowInTheWarpState(state, "player-1");
+  assert.equal(shadow.used, true);
+  assert.equal(shadow.pending.targets[0].leadership, 7);
+  assert.equal(shadow.pending.targets[0].shadowSynapseWithin, null);
+  assert.throws(
+    () => advanceBattleClock(state, "skip-shadow-test", state.events.length + 1),
+    /pending Shadow in the Warp|Resolve every pending Shadow/i,
+  );
+  const random = [5, 4];
+  state = resolveShadowInTheWarpTest(
+    state,
+    target.id,
+    {
+      shadowSynapseWithin: true,
+      ownSynapseWithin: false,
+      reason: "Players measured the closest model boundaries on the table",
+    },
+    "resolve-shadow-test",
+    state.events.length + 1,
+    () => random.shift(),
+  );
+  const replayed = replayBattleState(state);
+  const resolution = replayed.shadowInTheWarpResolutions[0];
+  assert.deepEqual(resolution.dice, [6, 5]);
+  assert.equal(resolution.failed, true);
+  assert.equal(resolution.battleShockedBefore, false);
+  assert.equal(replayed.battleShockedFormations.has(target.id), true);
+  assert.equal(battleShadowInTheWarpState(state, "player-1").pending, null);
+  assert.throws(
+    () =>
+      unleashShadowInTheWarp(
+        state,
+        "player-1",
+        tyranids.id,
+        "repeat-shadow",
+        state.events.length + 1,
+      ),
+    /once per battle/i,
+  );
+  const tampered = structuredClone(state);
+  tampered.events.find((event) => event.id === "resolve-shadow-test").failed = false;
+  assert.throws(() => replayBattleState(tampered), /not canonical/i);
 });
 
 test("resolves Counter-offensive atomically and forces its formation to fight next", () => {

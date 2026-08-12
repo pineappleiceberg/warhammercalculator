@@ -12,6 +12,7 @@ import {
   appendResolvedAttack,
   battleOathOfMomentState,
   battleReanimationProtocolsState,
+  battleShadowInTheWarpState,
   callWaaagh,
   battleGrimResolveState,
   closeRangedTargetDeclarations,
@@ -43,6 +44,7 @@ import {
   replayBattleState,
   resolveGoToGround,
   resolveReanimationWound,
+  resolveShadowInTheWarpTest,
   resolveMissionAction,
   resolveSecondaryTurnEnd,
   scoreMissionPoints,
@@ -55,6 +57,7 @@ import {
   startFormationActivation,
   startFormationMovement,
   startMissionAction,
+  unleashShadowInTheWarp,
 } from "../lib/battle-state.mjs";
 import { initializeBattleForLists } from "../lib/battle-setup.mjs";
 import { goldenBattleReplaySummary } from "../lib/golden-battle-replay.mjs";
@@ -70,6 +73,10 @@ const actionFixtureUrl = new URL(
 );
 const attachedFixtureUrl = new URL(
   "../tests/fixtures/golden-battle-attached-aeldari-vs-orks-v1.json",
+  import.meta.url,
+);
+const shadowFixtureUrl = new URL(
+  "../tests/fixtures/golden-battle-tyranids-vs-space-marines-v1.json",
   import.meta.url,
 );
 const catalogue = JSON.parse(
@@ -188,6 +195,23 @@ const defenders = oneUnitList({
   name: "Golden Space Marines",
   unitName: "Brutalis Dreadnought",
   savedUnitId: "brutalis",
+});
+
+const shadowAttackers = oneUnitList({
+  id: "golden-tyranids",
+  updatedAt: 70,
+  name: "Golden Tyranids",
+  unitName: "Neurotyrant",
+  savedUnitId: "neurotyrant",
+  weaponName: "Psychic scream",
+});
+const shadowDefenders = oneUnitList({
+  id: "golden-shadow-space-marines",
+  updatedAt: 80,
+  name: "Golden Shadow Space Marines",
+  unitName: "Intercessor Squad",
+  savedUnitId: "shadow-intercessors",
+  modelCount: 5,
 });
 
 const actionAttackers = oneUnitList({
@@ -309,6 +333,14 @@ const attachedMissionOverrides = {
   },
   missionSourceId: "chapter-approved-2025-26-v1.4-b",
   terrainSourceId: "chapter-approved-2025-26-v1.4-layout-2",
+};
+
+const shadowMissionOverrides = {
+  ...exactMissionOverrides,
+  players: {
+    "player-1": { detachmentSourceId: "000000771" },
+    "player-2": { detachmentSourceId: "000000750" },
+  },
 };
 
 function addFixedSecondaryPlans(state) {
@@ -1084,6 +1116,178 @@ function buildFixture() {
         savedUnitId: defenders.units[0].id,
         datasheetId: defenders.units[0].unitId,
         datasheetName: defenders.units[0].name,
+      },
+    ],
+    sourceManifestVersion: sourceManifest.version,
+    stateDigest: digest(state),
+    expectedDigest: digest(expected),
+    expected,
+    state,
+  };
+}
+
+function buildShadowFixture() {
+  let state = initializeBattleForLists({
+    catalogue,
+    firstList: shadowAttackers,
+    secondList: shadowDefenders,
+    rulesSnapshot: `profile-data:${catalogue.sourceUpdatedAt}|battle-state:${BATTLE_STATE_VERSION}`,
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: shadowMissionOverrides,
+    id: "golden-tyranids-vs-space-marines-v1",
+  });
+  state = configureBattleMission(
+    state,
+    {
+      name: "A · Take and Hold · Tipping Point",
+      pointsLimit: 2_000,
+      deploymentFirstPlayerId: "player-1",
+      commandPointsPerCommandPhase: 1,
+      startingCommandPoints: { "player-1": 0, "player-2": 0 },
+      objectives: Array.from({ length: 5 }, (_, index) => ({
+        id: `objective-${index + 1}`,
+        name: `Objective ${index + 1}`,
+      })),
+    },
+    "shadow-mission-configured",
+    state.events.length + 1,
+  );
+  state = addFixedSecondaryPlans(state);
+  state = configureBattleTableGeometry(
+    state,
+    reviewedTableGeometry(state, shadowMissionOverrides),
+    "shadow-table-geometry-recorded",
+    state.events.length + 1,
+  );
+  state = configureBattleTerrainFootprints(
+    state,
+    reviewedTerrainFootprints(state),
+    "shadow-terrain-footprints-recorded",
+    state.events.length + 1,
+  );
+  state = configureBattleTerrainVisibility(
+    state,
+    reviewedTerrainVisibility(state),
+    "shadow-terrain-visibility-recorded",
+    state.events.length + 1,
+  );
+  state = deployAll(state);
+  state = startBattle(state, "player-1", "shadow-battle-started", state.events.length + 1);
+
+  const scoredPrimaryTurns = new Set();
+  const scoredSecondaryTurns = new Set();
+  while (replayBattleState(state).clock.status !== "complete") {
+    let replayed = replayBattleState(state);
+    const oath = battleOathOfMomentState(state, replayed.clock.activePlayerId, replayed);
+    if (oath.available) {
+      state = selectOathOfMomentTarget(
+        state,
+        replayed.clock.activePlayerId,
+        oath.eligibleFormationIds[0],
+        `shadow-oath-${replayed.clock.battleRound}-${replayed.clock.turn}`,
+        state.events.length + 1,
+      );
+      replayed = replayBattleState(state);
+    }
+    const shadow = battleShadowInTheWarpState(state, "player-1", replayed);
+    if (shadow.available) {
+      state = unleashShadowInTheWarp(
+        state,
+        "player-1",
+        shadow.sourceFormationIds[0],
+        "golden-shadow-unleashed",
+        state.events.length + 1,
+      );
+      const pending = replayBattleState(state).pendingShadowInTheWarp;
+      const randomValues = [5, 4];
+      state = resolveShadowInTheWarpTest(
+        state,
+        pending.targets[0].formationId,
+        {},
+        "golden-shadow-test",
+        state.events.length + 1,
+        () => randomValues.shift(),
+      );
+      replayed = replayBattleState(state);
+    }
+    const clock = replayed.clock;
+    const turnKey = `${clock.battleRound}:${clock.turn}:${clock.activePlayerId}`;
+    if (
+      clock.phase === "command" &&
+      clock.step === "end" &&
+      clock.battleRound >= 2 &&
+      !scoredPrimaryTurns.has(turnKey)
+    ) {
+      state = scoreMissionPoints(
+        state,
+        clock.activePlayerId,
+        "primary",
+        5,
+        "Golden Shadow replay reviewed primary condition",
+        `shadow-primary-${turnKey}`,
+        state.events.length + 1,
+      );
+      scoredPrimaryTurns.add(turnKey);
+    }
+    if (clock.phase === "fight" && clock.step === "end") {
+      if (!scoredSecondaryTurns.has(turnKey)) {
+        state = scoreSecondaryMissionCard(
+          state,
+          clock.activePlayerId,
+          `${clock.activePlayerId}:fixed:1`,
+          2,
+          "Golden Shadow replay reviewed fixed Secondary condition",
+          `shadow-secondary-${turnKey}`,
+          state.events.length + 1,
+        );
+        scoredSecondaryTurns.add(turnKey);
+      }
+      if (clock.battleRound === 5 && clock.turn === 2) {
+        for (const playerId of ["player-1", "player-2"]) {
+          state = scoreMissionPoints(
+            state,
+            playerId,
+            "battle_ready",
+            10,
+            "Golden Shadow replay Battle Ready review",
+            `shadow-battle-ready-${playerId}`,
+            state.events.length + 1,
+          );
+        }
+      }
+    }
+    state = advanceFixtureClock(state, `shadow-clock-${state.events.length + 1}`);
+  }
+
+  const expected = goldenBattleReplaySummary(state);
+  assert.equal(expected.finalClock.status, "complete");
+  assert.equal(expected.phaseStepCoverage.length, 170);
+  assert.equal(expected.eventTypeCounts.shadow_in_the_warp_unleashed, 1);
+  assert.equal(expected.eventTypeCounts.shadow_in_the_warp_test_resolved, 1);
+  return {
+    schema: "whc-golden-battle-replay",
+    schemaVersion: 1,
+    scenarioId: "tyranids-neurotyrant-vs-space-marines-intercessors-shadow",
+    title: "Neurotyrant vs Intercessors · complete Shadow in the Warp battle",
+    description:
+      "A source-locked Chapter Approved five-round replay that resolves Shadow in the Warp from exact Tyranids and target profiles, CSPRNG-compatible recorded dice, reviewed geometry, Battle-shock state, every phase step, and capped scoring.",
+    listPair: [
+      {
+        playerId: "player-1",
+        listId: shadowAttackers.id,
+        factionId: shadowAttackers.factionId,
+        savedUnitId: shadowAttackers.units[0].id,
+        datasheetId: shadowAttackers.units[0].unitId,
+        datasheetName: shadowAttackers.units[0].name,
+      },
+      {
+        playerId: "player-2",
+        listId: shadowDefenders.id,
+        factionId: shadowDefenders.factionId,
+        savedUnitId: shadowDefenders.units[0].id,
+        datasheetId: shadowDefenders.units[0].unitId,
+        datasheetName: shadowDefenders.units[0].name,
       },
     ],
     sourceManifestVersion: sourceManifest.version,
@@ -2184,6 +2388,7 @@ function buildAttachedFixture() {
 }
 
 const fixture = buildFixture();
+const shadowFixture = buildShadowFixture();
 const actionFixture = buildActionFixture();
 const attachedFixture = buildAttachedFixture();
 const formatFixture = (value) =>
@@ -2194,14 +2399,19 @@ const formatFixture = (value) =>
     useTabs: false,
   });
 const serialized = await formatFixture(fixture);
+const shadowSerialized = await formatFixture(shadowFixture);
 const actionSerialized = await formatFixture(actionFixture);
 const attachedSerialized = await formatFixture(attachedFixture);
 if (process.argv.includes("--check")) {
   const existing = await readFile(fixtureUrl, "utf8");
+  const existingShadow = await readFile(shadowFixtureUrl, "utf8");
   const existingAction = await readFile(actionFixtureUrl, "utf8");
   const existingAttached = await readFile(attachedFixtureUrl, "utf8");
   if (existing !== serialized) {
     throw new Error("Golden battle replay fixture is stale; regenerate it before committing");
+  }
+  if (existingShadow !== shadowSerialized) {
+    throw new Error("Shadow in the Warp golden battle replay fixture is stale");
   }
   if (existingAction !== actionSerialized) {
     throw new Error(
@@ -2215,12 +2425,16 @@ if (process.argv.includes("--check")) {
   }
 } else {
   await writeFile(fixtureUrl, serialized);
+  await writeFile(shadowFixtureUrl, shadowSerialized);
   await writeFile(actionFixtureUrl, actionSerialized);
   await writeFile(attachedFixtureUrl, attachedSerialized);
 }
 
 console.log(
   `${fixture.scenarioId}: ${fixture.expected.eventCount} events, ${fixture.expected.phaseStepCoverage.length} active clock states, ${fixture.stateDigest}`,
+);
+console.log(
+  `${shadowFixture.scenarioId}: ${shadowFixture.expected.eventCount} events, ${shadowFixture.expected.phaseStepCoverage.length} active clock states, ${shadowFixture.stateDigest}`,
 );
 console.log(
   `${actionFixture.scenarioId}: ${actionFixture.expected.eventCount} events, ${actionFixture.expected.phaseStepCoverage.length} active clock states, ${actionFixture.stateDigest}`,

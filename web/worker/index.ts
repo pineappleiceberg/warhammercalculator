@@ -74,6 +74,7 @@ import {
   battleGrimResolveFormationFacts,
   battleOathOfMomentAttackFacts,
   reanimationProtocolsTransitionIsValid,
+  shadowInTheWarpTestIsValid,
   battleWaaaghFormationFacts,
   battleSurvivingWeaponCount,
   chargeResolutionFlags,
@@ -405,6 +406,7 @@ type CalculatorExports = {
   whc_grim_resolve_model_objective_control_is_valid(...values: number[]): number;
   whc_oath_of_moment_attack_state_is_valid(...values: number[]): number;
   whc_reanimation_protocols_transition_is_valid(...values: number[]): number;
+  whc_shadow_in_the_warp_test_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -644,6 +646,7 @@ async function loadCalculator() {
       typeof calculator.whc_terrain_clearance_facts_are_valid !== "function" ||
       typeof calculator.whc_mission_tracker_facts_are_valid !== "function" ||
       typeof calculator.whc_reanimation_protocols_transition_is_valid !== "function" ||
+      typeof calculator.whc_shadow_in_the_warp_test_is_valid !== "function" ||
       typeof calculator.whc_objective_control_facts_are_valid !== "function" ||
       typeof calculator.whc_visibility_facts_are_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
@@ -2068,11 +2071,47 @@ async function replayFormationHealth(
         resolutions,
       };
     });
+    const shadowInTheWarp = replayed.shadowInTheWarpActivations.map((activation) => {
+      const resolutions = replayed.shadowInTheWarpResolutions
+        .filter((resolution) => resolution.activationEventId === activation.id)
+        .map((resolution) => {
+          const formation = replayed.formations.get(resolution.formationId)!;
+          const targetFaction = replayed.ruleCoverage?.plan.players.find(
+            (player) => player.playerId === formation.playerId,
+          )?.faction;
+          const values = [
+            1,
+            1,
+            1,
+            1,
+            1,
+            targetFaction?.sourceId === "TYR" ? 1 : 0,
+            resolution.ownSynapseProximity.within ? 1 : 0,
+            resolution.shadowSynapseProximity.within ? 1 : 0,
+            resolution.dice.length,
+            resolution.dice.reduce((total, die) => total + die, 0),
+            resolution.leadership,
+            resolution.battleShockedBefore ? 1 : 0,
+            resolution.failed ? 1 : 0,
+            resolution.battleShockedBefore || resolution.failed ? 1 : 0,
+          ];
+          const javascriptValid = shadowInTheWarpTestIsValid(...values);
+          const nativeValid = Boolean(calculator.whc_shadow_in_the_warp_test_is_valid(...values));
+          if (!javascriptValid || nativeValid !== javascriptValid) {
+            throw new ServiceUnavailableError(
+              "Shadow in the Warp diverged from the C/WebAssembly predicate",
+              "SHADOW_IN_THE_WARP_DIVERGENCE",
+            );
+          }
+          return resolution;
+        });
+      return { ...activation, resolutions };
+    });
     return {
       schemaVersion: state.version,
       rulesSnapshot: state.rulesSnapshot,
       ruleCoverage: replayed.ruleCoverage,
-      factionRules: { waaagh, oathOfMoment, reanimationProtocols },
+      factionRules: { waaagh, oathOfMoment, reanimationProtocols, shadowInTheWarp },
       detachmentRules: { grimResolve },
       tableGeometry: replayed.tableGeometry,
       terrainFootprints: replayed.terrainFootprints,

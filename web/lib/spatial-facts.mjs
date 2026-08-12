@@ -143,6 +143,14 @@ function verticalExtent(model) {
   return model.measurementBasis === "base" ? 0 : model.verticalExtentThousandths;
 }
 
+function verticalBoundaryGap(first, second) {
+  const firstBottom = first.elevationThousandths;
+  const firstTop = firstBottom + verticalExtent(first);
+  const secondBottom = second.elevationThousandths;
+  const secondTop = secondBottom + verticalExtent(second);
+  return Math.max(0, firstBottom - secondTop, secondBottom - firstTop);
+}
+
 export function modelSpatialGeometryIsReady(model) {
   return Boolean(
     model &&
@@ -180,12 +188,42 @@ function verticalOccupanciesIntersect(first, second) {
 
 export function verticalBoundariesWithin(first, second, distanceThousandths) {
   if (!modelSpatialGeometryIsReady(first) || !modelSpatialGeometryIsReady(second)) return false;
-  const firstBottom = first.elevationThousandths;
-  const firstTop = firstBottom + verticalExtent(first);
-  const secondBottom = second.elevationThousandths;
-  const secondTop = secondBottom + verticalExtent(second);
-  const gap = Math.max(0, firstBottom - secondTop, secondBottom - firstTop);
-  return gap <= distanceThousandths;
+  return verticalBoundaryGap(first, second) <= distanceThousandths;
+}
+
+export function modelBoundariesWithinDistance(first, second, distanceThousandths) {
+  if (
+    !modelFootprintGeometryIsReady(first) ||
+    !modelFootprintGeometryIsReady(second) ||
+    !Number.isFinite(distanceThousandths) ||
+    distanceThousandths < 0
+  ) {
+    return false;
+  }
+  const verticalGap = verticalBoundaryGap(first, second);
+  if (verticalGap > distanceThousandths) return false;
+  const horizontalAllowance = Math.sqrt(
+    distanceThousandths * distanceThousandths - verticalGap * verticalGap,
+  );
+  return horizontalBoundariesWithin(first, second, horizontalAllowance);
+}
+
+export function formationBoundariesWithinDistance(first, second, distanceThousandths) {
+  const firstModels = first?.models ?? [];
+  const secondModels = second?.models ?? [];
+  if (
+    firstModels.length === 0 ||
+    secondModels.length === 0 ||
+    firstModels.some((model) => !modelFootprintGeometryIsReady(model)) ||
+    secondModels.some((model) => !modelFootprintGeometryIsReady(model))
+  ) {
+    return null;
+  }
+  return firstModels.some((model) =>
+    secondModels.some((candidate) =>
+      modelBoundariesWithinDistance(model, candidate, distanceThousandths),
+    ),
+  );
 }
 
 export function modelBoundariesWithin(first, second, horizontalThousandths, verticalThousandths) {

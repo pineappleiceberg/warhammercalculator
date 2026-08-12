@@ -85,6 +85,12 @@ function factionRuleIds(matrixRuleIds, sourceId) {
   if (sourceId === "NEC" && matrixRuleIds.has("faction.reanimation-protocols")) {
     ruleIds.push("faction.reanimation-protocols");
   }
+  if (sourceId === "TYR" && matrixRuleIds.has("faction.shadow-in-the-warp")) {
+    ruleIds.push("faction.shadow-in-the-warp");
+  }
+  if (sourceId === "TYR" && matrixRuleIds.has("faction.synapse-battle-shock")) {
+    ruleIds.push("faction.synapse-battle-shock");
+  }
   return ruleIds;
 }
 

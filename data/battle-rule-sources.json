@@ -134,6 +134,7 @@
         "exact enhancement identities selected for each detachment",
         "exact datasheet identities and source-linked rules selected by saved units",
         "published per-model Objective Control characteristics used by exact battle formations",
+        "published per-model Leadership characteristics used by exact Battle-shock tests",
         "exact Oath of Moment target-selection timing and Hit-roll re-roll effect",
         "exact Reanimation Protocols timing, D3 roll, wound restoration, and destroyed-model return order"
       ]
@@ -181,6 +182,23 @@
       ],
       "usedFor": [
         "exact Attached-unit boundary that prevents a destroyed Bodyguard unit from activating Reanimation Protocols solely because its Leader remains on the battlefield"
+      ]
+    },
+    {
+      "id": "tyranids-faction-pack-v1.0",
+      "title": "Tyranids Faction Pack",
+      "edition": "Warhammer 40,000 10th Edition",
+      "version": "1.0",
+      "url": "https://assets.warhammer-community.com/eng_09-06_warhammer40000_faction_pack_tyranids-avhhzmcte8-j0kseag7td.pdf",
+      "retrievedAt": "2026-08-12",
+      "sha256": "de2105f97171812369288cb5d5da3da9730f47dc7daa67aa06b1ebc771ad6c36",
+      "pages": [
+        19,
+        21
+      ],
+      "usedFor": [
+        "exact once-per-battle Shadow in the Warp timing, source-unit battlefield requirement, enemy-unit Battle-shock tests, and Synapse-range penalty",
+        "exact Synapse 3D6 Battle-shock test replacement and the Insane Bravery timing boundary"
       ]
     }
   ]

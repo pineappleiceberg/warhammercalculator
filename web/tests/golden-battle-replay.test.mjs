@@ -29,6 +29,12 @@ const attachedFixture = JSON.parse(
     "utf8",
   ),
 );
+const shadowFixture = JSON.parse(
+  await readFile(
+    new URL("./fixtures/golden-battle-tyranids-vs-space-marines-v1.json", import.meta.url),
+    "utf8",
+  ),
+);
 const sourceManifest = JSON.parse(
   await readFile(new URL("../../data/battle-rule-sources.json", import.meta.url), "utf8"),
 );
@@ -65,7 +71,7 @@ test("replays a source-locked real-catalogue pair through every battle phase and
 
 test("pins every golden replay source checksum to the authoritative manifest", () => {
   const manifestLocks = new Map(sourceManifest.sources.map((source) => [source.id, source.sha256]));
-  for (const candidateFixture of [fixture, actionFixture, attachedFixture]) {
+  for (const candidateFixture of [fixture, actionFixture, attachedFixture, shadowFixture]) {
     const event = candidateFixture.state.events.find(
       (candidate) => candidate.type === "rule_coverage_configured",
     );
@@ -78,6 +84,20 @@ test("pins every golden replay source checksum to the authoritative manifest", (
       })),
     );
   }
+});
+
+test("replays a complete source-locked Shadow in the Warp battle", async () => {
+  const { replayed, summary } = await validateGoldenBattleReplay(shadowFixture, sourceManifest);
+  assert.equal(shadowFixture.stateDigest, digest(shadowFixture.state));
+  assert.equal(shadowFixture.expectedDigest, digest(shadowFixture.expected));
+  assert.equal(summary.phaseStepCoverage.length, 170);
+  assert.equal(summary.eventTypeCounts.shadow_in_the_warp_unleashed, 1);
+  assert.equal(summary.eventTypeCounts.shadow_in_the_warp_test_resolved, 1);
+  assert.equal(replayed.shadowInTheWarpActivations.length, 1);
+  assert.deepEqual(replayed.shadowInTheWarpResolutions[0].dice, [6, 5]);
+  assert.equal(replayed.shadowInTheWarpResolutions[0].failed, true);
+  assert.equal(replayed.battleShockedFormations.has("player-2:shadow-intercessors"), false);
+  assert.equal(replayed.ruleCoverage.plan.players[0].faction.sourceId, "TYR");
 });
 
 test("replays attached Leaders, mixed profiles, a Mission Action, and Strategic Reserves", async () => {

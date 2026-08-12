@@ -33,9 +33,9 @@ test("published coverage matrix is source-locked and identical to its data sourc
   assert.equal(matrix.sourceLocked, true);
   assert.equal(
     matrix.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-v43",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v44",
   );
-  assert.equal(matrix.rules.length, 2972);
+  assert.equal(matrix.rules.length, 2974);
   assert.deepEqual(
     new Set(matrix.rules.map((rule) => rule.category)),
     new Set([
@@ -99,6 +99,28 @@ test("published coverage matrix is source-locked and identical to its data sourc
       ],
     },
   );
+  for (const [id, name, abilityId] of [
+    ["faction.shadow-in-the-warp", "Shadow in the Warp", "000000707"],
+    ["faction.synapse-battle-shock", "Synapse Battle-shock", "000000705"],
+  ]) {
+    assert.deepEqual(
+      matrix.rules.find((rule) => rule.id === id),
+      {
+        id,
+        category: "faction",
+        name,
+        status: "executable",
+        introducedBattleStateVersion: 44,
+        sources: [
+          {
+            id: "wahapedia-profile-export-2026-06-13",
+            records: [{ type: "faction", id: `TYR:ability:${abilityId}` }],
+          },
+          { id: "tyranids-faction-pack-v1.0", pages: [19, 21] },
+        ],
+      },
+    );
+  }
   assert.equal(
     matrix.rules.find((rule) => rule.id === "datasheet.catalogue-000000545")?.name,
     "Doom Scythe datasheet rules",

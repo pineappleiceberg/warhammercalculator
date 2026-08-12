@@ -732,5 +732,41 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
                    source_faction, active_target, selected_at_start, target_is_opponent,
                    attacker_has_ability, hit_reroll) == expected);
     }
+    {
+        const uint32_t source_faction = next_byte(&input) % 3u;
+        const uint32_t available = next_byte(&input) % 3u;
+        const uint32_t source_on_battlefield = next_byte(&input) % 3u;
+        const uint32_t command_phase = next_byte(&input) % 3u;
+        const uint32_t target_on_battlefield = next_byte(&input) % 3u;
+        const uint32_t target_tyranids = next_byte(&input) % 3u;
+        const uint32_t own_synapse = next_byte(&input) % 3u;
+        const uint32_t source_synapse = next_byte(&input) % 3u;
+        const uint32_t dice_count = next_byte(&input) % 5u;
+        const uint32_t raw_roll = next_byte(&input) % 24u;
+        const uint32_t leadership = next_byte(&input) % 15u;
+        const uint32_t shocked_before = next_byte(&input) % 3u;
+        const uint32_t failed = next_byte(&input) % 3u;
+        const uint32_t shocked_after = next_byte(&input) % 3u;
+        const bool flags_valid = target_tyranids <= 1u && own_synapse <= 1u &&
+                                 source_synapse <= 1u && shocked_before <= 1u && failed <= 1u &&
+                                 shocked_after <= 1u;
+        const uint32_t expected_dice =
+            target_tyranids == 1u && own_synapse == 1u ? 3u : 2u;
+        const bool bounded = flags_valid && leadership >= 2u && leadership <= 12u &&
+                             dice_count == expected_dice && raw_roll >= dice_count &&
+                             raw_roll <= dice_count * 6u;
+        const uint32_t expected_failed =
+            bounded && raw_roll - source_synapse > leadership ? 1u : 0u;
+        const bool expected = source_faction == 1u && available == 1u &&
+                              source_on_battlefield == 1u && command_phase == 1u &&
+                              target_on_battlefield == 1u && bounded &&
+                              failed == expected_failed &&
+                              shocked_after == (shocked_before == 1u || failed == 1u ? 1u : 0u);
+        assert(whc_shadow_in_the_warp_test_is_valid(
+                   source_faction, available, source_on_battlefield, command_phase,
+                   target_on_battlefield, target_tyranids, own_synapse, source_synapse,
+                   dice_count, raw_roll, leadership, shocked_before, failed, shocked_after) ==
+               expected);
+    }
     return 0;
 }
