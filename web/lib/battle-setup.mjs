@@ -3,6 +3,7 @@ import {
   BATTLE_EVENT_VERSION,
   BATTLE_STATE_VERSION,
   DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION,
+  OATH_OF_MOMENT_BATTLE_STATE_VERSION,
   MISSION_TRACKING_BATTLE_STATE_VERSION,
   TERRAIN_CLEARANCE_BATTLE_STATE_VERSION,
   CONVEX_SILHOUETTE_BATTLE_STATE_VERSION,
@@ -403,6 +404,8 @@ function registerCompleteRosters(catalogue, state, firstList, secondList, equipm
           formation: {
             ...existing.formation,
             keywords: formation.keywords,
+            hasWaaaghAbility: formation.hasWaaaghAbility,
+            hasOathOfMomentAbility: formation.hasOathOfMomentAbility,
             deploymentTraits: formation.deploymentTraits,
             defensiveEquipmentCounts: formation.defensiveEquipmentCounts,
             weaponInventory: formation.weaponInventory,
@@ -721,6 +724,10 @@ export function initializeBattleForLists({
             sourceVersion < DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyDetachmentRulesThroughSequence ?? 0),
+          legacyMandatoryArmyRulesThroughSequence:
+            sourceVersion < OATH_OF_MOMENT_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyMandatoryArmyRulesThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

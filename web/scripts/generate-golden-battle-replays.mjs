@@ -9,6 +9,7 @@ import {
   advanceBattleClock,
   arriveFromReserves,
   appendResolvedAttack,
+  battleOathOfMomentState,
   callWaaagh,
   battleGrimResolveState,
   closeRangedTargetDeclarations,
@@ -43,6 +44,7 @@ import {
   resolveSecondaryTurnEnd,
   scoreMissionPoints,
   scoreSecondaryMissionCard,
+  selectOathOfMomentTarget,
   selectGrimResolveFormation,
   setBattleObjectiveControl,
   startBattle,
@@ -959,6 +961,17 @@ function buildFixture() {
       );
       replayed = replayBattleState(state);
     }
+    const oath = battleOathOfMomentState(state, replayed.clock.activePlayerId, replayed);
+    if (oath.available) {
+      state = selectOathOfMomentTarget(
+        state,
+        replayed.clock.activePlayerId,
+        oath.eligibleFormationIds[0],
+        `oath-${replayed.clock.battleRound}-${replayed.clock.turn}`,
+        state.events.length + 1,
+      );
+      replayed = replayBattleState(state);
+    }
     const clock = replayed.clock;
     const turnKey = `${clock.battleRound}:${clock.turn}:${clock.activePlayerId}`;
     if (clock.phase === "command" && clock.step === "end" && clock.battleRound >= 2) {
@@ -1541,7 +1554,19 @@ function buildActionFixture() {
   let battleReadyScored = false;
   const resolvedTacticalTurns = new Set(["1:1:player-1"]);
   while (replayBattleState(state).clock.status !== "complete") {
-    const clock = replayBattleState(state).clock;
+    let replayed = replayBattleState(state);
+    const oath = battleOathOfMomentState(state, replayed.clock.activePlayerId, replayed);
+    if (oath.available) {
+      state = selectOathOfMomentTarget(
+        state,
+        replayed.clock.activePlayerId,
+        oath.eligibleFormationIds[0],
+        `action-oath-${replayed.clock.battleRound}-${replayed.clock.turn}`,
+        state.events.length + 1,
+      );
+      replayed = replayBattleState(state);
+    }
+    const clock = replayed.clock;
     const turnKey = `${clock.battleRound}:${clock.turn}:${clock.activePlayerId}`;
     const grimResolve = battleGrimResolveState(state, clock.activePlayerId);
     if (grimResolve.available) {

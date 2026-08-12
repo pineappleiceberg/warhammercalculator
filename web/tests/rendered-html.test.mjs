@@ -313,7 +313,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const coverage = (await coverageResponse.json()).data;
   assert.equal(
     coverage.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v41",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v42",
   );
   assert.equal(coverage.sourceLocked, true);
   assert.equal(coverage.rules.length, coveredRuleCoverageMatrix.rules.length);
@@ -2959,6 +2959,42 @@ test("replays the action-heavy golden battle and casualties through the public A
       assert.equal(grimResolve, undefined);
     }
   }
+});
+
+test("API exposes source-locked active Oath of Moment attack facts without native inputs", async () => {
+  const worker = await loadWorker();
+  const context = { waitUntil() {}, passThroughOnException() {} };
+  const selectionIndex = actionGoldenBattleReplay.state.events.findIndex(
+    (event) => event.type === "oath_of_moment_selected",
+  );
+  assert.notEqual(selectionIndex, -1);
+  const selection = actionGoldenBattleReplay.state.events[selectionIndex];
+  const inProgress = {
+    ...actionGoldenBattleReplay.state,
+    events: actionGoldenBattleReplay.state.events.slice(0, selectionIndex + 1),
+  };
+  const response = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        battleState: inProgress,
+        formationId: actionGoldenBattleReplay.expected.formations.find((formation) =>
+          formation.id.startsWith("player-2:"),
+        ).id,
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  const result = await response.json();
+  const facts = result.data.factionRules.oathOfMoment;
+  assert.ok(facts.length > 0);
+  assert.ok(facts.every((entry) => entry.sourceLocked && entry.valid));
+  assert.ok(facts.every((entry) => entry.activeTargetFormationId === selection.formationId));
+  assert.ok(facts.some((entry) => entry.hasAbility && entry.hitReroll));
+  assert.ok(facts.every((entry) => !Object.hasOwn(entry, "values")));
 });
 
 test("replays attached mixed-profile casualties and Reserve arrival through the public API and C ABI", async () => {

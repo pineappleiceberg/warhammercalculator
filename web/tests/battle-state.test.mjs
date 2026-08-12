@@ -21,6 +21,8 @@ import {
   battleWaaaghState,
   battleGrimResolveFormationFacts,
   battleGrimResolveState,
+  battleOathOfMomentAttackFacts,
+  battleOathOfMomentState,
   callWaaagh,
   changeBattleResource,
   clearBattleObjectiveControlOverride,
@@ -69,6 +71,7 @@ import {
   scoreMissionPoints,
   scoreSecondaryMissionCard,
   selectGrimResolveFormation,
+  selectOathOfMomentTarget,
   setBattleObjectiveControl,
   setFormationBattleShocked,
   startBattle,
@@ -469,6 +472,37 @@ function newGrimResolveBattle() {
     },
     datasheetResult,
     detachmentResult,
+  );
+  return normalizeBattleState({
+    ...state,
+    events: [{ ...state.events[0], coverage }],
+  });
+}
+
+function newSpaceMarinesBattle() {
+  const state = newBattle();
+  const coverage = structuredClone(state.events[0].coverage);
+  coverage.plan.players[0].faction = {
+    sourceId: "SM",
+    ruleIds: ["faction.oath-of-moment"],
+  };
+  const factionIndex = coverage.report.results.findIndex((result) => result.id === "faction.test");
+  const factionResult = coverage.report.results[factionIndex];
+  const detachmentResult = coverage.report.results.find(
+    (result) => result.id === "detachment.test",
+  );
+  const datasheetResult = coverage.report.results.find((result) => result.id === "datasheet.test");
+  coverage.report.results.splice(
+    factionIndex,
+    3,
+    {
+      ...factionResult,
+      id: "faction.oath-of-moment",
+      name: "Oath of Moment",
+    },
+    detachmentResult,
+    datasheetResult,
+    factionResult,
   );
   return normalizeBattleState({
     ...state,
@@ -4225,6 +4259,102 @@ test("requires Grim Resolve before leaving Command and rejects wrong sources and
         wrongSource.events.length + 1,
       ),
     /source-locked Unforgiven/i,
+  );
+});
+
+test("executes source-locked Oath of Moment selection, attack facts, and expiry", () => {
+  const astartes = { ...attackerFormation, hasOathOfMomentAbility: true };
+  let state = registerBattleFormation(
+    registerBattleFormation(newSpaceMarinesBattle(), astartes, "register-oath-attacker", 1),
+    formation,
+    "register-oath-target",
+    2,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "start-oath", 3);
+  assert.equal(battleOathOfMomentState(state, "player-1").available, true);
+  state = selectOathOfMomentTarget(
+    state,
+    "player-1",
+    formation.id,
+    "select-oath",
+    state.events.length + 1,
+  );
+  const active = battleOathOfMomentState(state, "player-1");
+  assert.equal(active.activeTargetFormationId, formation.id);
+  assert.equal(active.available, false);
+  const facts = battleOathOfMomentAttackFacts(state, astartes.id);
+  assert.equal(facts.valid, true);
+  assert.equal(facts.hitReroll, true);
+  assert.equal(facts.activeTargetFormationId, formation.id);
+  assert.throws(
+    () =>
+      selectOathOfMomentTarget(
+        state,
+        "player-1",
+        formation.id,
+        "duplicate-oath",
+        state.events.length + 1,
+      ),
+    /only one target/i,
+  );
+  state = advanceBattleClock(state, "oath-to-battleshock", state.events.length + 1);
+  assert.equal(battleOathOfMomentState(state, "player-1").activeTargetFormationId, formation.id);
+  do {
+    state = advanceBattleClock(
+      state,
+      `oath-expiry-${state.events.length}`,
+      state.events.length + 1,
+    );
+  } while (
+    !(
+      replayBattleState(state).clock.activePlayerId === "player-1" &&
+      replayBattleState(state).clock.battleRound === 2 &&
+      replayBattleState(state).clock.phase === "command" &&
+      replayBattleState(state).clock.step === "start"
+    )
+  );
+  assert.equal(battleOathOfMomentState(state, "player-1").activeTargetFormationId, "");
+  assert.equal(battleOathOfMomentState(state, "player-1").available, true);
+});
+
+test("requires Oath of Moment at Command start and rejects friendly or unsourced targets", () => {
+  const astartes = { ...attackerFormation, hasOathOfMomentAbility: true };
+  let state = registerBattleFormation(
+    registerBattleFormation(newSpaceMarinesBattle(), astartes, "register-required-oath", 1),
+    formation,
+    "register-required-oath-target",
+    2,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "start-required-oath", 3);
+  assert.throws(
+    () => advanceBattleClock(state, "leave-oath-start", state.events.length + 1),
+    /Select one enemy unit for Oath of Moment/i,
+  );
+  assert.throws(
+    () =>
+      selectOathOfMomentTarget(
+        state,
+        "player-1",
+        astartes.id,
+        "friendly-oath",
+        state.events.length + 1,
+      ),
+    /opponent's army/i,
+  );
+
+  let wrongSource = registerBattleFormation(newBattle(), astartes, "wrong-oath-source", 1);
+  wrongSource = registerBattleFormation(wrongSource, formation, "wrong-oath-target", 2);
+  wrongSource = startBattle(deployAllOnBattlefield(wrongSource), "player-1", "start-wrong-oath", 3);
+  assert.throws(
+    () =>
+      selectOathOfMomentTarget(
+        wrongSource,
+        "player-1",
+        formation.id,
+        "unsourced-oath",
+        wrongSource.events.length + 1,
+      ),
+    /source-locked Adeptus Astartes/i,
   );
 });
 

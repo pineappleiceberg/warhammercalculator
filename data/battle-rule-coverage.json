@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v41",
+  "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v42",
   "edition": "Warhammer 40,000 10th Edition",
   "updatedAt": "2026-08-11",
   "sourceLocks": [
@@ -776,6 +776,24 @@
             {
               "type": "faction",
               "id": "WE"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "faction.oath-of-moment",
+      "category": "faction",
+      "name": "Oath of Moment",
+      "status": "executable",
+      "introducedBattleStateVersion": 42,
+      "sources": [
+        {
+          "id": "wahapedia-profile-export-2026-06-13",
+          "records": [
+            {
+              "type": "faction",
+              "id": "SM:ability:000008350"
             }
           ]
         }

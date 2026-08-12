@@ -77,6 +77,14 @@ function catalogueRuleId(matrixRuleIds, category, sourceId, ...fallbackIdentity)
     : fallbackRuleId(category, ...(fallbackIdentity.length ? fallbackIdentity : [sourceId]));
 }
 
+function factionRuleIds(matrixRuleIds, sourceId) {
+  const ruleIds = [catalogueRuleId(matrixRuleIds, "faction", sourceId)];
+  if (sourceId === "SM" && matrixRuleIds.has("faction.oath-of-moment")) {
+    ruleIds.push("faction.oath-of-moment");
+  }
+  return ruleIds;
+}
+
 function normalizeAcknowledgements(value) {
   const source =
     value === undefined ? {} : object(value, "Rule acknowledgements must be an object");
@@ -238,9 +246,7 @@ export function deriveBattleRuleSelectionPlan(matrix, players, lists, overrides 
         playerId: player.id,
         faction: {
           sourceId: list.factionId,
-          ruleIds: playerOverride.factionRuleIds ?? [
-            catalogueRuleId(matrixRuleIds, "faction", list.factionId),
-          ],
+          ruleIds: playerOverride.factionRuleIds ?? factionRuleIds(matrixRuleIds, list.factionId),
         },
         detachment: {
           sourceId: detachmentSourceId,

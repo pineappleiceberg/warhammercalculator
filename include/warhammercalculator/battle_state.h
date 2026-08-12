@@ -792,6 +792,21 @@ bool whc_grim_resolve_model_objective_control_is_valid(
 
 /*@ assigns \nothing;
     ensures \result <==>
+        source_faction_adeptus_astartes <= 1 && active_target <= 1 &&
+        selected_at_command_start <= 1 && target_is_opponent <= 1 &&
+        attacker_has_ability <= 1 && hit_reroll <= 1 &&
+        (active_target == 0 || source_faction_adeptus_astartes == 1) &&
+        selected_at_command_start == active_target &&
+        target_is_opponent == active_target &&
+        hit_reroll == (active_target == 1 && attacker_has_ability == 1 ? 1 : 0);
+*/
+bool whc_oath_of_moment_attack_state_is_valid(
+    uint32_t source_faction_adeptus_astartes, uint32_t active_target,
+    uint32_t selected_at_command_start, uint32_t target_is_opponent,
+    uint32_t attacker_has_ability, uint32_t hit_reroll);
+
+/*@ assigns \nothing;
+    ensures \result <==>
         player_count == 2 && score_entry_count == player_count &&
         top_score <= 1000000 && top_score_player_count <= player_count &&
         controller_count <= 1 && contested <= 1 &&

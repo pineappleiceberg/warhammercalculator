@@ -136,7 +136,9 @@ The main tables are:
   datasheets. `requires_oath_target` gates the Hit re-roll, while the +1 Wound
   row additionally carries `requires_oath_wound_bonus`. This preserves the
   published Codex-detachment and excluded-chapter condition instead of treating
-  both benefits as one manual toggle
+  both benefits as one manual toggle. Battle-state version 42 source-locks the
+  Command-phase target selection and feeds that selected target into the Hit
+  re-roll state; the narrower +1 Wound eligibility remains separately editable
 - direct objective-marker rules carry `requires_source_on_objective` or
   `requires_target_on_objective`. Seventeen baseline/upgrade abilities are split
   so their re-roll of 1 remains automatic while the full re-roll requires the

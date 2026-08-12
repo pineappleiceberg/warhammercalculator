@@ -590,6 +590,20 @@ bool whc_grim_resolve_model_objective_control_is_valid(
            resolved_objective_control == replacement + modifier;
 }
 
+bool whc_oath_of_moment_attack_state_is_valid(
+    uint32_t source_faction_adeptus_astartes, uint32_t active_target,
+    uint32_t selected_at_command_start, uint32_t target_is_opponent,
+    uint32_t attacker_has_ability, uint32_t hit_reroll) {
+    const uint32_t benefit = active_target == 1u && attacker_has_ability == 1u ? 1u : 0u;
+
+    return source_faction_adeptus_astartes <= 1u && active_target <= 1u &&
+           selected_at_command_start <= 1u && target_is_opponent <= 1u &&
+           attacker_has_ability <= 1u && hit_reroll <= 1u &&
+           (active_target == 0u || source_faction_adeptus_astartes == 1u) &&
+           selected_at_command_start == active_target && target_is_opponent == active_target &&
+           hit_reroll == benefit;
+}
+
 bool whc_objective_control_facts_are_valid(uint32_t player_count, uint32_t score_entry_count,
                                            uint32_t top_score, uint32_t top_score_player_count,
                                            uint32_t controller_count, uint32_t contested,

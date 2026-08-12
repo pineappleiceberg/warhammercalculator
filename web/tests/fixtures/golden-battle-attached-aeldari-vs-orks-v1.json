@@ -27,10 +27,10 @@
     }
   ],
   "sourceManifestVersion": 1,
-  "stateDigest": "bb882bd21191f32fb2865dce9760bae60798ea05e27757f51e7704a9c105a172",
-  "expectedDigest": "681e33668f553151870378c4f8f157e891da5c86e196192e5ab9643bb22f527c",
+  "stateDigest": "e9a2e2d5ab97da87ec1bc7d51fac6c089cf645bf235041493f448dfdc9b0d883",
+  "expectedDigest": "2c1198fd849665d576f7b41168067056c844ca3edb3632d5527afc25ee95c1e0",
   "expected": {
-    "stateVersion": 41,
+    "stateVersion": 42,
     "eventCount": 228,
     "eventTypeCounts": {
       "activation_completed": 1,
@@ -329,10 +329,10 @@
     ]
   },
   "state": {
-    "version": 41,
+    "version": 42,
     "id": "golden-attached-aeldari-vs-orks-v1",
     "createdAt": 0,
-    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:41",
+    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:42",
     "players": [
       {
         "id": "player-1",
@@ -373,6 +373,7 @@
             "farseer"
           ],
           "hasWaaaghAbility": false,
+          "hasOathOfMomentAbility": false,
           "segments": [
             {
               "id": "guardians:363:loadout:1",
@@ -824,6 +825,7 @@
           "assignedTransportFormationId": "",
           "keywords": ["asuryani", "rangers", "aeldari", "infantry"],
           "hasWaaaghAbility": false,
+          "hasOathOfMomentAbility": false,
           "segments": [
             {
               "id": "rangers:368:loadout:1",
@@ -924,6 +926,7 @@
             "warboss"
           ],
           "hasWaaaghAbility": true,
+          "hasOathOfMomentAbility": false,
           "segments": [
             {
               "id": "boyz:16:loadout:1",
@@ -1269,6 +1272,7 @@
           "assignedTransportFormationId": "",
           "keywords": ["orks", "mek", "character", "infantry"],
           "hasWaaaghAbility": true,
+          "hasOathOfMomentAbility": false,
           "segments": [
             {
               "id": "mek:12:loadout:1",
@@ -1312,7 +1316,7 @@
         "type": "rule_coverage_configured",
         "coverage": {
           "schemaVersion": 1,
-          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v41",
+          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v42",
           "sourceLocks": [
             {
               "id": "core-rules-10e",
@@ -1441,7 +1445,7 @@
             }
           },
           "report": {
-            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v41",
+            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v42",
             "permitted": true,
             "results": [
               {
@@ -2117,6 +2121,7 @@
             "farseer"
           ],
           "hasWaaaghAbility": false,
+          "hasOathOfMomentAbility": false,
           "segments": [
             {
               "id": "guardians:363:loadout:1",
@@ -2579,6 +2584,7 @@
             "farseer"
           ],
           "hasWaaaghAbility": false,
+          "hasOathOfMomentAbility": false,
           "segments": [
             {
               "id": "guardians:363:loadout:1",
@@ -3014,6 +3020,7 @@
             "warboss"
           ],
           "hasWaaaghAbility": true,
+          "hasOathOfMomentAbility": false,
           "segments": [
             {
               "id": "boyz:16:loadout:1",
@@ -3368,6 +3375,7 @@
             "warboss"
           ],
           "hasWaaaghAbility": true,
+          "hasOathOfMomentAbility": false,
           "segments": [
             {
               "id": "boyz:16:loadout:1",
@@ -3722,6 +3730,7 @@
             "warboss"
           ],
           "hasWaaaghAbility": true,
+          "hasOathOfMomentAbility": false,
           "segments": [
             {
               "id": "boyz:16:loadout:1",
@@ -4076,6 +4085,7 @@
             "warboss"
           ],
           "hasWaaaghAbility": true,
+          "hasOathOfMomentAbility": false,
           "segments": [
             {
               "id": "boyz:16:loadout:1",

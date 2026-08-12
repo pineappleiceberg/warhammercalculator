@@ -26,6 +26,7 @@ import {
   battleCanDeclareRangedAttack,
   battleCanResolveAttack,
   battleGrimResolveState,
+  battleOathOfMomentState,
   battleWaaaghState,
   battleFormation,
   battleFormationIsOnBattlefield,
@@ -91,6 +92,7 @@ import {
   scoreMissionPoints,
   scoreSecondaryMissionCard,
   selectGrimResolveFormation,
+  selectOathOfMomentTarget,
   setBattleObjectiveControl,
   setFormationBattleShocked,
   startBattle,
@@ -1418,6 +1420,13 @@ export default function PlayMode() {
       replayedBattle?.activeWaaaghPlayerIds.has(targetPlayerId) &&
       replayedBattle.formations.get(targetBattleFormationId)?.hasWaaaghAbility,
   );
+  const attackerOathOfMomentState = battleState
+    ? battleOathOfMomentState(battleState, attackerPlayerId, replayedBattle)
+    : null;
+  const targetFormationIsOathOfMomentTarget = Boolean(
+    targetBattleFormationId &&
+      attackerOathOfMomentState?.activeTargetFormationId === targetBattleFormationId,
+  );
   const targetBattleHealth =
     battleState && targetBattleFormationId
       ? battleFormationHealth(battleState, targetBattleFormationId)
@@ -2012,7 +2021,8 @@ export default function PlayMode() {
     if (
       battleClock?.status !== "active" ||
       (profile.attackerWaaaghActive === attackerFormationWaaaghActive &&
-        profile.targetWaaaghActive === targetFormationWaaaghActive)
+        profile.targetWaaaghActive === targetFormationWaaaghActive &&
+        profile.targetOathOfMoment === targetFormationIsOathOfMomentTarget)
     ) {
       return;
     }
@@ -2035,6 +2045,7 @@ export default function PlayMode() {
         profile.targetAttached,
         attackerFormationWaaaghActive,
         targetFormationWaaaghActive,
+        targetFormationIsOathOfMomentTarget,
       );
     });
     return () => {
@@ -2484,7 +2495,15 @@ export default function PlayMode() {
     const nextTargetAttached =
       nextFormation?.attached ?? targetTransportReport.attachedUnitIds.has(id);
     const nextTargetWaaaghActive = false;
-    const nextTargetOathOfMoment = false;
+    const nextTargetBattleFormationId = nextFormation
+      ? `${nextTargetPlayerId}:${nextFormation.id}`
+      : "";
+    const nextTargetOathOfMoment = Boolean(
+      battleState &&
+        nextTargetBattleFormationId &&
+        battleOathOfMomentState(battleState, attackerPlayerId, replayedBattle)
+          .activeTargetFormationId === nextTargetBattleFormationId,
+    );
     const nextTargetOnObjective = false;
     const nextTargetObjectiveOwner = "unknown" as const;
     const nextTargetOnAttackerSelectedObjective = false;
@@ -4547,6 +4566,26 @@ export default function PlayMode() {
     }
   };
 
+  const selectPlayerOathOfMomentTarget = (playerId: string, formationId: string) => {
+    if (!battleState) return;
+    try {
+      const next = selectOathOfMomentTarget(
+        battleState,
+        playerId,
+        formationId,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      const formation = replayBattleState(next).formations.get(formationId);
+      setStatus(
+        `Oath of Moment selected ${formation?.name ?? formationId} until this player's next Command phase`,
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Oath of Moment could not be selected");
+    }
+  };
+
   const recordSelectedMovement = (movement: "stationary" | "normal" | "advance" | "fall_back") => {
     if (!battleState || !attackerBattleFormationId) return;
     try {
@@ -6406,6 +6445,7 @@ export default function PlayMode() {
                       aria-label="Target is the Oath of Moment target"
                       type="checkbox"
                       checked={profile.targetOathOfMoment}
+                      disabled={battleClock?.status === "active"}
                       onChange={(event) =>
                         refreshProfile(
                           weaponId,
@@ -7665,6 +7705,34 @@ export default function PlayMode() {
                     );
                   })}
                   {battleState.players.map((player) => {
+                    const oath = battleOathOfMomentState(battleState, player.id, replayedBattle);
+                    if (!oath.sourceLocked) return null;
+                    if (oath.available) {
+                      return (
+                        <div key={`oath-${player.id}`} className="battle-log-actions">
+                          <strong>Oath of Moment · choose an enemy unit:</strong>
+                          {oath.eligibleFormationIds.map((formationId) => (
+                            <button
+                              key={formationId}
+                              type="button"
+                              onClick={() => selectPlayerOathOfMomentTarget(player.id, formationId)}
+                            >
+                              {replayedBattle.formations.get(formationId)?.name ?? formationId}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    }
+                    if (!oath.activeTargetFormationId) return null;
+                    return (
+                      <strong key={`oath-${player.id}`}>
+                        Oath of Moment ·{" "}
+                        {replayedBattle.formations.get(oath.activeTargetFormationId)?.name ??
+                          oath.activeTargetFormationId}
+                      </strong>
+                    );
+                  })}
+                  {battleState.players.map((player) => {
                     const grimResolve = battleGrimResolveState(
                       battleState,
                       player.id,
@@ -7713,6 +7781,10 @@ export default function PlayMode() {
                       battleState.players.some(
                         (player) =>
                           battleGrimResolveState(battleState, player.id, replayedBattle).available,
+                      ) ||
+                      battleState.players.some(
+                        (player) =>
+                          battleOathOfMomentState(battleState, player.id, replayedBattle).available,
                       )
                     }
                     onClick={advanceGuidedBattle}
