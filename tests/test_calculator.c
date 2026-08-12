@@ -1912,6 +1912,13 @@ int main(void) {
     assert(!whc_waaagh_state_is_valid(1u, 1u, 0u, 1u, 1u, 1u, 1u, 1u, 5u));
     assert(!whc_waaagh_state_is_valid(1u, 1u, 1u, 0u, 1u, 1u, 1u, 1u, 5u));
     assert(!whc_waaagh_state_is_valid(1u, 0u, 1u, 1u, 1u, 1u, 1u, 1u, 5u));
+    assert(whc_grim_resolve_model_objective_control_is_valid(0u, 0u, 0u, 0u, 2u, 2u));
+    assert(whc_grim_resolve_model_objective_control_is_valid(1u, 1u, 1u, 0u, 2u, 3u));
+    assert(whc_grim_resolve_model_objective_control_is_valid(1u, 1u, 0u, 1u, 2u, 1u));
+    assert(whc_grim_resolve_model_objective_control_is_valid(1u, 1u, 1u, 1u, 2u, 2u));
+    assert(!whc_grim_resolve_model_objective_control_is_valid(0u, 1u, 1u, 0u, 2u, 3u));
+    assert(!whc_grim_resolve_model_objective_control_is_valid(1u, 1u, 1u, 1u, 2u, 1u));
+    assert(!whc_grim_resolve_model_objective_control_is_valid(2u, 1u, 0u, 0u, 2u, 2u));
     assert(whc_objective_control_facts_are_valid(2u, 2u, 6u, 1u, 1u, 0u,
                                                  WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
     assert(whc_objective_control_facts_are_valid(2u, 2u, 6u, 2u, 0u, 1u,

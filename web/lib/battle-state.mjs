@@ -36,7 +36,8 @@ import {
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 40;
+export const BATTLE_STATE_VERSION = 41;
+export const DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION = 41;
 export const FACTION_RULE_STATE_BATTLE_STATE_VERSION = 40;
 export const SIMPLE_TERRAIN_BATTLE_STATE_VERSION = 39;
 export const MISSION_TRACKING_BATTLE_STATE_VERSION = 38;
@@ -3486,6 +3487,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     throw new Error("Executable faction-rule state requires battle-state version 40");
   }
   if (
+    stateVersion < DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION &&
+    event.type === "grim_resolve_selected"
+  ) {
+    throw new Error("Executable detachment-rule state requires battle-state version 41");
+  }
+  if (
     stateVersion < MISSION_TRACKING_BATTLE_STATE_VERSION &&
     [
       "secondary_plan_configured",
@@ -3791,6 +3798,25 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
       30,
     );
     normalized.sourceRuleId = boundedString(event.sourceRuleId, "Waaagh! source rule id", 100);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "grim_resolve_selected") {
+    normalized.playerId = boundedString(event.playerId, "Grim Resolve player id", 100);
+    if (!formations.players.has(normalized.playerId)) {
+      throw new Error("Grim Resolve player is unknown");
+    }
+    normalized.formationId = boundedString(event.formationId, "Grim Resolve formation id", 100);
+    normalized.sourceDetachmentId = boundedString(
+      event.sourceDetachmentId,
+      "Grim Resolve source detachment id",
+      30,
+    );
+    normalized.sourceAbilityId = boundedString(
+      event.sourceAbilityId,
+      "Grim Resolve source ability id",
+      30,
+    );
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
@@ -5281,6 +5307,7 @@ export function normalizeBattleState(candidate) {
       MISSION_TRACKING_BATTLE_STATE_VERSION,
       SIMPLE_TERRAIN_BATTLE_STATE_VERSION,
       FACTION_RULE_STATE_BATTLE_STATE_VERSION,
+      DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
     throw new Error(`Unsupported battle state version: ${String(state.version)}`);
@@ -5352,6 +5379,7 @@ export function normalizeBattleState(candidate) {
         TERRAIN_CLEARANCE_BATTLE_STATE_VERSION,
         MISSION_TRACKING_BATTLE_STATE_VERSION,
         SIMPLE_TERRAIN_BATTLE_STATE_VERSION,
+        FACTION_RULE_STATE_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -5597,6 +5625,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyDetachmentRulesThroughSequence = nonnegativeInteger(
+        migration.legacyDetachmentRulesThroughSequence,
+        "Legacy detachment-rule event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -5607,6 +5642,7 @@ export function normalizeBattleState(candidate) {
     ) &&
     normalized.migration?.sourceVersion !== TERRAIN_CLEARANCE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== SIMPLE_TERRAIN_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== FACTION_RULE_STATE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== OBJECTIVE_CONTROL_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== SPATIAL_FACTS_BATTLE_STATE_VERSION &&
@@ -6716,6 +6752,9 @@ export function replayBattleState(state) {
   let ruleCoverage = null;
   const waaaghCallsByPlayer = new Map();
   const activeWaaaghPlayerIds = new Set();
+  const grimResolveSelections = [];
+  const grimResolveSelectionsByPlayer = new Map();
+  const grimResolveSelectionKeys = new Set();
   let tableGeometry = null;
   let terrainFootprints = null;
   let terrainVisibility = null;
@@ -6819,6 +6858,10 @@ export function replayBattleState(state) {
     state.version < MISSION_TRACKING_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyMissionTrackingThroughSequence ?? 0);
+  const legacyDetachmentRulesThroughSequence =
+    state.version < DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyDetachmentRulesThroughSequence ?? 0);
   const legacyTerrainVisibilityThroughSequence =
     state.version < TERRAIN_VISIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -6838,6 +6881,38 @@ export function replayBattleState(state) {
 
   const sourceLockedChapterApprovedMission = () =>
     Boolean(ruleCoverage?.plan?.mission?.sourceId?.startsWith("chapter-approved-2025-26-v1.4-"));
+  const playerUsesGrimResolve = (playerId) => {
+    const detachment = ruleCoverage?.plan?.players?.find(
+      (player) => player.playerId === playerId,
+    )?.detachment;
+    return Boolean(
+      detachment?.sourceId === "000000834" &&
+        detachment.ruleIds?.includes("detachment.catalogue-000000834"),
+    );
+  };
+  const grimResolveEligibleFormation = (formation, playerId) =>
+    Boolean(
+      formation &&
+        formation.playerId === playerId &&
+        formation.keywords.includes("adeptus astartes") &&
+        !formationDestroyed(formation),
+    );
+  const grimResolveObjectiveControlInputs = () => {
+    const battleShockedObjectiveControlByFormation = new Map();
+    const objectiveControlModifiersByFormation = new Map();
+    for (const [formationId, formation] of formations) {
+      if (
+        playerUsesGrimResolve(formation.playerId) &&
+        formation.keywords.includes("adeptus astartes")
+      ) {
+        battleShockedObjectiveControlByFormation.set(formationId, 1);
+      }
+    }
+    for (const selection of grimResolveSelectionsByPlayer.values()) {
+      objectiveControlModifiersByFormation.set(selection.formationId, 1);
+    }
+    return { battleShockedObjectiveControlByFormation, objectiveControlModifiersByFormation };
+  };
   const secondaryCardKey = (playerId, cardId) => `${playerId}:${cardId}`;
   const battleTurnKey = (battleClock) =>
     `${battleClock.battleRound}:${battleClock.turn}:${battleClock.activePlayerId}`;
@@ -7241,6 +7316,7 @@ export function replayBattleState(state) {
       eligibleFormationIds,
       spatialFactsByFormation: spatialFacts,
       battleShockedFormationIds: new Set(battleShockedFormations.keys()),
+      ...grimResolveObjectiveControlInputs(),
     });
     for (const [objectiveId, tracked] of objectives) {
       if (tracked.recorded) continue;
@@ -8085,6 +8161,35 @@ export function replayBattleState(state) {
       activeWaaaghPlayerIds.add(event.playerId);
       continue;
     }
+    if (event.type === "grim_resolve_selected") {
+      if (
+        clock.status !== "active" ||
+        clock.phase !== "command" ||
+        clock.activePlayerId !== event.playerId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Grim Resolve can only select a unit in your Command phase");
+      }
+      if (
+        !playerUsesGrimResolve(event.playerId) ||
+        event.sourceDetachmentId !== "000000834" ||
+        event.sourceAbilityId !== "000008770"
+      ) {
+        throw new Error("Grim Resolve requires the source-locked Unforgiven Task Force rule");
+      }
+      const formation = formations.get(event.formationId);
+      if (!grimResolveEligibleFormation(formation, event.playerId)) {
+        throw new Error("Grim Resolve must select a surviving Adeptus Astartes unit");
+      }
+      const selectionKey = battleTurnKey(clock);
+      if (grimResolveSelectionKeys.has(selectionKey)) {
+        throw new Error("Grim Resolve can select only one unit in each Command phase");
+      }
+      grimResolveSelectionKeys.add(selectionKey);
+      grimResolveSelections.push(event);
+      grimResolveSelectionsByPlayer.set(event.playerId, event);
+      continue;
+    }
     if (event.type === "clock_advanced") {
       if (pendingChoices.size > 0) {
         throw new Error("Pending choices must be resolved before advancing the battle");
@@ -8112,6 +8217,18 @@ export function replayBattleState(state) {
         throw new Error(
           "Draw Tactical Secondary Missions to two active cards before leaving the Command phase",
         );
+      }
+      if (
+        event.sequence > legacyDetachmentRulesThroughSequence &&
+        clock.phase === "command" &&
+        clock.step === "end" &&
+        playerUsesGrimResolve(clock.activePlayerId) &&
+        [...formations.values()].some((formation) =>
+          grimResolveEligibleFormation(formation, clock.activePlayerId),
+        ) &&
+        !grimResolveSelectionKeys.has(battleTurnKey(clock))
+      ) {
+        throw new Error("Select one surviving Adeptus Astartes unit for Grim Resolve");
       }
       if (
         event.sequence > legacyMissionTrackingThroughSequence &&
@@ -8150,6 +8267,9 @@ export function replayBattleState(state) {
       for (const id of expiredEffectIds) effects.delete(id);
       if (commandPhaseStarted(expected) && activeWaaaghPlayerIds.has(expected.activePlayerId)) {
         activeWaaaghPlayerIds.delete(expected.activePlayerId);
+      }
+      if (commandPhaseStarted(expected)) {
+        grimResolveSelectionsByPlayer.delete(expected.activePlayerId);
       }
       if (state.version >= TRACKER_BATTLE_STATE_VERSION && commandPhaseStarted(expected)) {
         awardCommandPhasePoints(resources, state.players, mission);
@@ -11321,6 +11441,7 @@ export function replayBattleState(state) {
     eligibleFormationIds: objectiveControlEligibleFormationIds,
     spatialFactsByFormation,
     battleShockedFormationIds: new Set(battleShockedFormations.keys()),
+    ...grimResolveObjectiveControlInputs(),
   });
   const visibilityFactsByFormation = deriveVisibilityFacts({
     formations,
@@ -11336,6 +11457,8 @@ export function replayBattleState(state) {
     ruleCoverage,
     waaaghCallsByPlayer,
     activeWaaaghPlayerIds,
+    grimResolveSelections,
+    grimResolveSelectionsByPlayer,
     tableGeometry,
     terrainFootprints,
     terrainVisibility,
@@ -11832,6 +11955,145 @@ export function battleWaaaghFormationFacts(state, formationId) {
     grantedInvulnerableSave: benefits === 1 ? 5 : 0,
     values,
     valid: waaaghStateIsValid(...values),
+  };
+}
+
+export function selectGrimResolveFormation(state, playerId, formationId, id, at) {
+  const replayed = replayBattleState(state);
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "grim_resolve_selected",
+    playerId,
+    formationId,
+    sourceDetachmentId: "000000834",
+    sourceAbilityId: "000008770",
+    clock: replayed.clock,
+  });
+}
+
+export function battleGrimResolveState(state, playerId, replayedBattle = null) {
+  const replayed = replayedBattle ?? replayBattleState(state);
+  const detachment = replayed.ruleCoverage?.plan.players.find(
+    (player) => player.playerId === playerId,
+  )?.detachment;
+  const sourceLocked = Boolean(
+    detachment?.sourceId === "000000834" &&
+      detachment.ruleIds.includes("detachment.catalogue-000000834"),
+  );
+  const selectedThisCommand = replayed.grimResolveSelections.find(
+    (selection) =>
+      selection.playerId === playerId &&
+      replayed.clock.status === "active" &&
+      selection.clock.battleRound === replayed.clock.battleRound &&
+      selection.clock.turn === replayed.clock.turn &&
+      selection.clock.activePlayerId === replayed.clock.activePlayerId,
+  );
+  const eligibleFormationIds = [...replayed.formations.values()]
+    .filter(
+      (formation) =>
+        formation.playerId === playerId &&
+        formation.keywords.includes("adeptus astartes") &&
+        !formationDestroyed(formation),
+    )
+    .map((formation) => formation.id)
+    .sort();
+  return {
+    sourceLocked,
+    activeFormationId: replayed.grimResolveSelectionsByPlayer.get(playerId)?.formationId ?? "",
+    selectedThisCommand: selectedThisCommand ?? null,
+    eligibleFormationIds,
+    available: Boolean(
+      sourceLocked &&
+        replayed.clock.status === "active" &&
+        replayed.clock.phase === "command" &&
+        replayed.clock.activePlayerId === playerId &&
+        eligibleFormationIds.length > 0 &&
+        !selectedThisCommand,
+    ),
+  };
+}
+
+export function grimResolveModelObjectiveControlIsValid(
+  sourceDetachment,
+  eligibleAdeptusAstartes,
+  selected,
+  battleShocked,
+  baseObjectiveControl,
+  resolvedObjectiveControl,
+) {
+  const flags = [sourceDetachment, eligibleAdeptusAstartes, selected, battleShocked];
+  if (
+    flags.some((value) => !Number.isInteger(value) || value < 0 || value > 1) ||
+    !Number.isSafeInteger(baseObjectiveControl) ||
+    baseObjectiveControl < 0 ||
+    baseObjectiveControl > 1_000_000 ||
+    !Number.isSafeInteger(resolvedObjectiveControl) ||
+    resolvedObjectiveControl < 0 ||
+    resolvedObjectiveControl > 1_000_001 ||
+    (selected === 1 && (sourceDetachment !== 1 || eligibleAdeptusAstartes !== 1))
+  ) {
+    return false;
+  }
+  const replacement =
+    battleShocked === 1
+      ? sourceDetachment === 1 && eligibleAdeptusAstartes === 1
+        ? 1
+        : 0
+      : baseObjectiveControl;
+  const modifier =
+    sourceDetachment === 1 && eligibleAdeptusAstartes === 1 && selected === 1 ? 1 : 0;
+  return resolvedObjectiveControl === replacement + modifier;
+}
+
+export function battleGrimResolveFormationFacts(state, formationId, replayedBattle = null) {
+  const replayed = replayedBattle ?? replayBattleState(state);
+  const formation = replayed.formations.get(formationId);
+  if (!formation) throw new Error("Grim Resolve formation is not registered");
+  const grimResolve = battleGrimResolveState(state, formation.playerId, replayed);
+  const sourceDetachment = grimResolve.sourceLocked ? 1 : 0;
+  const eligibleAdeptusAstartes = formation.keywords.includes("adeptus astartes") ? 1 : 0;
+  const selected = grimResolve.activeFormationId === formationId ? 1 : 0;
+  const battleShocked = replayed.battleShockedFormations.has(formationId) ? 1 : 0;
+  const models = formation.segments.flatMap((segment) => {
+    const modelIds = segment.modelIds.slice(0, formation.health[segment.id].modelsRemaining);
+    return modelIds.map((modelId) => {
+      const replacement =
+        battleShocked === 1
+          ? sourceDetachment === 1 && eligibleAdeptusAstartes === 1
+            ? 1
+            : 0
+          : segment.objectiveControl;
+      const modifier =
+        sourceDetachment === 1 && eligibleAdeptusAstartes === 1 && selected === 1 ? 1 : 0;
+      const values = [
+        sourceDetachment,
+        eligibleAdeptusAstartes,
+        selected,
+        battleShocked,
+        segment.objectiveControl,
+        replacement + modifier,
+      ];
+      return {
+        modelId,
+        baseObjectiveControl: segment.objectiveControl,
+        resolvedObjectiveControl: replacement + modifier,
+        values,
+        valid: grimResolveModelObjectiveControlIsValid(...values),
+      };
+    });
+  });
+  return {
+    formationId,
+    playerId: formation.playerId,
+    sourceLocked: sourceDetachment === 1,
+    eligible: eligibleAdeptusAstartes === 1,
+    selected: selected === 1,
+    battleShocked: battleShocked === 1,
+    models,
+    valid: models.every((model) => model.valid),
   };
 }
 

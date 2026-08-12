@@ -19,6 +19,8 @@ import {
   battleCanResolveAttack,
   battleCanStartFormationActivation,
   battleWaaaghState,
+  battleGrimResolveFormationFacts,
+  battleGrimResolveState,
   callWaaagh,
   changeBattleResource,
   clearBattleObjectiveControlOverride,
@@ -66,6 +68,7 @@ import {
   scoreBattlePoints,
   scoreMissionPoints,
   scoreSecondaryMissionCard,
+  selectGrimResolveFormation,
   setBattleObjectiveControl,
   setFormationBattleShocked,
   startBattle,
@@ -437,6 +440,35 @@ function newOrksBattle() {
     detachmentResult,
     datasheetResult,
     factionResult,
+  );
+  return normalizeBattleState({
+    ...state,
+    events: [{ ...state.events[0], coverage }],
+  });
+}
+
+function newGrimResolveBattle() {
+  const state = newBattle();
+  const coverage = structuredClone(state.events[0].coverage);
+  coverage.plan.players[0].detachment = {
+    sourceId: "000000834",
+    ruleIds: ["detachment.catalogue-000000834"],
+  };
+  const detachmentIndex = coverage.report.results.findIndex(
+    (result) => result.id === "detachment.test",
+  );
+  const detachmentResult = coverage.report.results[detachmentIndex];
+  const datasheetResult = coverage.report.results.find((result) => result.id === "datasheet.test");
+  coverage.report.results.splice(
+    detachmentIndex,
+    2,
+    {
+      ...detachmentResult,
+      id: "detachment.catalogue-000000834",
+      name: "Unforgiven Task Force detachment rules",
+    },
+    datasheetResult,
+    detachmentResult,
   );
   return normalizeBattleState({
     ...state,
@@ -4079,6 +4111,120 @@ test("rejects Waaagh! without its source, outside its timing, and after expiry",
   assert.throws(
     () => callWaaagh(state, "player-1", "expired-second-waaagh", state.events.length + 1),
     /once per battle/i,
+  );
+});
+
+test("executes Grim Resolve selection, expiry, and replacement-then-addition OC", () => {
+  const astartes = {
+    ...attackerFormation,
+    keywords: ["Adeptus Astartes", "Infantry"],
+    segments: attackerFormation.segments.map((segment) => ({
+      ...segment,
+      keywords: ["Adeptus Astartes", ...segment.keywords],
+      objectiveControl: 2,
+    })),
+  };
+  let state = registerBattleFormation(
+    registerBattleFormation(newGrimResolveBattle(), astartes, "register-astartes", 1),
+    formation,
+    "register-grim-target",
+    2,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "start-grim", 3);
+  assert.equal(battleGrimResolveState(state, "player-1").available, true);
+  state = selectGrimResolveFormation(
+    state,
+    "player-1",
+    astartes.id,
+    "select-grim",
+    state.events.length + 1,
+  );
+  assert.equal(battleGrimResolveState(state, "player-1").activeFormationId, astartes.id);
+  assert.equal(
+    battleGrimResolveFormationFacts(state, astartes.id).models[0].resolvedObjectiveControl,
+    3,
+  );
+  state = setFormationBattleShocked(
+    state,
+    astartes.id,
+    true,
+    "grim-battle-shocked",
+    "shock-grim",
+    state.events.length + 1,
+  );
+  const shocked = battleGrimResolveFormationFacts(state, astartes.id);
+  assert.equal(shocked.valid, true);
+  assert.equal(shocked.models[0].resolvedObjectiveControl, 2);
+  assert.throws(
+    () =>
+      selectGrimResolveFormation(
+        state,
+        "player-1",
+        astartes.id,
+        "duplicate-grim",
+        state.events.length + 1,
+      ),
+    /only one unit/i,
+  );
+});
+
+test("requires Grim Resolve before leaving Command and rejects wrong sources and units", () => {
+  const astartes = {
+    ...attackerFormation,
+    keywords: ["Adeptus Astartes", "Infantry"],
+    segments: attackerFormation.segments.map((segment) => ({
+      ...segment,
+      objectiveControl: 2,
+    })),
+  };
+  let state = registerBattleFormation(
+    registerBattleFormation(newGrimResolveBattle(), astartes, "register-grim", 1),
+    formation,
+    "register-ineligible",
+    2,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "start-grim-required", 3);
+  assert.throws(
+    () =>
+      selectGrimResolveFormation(
+        state,
+        "player-1",
+        formation.id,
+        "select-ineligible",
+        state.events.length + 1,
+      ),
+    /surviving Adeptus Astartes/i,
+  );
+  while (replayBattleState(state).clock.step !== "end") {
+    state = advanceBattleClock(
+      state,
+      `grim-command-${state.events.length}`,
+      state.events.length + 1,
+    );
+  }
+  assert.throws(
+    () => advanceBattleClock(state, "leave-command-without-grim", state.events.length + 1),
+    /Select one surviving Adeptus Astartes/i,
+  );
+
+  let wrongSource = registerBattleFormation(newBattle(), astartes, "register-wrong-source", 1);
+  wrongSource = registerBattleFormation(wrongSource, formation, "register-wrong-source-target", 2);
+  wrongSource = startBattle(
+    deployAllOnBattlefield(wrongSource),
+    "player-1",
+    "start-wrong-source",
+    3,
+  );
+  assert.throws(
+    () =>
+      selectGrimResolveFormation(
+        wrongSource,
+        "player-1",
+        astartes.id,
+        "wrong-source-grim",
+        wrongSource.events.length + 1,
+      ),
+    /source-locked Unforgiven/i,
   );
 });
 

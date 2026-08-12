@@ -2876,6 +2876,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacyEndpointClearanceThroughSequence: 3,
     legacyTerrainClearanceThroughSequence: 3,
     legacyMissionTrackingThroughSequence: 3,
+    legacyDetachmentRulesThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -2924,6 +2925,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacyEndpointClearanceThroughSequence: 3,
     legacyTerrainClearanceThroughSequence: 3,
     legacyMissionTrackingThroughSequence: 3,
+    legacyDetachmentRulesThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -2977,6 +2979,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacyEndpointClearanceThroughSequence: 2,
     legacyTerrainClearanceThroughSequence: 2,
     legacyMissionTrackingThroughSequence: 2,
+    legacyDetachmentRulesThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -3023,6 +3026,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacyEndpointClearanceThroughSequence: 2,
     legacyTerrainClearanceThroughSequence: 2,
     legacyMissionTrackingThroughSequence: 2,
+    legacyDetachmentRulesThroughSequence: 2,
   });
 });
 
@@ -3068,6 +3072,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacyEndpointClearanceThroughSequence: 2,
     legacyTerrainClearanceThroughSequence: 2,
     legacyMissionTrackingThroughSequence: 2,
+    legacyDetachmentRulesThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -3119,6 +3124,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacyEndpointClearanceThroughSequence: 2,
     legacyTerrainClearanceThroughSequence: 2,
     legacyMissionTrackingThroughSequence: 2,
+    legacyDetachmentRulesThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -3165,6 +3171,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacyEndpointClearanceThroughSequence: 2,
     legacyTerrainClearanceThroughSequence: 2,
     legacyMissionTrackingThroughSequence: 2,
+    legacyDetachmentRulesThroughSequence: 2,
   });
 });
 
@@ -3210,6 +3217,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacyEndpointClearanceThroughSequence: 2,
     legacyTerrainClearanceThroughSequence: 2,
     legacyMissionTrackingThroughSequence: 2,
+    legacyDetachmentRulesThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -4272,6 +4280,51 @@ test("migrates version-39 battles without inventing faction-rule activations", (
   assert.equal(replayed.waaaghCallsByPlayer.size, 0);
   assert.equal(replayed.activeWaaaghPlayerIds.size, 0);
   assert.ok([...replayed.formations.values()].every((formation) => !formation.hasWaaaghAbility));
+});
+
+test("migrates version-40 battles without inventing detachment-rule selections", () => {
+  const grimResolveOverrides = {
+    ...exactMissionOverrides,
+    players: {
+      ...exactMissionOverrides.players,
+      "player-2": { detachmentSourceId: "000000834" },
+    },
+  };
+  const current = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: grimResolveOverrides,
+    id: "version-40-detachment-state",
+  });
+  const versionForty = normalizeBattleState({
+    ...current,
+    version: 40,
+    migration: undefined,
+  });
+  const migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: grimResolveOverrides,
+    state: versionForty,
+    id: versionForty.id,
+  });
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 40);
+  assert.equal(
+    migrated.migration.legacyDetachmentRulesThroughSequence,
+    Math.max(...versionForty.events.map((event) => event.sequence)),
+  );
+  const replayed = replayBattleState(migrated);
+  assert.equal(replayed.grimResolveSelections.length, 0);
+  assert.equal(replayed.grimResolveSelectionsByPlayer.size, 0);
 });
 
 test("marks exact geometry stale when casualties change live model identities and clears on undo", () => {

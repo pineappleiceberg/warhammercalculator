@@ -2,6 +2,7 @@ import {
   ACTION_BATTLE_STATE_VERSION,
   BATTLE_EVENT_VERSION,
   BATTLE_STATE_VERSION,
+  DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION,
   MISSION_TRACKING_BATTLE_STATE_VERSION,
   TERRAIN_CLEARANCE_BATTLE_STATE_VERSION,
   CONVEX_SILHOUETTE_BATTLE_STATE_VERSION,
@@ -716,6 +717,10 @@ export function initializeBattleForLists({
             sourceVersion < MISSION_TRACKING_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyMissionTrackingThroughSequence ?? 0),
+          legacyDetachmentRulesThroughSequence:
+            sourceVersion < DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyDetachmentRulesThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

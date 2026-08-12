@@ -10,6 +10,7 @@ import {
   arriveFromReserves,
   appendResolvedAttack,
   callWaaagh,
+  battleGrimResolveState,
   closeRangedTargetDeclarations,
   completeFormationActivation,
   completeFormationMovement,
@@ -42,6 +43,7 @@ import {
   resolveSecondaryTurnEnd,
   scoreMissionPoints,
   scoreSecondaryMissionCard,
+  selectGrimResolveFormation,
   setBattleObjectiveControl,
   startBattle,
   startFireOverwatch,
@@ -284,6 +286,14 @@ const exactMissionOverrides = {
   },
   missionSourceId: "chapter-approved-2025-26-v1.4-a",
   terrainSourceId: "chapter-approved-2025-26-v1.4-layout-1",
+};
+
+const actionMissionOverrides = {
+  ...exactMissionOverrides,
+  players: {
+    ...exactMissionOverrides.players,
+    "player-2": { detachmentSourceId: "000000834" },
+  },
 };
 
 const attachedMissionOverrides = {
@@ -1039,7 +1049,7 @@ function buildActionFixture() {
     rulesSnapshot: `profile-data:${catalogue.sourceUpdatedAt}|battle-state:${BATTLE_STATE_VERSION}`,
     ruleCoverageMatrix,
     missionPackCatalogue,
-    ruleSelectionOverrides: exactMissionOverrides,
+    ruleSelectionOverrides: actionMissionOverrides,
     id: "golden-action-necrons-vs-space-marines-v1",
   });
   state = configureBattleMission(
@@ -1533,6 +1543,16 @@ function buildActionFixture() {
   while (replayBattleState(state).clock.status !== "complete") {
     const clock = replayBattleState(state).clock;
     const turnKey = `${clock.battleRound}:${clock.turn}:${clock.activePlayerId}`;
+    const grimResolve = battleGrimResolveState(state, clock.activePlayerId);
+    if (grimResolve.available) {
+      state = selectGrimResolveFormation(
+        state,
+        clock.activePlayerId,
+        grimResolve.eligibleFormationIds[0],
+        `action-grim-resolve-${clock.battleRound}-${clock.turn}`,
+        state.events.length + 1,
+      );
+    }
     if (
       !objectiveTransferred &&
       clock.battleRound === 1 &&

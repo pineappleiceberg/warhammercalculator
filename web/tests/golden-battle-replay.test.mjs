@@ -201,6 +201,28 @@ test("replays source-locked movement, reactions, combat, casualties, objectives,
     ],
   );
   assert.equal(replayed.activeAttackIds.length, 4);
+  assert.equal(summary.eventTypeCounts.grim_resolve_selected, 5);
+  assert.deepEqual(
+    actionFixture.state.events
+      .filter((event) => event.type === "grim_resolve_selected")
+      .map((event) => ({
+        playerId: event.playerId,
+        formationId: event.formationId,
+        sourceDetachmentId: event.sourceDetachmentId,
+        sourceAbilityId: event.sourceAbilityId,
+      })),
+    Array.from({ length: 5 }, () => ({
+      playerId: "player-2",
+      formationId: "player-2:intercessors",
+      sourceDetachmentId: "000000834",
+      sourceAbilityId: "000008770",
+    })),
+  );
+  assert.equal(
+    replayed.ruleCoverage.plan.players.find((player) => player.playerId === "player-2").detachment
+      .sourceId,
+    "000000834",
+  );
   assert.equal(replayed.objectives.get("objective-3").controllerPlayerId, "player-2");
   assert.equal(replayed.secondaryCardPoints.get("player-1:player-1:tactical:hold"), 5);
   assert.deepEqual([...replayed.secondaryDiscardedCardIds.get("player-1")].sort(), [

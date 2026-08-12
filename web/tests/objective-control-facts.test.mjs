@@ -25,7 +25,13 @@ function spatial(formationId, modelIds, executable = true) {
   };
 }
 
-function derive(first, second, battleShockedFormationIds = new Set()) {
+function derive(
+  first,
+  second,
+  battleShockedFormationIds = new Set(),
+  battleShockedObjectiveControlByFormation = new Map(),
+  objectiveControlModifiersByFormation = new Map(),
+) {
   return deriveObjectiveControlFacts({
     players: [{ id: "one" }, { id: "two" }],
     objectives: [{ objectiveId: "centre" }],
@@ -54,6 +60,8 @@ function derive(first, second, battleShockedFormationIds = new Set()) {
       ],
     ]),
     battleShockedFormationIds,
+    battleShockedObjectiveControlByFormation,
+    objectiveControlModifiersByFormation,
   }).get("centre");
 }
 
@@ -98,6 +106,18 @@ test("Battle-shocked formations contribute zero Objective Control", () => {
   assert.equal(fact.controllerPlayerId, "two");
   assert.equal(fact.contributions[0].score, 0);
   assert.equal(fact.contributions[0].battleShocked, true);
+});
+
+test("source-locked replacement applies before an additive Objective Control modifier", () => {
+  const fact = derive(
+    formation("alpha", "one", 5, ["a1", "a2"]),
+    formation("beta", "two", 3, ["b1"]),
+    new Set(["alpha"]),
+    new Map([["alpha", 1]]),
+    new Map([["alpha", 1]]),
+  );
+  assert.equal(fact.controllerPlayerId, "one");
+  assert.equal(fact.contributions[0].score, 4);
 });
 
 test("missing legacy OC or spatial facts fail closed", () => {

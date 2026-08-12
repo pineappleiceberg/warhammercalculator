@@ -34,6 +34,8 @@ export function deriveObjectiveControlFacts({
   eligibleFormationIds,
   spatialFactsByFormation,
   battleShockedFormationIds,
+  battleShockedObjectiveControlByFormation = new Map(),
+  objectiveControlModifiersByFormation = new Map(),
 }) {
   const playerIds = players.map((player) => player.id);
   const facts = new Map();
@@ -61,9 +63,24 @@ export function deriveObjectiveControlFacts({
         continue;
       }
       const battleShocked = battleShockedFormationIds.has(formationId);
+      const battleShockedObjectiveControl =
+        battleShockedObjectiveControlByFormation.get(formationId);
+      const objectiveControlModifier = objectiveControlModifiersByFormation.get(formationId) ?? 0;
+      if (
+        (battleShockedObjectiveControl !== undefined &&
+          (!Number.isSafeInteger(battleShockedObjectiveControl) ||
+            battleShockedObjectiveControl < 0)) ||
+        !Number.isSafeInteger(objectiveControlModifier)
+      ) {
+        reasons.push(`objective_control_modifier_invalid:${formationId}`);
+        continue;
+      }
       const modelValues = proximity.modelIds.map((modelId) => ({
         modelId,
-        value: battleShocked ? 0 : objectiveControlByModel.get(modelId),
+        value:
+          (battleShocked
+            ? (battleShockedObjectiveControl ?? 0)
+            : objectiveControlByModel.get(modelId)) + objectiveControlModifier,
       }));
       if (modelValues.some((model) => !Number.isSafeInteger(model.value))) {
         reasons.push(`objective_control_model_mismatch:${formationId}`);

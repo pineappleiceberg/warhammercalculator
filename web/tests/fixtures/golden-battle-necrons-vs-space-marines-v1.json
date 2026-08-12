@@ -23,10 +23,10 @@
     }
   ],
   "sourceManifestVersion": 1,
-  "stateDigest": "ec0b9828cefd51174eabf6f9b57a70ab5914bd1f146d79ee96c43ffc33cdac6f",
-  "expectedDigest": "0520eff64fa75b3918ed0ccc88a92a97b0093600dfdaa5a90b7b7728af3b05da",
+  "stateDigest": "0ceb62a858c673de59370b8439f90582c3ea324635cdd2aa73a95a74c79f07b0",
+  "expectedDigest": "9a3e066a71e0922be75e9283b32c437fe82839257bb202ce724e047b66187d33",
   "expected": {
-    "stateVersion": 40,
+    "stateVersion": 41,
     "eventCount": 209,
     "eventTypeCounts": {
       "battle_started": 1,
@@ -276,10 +276,10 @@
     ]
   },
   "state": {
-    "version": 40,
+    "version": 41,
     "id": "golden-necrons-vs-space-marines-v1",
     "createdAt": 0,
-    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:40",
+    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:41",
     "players": [
       {
         "id": "player-1",
@@ -446,7 +446,7 @@
         "type": "rule_coverage_configured",
         "coverage": {
           "schemaVersion": 1,
-          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v40",
+          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v41",
           "sourceLocks": [
             {
               "id": "core-rules-10e",
@@ -552,7 +552,7 @@
             }
           },
           "report": {
-            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v40",
+            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v41",
             "permitted": true,
             "results": [
               {

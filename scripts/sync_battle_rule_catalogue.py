@@ -225,7 +225,7 @@ def expected_documents():
     sources["sources"].append(mission_source_entry)
 
     coverage["snapshotId"] = (
-        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v40"
+        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v41"
     )
     coverage["sourceLocks"] = [
         lock for lock in coverage["sourceLocks"] if lock["id"] != SOURCE_ID

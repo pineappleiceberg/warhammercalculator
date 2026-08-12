@@ -313,7 +313,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const coverage = (await coverageResponse.json()).data;
   assert.equal(
     coverage.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v40",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v41",
   );
   assert.equal(coverage.sourceLocked, true);
   assert.equal(coverage.rules.length, coveredRuleCoverageMatrix.rules.length);
@@ -2538,7 +2538,7 @@ test("replays canonical battle health through the C and WebAssembly API", async 
     testEnv,
     context,
   );
-  assert.equal(response.status, 200);
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const result = await response.json();
   assert.equal(result.data.schemaVersion, 1);
   assert.equal(result.data.rulesSnapshot, "catalogue:test");
@@ -2908,7 +2908,7 @@ test("replays the complete source-locked golden battle through the public API an
     testEnv,
     context,
   );
-  assert.equal(response.status, 200);
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const result = await response.json();
   assert.equal(result.data.schemaVersion, completeGoldenBattleReplay.state.version);
   assert.deepEqual(result.data.clock, completeGoldenBattleReplay.expected.finalClock);
@@ -2944,6 +2944,20 @@ test("replays the action-heavy golden battle and casualties through the public A
       "player-2",
     );
     assert.equal(result.data.missionTracking.categoryPoints["player-1"].secondary, 5);
+    const grimResolve = result.data.detachmentRules.grimResolve.find(
+      (entry) => entry.formationId === expectedFormation.id,
+    );
+    if (expectedFormation.id === "player-2:intercessors") {
+      assert.equal(grimResolve.valid, true);
+      assert.equal(grimResolve.sourceLocked, true);
+      assert.equal(grimResolve.eligible, true);
+      assert.equal(grimResolve.selected, true);
+      assert.equal(grimResolve.models[0].baseObjectiveControl, 2);
+      assert.equal(grimResolve.models[0].resolvedObjectiveControl, 3);
+      assert.equal(Object.hasOwn(grimResolve.models[0], "values"), false);
+    } else {
+      assert.equal(grimResolve, undefined);
+    }
   }
 });
 

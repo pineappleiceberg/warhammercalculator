@@ -27,10 +27,10 @@
     }
   ],
   "sourceManifestVersion": 1,
-  "stateDigest": "411d432a58b6f88e420468a4cc787bbc8d7d52a4bd6b2aaa12e96c7afd8fbf3b",
-  "expectedDigest": "cb5e2252f69824d0b2fdf0ff12f544ecb44180ad9277af39815295d7df0ff6cf",
+  "stateDigest": "bb882bd21191f32fb2865dce9760bae60798ea05e27757f51e7704a9c105a172",
+  "expectedDigest": "681e33668f553151870378c4f8f157e891da5c86e196192e5ab9643bb22f527c",
   "expected": {
-    "stateVersion": 40,
+    "stateVersion": 41,
     "eventCount": 228,
     "eventTypeCounts": {
       "activation_completed": 1,
@@ -329,10 +329,10 @@
     ]
   },
   "state": {
-    "version": 40,
+    "version": 41,
     "id": "golden-attached-aeldari-vs-orks-v1",
     "createdAt": 0,
-    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:40",
+    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:41",
     "players": [
       {
         "id": "player-1",
@@ -1312,7 +1312,7 @@
         "type": "rule_coverage_configured",
         "coverage": {
           "schemaVersion": 1,
-          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v40",
+          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v41",
           "sourceLocks": [
             {
               "id": "core-rules-10e",
@@ -1441,7 +1441,7 @@
             }
           },
           "report": {
-            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v40",
+            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v41",
             "permitted": true,
             "results": [
               {
