@@ -233,6 +233,53 @@ test("checks convex floor solids, support, overhang, and Ruins endpoint keywords
   );
 });
 
+test("checks concave solids without filling their cut-outs and requires whole-base support", () => {
+  const concaveSurface = surface({
+    id: "l-floor",
+    geometryMode: "simple_polygon",
+    bottomZThousandths: 1_000,
+    vertices: [
+      { xThousandths: 4_000, yThousandths: 9_000 },
+      { xThousandths: 6_000, yThousandths: 9_000 },
+      { xThousandths: 6_000, yThousandths: 10_000 },
+      { xThousandths: 5_000, yThousandths: 10_000 },
+      { xThousandths: 5_000, yThousandths: 11_000 },
+      { xThousandths: 4_000, yThousandths: 11_000 },
+    ],
+  });
+  const terrainVisibility = {
+    allMovementGeometryRecorded: true,
+    sections: [
+      {
+        sectionId: "section-1",
+        movementType: "normal",
+        movementGeometryComplete: true,
+        panels: [],
+        surfaces: [concaveSurface],
+      },
+    ],
+  };
+  const throughCutOut = facts(model([point(5_500, 10_500)]), {
+    terrainVisibility,
+  });
+  assert.equal(throughCutOut.status, "clear");
+
+  const throughSolid = facts(model([point(4_500, 10_500)]), {
+    terrainVisibility,
+  });
+  assert.equal(throughSolid.status, "collision");
+  assert.equal(throughSolid.collisions[0].obstacleId, "l-floor");
+
+  const supported = facts(model([point(4_500, 10_500, 3_500)]), { terrainVisibility });
+  assert.equal(supported.status, "clear");
+  const overCutOut = facts(model([point(5_500, 10_500, 3_500)]), { terrainVisibility });
+  assert.equal(overCutOut.status, "collision");
+  assert.equal(
+    overCutOut.collisions.some((entry) => entry.reason === "unsupported_elevated_endpoint"),
+    true,
+  );
+});
+
 test("fails closed for incomplete movement geometry, reviewed semantics, legacy paths, and pivots", () => {
   const incomplete = facts(model([point(4_000, 8_000), point(6_000, 8_000)]), {
     terrainVisibility: {

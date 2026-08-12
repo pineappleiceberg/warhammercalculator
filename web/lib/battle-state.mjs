@@ -28,13 +28,16 @@ import {
   TERRAIN_VISIBILITY_FEATURES,
   TERRAIN_VISIBILITY_LIMITS,
   TERRAIN_VISIBILITY_METHODS,
+  TERRAIN_SURFACE_GEOMETRY_MODES,
   convexSilhouetteIsValid,
   convexTerrainSurfaceIsValid,
+  simpleTerrainSurfaceIsValid,
   silhouetteReady,
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 38;
+export const BATTLE_STATE_VERSION = 39;
+export const SIMPLE_TERRAIN_BATTLE_STATE_VERSION = 39;
 export const MISSION_TRACKING_BATTLE_STATE_VERSION = 38;
 export const TERRAIN_CLEARANCE_BATTLE_STATE_VERSION = 37;
 export const ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION = 36;
@@ -2089,13 +2092,31 @@ function normalizeTerrainVisibilityGeometry(candidate, stateVersion) {
             ),
           };
         });
-        if (!convexTerrainSurfaceIsValid(vertices)) {
+        const geometryMode =
+          stateVersion >= SIMPLE_TERRAIN_BATTLE_STATE_VERSION
+            ? boundedString(
+                surface.geometryMode ?? "convex_polygon",
+                "Terrain surface geometry mode",
+                30,
+              )
+            : "convex_polygon";
+        if (!TERRAIN_SURFACE_GEOMETRY_MODES.includes(geometryMode)) {
+          throw new Error("Terrain movement surface geometry mode is unsupported");
+        }
+        if (
+          geometryMode === "convex_polygon"
+            ? !convexTerrainSurfaceIsValid(vertices)
+            : !simpleTerrainSurfaceIsValid(vertices)
+        ) {
           throw new Error(
-            "Terrain movement surfaces require 3 to 16 strictly convex counter-clockwise vertices",
+            geometryMode === "convex_polygon"
+              ? "Convex terrain surfaces require 3 to 16 strictly convex counter-clockwise vertices"
+              : "Simple terrain surfaces require 3 to 32 non-self-intersecting counter-clockwise vertices",
           );
         }
         return {
           id: boundedString(surface.id, "Terrain movement surface id", 100),
+          ...(stateVersion >= SIMPLE_TERRAIN_BATTLE_STATE_VERSION ? { geometryMode } : {}),
           vertices,
           bottomZThousandths: nonnegativeInteger(
             surface.bottomZThousandths,
@@ -2117,7 +2138,7 @@ function normalizeTerrainVisibilityGeometry(candidate, stateVersion) {
     throw new Error("Terrain visibility geometry can contain at most 256 wall panels");
   }
   if (surfaceCount > TERRAIN_VISIBILITY_LIMITS.maximumSurfaces) {
-    throw new Error("Terrain movement geometry can contain at most 256 convex surfaces");
+    throw new Error("Terrain movement geometry can contain at most 256 polygon surfaces");
   }
   const method = boundedString(set.method, "Terrain visibility method", 20);
   if (!TERRAIN_VISIBILITY_METHODS.includes(method)) {
@@ -5238,7 +5259,7 @@ export function normalizeBattleState(candidate) {
       ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION,
       TERRAIN_CLEARANCE_BATTLE_STATE_VERSION,
       MISSION_TRACKING_BATTLE_STATE_VERSION,
-      BATTLE_STATE_VERSION,
+      SIMPLE_TERRAIN_BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
     throw new Error(`Unsupported battle state version: ${String(state.version)}`);
@@ -5308,6 +5329,7 @@ export function normalizeBattleState(candidate) {
         OBJECTIVE_CONTROL_BATTLE_STATE_VERSION,
         ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION,
         TERRAIN_CLEARANCE_BATTLE_STATE_VERSION,
+        MISSION_TRACKING_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)

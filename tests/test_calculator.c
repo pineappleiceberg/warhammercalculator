@@ -1768,6 +1768,28 @@ static void test_convex_silhouette(void) {
     assert(!whc_convex_silhouette_is_valid(NULL, 4u, WHC_CONVEX_SILHOUETTE_REVIEWED));
 }
 
+static void test_simple_terrain_surface(void) {
+    const int32_t concave[] = {4000, 9000,  6000, 9000,  6000, 10000,
+                               5000, 10000, 5000, 11000, 4000, 11000};
+    const int32_t clockwise[] = {4000, 11000, 5000, 11000, 5000, 10000,
+                                 6000, 10000, 6000, 9000,  4000, 9000};
+    const int32_t self_intersecting[] = {4000, 9000, 6000, 11000, 4000, 11000, 6000, 9000};
+    const int32_t collinear[] = {4000, 9000, 5000, 9000, 6000, 9000, 6000, 11000, 4000, 11000};
+    const int32_t out_of_bounds[] = {4000, 9000, 61000, 9000, 6000, 11000, 4000, 11000};
+
+    assert(whc_simple_terrain_surface_is_valid(concave, 6u, WHC_SIMPLE_TERRAIN_SURFACE_REVIEWED));
+    assert(
+        !whc_simple_terrain_surface_is_valid(clockwise, 6u, WHC_SIMPLE_TERRAIN_SURFACE_REVIEWED));
+    assert(!whc_simple_terrain_surface_is_valid(self_intersecting, 4u,
+                                                WHC_SIMPLE_TERRAIN_SURFACE_REVIEWED));
+    assert(
+        !whc_simple_terrain_surface_is_valid(collinear, 5u, WHC_SIMPLE_TERRAIN_SURFACE_REVIEWED));
+    assert(!whc_simple_terrain_surface_is_valid(out_of_bounds, 4u,
+                                                WHC_SIMPLE_TERRAIN_SURFACE_REVIEWED));
+    assert(!whc_simple_terrain_surface_is_valid(concave, 6u, 0u));
+    assert(!whc_simple_terrain_surface_is_valid(NULL, 6u, WHC_SIMPLE_TERRAIN_SURFACE_REVIEWED));
+}
+
 /*@ terminates \true;
     ensures \result == 0;
 */
@@ -1815,6 +1837,7 @@ int main(void) {
     test_initial_deployment();
     test_battle_clock();
     test_convex_silhouette();
+    test_simple_terrain_surface();
     assert(whc_table_geometry_is_valid(60000u, 44000u, 5u, 5u, 12u, 4u, 2u, 6u,
                                        WHC_TABLE_GEOMETRY_FLAGS_MASK));
     assert(!whc_table_geometry_is_valid(44000u, 60000u, 5u, 5u, 12u, 4u, 2u, 6u,

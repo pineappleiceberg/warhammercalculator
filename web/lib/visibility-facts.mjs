@@ -7,12 +7,15 @@ export const TERRAIN_VISIBILITY_LIMITS = Object.freeze({
   maximumPanels: 256,
   maximumOpeningsPerPanel: 32,
   maximumSurfaces: 256,
-  maximumVerticesPerSurface: 16,
+  maximumVerticesPerSurface: 32,
+  maximumConvexVerticesPerSurface: 16,
   maximumSightPointsPerModel: 16,
   maximumConvexVerticesPerModel: 16,
   maximumCoordinateThousandths: 100_000,
   maximumHeightThousandths: 30_000,
 });
+
+export const TERRAIN_SURFACE_GEOMETRY_MODES = Object.freeze(["convex_polygon", "simple_polygon"]);
 
 export const TERRAIN_MOVEMENT_TYPES = Object.freeze([
   "ruins",
@@ -61,7 +64,7 @@ export function convexTerrainSurfaceIsValid(vertices) {
   if (
     !Array.isArray(vertices) ||
     vertices.length < 3 ||
-    vertices.length > TERRAIN_VISIBILITY_LIMITS.maximumVerticesPerSurface ||
+    vertices.length > TERRAIN_VISIBILITY_LIMITS.maximumConvexVerticesPerSurface ||
     vertices.some(
       (vertex) =>
         !integerBetween(vertex?.xThousandths, 0, 60_000) ||
@@ -85,6 +88,89 @@ export function convexTerrainSurfaceIsValid(vertices) {
     }
   }
   return true;
+}
+
+function terrainVertexCross(first, second, third) {
+  return (
+    (second.xThousandths - first.xThousandths) * (third.yThousandths - first.yThousandths) -
+    (second.yThousandths - first.yThousandths) * (third.xThousandths - first.xThousandths)
+  );
+}
+
+function terrainPointOnSegment(point, start, end) {
+  return (
+    terrainVertexCross(start, end, point) === 0 &&
+    point.xThousandths >= Math.min(start.xThousandths, end.xThousandths) &&
+    point.xThousandths <= Math.max(start.xThousandths, end.xThousandths) &&
+    point.yThousandths >= Math.min(start.yThousandths, end.yThousandths) &&
+    point.yThousandths <= Math.max(start.yThousandths, end.yThousandths)
+  );
+}
+
+function terrainSegmentsIntersect(firstStart, firstEnd, secondStart, secondEnd) {
+  const firstSideStart = terrainVertexCross(firstStart, firstEnd, secondStart);
+  const firstSideEnd = terrainVertexCross(firstStart, firstEnd, secondEnd);
+  const secondSideStart = terrainVertexCross(secondStart, secondEnd, firstStart);
+  const secondSideEnd = terrainVertexCross(secondStart, secondEnd, firstEnd);
+  return (
+    (firstSideStart === 0 && terrainPointOnSegment(secondStart, firstStart, firstEnd)) ||
+    (firstSideEnd === 0 && terrainPointOnSegment(secondEnd, firstStart, firstEnd)) ||
+    (secondSideStart === 0 && terrainPointOnSegment(firstStart, secondStart, secondEnd)) ||
+    (secondSideEnd === 0 && terrainPointOnSegment(firstEnd, secondStart, secondEnd)) ||
+    (firstSideStart > 0 !== firstSideEnd > 0 && secondSideStart > 0 !== secondSideEnd > 0)
+  );
+}
+
+export function simpleTerrainSurfaceIsValid(vertices) {
+  if (
+    !Array.isArray(vertices) ||
+    vertices.length < 3 ||
+    vertices.length > TERRAIN_VISIBILITY_LIMITS.maximumVerticesPerSurface ||
+    vertices.some(
+      (vertex) =>
+        !integerBetween(vertex?.xThousandths, 0, 60_000) ||
+        !integerBetween(vertex?.yThousandths, 0, 44_000),
+    )
+  ) {
+    return false;
+  }
+  let doubledArea = 0;
+  for (let index = 0; index < vertices.length; index += 1) {
+    const current = vertices[index];
+    const next = vertices[(index + 1) % vertices.length];
+    const afterNext = vertices[(index + 2) % vertices.length];
+    if (
+      (current.xThousandths === next.xThousandths && current.yThousandths === next.yThousandths) ||
+      terrainVertexCross(current, next, afterNext) === 0
+    ) {
+      return false;
+    }
+    doubledArea +=
+      current.xThousandths * next.yThousandths - next.xThousandths * current.yThousandths;
+    for (let otherIndex = index + 1; otherIndex < vertices.length; otherIndex += 1) {
+      const adjacent =
+        otherIndex === index + 1 || (index === 0 && otherIndex === vertices.length - 1);
+      if (adjacent) continue;
+      if (
+        terrainSegmentsIntersect(
+          current,
+          next,
+          vertices[otherIndex],
+          vertices[(otherIndex + 1) % vertices.length],
+        )
+      ) {
+        return false;
+      }
+    }
+  }
+  return doubledArea > 0;
+}
+
+export function terrainSurfaceGeometryIsValid(surface) {
+  const mode = surface?.geometryMode ?? "convex_polygon";
+  return mode === "convex_polygon"
+    ? convexTerrainSurfaceIsValid(surface?.vertices)
+    : mode === "simple_polygon" && simpleTerrainSurfaceIsValid(surface?.vertices);
 }
 
 function rotate(x, y, milliDegrees) {
@@ -1049,7 +1135,8 @@ export function terrainVisibilityGeometryIsValid(set, terrainFootprints) {
         !integerBetween(surface.topZThousandths, 1, 30_000) ||
         surface.topZThousandths <= surface.bottomZThousandths ||
         typeof surface.supportsEnding !== "boolean" ||
-        !convexTerrainSurfaceIsValid(surface.vertices) ||
+        !TERRAIN_SURFACE_GEOMETRY_MODES.includes(surface.geometryMode ?? "convex_polygon") ||
+        !terrainSurfaceGeometryIsValid(surface) ||
         !footprints.some((footprint) =>
           surface.vertices.every((vertex) =>
             pointInFootprint({ x: vertex.xThousandths, y: vertex.yThousandths }, footprint),

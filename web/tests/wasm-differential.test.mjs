@@ -99,7 +99,11 @@ import {
 import { terrainClearanceFactValuesAreValid } from "../lib/terrain-clearance-facts.mjs";
 import { missionTrackerFactsAreValid } from "../lib/mission-tracker.mjs";
 import { objectiveControlFactValuesAreValid } from "../lib/objective-control-facts.mjs";
-import { convexSilhouetteIsValid, visibilityFactValuesAreValid } from "../lib/visibility-facts.mjs";
+import {
+  convexSilhouetteIsValid,
+  simpleTerrainSurfaceIsValid,
+  visibilityFactValuesAreValid,
+} from "../lib/visibility-facts.mjs";
 
 globalThis.require = createRequire(import.meta.url);
 globalThis.__dirname = dirname(fileURLToPath(import.meta.url));
@@ -151,8 +155,53 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_objective_control_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_visibility_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_convex_silhouette_is_valid, "function");
+  assert.equal(typeof calculator._whc_simple_terrain_surface_is_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
+});
+
+test("WebAssembly and JavaScript agree on reviewed simple terrain surfaces", () => {
+  const cases = [
+    [
+      [4000, 9000],
+      [6000, 9000],
+      [6000, 10000],
+      [5000, 10000],
+      [5000, 11000],
+      [4000, 11000],
+    ],
+    [
+      [4000, 11000],
+      [5000, 11000],
+      [5000, 10000],
+      [6000, 10000],
+      [6000, 9000],
+      [4000, 9000],
+    ],
+    [
+      [4000, 9000],
+      [6000, 11000],
+      [4000, 11000],
+      [6000, 9000],
+    ],
+  ].map((coordinates) =>
+    coordinates.map(([xThousandths, yThousandths]) => ({ xThousandths, yThousandths })),
+  );
+  for (const vertices of cases) {
+    const words = Int32Array.from(
+      vertices.flatMap((vertex) => [vertex.xThousandths, vertex.yThousandths]),
+    );
+    const pointer = calculator._malloc(words.byteLength);
+    try {
+      new Int32Array(calculator.HEAPU8.buffer, pointer, words.length).set(words);
+      assert.equal(
+        Boolean(calculator._whc_simple_terrain_surface_is_valid(pointer, vertices.length, 1)),
+        simpleTerrainSurfaceIsValid(vertices),
+      );
+    } finally {
+      calculator._free(pointer);
+    }
+  }
 });
 
 test("WebAssembly and JavaScript agree on reviewed convex silhouettes", () => {

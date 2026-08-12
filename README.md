@@ -1428,10 +1428,10 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 
 ## Prioritized correctness backlog
 
-1. Expand exact movement geometry beyond convex solids when a supported layout
-   requires concave or curved terrain.
-2. Add a reviewed geometry-inspection view that highlights the exact bearer,
+1. Add a reviewed geometry-inspection view that highlights the exact bearer,
    target model, ray, and terrain feature behind every proof or fallback.
+2. Add reviewed curved movement-surface primitives when panels and simple
+   polygon solids cannot represent a supported physical terrain set exactly.
 3. Add complete source-locked full-game replay fixtures before automated play
    policies or batch battle simulation.
 

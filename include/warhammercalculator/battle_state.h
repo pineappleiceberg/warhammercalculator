@@ -172,6 +172,11 @@
 #define WHC_CONVEX_SILHOUETTE_MIN_VERTICES 3u
 #define WHC_CONVEX_SILHOUETTE_MAX_VERTICES 16u
 #define WHC_CONVEX_SILHOUETTE_COORDINATE_LIMIT 30000
+#define WHC_SIMPLE_TERRAIN_SURFACE_REVIEWED 1u
+#define WHC_SIMPLE_TERRAIN_SURFACE_MIN_VERTICES 3u
+#define WHC_SIMPLE_TERRAIN_SURFACE_MAX_VERTICES 32u
+#define WHC_SIMPLE_TERRAIN_SURFACE_MAX_X 60000
+#define WHC_SIMPLE_TERRAIN_SURFACE_MAX_Y 44000
 
 enum whc_fire_overwatch_trigger {
     WHC_FIRE_OVERWATCH_SET_UP = 1u,
@@ -803,6 +808,21 @@ bool whc_visibility_facts_are_valid(uint32_t model_pair_count, uint32_t ready_mo
                     (vertices[point * 2] - vertices[edge * 2]) > 0;
 */
 bool whc_convex_silhouette_is_valid(const int32_t *vertices, uint32_t vertex_count, uint32_t flags);
+
+/*@ requires vertices == \null || vertex_count < WHC_SIMPLE_TERRAIN_SURFACE_MIN_VERTICES ||
+             vertex_count > WHC_SIMPLE_TERRAIN_SURFACE_MAX_VERTICES ||
+             \valid_read(vertices + (0 .. vertex_count * 2 - 1));
+    assigns \nothing;
+    ensures \result ==> vertices != \null;
+    ensures \result ==> WHC_SIMPLE_TERRAIN_SURFACE_MIN_VERTICES <= vertex_count <=
+                         WHC_SIMPLE_TERRAIN_SURFACE_MAX_VERTICES;
+    ensures \result ==> flags == WHC_SIMPLE_TERRAIN_SURFACE_REVIEWED;
+    ensures \result ==> \forall integer index; 0 <= index < vertex_count ==>
+                0 <= vertices[index * 2] <= WHC_SIMPLE_TERRAIN_SURFACE_MAX_X &&
+                0 <= vertices[index * 2 + 1] <= WHC_SIMPLE_TERRAIN_SURFACE_MAX_Y;
+*/
+bool whc_simple_terrain_surface_is_valid(const int32_t *vertices, uint32_t vertex_count,
+                                         uint32_t flags);
 
 /*@ assigns \nothing;
     ensures \result <==>

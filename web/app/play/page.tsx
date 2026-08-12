@@ -4006,6 +4006,7 @@ export default function PlayMode() {
             }
             return {
               id: String(surface.id || `${sectionId}-surface-${surfaceIndex + 1}`),
+              geometryMode: String(surface.geometryMode || "convex_polygon"),
               vertices: surface.points.map((candidatePoint, pointIndex) => {
                 if (!Array.isArray(candidatePoint) || candidatePoint.length !== 2) {
                   throw new Error(
@@ -10404,7 +10405,7 @@ export default function PlayMode() {
                           name={`movement-surfaces-${sectionId}`}
                           rows={3}
                           defaultValue="[]"
-                          placeholder='[{"id":"floor-1","points":[[1,2],[5,2],[5,4],[1,4]],"bottom":2.8,"top":3,"supportsEnding":true}]'
+                          placeholder='[{"id":"floor-1","geometryMode":"simple_polygon","points":[[1,2],[5,2],[5,4],[3,3],[1,4]],"bottom":2.8,"top":3,"supportsEnding":true}]'
                           required
                         />
                       </label>
@@ -10437,7 +10438,8 @@ export default function PlayMode() {
                   </label>
                   <label className="confirmation-row">
                     <input name="visibility-player-reviewed" type="checkbox" required />A player
-                    reviewed these classifications, panels, openings, solids, and completeness flags
+                    reviewed these classifications, panels, openings, polygon solids, and
+                    completeness flags
                   </label>
                   <label>
                     <span>Review record</span>
