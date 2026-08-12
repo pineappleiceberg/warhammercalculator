@@ -37,6 +37,7 @@ import {
 } from "../lib/loadout.mjs";
 import type { Catalogue, CatalogueCombatPreset } from "../lib/catalogue";
 import { spatialFactValues, spatialFactValuesAreValid } from "../lib/spatial-facts.mjs";
+import { visibilityFactValues, visibilityFactValuesAreValid } from "../lib/visibility-facts.mjs";
 import { resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
 import {
   bodyguardJoinEligibility,
@@ -374,6 +375,7 @@ type CalculatorExports = {
   whc_model_placement_set_is_valid(...values: number[]): number;
   whc_model_position_set_is_valid(...values: number[]): number;
   whc_spatial_facts_are_valid(...values: number[]): number;
+  whc_visibility_facts_are_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -607,6 +609,7 @@ async function loadCalculator() {
       typeof calculator.whc_model_placement_set_is_valid !== "function" ||
       typeof calculator.whc_model_position_set_is_valid !== "function" ||
       typeof calculator.whc_spatial_facts_are_valid !== "function" ||
+      typeof calculator.whc_visibility_facts_are_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
       typeof calculator.whc_next_battle_clock !== "function"
     ) {
@@ -1025,6 +1028,20 @@ async function replayFormationHealth(
           "Executable spatial facts diverged from the C/WebAssembly predicate",
           "SPATIAL_FACTS_DIVERGENCE",
         );
+      }
+    }
+    for (const targetFacts of replayedState.visibilityFactsByFormation.values()) {
+      for (const fact of targetFacts.values()) {
+        if (!fact.executable) continue;
+        const values = visibilityFactValues(fact);
+        const javascriptValid = visibilityFactValuesAreValid(...values);
+        const nativeValid = Boolean(calculator.whc_visibility_facts_are_valid(...values));
+        if (!javascriptValid || javascriptValid !== nativeValid) {
+          throw new ServiceUnavailableError(
+            "Executable visibility facts diverged from the C/WebAssembly predicate",
+            "VISIBILITY_FACTS_DIVERGENCE",
+          );
+        }
       }
     }
     new Uint32Array(calculator.memory.buffer, profilesPointer, profiles.length).set(profiles);
@@ -1821,12 +1838,19 @@ async function replayFormationHealth(
       ruleCoverage: replayed.ruleCoverage,
       tableGeometry: replayed.tableGeometry,
       terrainFootprints: replayed.terrainFootprints,
+      terrainVisibility: replayed.terrainVisibility,
       modelPlacements: Object.fromEntries(replayed.modelPlacementsByFormation),
       currentModelPositions: Object.fromEntries(replayed.currentModelPositionsByFormation),
       modelPositionHistory: Object.fromEntries(replayed.modelPositionHistoryByFormation),
       modelLocationHistory: Object.fromEntries(replayed.modelLocationHistoryByFormation),
       geometryStaleFormationIds: [...replayed.geometryStaleFormationIds].sort(),
       spatialFacts: Object.fromEntries(replayed.spatialFactsByFormation),
+      visibilityFacts: Object.fromEntries(
+        [...replayed.visibilityFactsByFormation].map(([formationId, targets]) => [
+          formationId,
+          Object.fromEntries(targets),
+        ]),
+      ),
       pendingModelPosition: replayed.pendingModelPosition,
       pendingModelPositions: replayed.pendingModelPositions,
       formationId: requestedFormationId,

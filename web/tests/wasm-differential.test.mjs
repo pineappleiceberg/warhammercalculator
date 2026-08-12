@@ -92,6 +92,7 @@ import {
 import { resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
 import { ruleCoverageIsPermitted } from "../lib/rule-coverage.mjs";
 import { spatialFactValuesAreValid } from "../lib/spatial-facts.mjs";
+import { visibilityFactValuesAreValid } from "../lib/visibility-facts.mjs";
 
 globalThis.require = createRequire(import.meta.url);
 globalThis.__dirname = dirname(fileURLToPath(import.meta.url));
@@ -136,6 +137,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_model_placement_set_is_valid, "function");
   assert.equal(typeof calculator._whc_model_position_set_is_valid, "function");
   assert.equal(typeof calculator._whc_spatial_facts_are_valid, "function");
+  assert.equal(typeof calculator._whc_visibility_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_start_battle_clock, "function");
   assert.equal(typeof calculator._whc_next_battle_clock, "function");
 });
@@ -155,6 +157,22 @@ test("WebAssembly and JavaScript agree on executable spatial-fact summaries", ()
     assert.equal(
       Boolean(calculator._whc_spatial_facts_are_valid(...values)),
       spatialFactValuesAreValid(...values),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on visibility and cover fact partitions", () => {
+  const cases = [
+    [4, 4, 1, 2, 1, 1, 2, 1, 0, 1, 3],
+    [4, 3, 1, 2, 1, 1, 2, 1, 0, 1, 3],
+    [4, 4, 1, 2, 1, 0, 2, 1, 0, 1, 3],
+    [4, 4, 1, 2, 1, 1, 2, 1, 1, 1, 3],
+    [4, 4, 1, 2, 1, 1, 2, 1, 0, 1, 1],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_visibility_facts_are_valid(...values)),
+      visibilityFactValuesAreValid(...values),
     );
   }
 });

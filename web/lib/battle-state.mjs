@@ -13,8 +13,17 @@ import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 import { normalizeBattleRuleCoverageBinding } from "./battle-rule-selection.mjs";
 import { chapterApprovedTableBinding } from "./mission-pack.mjs";
 import { deriveSpatialFacts } from "./spatial-facts.mjs";
+import {
+  deriveVisibilityFacts,
+  TERRAIN_VISIBILITY_FEATURES,
+  TERRAIN_VISIBILITY_LIMITS,
+  TERRAIN_VISIBILITY_METHODS,
+  silhouetteReady,
+  terrainVisibilityGeometryIsValid,
+} from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 31;
+export const BATTLE_STATE_VERSION = 32;
+export const TERRAIN_VISIBILITY_BATTLE_STATE_VERSION = 32;
 export const SPATIAL_FACTS_BATTLE_STATE_VERSION = 31;
 export const TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION = 30;
 export const EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION = 29;
@@ -289,7 +298,9 @@ function sameModelFootprint(first, second) {
       first.shape === second.shape &&
       first.widthThousandths === second.widthThousandths &&
       first.depthThousandths === second.depthThousandths &&
-      first.verticalExtentThousandths === second.verticalExtentThousandths,
+      first.verticalExtentThousandths === second.verticalExtentThousandths &&
+      (!second.silhouette ||
+        JSON.stringify(first.silhouette) === JSON.stringify(second.silhouette)),
   );
 }
 
@@ -1682,6 +1693,216 @@ function normalizeTerrainFootprintSet(candidate) {
   return normalized;
 }
 
+function normalizeTerrainVisibilityGeometry(candidate) {
+  const set = record(candidate, "Terrain visibility geometry must be an object");
+  if (
+    !Array.isArray(set.sections) ||
+    set.sections.length < 1 ||
+    set.sections.length > TERRAIN_VISIBILITY_LIMITS.maximumSections
+  ) {
+    throw new Error("Terrain visibility geometry must contain 1 to 24 area terrain sections");
+  }
+  let panelCount = 0;
+  const sections = set.sections.map((candidateSection) => {
+    const section = record(candidateSection, "Each terrain visibility section must be an object");
+    const featureType = boundedString(section.featureType, "Terrain feature type", 20);
+    if (!TERRAIN_VISIBILITY_FEATURES.includes(featureType)) {
+      throw new Error("Terrain visibility feature type is unsupported");
+    }
+    if (!Array.isArray(section.panels)) {
+      throw new Error("Terrain visibility section panels must be an array");
+    }
+    panelCount += section.panels.length;
+    return {
+      sectionId: boundedString(section.sectionId, "Terrain visibility section id", 100),
+      featureType,
+      geometryComplete: Boolean(section.geometryComplete),
+      panels: section.panels.map((candidatePanel) => {
+        const panel = record(candidatePanel, "Each visibility panel must be an object");
+        if (
+          !Array.isArray(panel.openings) ||
+          panel.openings.length > TERRAIN_VISIBILITY_LIMITS.maximumOpeningsPerPanel
+        ) {
+          throw new Error("A visibility panel can contain at most 32 openings");
+        }
+        return {
+          id: boundedString(panel.id, "Visibility panel id", 100),
+          startXThousandths: nonnegativeInteger(
+            panel.startXThousandths,
+            "Visibility panel start x-coordinate",
+            60_000,
+          ),
+          startYThousandths: nonnegativeInteger(
+            panel.startYThousandths,
+            "Visibility panel start y-coordinate",
+            44_000,
+          ),
+          endXThousandths: nonnegativeInteger(
+            panel.endXThousandths,
+            "Visibility panel end x-coordinate",
+            60_000,
+          ),
+          endYThousandths: nonnegativeInteger(
+            panel.endYThousandths,
+            "Visibility panel end y-coordinate",
+            44_000,
+          ),
+          bottomZThousandths: nonnegativeInteger(
+            panel.bottomZThousandths,
+            "Visibility panel bottom elevation",
+            TERRAIN_VISIBILITY_LIMITS.maximumHeightThousandths,
+          ),
+          topZThousandths: nonnegativeInteger(
+            panel.topZThousandths,
+            "Visibility panel top elevation",
+            TERRAIN_VISIBILITY_LIMITS.maximumHeightThousandths,
+          ),
+          openings: panel.openings.map((candidateOpening) => {
+            const opening = record(
+              candidateOpening,
+              "Each visibility panel opening must be an object",
+            );
+            return {
+              startOffsetThousandths: nonnegativeInteger(
+                opening.startOffsetThousandths,
+                "Visibility opening start offset",
+                100_000,
+              ),
+              endOffsetThousandths: nonnegativeInteger(
+                opening.endOffsetThousandths,
+                "Visibility opening end offset",
+                100_000,
+              ),
+              bottomZThousandths: nonnegativeInteger(
+                opening.bottomZThousandths,
+                "Visibility opening bottom elevation",
+                TERRAIN_VISIBILITY_LIMITS.maximumHeightThousandths,
+              ),
+              topZThousandths: nonnegativeInteger(
+                opening.topZThousandths,
+                "Visibility opening top elevation",
+                TERRAIN_VISIBILITY_LIMITS.maximumHeightThousandths,
+              ),
+            };
+          }),
+        };
+      }),
+    };
+  });
+  if (panelCount > TERRAIN_VISIBILITY_LIMITS.maximumPanels) {
+    throw new Error("Terrain visibility geometry can contain at most 256 wall panels");
+  }
+  const method = boundedString(set.method, "Terrain visibility method", 20);
+  if (!TERRAIN_VISIBILITY_METHODS.includes(method)) {
+    throw new Error("Terrain visibility measurement method is unsupported");
+  }
+  return {
+    missionSourceId: boundedString(set.missionSourceId, "Visibility mission source id", 200),
+    terrainSourceId: boundedString(set.terrainSourceId, "Visibility terrain source id", 200),
+    sections,
+    allFeaturesRecorded: Boolean(set.allFeaturesRecorded),
+    reviewedByPlayer: Boolean(set.reviewedByPlayer),
+    method,
+    reviewReason: set.reviewedByPlayer
+      ? boundedString(set.reviewReason, "Terrain visibility review", 500).trim()
+      : "",
+  };
+}
+
+function normalizeModelSilhouette(candidate) {
+  if (candidate === null || candidate === undefined) return null;
+  const silhouette = record(candidate, "Model 3D silhouette must be an object");
+  const shape = boundedString(silhouette.shape, "Model silhouette shape", 20);
+  if (!MODEL_FOOTPRINT_SHAPES.includes(shape)) {
+    throw new Error("Model silhouette shape is unsupported");
+  }
+  const widthThousandths = nonnegativeInteger(
+    silhouette.widthThousandths,
+    "Model silhouette width",
+    30_000,
+  );
+  const depthThousandths = nonnegativeInteger(
+    silhouette.depthThousandths,
+    "Model silhouette depth",
+    30_000,
+  );
+  const heightThousandths = nonnegativeInteger(
+    silhouette.heightThousandths,
+    "Model silhouette height",
+    30_000,
+  );
+  if (widthThousandths === 0 || depthThousandths === 0 || heightThousandths === 0) {
+    throw new Error("Model silhouette dimensions must be greater than zero");
+  }
+  if (shape === "circle" && widthThousandths !== depthThousandths) {
+    throw new Error("A circular model silhouette must have equal width and depth");
+  }
+  if (
+    !Array.isArray(silhouette.sightPoints) ||
+    silhouette.sightPoints.length < 1 ||
+    silhouette.sightPoints.length > TERRAIN_VISIBILITY_LIMITS.maximumSightPointsPerModel
+  ) {
+    throw new Error("Model silhouette must contain 1 to 16 reviewed physical sight points");
+  }
+  const sightPoints = silhouette.sightPoints.map((candidatePoint) => {
+    const point = record(candidatePoint, "Each model sight point must be an object");
+    const normalized = {
+      xOffsetThousandths: boundedInteger(
+        point.xOffsetThousandths,
+        "Model sight point x-offset",
+        -30_000,
+        30_000,
+      ),
+      yOffsetThousandths: boundedInteger(
+        point.yOffsetThousandths,
+        "Model sight point y-offset",
+        -30_000,
+        30_000,
+      ),
+      heightThousandths: nonnegativeInteger(
+        point.heightThousandths,
+        "Model sight point height",
+        heightThousandths,
+      ),
+    };
+    const horizontalInside =
+      shape === "rectangle"
+        ? Math.abs(normalized.xOffsetThousandths) <= widthThousandths / 2 &&
+          Math.abs(normalized.yOffsetThousandths) <= depthThousandths / 2
+        : (normalized.xOffsetThousandths / (widthThousandths / 2)) ** 2 +
+            (normalized.yOffsetThousandths / (depthThousandths / 2)) ** 2 <=
+          1 + 1e-9;
+    if (!horizontalInside) throw new Error("Model sight point is outside its silhouette envelope");
+    return normalized;
+  });
+  return {
+    shape,
+    widthThousandths,
+    depthThousandths,
+    heightThousandths,
+    bottomOffsetThousandths: nonnegativeInteger(
+      silhouette.bottomOffsetThousandths,
+      "Model silhouette bottom offset",
+      30_000,
+    ),
+    centerOffsetXThousandths: boundedInteger(
+      silhouette.centerOffsetXThousandths,
+      "Model silhouette centre x-offset",
+      -30_000,
+      30_000,
+    ),
+    centerOffsetYThousandths: boundedInteger(
+      silhouette.centerOffsetYThousandths,
+      "Model silhouette centre y-offset",
+      -30_000,
+      30_000,
+    ),
+    sightPoints,
+    envelopeReviewed: Boolean(silhouette.envelopeReviewed),
+    sightPointsReviewed: Boolean(silhouette.sightPointsReviewed),
+  };
+}
+
 function normalizeModelPlacementSet(candidate, formation) {
   const set = record(candidate, "Model placement set must be an object");
   if (formation.weaponBearerTracking !== "exact") {
@@ -1739,6 +1960,7 @@ function normalizeModelPlacementSet(candidate, formation) {
         "Model rotation milli-degrees",
         179_999,
       ),
+      silhouette: normalizeModelSilhouette(model.silhouette),
     };
   });
   const normalized = {
@@ -1877,6 +2099,7 @@ function normalizeModelPositionSet(candidate, formation) {
         "Model maximum movement distance thousandths",
         120_000,
       ),
+      silhouette: normalizeModelSilhouette(model.silhouette),
     };
   });
   if (new Set(models.map((model) => model.modelId)).size !== models.length) {
@@ -2858,6 +3081,16 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   }
   if (event.type === "terrain_footprints_recorded") {
     normalized.terrainFootprints = normalizeTerrainFootprintSet(event.terrainFootprints);
+    return normalized;
+  }
+  if (
+    stateVersion < TERRAIN_VISIBILITY_BATTLE_STATE_VERSION &&
+    event.type === "terrain_visibility_recorded"
+  ) {
+    throw new Error("Terrain visibility geometry requires battle-state version 32");
+  }
+  if (event.type === "terrain_visibility_recorded") {
+    normalized.terrainVisibility = normalizeTerrainVisibilityGeometry(event.terrainVisibility);
     return normalized;
   }
   if (
@@ -4393,6 +4626,7 @@ export function normalizeBattleState(candidate) {
       MODEL_POSITION_BATTLE_STATE_VERSION,
       EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION,
       TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION,
+      SPATIAL_FACTS_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -4456,6 +4690,7 @@ export function normalizeBattleState(candidate) {
         MODEL_POSITION_BATTLE_STATE_VERSION,
         EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION,
         TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION,
+        SPATIAL_FACTS_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -4652,6 +4887,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= TERRAIN_VISIBILITY_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyTerrainVisibilityThroughSequence = nonnegativeInteger(
+        migration.legacyTerrainVisibilityThroughSequence,
+        "Legacy terrain visibility event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -4660,6 +4902,17 @@ export function normalizeBattleState(candidate) {
         ["formation_registered", "formation_configured"].includes(event.type) &&
         event.formation.weaponBearerTracking === "legacy_aggregate",
     ) &&
+    normalized.migration?.sourceVersion !== SPATIAL_FACTS_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== MODEL_POSITION_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== MODEL_PLACEMENT_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== TERRAIN_FOOTPRINT_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== TABLE_GEOMETRY_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== RULE_COVERAGE_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== RAPID_INGRESS_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== SMOKESCREEN_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== COUNTER_OFFENSIVE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== WEAPON_INVENTORY_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== TRANSPORT_NESTING_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== SETUP_RULES_BATTLE_STATE_VERSION &&
@@ -5432,6 +5685,7 @@ export function replayBattleState(state) {
   let ruleCoverage = null;
   let tableGeometry = null;
   let terrainFootprints = null;
+  let terrainVisibility = null;
   let clock = setupBattleClock();
   let mission = defaultMission(state.players);
   let resources = trackerResources(state.players, mission);
@@ -5520,6 +5774,10 @@ export function replayBattleState(state) {
     state.version < SPATIAL_FACTS_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacySpatialFactsThroughSequence ?? 0);
+  const legacyTerrainVisibilityThroughSequence =
+    state.version < TERRAIN_VISIBILITY_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyTerrainVisibilityThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -6011,6 +6269,36 @@ export function replayBattleState(state) {
       terrainFootprints = event.terrainFootprints;
       continue;
     }
+    if (event.type === "terrain_visibility_recorded") {
+      if (clock.status !== "setup") {
+        throw new Error("Terrain visibility geometry is locked after the battle starts");
+      }
+      if (terrainVisibility) {
+        throw new Error("Terrain visibility geometry has already been recorded");
+      }
+      const migratedInitialVisibility = Boolean(
+        state.migration && event.sequence > legacyTerrainVisibilityThroughSequence,
+      );
+      if (deploymentByFormation.size > 0 && !migratedInitialVisibility) {
+        throw new Error(
+          "Terrain visibility geometry is locked after deployment declarations begin",
+        );
+      }
+      if (!terrainFootprints) {
+        throw new Error("Record reviewed terrain footprints before visibility geometry");
+      }
+      if (
+        event.terrainVisibility.missionSourceId !== terrainFootprints.missionSourceId ||
+        event.terrainVisibility.terrainSourceId !== terrainFootprints.terrainSourceId
+      ) {
+        throw new Error("Terrain visibility geometry does not match the reviewed terrain layout");
+      }
+      if (!terrainVisibilityGeometryIsValid(event.terrainVisibility, terrainFootprints)) {
+        throw new Error("Terrain visibility geometry is structurally invalid or unreviewed");
+      }
+      terrainVisibility = event.terrainVisibility;
+      continue;
+    }
     if (event.type === "deployment_declared") {
       if (clock.status !== "setup") {
         throw new Error("Deployment declarations are locked after the battle starts");
@@ -6030,6 +6318,14 @@ export function replayBattleState(state) {
         !terrainFootprints
       ) {
         throw new Error("Record reviewed terrain footprints before declaring deployment");
+      }
+      if (
+        state.version >= TERRAIN_VISIBILITY_BATTLE_STATE_VERSION &&
+        event.sequence > legacyTerrainVisibilityThroughSequence &&
+        battleRuleCoverageRequiresTableGeometry(ruleCoverage) &&
+        !terrainVisibility
+      ) {
+        throw new Error("Record reviewed terrain visibility geometry before declaring deployment");
       }
       if (deployedFormationIds.size > 0) {
         throw new Error("Deployment declarations are locked after deployment begins");
@@ -6229,6 +6525,14 @@ export function replayBattleState(state) {
       ) {
         throw new Error("Model placement does not match the reviewed table geometry");
       }
+      if (
+        event.sequence > legacyTerrainVisibilityThroughSequence &&
+        event.placement.models.some((model) => !silhouetteReady(model))
+      ) {
+        throw new Error(
+          "Current model placements require reviewed 3D silhouettes and physical sight points",
+        );
+      }
       modelPlacementsByFormation.set(event.formationId, event.placement);
       const deploymentSnapshot = { ...event.placement, context: "deployment" };
       modelPositionHistoryByFormation.set(event.formationId, [deploymentSnapshot]);
@@ -6329,6 +6633,14 @@ export function replayBattleState(state) {
         event.position.origin !== tableGeometry.origin
       ) {
         throw new Error("Model positions do not match the reviewed table geometry");
+      }
+      if (
+        event.sequence > legacyTerrainVisibilityThroughSequence &&
+        event.position.models.some((model) => !silhouetteReady(model))
+      ) {
+        throw new Error(
+          "Current model positions require reviewed 3D silhouettes and physical sight points",
+        );
       }
       const formation = formations.get(event.formationId);
       const previous = currentModelPositionsByFormation.get(event.formationId) ?? null;
@@ -9261,6 +9573,13 @@ export function replayBattleState(state) {
     staleFormationIds: geometryStaleFormationIds,
     objectives: tableGeometry?.objectivePositions ?? [],
   });
+  const visibilityFactsByFormation = deriveVisibilityFacts({
+    formations,
+    positions: currentModelPositionsByFormation,
+    staleFormationIds: geometryStaleFormationIds,
+    terrainFootprints,
+    terrainVisibility,
+  });
   return {
     formations,
     activeAttackIds,
@@ -9268,6 +9587,7 @@ export function replayBattleState(state) {
     ruleCoverage,
     tableGeometry,
     terrainFootprints,
+    terrainVisibility,
     pendingChoices,
     resolvedChoices,
     effects,
@@ -9286,6 +9606,7 @@ export function replayBattleState(state) {
     currentModelPositionsByFormation,
     geometryStaleFormationIds,
     spatialFactsByFormation,
+    visibilityFactsByFormation,
     pendingDeploymentPlacement,
     pendingModelPosition,
     pendingModelPositions: pendingModelPosition
@@ -9411,6 +9732,34 @@ export function configureBattleTerrainFootprints(state, terrainFootprints, id, a
     at,
     type: "terrain_footprints_recorded",
     terrainFootprints,
+  });
+}
+
+export function configureBattleTerrainVisibility(state, terrainVisibility, id, at) {
+  const replayed = replayBattleState(state);
+  if (replayed.clock.status !== "setup") {
+    throw new Error("Terrain visibility geometry is locked after the battle starts");
+  }
+  if (replayed.terrainVisibility) {
+    throw new Error("Terrain visibility geometry has already been recorded");
+  }
+  if (!replayed.terrainFootprints) {
+    throw new Error("Record reviewed terrain footprints before visibility geometry");
+  }
+  const migrationBoundary = state.migration?.legacyTerrainVisibilityThroughSequence ?? -1;
+  const migratedInitialVisibility = Boolean(
+    state.migration && state.events.length >= migrationBoundary,
+  );
+  if (replayed.deploymentByFormation.size > 0 && !migratedInitialVisibility) {
+    throw new Error("Terrain visibility geometry is locked after deployment declarations begin");
+  }
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "terrain_visibility_recorded",
+    terrainVisibility,
   });
 }
 

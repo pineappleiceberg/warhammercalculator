@@ -141,6 +141,9 @@
 #define WHC_SPATIAL_FACTS_SOURCE_LOCKED 2u
 #define WHC_SPATIAL_FACTS_EXECUTABLE 4u
 #define WHC_SPATIAL_FACTS_FLAGS_MASK 7u
+#define WHC_VISIBILITY_FACTS_EXECUTABLE 1u
+#define WHC_VISIBILITY_FACTS_SOURCE_LOCKED 2u
+#define WHC_VISIBILITY_FACTS_FLAGS_MASK 3u
 
 enum whc_fire_overwatch_trigger {
     WHC_FIRE_OVERWATCH_SET_UP = 1u,
@@ -653,6 +656,29 @@ bool whc_spatial_facts_are_valid(uint32_t model_count, uint32_t ready_model_coun
                                  uint32_t coherent_model_count,
                                  uint32_t enemy_model_pair_count, uint32_t objective_count,
                                  uint32_t objective_in_range_count, uint32_t flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        model_pair_count > 0 && model_pair_count <= 1000000 &&
+        ready_model_pair_count == model_pair_count &&
+        visible_model_pair_count <= model_pair_count &&
+        fully_visible_model_pair_count <= model_pair_count &&
+        not_fully_visible_model_pair_count <= model_pair_count &&
+        unknown_model_pair_count <= model_pair_count &&
+        fully_visible_model_pair_count + not_fully_visible_model_pair_count +
+            unknown_model_pair_count == model_pair_count &&
+        target_model_count > 0 && target_model_count <= 1000 &&
+        cover_yes_count <= target_model_count && cover_no_count <= target_model_count &&
+        cover_unknown_count <= target_model_count &&
+        cover_yes_count + cover_no_count + cover_unknown_count == target_model_count &&
+        flags == WHC_VISIBILITY_FACTS_FLAGS_MASK;
+*/
+bool whc_visibility_facts_are_valid(
+    uint32_t model_pair_count, uint32_t ready_model_pair_count,
+    uint32_t visible_model_pair_count, uint32_t fully_visible_model_pair_count,
+    uint32_t not_fully_visible_model_pair_count, uint32_t unknown_model_pair_count,
+    uint32_t target_model_count, uint32_t cover_yes_count, uint32_t cover_no_count,
+    uint32_t cover_unknown_count, uint32_t flags);
 
 /*@ requires first_player_index <= 1;
     requires \valid(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));

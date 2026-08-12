@@ -38,6 +38,7 @@ import {
   configureBattleMission,
   configureBattleTableGeometry,
   configureBattleTerrainFootprints,
+  configureBattleTerrainVisibility,
   configureUnengagedBattleFormation,
   createBattleState,
   declareFormationCharge,
@@ -138,6 +139,131 @@ const TERRAIN_OUTLINE_DIMENSIONS = [
   ...Array.from({ length: 2 }, () => [10_000, 5_000] as const),
   ...Array.from({ length: 6 }, () => [12_000, 6_000] as const),
 ];
+
+type ModelSilhouette = {
+  shape: string;
+  widthThousandths: number;
+  depthThousandths: number;
+  heightThousandths: number;
+  bottomOffsetThousandths: number;
+  centerOffsetXThousandths: number;
+  centerOffsetYThousandths: number;
+  sightPoints: Array<{
+    xOffsetThousandths: number;
+    yOffsetThousandths: number;
+    heightThousandths: number;
+  }>;
+  envelopeReviewed: boolean;
+  sightPointsReviewed: boolean;
+};
+
+function parseModelSilhouette(data: FormData, prefix: string): ModelSilhouette {
+  const inches = (name: string, minimum: number, maximum: number) => {
+    const value = Number(data.get(`${prefix}-${name}`));
+    if (!Number.isFinite(value) || value < minimum || value > maximum) {
+      throw new Error(`${prefix}-${name} must be from ${minimum} to ${maximum} inches`);
+    }
+    return Math.round(value * 1000);
+  };
+  const heightThousandths = inches("height", 0.001, 30);
+  const sightPoints = String(data.get(`${prefix}-sight-points`) || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const values = line.split(",").map((value) => Number(value.trim()));
+      if (
+        values.length !== 3 ||
+        values.some((value) => !Number.isFinite(value)) ||
+        values[0] < -30 ||
+        values[0] > 30 ||
+        values[1] < -30 ||
+        values[1] > 30 ||
+        values[2] < 0 ||
+        values[2] * 1000 > heightThousandths
+      ) {
+        throw new Error(
+          `${prefix} sight points must be x-offset, y-offset, height in inches inside the envelope`,
+        );
+      }
+      return {
+        xOffsetThousandths: Math.round(values[0] * 1000),
+        yOffsetThousandths: Math.round(values[1] * 1000),
+        heightThousandths: Math.round(values[2] * 1000),
+      };
+    });
+  if (sightPoints.length < 1 || sightPoints.length > 16) {
+    throw new Error(`${prefix} requires 1 to 16 physical sight points`);
+  }
+  return {
+    shape: String(data.get(`${prefix}-shape`) || "circle"),
+    widthThousandths: inches("width", 0.001, 30),
+    depthThousandths: inches("depth", 0.001, 30),
+    heightThousandths,
+    bottomOffsetThousandths: inches("bottom", 0, 30),
+    centerOffsetXThousandths: inches("center-x", -30, 30),
+    centerOffsetYThousandths: inches("center-y", -30, 30),
+    sightPoints,
+    envelopeReviewed: data.get(`${prefix}-envelope-reviewed`) === "on",
+    sightPointsReviewed: data.get(`${prefix}-points-reviewed`) === "on",
+  };
+}
+
+function SilhouetteInputs({ prefix }: { prefix: string }) {
+  return (
+    <div className="silhouette-inputs">
+      <strong>True line-of-sight envelope</strong>
+      <span>Measure a conservative envelope around every physical part of this model.</span>
+      <label>
+        <span>Envelope shape</span>
+        <select name={`${prefix}-shape`} defaultValue="circle">
+          <option value="circle">Circle</option>
+          <option value="ellipse">Ellipse or oval</option>
+          <option value="rectangle">Reviewed rectangle</option>
+        </select>
+      </label>
+      {[
+        ["width", "Envelope width", "1"],
+        ["depth", "Envelope depth", "1"],
+        ["height", "Envelope height", "1"],
+        ["bottom", "Bottom above measurement boundary", "0"],
+        ["center-x", "Centre X offset", "0"],
+        ["center-y", "Centre Y offset", "0"],
+      ].map(([name, label, defaultValue]) => (
+        <label key={name}>
+          <span>{label} (inches)</span>
+          <input
+            name={`${prefix}-${name}`}
+            type="number"
+            min={name.startsWith("center") ? -30 : name === "bottom" ? 0 : 0.001}
+            max="30"
+            step="0.001"
+            defaultValue={defaultValue}
+            required
+          />
+        </label>
+      ))}
+      <label>
+        <span>Physical sight points</span>
+        <textarea
+          name={`${prefix}-sight-points`}
+          rows={2}
+          defaultValue="0, 0, 1"
+          placeholder="One x-offset, y-offset, height point per line"
+          required
+        />
+      </label>
+      <label className="confirmation-row">
+        <input name={`${prefix}-envelope-reviewed`} type="checkbox" required />
+        Envelope contains every physical part that can be seen
+      </label>
+      <label className="confirmation-row">
+        <input name={`${prefix}-points-reviewed`} type="checkbox" required />
+        Sight points are on physical parts of the model
+      </label>
+    </div>
+  );
+}
 
 type LogEntry = {
   id: string;
@@ -929,6 +1055,12 @@ export default function PlayMode() {
   const targetSpatialFacts = targetBattleFormationId
     ? replayedBattle?.spatialFactsByFormation.get(targetBattleFormationId)
     : null;
+  const selectedVisibilityFacts =
+    attackerBattleFormationId && targetBattleFormationId
+      ? replayedBattle?.visibilityFactsByFormation
+          .get(attackerBattleFormationId)
+          ?.get(targetBattleFormationId)
+      : null;
   targetFormationBaseModels = battleTargetSequence(
     targetFormationBaseModels,
     targetBattleFormationId ? replayedBattle?.formations.get(targetBattleFormationId) : null,
@@ -3271,6 +3403,7 @@ export default function PlayMode() {
             ),
             elevationThousandths: measurement(`model-z-${model.id}`, 24, true),
             rotationMilliDegrees: rotation(`model-rotation-${model.id}`),
+            silhouette: parseModelSilhouette(data, `model-silhouette-${model.id}`),
           };
         }),
         measurementBoundariesReviewed: data.get("model-boundaries-reviewed") === "on",
@@ -3441,6 +3574,8 @@ export default function PlayMode() {
             maximumDistanceThousandths: pathMovement
               ? measurement(`position-maximum-${modelId}`, 120, true)
               : 0,
+            silhouette:
+              prior?.silhouette ?? parseModelSilhouette(data, `position-silhouette-${modelId}`),
           };
         });
       const position = {
@@ -3646,6 +3781,110 @@ export default function PlayMode() {
     } catch (error) {
       setStatus(
         error instanceof Error ? error.message : "Terrain footprints could not be recorded",
+      );
+    }
+  };
+
+  const configureTerrainVisibility = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!battleState || !replayedBattle?.terrainFootprints) return;
+    try {
+      const data = new FormData(event.currentTarget);
+      const terrain = replayedBattle.terrainFootprints;
+      const sectionIds = [
+        ...new Set(
+          terrain.footprints.map(
+            (footprint: { areaTerrainSectionId: string }) => footprint.areaTerrainSectionId,
+          ),
+        ),
+      ];
+      const thousandths = (value: unknown, label: string, maximum: number) => {
+        const parsed = Number(value);
+        if (!Number.isFinite(parsed) || parsed < 0 || parsed > maximum) {
+          throw new Error(`${label} must be from 0 to ${maximum} inches`);
+        }
+        return Math.round(parsed * 1000);
+      };
+      const sections = sectionIds.map((sectionId) => {
+        let rawPanels: unknown;
+        try {
+          rawPanels = JSON.parse(String(data.get(`visibility-panels-${sectionId}`) || "[]"));
+        } catch {
+          throw new Error(`${sectionId} wall panels must be valid JSON`);
+        }
+        if (!Array.isArray(rawPanels)) {
+          throw new Error(`${sectionId} wall panels must be a JSON array`);
+        }
+        return {
+          sectionId,
+          featureType: String(data.get(`visibility-feature-${sectionId}`) || "ruins"),
+          geometryComplete: data.get(`visibility-complete-${sectionId}`) === "on",
+          panels: rawPanels.map((candidate, panelIndex) => {
+            if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+              throw new Error(`${sectionId} panel ${panelIndex + 1} must be an object`);
+            }
+            const panel = candidate as Record<string, unknown>;
+            if (
+              !Array.isArray(panel.from) ||
+              panel.from.length !== 2 ||
+              !Array.isArray(panel.to) ||
+              panel.to.length !== 2
+            ) {
+              throw new Error(`${sectionId} panel ${panelIndex + 1} needs from and to [x,y]`);
+            }
+            const openings = panel.openings ?? [];
+            if (!Array.isArray(openings)) {
+              throw new Error(`${sectionId} panel ${panelIndex + 1} openings must be an array`);
+            }
+            return {
+              id: String(panel.id || `${sectionId}-panel-${panelIndex + 1}`),
+              startXThousandths: thousandths(panel.from[0], "Panel start X", 60),
+              startYThousandths: thousandths(panel.from[1], "Panel start Y", 44),
+              endXThousandths: thousandths(panel.to[0], "Panel end X", 60),
+              endYThousandths: thousandths(panel.to[1], "Panel end Y", 44),
+              bottomZThousandths: thousandths(panel.bottom ?? 0, "Panel bottom", 30),
+              topZThousandths: thousandths(panel.top, "Panel top", 30),
+              openings: openings.map((candidateOpening, openingIndex) => {
+                if (
+                  !candidateOpening ||
+                  typeof candidateOpening !== "object" ||
+                  Array.isArray(candidateOpening)
+                ) {
+                  throw new Error(
+                    `${sectionId} panel ${panelIndex + 1} opening ${openingIndex + 1} must be an object`,
+                  );
+                }
+                const opening = candidateOpening as Record<string, unknown>;
+                return {
+                  startOffsetThousandths: thousandths(opening.from, "Opening start", 100),
+                  endOffsetThousandths: thousandths(opening.to, "Opening end", 100),
+                  bottomZThousandths: thousandths(opening.bottom, "Opening bottom", 30),
+                  topZThousandths: thousandths(opening.top, "Opening top", 30),
+                };
+              }),
+            };
+          }),
+        };
+      });
+      const next = configureBattleTerrainVisibility(
+        battleState,
+        {
+          missionSourceId: terrain.missionSourceId,
+          terrainSourceId: terrain.terrainSourceId,
+          sections,
+          allFeaturesRecorded: data.get("visibility-all-features") === "on",
+          reviewedByPlayer: data.get("visibility-player-reviewed") === "on",
+          method: String(data.get("visibility-method") || "manual"),
+          reviewReason: String(data.get("visibility-reason") || "").trim(),
+        },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setStatus("Terrain visibility geometry recorded");
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "Visibility geometry could not be recorded",
       );
     }
   };
@@ -6172,9 +6411,34 @@ export default function PlayMode() {
                     </span>
                   );
                 })}
+                <small>Derived from reviewed base or hull measurement boundaries.</small>
+              </div>
+            )}
+            {selectedVisibilityFacts && (
+              <div className="loadout-warnings" data-testid="executable-visibility-facts">
+                <strong>Selected matchup visibility</strong>
+                {selectedVisibilityFacts.executable ? (
+                  <>
+                    <span>
+                      Line of sight:{" "}
+                      {selectedVisibilityFacts.visibility.status.replaceAll("_", " ")}
+                      {" · "}target fully visible to every attacking model:{" "}
+                      {selectedVisibilityFacts.fullVisibility.status.replaceAll("_", " ")}
+                      {" · "}cover: {selectedVisibilityFacts.cover.status.replaceAll("_", " ")}
+                    </span>
+                    <span>
+                      {selectedVisibilityFacts.visibleModelPairCount}/
+                      {selectedVisibilityFacts.modelPairCount} model pairs have a proven clear ray ·{" "}
+                      {selectedVisibilityFacts.cover.yesModelIds.length} target models proven in
+                      cover · {selectedVisibilityFacts.cover.unknownModelIds.length} unresolved
+                    </span>
+                  </>
+                ) : (
+                  <span>Unknown: {selectedVisibilityFacts.unavailableReasons.join(", ")}</span>
+                )}
                 <small>
-                  Derived from closest base or hull boundaries. Visibility and cover still require
-                  tabletop review.
+                  Clear reviewed rays prove visibility. A blocked sampled ray never proves
+                  invisibility; unresolved geometry remains unknown.
                 </small>
               </div>
             )}
@@ -7362,6 +7626,7 @@ export default function PlayMode() {
                       centerYThousandths?: number;
                       elevationThousandths?: number;
                       rotationMilliDegrees?: number;
+                      silhouette?: ModelSilhouette;
                     }) => {
                       const modelId = candidate.modelId ?? candidate.id ?? "";
                       const identity = pendingModelPositionFormation.modelInstances.find(
@@ -7520,6 +7785,9 @@ export default function PlayMode() {
                                 />
                               </label>
                             </>
+                          )}
+                          {!candidate.silhouette && (
+                            <SilhouetteInputs prefix={`position-silhouette-${modelId}`} />
                           )}
                           <label>
                             <span>Endpoint centre X (inches)</span>
@@ -9268,9 +9536,108 @@ export default function PlayMode() {
               </div>
             )}
             {battleClock.status === "setup" &&
+              replayedBattle.terrainFootprints &&
+              !replayedBattle.terrainVisibility &&
+              (replayedBattle.deploymentByFormation.size === 0 || battleState.migration) && (
+                <form
+                  className="mission-setup"
+                  data-testid="terrain-visibility-setup"
+                  onSubmit={configureTerrainVisibility}
+                >
+                  <div>
+                    <strong>Record 3D terrain visibility</strong>
+                    <span>
+                      Classify every area terrain section. Enter measured wall panels and openings;
+                      an empty array means the section has no physical wall panels.
+                    </span>
+                  </div>
+                  {[
+                    ...new Set(
+                      replayedBattle.terrainFootprints.footprints.map(
+                        (footprint: { areaTerrainSectionId: string }) =>
+                          footprint.areaTerrainSectionId,
+                      ),
+                    ),
+                  ].map((sectionId) => (
+                    <fieldset key={sectionId}>
+                      <legend>{sectionId}</legend>
+                      <label>
+                        <span>Terrain feature</span>
+                        <select name={`visibility-feature-${sectionId}`} defaultValue="ruins">
+                          <option value="ruins">Ruins</option>
+                          <option value="woods">Woods</option>
+                          <option value="other">Other area terrain</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Wall panels JSON (inches)</span>
+                        <textarea
+                          name={`visibility-panels-${sectionId}`}
+                          rows={3}
+                          defaultValue="[]"
+                          placeholder='[{"id":"wall-1","from":[1,2],"to":[5,2],"bottom":0,"top":5,"openings":[{"from":1,"to":2,"bottom":1,"top":3}]}]'
+                          required
+                        />
+                      </label>
+                      <label className="confirmation-row">
+                        <input name={`visibility-complete-${sectionId}`} type="checkbox" />
+                        Every physical wall panel and opening in this section is recorded
+                      </label>
+                    </fieldset>
+                  ))}
+                  <label>
+                    <span>Measurement source</span>
+                    <select name="visibility-method" defaultValue="manual">
+                      <option value="manual">Manual tabletop measurement</option>
+                      <option value="uwb">UWB measurement</option>
+                      <option value="camera">Camera measurement</option>
+                      <option value="imported">Imported geometry</option>
+                    </select>
+                  </label>
+                  <label className="confirmation-row">
+                    <input name="visibility-all-features" type="checkbox" />
+                    Every terrain feature and section is recorded completely
+                  </label>
+                  <label className="confirmation-row">
+                    <input name="visibility-player-reviewed" type="checkbox" required />A player
+                    reviewed these classifications, panels, openings, and completeness flags
+                  </label>
+                  <label>
+                    <span>Review record</span>
+                    <input
+                      name="visibility-reason"
+                      maxLength={500}
+                      required
+                      placeholder="Terrain types, wall endpoints, heights, openings, and omissions checked"
+                    />
+                  </label>
+                  <button type="submit">Lock reviewed visibility geometry</button>
+                </form>
+              )}
+            {battleClock.status === "setup" && replayedBattle.terrainVisibility && (
+              <div className="action-tracker" data-testid="terrain-visibility-summary">
+                <strong>3D visibility geometry · {replayedBattle.terrainVisibility.method}</strong>
+                <span>
+                  {replayedBattle.terrainVisibility.sections.length} sections ·{" "}
+                  {replayedBattle.terrainVisibility.sections.reduce(
+                    (total: number, section: { panels: unknown[] }) =>
+                      total + section.panels.length,
+                    0,
+                  )}{" "}
+                  wall panels ·{" "}
+                  {replayedBattle.terrainVisibility.allFeaturesRecorded
+                    ? "complete"
+                    : "partial; unresolved lines remain unknown"}
+                </span>
+                <span>{replayedBattle.terrainVisibility.reviewReason}</span>
+              </div>
+            )}
+            {battleClock.status === "setup" &&
               replayedBattle.deploymentByFormation.size === 0 &&
               ((!exactTableGeometryRequired && !replayedBattle.tableGeometry) ||
-                (replayedBattle.tableGeometry && replayedBattle.terrainFootprints)) &&
+                (replayedBattle.tableGeometry &&
+                  replayedBattle.terrainFootprints &&
+                  replayedBattle.terrainVisibility)) &&
               !battleState.migration && (
                 <form className="deployment-planner" onSubmit={declareDeployments}>
                   <div>
@@ -9504,6 +9871,7 @@ export default function PlayMode() {
                                 required
                               />
                             </label>
+                            <SilhouetteInputs prefix={`model-silhouette-${model.id}`} />
                           </fieldset>
                         ),
                       )}
