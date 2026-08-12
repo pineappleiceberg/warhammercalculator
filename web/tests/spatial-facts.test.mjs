@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  deriveEndpointClearanceFacts,
   deriveSpatialFacts,
+  endpointClearanceFactValues,
+  endpointClearanceFactValuesAreValid,
   horizontalBoundariesWithin,
+  horizontalFootprintsOverlap,
   modelBoundariesWithin,
   spatialFactValues,
   spatialFactValuesAreValid,
@@ -47,6 +51,100 @@ test("closest-boundary geometry includes exact threshold contact", () => {
     ),
     true,
   );
+});
+
+test("strict footprint overlap distinguishes collision from legal edge contact", () => {
+  const first = model("first", 5_000, 5_000);
+  assert.equal(horizontalFootprintsOverlap(first, model("overlap", 5_999, 5_000)), true);
+  assert.equal(horizontalFootprintsOverlap(first, model("touch", 6_000, 5_000)), false);
+  assert.equal(horizontalFootprintsOverlap(first, model("gap", 6_001, 5_000)), false);
+  assert.equal(
+    horizontalFootprintsOverlap(
+      model("rectangle", 10_000, 10_000, 0, {
+        shape: "rectangle",
+        width: 4_000,
+        depth: 2_000,
+        rotation: 45_000,
+      }),
+      model("ellipse", 10_000, 10_000, 0, {
+        shape: "ellipse",
+        width: 2_000,
+        depth: 1_000,
+      }),
+    ),
+    true,
+  );
+});
+
+test("endpoint clearance derives model and objective collisions in three dimensions", () => {
+  const positions = new Map([
+    [
+      "alpha",
+      {
+        models: [
+          model("a1", 10_000, 10_000),
+          model("a2", 12_000, 10_000),
+          model("a3", 20_000, 20_000, 2_000),
+        ],
+      },
+    ],
+    ["beta", { models: [model("b1", 10_999, 10_000)] }],
+  ]);
+  const facts = deriveEndpointClearanceFacts({
+    positions,
+    objectives: [{ objectiveId: "centre", xThousandths: 12_000, yThousandths: 10_000 }],
+  });
+  assert.equal(facts.executable, true);
+  assert.equal(facts.status, "collision");
+  assert.deepEqual(facts.modelPairs, [
+    {
+      firstFormationId: "alpha",
+      firstModelId: "a1",
+      secondFormationId: "beta",
+      secondModelId: "b1",
+    },
+  ]);
+  assert.deepEqual(facts.objectivePairs, [
+    { formationId: "alpha", modelId: "a2", objectiveId: "centre" },
+    { formationId: "beta", modelId: "b1", objectiveId: "centre" },
+  ]);
+  assert.equal(endpointClearanceFactValuesAreValid(...endpointClearanceFactValues(facts)), true);
+
+  const verticallySeparated = deriveEndpointClearanceFacts({
+    positions: new Map([
+      ["alpha", { models: [model("a1", 10_000, 10_000)] }],
+      ["beta", { models: [model("b1", 10_000, 10_000, 1_000)] }],
+    ]),
+    objectives: [],
+  });
+  assert.equal(verticallySeparated.status, "clear");
+});
+
+test("endpoint clearance fails closed for stale or incomplete model geometry", () => {
+  const facts = deriveEndpointClearanceFacts({
+    positions: new Map([
+      ["stale", { models: [model("s1", 5_000, 5_000)] }],
+      [
+        "legacy",
+        {
+          models: [
+            model("l1", 7_000, 5_000, 0, {
+              basis: "model",
+              shape: "rectangle",
+              height: 0,
+            }),
+          ],
+        },
+      ],
+    ]),
+    unavailableFormationIds: new Set(["stale"]),
+    objectives: [{ objectiveId: "near", xThousandths: 6_000, yThousandths: 5_000 }],
+  });
+  assert.equal(facts.executable, false);
+  assert.equal(facts.status, "unknown");
+  assert.equal(facts.readyModelCount, 0);
+  assert.ok(facts.unavailableReasons.some((reason) => reason.includes("stale")));
+  assert.equal(endpointClearanceFactValuesAreValid(...endpointClearanceFactValues(facts)), true);
 });
 
 test("vertical proximity uses base planes and baseless hull intervals", () => {

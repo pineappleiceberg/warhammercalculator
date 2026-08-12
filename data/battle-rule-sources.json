@@ -12,6 +12,7 @@
         7,
         8,
         9,
+        13,
         16,
         17,
         18,
@@ -37,6 +38,7 @@
         53,
         56,
         57,
+        58,
         60
       ],
       "usedFor": [
@@ -44,6 +46,7 @@
         "unit coherency within 2 inches horizontally and 5 inches vertically, including the two-neighbour requirement for units of seven or more models",
         "Engagement Range within 1 inch horizontally and 5 inches vertically",
         "objective-marker range within 3 inches horizontally and 5 inches vertically using the recommended 40 mm marker",
+        "models cannot end movement overlapping another model, and models cannot end a move on the recommended 40 mm objective marker footprint",
         "objective control at the end of each phase or turn by summing the Objective Control characteristics of models in range, with Battle-shocked units contributing zero and every equal total including 0-0 contesting the marker",
         "model, unit, and full visibility",
         "true line of sight from any physical part of an observing model to any physical part of a target model, with bases treated as part of the model and reviewed convex-prism silhouettes used when supplied",

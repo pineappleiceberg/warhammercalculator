@@ -27,9 +27,9 @@ state.
 
 ## Prioritized backlog
 
-1. Make movement clearance and model/model or model/objective overlap executable
-   from the existing exact paths, footprints, terrain sections, and objective
-   markers, retaining reviewed fallbacks for geometry that is not represented.
+1. Make complete-path terrain clearance executable from the existing exact
+   paths, footprints, terrain panels, and openings, including climb, overhang,
+   and irregular-surface cases with reviewed fallbacks for missing geometry.
 2. Implement source-locked mission scoring and secondary-card/action tracking
    for the selected Chapter Approved combination while keeping unavailable card
    text fail-closed.
@@ -39,6 +39,18 @@ state.
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced exact battlefield geometry to battle-state version 36.
+  Replay now compares every current circular, elliptical, or rotated rectangular
+  base or hull in three dimensions against every other current model and the
+  recommended 40 mm objective-marker footprint. Positive endpoint overlap is
+  rejected after deployment, movement, Reserve arrival, Charge, Fight movement,
+  and disembarkation, while exact boundary contact remains legal. Stale geometry
+  and version-35 snapshots migrate to an explicit reviewed unknown rather than a
+  false proof. Guided Play and the replay API expose the same collision pairs,
+  and JavaScript is differentially checked against an ACSL-specified
+  C/WebAssembly summary predicate. Complete-path terrain clearance remains the
+  next geometry boundary.
 
 - 2026-08-11: Advanced exact objective state to battle-state version 35. The
   checked catalogue now carries the published Objective Control characteristic

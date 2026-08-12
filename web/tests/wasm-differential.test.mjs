@@ -92,7 +92,10 @@ import {
 } from "../lib/loadout.mjs";
 import { resolveFiringDeckSelections } from "../lib/firing-deck.mjs";
 import { ruleCoverageIsPermitted } from "../lib/rule-coverage.mjs";
-import { spatialFactValuesAreValid } from "../lib/spatial-facts.mjs";
+import {
+  endpointClearanceFactValuesAreValid,
+  spatialFactValuesAreValid,
+} from "../lib/spatial-facts.mjs";
 import { objectiveControlFactValuesAreValid } from "../lib/objective-control-facts.mjs";
 import { convexSilhouetteIsValid, visibilityFactValuesAreValid } from "../lib/visibility-facts.mjs";
 
@@ -140,6 +143,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_model_placement_set_is_valid, "function");
   assert.equal(typeof calculator._whc_model_position_set_is_valid, "function");
   assert.equal(typeof calculator._whc_spatial_facts_are_valid, "function");
+  assert.equal(typeof calculator._whc_endpoint_clearance_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_objective_control_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_visibility_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_convex_silhouette_is_valid, "function");
@@ -218,6 +222,25 @@ test("WebAssembly and JavaScript agree on executable spatial-fact summaries", ()
     assert.equal(
       Boolean(calculator._whc_spatial_facts_are_valid(...values)),
       spatialFactValuesAreValid(...values),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on endpoint-clearance summaries", () => {
+  const cases = [
+    [0, 0, 5, 5, 0, 0, 3],
+    [5, 5, 5, 5, 0, 0, 3],
+    [5, 5, 5, 5, 10, 25, 3],
+    [5, 4, 5, 5, 6, 20, 2],
+    [5, 4, 5, 4, 6, 16, 0],
+    [5, 4, 5, 5, 7, 0, 2],
+    [5, 5, 5, 5, 0, 0, 2],
+    [1001, 1001, 5, 5, 0, 0, 3],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_endpoint_clearance_facts_are_valid(...values)),
+      endpointClearanceFactValuesAreValid(...values),
     );
   }
 });

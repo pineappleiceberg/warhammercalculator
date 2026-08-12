@@ -6504,6 +6504,22 @@ export default function PlayMode() {
                 </label>
               </fieldset>
             </div>
+            {replayedBattle?.endpointClearanceFacts.modelCount > 0 && (
+              <div className="loadout-warnings" data-testid="endpoint-clearance-facts">
+                <strong>Endpoint clearance</strong>
+                <span>
+                  {replayedBattle.endpointClearanceFacts.status === "clear"
+                    ? `${replayedBattle.endpointClearanceFacts.readyModelCount} model footprints are clear of every other model and objective marker`
+                    : replayedBattle.endpointClearanceFacts.status === "collision"
+                      ? `${replayedBattle.endpointClearanceFacts.modelPairs.length} model collision${replayedBattle.endpointClearanceFacts.modelPairs.length === 1 ? "" : "s"} · ${replayedBattle.endpointClearanceFacts.objectivePairs.length} objective collision${replayedBattle.endpointClearanceFacts.objectivePairs.length === 1 ? "" : "s"}`
+                      : `Reviewed fallback: ${replayedBattle.endpointClearanceFacts.unavailableReasons.join(", ").replaceAll("_", " ")}`}
+                </span>
+                <small>
+                  Positive 3D footprint overlap is rejected; touching boundaries remain legal.
+                  Complete movement paths and terrain clearance remain player-reviewed.
+                </small>
+              </div>
+            )}
             {(attackerSpatialFacts || targetSpatialFacts) && (
               <div className="loadout-warnings" data-testid="executable-spatial-facts">
                 <strong>Measured battlefield facts</strong>
@@ -8042,8 +8058,14 @@ export default function PlayMode() {
                   {[
                     ["position-boundaries-reviewed", "Every measurement boundary was checked"],
                     ["position-endpoints-reviewed", "Every endpoint and rotation was checked"],
-                    ["position-overlap-reviewed", "No model ends on top of another model"],
-                    ["position-objectives-reviewed", "No model ends on an objective marker"],
+                    [
+                      "position-overlap-reviewed",
+                      "Fallback review: no model ends on top of another model",
+                    ],
+                    [
+                      "position-objectives-reviewed",
+                      "Fallback review: no model ends on an objective marker",
+                    ],
                     ["position-paths-reviewed", "Every complete path and distance was checked"],
                     [
                       "position-terrain-reviewed",
@@ -10037,11 +10059,11 @@ export default function PlayMode() {
                       </label>
                       <label className="confirmation-row">
                         <input name="model-overlap-reviewed" type="checkbox" required />
-                        No model ends on top of another model
+                        Fallback review: no model ends on top of another model
                       </label>
                       <label className="confirmation-row">
                         <input name="model-objectives-reviewed" type="checkbox" required />
-                        No model ends on top of an objective marker
+                        Fallback review: no model ends on top of an objective marker
                       </label>
                       <label className="confirmation-row">
                         <input name="model-placement-player-reviewed" type="checkbox" required /> A
