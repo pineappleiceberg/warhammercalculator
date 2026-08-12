@@ -192,7 +192,7 @@ test("replays source-locked movement, reactions, combat, casualties, objectives,
     [
       {
         id: "player-1:doomstalker",
-        health: { "doomstalker:961:loadout:1": { modelsRemaining: 1, woundsLost: 1 } },
+        health: { "doomstalker:961:loadout:1": { modelsRemaining: 1, woundsLost: 0 } },
       },
       {
         id: "player-2:intercessors",
@@ -201,6 +201,8 @@ test("replays source-locked movement, reactions, combat, casualties, objectives,
     ],
   );
   assert.equal(replayed.activeAttackIds.length, 4);
+  assert.equal(summary.eventTypeCounts.reanimation_protocols_activated, 5);
+  assert.equal(summary.eventTypeCounts.reanimation_wound_resolved, 1);
   assert.equal(summary.eventTypeCounts.grim_resolve_selected, 5);
   assert.deepEqual(
     actionFixture.state.events

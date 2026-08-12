@@ -82,6 +82,9 @@ function factionRuleIds(matrixRuleIds, sourceId) {
   if (sourceId === "SM" && matrixRuleIds.has("faction.oath-of-moment")) {
     ruleIds.push("faction.oath-of-moment");
   }
+  if (sourceId === "NEC" && matrixRuleIds.has("faction.reanimation-protocols")) {
+    ruleIds.push("faction.reanimation-protocols");
+  }
   return ruleIds;
 }
 

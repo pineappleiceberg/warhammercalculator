@@ -27,6 +27,7 @@ import {
   battleCanResolveAttack,
   battleGrimResolveState,
   battleOathOfMomentState,
+  battleReanimationProtocolsState,
   battleWaaaghState,
   battleFormation,
   battleFormationIsOnBattlefield,
@@ -38,6 +39,7 @@ import {
   hazardousBearerOptions,
   changeBattleResource,
   callWaaagh,
+  activateReanimationProtocols,
   clearBattleObjectiveControlOverride,
   closeRangedTargetDeclarations,
   completeFormationMovement,
@@ -85,6 +87,7 @@ import {
   resolveHazardousDamage,
   resolveGoToGround,
   resolveRapidIngress,
+  resolveReanimationWound,
   resolveSmokescreen,
   resolveCounterOffensive,
   revertLatestAttack,
@@ -4586,6 +4589,57 @@ export default function PlayMode() {
     }
   };
 
+  const activatePlayerReanimationProtocols = (
+    playerId: string,
+    formationId: string,
+    unitKey: string,
+  ) => {
+    if (!battleState) return;
+    try {
+      const next = activateReanimationProtocols(
+        battleState,
+        playerId,
+        formationId,
+        unitKey,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      const pending = replayBattleState(next).pendingReanimationProtocols;
+      setStatus(
+        pending
+          ? `Reanimation Protocols rolled ${pending.roll}; allocate ${pending.remaining} wound${pending.remaining === 1 ? "" : "s"}`
+          : "Reanimation Protocols activated; the unit was already at full strength",
+      );
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "Reanimation Protocols could not activate",
+      );
+    }
+  };
+
+  const resolvePlayerReanimationWound = (segmentId: string, action: "heal" | "return") => {
+    if (!battleState) return;
+    try {
+      const next = resolveReanimationWound(
+        battleState,
+        segmentId,
+        action,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      const pending = replayBattleState(next).pendingReanimationProtocols;
+      setStatus(
+        pending
+          ? `${pending.remaining} Reanimation Protocols wound${pending.remaining === 1 ? "" : "s"} remaining`
+          : "Reanimation Protocols resolved",
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Reanimation wound could not resolve");
+    }
+  };
+
   const recordSelectedMovement = (movement: "stationary" | "normal" | "advance" | "fall_back") => {
     if (!battleState || !attackerBattleFormationId) return;
     try {
@@ -7766,6 +7820,65 @@ export default function PlayMode() {
                       </strong>
                     );
                   })}
+                  {battleState.players.map((player) => {
+                    const reanimation = battleReanimationProtocolsState(
+                      battleState,
+                      player.id,
+                      replayedBattle,
+                    );
+                    if (!reanimation.available) return null;
+                    if (reanimation.pending?.playerId === player.id) {
+                      return (
+                        <div key={`reanimation-${player.id}`} className="battle-log-actions">
+                          <strong>
+                            Reanimation Protocols · rolled {reanimation.pending.roll} ·{" "}
+                            {reanimation.pending.remaining} remaining
+                          </strong>
+                          {reanimation.pending.options.map(
+                            (option: { segmentId: string; action: "heal" | "return" }) => {
+                              const formation = replayedBattle.formations.get(
+                                reanimation.pending.formationId,
+                              );
+                              const segment = formation?.segments.find(
+                                (candidate: { id: string }) => candidate.id === option.segmentId,
+                              );
+                              return (
+                                <button
+                                  key={`${option.segmentId}:${option.action}`}
+                                  type="button"
+                                  onClick={() =>
+                                    resolvePlayerReanimationWound(option.segmentId, option.action)
+                                  }
+                                >
+                                  {option.action === "heal" ? "Heal" : "Return"}{" "}
+                                  {segment?.modelName ?? option.segmentId}
+                                </button>
+                              );
+                            },
+                          )}
+                        </div>
+                      );
+                    }
+                    const unit = reanimation.eligibleUnits.find(
+                      (candidate: { activated: boolean }) => !candidate.activated,
+                    );
+                    if (!unit) return null;
+                    return (
+                      <button
+                        key={`reanimation-${player.id}`}
+                        type="button"
+                        onClick={() =>
+                          activatePlayerReanimationProtocols(
+                            player.id,
+                            unit.formationId,
+                            unit.unitKey,
+                          )
+                        }
+                      >
+                        Activate Reanimation Protocols · {unit.name}
+                      </button>
+                    );
+                  })}
                   <button
                     type="button"
                     disabled={
@@ -7785,7 +7898,21 @@ export default function PlayMode() {
                       battleState.players.some(
                         (player) =>
                           battleOathOfMomentState(battleState, player.id, replayedBattle).available,
-                      )
+                      ) ||
+                      battleState.players.some((player) => {
+                        const reanimation = battleReanimationProtocolsState(
+                          battleState,
+                          player.id,
+                          replayedBattle,
+                        );
+                        return Boolean(
+                          reanimation.pending ||
+                            (reanimation.available &&
+                              reanimation.eligibleUnits.some(
+                                (unit: { activated: boolean }) => !unit.activated,
+                              )),
+                        );
+                      })
                     }
                     onClick={advanceGuidedBattle}
                   >

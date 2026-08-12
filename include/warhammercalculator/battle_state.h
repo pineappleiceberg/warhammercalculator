@@ -216,7 +216,9 @@ enum whc_battle_event_kind {
     WHC_BATTLE_EVENT_ATTACK = 1u,
     WHC_BATTLE_EVENT_REVERT = 2u,
     WHC_BATTLE_EVENT_TRANSPORT_DAMAGE = 3u,
-    WHC_BATTLE_EVENT_HAZARDOUS_DAMAGE = 4u
+    WHC_BATTLE_EVENT_HAZARDOUS_DAMAGE = 4u,
+    WHC_BATTLE_EVENT_REANIMATION_HEAL = 5u,
+    WHC_BATTLE_EVENT_REANIMATION_RETURN = 6u
 };
 
 /*@ requires 1 <= segment_count && segment_count <= WHC_MAX_BATTLE_SEGMENTS;
@@ -762,12 +764,9 @@ bool whc_mission_tracker_facts_are_valid(uint32_t mode, uint32_t configured,
         granted_invulnerable_save ==
             (active == 1 && formation_has_ability == 1 ? 5 : 0);
 */
-bool whc_waaagh_state_is_valid(uint32_t call_count, uint32_t active,
-                               uint32_t source_faction_orks,
-                               uint32_t called_at_command_start,
-                               uint32_t formation_has_ability,
-                               uint32_t advanced_charge_allowed,
-                               uint32_t melee_attacks_modifier,
+bool whc_waaagh_state_is_valid(uint32_t call_count, uint32_t active, uint32_t source_faction_orks,
+                               uint32_t called_at_command_start, uint32_t formation_has_ability,
+                               uint32_t advanced_charge_allowed, uint32_t melee_attacks_modifier,
                                uint32_t melee_strength_modifier,
                                uint32_t granted_invulnerable_save);
 
@@ -785,10 +784,11 @@ bool whc_waaagh_state_is_valid(uint32_t call_count, uint32_t active,
             (source_detachment == 1 && eligible_adeptus_astartes == 1 && selected == 1
                 ? 1 : 0);
 */
-bool whc_grim_resolve_model_objective_control_is_valid(
-    uint32_t source_detachment, uint32_t eligible_adeptus_astartes, uint32_t selected,
-    uint32_t battle_shocked, uint32_t base_objective_control,
-    uint32_t resolved_objective_control);
+bool whc_grim_resolve_model_objective_control_is_valid(uint32_t source_detachment,
+                                                       uint32_t eligible_adeptus_astartes,
+                                                       uint32_t selected, uint32_t battle_shocked,
+                                                       uint32_t base_objective_control,
+                                                       uint32_t resolved_objective_control);
 
 /*@ assigns \nothing;
     ensures \result <==>
@@ -800,10 +800,36 @@ bool whc_grim_resolve_model_objective_control_is_valid(
         target_is_opponent == active_target &&
         hit_reroll == (active_target == 1 && attacker_has_ability == 1 ? 1 : 0);
 */
-bool whc_oath_of_moment_attack_state_is_valid(
-    uint32_t source_faction_adeptus_astartes, uint32_t active_target,
-    uint32_t selected_at_command_start, uint32_t target_is_opponent,
-    uint32_t attacker_has_ability, uint32_t hit_reroll);
+bool whc_oath_of_moment_attack_state_is_valid(uint32_t source_faction_adeptus_astartes,
+                                              uint32_t active_target,
+                                              uint32_t selected_at_command_start,
+                                              uint32_t target_is_opponent,
+                                              uint32_t attacker_has_ability, uint32_t hit_reroll);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        source_faction_necrons == 1 && formation_has_ability == 1 &&
+        on_battlefield == 1 && at_command_end == 1 &&
+        activation_roll >= 1 && activation_roll <= 3 &&
+        remaining >= 1 && remaining <= activation_roll &&
+        wounds_per_model >= 1 && wounds_per_model <= 1024 &&
+        starting_models >= 1 && starting_models <= 1000 &&
+        before_models >= 1 && before_models <= starting_models &&
+        before_wounds_lost < wounds_per_model &&
+        after_models >= 1 && after_models <= starting_models &&
+        after_wounds_lost < wounds_per_model &&
+        ((action == 1 && before_wounds_lost > 0 &&
+          after_models == before_models &&
+          after_wounds_lost + 1 == before_wounds_lost) ||
+         (action == 2 && before_wounds_lost == 0 && before_models < starting_models &&
+          after_models == before_models + 1 &&
+          after_wounds_lost + 1 == wounds_per_model));
+*/
+bool whc_reanimation_protocols_transition_is_valid(
+    uint32_t source_faction_necrons, uint32_t formation_has_ability, uint32_t on_battlefield,
+    uint32_t at_command_end, uint32_t activation_roll, uint32_t remaining, uint32_t action,
+    uint32_t wounds_per_model, uint32_t starting_models, uint32_t before_models,
+    uint32_t before_wounds_lost, uint32_t after_models, uint32_t after_wounds_lost);
 
 /*@ assigns \nothing;
     ensures \result <==>

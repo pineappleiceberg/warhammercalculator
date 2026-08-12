@@ -1329,6 +1329,62 @@ static void test_battle_health_replay(void) {
 }
 
 /*@ terminates \true; */
+static void test_battle_replay_reanimation_protocols(void) {
+    uint32_t profiles[WHC_BATTLE_PROFILE_FIELDS] = {2u, 3u};
+    uint32_t events[4u * WHC_BATTLE_EVENT_FIELDS] = {0u};
+    uint32_t health[WHC_BATTLE_HEALTH_FIELDS] = {99u, 99u};
+    const uint32_t attack = 0u;
+    const uint32_t heal = WHC_BATTLE_EVENT_FIELDS;
+    const uint32_t returned = 2u * WHC_BATTLE_EVENT_FIELDS;
+    const uint32_t healed_return = 3u * WHC_BATTLE_EVENT_FIELDS;
+
+    events[attack] = WHC_BATTLE_EVENT_VERSION;
+    events[attack + 1u] = WHC_BATTLE_EVENT_ATTACK;
+    events[attack + 2u] = 1u;
+    events[attack + 4u] = 3u;
+    events[attack + 5u] = 1u;
+    events[attack + WHC_BATTLE_EVENT_HEADER_FIELDS] = 0u;
+    events[attack + WHC_BATTLE_EVENT_HEADER_FIELDS + 1u] = 3u;
+    events[attack + WHC_BATTLE_EVENT_HEADER_FIELDS + 2u] = 0u;
+    events[attack + WHC_BATTLE_EVENT_HEADER_FIELDS + 3u] = 2u;
+    events[attack + WHC_BATTLE_EVENT_HEADER_FIELDS + 4u] = 1u;
+
+    events[heal] = WHC_BATTLE_EVENT_VERSION;
+    events[heal + 1u] = WHC_BATTLE_EVENT_REANIMATION_HEAL;
+    events[heal + 2u] = 1u;
+    events[heal + WHC_BATTLE_EVENT_HEADER_FIELDS] = 0u;
+    events[heal + WHC_BATTLE_EVENT_HEADER_FIELDS + 1u] = 2u;
+    events[heal + WHC_BATTLE_EVENT_HEADER_FIELDS + 2u] = 1u;
+    events[heal + WHC_BATTLE_EVENT_HEADER_FIELDS + 3u] = 2u;
+    events[heal + WHC_BATTLE_EVENT_HEADER_FIELDS + 4u] = 0u;
+
+    events[returned] = WHC_BATTLE_EVENT_VERSION;
+    events[returned + 1u] = WHC_BATTLE_EVENT_REANIMATION_RETURN;
+    events[returned + 2u] = 1u;
+    events[returned + WHC_BATTLE_EVENT_HEADER_FIELDS] = 0u;
+    events[returned + WHC_BATTLE_EVENT_HEADER_FIELDS + 1u] = 2u;
+    events[returned + WHC_BATTLE_EVENT_HEADER_FIELDS + 2u] = 0u;
+    events[returned + WHC_BATTLE_EVENT_HEADER_FIELDS + 3u] = 3u;
+    events[returned + WHC_BATTLE_EVENT_HEADER_FIELDS + 4u] = 1u;
+
+    events[healed_return] = WHC_BATTLE_EVENT_VERSION;
+    events[healed_return + 1u] = WHC_BATTLE_EVENT_REANIMATION_HEAL;
+    events[healed_return + 2u] = 1u;
+    events[healed_return + WHC_BATTLE_EVENT_HEADER_FIELDS] = 0u;
+    events[healed_return + WHC_BATTLE_EVENT_HEADER_FIELDS + 1u] = 3u;
+    events[healed_return + WHC_BATTLE_EVENT_HEADER_FIELDS + 2u] = 1u;
+    events[healed_return + WHC_BATTLE_EVENT_HEADER_FIELDS + 3u] = 3u;
+    events[healed_return + WHC_BATTLE_EVENT_HEADER_FIELDS + 4u] = 0u;
+
+    assert(whc_replay_battle_health_events(profiles, 1u, events, 4u, health));
+    assert(health[0] == 3u);
+    assert(health[1] == 0u);
+
+    events[returned + WHC_BATTLE_EVENT_HEADER_FIELDS + 4u] = 0u;
+    assert(!whc_replay_battle_health_events(profiles, 1u, events, 4u, health));
+}
+
+/*@ terminates \true; */
 static void test_transport_damage_replay(void) {
     uint32_t profiles[WHC_BATTLE_PROFILE_FIELDS] = {2u, 2u};
     uint32_t events[WHC_BATTLE_EVENT_FIELDS] = {0u};
@@ -1817,6 +1873,7 @@ int main(void) {
     test_first_failed_save_damage_replacement();
     test_allocated_attack_damage_replacement();
     test_battle_health_replay();
+    test_battle_replay_reanimation_protocols();
     test_transport_damage_replay();
     test_ranged_target_eligibility();
     test_weapon_inventory_declaration();
@@ -1904,7 +1961,7 @@ int main(void) {
                                                 WHC_MISSION_TRACKER_FLAGS_MASK));
     assert(!whc_mission_tracker_facts_are_valid(WHC_MISSION_SECONDARY_TACTICAL, 1u, 0u, 12u, 5u, 3u,
                                                 2u, 20u, 20u, 1u, 10u, 50u, 0u, 0u,
-                                                 WHC_MISSION_TRACKER_FLAGS_MASK));
+                                                WHC_MISSION_TRACKER_FLAGS_MASK));
     assert(whc_waaagh_state_is_valid(0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u));
     assert(whc_waaagh_state_is_valid(1u, 1u, 1u, 1u, 1u, 1u, 1u, 1u, 5u));
     assert(whc_waaagh_state_is_valid(1u, 1u, 1u, 1u, 0u, 0u, 0u, 0u, 0u));
@@ -1926,6 +1983,14 @@ int main(void) {
     assert(!whc_oath_of_moment_attack_state_is_valid(1u, 1u, 0u, 1u, 1u, 1u));
     assert(!whc_oath_of_moment_attack_state_is_valid(1u, 1u, 1u, 0u, 1u, 1u));
     assert(!whc_oath_of_moment_attack_state_is_valid(1u, 1u, 1u, 1u, 0u, 1u));
+    assert(whc_reanimation_protocols_transition_is_valid(1u, 1u, 1u, 1u, 3u, 3u, 1u, 3u, 3u, 2u, 1u,
+                                                         2u, 0u));
+    assert(whc_reanimation_protocols_transition_is_valid(1u, 1u, 1u, 1u, 3u, 2u, 2u, 3u, 3u, 2u, 0u,
+                                                         3u, 2u));
+    assert(!whc_reanimation_protocols_transition_is_valid(1u, 1u, 0u, 1u, 3u, 2u, 2u, 3u, 3u, 2u,
+                                                          0u, 3u, 2u));
+    assert(!whc_reanimation_protocols_transition_is_valid(1u, 1u, 1u, 1u, 3u, 2u, 2u, 3u, 3u, 2u,
+                                                          1u, 3u, 2u));
     assert(whc_objective_control_facts_are_valid(2u, 2u, 6u, 1u, 1u, 0u,
                                                  WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
     assert(whc_objective_control_facts_are_valid(2u, 2u, 6u, 2u, 0u, 1u,

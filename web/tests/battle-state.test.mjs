@@ -23,7 +23,9 @@ import {
   battleGrimResolveState,
   battleOathOfMomentAttackFacts,
   battleOathOfMomentState,
+  battleReanimationProtocolsState,
   callWaaagh,
+  activateReanimationProtocols,
   changeBattleResource,
   clearBattleObjectiveControlOverride,
   closeRangedTargetDeclarations,
@@ -62,6 +64,7 @@ import {
   resolveMissionAction,
   resolveGoToGround,
   resolveRapidIngress,
+  resolveReanimationWound,
   resolveSmokescreen,
   resolveHeroicIntervention,
   resolveCounterOffensive,
@@ -510,6 +513,30 @@ function newSpaceMarinesBattle() {
   });
 }
 
+function newNecronsBattle() {
+  const state = newBattle();
+  const coverage = structuredClone(state.events[0].coverage);
+  coverage.plan.players[1].faction = {
+    sourceId: "NEC",
+    ruleIds: ["faction.reanimation-protocols"],
+  };
+  const factionIndex = coverage.report.results.findIndex((result) => result.id === "faction.test");
+  const factionResult = coverage.report.results[factionIndex];
+  coverage.report.results.splice(
+    coverage.report.results.findIndex((result) => result.id === "mission.test"),
+    0,
+    {
+      ...factionResult,
+      id: "faction.reanimation-protocols",
+      name: "Reanimation Protocols",
+    },
+  );
+  return normalizeBattleState({
+    ...state,
+    events: [{ ...state.events[0], coverage }],
+  });
+}
+
 function sourceLockedMissionBattle() {
   const players = [
     { id: "player-1", listId: "list-1", listUpdatedAt: 10, name: "Attackers" },
@@ -767,10 +794,10 @@ test("allows a Hover Aircraft on the battlefield or in Strategic Reserves", () =
   );
 });
 
-function registeredBattle() {
+function registeredBattle(initialState = newBattle(), targetFormation = formation) {
   let state = registerBattleFormation(
-    registerBattleFormation(newBattle(), attackerFormation, "event-register-attacker", 100),
-    formation,
+    registerBattleFormation(initialState, attackerFormation, "event-register-attacker", 100),
+    targetFormation,
     "event-register",
     101,
   );
@@ -4728,6 +4755,171 @@ test("replays persistent mixed-profile casualties and compensating undo", () => 
   assert.deepEqual(activeBattleAttacks(state), []);
   assert.equal(state.events.at(-1).revertsEventId, "event-attack-1");
   assert.equal(replayBattleState(state).activeAttackIds.length, 0);
+});
+
+test("activates source-locked Reanimation Protocols one wound at a time", () => {
+  const necrons = {
+    ...formation,
+    reanimationProtocolSavedUnitIds: ["unit-1", "unit-2"],
+  };
+  let state = registeredBattle(newNecronsBattle(), necrons);
+  state = recordVisibleRangedTarget(state, attackerFormation.id, necrons.id, {
+    weaponId: "cannon",
+  });
+  state = appendResolvedAttack(state, {
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Target is visible and in range",
+    targetEligibilityEventId: state.events.at(-1).id,
+    weaponId: "cannon",
+    declaredWeaponCount: 1,
+    weaponSourceFormationId: attackerFormation.id,
+    sourceSavedUnitId: "unit-1",
+    weaponGroupId: "test-ranged-group",
+    id: "reanimation-damage",
+    at: state.events.length + 1,
+    attackerFormationId: attackerFormation.id,
+    targetFormationId: necrons.id,
+    segmentIds: ["bodyguard", "leader"],
+    targets,
+    initialWoundsLost: 0,
+    result: { appliedDamage: 4, modelsDestroyed: 1 },
+    summary: {
+      attacker: attackerFormation.name,
+      weapon: "Cannon",
+      target: necrons.name,
+      damage: 4,
+      successful: 1,
+    },
+  });
+  state = completeFormationActivation(
+    state,
+    "complete-reanimation-attacker",
+    state.events.length + 1,
+  );
+  state = advanceTo(
+    state,
+    (clock) =>
+      clock.activePlayerId === "player-2" && clock.phase === "command" && clock.step === "end",
+    "to-reanimation",
+  );
+  const available = battleReanimationProtocolsState(state, "player-2");
+  assert.equal(available.sourceLocked, true);
+  assert.equal(available.eligibleUnits.length, 1);
+  assert.equal(available.eligibleUnits[0].activated, false);
+
+  state = activateReanimationProtocols(
+    state,
+    "player-2",
+    necrons.id,
+    available.eligibleUnits[0].unitKey,
+    "activate-reanimation",
+    state.events.length + 1,
+    () => 2,
+  );
+  assert.equal(replayBattleState(state).pendingReanimationProtocols.roll, 3);
+  assert.deepEqual(replayBattleState(state).pendingReanimationProtocols.options, [
+    { segmentId: "bodyguard", action: "heal" },
+  ]);
+  state = resolveReanimationWound(
+    state,
+    "bodyguard",
+    "heal",
+    "heal-reanimation",
+    state.events.length + 1,
+  );
+  assert.deepEqual(replayBattleState(state).pendingReanimationProtocols.options, [
+    { segmentId: "bodyguard", action: "return" },
+  ]);
+  state = resolveReanimationWound(
+    state,
+    "bodyguard",
+    "return",
+    "return-reanimation",
+    state.events.length + 1,
+  );
+  state = resolveReanimationWound(
+    state,
+    "bodyguard",
+    "heal",
+    "heal-returned-model",
+    state.events.length + 1,
+  );
+  assert.deepEqual(battleFormationHealth(state, necrons.id), {
+    bodyguard: { modelsRemaining: 2, woundsLost: 1 },
+    leader: { modelsRemaining: 1, woundsLost: 0 },
+  });
+  assert.equal(replayBattleState(state).pendingReanimationProtocols, null);
+  assert.doesNotThrow(() =>
+    advanceBattleClock(state, "leave-reanimation-command", state.events.length + 1),
+  );
+
+  const tampered = structuredClone(state);
+  tampered.events.find((event) => event.id === "return-reanimation").after.woundsLost = 0;
+  assert.throws(() => normalizeBattleState(tampered), /not canonical/);
+});
+
+test("does not return a destroyed Bodyguard unit solely because its Leader survives", () => {
+  const necrons = {
+    ...formation,
+    reanimationProtocolSavedUnitIds: ["unit-1", "unit-2"],
+  };
+  let state = registeredBattle(newNecronsBattle(), necrons);
+  state = recordVisibleRangedTarget(state, attackerFormation.id, necrons.id, {
+    weaponId: "cannon",
+  });
+  state = appendResolvedAttack(state, {
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Target is visible and in range",
+    targetEligibilityEventId: state.events.at(-1).id,
+    weaponId: "cannon",
+    declaredWeaponCount: 1,
+    weaponSourceFormationId: attackerFormation.id,
+    sourceSavedUnitId: "unit-1",
+    weaponGroupId: "test-ranged-group",
+    id: "destroy-bodyguard",
+    at: state.events.length + 1,
+    attackerFormationId: attackerFormation.id,
+    targetFormationId: necrons.id,
+    segmentIds: ["bodyguard", "leader"],
+    targets,
+    initialWoundsLost: 0,
+    result: { appliedDamage: 6, modelsDestroyed: 2 },
+    summary: {
+      attacker: attackerFormation.name,
+      weapon: "Cannon",
+      target: necrons.name,
+      damage: 6,
+      successful: 2,
+    },
+  });
+  state = completeFormationActivation(state, "complete-bodyguard-attack", state.events.length + 1);
+  state = advanceTo(
+    state,
+    (clock) =>
+      clock.activePlayerId === "player-2" && clock.phase === "command" && clock.step === "end",
+    "to-destroyed-bodyguard-reanimation",
+  );
+
+  const available = battleReanimationProtocolsState(state, "player-2");
+  assert.equal(available.eligibleUnits.length, 1);
+  assert.deepEqual(available.eligibleUnits[0].segmentIds, ["leader"]);
+  assert.match(available.eligibleUnits[0].unitKey, /:leader:unit-2$/);
+  state = activateReanimationProtocols(
+    state,
+    "player-2",
+    necrons.id,
+    available.eligibleUnits[0].unitKey,
+    "activate-surviving-leader",
+    state.events.length + 1,
+    () => 2,
+  );
+  assert.equal(replayBattleState(state).pendingReanimationProtocols, null);
+  assert.deepEqual(battleFormationHealth(state, necrons.id), {
+    bodyguard: { modelsRemaining: 0, woundsLost: 0 },
+    leader: { modelsRemaining: 1, woundsLost: 0 },
+  });
 });
 
 test("replays mission, CP, VP, objectives, Battle-shock, and bounded resources", () => {

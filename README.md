@@ -815,6 +815,16 @@ remains guided: the Codex-only +1 Wound condition still uses the separate
 editable eligibility state because detachment choice and excluded chapter
 keywords are not yet fully executable. Version-41 and older histories retain an
 explicit migration boundary and never receive invented Oath selections.
+Version 43 makes Necrons Reanimation Protocols an executable end-of-Command-
+phase transition. Every eligible surviving Necrons unit activates once, rolls a
+cryptographically secure D3, and resolves each restored wound separately:
+wounded models heal before destroyed models return with one wound. Attached
+units treat surviving Leaders and Bodyguards as one healing group while at
+least one Bodyguard remains, but a surviving Leader cannot return a fully
+destroyed Bodyguard unit. Guided Play exposes each required activation and
+one-wound resolution; the API and C/WebAssembly replay independently validate
+every health transition. Version-42 and older histories retain an explicit
+migration boundary and never receive invented activations or restored wounds.
 Version-25
 games migrate without invented terrain footprints, version-26 games migrate
 without invented deployment positions, and version-27 games migrate without
@@ -1481,9 +1491,10 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 1. Add source-backed faction and detachment state transitions to canonical
    battle replay, apply their consequences to attacks, objectives, and bounded
    resources, and lock each transition into another full-game faction/mission
-   fixture. Next, source-lock Necrons Reanimation Protocols and its per-model
-   healing/allocation boundary; then continue the corpus across every supported
-   faction and mission.
+   fixture. Waaagh!, Grim Resolve, Oath of Moment, and Reanimation Protocols are
+   executable; next, source-lock another high-impact army or detachment
+   transition and continue the corpus across every supported faction and
+   mission.
 2. Add reviewed curved movement-surface primitives only when panels and simple
    polygon solids cannot represent a supported physical terrain set exactly.
 3. Add deterministic automated policies and calibrated batch battle simulation
@@ -1520,6 +1531,10 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 - Canonical Oath of Moment selection supplies its Hit re-roll automatically.
   Its optional Codex +1 Wound clause remains editable until the complete
   detachment and excluded-chapter eligibility test is source-locked.
+- Canonical Reanimation Protocols restores one wound at a time at the end of an
+  eligible Necrons player's Command phase. It heals wounded models before
+  returning destroyed models and preserves the official surviving-Leader versus
+  destroyed-Bodyguard boundary.
 
 ## 10th edition profile database
 

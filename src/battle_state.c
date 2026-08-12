@@ -556,12 +556,9 @@ bool whc_mission_tracker_facts_are_valid(uint32_t mode, uint32_t configured,
            fixed_card_high_score == 0u;
 }
 
-bool whc_waaagh_state_is_valid(uint32_t call_count, uint32_t active,
-                               uint32_t source_faction_orks,
-                               uint32_t called_at_command_start,
-                               uint32_t formation_has_ability,
-                               uint32_t advanced_charge_allowed,
-                               uint32_t melee_attacks_modifier,
+bool whc_waaagh_state_is_valid(uint32_t call_count, uint32_t active, uint32_t source_faction_orks,
+                               uint32_t called_at_command_start, uint32_t formation_has_ability,
+                               uint32_t advanced_charge_allowed, uint32_t melee_attacks_modifier,
                                uint32_t melee_strength_modifier,
                                uint32_t granted_invulnerable_save) {
     const uint32_t benefits = active == 1u && formation_has_ability == 1u ? 1u : 0u;
@@ -575,13 +572,14 @@ bool whc_waaagh_state_is_valid(uint32_t call_count, uint32_t active,
            granted_invulnerable_save == (benefits == 1u ? 5u : 0u);
 }
 
-bool whc_grim_resolve_model_objective_control_is_valid(
-    uint32_t source_detachment, uint32_t eligible_adeptus_astartes, uint32_t selected,
-    uint32_t battle_shocked, uint32_t base_objective_control,
-    uint32_t resolved_objective_control) {
+bool whc_grim_resolve_model_objective_control_is_valid(uint32_t source_detachment,
+                                                       uint32_t eligible_adeptus_astartes,
+                                                       uint32_t selected, uint32_t battle_shocked,
+                                                       uint32_t base_objective_control,
+                                                       uint32_t resolved_objective_control) {
     const uint32_t eligible = source_detachment == 1u && eligible_adeptus_astartes == 1u;
-    const uint32_t replacement = battle_shocked == 1u ? (eligible ? 1u : 0u)
-                                                       : base_objective_control;
+    const uint32_t replacement =
+        battle_shocked == 1u ? (eligible ? 1u : 0u) : base_objective_control;
     const uint32_t modifier = eligible && selected == 1u ? 1u : 0u;
 
     return source_detachment <= 1u && eligible_adeptus_astartes <= 1u && selected <= 1u &&
@@ -590,10 +588,11 @@ bool whc_grim_resolve_model_objective_control_is_valid(
            resolved_objective_control == replacement + modifier;
 }
 
-bool whc_oath_of_moment_attack_state_is_valid(
-    uint32_t source_faction_adeptus_astartes, uint32_t active_target,
-    uint32_t selected_at_command_start, uint32_t target_is_opponent,
-    uint32_t attacker_has_ability, uint32_t hit_reroll) {
+bool whc_oath_of_moment_attack_state_is_valid(uint32_t source_faction_adeptus_astartes,
+                                              uint32_t active_target,
+                                              uint32_t selected_at_command_start,
+                                              uint32_t target_is_opponent,
+                                              uint32_t attacker_has_ability, uint32_t hit_reroll) {
     const uint32_t benefit = active_target == 1u && attacker_has_ability == 1u ? 1u : 0u;
 
     return source_faction_adeptus_astartes <= 1u && active_target <= 1u &&
@@ -602,6 +601,28 @@ bool whc_oath_of_moment_attack_state_is_valid(
            (active_target == 0u || source_faction_adeptus_astartes == 1u) &&
            selected_at_command_start == active_target && target_is_opponent == active_target &&
            hit_reroll == benefit;
+}
+
+bool whc_reanimation_protocols_transition_is_valid(
+    uint32_t source_faction_necrons, uint32_t formation_has_ability, uint32_t on_battlefield,
+    uint32_t at_command_end, uint32_t activation_roll, uint32_t remaining, uint32_t action,
+    uint32_t wounds_per_model, uint32_t starting_models, uint32_t before_models,
+    uint32_t before_wounds_lost, uint32_t after_models, uint32_t after_wounds_lost) {
+    const bool bounded = source_faction_necrons == 1u && formation_has_ability == 1u &&
+                         on_battlefield == 1u && at_command_end == 1u && activation_roll >= 1u &&
+                         activation_roll <= 3u && remaining >= 1u && remaining <= activation_roll &&
+                         wounds_per_model >= 1u && wounds_per_model <= 1024u &&
+                         starting_models >= 1u && starting_models <= 1000u && before_models >= 1u &&
+                         before_models <= starting_models &&
+                         before_wounds_lost < wounds_per_model && after_models >= 1u &&
+                         after_models <= starting_models && after_wounds_lost < wounds_per_model;
+    const bool healed = action == 1u && before_wounds_lost > 0u && after_models == before_models &&
+                        after_wounds_lost + 1u == before_wounds_lost;
+    const bool returned = action == 2u && before_wounds_lost == 0u &&
+                          before_models < starting_models && after_models == before_models + 1u &&
+                          after_wounds_lost + 1u == wounds_per_model;
+
+    return bounded && (healed || returned);
 }
 
 bool whc_objective_control_facts_are_valid(uint32_t player_count, uint32_t score_entry_count,
@@ -954,6 +975,43 @@ bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_
             }
             if (kind == WHC_BATTLE_EVENT_ATTACK) {
                 active_events[active_count++] = (uint16_t)event_index;
+            }
+        } else if (kind == WHC_BATTLE_EVENT_REANIMATION_HEAL ||
+                   kind == WHC_BATTLE_EVENT_REANIMATION_RETURN) {
+            const uint32_t allocation_offset = event_offset + WHC_BATTLE_EVENT_HEADER_FIELDS;
+            const uint32_t segment = events[allocation_offset];
+            uint32_t profile_offset;
+            uint32_t health_offset;
+            uint32_t action;
+
+            if (allocation_count != 1u || reverts_event_index != 0u || expected_damage != 0u ||
+                expected_destroyed != 0u || segment >= segment_count) {
+                return false;
+            }
+            profile_offset = segment * WHC_BATTLE_PROFILE_FIELDS;
+            health_offset = segment * WHC_BATTLE_HEALTH_FIELDS;
+            action = kind == WHC_BATTLE_EVENT_REANIMATION_HEAL ? 1u : 2u;
+            if (current[health_offset] != events[allocation_offset + 1u] ||
+                current[health_offset + 1u] != events[allocation_offset + 2u] ||
+                !whc_reanimation_protocols_transition_is_valid(
+                    1u, 1u, 1u, 1u, 1u, 1u, action, profiles[profile_offset],
+                    profiles[profile_offset + 1u], events[allocation_offset + 1u],
+                    events[allocation_offset + 2u], events[allocation_offset + 3u],
+                    events[allocation_offset + 4u])) {
+                return false;
+            }
+            next[health_offset] = events[allocation_offset + 3u];
+            next[health_offset + 1u] = events[allocation_offset + 4u];
+            {
+                uint32_t wounded_segments = 0u;
+                for (uint32_t segment_index = 0u; segment_index < segment_count; ++segment_index) {
+                    if (next[segment_index * WHC_BATTLE_HEALTH_FIELDS + 1u] > 0u) {
+                        ++wounded_segments;
+                    }
+                }
+                if (wounded_segments > 1u) {
+                    return false;
+                }
             }
         } else if (kind == WHC_BATTLE_EVENT_REVERT) {
             if (allocation_count != 0u || expected_damage != 0u || expected_destroyed != 0u ||

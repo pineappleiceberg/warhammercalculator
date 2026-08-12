@@ -313,7 +313,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const coverage = (await coverageResponse.json()).data;
   assert.equal(
     coverage.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v42",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-v43",
   );
   assert.equal(coverage.sourceLocked, true);
   assert.equal(coverage.rules.length, coveredRuleCoverageMatrix.rules.length);
@@ -2944,6 +2944,25 @@ test("replays the action-heavy golden battle and casualties through the public A
       "player-2",
     );
     assert.equal(result.data.missionTracking.categoryPoints["player-1"].secondary, 5);
+    assert.equal(result.data.factionRules.reanimationProtocols.length, 5);
+    assert.equal(
+      result.data.factionRules.reanimationProtocols.reduce(
+        (total, activation) => total + activation.woundsResolved,
+        0,
+      ),
+      1,
+    );
+    assert.deepEqual(
+      result.data.factionRules.reanimationProtocols.flatMap((activation) => activation.resolutions),
+      [
+        {
+          segmentId: "doomstalker:961:loadout:1",
+          action: "heal",
+          before: { modelsRemaining: 1, woundsLost: 1 },
+          after: { modelsRemaining: 1, woundsLost: 0 },
+        },
+      ],
+    );
     const grimResolve = result.data.detachmentRules.grimResolve.find(
       (entry) => entry.formationId === expectedFormation.id,
     );

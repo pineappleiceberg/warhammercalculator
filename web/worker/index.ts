@@ -73,6 +73,7 @@ import {
   battleFormationHealth,
   battleGrimResolveFormationFacts,
   battleOathOfMomentAttackFacts,
+  reanimationProtocolsTransitionIsValid,
   battleWaaaghFormationFacts,
   battleSurvivingWeaponCount,
   chargeResolutionFlags,
@@ -403,6 +404,7 @@ type CalculatorExports = {
   whc_waaagh_state_is_valid(...values: number[]): number;
   whc_grim_resolve_model_objective_control_is_valid(...values: number[]): number;
   whc_oath_of_moment_attack_state_is_valid(...values: number[]): number;
+  whc_reanimation_protocols_transition_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -641,6 +643,7 @@ async function loadCalculator() {
       typeof calculator.whc_endpoint_clearance_facts_are_valid !== "function" ||
       typeof calculator.whc_terrain_clearance_facts_are_valid !== "function" ||
       typeof calculator.whc_mission_tracker_facts_are_valid !== "function" ||
+      typeof calculator.whc_reanimation_protocols_transition_is_valid !== "function" ||
       typeof calculator.whc_objective_control_facts_are_valid !== "function" ||
       typeof calculator.whc_visibility_facts_are_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
@@ -838,6 +841,11 @@ async function replayFormationHealth(
         event,
         hazardousAllocation: { summary: event.summary, allocation: event.allocation },
       });
+    } else if (
+      event.type === "reanimation_wound_resolved" &&
+      event.formationId === requestedFormationId
+    ) {
+      selectedEvents.push({ event });
     }
   }
 
@@ -903,6 +911,19 @@ async function replayFormationHealth(
       events[allocationOffset + 2] = allocation.before.woundsLost;
       events[allocationOffset + 3] = allocation.after.modelsRemaining;
       events[allocationOffset + 4] = allocation.after.woundsLost;
+    } else if (event.type === "reanimation_wound_resolved") {
+      const segmentIndex = segmentIndices.get(event.segmentId);
+      if (segmentIndex === undefined) {
+        throw new Error("Reanimation Protocols allocation segment is unknown");
+      }
+      events[offset + 1] = event.action === "heal" ? 5 : 6;
+      events[offset + 2] = 1;
+      const allocationOffset = offset + eventHeaderFields;
+      events[allocationOffset] = segmentIndex;
+      events[allocationOffset + 1] = event.before.modelsRemaining;
+      events[allocationOffset + 2] = event.before.woundsLost;
+      events[allocationOffset + 3] = event.after.modelsRemaining;
+      events[allocationOffset + 4] = event.after.woundsLost;
     }
   });
 
@@ -1997,11 +2018,61 @@ async function replayFormationHealth(
       })
       .filter((facts) => facts.sourceLocked)
       .sort((left, right) => left.formationId.localeCompare(right.formationId));
+    const reanimationProtocols = replayed.reanimationProtocolActivations.map((activation) => {
+      const formation = replayed.formations.get(activation.formationId)!;
+      const resolutions = replayed.reanimationProtocolResolutions
+        .filter((resolution) => resolution.activationEventId === activation.id)
+        .map((resolution, index) => {
+          const segment = formation.segments.find(
+            (candidate) => candidate.id === resolution.segmentId,
+          )!;
+          const values = [
+            1,
+            formation.reanimationProtocolSavedUnitIds.includes(segment.savedUnitId) ? 1 : 0,
+            1,
+            1,
+            activation.roll,
+            activation.roll - index,
+            resolution.action === "heal" ? 1 : 2,
+            segment.wounds,
+            segment.startingModels,
+            resolution.before.modelsRemaining,
+            resolution.before.woundsLost,
+            resolution.after.modelsRemaining,
+            resolution.after.woundsLost,
+          ];
+          const javascriptValid = reanimationProtocolsTransitionIsValid(...values);
+          const nativeValid = Boolean(
+            calculator.whc_reanimation_protocols_transition_is_valid(...values),
+          );
+          if (!javascriptValid || nativeValid !== javascriptValid) {
+            throw new ServiceUnavailableError(
+              "Reanimation Protocols diverged from the C/WebAssembly predicate",
+              "REANIMATION_PROTOCOLS_DIVERGENCE",
+            );
+          }
+          return {
+            segmentId: resolution.segmentId,
+            action: resolution.action,
+            before: resolution.before,
+            after: resolution.after,
+          };
+        });
+      return {
+        activationEventId: activation.id,
+        playerId: activation.playerId,
+        formationId: activation.formationId,
+        unitKey: activation.unitKey,
+        roll: activation.roll,
+        woundsResolved: resolutions.length,
+        resolutions,
+      };
+    });
     return {
       schemaVersion: state.version,
       rulesSnapshot: state.rulesSnapshot,
       ruleCoverage: replayed.ruleCoverage,
-      factionRules: { waaagh, oathOfMoment },
+      factionRules: { waaagh, oathOfMoment, reanimationProtocols },
       detachmentRules: { grimResolve },
       tableGeometry: replayed.tableGeometry,
       terrainFootprints: replayed.terrainFootprints,

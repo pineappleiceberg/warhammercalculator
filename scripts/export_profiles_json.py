@@ -153,6 +153,7 @@ def export(database: Path, output: Path) -> None:
                 "wargearChoicePairingRules": [],
                 "weaponTypeLimits": [],
                 "combatPresets": [],
+                "factionAbilityIds": [],
                 "defensiveEquipment": [],
                 "firingDeck": None,
                 "firingDeckModelCost": 1,
@@ -363,6 +364,14 @@ def export(database: Path, output: Path) -> None:
                ORDER BY datasheet_id"""
         ):
             units[row["datasheet_id"]]["hasHover"] = True
+
+        for row in connection.execute(
+            """SELECT DISTINCT datasheet_id, ability_id
+               FROM datasheet_abilities
+               WHERE ability_type = 'Faction' AND ability_id IS NOT NULL
+               ORDER BY datasheet_id, ability_id"""
+        ):
+            units[row["datasheet_id"]]["factionAbilityIds"].append(row["ability_id"])
 
         transport_allowed: dict[tuple[str, int], list[str]] = {}
         for row in connection.execute(
