@@ -23,6 +23,7 @@ import {
   closeRangedTargetDeclarations,
   completeFormationMovement,
   completeFormationActivation,
+  configureSecondaryMissionPlan,
   configureBattleMission,
   configureBattleWeaponBearers,
   createBattleState,
@@ -30,6 +31,7 @@ import {
   declareFormationDeployment,
   deployFormation,
   disembarkFormation,
+  drawSecondaryMissionCard,
   embarkFormation,
   normalizeBattleState,
   hazardousBearerOptions,
@@ -48,7 +50,10 @@ import {
   recordRangedTargetEligibility,
   retractRangedTargetDeclaration,
   replayBattleState,
+  resolveNewOrders,
+  resolveSecondaryTurnEnd,
   resolveHazardousDamage,
+  resolveMissionAction,
   resolveGoToGround,
   resolveRapidIngress,
   resolveSmokescreen,
@@ -57,9 +62,12 @@ import {
   resolveDestroyedTransport,
   revertLatestAttack,
   scoreBattlePoints,
+  scoreMissionPoints,
+  scoreSecondaryMissionCard,
   setBattleObjectiveControl,
   setFormationBattleShocked,
   startBattle,
+  startMissionAction,
   startFireOverwatch,
   startFormationMovement,
   startFormationActivation,
@@ -404,6 +412,22 @@ function newBattle() {
     rulesSnapshot: "catalogue:test",
     players,
     ruleCoverage: coveredBattleRuleBinding(players),
+  });
+}
+
+function sourceLockedMissionBattle() {
+  const players = [
+    { id: "player-1", listId: "list-1", listUpdatedAt: 10, name: "Attackers" },
+    { id: "player-2", listId: "list-2", listUpdatedAt: 20, name: "Defenders" },
+  ];
+  const ruleCoverage = structuredClone(coveredBattleRuleBinding(players));
+  ruleCoverage.plan.mission.sourceId = "chapter-approved-2025-26-v1.4-a";
+  return createBattleState({
+    id: "mission-battle-1",
+    createdAt: 100,
+    rulesSnapshot: "catalogue:test",
+    players,
+    ruleCoverage,
   });
 }
 
@@ -4436,6 +4460,220 @@ test("rejects tampered resource and scoring totals", () => {
   const score = structuredClone(state);
   score.events.find((event) => event.id === "score").after = 7;
   assert.throws(() => normalizeBattleState(score), /replayed Victory Points/);
+});
+
+test("replays source-locked Chapter Approved scoring, cards, New Orders, and Actions", () => {
+  let state = registerBattleFormation(
+    registerBattleFormation(sourceLockedMissionBattle(), attackerFormation, "mission-attacker", 1),
+    formation,
+    "mission-target",
+    2,
+  );
+  state = configureSecondaryMissionPlan(
+    state,
+    {
+      playerId: "player-1",
+      mode: "tactical",
+      fixedCards: [],
+      tacticalDeckSize: 18,
+      cardRulesAvailability: "player-supplied-physical-deck",
+      reviewedByPlayer: true,
+      reviewReason: "Tactical deck selected and physical cards available",
+    },
+    "mission-plan-1",
+    3,
+  );
+  state = configureSecondaryMissionPlan(
+    state,
+    {
+      playerId: "player-2",
+      mode: "fixed",
+      fixedCards: [
+        { id: "fixed-a", name: "Player supplied fixed card A" },
+        { id: "fixed-b", name: "Player supplied fixed card B" },
+      ],
+      tacticalDeckSize: 0,
+      cardRulesAvailability: "player-supplied-physical-deck",
+      reviewedByPlayer: true,
+      reviewReason: "Two physical Fixed Secondary cards selected",
+    },
+    "mission-plan-2",
+    4,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "mission-start", 5);
+  state = drawSecondaryMissionCard(
+    state,
+    "player-1",
+    { id: "tactical-a", name: "Player supplied card A" },
+    "draw-a",
+    6,
+  );
+  state = drawSecondaryMissionCard(
+    state,
+    "player-1",
+    { id: "tactical-b", name: "Player supplied card B" },
+    "draw-b",
+    7,
+  );
+  state = scoreMissionPoints(
+    state,
+    "player-1",
+    "primary",
+    60,
+    "Reviewed the physical Primary Mission condition",
+    "primary-cap",
+    8,
+  );
+  state = scoreSecondaryMissionCard(
+    state,
+    "player-1",
+    "tactical-a",
+    45,
+    "Reviewed the physical Secondary Mission condition",
+    "secondary-cap",
+    9,
+  );
+  let replayed = replayBattleState(state);
+  assert.deepEqual(replayed.missionCategoryPoints.get("player-1"), {
+    primary: 50,
+    secondary: 40,
+    battle_ready: 0,
+    total: 90,
+  });
+  assert.equal(replayed.resources.get("player-1").get("victory_points").value, 90);
+  assert.throws(
+    () => scoreBattlePoints(state, "player-1", 1, "primary", "Manual VP", "manual-vp", 10),
+    /must use capped Primary, Secondary, or Battle Ready events/,
+  );
+  assert.throws(
+    () =>
+      scoreMissionPoints(
+        state,
+        "player-1",
+        "battle_ready",
+        10,
+        "Army appearance reviewed",
+        "battle-ready-early",
+        11,
+      ),
+    /end of the fifth battle round/,
+  );
+
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "command" && clock.step === "end",
+    "mission-command-end",
+  );
+  state = changeBattleResource(
+    state,
+    {
+      playerId: "player-1",
+      resourceId: "command_points",
+      name: "Command Points",
+      delta: 1,
+      reason: "Test fixture CP",
+    },
+    "mission-extra-cp",
+    state.events.length + 1,
+  );
+  state = resolveNewOrders(
+    state,
+    "player-1",
+    "tactical-b",
+    { id: "tactical-c", name: "Player supplied card C" },
+    "new-orders",
+    state.events.length + 1,
+  );
+  assert.throws(
+    () =>
+      resolveNewOrders(
+        state,
+        "player-1",
+        "tactical-c",
+        { id: "tactical-d", name: "Player supplied card D" },
+        "new-orders-twice",
+        state.events.length + 1,
+      ),
+    /more than once in the same Command phase/,
+  );
+  state = startMissionAction(
+    state,
+    {
+      playerId: "player-1",
+      formationId: attackerFormation.id,
+      cardId: "tactical-a",
+      actionKey: "physical-card-action",
+      actionName: "Player supplied Action",
+      simultaneousUnitLimit: 1,
+      facts: {
+        aircraft: false,
+        battleShocked: false,
+        objectiveControl: 3,
+        withinEngagementRange: true,
+        titanicCharacter: true,
+        advancedOrFellBack: false,
+        eligibleToShoot: true,
+        alreadyShot: false,
+        timingReviewed: true,
+        cardRulesReviewed: true,
+        unitLimitAvailable: true,
+        reviewReason: "Physical card timing and Action conditions reviewed",
+      },
+    },
+    "start-titanic-action",
+    state.events.length + 1,
+  );
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "mission-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    attackerFormation.id,
+    "stationary",
+    "mission-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "shooting" && clock.step === "resolve_attacks",
+    "mission-shooting",
+  );
+  state = startFormationActivation(
+    state,
+    attackerFormation.id,
+    {},
+    "mission-shooting-activation",
+    state.events.length + 1,
+  );
+  state = completeFormationActivation(state, "mission-shooting-complete", state.events.length + 1);
+  state = resolveMissionAction(
+    state,
+    attackerFormation.id,
+    true,
+    "Physical card completion condition reviewed",
+    "mission-action-complete",
+    state.events.length + 1,
+  );
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "fight" && clock.step === "end",
+    "mission-turn-end",
+  );
+  state = resolveSecondaryTurnEnd(
+    state,
+    "player-1",
+    { achievedCardIds: ["tactical-a"], voluntaryCardIds: ["tactical-c"] },
+    "mission-secondary-turn-end",
+    state.events.length + 1,
+  );
+  assert.doesNotThrow(() =>
+    advanceBattleClock(state, "mission-next-turn", state.events.length + 1),
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.completedMissionActions.length, 1);
+  assert.equal(replayed.secondaryDiscardedCardIds.get("player-1").size, 3);
 });
 
 test("replays alternating deployment and Strategic Reserves arrival", () => {

@@ -97,6 +97,7 @@ import {
   spatialFactValuesAreValid,
 } from "../lib/spatial-facts.mjs";
 import { terrainClearanceFactValuesAreValid } from "../lib/terrain-clearance-facts.mjs";
+import { missionTrackerFactsAreValid } from "../lib/mission-tracker.mjs";
 import { objectiveControlFactValuesAreValid } from "../lib/objective-control-facts.mjs";
 import { convexSilhouetteIsValid, visibilityFactValuesAreValid } from "../lib/visibility-facts.mjs";
 
@@ -146,6 +147,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_spatial_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_endpoint_clearance_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_terrain_clearance_facts_are_valid, "function");
+  assert.equal(typeof calculator._whc_mission_tracker_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_objective_control_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_visibility_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_convex_silhouette_is_valid, "function");
@@ -261,6 +263,22 @@ test("WebAssembly and JavaScript agree on terrain-clearance summaries", () => {
     assert.equal(
       Boolean(calculator._whc_terrain_clearance_facts_are_valid(...values)),
       terrainClearanceFactValuesAreValid(...values),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on mission-tracker summaries", () => {
+  const cases = [
+    [1, 1, 2, 0, 0, 0, 2, 30, 20, 10, 10, 60, 1, 1, 7],
+    [2, 1, 0, 12, 5, 3, 2, 50, 40, 0, 10, 100, 0, 0, 7],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [1, 1, 2, 0, 0, 0, 2, 50, 41, 20, 10, 101, 0, 0, 7],
+    [2, 1, 0, 12, 5, 3, 2, 20, 20, 1, 10, 50, 0, 0, 7],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_mission_tracker_facts_are_valid(...values)),
+      missionTrackerFactsAreValid(...values),
     );
   }
 });

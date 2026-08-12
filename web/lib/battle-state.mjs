@@ -12,6 +12,14 @@ import {
 import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 import { normalizeBattleRuleCoverageBinding } from "./battle-rule-selection.mjs";
 import { chapterApprovedTableBinding } from "./mission-pack.mjs";
+import {
+  cappedMissionAward,
+  missionActionEligibility,
+  missionActionFlags,
+  missionTrackerFactsAreValid,
+  missionTrackerFlags,
+  SECONDARY_MODES,
+} from "./mission-tracker.mjs";
 import { deriveObjectiveControlFacts } from "./objective-control-facts.mjs";
 import { deriveEndpointClearanceFacts, deriveSpatialFacts } from "./spatial-facts.mjs";
 import { TERRAIN_MOVEMENT_TYPES, deriveTerrainClearanceFacts } from "./terrain-clearance-facts.mjs";
@@ -26,7 +34,8 @@ import {
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 37;
+export const BATTLE_STATE_VERSION = 38;
+export const MISSION_TRACKING_BATTLE_STATE_VERSION = 38;
 export const TERRAIN_CLEARANCE_BATTLE_STATE_VERSION = 37;
 export const ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION = 36;
 export const OBJECTIVE_CONTROL_BATTLE_STATE_VERSION = 35;
@@ -1699,6 +1708,96 @@ function normalizeMission(candidate, players) {
   };
 }
 
+function normalizeMissionCard(candidate, name = "Mission card") {
+  const card = record(candidate, `${name} must be an object`);
+  return {
+    id: boundedString(card.id, `${name} id`, 100),
+    name: boundedString(card.name, `${name} name`, 160),
+  };
+}
+
+function normalizeSecondaryPlan(candidate, players) {
+  const plan = record(candidate, "Secondary Mission plan must be an object");
+  const playerId = boundedString(plan.playerId, "Secondary Mission player id", 100);
+  if (!players.has(playerId)) throw new Error("Secondary Mission player is unknown");
+  const mode = boundedString(plan.mode, "Secondary Mission mode", 20);
+  if (!SECONDARY_MODES.includes(mode)) throw new Error("Secondary Mission mode is unsupported");
+  if (!Array.isArray(plan.fixedCards) || plan.fixedCards.length > 2) {
+    throw new Error("Fixed Secondary Mission cards are invalid");
+  }
+  const fixedCards = plan.fixedCards.map((card) =>
+    normalizeMissionCard(card, "Fixed Mission card"),
+  );
+  if (new Set(fixedCards.map((card) => card.id)).size !== fixedCards.length) {
+    throw new Error("Fixed Secondary Mission card ids must be unique");
+  }
+  const tacticalDeckSize = nonnegativeInteger(
+    plan.tacticalDeckSize,
+    "Tactical Secondary Mission deck size",
+    64,
+  );
+  if (
+    (mode === "fixed" && (fixedCards.length !== 2 || tacticalDeckSize !== 0)) ||
+    (mode === "tactical" && (fixedCards.length !== 0 || tacticalDeckSize < 1))
+  ) {
+    throw new Error("Secondary Mission plan does not match its selected mode");
+  }
+  const normalized = {
+    playerId,
+    mode,
+    fixedCards,
+    tacticalDeckSize,
+    cardRulesAvailability: boundedString(
+      plan.cardRulesAvailability,
+      "Secondary Mission card-rule availability",
+      60,
+    ),
+    reviewedByPlayer: Boolean(plan.reviewedByPlayer),
+    reviewReason: plan.reviewedByPlayer
+      ? boundedString(plan.reviewReason, "Secondary Mission plan review", 500).trim()
+      : "",
+  };
+  if (normalized.cardRulesAvailability !== "player-supplied-physical-deck") {
+    throw new Error("Unavailable Secondary Mission card rules must remain player supplied");
+  }
+  if (!normalized.reviewedByPlayer || !normalized.reviewReason) {
+    throw new Error("Secondary Mission plan requires a reason-backed player review");
+  }
+  return normalized;
+}
+
+function normalizeMissionActionFacts(candidate) {
+  const facts = record(candidate, "Mission Action eligibility facts must be an object");
+  const normalized = {
+    aircraft: Boolean(facts.aircraft),
+    battleShocked: Boolean(facts.battleShocked),
+    objectiveControl: nonnegativeInteger(
+      facts.objectiveControl,
+      "Mission Action Objective Control",
+      1000,
+    ),
+    withinEngagementRange: Boolean(facts.withinEngagementRange),
+    titanicCharacter: Boolean(facts.titanicCharacter),
+    advancedOrFellBack: Boolean(facts.advancedOrFellBack),
+    eligibleToShoot: Boolean(facts.eligibleToShoot),
+    alreadyShot: Boolean(facts.alreadyShot),
+    timingReviewed: Boolean(facts.timingReviewed),
+    cardRulesReviewed: Boolean(facts.cardRulesReviewed),
+    unitLimitAvailable: Boolean(facts.unitLimitAvailable),
+    reviewReason:
+      facts.timingReviewed && facts.cardRulesReviewed
+        ? boundedString(facts.reviewReason, "Mission Action card review", 500).trim()
+        : "",
+  };
+  const eligibility = missionActionEligibility(normalized);
+  if (!eligibility.valid || !normalized.reviewReason) {
+    throw new Error(
+      eligibility.reasons[0] ?? "Mission Action requires a reason-backed physical-card review",
+    );
+  }
+  return normalized;
+}
+
 function normalizeTableGeometry(candidate) {
   const geometry = record(candidate, "Table geometry must be an object");
   if (
@@ -3359,6 +3458,22 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     throw new Error("Rule coverage configuration requires battle-state version 24");
   }
   if (
+    stateVersion < MISSION_TRACKING_BATTLE_STATE_VERSION &&
+    [
+      "secondary_plan_configured",
+      "secondary_card_drawn",
+      "secondary_new_orders_resolved",
+      "secondary_turn_end_resolved",
+      "secondary_card_scored",
+      "mission_score_recorded",
+      "mission_action_started",
+      "mission_action_completed",
+      "mission_action_failed",
+    ].includes(event.type)
+  ) {
+    throw new Error("Source-locked mission tracking requires battle-state version 38");
+  }
+  if (
     stateVersion < TABLE_GEOMETRY_BATTLE_STATE_VERSION &&
     event.type === "table_geometry_recorded"
   ) {
@@ -3445,6 +3560,189 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   }
   if (event.type === "rule_coverage_configured") {
     normalized.coverage = normalizeBattleRuleCoverageBinding(event.coverage);
+    return normalized;
+  }
+  if (event.type === "secondary_plan_configured") {
+    normalized.plan = normalizeSecondaryPlan(event.plan, formations.players);
+    return normalized;
+  }
+  if (event.type === "secondary_card_drawn") {
+    normalized.playerId = boundedString(event.playerId, "Secondary Mission player id", 100);
+    if (!formations.players.has(normalized.playerId))
+      throw new Error("Secondary Mission player is unknown");
+    normalized.card = normalizeMissionCard(event.card, "Drawn Secondary Mission card");
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "secondary_new_orders_resolved") {
+    normalized.playerId = boundedString(event.playerId, "New Orders player id", 100);
+    if (!formations.players.has(normalized.playerId))
+      throw new Error("New Orders player is unknown");
+    normalized.discardedCardId = boundedString(
+      event.discardedCardId,
+      "New Orders discarded card id",
+      100,
+    );
+    normalized.drawnCard = normalizeMissionCard(event.drawnCard, "New Orders drawn card");
+    normalized.commandPointsBefore = nonnegativeInteger(
+      event.commandPointsBefore,
+      "New Orders Command Points before",
+      100000,
+    );
+    normalized.commandPointsAfter = nonnegativeInteger(
+      event.commandPointsAfter,
+      "New Orders Command Points after",
+      100000,
+    );
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "secondary_turn_end_resolved") {
+    normalized.playerId = boundedString(event.playerId, "Secondary turn-end player id", 100);
+    if (!formations.players.has(normalized.playerId))
+      throw new Error("Secondary turn-end player is unknown");
+    normalized.achievedCardIds = normalizeStringArray(
+      event.achievedCardIds,
+      "Achieved Secondary Mission card ids",
+      2,
+    );
+    normalized.voluntaryCardIds = normalizeStringArray(
+      event.voluntaryCardIds,
+      "Voluntarily discarded Secondary Mission card ids",
+      2,
+    );
+    if (
+      new Set([...normalized.achievedCardIds, ...normalized.voluntaryCardIds]).size !==
+      normalized.achievedCardIds.length + normalized.voluntaryCardIds.length
+    ) {
+      throw new Error("A Secondary Mission card cannot be discarded twice at turn end");
+    }
+    normalized.commandPointsBefore = nonnegativeInteger(
+      event.commandPointsBefore,
+      "Secondary turn-end Command Points before",
+      100000,
+    );
+    normalized.commandPointsAfter = nonnegativeInteger(
+      event.commandPointsAfter,
+      "Secondary turn-end Command Points after",
+      100000,
+    );
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "secondary_card_scored") {
+    normalized.playerId = boundedString(event.playerId, "Secondary scoring player id", 100);
+    if (!formations.players.has(normalized.playerId))
+      throw new Error("Secondary scoring player is unknown");
+    normalized.cardId = boundedString(event.cardId, "Scored Secondary Mission card id", 100);
+    normalized.requestedPoints = nonnegativeInteger(
+      event.requestedPoints,
+      "Requested Secondary Mission points",
+      1000,
+    );
+    normalized.awardedPoints = nonnegativeInteger(
+      event.awardedPoints,
+      "Awarded Secondary Mission points",
+      1000,
+    );
+    normalized.before = nonnegativeInteger(
+      event.before,
+      "Victory Points before Secondary score",
+      100000,
+    );
+    normalized.after = nonnegativeInteger(
+      event.after,
+      "Victory Points after Secondary score",
+      100000,
+    );
+    normalized.cardBefore = nonnegativeInteger(
+      event.cardBefore,
+      "Secondary card Victory Points before score",
+      1000,
+    );
+    normalized.cardAfter = nonnegativeInteger(
+      event.cardAfter,
+      "Secondary card Victory Points after score",
+      1000,
+    );
+    normalized.reason = boundedString(event.reason, "Secondary Mission score review", 500).trim();
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "mission_score_recorded") {
+    normalized.playerId = boundedString(event.playerId, "Mission scoring player id", 100);
+    if (!formations.players.has(normalized.playerId))
+      throw new Error("Mission scoring player is unknown");
+    normalized.category = boundedString(event.category, "Mission score category", 20);
+    if (!["primary", "battle_ready"].includes(normalized.category)) {
+      throw new Error("Capped mission score category must be Primary or Battle Ready");
+    }
+    normalized.requestedPoints = nonnegativeInteger(
+      event.requestedPoints,
+      "Requested mission points",
+      1000,
+    );
+    normalized.awardedPoints = nonnegativeInteger(
+      event.awardedPoints,
+      "Awarded mission points",
+      1000,
+    );
+    normalized.before = nonnegativeInteger(
+      event.before,
+      "Victory Points before mission score",
+      100000,
+    );
+    normalized.after = nonnegativeInteger(
+      event.after,
+      "Victory Points after mission score",
+      100000,
+    );
+    normalized.categoryBefore = nonnegativeInteger(
+      event.categoryBefore,
+      "Category Victory Points before mission score",
+      1000,
+    );
+    normalized.categoryAfter = nonnegativeInteger(
+      event.categoryAfter,
+      "Category Victory Points after mission score",
+      1000,
+    );
+    normalized.reason = boundedString(event.reason, "Mission score review", 500).trim();
+    if (!normalized.reason) throw new Error("Mission score requires a reason-backed card review");
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "mission_action_started") {
+    normalized.playerId = boundedString(event.playerId, "Mission Action player id", 100);
+    if (!formations.players.has(normalized.playerId))
+      throw new Error("Mission Action player is unknown");
+    normalized.formationId = boundedString(event.formationId, "Mission Action formation id", 100);
+    if (!formations.byId.has(normalized.formationId))
+      throw new Error("Mission Action formation is unknown");
+    normalized.cardId = boundedString(event.cardId, "Mission Action card id", 100);
+    normalized.actionKey = boundedString(event.actionKey, "Mission Action key", 100);
+    normalized.actionName = boundedString(event.actionName, "Mission Action name", 160);
+    normalized.simultaneousUnitLimit = nonnegativeInteger(
+      event.simultaneousUnitLimit,
+      "Mission Action simultaneous-unit limit",
+      1000,
+    );
+    if (normalized.simultaneousUnitLimit < 1) {
+      throw new Error("Mission Action simultaneous-unit limit must be at least 1");
+    }
+    normalized.facts = normalizeMissionActionFacts(event.facts);
+    normalized.flags = nonnegativeInteger(event.flags, "Mission Action flags", 2047);
+    if (normalized.flags !== missionActionFlags(normalized.facts)) {
+      throw new Error("Mission Action flags do not match the reviewed eligibility facts");
+    }
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (["mission_action_completed", "mission_action_failed"].includes(event.type)) {
+    normalized.actionEventId = boundedString(event.actionEventId, "Mission Action event id", 100);
+    normalized.formationId = boundedString(event.formationId, "Mission Action formation id", 100);
+    normalized.reason = boundedString(event.reason, "Mission Action resolution reason", 500).trim();
+    normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
   if (event.type === "battle_started") {
@@ -4938,6 +5236,8 @@ export function normalizeBattleState(candidate) {
       CONVEX_SILHOUETTE_BATTLE_STATE_VERSION,
       OBJECTIVE_CONTROL_BATTLE_STATE_VERSION,
       ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION,
+      TERRAIN_CLEARANCE_BATTLE_STATE_VERSION,
+      MISSION_TRACKING_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -5007,6 +5307,7 @@ export function normalizeBattleState(candidate) {
         CONVEX_SILHOUETTE_BATTLE_STATE_VERSION,
         OBJECTIVE_CONTROL_BATTLE_STATE_VERSION,
         ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION,
+        TERRAIN_CLEARANCE_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -5242,6 +5543,13 @@ export function normalizeBattleState(candidate) {
       normalized.migration.legacyTerrainClearanceThroughSequence = nonnegativeInteger(
         migration.legacyTerrainClearanceThroughSequence,
         "Legacy terrain clearance event sequence",
+        events.length,
+      );
+    }
+    if (state.version >= MISSION_TRACKING_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyMissionTrackingThroughSequence = nonnegativeInteger(
+        migration.legacyMissionTrackingThroughSequence,
+        "Legacy mission tracking event sequence",
         events.length,
       );
     }
@@ -6280,6 +6588,21 @@ export function replayBattleState(state) {
   const effects = new Map();
   const battleShockedFormations = new Map();
   const scoringEvents = [];
+  const secondaryPlans = new Map();
+  const secondaryDrawnCards = new Map(state.players.map((player) => [player.id, new Map()]));
+  const secondaryActiveCards = new Map(state.players.map((player) => [player.id, new Map()]));
+  const secondaryDiscardedCardIds = new Map(state.players.map((player) => [player.id, new Set()]));
+  const secondaryCardPoints = new Map();
+  const secondaryTurnEndReviews = new Map();
+  const activeMissionActions = new Map();
+  const completedMissionActions = [];
+  const failedMissionActions = [];
+  const missionCategoryPoints = new Map(
+    state.players.map((player) => [
+      player.id,
+      { primary: 0, secondary: 0, battle_ready: 0, total: 0 },
+    ]),
+  );
   const movementByFormation = new Map();
   const chargeByFormation = new Map();
   const deploymentByFormation = new Map();
@@ -6321,6 +6644,7 @@ export function replayBattleState(state) {
   const rapidIngresses = [];
   const rapidIngressPasses = [];
   const usedRapidIngressKeys = new Set();
+  const usedNewOrdersKeys = new Set();
   const counterOffensives = [];
   const counterOffensivePasses = [];
   const usedCounterOffensiveKeys = new Set();
@@ -6444,6 +6768,10 @@ export function replayBattleState(state) {
     state.version < TERRAIN_CLEARANCE_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyTerrainClearanceThroughSequence ?? 0);
+  const legacyMissionTrackingThroughSequence =
+    state.version < MISSION_TRACKING_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyMissionTrackingThroughSequence ?? 0);
   const legacyTerrainVisibilityThroughSequence =
     state.version < TERRAIN_VISIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -6460,6 +6788,23 @@ export function replayBattleState(state) {
     state.version < WEAPON_INVENTORY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyWeaponInventoryThroughSequence ?? 0);
+
+  const sourceLockedChapterApprovedMission = () =>
+    Boolean(ruleCoverage?.plan?.mission?.sourceId?.startsWith("chapter-approved-2025-26-v1.4-"));
+  const secondaryCardKey = (playerId, cardId) => `${playerId}:${cardId}`;
+  const battleTurnKey = (battleClock) =>
+    `${battleClock.battleRound}:${battleClock.turn}:${battleClock.activePlayerId}`;
+  const failMissionAction = (formationId, causeEvent, reason) => {
+    const action = activeMissionActions.get(formationId);
+    if (!action) return;
+    activeMissionActions.delete(formationId);
+    failedMissionActions.push({
+      ...action,
+      failureReason: reason,
+      failureEventId: causeEvent.id,
+      failureClock: { ...clock },
+    });
+  };
 
   const declarationWeaponKey = (declaration) =>
     [
@@ -7528,6 +7873,20 @@ export function replayBattleState(state) {
       ruleCoverage = event.coverage;
       continue;
     }
+    if (event.type === "secondary_plan_configured") {
+      if (clock.status !== "setup") {
+        throw new Error("Secondary Mission plans are locked after the battle starts");
+      }
+      if (secondaryPlans.has(event.plan.playerId)) {
+        throw new Error("Secondary Mission plan has already been configured for this player");
+      }
+      secondaryPlans.set(event.plan.playerId, event.plan);
+      if (event.plan.mode === "fixed") {
+        const active = secondaryActiveCards.get(event.plan.playerId);
+        for (const card of event.plan.fixedCards) active.set(card.id, card);
+      }
+      continue;
+    }
     if (event.type === "battle_started") {
       if (clock.status !== "setup") throw new Error("Battle has already started");
       if (pendingChoices.size > 0) throw new Error("Pending choices block the battle start");
@@ -7537,6 +7896,15 @@ export function replayBattleState(state) {
       ) {
         throw new Error(
           "Every selected battle rule must pass source-locked coverage before battle start",
+        );
+      }
+      if (
+        event.sequence > legacyMissionTrackingThroughSequence &&
+        sourceLockedChapterApprovedMission() &&
+        secondaryPlans.size !== state.players.length
+      ) {
+        throw new Error(
+          "Both players must lock Fixed or Tactical Secondary Missions before battle start",
         );
       }
       if (
@@ -7655,6 +8023,40 @@ export function replayBattleState(state) {
       const expected = nextBattleClock(clock, state.players);
       if (!sameBattleClock(event.to, expected)) {
         throw new Error("Battle clock advance is not canonical");
+      }
+      if (
+        event.sequence > legacyMissionTrackingThroughSequence &&
+        sourceLockedChapterApprovedMission() &&
+        clock.phase === "command" &&
+        clock.step === "end" &&
+        secondaryPlans.get(clock.activePlayerId)?.mode === "tactical" &&
+        secondaryActiveCards.get(clock.activePlayerId).size < 2 &&
+        secondaryDrawnCards.get(clock.activePlayerId).size <
+          secondaryPlans.get(clock.activePlayerId).tacticalDeckSize
+      ) {
+        throw new Error(
+          "Draw Tactical Secondary Missions to two active cards before leaving the Command phase",
+        );
+      }
+      if (
+        event.sequence > legacyMissionTrackingThroughSequence &&
+        sourceLockedChapterApprovedMission() &&
+        clock.phase === "fight" &&
+        clock.step === "end" &&
+        [...secondaryPlans.values()]
+          .filter((plan) => plan.mode === "tactical")
+          .some((plan) => !secondaryTurnEndReviews.get(battleTurnKey(clock))?.has(plan.playerId))
+      ) {
+        throw new Error("Resolve every Tactical player's Secondary cards before ending the turn");
+      }
+      if (activeMissionActions.size > 0) {
+        const nextTurn =
+          expected.status === "complete" ||
+          expected.battleRound !== clock.battleRound ||
+          expected.turn !== clock.turn;
+        if (nextTurn) {
+          throw new Error("Complete or fail every active Mission Action before ending the turn");
+        }
       }
       if (expected.status === "complete" || expected.phase !== clock.phase) {
         settleObjectiveControl(clock);
@@ -7783,6 +8185,286 @@ export function replayBattleState(state) {
       });
       continue;
     }
+    if (event.type === "secondary_card_drawn") {
+      if (
+        clock.status !== "active" ||
+        clock.phase !== "command" ||
+        clock.step !== "start" ||
+        clock.activePlayerId !== event.playerId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Tactical Secondary Missions can only be drawn at Command phase start");
+      }
+      const plan = secondaryPlans.get(event.playerId);
+      const drawn = secondaryDrawnCards.get(event.playerId);
+      const active = secondaryActiveCards.get(event.playerId);
+      if (!plan || plan.mode !== "tactical") {
+        throw new Error("Only a Tactical Secondary Mission plan can draw cards");
+      }
+      if (active.size >= 2)
+        throw new Error("A player cannot have more than two active Secondary Missions");
+      if (drawn.size >= plan.tacticalDeckSize)
+        throw new Error("The Tactical Secondary Mission deck is exhausted");
+      if (
+        drawn.has(event.card.id) ||
+        secondaryDiscardedCardIds.get(event.playerId).has(event.card.id)
+      ) {
+        throw new Error("A Tactical Secondary Mission card identity cannot be reused");
+      }
+      drawn.set(event.card.id, event.card);
+      active.set(event.card.id, event.card);
+      continue;
+    }
+    if (event.type === "secondary_new_orders_resolved") {
+      if (
+        clock.status !== "active" ||
+        clock.phase !== "command" ||
+        clock.step !== "end" ||
+        clock.activePlayerId !== event.playerId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error(
+          "New Orders can only be used at the end of the active player's Command phase",
+        );
+      }
+      const plan = secondaryPlans.get(event.playerId);
+      const active = secondaryActiveCards.get(event.playerId);
+      const drawn = secondaryDrawnCards.get(event.playerId);
+      const usageKey = `${event.playerId}:${clock.battleRound}:${clock.turn}:command`;
+      if (usedNewOrdersKeys.has(usageKey)) {
+        throw new Error("New Orders cannot be used more than once in the same Command phase");
+      }
+      const commandPoints = resources.get(event.playerId).get("command_points");
+      if (!plan || plan.mode !== "tactical" || !active.has(event.discardedCardId)) {
+        throw new Error("New Orders must target an active Tactical Secondary Mission");
+      }
+      if (drawn.size >= plan.tacticalDeckSize)
+        throw new Error("New Orders cannot draw from an exhausted deck");
+      if (drawn.has(event.drawnCard.id))
+        throw new Error("New Orders cannot reuse a drawn card identity");
+      if (
+        commandPoints.value !== event.commandPointsBefore ||
+        event.commandPointsAfter !== event.commandPointsBefore - 1 ||
+        event.commandPointsBefore < 1
+      ) {
+        throw new Error("New Orders must spend exactly 1 Command Point");
+      }
+      resources.get(event.playerId).set("command_points", {
+        ...commandPoints,
+        value: event.commandPointsAfter,
+      });
+      active.delete(event.discardedCardId);
+      for (const action of [...activeMissionActions.values()]) {
+        if (action.playerId === event.playerId && action.cardId === event.discardedCardId) {
+          failMissionAction(
+            action.formationId,
+            event,
+            "The associated Secondary Mission was replaced with New Orders",
+          );
+        }
+      }
+      secondaryDiscardedCardIds.get(event.playerId).add(event.discardedCardId);
+      drawn.set(event.drawnCard.id, event.drawnCard);
+      active.set(event.drawnCard.id, event.drawnCard);
+      usedNewOrdersKeys.add(usageKey);
+      continue;
+    }
+    if (event.type === "secondary_turn_end_resolved") {
+      if (
+        clock.status !== "active" ||
+        clock.phase !== "fight" ||
+        clock.step !== "end" ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error(
+          "Tactical Secondary Mission turn-end resolution is outside its timing window",
+        );
+      }
+      const plan = secondaryPlans.get(event.playerId);
+      const active = secondaryActiveCards.get(event.playerId);
+      if (!plan || plan.mode !== "tactical") {
+        if (event.achievedCardIds.length || event.voluntaryCardIds.length) {
+          throw new Error("Fixed Secondary Missions cannot be discarded at turn end");
+        }
+      } else {
+        for (const cardId of event.achievedCardIds) {
+          if (
+            !active.has(cardId) ||
+            (secondaryCardPoints.get(secondaryCardKey(event.playerId, cardId)) ?? 0) < 1
+          ) {
+            throw new Error("Only a scored active Secondary Mission is automatically achieved");
+          }
+        }
+        for (const cardId of event.voluntaryCardIds) {
+          if (!active.has(cardId))
+            throw new Error("Only an active Secondary Mission can be discarded");
+        }
+      }
+      const commandPoints = resources.get(event.playerId).get("command_points");
+      const gainsCommandPoint =
+        event.playerId === clock.activePlayerId && event.voluntaryCardIds.length > 0 ? 1 : 0;
+      if (
+        commandPoints.value !== event.commandPointsBefore ||
+        event.commandPointsAfter !== event.commandPointsBefore + gainsCommandPoint
+      ) {
+        throw new Error("Secondary Mission turn-end Command Point change is invalid");
+      }
+      resources.get(event.playerId).set("command_points", {
+        ...commandPoints,
+        value: event.commandPointsAfter,
+      });
+      for (const cardId of [...event.achievedCardIds, ...event.voluntaryCardIds]) {
+        active.delete(cardId);
+        for (const action of [...activeMissionActions.values()]) {
+          if (action.playerId === event.playerId && action.cardId === cardId) {
+            failMissionAction(
+              action.formationId,
+              event,
+              "The associated Secondary Mission was discarded at turn end",
+            );
+          }
+        }
+        secondaryDiscardedCardIds.get(event.playerId).add(cardId);
+      }
+      const key = battleTurnKey(clock);
+      const reviewed = secondaryTurnEndReviews.get(key) ?? new Set();
+      if (reviewed.has(event.playerId))
+        throw new Error("Secondary Mission turn end was already resolved");
+      reviewed.add(event.playerId);
+      secondaryTurnEndReviews.set(key, reviewed);
+      continue;
+    }
+    if (event.type === "secondary_card_scored") {
+      if (clock.status !== "active" || !sameBattleClock(event.clock, clock)) {
+        throw new Error("Secondary Mission score was recorded outside the active battle");
+      }
+      const plan = secondaryPlans.get(event.playerId);
+      const active = secondaryActiveCards.get(event.playerId);
+      if (!plan || !active.has(event.cardId)) {
+        throw new Error("Only an active Secondary Mission card can score");
+      }
+      const key = secondaryCardKey(event.playerId, event.cardId);
+      const cardBefore = secondaryCardPoints.get(key) ?? 0;
+      const totals = missionCategoryPoints.get(event.playerId);
+      const fixedCardPoints = plan.mode === "fixed" ? cardBefore : -1;
+      const award = cappedMissionAward({
+        category: "secondary",
+        requestedPoints: event.requestedPoints,
+        totals,
+        fixedCardPoints,
+      });
+      const previous = resources.get(event.playerId).get("victory_points");
+      if (
+        cardBefore !== event.cardBefore ||
+        event.awardedPoints !== award ||
+        event.cardAfter !== cardBefore + award ||
+        previous.value !== event.before ||
+        event.after !== event.before + award
+      ) {
+        throw new Error("Secondary Mission score does not match source-locked VP caps");
+      }
+      secondaryCardPoints.set(key, event.cardAfter);
+      totals.secondary += award;
+      totals.total += award;
+      resources.get(event.playerId).set("victory_points", { ...previous, value: event.after });
+      scoringEvents.push({ ...event, category: "secondary", points: award });
+      continue;
+    }
+    if (event.type === "mission_score_recorded") {
+      if (clock.status !== "active" || !sameBattleClock(event.clock, clock)) {
+        throw new Error("Mission score was recorded outside the active battle");
+      }
+      if (!sourceLockedChapterApprovedMission()) {
+        throw new Error(
+          "Capped mission scoring requires the source-locked Chapter Approved mission",
+        );
+      }
+      if (
+        event.category === "battle_ready" &&
+        !(
+          clock.battleRound === 5 &&
+          clock.phase === "fight" &&
+          clock.step === "end" &&
+          clock.turn === state.players.length
+        )
+      ) {
+        throw new Error(
+          "Battle Ready points can only be recorded at the end of the fifth battle round",
+        );
+      }
+      const totals = missionCategoryPoints.get(event.playerId);
+      const categoryBefore = totals[event.category];
+      const award = cappedMissionAward({
+        category: event.category,
+        requestedPoints: event.requestedPoints,
+        totals,
+      });
+      const previous = resources.get(event.playerId).get("victory_points");
+      if (
+        categoryBefore !== event.categoryBefore ||
+        event.awardedPoints !== award ||
+        event.categoryAfter !== categoryBefore + award ||
+        previous.value !== event.before ||
+        event.after !== event.before + award
+      ) {
+        throw new Error("Mission score does not match source-locked VP caps");
+      }
+      totals[event.category] += award;
+      totals.total += award;
+      resources.get(event.playerId).set("victory_points", { ...previous, value: event.after });
+      scoringEvents.push({ ...event, points: award });
+      continue;
+    }
+    if (event.type === "mission_action_started") {
+      if (
+        clock.status !== "active" ||
+        event.playerId !== clock.activePlayerId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Mission Action was started outside the active player's turn");
+      }
+      const formation = formations.get(event.formationId);
+      if (!formation || formation.playerId !== event.playerId || formationDestroyed(formation)) {
+        throw new Error("Only a living active-player formation can start a Mission Action");
+      }
+      if (!secondaryActiveCards.get(event.playerId).has(event.cardId)) {
+        throw new Error("Mission Action must reference an active Secondary Mission card");
+      }
+      if (activeMissionActions.has(event.formationId)) {
+        throw new Error("A formation cannot perform more than one Mission Action at once");
+      }
+      const activeSameAction = [...activeMissionActions.values()].filter(
+        (action) => action.playerId === event.playerId && action.actionKey === event.actionKey,
+      ).length;
+      if (activeSameAction >= event.simultaneousUnitLimit) {
+        throw new Error("Mission Action simultaneous-unit limit is full");
+      }
+      if (!missionActionEligibility(event.facts).valid) {
+        throw new Error("Mission Action eligibility facts are not valid");
+      }
+      activeMissionActions.set(event.formationId, event);
+      continue;
+    }
+    if (["mission_action_completed", "mission_action_failed"].includes(event.type)) {
+      if (clock.status !== "active" || !sameBattleClock(event.clock, clock)) {
+        throw new Error("Mission Action resolution is outside the active battle");
+      }
+      const action = activeMissionActions.get(event.formationId);
+      if (!action || action.id !== event.actionEventId) {
+        throw new Error("Mission Action resolution does not reference an active Action");
+      }
+      activeMissionActions.delete(event.formationId);
+      (event.type === "mission_action_completed"
+        ? completedMissionActions
+        : failedMissionActions
+      ).push({
+        ...action,
+        resolutionEventId: event.id,
+        resolutionReason: event.reason,
+        resolutionClock: event.clock,
+      });
+      continue;
+    }
     if (event.type === "score_recorded") {
       if (clock.status !== "active" || !sameBattleClock(event.clock, clock)) {
         throw new Error("Score was recorded outside its battle timing window");
@@ -7791,6 +8473,14 @@ export function replayBattleState(state) {
       const previous = playerResources.get("victory_points");
       if (previous.value !== event.before || event.after !== event.before + event.points) {
         throw new Error("Scoring event does not match the replayed Victory Points");
+      }
+      if (
+        sourceLockedChapterApprovedMission() &&
+        event.sequence > legacyMissionTrackingThroughSequence
+      ) {
+        throw new Error(
+          "Source-locked mission VP must use capped Primary, Secondary, or Battle Ready events",
+        );
       }
       playerResources.set("victory_points", { ...previous, value: event.after });
       scoringEvents.push(event);
@@ -7852,6 +8542,11 @@ export function replayBattleState(state) {
       continue;
     }
     if (event.type === "reserve_arrived") {
+      failMissionAction(
+        event.formationId,
+        event,
+        "The performing unit left and returned to the battlefield",
+      );
       if (
         clock.status !== "active" ||
         clock.phase !== "movement" ||
@@ -8010,6 +8705,7 @@ export function replayBattleState(state) {
       continue;
     }
     if (event.type === "formation_embarked") {
+      failMissionAction(event.formationId, event, "The performing unit left the battlefield");
       if (
         clock.status !== "active" ||
         clock.phase !== "movement" ||
@@ -8336,6 +9032,9 @@ export function replayBattleState(state) {
         throw new Error("Movement was recorded outside the Move Units step");
       }
       const formation = formations.get(event.formationId);
+      if (event.movement !== "stationary") {
+        failMissionAction(event.formationId, event, "The performing unit moved");
+      }
       if (
         !formationIsOnBattlefield(
           event.formationId,
@@ -8410,6 +9109,9 @@ export function replayBattleState(state) {
       continue;
     }
     if (event.type === "charge_declared") {
+      if (activeMissionActions.has(event.formationId)) {
+        throw new Error("A unit performing a Mission Action is not eligible to declare a charge");
+      }
       if (
         clock.status !== "active" ||
         clock.phase !== "charge" ||
@@ -9026,6 +9728,13 @@ export function replayBattleState(state) {
       continue;
     }
     if (event.type === "activation_started") {
+      if (
+        event.activationType === "shooting" &&
+        activeMissionActions.has(event.formationId) &&
+        !activeMissionActions.get(event.formationId).facts.titanicCharacter
+      ) {
+        throw new Error("A non-Titanic unit performing a Mission Action is not eligible to shoot");
+      }
       if (!battleAttackWindow(clock) || !sameBattleClock(event.clock, clock)) {
         throw new Error("Formation activation started outside an attack step");
       }
@@ -10348,6 +11057,11 @@ export function replayBattleState(state) {
         }
       }
       if (!wasDestroyed && formationDestroyed(formation)) {
+        failMissionAction(
+          event.targetFormationId,
+          event,
+          "The unit performing the Mission Action was destroyed",
+        );
         const passengerFormationIds = [...embarkedByFormation]
           .filter(([, transportId]) => transportId === event.targetFormationId)
           .map(([formationId]) => formationId)
@@ -10386,6 +11100,17 @@ export function replayBattleState(state) {
         throw new Error("Reverted attack does not match replayed target health");
       }
       formation.health[allocation.segmentId] = { ...allocation.before };
+    }
+    const revertedActionFailureIndex = failedMissionActions.findIndex(
+      (action) => action.failureEventId === reverted.id,
+    );
+    if (revertedActionFailureIndex >= 0) {
+      const [restoredAction] = failedMissionActions.splice(revertedActionFailureIndex, 1);
+      const action = { ...restoredAction };
+      delete action.failureReason;
+      delete action.failureEventId;
+      delete action.failureClock;
+      activeMissionActions.set(action.formationId, action);
     }
     refreshGeometryStaleness(reverted.targetFormationId);
     activeAttackIds.pop();
@@ -10533,6 +11258,16 @@ export function replayBattleState(state) {
     resources,
     objectives,
     scoringEvents,
+    secondaryPlans,
+    secondaryDrawnCards,
+    secondaryActiveCards,
+    secondaryDiscardedCardIds,
+    secondaryCardPoints,
+    secondaryTurnEndReviews,
+    activeMissionActions,
+    completedMissionActions,
+    failedMissionActions,
+    missionCategoryPoints,
     battleShockedFormations,
     movementByFormation,
     chargeByFormation,
@@ -10975,6 +11710,201 @@ export function configureBattleMission(state, mission, id, at) {
   });
 }
 
+export function configureSecondaryMissionPlan(state, plan, id, at) {
+  const replayed = replayBattleState(state);
+  if (replayed.clock.status !== "setup") {
+    throw new Error("Secondary Mission plans are locked after the battle starts");
+  }
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "secondary_plan_configured",
+    plan,
+  });
+}
+
+export function drawSecondaryMissionCard(state, playerId, card, id, at) {
+  const clock = replayBattleState(state).clock;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "secondary_card_drawn",
+    playerId,
+    card,
+    clock,
+  });
+}
+
+export function resolveNewOrders(state, playerId, discardedCardId, drawnCard, id, at) {
+  const replayed = replayBattleState(state);
+  const commandPointsBefore = replayed.resources.get(playerId)?.get("command_points")?.value ?? 0;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "secondary_new_orders_resolved",
+    playerId,
+    discardedCardId,
+    drawnCard,
+    commandPointsBefore,
+    commandPointsAfter: commandPointsBefore - 1,
+    clock: replayed.clock,
+  });
+}
+
+export function resolveSecondaryTurnEnd(
+  state,
+  playerId,
+  { achievedCardIds = [], voluntaryCardIds = [] } = {},
+  id,
+  at,
+) {
+  const replayed = replayBattleState(state);
+  const commandPointsBefore = replayed.resources.get(playerId)?.get("command_points")?.value ?? 0;
+  const commandPointGain =
+    replayed.clock.activePlayerId === playerId && voluntaryCardIds.length > 0 ? 1 : 0;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "secondary_turn_end_resolved",
+    playerId,
+    achievedCardIds,
+    voluntaryCardIds,
+    commandPointsBefore,
+    commandPointsAfter: commandPointsBefore + commandPointGain,
+    clock: replayed.clock,
+  });
+}
+
+export function scoreSecondaryMissionCard(
+  state,
+  playerId,
+  cardId,
+  requestedPoints,
+  reason,
+  id,
+  at,
+) {
+  const replayed = replayBattleState(state);
+  const plan = replayed.secondaryPlans.get(playerId);
+  if (!plan || !replayed.secondaryActiveCards.get(playerId)?.has(cardId)) {
+    throw new Error("Only an active Secondary Mission card can score");
+  }
+  const key = `${playerId}:${cardId}`;
+  const cardBefore = replayed.secondaryCardPoints.get(key) ?? 0;
+  const awardedPoints = cappedMissionAward({
+    category: "secondary",
+    requestedPoints,
+    totals: replayed.missionCategoryPoints.get(playerId),
+    fixedCardPoints: plan.mode === "fixed" ? cardBefore : -1,
+  });
+  const before = replayed.resources.get(playerId).get("victory_points").value;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "secondary_card_scored",
+    playerId,
+    cardId,
+    requestedPoints,
+    awardedPoints,
+    before,
+    after: before + awardedPoints,
+    cardBefore,
+    cardAfter: cardBefore + awardedPoints,
+    reason,
+    clock: replayed.clock,
+  });
+}
+
+export function startMissionAction(
+  state,
+  { playerId, formationId, cardId, actionKey, actionName, simultaneousUnitLimit, facts },
+  id,
+  at,
+) {
+  const clock = replayBattleState(state).clock;
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "mission_action_started",
+    playerId,
+    formationId,
+    cardId,
+    actionKey,
+    actionName,
+    simultaneousUnitLimit,
+    facts,
+    flags: missionActionFlags(facts),
+    clock,
+  });
+}
+
+export function resolveMissionAction(state, formationId, completed, reason, id, at) {
+  const replayed = replayBattleState(state);
+  const action = replayed.activeMissionActions.get(formationId);
+  if (!action) throw new Error("No Mission Action is active for this formation");
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: completed ? "mission_action_completed" : "mission_action_failed",
+    actionEventId: action.id,
+    formationId,
+    reason,
+    clock: replayed.clock,
+  });
+}
+
+export function missionTrackerFacts(state, playerId) {
+  const replayed = replayBattleState(state);
+  const plan = replayed.secondaryPlans.get(playerId);
+  const active = replayed.secondaryActiveCards.get(playerId) ?? new Map();
+  const drawn = replayed.secondaryDrawnCards.get(playerId) ?? new Map();
+  const discarded = replayed.secondaryDiscardedCardIds.get(playerId) ?? new Set();
+  const cardPoints = [...replayed.secondaryCardPoints]
+    .filter(([key]) => key.startsWith(`${playerId}:`))
+    .map(([, points]) => points);
+  const activeActions = [...replayed.activeMissionActions.values()].filter(
+    (action) => action.playerId === playerId,
+  );
+  const totals = replayed.missionCategoryPoints.get(playerId) ?? {
+    primary: 0,
+    secondary: 0,
+    battle_ready: 0,
+    total: 0,
+  };
+  const values = [
+    plan?.mode === "fixed" ? 1 : plan?.mode === "tactical" ? 2 : 0,
+    plan ? 1 : 0,
+    plan?.fixedCards.length ?? 0,
+    plan?.tacticalDeckSize ?? 0,
+    drawn.size,
+    discarded.size,
+    active.size,
+    totals.primary,
+    totals.secondary,
+    Math.max(0, ...cardPoints),
+    totals.battle_ready,
+    totals.total,
+    activeActions.length,
+    activeActions.filter((action) => missionActionEligibility(action.facts).valid).length,
+    plan ? missionTrackerFlags(plan, true) : 0,
+  ];
+  return { values, valid: missionTrackerFactsAreValid(...values) };
+}
+
 export function changeBattleResource(
   state,
   { playerId, resourceId, name, delta, maximum = null, reason },
@@ -11037,6 +11967,38 @@ export function scoreBattlePoints(state, playerId, points, category, reason, id,
     points: normalizedPoints,
     before,
     after,
+    reason,
+    clock: replayed.clock,
+  });
+}
+
+export function scoreMissionPoints(state, playerId, category, requestedPoints, reason, id, at) {
+  const replayed = replayBattleState(state);
+  if (replayed.clock.status !== "active") {
+    throw new Error("Victory Points can only be scored during an active battle");
+  }
+  if (!["primary", "battle_ready"].includes(category)) {
+    throw new Error("Use card-linked scoring for Secondary Mission points");
+  }
+  const totals = replayed.missionCategoryPoints.get(playerId);
+  const before = replayed.resources.get(playerId)?.get("victory_points")?.value;
+  if (!totals || before === undefined) throw new Error("Scoring player is unknown");
+  const categoryBefore = totals[category];
+  const awardedPoints = cappedMissionAward({ category, requestedPoints, totals });
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "mission_score_recorded",
+    playerId,
+    category,
+    requestedPoints,
+    awardedPoints,
+    before,
+    after: before + awardedPoints,
+    categoryBefore,
+    categoryAfter: categoryBefore + awardedPoints,
     reason,
     clock: replayed.clock,
   });

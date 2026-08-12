@@ -1428,12 +1428,12 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 
 ## Prioritized correctness backlog
 
-1. Connect exact objective control to source-backed mission scoring without
-   inventing unavailable mission-card text.
-2. Expand exact movement geometry beyond convex solids when a supported layout
+1. Expand exact movement geometry beyond convex solids when a supported layout
    requires concave or curved terrain.
-3. Add a reviewed geometry-inspection view that highlights the exact bearer,
+2. Add a reviewed geometry-inspection view that highlights the exact bearer,
    target model, ray, and terrain feature behind every proof or fallback.
+3. Add complete source-locked full-game replay fixtures before automated play
+   policies or batch battle simulation.
 
 ## Current boundaries
 
@@ -1459,6 +1459,10 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
   additionally prove directional visibility, full visibility, and Benefit of
   Cover when reviewed silhouettes and complete 3D terrain geometry suffice;
   all other cases remain explicitly unknown.
+- Exact Chapter Approved games require both players to lock Fixed or Tactical
+  Secondary plans. The tracker enforces published lifecycle and VP caps, but
+  individual card names, conditions, timing, and completion remain reviewed
+  physical-card input; unavailable card text is never inferred.
 
 ## 10th edition profile database
 

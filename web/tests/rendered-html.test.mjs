@@ -14,6 +14,7 @@ import {
   completeFormationMovement,
   completeFormationActivation,
   configureBattleMission,
+  configureSecondaryMissionPlan,
   configureBattleTableGeometry,
   configureBattleTerrainFootprints,
   configureBattleTerrainVisibility,
@@ -294,7 +295,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const coverage = (await coverageResponse.json()).data;
   assert.equal(
     coverage.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v24",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-v38",
   );
   assert.equal(coverage.sourceLocked, true);
   assert.equal(coverage.rules.length, coveredRuleCoverageMatrix.rules.length);
@@ -3178,6 +3179,25 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
     "record-table-geometry-target-placement",
     11,
   );
+  for (const playerId of ["player-1", "player-2"]) {
+    state = configureSecondaryMissionPlan(
+      state,
+      {
+        playerId,
+        mode: "fixed",
+        fixedCards: [
+          { id: `${playerId}:fixed:1`, name: "Player supplied fixed card 1" },
+          { id: `${playerId}:fixed:2`, name: "Player supplied fixed card 2" },
+        ],
+        tacticalDeckSize: 0,
+        cardRulesAvailability: "player-supplied-physical-deck",
+        reviewedByPlayer: true,
+        reviewReason: "Physical Fixed Secondary cards reviewed for API replay",
+      },
+      `configure-${playerId}-secondary-plan`,
+      state.events.length + 1,
+    );
+  }
   state = startBattle(state, "player-2", "start-table-geometry-battle", 12);
   while (replayBattleState(state).clock.step !== "move_units") {
     state = advanceBattleClock(
@@ -3264,6 +3284,15 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   const body = await response.json();
   assert.equal(body.data.schemaVersion, BATTLE_STATE_VERSION);
+  assert.deepEqual(Object.keys(body.data.missionTracking.plans).sort(), ["player-1", "player-2"]);
+  assert.deepEqual(body.data.missionTracking.categoryPoints["player-1"], {
+    primary: 0,
+    secondary: 0,
+    battle_ready: 0,
+    total: 0,
+  });
+  assert.equal(body.data.missionTracking.facts["player-1"].valid, true);
+  assert.deepEqual(body.data.missionTracking.activeActions, []);
   assert.deepEqual(body.data.tableGeometry, geometry);
   assert.deepEqual(body.data.terrainFootprints, terrainFootprints);
   assert.deepEqual(body.data.terrainVisibility, terrainVisibility);

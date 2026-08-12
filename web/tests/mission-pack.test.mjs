@@ -28,6 +28,15 @@ test("published Chapter Approved catalogue exactly matches the checked source da
   assert.equal(pack.version, "1.4");
   assert.equal(pack.missions.length, 20);
   assert.equal(pack.terrainLayouts.length, 8);
+  assert.deepEqual(pack.procedures.sourcePages, [2, 3, 4, 5]);
+  assert.deepEqual(pack.procedures.victoryPointCaps, {
+    total: 100,
+    primary: 50,
+    secondary: 40,
+    fixedPerCard: 20,
+    battleReady: 10,
+  });
+  assert.equal(pack.procedures.cardRulesAvailability, "player-supplied-physical-deck");
   assert.deepEqual(
     pack.missions.map((mission) => mission.code),
     [..."ABCDEFGHIJKLMNOPQRST"],
@@ -91,4 +100,12 @@ test("mission catalogue rejects altered compatibility and duplicate identities",
   const duplicate = structuredClone(source);
   duplicate.missions[1].id = duplicate.missions[0].id;
   assert.throws(() => normalizeMissionPackCatalogue(duplicate), /unique/);
+
+  const alteredCaps = structuredClone(source);
+  alteredCaps.procedures.victoryPointCaps.secondary = 50;
+  assert.throws(() => normalizeMissionPackCatalogue(alteredCaps), /Secondary Victory Point cap/);
+
+  const inventedCards = structuredClone(source);
+  inventedCards.procedures.cardRulesAvailability = "embedded-unreviewed-text";
+  assert.throws(() => normalizeMissionPackCatalogue(inventedCards), /player supplied/);
 });

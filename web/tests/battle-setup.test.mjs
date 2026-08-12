@@ -13,6 +13,7 @@ import {
   changeBattleResource,
   configureBattleMission,
   configureBattleRuleCoverage,
+  configureSecondaryMissionPlan,
   configureBattleTableGeometry,
   configureBattleTerrainFootprints,
   configureBattleTerrainVisibility,
@@ -192,10 +193,35 @@ const exactMissionOverrides = {
   terrainSourceId: "chapter-approved-2025-26-v1.4-layout-1",
 };
 
+function withFixedSecondaryPlans(state, id) {
+  let next = state;
+  for (const playerId of ["player-1", "player-2"]) {
+    next = configureSecondaryMissionPlan(
+      next,
+      {
+        playerId,
+        mode: "fixed",
+        fixedCards: [
+          { id: `${playerId}:fixed:1`, name: "Player supplied fixed card 1" },
+          { id: `${playerId}:fixed:2`, name: "Player supplied fixed card 2" },
+        ],
+        tacticalDeckSize: 0,
+        cardRulesAvailability: "player-supplied-physical-deck",
+        reviewedByPlayer: true,
+        reviewReason: "Physical Fixed Secondary cards reviewed for the test battle",
+      },
+      `${id}-${playerId}-secondary-plan`,
+      next.events.length + 1,
+    );
+  }
+  return next;
+}
+
 function exactMissionSetup(
   id = "source-locked-mission",
   firstList = attackers,
   secondList = defenders,
+  includeSecondaryPlans = true,
 ) {
   let state = initializeBattleForLists({
     catalogue,
@@ -223,7 +249,7 @@ function exactMissionSetup(
     `${id}-mission`,
     state.events.length + 1,
   );
-  return state;
+  return includeSecondaryPlans ? withFixedSecondaryPlans(state, id) : state;
 }
 
 function reviewedTableGeometry(state, overrides = {}) {
@@ -1641,6 +1667,7 @@ test("records exact disembarkation positions before the set-up reaction window",
       );
     }
   }
+  state = withFixedSecondaryPlans(state, "exact-disembark-position");
   state = startBattle(state, "player-1", "disembark-battle-started", state.events.length + 1);
   state = advanceTo(state, "movement", "move_units");
   state = disembarkFormation(
@@ -1955,6 +1982,7 @@ test("queues exact normal and Emergency Disembarkation positions for every destr
       );
     }
   }
+  state = withFixedSecondaryPlans(state, "exact-destroyed-transport-positions");
   state = startBattle(
     state,
     "player-2",
@@ -2424,7 +2452,21 @@ function asLegacyBattleState(state, version) {
     version,
     migration: undefined,
     events: state.events
-      .filter((event) => event.type !== "terrain_visibility_recorded")
+      .filter(
+        (event) =>
+          event.type !== "terrain_visibility_recorded" &&
+          ![
+            "secondary_plan_configured",
+            "secondary_card_drawn",
+            "secondary_new_orders_resolved",
+            "secondary_turn_end_resolved",
+            "secondary_card_scored",
+            "mission_score_recorded",
+            "mission_action_started",
+            "mission_action_completed",
+            "mission_action_failed",
+          ].includes(event.type),
+      )
       .map((event, index) => ({ ...event, sequence: index + 1 })),
   };
 }
@@ -2828,6 +2870,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacyObjectiveControlThroughSequence: 3,
     legacyEndpointClearanceThroughSequence: 3,
     legacyTerrainClearanceThroughSequence: 3,
+    legacyMissionTrackingThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -2875,6 +2918,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacyObjectiveControlThroughSequence: 3,
     legacyEndpointClearanceThroughSequence: 3,
     legacyTerrainClearanceThroughSequence: 3,
+    legacyMissionTrackingThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -2927,6 +2971,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacyObjectiveControlThroughSequence: 2,
     legacyEndpointClearanceThroughSequence: 2,
     legacyTerrainClearanceThroughSequence: 2,
+    legacyMissionTrackingThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -2972,6 +3017,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacyObjectiveControlThroughSequence: 2,
     legacyEndpointClearanceThroughSequence: 2,
     legacyTerrainClearanceThroughSequence: 2,
+    legacyMissionTrackingThroughSequence: 2,
   });
 });
 
@@ -3016,6 +3062,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacyObjectiveControlThroughSequence: 2,
     legacyEndpointClearanceThroughSequence: 2,
     legacyTerrainClearanceThroughSequence: 2,
+    legacyMissionTrackingThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -3066,6 +3113,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacyObjectiveControlThroughSequence: 2,
     legacyEndpointClearanceThroughSequence: 2,
     legacyTerrainClearanceThroughSequence: 2,
+    legacyMissionTrackingThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -3111,6 +3159,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacyObjectiveControlThroughSequence: 2,
     legacyEndpointClearanceThroughSequence: 2,
     legacyTerrainClearanceThroughSequence: 2,
+    legacyMissionTrackingThroughSequence: 2,
   });
 });
 
@@ -3155,6 +3204,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacyObjectiveControlThroughSequence: 2,
     legacyEndpointClearanceThroughSequence: 2,
     legacyTerrainClearanceThroughSequence: 2,
+    legacyMissionTrackingThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -3410,7 +3460,12 @@ test("migrates version-23 state with an explicit source-locked rule boundary", (
 });
 
 test("migrates version-24 exact games without inventing geometry and permits one reviewed binding", () => {
-  let versionTwentyFour = exactMissionSetup("version-24-table-geometry");
+  let versionTwentyFour = exactMissionSetup(
+    "version-24-table-geometry",
+    attackers,
+    defenders,
+    false,
+  );
   versionTwentyFour.version = 24;
   delete versionTwentyFour.migration;
   versionTwentyFour = deployAllOnBattlefield(versionTwentyFour);
@@ -3460,7 +3515,12 @@ test("migrates version-24 exact games without inventing geometry and permits one
 });
 
 test("migrates version-25 exact games without inventing terrain footprints", () => {
-  let versionTwentyFive = exactMissionSetup("version-25-terrain-footprints");
+  let versionTwentyFive = exactMissionSetup(
+    "version-25-terrain-footprints",
+    attackers,
+    defenders,
+    false,
+  );
   versionTwentyFive = configureBattleTableGeometry(
     versionTwentyFive,
     reviewedTableGeometry(versionTwentyFive),
@@ -3497,7 +3557,12 @@ test("migrates version-25 exact games without inventing terrain footprints", () 
 });
 
 test("migrates version-26 exact games without inventing model placements", () => {
-  let versionTwentySix = exactMissionSetup("version-26-model-placements");
+  let versionTwentySix = exactMissionSetup(
+    "version-26-model-placements",
+    attackers,
+    defenders,
+    false,
+  );
   versionTwentySix = configureBattleTableGeometry(
     versionTwentySix,
     reviewedTableGeometry(versionTwentySix),
@@ -3556,7 +3621,12 @@ test("migrates version-26 exact games without inventing model placements", () =>
 });
 
 test("migrates version-27 placement snapshots without inventing movement history", () => {
-  let versionTwentySeven = exactMissionSetup("version-27-model-positions");
+  let versionTwentySeven = exactMissionSetup(
+    "version-27-model-positions",
+    attackers,
+    defenders,
+    false,
+  );
   versionTwentySeven = configureBattleTableGeometry(
     versionTwentySeven,
     reviewedTableGeometry(versionTwentySeven),
@@ -3594,7 +3664,12 @@ test("migrates version-27 placement snapshots without inventing movement history
 });
 
 test("migrates version-28 paths without inventing extended physical movement snapshots", () => {
-  let versionTwentyEight = exactMissionSetup("version-28-extended-model-positions");
+  let versionTwentyEight = exactMissionSetup(
+    "version-28-extended-model-positions",
+    attackers,
+    defenders,
+    false,
+  );
   versionTwentyEight = configureBattleTableGeometry(
     versionTwentyEight,
     reviewedTableGeometry(versionTwentyEight),
@@ -3632,7 +3707,12 @@ test("migrates version-28 paths without inventing extended physical movement sna
 });
 
 test("migrates version-29 geometry without inventing Transport location transitions", () => {
-  let versionTwentyNine = exactMissionSetup("version-29-transport-model-locations");
+  let versionTwentyNine = exactMissionSetup(
+    "version-29-transport-model-locations",
+    attackers,
+    defenders,
+    false,
+  );
   versionTwentyNine = configureBattleTableGeometry(
     versionTwentyNine,
     reviewedTableGeometry(versionTwentyNine),
@@ -3671,7 +3751,7 @@ test("migrates version-29 geometry without inventing Transport location transiti
 });
 
 test("migrates version-30 positions without inventing baseless vertical extents", () => {
-  let versionThirty = exactMissionSetup("version-30-spatial-facts");
+  let versionThirty = exactMissionSetup("version-30-spatial-facts", attackers, defenders, false);
   versionThirty = configureBattleTableGeometry(
     versionThirty,
     reviewedTableGeometry(versionThirty),
@@ -3726,7 +3806,12 @@ test("migrates version-30 positions without inventing baseless vertical extents"
 });
 
 test("migrates version-31 spatial games without inventing 3D visibility geometry", () => {
-  let versionThirtyOne = exactMissionSetup("version-31-terrain-visibility");
+  let versionThirtyOne = exactMissionSetup(
+    "version-31-terrain-visibility",
+    attackers,
+    defenders,
+    false,
+  );
   versionThirtyOne = configureBattleTableGeometry(
     versionThirtyOne,
     reviewedTableGeometry(versionThirtyOne),
@@ -3779,6 +3864,7 @@ test("migrates version-31 spatial games without inventing 3D visibility geometry
   );
   migrated = addReviewedTerrainVisibility(migrated, "migrated-terrain-visibility");
   assert.equal(replayBattleState(migrated).terrainVisibility.allFeaturesRecorded, true);
+  migrated = withFixedSecondaryPlans(migrated, "migrated-terrain-visibility");
   migrated = startBattle(
     migrated,
     "player-2",
@@ -3832,7 +3918,12 @@ test("migrates version-31 spatial games without inventing 3D visibility geometry
 });
 
 test("migrates version-32 visibility games without inventing ranged geometry decisions", () => {
-  let versionThirtyTwo = exactMissionSetup("version-32-ranged-geometry");
+  let versionThirtyTwo = exactMissionSetup(
+    "version-32-ranged-geometry",
+    attackers,
+    defenders,
+    false,
+  );
   versionThirtyTwo = configureBattleTableGeometry(
     versionThirtyTwo,
     reviewedTableGeometry(versionThirtyTwo),
@@ -3873,7 +3964,12 @@ test("migrates version-32 visibility games without inventing ranged geometry dec
 });
 
 test("migrates version-33 geometry without inventing reviewed convex silhouettes", () => {
-  let versionThirtyThree = exactMissionSetup("version-33-convex-silhouettes");
+  let versionThirtyThree = exactMissionSetup(
+    "version-33-convex-silhouettes",
+    attackers,
+    defenders,
+    false,
+  );
   versionThirtyThree = configureBattleTableGeometry(
     versionThirtyThree,
     reviewedTableGeometry(versionThirtyThree),
@@ -3923,7 +4019,12 @@ test("migrates version-33 geometry without inventing reviewed convex silhouettes
 });
 
 test("migrates version-34 games without inventing Objective Control characteristics", () => {
-  let versionThirtyFour = exactMissionSetup("version-34-objective-control");
+  let versionThirtyFour = exactMissionSetup(
+    "version-34-objective-control",
+    attackers,
+    defenders,
+    false,
+  );
   versionThirtyFour = configureBattleTableGeometry(
     versionThirtyFour,
     reviewedTableGeometry(versionThirtyFour),
@@ -3996,7 +4097,12 @@ test("migrates version-34 games without inventing Objective Control characterist
 });
 
 test("migrates version-35 endpoint reviews without inventing executable clearance", () => {
-  let versionThirtyFive = exactMissionSetup("version-35-endpoint-clearance");
+  let versionThirtyFive = exactMissionSetup(
+    "version-35-endpoint-clearance",
+    attackers,
+    defenders,
+    false,
+  );
   versionThirtyFive = configureBattleTableGeometry(
     versionThirtyFive,
     reviewedTableGeometry(versionThirtyFive),
@@ -4033,7 +4139,12 @@ test("migrates version-35 endpoint reviews without inventing executable clearanc
 });
 
 test("migrates version-36 paths without inventing terrain movement geometry", () => {
-  let versionThirtySix = exactMissionSetup("version-36-terrain-clearance");
+  let versionThirtySix = exactMissionSetup(
+    "version-36-terrain-clearance",
+    attackers,
+    defenders,
+    false,
+  );
   versionThirtySix = configureBattleTableGeometry(
     versionThirtySix,
     reviewedTableGeometry(versionThirtySix),
@@ -4102,7 +4213,7 @@ test("migrates version-36 paths without inventing terrain movement geometry", ()
 });
 
 test("marks exact geometry stale when casualties change live model identities and clears on undo", () => {
-  let legacy = exactMissionSetup("version-28-casualty-geometry");
+  let legacy = exactMissionSetup("version-28-casualty-geometry", attackers, defenders, false);
   legacy = configureBattleTableGeometry(
     legacy,
     reviewedTableGeometry(legacy),

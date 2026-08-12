@@ -1,4 +1,38 @@
-export const MISSION_PACK_SCHEMA_VERSION = 1;
+export const MISSION_PACK_SCHEMA_VERSION = 2;
+
+export const CHAPTER_APPROVED_MISSION_PROCEDURES = Object.freeze({
+  sourcePages: Object.freeze([2, 3, 4, 5]),
+  battleRounds: 5,
+  victoryPointCaps: Object.freeze({
+    total: 100,
+    primary: 50,
+    secondary: 40,
+    fixedPerCard: 20,
+    battleReady: 10,
+  }),
+  secondaryMissions: Object.freeze({
+    fixedCardCount: 2,
+    tacticalMaximumActive: 2,
+    newOrdersCommandPointCost: 1,
+    activeCardsDiscardAfterScoring: true,
+    activePlayerVoluntaryDiscardCommandPointGain: 1,
+    exhaustedDeckCannotGenerate: true,
+  }),
+  actions: Object.freeze({
+    aircraftCannotStart: true,
+    battleShockedCannotStart: true,
+    zeroObjectiveControlCannotStart: true,
+    engagementRangeBlocksUnlessTitanicCharacter: true,
+    advancedOrFellBackCannotStart: true,
+    mustBeEligibleToShoot: true,
+    alreadyShotCannotStart: true,
+    nonTitanicCannotShootWhilePerforming: true,
+    cannotChargeWhilePerforming: true,
+    movementOrLeavingBattlefieldFails: true,
+    pileInAndConsolidationDoNotFail: true,
+  }),
+  cardRulesAvailability: "player-supplied-physical-deck",
+});
 
 const ID = /^[a-z0-9][a-z0-9.-]*$/;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -80,6 +114,79 @@ function pages(value, allowed, message) {
     throw new Error(message);
   }
   return [...new Set(value)];
+}
+
+function exactInteger(value, expected, message) {
+  if (value !== expected) throw new Error(message);
+  return value;
+}
+
+function exactBoolean(value, expected, message) {
+  if (value !== expected) throw new Error(message);
+  return value;
+}
+
+function normalizeMissionProcedures(candidate, sourcePages) {
+  const procedures = object(candidate, "Mission procedures are required");
+  const expected = CHAPTER_APPROVED_MISSION_PROCEDURES;
+  const procedurePages = pages(
+    procedures.sourcePages,
+    new Set(sourcePages),
+    "Mission procedure source pages are invalid",
+  );
+  if (
+    procedurePages.length !== expected.sourcePages.length ||
+    expected.sourcePages.some((page) => !procedurePages.includes(page))
+  ) {
+    throw new Error("Mission procedure source pages do not match the reviewed rules");
+  }
+  const caps = object(procedures.victoryPointCaps, "Mission Victory Point caps are required");
+  const secondary = object(
+    procedures.secondaryMissions,
+    "Secondary Mission procedures are required",
+  );
+  const actions = object(procedures.actions, "Mission Action procedures are required");
+  const normalized = {
+    sourcePages: procedurePages,
+    battleRounds: exactInteger(
+      procedures.battleRounds,
+      expected.battleRounds,
+      "Mission battle-round limit is invalid",
+    ),
+    victoryPointCaps: Object.fromEntries(
+      Object.entries(expected.victoryPointCaps).map(([key, value]) => [
+        key,
+        exactInteger(
+          caps[key],
+          value,
+          `${key === "battleReady" ? "Battle Ready" : `${key[0].toUpperCase()}${key.slice(1)}`} Victory Point cap is invalid`,
+        ),
+      ]),
+    ),
+    secondaryMissions: Object.fromEntries(
+      Object.entries(expected.secondaryMissions).map(([key, value]) => [
+        key,
+        typeof value === "boolean"
+          ? exactBoolean(secondary[key], value, `Secondary Mission ${key} rule is invalid`)
+          : exactInteger(secondary[key], value, `Secondary Mission ${key} rule is invalid`),
+      ]),
+    ),
+    actions: Object.fromEntries(
+      Object.entries(expected.actions).map(([key, value]) => [
+        key,
+        exactBoolean(actions[key], value, `Mission Action ${key} rule is invalid`),
+      ]),
+    ),
+    cardRulesAvailability: string(
+      procedures.cardRulesAvailability,
+      "Mission card rule availability is required",
+      60,
+    ),
+  };
+  if (normalized.cardRulesAvailability !== expected.cardRulesAvailability) {
+    throw new Error("Unavailable mission-card text must remain player supplied");
+  }
+  return normalized;
 }
 
 export function normalizeMissionPackCatalogue(value) {
@@ -181,6 +288,7 @@ export function normalizeMissionPackCatalogue(value) {
     edition: string(body.edition, "Mission pack edition is required"),
     version: string(body.version, "Mission pack version is required", 50),
     source: normalizedSource,
+    procedures: normalizeMissionProcedures(body.procedures, sourcePages),
     missions,
     terrainLayouts,
   };

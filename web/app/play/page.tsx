@@ -37,6 +37,7 @@ import {
   closeRangedTargetDeclarations,
   completeFormationMovement,
   completeFormationActivation,
+  configureSecondaryMissionPlan,
   configureBattleWeaponBearers,
   configureBattleMission,
   configureBattleTableGeometry,
@@ -48,6 +49,7 @@ import {
   declareFormationDeployment,
   deployFormation,
   disembarkFormation,
+  drawSecondaryMissionCard,
   embarkFormation,
   normalizeBattleState,
   modelPositionContextUsesPath,
@@ -70,6 +72,9 @@ import {
   rollHazardousFeelNoPain,
   rollHazardousTests,
   resolveDestroyedTransport,
+  resolveMissionAction,
+  resolveNewOrders,
+  resolveSecondaryTurnEnd,
   resolveBattleChoice,
   resolveHeroicIntervention,
   resolveHazardousDamage,
@@ -79,9 +84,12 @@ import {
   resolveCounterOffensive,
   revertLatestAttack,
   scoreBattlePoints,
+  scoreMissionPoints,
+  scoreSecondaryMissionCard,
   setBattleObjectiveControl,
   setFormationBattleShocked,
   startBattle,
+  startMissionAction,
   startFireOverwatch,
   startFormationMovement,
   startFormationActivation,
@@ -1378,6 +1386,16 @@ export default function PlayMode() {
           ? "consolidation"
           : "";
   const battleScoringEvents = replayedBattle?.scoringEvents ?? [];
+  const sourceLockedMissionTracking = Boolean(
+    replayedBattle?.ruleCoverage?.plan.mission.sourceId?.startsWith(
+      "chapter-approved-2025-26-v1.4-",
+    ),
+  );
+  const reviewedTacticalTurnEndPlayerIds = battleClock
+    ? (replayedBattle?.secondaryTurnEndReviews.get(
+        `${battleClock.battleRound}:${battleClock.turn}:${battleClock.activePlayerId}`,
+      ) ?? new Set<string>())
+    : new Set<string>();
   const attackerFormationBattleShocked = Boolean(
     attackerBattleFormationId &&
       replayedBattle?.battleShockedFormations.has(attackerBattleFormationId),
@@ -4074,19 +4092,228 @@ export default function PlayMode() {
   const recordScore = (playerId: string, points: number, category: string, reason: string) => {
     if (!battleState) return;
     try {
-      const next = scoreBattlePoints(
+      const next =
+        sourceLockedMissionTracking && ["primary", "battle_ready"].includes(category)
+          ? scoreMissionPoints(
+              battleState,
+              playerId,
+              category,
+              points,
+              reason,
+              crypto.randomUUID(),
+              battleState.events.length + 1,
+            )
+          : scoreBattlePoints(
+              battleState,
+              playerId,
+              points,
+              category,
+              reason,
+              crypto.randomUUID(),
+              battleState.events.length + 1,
+            );
+      setBattleState(next);
+      const recorded = next.events.at(-1);
+      const awarded = recorded?.awardedPoints ?? recorded?.points ?? points;
+      setStatus(`${awarded >= 0 ? "+" : ""}${awarded} Victory Points recorded`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Score could not be recorded");
+    }
+  };
+
+  const configureSecondaryPlan = (playerId: string, event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!battleState) return;
+    try {
+      const data = new FormData(event.currentTarget);
+      const mode = String(data.get("secondary-mode") || "tactical");
+      const fixedNames = [1, 2]
+        .map((index) => String(data.get(`fixed-card-${index}`) || "").trim())
+        .filter(Boolean);
+      const next = configureSecondaryMissionPlan(
         battleState,
-        playerId,
-        points,
-        category,
-        reason,
+        {
+          playerId,
+          mode,
+          fixedCards:
+            mode === "fixed"
+              ? fixedNames.map((name, index) => ({ id: `${playerId}:fixed:${index + 1}`, name }))
+              : [],
+          tacticalDeckSize: mode === "tactical" ? Number(data.get("tactical-deck-size")) || 0 : 0,
+          cardRulesAvailability: "player-supplied-physical-deck",
+          reviewedByPlayer: data.get("secondary-reviewed") === "on",
+          reviewReason: String(data.get("secondary-review-reason") || "").trim(),
+        },
         crypto.randomUUID(),
         battleState.events.length + 1,
       );
       setBattleState(next);
-      setStatus(`${points >= 0 ? "+" : ""}${points} Victory Points`);
+      setStatus(`${mode === "fixed" ? "Fixed" : "Tactical"} Secondary Missions locked`);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Score could not be recorded");
+      setStatus(
+        error instanceof Error ? error.message : "Secondary Mission plan could not be saved",
+      );
+    }
+  };
+
+  const drawSecondaryCard = (playerId: string, event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!battleState) return;
+    try {
+      const data = new FormData(event.currentTarget);
+      const name = String(data.get("secondary-card-name") || "").trim();
+      const next = drawSecondaryMissionCard(
+        battleState,
+        playerId,
+        { id: crypto.randomUUID(), name },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      event.currentTarget.reset();
+      setStatus(`${name} drawn`);
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "Secondary Mission card could not be drawn",
+      );
+    }
+  };
+
+  const resolveNewOrdersFromForm = (playerId: string, event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!battleState) return;
+    try {
+      const data = new FormData(event.currentTarget);
+      const name = String(data.get("new-orders-card-name") || "").trim();
+      const next = resolveNewOrders(
+        battleState,
+        playerId,
+        String(data.get("new-orders-discard") || ""),
+        { id: crypto.randomUUID(), name },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      event.currentTarget.reset();
+      setStatus(`New Orders replaced the card with ${name}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "New Orders could not be resolved");
+    }
+  };
+
+  const recordSecondaryCardScore = (
+    playerId: string,
+    cardId: string,
+    event: FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+    if (!battleState) return;
+    try {
+      const data = new FormData(event.currentTarget);
+      const next = scoreSecondaryMissionCard(
+        battleState,
+        playerId,
+        cardId,
+        Number(data.get("secondary-points")),
+        String(data.get("secondary-score-reason") || "").trim(),
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      const awarded = next.events.at(-1)?.awardedPoints ?? 0;
+      setBattleState(next);
+      event.currentTarget.reset();
+      setStatus(`+${awarded} Secondary Victory Points recorded`);
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "Secondary Mission score could not be recorded",
+      );
+    }
+  };
+
+  const reviewSecondaryTurnEnd = (playerId: string, event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!battleState) return;
+    try {
+      const data = new FormData(event.currentTarget);
+      const activeCards = [...(replayedBattle?.secondaryActiveCards.get(playerId)?.keys() ?? [])];
+      const achievedCardIds = activeCards.filter(
+        (cardId) => data.get(`turn-end-${cardId}`) === "achieved",
+      );
+      const voluntaryCardIds = activeCards.filter(
+        (cardId) => data.get(`turn-end-${cardId}`) === "discard",
+      );
+      const next = resolveSecondaryTurnEnd(
+        battleState,
+        playerId,
+        { achievedCardIds, voluntaryCardIds },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setStatus("Tactical Secondary turn-end review recorded");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Turn-end cards could not be resolved");
+    }
+  };
+
+  const beginMissionAction = (playerId: string, event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!battleState) return;
+    try {
+      const data = new FormData(event.currentTarget);
+      const next = startMissionAction(
+        battleState,
+        {
+          playerId,
+          formationId: String(data.get("action-formation") || ""),
+          cardId: String(data.get("action-card") || ""),
+          actionKey: String(data.get("action-key") || "").trim(),
+          actionName: String(data.get("action-name") || "").trim(),
+          simultaneousUnitLimit: Number(data.get("action-unit-limit")),
+          facts: {
+            aircraft: data.get("action-aircraft") === "on",
+            battleShocked: data.get("action-battle-shocked") === "on",
+            objectiveControl: Number(data.get("action-objective-control")),
+            withinEngagementRange: data.get("action-engagement") === "on",
+            titanicCharacter: data.get("action-titanic-character") === "on",
+            advancedOrFellBack: data.get("action-advanced-fell-back") === "on",
+            eligibleToShoot: data.get("action-eligible-to-shoot") === "on",
+            alreadyShot: data.get("action-already-shot") === "on",
+            timingReviewed: data.get("action-timing-reviewed") === "on",
+            cardRulesReviewed: data.get("action-rules-reviewed") === "on",
+            unitLimitAvailable: data.get("action-limit-available") === "on",
+            reviewReason: String(data.get("action-review-reason") || "").trim(),
+          },
+        },
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      event.currentTarget.reset();
+      setStatus("Mission Action started");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Mission Action could not be started");
+    }
+  };
+
+  const finishMissionAction = (formationId: string, event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!battleState) return;
+    try {
+      const data = new FormData(event.currentTarget);
+      const completed = data.get("action-outcome") === "completed";
+      const next = resolveMissionAction(
+        battleState,
+        formationId,
+        completed,
+        String(data.get("action-resolution-reason") || "").trim(),
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      setStatus(`Mission Action ${completed ? "completed" : "failed"}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Mission Action could not be resolved");
     }
   };
 
@@ -4095,9 +4322,22 @@ export default function PlayMode() {
     const data = new FormData(event.currentTarget);
     const points = Math.min(1000, Math.max(-1000, Number(data.get("score-points")) || 0));
     const category = String(data.get("score-category") || "other");
-    const reason = String(data.get("score-reason") || "Manual score").trim() || "Manual score";
+    const reason = String(data.get("score-reason") || "").trim();
     if (!Number.isInteger(points) || points === 0) {
       setStatus("Score must be a non-zero whole number");
+      return;
+    }
+    if (
+      sourceLockedMissionTracking &&
+      (points < 1 || !["primary", "battle_ready"].includes(category))
+    ) {
+      setStatus(
+        "Use capped Primary or Battle Ready scoring here; score Secondary Missions on their card",
+      );
+      return;
+    }
+    if (!reason) {
+      setStatus("Record the reviewed scoring condition");
       return;
     }
     recordScore(playerId, points, category, reason);
@@ -7261,15 +7501,20 @@ export default function PlayMode() {
                   disabled={
                     (!replayedBattle.deploymentComplete && !battleState.migration) ||
                     setupWeaponBearerGroups.some(({ group }) => !group.bearerAssignmentsReviewed) ||
-                    !replayedBattle.ruleCoverage?.report.permitted
+                    !replayedBattle.ruleCoverage?.report.permitted ||
+                    (sourceLockedMissionTracking &&
+                      replayedBattle.secondaryPlans.size !== battleState.players.length)
                   }
                   onClick={startGuidedBattle}
                 >
                   {!replayedBattle.ruleCoverage?.report.permitted
                     ? "Resolve unsupported battle rules to start"
-                    : replayedBattle.deploymentComplete || battleState.migration
-                      ? `Start battle · ${attackerList?.name ?? "current attacker"} first`
-                      : "Complete deployment to start"}
+                    : sourceLockedMissionTracking &&
+                        replayedBattle.secondaryPlans.size !== battleState.players.length
+                      ? "Lock both Secondary Mission plans to start"
+                      : replayedBattle.deploymentComplete || battleState.migration
+                        ? `Start battle · ${attackerList?.name ?? "current attacker"} first`
+                        : "Complete deployment to start"}
                 </button>
               )}
               {battleClock.status === "active" && (
@@ -7292,6 +7537,345 @@ export default function PlayMode() {
                 </button>
               )}
             </div>
+            {sourceLockedMissionTracking && battleClock.status === "setup" && (
+              <div className="battle-trackers" aria-label="Secondary Mission setup">
+                {battleState.players.map((player) => {
+                  const plan = replayedBattle.secondaryPlans.get(player.id);
+                  return (
+                    <section key={player.id} className="player-tracker">
+                      <h3>{player.name} · Secondary Missions</h3>
+                      {plan ? (
+                        <div className="action-tracker">
+                          <strong>{plan.mode === "fixed" ? "Fixed" : "Tactical"}</strong>
+                          <span>
+                            {plan.mode === "fixed"
+                              ? plan.fixedCards
+                                  .map((card: { name: string }) => card.name)
+                                  .join(" · ")
+                              : `${plan.tacticalDeckSize} physical cards`}
+                          </span>
+                          <span>{plan.reviewReason}</span>
+                        </div>
+                      ) : (
+                        <form
+                          className="mission-setup"
+                          onSubmit={(event) => configureSecondaryPlan(player.id, event)}
+                        >
+                          <label>
+                            <span>Mode</span>
+                            <select name="secondary-mode" defaultValue="tactical">
+                              <option value="tactical">Tactical</option>
+                              <option value="fixed">Fixed</option>
+                            </select>
+                          </label>
+                          <label>
+                            <span>Tactical deck size</span>
+                            <input
+                              name="tactical-deck-size"
+                              type="number"
+                              min="1"
+                              max="64"
+                              defaultValue="18"
+                            />
+                          </label>
+                          <label>
+                            <span>Fixed card 1</span>
+                            <input name="fixed-card-1" maxLength={160} />
+                          </label>
+                          <label>
+                            <span>Fixed card 2</span>
+                            <input name="fixed-card-2" maxLength={160} />
+                          </label>
+                          <label className="confirmation-row">
+                            <input name="secondary-reviewed" type="checkbox" required />
+                            Physical cards and selected mode reviewed
+                          </label>
+                          <label>
+                            <span>Review record</span>
+                            <input
+                              name="secondary-review-reason"
+                              maxLength={500}
+                              required
+                              placeholder="Deck and selected cards checked"
+                            />
+                          </label>
+                          <button type="submit">Lock Secondary Missions</button>
+                        </form>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+            {sourceLockedMissionTracking && battleClock.status === "active" && (
+              <div className="battle-trackers" aria-label="Chapter Approved mission tracking">
+                {battleState.players.map((player) => {
+                  const plan = replayedBattle.secondaryPlans.get(player.id);
+                  const activeCards = [
+                    ...(replayedBattle.secondaryActiveCards.get(player.id)?.values() ?? []),
+                  ];
+                  const totals = replayedBattle.missionCategoryPoints.get(player.id);
+                  const canDraw = Boolean(
+                    plan?.mode === "tactical" &&
+                      battleClock.activePlayerId === player.id &&
+                      battleClock.phase === "command" &&
+                      battleClock.step === "start" &&
+                      activeCards.length < 2 &&
+                      replayedBattle.secondaryDrawnCards.get(player.id).size <
+                        plan.tacticalDeckSize,
+                  );
+                  const canUseNewOrders = Boolean(
+                    plan?.mode === "tactical" &&
+                      battleClock.activePlayerId === player.id &&
+                      battleClock.phase === "command" &&
+                      battleClock.step === "end" &&
+                      activeCards.length > 0 &&
+                      replayedBattle.secondaryDrawnCards.get(player.id).size <
+                        plan.tacticalDeckSize,
+                  );
+                  const needsTurnEndReview = Boolean(
+                    plan?.mode === "tactical" &&
+                      battleClock.phase === "fight" &&
+                      battleClock.step === "end" &&
+                      !reviewedTacticalTurnEndPlayerIds.has(player.id),
+                  );
+                  const playerFormations = [...replayedBattle.formations.values()].filter(
+                    (formation) => formation.playerId === player.id,
+                  );
+                  return (
+                    <section key={player.id} className="player-tracker">
+                      <h3>{player.name} · Mission</h3>
+                      <div className="primary-trackers">
+                        <div>
+                          <span>Primary</span>
+                          <strong>{totals?.primary ?? 0}/50</strong>
+                        </div>
+                        <div>
+                          <span>Secondary</span>
+                          <strong>{totals?.secondary ?? 0}/40</strong>
+                        </div>
+                        <div>
+                          <span>Battle Ready</span>
+                          <strong>{totals?.battle_ready ?? 0}/10</strong>
+                        </div>
+                      </div>
+                      {canDraw && (
+                        <form
+                          className="score-setup"
+                          onSubmit={(event) => drawSecondaryCard(player.id, event)}
+                        >
+                          <input
+                            name="secondary-card-name"
+                            maxLength={160}
+                            required
+                            placeholder="Drawn physical card name"
+                          />
+                          <button type="submit">Add drawn card</button>
+                        </form>
+                      )}
+                      {activeCards.map((card: { id: string; name: string }) => (
+                        <form
+                          key={card.id}
+                          className="score-setup"
+                          onSubmit={(event) => recordSecondaryCardScore(player.id, card.id, event)}
+                        >
+                          <strong>{card.name}</strong>
+                          <input
+                            name="secondary-points"
+                            type="number"
+                            min="1"
+                            max="1000"
+                            required
+                            placeholder="VP"
+                          />
+                          <input
+                            name="secondary-score-reason"
+                            maxLength={500}
+                            required
+                            placeholder="Physical card condition reviewed"
+                          />
+                          <button type="submit">Score card</button>
+                        </form>
+                      ))}
+                      {canUseNewOrders && (
+                        <form
+                          className="score-setup"
+                          onSubmit={(event) => resolveNewOrdersFromForm(player.id, event)}
+                        >
+                          <select name="new-orders-discard" required defaultValue="">
+                            <option value="" disabled>
+                              Card to replace
+                            </option>
+                            {activeCards.map((card: { id: string; name: string }) => (
+                              <option key={card.id} value={card.id}>
+                                {card.name}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            name="new-orders-card-name"
+                            maxLength={160}
+                            required
+                            placeholder="New physical card name"
+                          />
+                          <button type="submit">New Orders · 1 CP</button>
+                        </form>
+                      )}
+                      {needsTurnEndReview && (
+                        <form
+                          className="mission-setup"
+                          onSubmit={(event) => reviewSecondaryTurnEnd(player.id, event)}
+                        >
+                          <strong>Turn-end card review</strong>
+                          {activeCards.map((card: { id: string; name: string }) => (
+                            <label key={card.id}>
+                              <span>{card.name}</span>
+                              <select name={`turn-end-${card.id}`} defaultValue="keep">
+                                <option value="keep">Keep active</option>
+                                <option value="achieved">Achieved · discard</option>
+                                <option value="discard">Voluntary discard</option>
+                              </select>
+                            </label>
+                          ))}
+                          <button type="submit">Confirm turn end</button>
+                        </form>
+                      )}
+                      {battleClock.activePlayerId === player.id && activeCards.length > 0 && (
+                        <details>
+                          <summary>Start a Mission Action</summary>
+                          <form
+                            className="mission-setup"
+                            onSubmit={(event) => beginMissionAction(player.id, event)}
+                          >
+                            <label>
+                              <span>Card</span>
+                              <select name="action-card" required>
+                                {activeCards.map((card: { id: string; name: string }) => (
+                                  <option key={card.id} value={card.id}>
+                                    {card.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              <span>Unit</span>
+                              <select name="action-formation" required>
+                                {playerFormations.map((formation) => (
+                                  <option key={formation.id} value={formation.id}>
+                                    {formation.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              <span>Action name</span>
+                              <input name="action-name" maxLength={160} required />
+                            </label>
+                            <label>
+                              <span>Action identity</span>
+                              <input
+                                name="action-key"
+                                maxLength={100}
+                                required
+                                placeholder="Card action name or ID"
+                              />
+                            </label>
+                            <label>
+                              <span>Simultaneous unit limit</span>
+                              <input
+                                name="action-unit-limit"
+                                type="number"
+                                min="1"
+                                max="1000"
+                                defaultValue="1"
+                                required
+                              />
+                            </label>
+                            <label>
+                              <span>Current Objective Control</span>
+                              <input
+                                name="action-objective-control"
+                                type="number"
+                                min="0"
+                                max="1000"
+                                required
+                              />
+                            </label>
+                            <label className="confirmation-row">
+                              <input name="action-eligible-to-shoot" type="checkbox" required />
+                              Eligible to shoot
+                            </label>
+                            <label className="confirmation-row">
+                              <input name="action-timing-reviewed" type="checkbox" required />
+                              Physical-card timing reviewed
+                            </label>
+                            <label className="confirmation-row">
+                              <input name="action-rules-reviewed" type="checkbox" required />
+                              Physical-card conditions reviewed
+                            </label>
+                            <label className="confirmation-row">
+                              <input name="action-limit-available" type="checkbox" required />
+                              Action unit limit available
+                            </label>
+                            <label className="confirmation-row">
+                              <input name="action-aircraft" type="checkbox" />
+                              Aircraft
+                            </label>
+                            <label className="confirmation-row">
+                              <input name="action-battle-shocked" type="checkbox" />
+                              Battle-shocked
+                            </label>
+                            <label className="confirmation-row">
+                              <input name="action-engagement" type="checkbox" />
+                              Within Engagement Range
+                            </label>
+                            <label className="confirmation-row">
+                              <input name="action-titanic-character" type="checkbox" />
+                              Titanic Character
+                            </label>
+                            <label className="confirmation-row">
+                              <input name="action-advanced-fell-back" type="checkbox" />
+                              Advanced or Fell Back
+                            </label>
+                            <label className="confirmation-row">
+                              <input name="action-already-shot" type="checkbox" />
+                              Already selected to shoot
+                            </label>
+                            <label>
+                              <span>Review record</span>
+                              <input name="action-review-reason" maxLength={500} required />
+                            </label>
+                            <button type="submit">Start Action</button>
+                          </form>
+                        </details>
+                      )}
+                      {[...replayedBattle.activeMissionActions.values()]
+                        .filter((action) => action.playerId === player.id)
+                        .map((action) => (
+                          <form
+                            key={action.id}
+                            className="score-setup"
+                            onSubmit={(event) => finishMissionAction(action.formationId, event)}
+                          >
+                            <strong>{action.actionName}</strong>
+                            <select name="action-outcome" defaultValue="completed">
+                              <option value="completed">Completed</option>
+                              <option value="failed">Failed</option>
+                            </select>
+                            <input
+                              name="action-resolution-reason"
+                              maxLength={500}
+                              required
+                              placeholder="Physical result reviewed"
+                            />
+                            <button type="submit">Resolve Action</button>
+                          </form>
+                        ))}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
             {battleClock.status === "setup" && setupWeaponBearerGroups.length > 0 && (
               <div className="action-tracker" aria-labelledby="weapon-bearer-heading">
                 <strong id="weapon-bearer-heading">Confirm optional weapon bearers</strong>
@@ -10300,20 +10884,34 @@ export default function PlayMode() {
                               type="button"
                               disabled={battleClock.status !== "active"}
                               onClick={() =>
-                                recordScore(player.id, 5, "primary", "Manual primary score")
+                                recordScore(
+                                  player.id,
+                                  5,
+                                  "primary",
+                                  sourceLockedMissionTracking
+                                    ? "Reviewed physical Primary Mission condition"
+                                    : "Manual primary score",
+                                )
                               }
                             >
                               +5 primary
                             </button>
-                            <button
-                              type="button"
-                              disabled={battleClock.status !== "active" || !victoryPoints?.value}
-                              onClick={() =>
-                                recordScore(player.id, -1, "correction", "Manual score correction")
-                              }
-                            >
-                              Correct −1
-                            </button>
+                            {!sourceLockedMissionTracking && (
+                              <button
+                                type="button"
+                                disabled={battleClock.status !== "active" || !victoryPoints?.value}
+                                onClick={() =>
+                                  recordScore(
+                                    player.id,
+                                    -1,
+                                    "correction",
+                                    "Manual score correction",
+                                  )
+                                }
+                              >
+                                Correct −1
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -10325,19 +10923,25 @@ export default function PlayMode() {
                           aria-label={`${player.name} score points`}
                           name="score-points"
                           type="number"
-                          min="-1000"
+                          min={sourceLockedMissionTracking ? "1" : "-1000"}
                           max="1000"
                           placeholder="VP"
                         />
                         <select
                           aria-label={`${player.name} score category`}
                           name="score-category"
-                          defaultValue="secondary"
+                          defaultValue={sourceLockedMissionTracking ? "primary" : "secondary"}
                         >
                           <option value="primary">Primary</option>
-                          <option value="secondary">Secondary</option>
-                          <option value="other">Other</option>
-                          <option value="correction">Correction</option>
+                          {sourceLockedMissionTracking ? (
+                            <option value="battle_ready">Battle Ready</option>
+                          ) : (
+                            <>
+                              <option value="secondary">Secondary</option>
+                              <option value="other">Other</option>
+                              <option value="correction">Correction</option>
+                            </>
+                          )}
                         </select>
                         <input
                           aria-label={`${player.name} score reason`}
