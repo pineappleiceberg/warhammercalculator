@@ -846,6 +846,18 @@ WebAssembly, JavaScript replay, API, and full-game regression tests. Imported
 version-44 histories retain their already-recorded reversed result behind an
 explicit migration boundary and the API labels that legacy comparison mode;
 all newly recorded version-45 tests use the corrected rule.
+Version 46 makes the ordinary Battle-shock step executable. At the active
+player's Battle-shock step, every living unit on the battlefield that is Below
+Half-strength must resolve a cryptographically random test before play can
+continue. Replay derives Starting Strength and current strength for ordinary,
+single-model, and Attached units, uses the best Leadership among surviving
+models, applies the source-locked Tyranids Synapse 3D6 replacement, and treats
+equality as a pass. Guided Play shows each mandatory roll and the public replay
+API independently checks the same transition through the ACSL-specified
+C/WebAssembly predicate. Version-45 and older histories retain an explicit
+migration boundary and receive no invented tests. Battle-shocked Objective
+Control and Stratagem restrictions remain executable; mandatory Desperate
+Escape tests when a Battle-shocked unit Falls Back are the next open consequence.
 Version-25
 games migrate without invented terrain footprints, version-26 games migrate
 without invented deployment positions, and version-27 games migrate without
@@ -1197,6 +1209,7 @@ cd web
 node scripts/generate-golden-battle-replays.mjs
 npm run test:fixtures
 ```
+
 On narrow screens, Play Mode groups the attacker and target into guided steps,
 collapses optional overrides, and keeps the resolve action above the device safe
 area. Selects and action controls use touch-sized targets. Battle status and the
@@ -1509,17 +1522,17 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 
 ## Prioritized correctness backlog
 
-1. Make the ordinary Command-phase Battle-shock step executable, including
-   Below Half-strength for single-model, ordinary, and Attached units; best
-   surviving Leadership; Synapse dice; expiration at the start of the owning
-   Command phase; and the complete OC, Fall Back, and Stratagem consequences.
-   Lock both passing equality and failure into native, Wasm, API, migration,
-   and full-game tests.
-2. Add reviewed curved movement-surface primitives only when panels and simple
+1. Make Battle-shocked Fall Back fully executable with mandatory Desperate
+   Escape tests, exact model destruction, Character/Monster/Vehicle dice, and
+   source-locked native, Wasm, API, migration, and full-game tests.
+2. Split surviving Leader and Bodyguard units into independent live formations
+   when an Attached unit separates so Battle-shock and every later action can
+   apply independently to each resulting unit.
+3. Add reviewed curved movement-surface primitives only when panels and simple
    polygon solids cannot represent a supported physical terrain set exactly.
-3. Source-lock another high-impact faction or detachment transition and extend
+4. Source-lock another high-impact faction or detachment transition and extend
    the full-game corpus across every supported faction and mission.
-4. Add deterministic automated policies and calibrated batch battle simulation
+5. Add deterministic automated policies and calibrated batch battle simulation
    after the guided replay corpus closes the same mandatory rule boundaries.
 
 ## Current boundaries

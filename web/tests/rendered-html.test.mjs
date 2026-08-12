@@ -319,7 +319,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const coverage = (await coverageResponse.json()).data;
   assert.equal(
     coverage.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v45",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v46",
   );
   assert.equal(coverage.sourceLocked, true);
   assert.equal(coverage.rules.length, coveredRuleCoverageMatrix.rules.length);
@@ -2921,6 +2921,7 @@ test("replays the complete source-locked golden battle through the public API an
   assert.deepEqual(result.data.health, completeGoldenBattleReplay.expected.formations[1].health);
   assert.equal(result.data.scoringEvents.length, 20);
   assert.equal(result.data.deployment.complete, true);
+  assert.deepEqual(result.data.commandBattleShock, []);
 });
 
 test("replays Shadow in the Warp through the public API and C/Wasm predicate", async () => {
@@ -2993,6 +2994,16 @@ test("replays the action-heavy golden battle and casualties through the public A
     );
     assert.equal(result.data.missionTracking.categoryPoints["player-1"].secondary, 5);
     assert.equal(result.data.factionRules.reanimationProtocols.length, 5);
+    assert.equal(result.data.commandBattleShock.length, 5);
+    assert.equal(
+      result.data.commandBattleShock.every(
+        (resolution) =>
+          resolution.dice.length === 2 &&
+          resolution.dice.every((die) => die === 6) &&
+          resolution.failed === false,
+      ),
+      true,
+    );
     assert.equal(
       result.data.factionRules.reanimationProtocols.reduce(
         (total, activation) => total + activation.woundsResolved,

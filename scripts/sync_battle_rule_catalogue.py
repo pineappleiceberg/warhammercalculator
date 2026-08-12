@@ -66,6 +66,7 @@ GENERATED_PREFIXES = (
     "faction.reanimation-protocols",
     "faction.shadow-in-the-warp",
     "faction.synapse-battle-shock",
+    "core.command-battle-shock",
 )
 
 
@@ -152,6 +153,20 @@ def tyranids_battle_shock_rule(rule_id, name):
     }
 
 
+def command_battle_shock_rule():
+    return {
+        "id": "core.command-battle-shock",
+        "category": "core",
+        "name": "Command-phase Battle-shock",
+        "status": "executable",
+        "introducedBattleStateVersion": 46,
+        "sources": [
+            {"id": "core-rules-10e", "pages": [11, 12]},
+            {"id": "core-rules-updates-10e-2025-10", "pages": [1, 9, 18]},
+        ],
+    }
+
+
 def generated_pdf_rule(category, source_id, name, pages):
     return {
         "id": f"{category}.catalogue-{token(source_id)}",
@@ -185,6 +200,26 @@ def expected_documents():
     )
     if battle_shock_comparator_source not in core_source["usedFor"]:
         core_source["usedFor"].append(battle_shock_comparator_source)
+    command_battle_shock_source = (
+        "mandatory Command-phase Battle-shock tests for Below Half-strength single-model, "
+        "ordinary, and Attached units using the best surviving Leadership characteristic"
+    )
+    if command_battle_shock_source not in core_source["usedFor"]:
+        core_source["usedFor"].append(command_battle_shock_source)
+
+    updates_source = next(
+        (entry for entry in sources["sources"] if entry["id"] == "core-rules-updates-10e-2025-10"),
+        None,
+    )
+    if updates_source is None:
+        raise ValueError("Core Rules Updates source lock is missing")
+    updates_source["pages"] = sorted(set(updates_source["pages"]) | {1, 9, 18})
+    command_battle_shock_updates_source = (
+        "Command Battle-shock duplicate-test boundary, Attached-unit split, and duration until "
+        "the start of the owning player's next Command phase"
+    )
+    if command_battle_shock_updates_source not in updates_source["usedFor"]:
+        updates_source["usedFor"].append(command_battle_shock_updates_source)
 
     factions = sorted(profiles.get("factions", []), key=lambda entry: entry["id"])
     detachments = sorted(profiles.get("detachments", []), key=lambda entry: entry["id"])
@@ -338,7 +373,7 @@ def expected_documents():
     sources["sources"].append(tyranids_source_entry)
 
     coverage["snapshotId"] = (
-        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v45"
+        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v46"
     )
     coverage["sourceLocks"] = [
         lock for lock in coverage["sourceLocks"] if lock["id"] != SOURCE_ID
@@ -378,6 +413,7 @@ def expected_documents():
     coverage["rules"].append(
         tyranids_battle_shock_rule("faction.synapse-battle-shock", "Synapse Battle-shock")
     )
+    coverage["rules"].append(command_battle_shock_rule())
     coverage["rules"].extend(
         generated_rule("detachment", entry["id"], entry["name"]) for entry in detachments
     )

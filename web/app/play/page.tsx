@@ -89,6 +89,7 @@ import {
   resolveGoToGround,
   resolveRapidIngress,
   resolveReanimationWound,
+  resolveCommandBattleShockTest,
   resolveShadowInTheWarpTest,
   resolveSmokescreen,
   resolveCounterOffensive,
@@ -4708,6 +4709,44 @@ export default function PlayMode() {
     }
   };
 
+  const rollCommandBattleShockTest = (unitKey: string) => {
+    if (!battleState) return;
+    try {
+      const pending = replayBattleState(battleState).pendingCommandBattleShock;
+      const target = pending.find(
+        (candidate: { unitKey: string }) => candidate.unitKey === unitKey,
+      );
+      if (!target) throw new Error("That unit has no pending Command Battle-shock test");
+      const review =
+        target.synapseWithin === null
+          ? {
+              synapseWithin: window.confirm(
+                "Is this unit within 6 inches of a friendly SYNAPSE model?",
+              ),
+              reason:
+                window.prompt(
+                  "Why was Synapse proximity reviewed manually?",
+                  "Measured on table",
+                ) ?? "",
+            }
+          : {};
+      const next = resolveCommandBattleShockTest(
+        battleState,
+        unitKey,
+        review,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      const result = replayBattleState(next).commandBattleShockResolutions.at(-1);
+      setStatus(
+        `${target.name} rolled ${result.dice.join(" + ")} against Leadership ${result.leadership}: ${result.failed ? "Battle-shocked" : "passed"}`,
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Battle-shock test could not resolve");
+    }
+  };
+
   const recordSelectedMovement = (movement: "stationary" | "normal" | "advance" | "fall_back") => {
     if (!battleState || !attackerBattleFormationId) return;
     try {
@@ -7826,6 +7865,36 @@ export default function PlayMode() {
                       <span key={player.id}>Waaagh! spent · {player.name}</span>
                     );
                   })}
+                  {replayedBattle.pendingCommandBattleShock.length > 0 && (
+                    <div className="battle-log-actions">
+                      <strong>
+                        Command Battle-shock · {replayedBattle.pendingCommandBattleShock.length}{" "}
+                        test
+                        {replayedBattle.pendingCommandBattleShock.length === 1 ? "" : "s"} remaining
+                      </strong>
+                      {replayedBattle.pendingCommandBattleShock.map(
+                        (target: {
+                          unitKey: string;
+                          name: string;
+                          diceCount: number;
+                          leadership: number;
+                          currentStrength: number;
+                          startingStrength: number;
+                        }) => (
+                          <button
+                            key={target.unitKey}
+                            type="button"
+                            onClick={() => rollCommandBattleShockTest(target.unitKey)}
+                          >
+                            Roll · {target.name} · {target.currentStrength}/
+                            {target.startingStrength}
+                            {" · "}
+                            {target.diceCount}D6 vs Ld {target.leadership}
+                          </button>
+                        ),
+                      )}
+                    </div>
+                  )}
                   {battleState.players.map((player) => {
                     const oath = battleOathOfMomentState(battleState, player.id, replayedBattle);
                     if (!oath.sourceLocked) return null;
@@ -8008,6 +8077,7 @@ export default function PlayMode() {
                       Boolean(pendingRapidIngress) ||
                       Boolean(pendingCounterOffensive) ||
                       Boolean(replayedBattle.pendingShadowInTheWarp) ||
+                      replayedBattle.pendingCommandBattleShock.length > 0 ||
                       battleState.players.some(
                         (player) =>
                           battleGrimResolveState(battleState, player.id, replayedBattle).available,

@@ -27,10 +27,10 @@
     }
   ],
   "sourceManifestVersion": 1,
-  "stateDigest": "71ed6e26fc336f76409b5e2795bcd3052471795f6e7599bb1136a36332475dbd",
-  "expectedDigest": "effc6d923cea91f86957ccabf48c96e129c48a03eb05822e0b029b112e0d6ffe",
+  "stateDigest": "ff50946524e6cdfa66eab6382a47307a998f18a1791c01928e9a288dd93b2cc4",
+  "expectedDigest": "3212832669c703d9c8a2900868cfc95b82214738f037af699c4b34e7b49743ff",
   "expected": {
-    "stateVersion": 45,
+    "stateVersion": 46,
     "eventCount": 228,
     "eventTypeCounts": {
       "activation_completed": 1,
@@ -331,10 +331,10 @@
     ]
   },
   "state": {
-    "version": 45,
+    "version": 46,
     "id": "golden-attached-aeldari-vs-orks-v1",
     "createdAt": 0,
-    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:45",
+    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:46",
     "players": [
       {
         "id": "player-1",
@@ -1336,7 +1336,7 @@
         "type": "rule_coverage_configured",
         "coverage": {
           "schemaVersion": 1,
-          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v45",
+          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v46",
           "sourceLocks": [
             {
               "id": "core-rules-10e",
@@ -1375,7 +1375,8 @@
                 "core.ranged-target-declarations",
                 "core.charge-resolution",
                 "core.fight-movement",
-                "core.hazardous"
+                "core.hazardous",
+                "core.command-battle-shock"
               ],
               "stratagemRuleIds": [
                 "stratagem.heroic-intervention",
@@ -1473,7 +1474,7 @@
             }
           },
           "report": {
-            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v45",
+            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v46",
             "permitted": true,
             "results": [
               {
@@ -1568,6 +1569,17 @@
                 "id": "core.hazardous",
                 "category": "core",
                 "name": "Hazardous tests and self-damage",
+                "status": "executable",
+                "sourceLocked": true,
+                "acknowledgementRequired": false,
+                "acknowledged": false,
+                "permitted": true,
+                "reason": "covered"
+              },
+              {
+                "id": "core.command-battle-shock",
+                "category": "core",
+                "name": "Command-phase Battle-shock",
                 "status": "executable",
                 "sourceLocked": true,
                 "acknowledgementRequired": false,
@@ -2252,7 +2264,7 @@
               "role": "leader",
               "keywords": ["asuryani", "infantry", "character", "aeldari", "psyker", "farseer"],
               "wounds": 4,
-              "leadership": 7,
+              "leadership": 6,
               "objectiveControl": 1,
               "feelNoPain": 0,
               "startingModels": 1,
@@ -2695,7 +2707,7 @@
               "role": "leader",
               "keywords": ["asuryani", "infantry", "character", "aeldari", "psyker", "farseer"],
               "wounds": 4,
-              "leadership": 7,
+              "leadership": 6,
               "objectiveControl": 1,
               "feelNoPain": 0,
               "startingModels": 1,
@@ -3136,7 +3148,7 @@
               "role": "leader",
               "keywords": ["orks", "character", "grenades", "infantry", "warboss"],
               "wounds": 6,
-              "leadership": 7,
+              "leadership": 6,
               "objectiveControl": 1,
               "feelNoPain": 0,
               "startingModels": 1,
@@ -3497,7 +3509,7 @@
               "role": "leader",
               "keywords": ["orks", "character", "grenades", "infantry", "warboss"],
               "wounds": 6,
-              "leadership": 7,
+              "leadership": 6,
               "objectiveControl": 1,
               "feelNoPain": 0,
               "startingModels": 1,
@@ -3858,7 +3870,7 @@
               "role": "leader",
               "keywords": ["orks", "character", "grenades", "infantry", "warboss"],
               "wounds": 6,
-              "leadership": 7,
+              "leadership": 6,
               "objectiveControl": 1,
               "feelNoPain": 0,
               "startingModels": 1,
@@ -4237,7 +4249,7 @@
               "role": "leader",
               "keywords": ["orks", "character", "grenades", "infantry", "warboss"],
               "wounds": 6,
-              "leadership": 7,
+              "leadership": 6,
               "objectiveControl": 1,
               "feelNoPain": 0,
               "startingModels": 1,

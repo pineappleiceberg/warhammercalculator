@@ -43,6 +43,7 @@ import {
   recordRangedTargetEligibility,
   replayBattleState,
   resolveGoToGround,
+  resolveCommandBattleShockTest,
   resolveReanimationWound,
   resolveShadowInTheWarpTest,
   resolveMissionAction,
@@ -866,8 +867,30 @@ function resolveMandatoryReanimationProtocols(state, prefix) {
   }
 }
 
+function resolveMandatoryCommandBattleShock(state, prefix) {
+  let next = state;
+  while (true) {
+    const pending = replayBattleState(next).pendingCommandBattleShock[0];
+    if (!pending) return next;
+    next = resolveCommandBattleShockTest(
+      next,
+      pending.unitKey,
+      pending.synapseWithin === null
+        ? {
+            synapseWithin: false,
+            reason: "Golden replay reviewed the nearest friendly Synapse boundary",
+          }
+        : {},
+      `${prefix}-command-battle-shock-${next.events.length + 1}`,
+      next.events.length + 1,
+      () => 5,
+    );
+  }
+}
+
 function advanceFixtureClock(state, id) {
-  const prepared = resolveMandatoryReanimationProtocols(state, id);
+  const reanimated = resolveMandatoryReanimationProtocols(state, id);
+  const prepared = resolveMandatoryCommandBattleShock(reanimated, id);
   return advanceBattleClock(prepared, id, prepared.events.length + 1);
 }
 

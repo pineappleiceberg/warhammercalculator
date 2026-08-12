@@ -66,6 +66,7 @@ import {
   resolveGoToGround,
   resolveRapidIngress,
   resolveReanimationWound,
+  resolveCommandBattleShockTest,
   resolveShadowInTheWarpTest,
   resolveSmokescreen,
   resolveHeroicIntervention,
@@ -85,6 +86,7 @@ import {
   startFireOverwatch,
   startFormationMovement,
   startFormationActivation,
+  commandBattleShockTestIsValid,
 } from "../lib/battle-state.mjs";
 import { battleAttackWindow } from "../lib/battle-clock.mjs";
 import { applyFireOverwatchAttackRules } from "../lib/fire-overwatch.mjs";
@@ -1237,7 +1239,7 @@ test("pins the official battle-state rules source", () => {
     (source) => source.id === "core-rules-updates-10e-2025-10",
   );
   assert.ok(updates);
-  assert.deepEqual(updates.pages, [7, 8, 10, 12, 14, 18, 21, 22, 25, 26]);
+  assert.deepEqual(updates.pages, [1, 7, 8, 9, 10, 12, 14, 18, 21, 22, 25, 26]);
   assert.equal(updates.sha256, "27960a4d4affecd450af69c54d7583bcc2941b00ba5845f5786a630bdec7f4ba");
   assert.equal(
     updates.usedFor.some((usage) => /Heroic Intervention/i.test(usage)),
@@ -4507,6 +4509,132 @@ test("unleashes source-locked Shadow in the Warp in either Command phase with au
   legacyResolution.dice = [6, 5];
   legacyResolution.failed = true;
   assert.equal(replayBattleState(legacy).shadowInTheWarpResolutions[0].failed, true);
+});
+
+test("requires canonical Command Battle-shock tests for an attached unit Below Half-strength", () => {
+  const attached = {
+    ...formation,
+    name: "Large Bodyguard + Leader",
+    weaponInventory: [],
+    segments: [
+      { ...formation.segments[0], startingModels: 4, leadership: 8 },
+      { ...formation.segments[1], leadership: 6 },
+    ],
+  };
+  let state = registeredBattle(newBattle(), attached);
+  state = recordVisibleRangedTarget(state, attackerFormation.id, attached.id, {
+    weaponId: "cannon",
+  });
+  state = appendResolvedAttack(state, {
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Target is visible and in range",
+    targetEligibilityEventId: state.events.at(-1).id,
+    weaponId: "cannon",
+    declaredWeaponCount: 1,
+    weaponSourceFormationId: attackerFormation.id,
+    sourceSavedUnitId: "unit-1",
+    weaponGroupId: "test-ranged-group",
+    id: "command-battleshock-damage",
+    at: state.events.length + 1,
+    attackerFormationId: attackerFormation.id,
+    targetFormationId: attached.id,
+    segmentIds: ["bodyguard", "leader"],
+    targets: [
+      { wounds: 3, modelCount: 4 },
+      { wounds: 5, modelCount: 1 },
+    ],
+    initialWoundsLost: 0,
+    result: { appliedDamage: 9, modelsDestroyed: 3 },
+    summary: {
+      attacker: attackerFormation.name,
+      weapon: "Cannon",
+      target: attached.name,
+      damage: 9,
+      successful: 3,
+    },
+  });
+  state = completeFormationActivation(
+    state,
+    "complete-command-battleshock-attacker",
+    state.events.length + 1,
+  );
+  state = advanceTo(
+    state,
+    (clock) =>
+      clock.activePlayerId === "player-2" &&
+      clock.phase === "command" &&
+      clock.step === "battle_shock",
+    "to-command-battleshock",
+  );
+  const pending = replayBattleState(state).pendingCommandBattleShock;
+  assert.equal(pending.length, 1);
+  assert.deepEqual(
+    {
+      unitKey: pending[0].unitKey,
+      startingStrength: pending[0].startingStrength,
+      currentStrength: pending[0].currentStrength,
+      leadership: pending[0].leadership,
+      diceCount: pending[0].diceCount,
+    },
+    {
+      unitKey: `${attached.id}:attached`,
+      startingStrength: 5,
+      currentStrength: 2,
+      leadership: 6,
+      diceCount: 2,
+    },
+  );
+  assert.throws(
+    () => advanceBattleClock(state, "skip-command-battleshock", state.events.length + 1),
+    /Resolve every required Command Battle-shock test/i,
+  );
+
+  const failedState = resolveCommandBattleShockTest(
+    state,
+    pending[0].unitKey,
+    {},
+    "fail-command-battleshock",
+    state.events.length + 1,
+    () => 0,
+  );
+  const failedReplay = replayBattleState(failedState);
+  assert.deepEqual(failedReplay.commandBattleShockResolutions.at(-1).dice, [1, 1]);
+  assert.equal(failedReplay.commandBattleShockResolutions.at(-1).failed, true);
+  assert.equal(failedReplay.battleShockedFormations.has(attached.id), true);
+
+  const passedState = resolveCommandBattleShockTest(
+    state,
+    pending[0].unitKey,
+    {},
+    "pass-command-battleshock",
+    state.events.length + 1,
+    (() => {
+      const values = [1, 3];
+      return () => values.shift();
+    })(),
+  );
+  const passedReplay = replayBattleState(passedState);
+  assert.deepEqual(passedReplay.commandBattleShockResolutions.at(-1).dice, [2, 4]);
+  assert.equal(passedReplay.commandBattleShockResolutions.at(-1).failed, false);
+  assert.equal(passedReplay.battleShockedFormations.has(attached.id), false);
+  assert.doesNotThrow(() =>
+    advanceBattleClock(passedState, "leave-command-battleshock", passedState.events.length + 1),
+  );
+
+  const tampered = structuredClone(failedState);
+  tampered.events.at(-1).failed = false;
+  assert.throws(() => replayBattleState(tampered), /not canonical/i);
+  const tamperedProvenance = structuredClone(failedState);
+  tamperedProvenance.events.at(-1).synapseProximity.source = "geometry";
+  assert.throws(() => replayBattleState(tamperedProvenance), /proximity is not canonical/i);
+});
+
+test("validates Below Half-strength boundaries and Synapse dice in both runtimes", () => {
+  assert.equal(commandBattleShockTestIsValid(1, 1, 10, 5, 0, 0, 0, 0, 2, 7, 7, 0), false);
+  assert.equal(commandBattleShockTestIsValid(1, 1, 10, 4, 0, 0, 0, 0, 2, 7, 7, 0), true);
+  assert.equal(commandBattleShockTestIsValid(1, 1, 1, 1, 12, 6, 0, 0, 2, 7, 7, 0), false);
+  assert.equal(commandBattleShockTestIsValid(1, 1, 1, 1, 12, 5, 1, 1, 3, 6, 7, 1), true);
 });
 
 test("resolves Counter-offensive atomically and forces its formation to fight next", () => {

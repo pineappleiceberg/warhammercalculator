@@ -82,7 +82,8 @@
         "Smokescreen timing after target selection, Smoke target, 1CP cost, Benefit of Cover, Stealth, and phase duration",
         "Rapid Ingress timing at the end of the opponent's Movement phase, Reserve target, 1CP cost, normal battle-round eligibility, Reinforcements-step arrival, and Strategic Reserves placement",
         "Benefit of Cover save modifier at attack allocation for each target model, AP 0 restriction for 3+ or better saves, non-cumulative effect, and Ignores Cover interaction",
-        "Battle-shock tests pass when the adjusted 2D6 result is greater than or equal to the best Leadership characteristic and fail otherwise"
+        "Battle-shock tests pass when the adjusted 2D6 result is greater than or equal to the best Leadership characteristic and fail otherwise",
+        "mandatory Command-phase Battle-shock tests for Below Half-strength single-model, ordinary, and Attached units using the best surviving Leadership characteristic"
       ]
     },
     {
@@ -94,8 +95,10 @@
       "retrievedAt": "2026-08-10",
       "sha256": "27960a4d4affecd450af69c54d7583bcc2941b00ba5845f5786a630bdec7f4ba",
       "pages": [
+        1,
         7,
         8,
+        9,
         10,
         12,
         14,
@@ -112,7 +115,8 @@
         "Benefit of Cover granted by a rule even when the affected unit is not within terrain",
         "duplicated Stealth abilities are not cumulative",
         "Fly movement through the air across the complete base or hull path, including vertical distance, whole-base clearance over uneven terrain, and ending with the model flat and in coherency",
-        "Rapid Ingress Deep Strike permission for complete Deep Strike units, first-round out-of-phase eligibility, the prohibition on passengers disembarking that phase, and the large-model Strategic Reserves own-edge exception with its turn-long action restriction"
+        "Rapid Ingress Deep Strike permission for complete Deep Strike units, first-round out-of-phase eligibility, the prohibition on passengers disembarking that phase, and the large-model Strategic Reserves own-edge exception with its turn-long action restriction",
+        "Command Battle-shock duplicate-test boundary, Attached-unit split, and duration until the start of the owning player's next Command phase"
       ]
     },
     {
