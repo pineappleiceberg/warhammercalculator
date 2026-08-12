@@ -4212,6 +4212,37 @@ test("migrates version-36 paths without inventing terrain movement geometry", ()
   assert.ok(facts.unavailableReasons.includes("legacy_terrain_clearance_unavailable"));
 });
 
+test("migrates version-38 mission tracking without inventing concave terrain", () => {
+  const current = exactMissionSetup("version-38-simple-terrain", attackers, defenders, false);
+  const versionThirtyEight = {
+    ...current,
+    version: 38,
+    migration: undefined,
+  };
+  const migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: normalizeBattleState(versionThirtyEight),
+    id: versionThirtyEight.id,
+  });
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 38);
+  assert.equal(migrated.migration.legacyMissionTrackingThroughSequence, 0);
+  assert.equal(
+    migrated.events.some((event) =>
+      event.terrainVisibility?.sections?.some((section) =>
+        section.surfaces?.some((surface) => surface.geometryMode === "simple_polygon"),
+      ),
+    ),
+    false,
+  );
+});
+
 test("marks exact geometry stale when casualties change live model identities and clears on undo", () => {
   let legacy = exactMissionSetup("version-28-casualty-geometry", attackers, defenders, false);
   legacy = configureBattleTableGeometry(

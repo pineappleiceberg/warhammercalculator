@@ -75,6 +75,93 @@ function pointInsideConvex(point, vertices) {
   );
 }
 
+function pointOnSegment(point, start, end) {
+  return (
+    Math.abs(cross(subtract(end, start), subtract(point, start))) <= EPSILON &&
+    point.x >= Math.min(start.x, end.x) - EPSILON &&
+    point.x <= Math.max(start.x, end.x) + EPSILON &&
+    point.y >= Math.min(start.y, end.y) - EPSILON &&
+    point.y <= Math.max(start.y, end.y) + EPSILON
+  );
+}
+
+function pointInsideSimple(point, vertices) {
+  let inside = false;
+  for (let index = 0; index < vertices.length; index += 1) {
+    const start = vertices[index];
+    const end = vertices[(index + 1) % vertices.length];
+    if (pointOnSegment(point, start, end)) return true;
+    if (
+      start.y > point.y !== end.y > point.y &&
+      point.x < ((end.x - start.x) * (point.y - start.y)) / (end.y - start.y) + start.x
+    ) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function segmentBoundaryParameters(start, end, vertices) {
+  const direction = subtract(end, start);
+  const parameters = [0, 1];
+  for (let index = 0; index < vertices.length; index += 1) {
+    const boundaryStart = vertices[index];
+    const boundaryDirection = subtract(vertices[(index + 1) % vertices.length], boundaryStart);
+    const denominator = cross(direction, boundaryDirection);
+    if (Math.abs(denominator) <= EPSILON) continue;
+    const offset = subtract(boundaryStart, start);
+    const parameter = cross(offset, boundaryDirection) / denominator;
+    const boundaryParameter = cross(offset, direction) / denominator;
+    if (
+      parameter > EPSILON &&
+      parameter < 1 - EPSILON &&
+      boundaryParameter >= -EPSILON &&
+      boundaryParameter <= 1 + EPSILON
+    ) {
+      parameters.push(parameter);
+    }
+  }
+  return [...new Set(parameters)].sort((left, right) => left - right);
+}
+
+function triangulateSimplePolygon(vertices) {
+  if (vertices.length === 3) return [[...vertices]];
+  const remaining = vertices.map((_, index) => index);
+  const triangles = [];
+  while (remaining.length > 3) {
+    let earIndex = -1;
+    for (let index = 0; index < remaining.length; index += 1) {
+      const previous = remaining[(index + remaining.length - 1) % remaining.length];
+      const current = remaining[index];
+      const next = remaining[(index + 1) % remaining.length];
+      const triangle = [vertices[previous], vertices[current], vertices[next]];
+      if (
+        cross(subtract(triangle[1], triangle[0]), subtract(triangle[2], triangle[1])) <= EPSILON
+      ) {
+        continue;
+      }
+      if (
+        remaining.some(
+          (candidate) =>
+            candidate !== previous &&
+            candidate !== current &&
+            candidate !== next &&
+            pointInsideConvex(vertices[candidate], triangle),
+        )
+      ) {
+        continue;
+      }
+      earIndex = index;
+      triangles.push(triangle);
+      break;
+    }
+    if (earIndex < 0) return [];
+    remaining.splice(earIndex, 1);
+  }
+  triangles.push(remaining.map((index) => vertices[index]));
+  return triangles;
+}
+
 function pointSegmentDistance(point, start, end) {
   const direction = subtract(end, start);
   const lengthSquared = dot(direction, direction);
@@ -229,6 +316,18 @@ function obstacleInterval(model, startPoint, endPoint, obstacleVertices) {
     return { x: local.x / geometry.radiusX, y: local.y / geometry.radiusY };
   };
   return roundedObstacleInterval(normalize(start), normalize(end), obstacleVertices.map(normalize));
+}
+
+function surfaceObstacleIntervals(model, startPoint, endPoint, surface) {
+  const vertices = surface.vertices.map((vertex) => ({
+    x: vertex.xThousandths,
+    y: vertex.yThousandths,
+  }));
+  const pieces =
+    surface.geometryMode === "simple_polygon" ? triangulateSimplePolygon(vertices) : [vertices];
+  return pieces
+    .map((piece) => obstacleInterval(model, startPoint, endPoint, piece))
+    .filter(Boolean);
 }
 
 function modelVerticalInterval(model, startPoint, endPoint, parameter) {
@@ -419,14 +518,56 @@ function footprintWhollyInsideSurface(model, point, surface) {
     x: vertex.xThousandths,
     y: vertex.yThousandths,
   }));
-  return vertices.every((vertex, index) => {
-    const edge = subtract(vertices[(index + 1) % vertices.length], vertex);
-    const inward = { x: -edge.y, y: edge.x };
+  if (surface.geometryMode !== "simple_polygon") {
+    return vertices.every((vertex, index) => {
+      const edge = subtract(vertices[(index + 1) % vertices.length], vertex);
+      const inward = { x: -edge.y, y: edge.x };
+      return (
+        dot(subtract(geometry.center, vertex), inward) + EPSILON >=
+        supportRadius(geometry, { x: -inward.x, y: -inward.y })
+      );
+    });
+  }
+  if (geometry.type === "ellipse") {
+    const normalizedVertices = vertices.map((vertex) => {
+      const local = rotate(
+        vertex.x - geometry.center.x,
+        vertex.y - geometry.center.y,
+        -geometry.rotationMilliDegrees,
+      );
+      return { x: local.x / geometry.radiusX, y: local.y / geometry.radiusY };
+    });
+    const origin = { x: 0, y: 0 };
     return (
-      dot(subtract(geometry.center, vertex), inward) + EPSILON >=
-      supportRadius(geometry, { x: -inward.x, y: -inward.y })
+      pointInsideSimple(origin, normalizedVertices) &&
+      normalizedVertices.every(
+        (vertex, index) =>
+          pointSegmentDistance(
+            origin,
+            vertex,
+            normalizedVertices[(index + 1) % normalizedVertices.length],
+          ) >=
+          1 - EPSILON,
+      )
     );
-  });
+  }
+  const modelVertices = geometry.offsets.map((offset) => ({
+    x: geometry.center.x + offset.x,
+    y: geometry.center.y + offset.y,
+  }));
+  if (!modelVertices.every((vertex) => pointInsideSimple(vertex, vertices))) return false;
+  for (let modelIndex = 0; modelIndex < modelVertices.length; modelIndex += 1) {
+    const modelStart = modelVertices[modelIndex];
+    const modelEnd = modelVertices[(modelIndex + 1) % modelVertices.length];
+    const parameters = segmentBoundaryParameters(modelStart, modelEnd, vertices);
+    const samples = parameters
+      .slice(1)
+      .map((parameter, index) =>
+        interpolate(modelStart, modelEnd, (parameters[index] + parameter) / 2),
+      );
+    if (samples.some((sample) => !pointInsideSimple(sample, vertices))) return false;
+  }
+  return true;
 }
 
 function pointInTerrainFootprint(point, footprint) {
@@ -594,16 +735,12 @@ export function deriveTerrainClearanceFacts({
           }
         }
         for (const surface of section.surfaces ?? []) {
-          const interval = obstacleInterval(
-            model,
-            collisionStart,
-            endPoint,
-            surface.vertices.map((vertex) => ({
-              x: vertex.xThousandths,
-              y: vertex.yThousandths,
-            })),
-          );
-          if (interval && surfaceBlocks(model, collisionStart, endPoint, surface, interval)) {
+          const intervals = surfaceObstacleIntervals(model, collisionStart, endPoint, surface);
+          if (
+            intervals.some((interval) =>
+              surfaceBlocks(model, collisionStart, endPoint, surface, interval),
+            )
+          ) {
             collisions.push({
               formationId: formation?.id ?? "",
               modelId: model.modelId,

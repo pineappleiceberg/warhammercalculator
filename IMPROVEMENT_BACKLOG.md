@@ -27,15 +27,25 @@ state.
 
 ## Prioritized backlog
 
-1. Expand reviewed terrain beyond convex footprints, panels, openings, and
-   elevated surfaces where a supported layout needs concave or curved movement
-   geometry.
-2. Add a reviewed geometry-inspection view that shows the model envelope, path
+1. Add a reviewed geometry-inspection view that shows the model envelope, path
    segment, terrain solid, and reason behind every clearance proof or fallback.
+2. Add reviewed curved surface primitives when a supported physical terrain set
+   cannot be represented exactly by panels and simple polygon solids.
 3. Deliver full guided-game replay scenarios before adding deterministic
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-12: Advanced reviewed terrain movement to battle-state version 39.
+  Elevated floors, ceilings, and overhangs can now use either legacy convex
+  polygons or reviewed three-to-thirty-two-vertex simple counter-clockwise
+  polygons. Concave solids are validated against duplicate, collinear,
+  out-of-frame, clockwise, and self-intersecting boundaries, decomposed into
+  exact convex pieces for swept whole-model collision, and tested against their
+  true boundary for full-base elevated support so cut-outs are never filled by
+  a convex hull. Guided Play, replay migration, native C, WebAssembly, and an
+  ACSL-specified cross-surface validator share regression and differential
+  coverage. Curved primitives remain reviewed until their geometry is explicit.
 
 - 2026-08-12: Advanced source-locked Chapter Approved play to battle-state
   version 38. Both players now lock Fixed or Tactical Secondary Mission plans

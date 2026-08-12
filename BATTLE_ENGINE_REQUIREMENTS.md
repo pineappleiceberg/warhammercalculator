@@ -143,7 +143,7 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    exact 20 A-T mission combinations, eight terrain layouts, and their allowed
    pairings. Next replace guided mission scoring and physical terrain boundaries
    with executable handlers as their state becomes representable.
-7. **In progress:** version 37 records the canonical 60-by-44-inch battlefield,
+7. **In progress:** version 39 records the canonical 60-by-44-inch battlefield,
    exact mission/layout binding, objective centres, official terrain-section
    inventory, twelve rotated and non-overlapping area-terrain outlines,
    single/separate section grouping, stable coordinate origin, review method,
@@ -169,10 +169,13 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    and model/objective endpoint overlap is executable across every recorded
    placement and movement snapshot. Complete-path terrain movement is also
    executable when every section has reviewed movement semantics and measured
-   panels, openings, and convex elevated solids: replay checks deployment
+   panels, openings, and convex or concave simple-polygon elevated solids: replay checks deployment
    endpoints, whole-model wall crossings, climbing height, overhangs, supported
    endpoints, and Ruins keyword restrictions. Missing geometry, unsupported pivots, and legacy paths
-   stay explicit reviewed fallbacks. Next execute source-locked mission scoring.
+   stay explicit reviewed fallbacks. Source-locked Chapter Approved scoring,
+   Secondary plans, Tactical card lifecycle, New Orders, and universal Actions
+   are executable; individual physical card conditions remain reason-backed
+   player input because their card text is unavailable.
 8. Deliver the complete guided battle workflow and full-game replay corpus.
 9. Add deterministic automated policies, batch battle simulation, and calibrated
    matchup reporting.

@@ -672,6 +672,120 @@ bool whc_convex_silhouette_is_valid(const int32_t *vertices, uint32_t vertex_cou
     return true;
 }
 
+/*@ assigns \nothing;
+    ensures \result == (int64_t)(bx - ax) * (cy - ay) - (int64_t)(by - ay) * (cx - ax);
+*/
+static int64_t simple_surface_cross(int32_t ax, int32_t ay, int32_t bx, int32_t by, int32_t cx,
+                                    int32_t cy) {
+    return ((int64_t)bx - ax) * ((int64_t)cy - ay) - ((int64_t)by - ay) * ((int64_t)cx - ax);
+}
+
+/*@ assigns \nothing;
+    ensures \result <==> value >= (first < second ? first : second) &&
+                           value <= (first > second ? first : second);
+*/
+static bool simple_surface_between(int32_t value, int32_t first, int32_t second) {
+    return value >= (first < second ? first : second) && value <= (first > second ? first : second);
+}
+
+/*@ assigns \nothing;
+    ensures \result == \true || \result == \false;
+*/
+static bool simple_surface_segments_intersect(int32_t ax, int32_t ay, int32_t bx, int32_t by,
+                                              int32_t cx, int32_t cy, int32_t dx, int32_t dy) {
+    const int64_t abc = simple_surface_cross(ax, ay, bx, by, cx, cy);
+    const int64_t abd = simple_surface_cross(ax, ay, bx, by, dx, dy);
+    const int64_t cda = simple_surface_cross(cx, cy, dx, dy, ax, ay);
+    const int64_t cdb = simple_surface_cross(cx, cy, dx, dy, bx, by);
+
+    return (abc == 0 && simple_surface_between(cx, ax, bx) && simple_surface_between(cy, ay, by)) ||
+           (abd == 0 && simple_surface_between(dx, ax, bx) && simple_surface_between(dy, ay, by)) ||
+           (cda == 0 && simple_surface_between(ax, cx, dx) && simple_surface_between(ay, cy, dy)) ||
+           (cdb == 0 && simple_surface_between(bx, cx, dx) && simple_surface_between(by, cy, dy)) ||
+           ((abc > 0) != (abd > 0) && (cda > 0) != (cdb > 0));
+}
+
+bool whc_simple_terrain_surface_is_valid(const int32_t *vertices, uint32_t vertex_count,
+                                         uint32_t flags) {
+    uint32_t edge_index;
+    uint32_t leftmost_index = 0u;
+
+    if (vertices == NULL || vertex_count < WHC_SIMPLE_TERRAIN_SURFACE_MIN_VERTICES ||
+        vertex_count > WHC_SIMPLE_TERRAIN_SURFACE_MAX_VERTICES ||
+        flags != WHC_SIMPLE_TERRAIN_SURFACE_REVIEWED) {
+        return false;
+    }
+    /*@ loop invariant 0 <= edge_index <= vertex_count;
+        loop invariant \forall integer index; 0 <= index < edge_index ==>
+            0 <= vertices[index * 2] <= WHC_SIMPLE_TERRAIN_SURFACE_MAX_X &&
+            0 <= vertices[index * 2 + 1] <= WHC_SIMPLE_TERRAIN_SURFACE_MAX_Y;
+        loop assigns edge_index;
+        loop variant vertex_count - edge_index;
+    */
+    for (edge_index = 0u; edge_index < vertex_count; edge_index++) {
+        if (vertices[edge_index * 2u] < 0 ||
+            vertices[edge_index * 2u] > WHC_SIMPLE_TERRAIN_SURFACE_MAX_X ||
+            vertices[edge_index * 2u + 1u] < 0 ||
+            vertices[edge_index * 2u + 1u] > WHC_SIMPLE_TERRAIN_SURFACE_MAX_Y) {
+            return false;
+        }
+    }
+    /*@ loop invariant 0 <= edge_index <= vertex_count;
+        loop invariant \forall integer index; 0 <= index < vertex_count ==>
+            0 <= vertices[index * 2] <= WHC_SIMPLE_TERRAIN_SURFACE_MAX_X &&
+            0 <= vertices[index * 2 + 1] <= WHC_SIMPLE_TERRAIN_SURFACE_MAX_Y;
+        loop invariant leftmost_index < vertex_count;
+        loop assigns edge_index, leftmost_index;
+        loop variant vertex_count - edge_index;
+    */
+    for (edge_index = 0u; edge_index < vertex_count; edge_index++) {
+        const uint32_t next_index = edge_index + 1u == vertex_count ? 0u : edge_index + 1u;
+        const uint32_t after_next_index = next_index + 1u == vertex_count ? 0u : next_index + 1u;
+        uint32_t other_index;
+
+        if ((vertices[edge_index * 2u] == vertices[next_index * 2u] &&
+             vertices[edge_index * 2u + 1u] == vertices[next_index * 2u + 1u]) ||
+            simple_surface_cross(vertices[edge_index * 2u], vertices[edge_index * 2u + 1u],
+                                 vertices[next_index * 2u], vertices[next_index * 2u + 1u],
+                                 vertices[after_next_index * 2u],
+                                 vertices[after_next_index * 2u + 1u]) == 0) {
+            return false;
+        }
+        if (vertices[edge_index * 2u] < vertices[leftmost_index * 2u] ||
+            (vertices[edge_index * 2u] == vertices[leftmost_index * 2u] &&
+             vertices[edge_index * 2u + 1u] < vertices[leftmost_index * 2u + 1u])) {
+            leftmost_index = edge_index;
+        }
+        /*@ loop invariant edge_index + 1 <= other_index <= vertex_count;
+            loop assigns other_index;
+            loop variant vertex_count - other_index;
+        */
+        for (other_index = edge_index + 1u; other_index < vertex_count; other_index++) {
+            const uint32_t other_next_index =
+                other_index + 1u == vertex_count ? 0u : other_index + 1u;
+            const bool adjacent = other_index == edge_index + 1u ||
+                                  (edge_index == 0u && other_index + 1u == vertex_count);
+            if (!adjacent &&
+                simple_surface_segments_intersect(
+                    vertices[edge_index * 2u], vertices[edge_index * 2u + 1u],
+                    vertices[next_index * 2u], vertices[next_index * 2u + 1u],
+                    vertices[other_index * 2u], vertices[other_index * 2u + 1u],
+                    vertices[other_next_index * 2u], vertices[other_next_index * 2u + 1u])) {
+                return false;
+            }
+        }
+    }
+    {
+        const uint32_t previous_index =
+            leftmost_index == 0u ? vertex_count - 1u : leftmost_index - 1u;
+        const uint32_t next_index = leftmost_index + 1u == vertex_count ? 0u : leftmost_index + 1u;
+        return simple_surface_cross(
+                   vertices[previous_index * 2u], vertices[previous_index * 2u + 1u],
+                   vertices[leftmost_index * 2u], vertices[leftmost_index * 2u + 1u],
+                   vertices[next_index * 2u], vertices[next_index * 2u + 1u]) > 0;
+    }
+}
+
 bool whc_ranged_geometry_resolution_is_valid(uint32_t observer_count,
                                              uint32_t proven_observer_count,
                                              uint32_t target_model_count,

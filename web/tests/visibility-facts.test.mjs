@@ -5,6 +5,7 @@ import {
   convexTerrainSurfaceIsValid,
   convexSilhouetteIsValid,
   deriveVisibilityFacts,
+  simpleTerrainSurfaceIsValid,
   terrainVisibilityGeometryIsValid,
   visibilityFactValues,
   visibilityFactValuesAreValid,
@@ -280,6 +281,59 @@ test("movement surfaces require reviewed convex solids wholly inside one terrain
           {
             ...set.sections[0],
             surfaces: [{ ...surface, topZThousandths: surface.bottomZThousandths }],
+          },
+        ],
+      },
+      terrainFootprints(),
+    ),
+    false,
+  );
+});
+
+test("reviewed simple terrain surfaces accept concavity but reject winding and self-intersection", () => {
+  const concave = [
+    { xThousandths: 4500, yThousandths: 4000 },
+    { xThousandths: 5500, yThousandths: 4000 },
+    { xThousandths: 5500, yThousandths: 6000 },
+    { xThousandths: 5000, yThousandths: 5000 },
+    { xThousandths: 4500, yThousandths: 6000 },
+  ];
+  const surface = {
+    id: "concave-floor",
+    geometryMode: "simple_polygon",
+    vertices: concave,
+    bottomZThousandths: 3000,
+    topZThousandths: 3500,
+    supportsEnding: true,
+  };
+  const set = {
+    ...terrainVisibility("ruins"),
+    allMovementGeometryRecorded: true,
+    sections: [
+      {
+        ...terrainVisibility("ruins").sections[0],
+        movementType: "ruins",
+        movementGeometryComplete: true,
+        surfaces: [surface],
+      },
+    ],
+  };
+  assert.equal(convexTerrainSurfaceIsValid(concave), false);
+  assert.equal(simpleTerrainSurfaceIsValid(concave), true);
+  assert.equal(terrainVisibilityGeometryIsValid(set, terrainFootprints()), true);
+  assert.equal(simpleTerrainSurfaceIsValid([...concave].reverse()), false);
+  assert.equal(
+    simpleTerrainSurfaceIsValid([concave[0], concave[2], concave[4], concave[1], concave[3]]),
+    false,
+  );
+  assert.equal(
+    terrainVisibilityGeometryIsValid(
+      {
+        ...set,
+        sections: [
+          {
+            ...set.sections[0],
+            surfaces: [{ ...surface, geometryMode: "curved_polygon" }],
           },
         ],
       },
