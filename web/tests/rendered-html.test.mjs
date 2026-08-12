@@ -3306,6 +3306,10 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
   assert.equal(body.data.spatialFacts[target.id].executable, true);
   assert.equal(body.data.spatialFacts[target.id].coherency.status, "coherent");
   assert.equal(body.data.spatialFacts[target.id].engagementRange.status, "clear");
+  assert.equal(body.data.endpointClearanceFacts.executable, true);
+  assert.equal(body.data.endpointClearanceFacts.status, "clear");
+  assert.deepEqual(body.data.endpointClearanceFacts.modelPairs, []);
+  assert.deepEqual(body.data.endpointClearanceFacts.objectivePairs, []);
   assert.ok(
     Object.values(body.data.objectiveControlFacts).every(
       (fact) => fact.executable && ["controlled", "contested"].includes(fact.status),

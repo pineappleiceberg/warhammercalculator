@@ -358,6 +358,9 @@ function reviewedDeploymentModelPlacements(state, formationId, referenceEventId,
   const replayed = replayBattleState(state);
   const formation = replayed.formations.get(formationId);
   const tableGeometry = replayed.tableGeometry;
+  const placementSlot = [...replayed.formations.keys()].indexOf(formationId);
+  const placementBaseX = placementSlot % 2 === 0 ? 5_000 : 35_000;
+  const placementBaseY = 5_000 + Math.floor(placementSlot / 2) * 10_000;
   assert.ok(formation);
   assert.ok(tableGeometry);
   const placement = {
@@ -374,8 +377,8 @@ function reviewedDeploymentModelPlacements(state, formationId, referenceEventId,
       shape: "circle",
       widthThousandths: 1_000,
       depthThousandths: 1_000,
-      centerXThousandths: 5_000 + (index % 20) * 2_000,
-      centerYThousandths: 5_000 + Math.floor(index / 20) * 2_000,
+      centerXThousandths: placementBaseX + (index % 10) * 2_000,
+      centerYThousandths: placementBaseY + Math.floor(index / 10) * 2_000,
       elevationThousandths: 0,
       rotationMilliDegrees: 0,
       silhouette: reviewedSilhouette(),
@@ -402,6 +405,9 @@ function reviewedModelPositions(state, formationId, context, referenceEventId, o
   const survivingIds = formation.segments.flatMap((segment) =>
     segment.modelIds.slice(0, formation.health[segment.id].modelsRemaining),
   );
+  const formationSlot = [...replayed.formations.keys()].indexOf(formationId);
+  const setupBaseX = formationSlot % 2 === 0 ? 5_000 : 35_000;
+  const setupBaseY = 5_000 + Math.floor(formationSlot / 2) * 10_000;
   const pathMovement = modelPositionContextUsesPath(context);
   const pending = replayed.pendingModelPosition;
   const models = survivingIds.map((modelId, index) => {
@@ -412,8 +418,8 @@ function reviewedModelPositions(state, formationId, context, referenceEventId, o
       shape: "circle",
       widthThousandths: 1_000,
       depthThousandths: 1_000,
-      centerXThousandths: 35_000 + index * 1_000,
-      centerYThousandths: 35_000,
+      centerXThousandths: setupBaseX + index * 1_000,
+      centerYThousandths: setupBaseY,
       elevationThousandths: 0,
       rotationMilliDegrees: 0,
       silhouette: reviewedSilhouette(),
@@ -829,6 +835,29 @@ test("requires a reviewed exact-model placement snapshot after each battlefield 
         state.events.length + 1,
       ),
     /does not match the reviewed table geometry/i,
+  );
+  const objective = replayBattleState(state).tableGeometry.objectivePositions[0];
+  assert.throws(
+    () =>
+      recordDeploymentModelPlacements(
+        state,
+        formation.id,
+        {
+          ...placement,
+          models: placement.models.map((model, index) =>
+            index === 0
+              ? {
+                  ...model,
+                  centerXThousandths: objective.xThousandths,
+                  centerYThousandths: objective.yThousandths,
+                }
+              : model,
+          ),
+        },
+        `placement-models-on-objective-${formation.id}`,
+        state.events.length + 1,
+      ),
+    /overlaps objective marker/i,
   );
   state = recordDeploymentModelPlacements(
     state,
@@ -1402,8 +1431,8 @@ test("records exact disembarkation positions before the set-up reaction window",
       index === coherentPositions.models.length - 1
         ? {
             ...model,
-            centerYThousandths: 20_000,
-            path: [{ ...model.path[0], centerYThousandths: 20_000 }],
+            centerYThousandths: 21_500,
+            path: [{ ...model.path[0], centerYThousandths: 21_500 }],
           }
         : model,
     ),
@@ -2549,6 +2578,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacyRangedGeometryThroughSequence: 3,
     legacyConvexSilhouettesThroughSequence: 3,
     legacyObjectiveControlThroughSequence: 3,
+    legacyEndpointClearanceThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -2594,6 +2624,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacyRangedGeometryThroughSequence: 3,
     legacyConvexSilhouettesThroughSequence: 3,
     legacyObjectiveControlThroughSequence: 3,
+    legacyEndpointClearanceThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -2644,6 +2675,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacyRangedGeometryThroughSequence: 2,
     legacyConvexSilhouettesThroughSequence: 2,
     legacyObjectiveControlThroughSequence: 2,
+    legacyEndpointClearanceThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -2687,6 +2719,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacyRangedGeometryThroughSequence: 2,
     legacyConvexSilhouettesThroughSequence: 2,
     legacyObjectiveControlThroughSequence: 2,
+    legacyEndpointClearanceThroughSequence: 2,
   });
 });
 
@@ -2729,6 +2762,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacyRangedGeometryThroughSequence: 2,
     legacyConvexSilhouettesThroughSequence: 2,
     legacyObjectiveControlThroughSequence: 2,
+    legacyEndpointClearanceThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -2777,6 +2811,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacyRangedGeometryThroughSequence: 2,
     legacyConvexSilhouettesThroughSequence: 2,
     legacyObjectiveControlThroughSequence: 2,
+    legacyEndpointClearanceThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -2820,6 +2855,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacyRangedGeometryThroughSequence: 2,
     legacyConvexSilhouettesThroughSequence: 2,
     legacyObjectiveControlThroughSequence: 2,
+    legacyEndpointClearanceThroughSequence: 2,
   });
 });
 
@@ -2862,6 +2898,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacyRangedGeometryThroughSequence: 2,
     legacyConvexSilhouettesThroughSequence: 2,
     legacyObjectiveControlThroughSequence: 2,
+    legacyEndpointClearanceThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -3700,6 +3737,43 @@ test("migrates version-34 games without inventing Objective Control characterist
         !fact.executable || (fact.status === "contested" && fact.contributions.length === 0),
     ),
   );
+});
+
+test("migrates version-35 endpoint reviews without inventing executable clearance", () => {
+  let versionThirtyFive = exactMissionSetup("version-35-endpoint-clearance");
+  versionThirtyFive = configureBattleTableGeometry(
+    versionThirtyFive,
+    reviewedTableGeometry(versionThirtyFive),
+    "version-35-table-geometry",
+    versionThirtyFive.events.length + 1,
+  );
+  versionThirtyFive = configureBattleTerrainFootprints(
+    versionThirtyFive,
+    reviewedTerrainFootprints(versionThirtyFive),
+    "version-35-terrain-footprints",
+    versionThirtyFive.events.length + 1,
+  );
+  versionThirtyFive = deployAllOnBattlefield(versionThirtyFive);
+  const legacyEventCount = versionThirtyFive.events.length;
+  versionThirtyFive = { ...versionThirtyFive, version: 35, migration: undefined };
+  const migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: normalizeBattleState(versionThirtyFive),
+    id: versionThirtyFive.id,
+  });
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 35);
+  assert.equal(migrated.migration.legacyEndpointClearanceThroughSequence, legacyEventCount);
+  const facts = replayBattleState(migrated).endpointClearanceFacts;
+  assert.equal(facts.executable, false);
+  assert.equal(facts.status, "unknown");
+  assert.ok(facts.unavailableReasons.some((reason) => reason.includes("formation_geometry")));
 });
 
 test("marks exact geometry stale when casualties change live model identities and clears on undo", () => {

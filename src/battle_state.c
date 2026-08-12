@@ -503,6 +503,23 @@ bool whc_spatial_facts_are_valid(uint32_t model_count, uint32_t ready_model_coun
            objective_in_range_count <= objective_count && flags == WHC_SPATIAL_FACTS_FLAGS_MASK;
 }
 
+bool whc_endpoint_clearance_facts_are_valid(
+    uint32_t model_count, uint32_t ready_model_count, uint32_t objective_count,
+    uint32_t ready_objective_count, uint32_t model_overlap_pair_count,
+    uint32_t objective_overlap_pair_count, uint32_t flags) {
+    const uint32_t maximum_model_pairs =
+        ready_model_count == 0u ? 0u : ready_model_count * (ready_model_count - 1u) / 2u;
+    const uint32_t maximum_objective_pairs = ready_model_count * ready_objective_count;
+    const uint32_t expected_flags = (ready_model_count == model_count ? 1u : 0u) +
+                                    (ready_objective_count == objective_count ? 2u : 0u);
+
+    return model_count <= 1000u && ready_model_count <= model_count && objective_count <= 12u &&
+           ready_objective_count <= objective_count &&
+           model_overlap_pair_count <= maximum_model_pairs &&
+           objective_overlap_pair_count <= maximum_objective_pairs &&
+           flags == expected_flags;
+}
+
 bool whc_objective_control_facts_are_valid(
     uint32_t player_count, uint32_t score_entry_count, uint32_t top_score,
     uint32_t top_score_player_count, uint32_t controller_count, uint32_t contested,

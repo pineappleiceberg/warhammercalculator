@@ -10,6 +10,7 @@ export const SPATIAL_CONSTANTS = Object.freeze({
 export const SPATIAL_FACT_FLAGS_MASK = 7;
 
 const EPSILON = 1e-7;
+const STRICT_OVERLAP_INSET = 0.001;
 
 function rotate(x, y, cosine, sine) {
   return { x: x * cosine - y * sine, y: x * sine + y * cosine };
@@ -102,10 +103,7 @@ function nextSimplex(simplex) {
   return { containsOrigin: true, simplex, direction: { x: 0, y: 0 } };
 }
 
-export function horizontalBoundariesWithin(first, second, distanceThousandths) {
-  if (!first || !second || !Number.isFinite(distanceThousandths) || distanceThousandths < 0) {
-    return false;
-  }
+function minkowskiContainsOrigin(first, second, distanceThousandths) {
   let direction = {
     x: second.centerXThousandths - first.centerXThousandths,
     y: second.centerYThousandths - first.centerYThousandths,
@@ -127,6 +125,20 @@ export function horizontalBoundariesWithin(first, second, distanceThousandths) {
   return false;
 }
 
+export function horizontalBoundariesWithin(first, second, distanceThousandths) {
+  if (!first || !second || !Number.isFinite(distanceThousandths) || distanceThousandths < 0) {
+    return false;
+  }
+  return minkowskiContainsOrigin(first, second, distanceThousandths);
+}
+
+export function horizontalFootprintsOverlap(first, second) {
+  if (!modelFootprintGeometryIsReady(first) || !modelFootprintGeometryIsReady(second)) {
+    return false;
+  }
+  return minkowskiContainsOrigin(first, second, -STRICT_OVERLAP_INSET);
+}
+
 function verticalExtent(model) {
   return model.measurementBasis === "base" ? 0 : model.verticalExtentThousandths;
 }
@@ -139,6 +151,31 @@ export function modelSpatialGeometryIsReady(model) {
       model.verticalExtentThousandths >= 0 &&
       (model.measurementBasis === "base" || model.verticalExtentThousandths > 0),
   );
+}
+
+export function modelFootprintGeometryIsReady(model) {
+  return Boolean(
+    modelSpatialGeometryIsReady(model) &&
+      ["circle", "ellipse", "rectangle"].includes(model.shape) &&
+      Number.isSafeInteger(model.widthThousandths) &&
+      model.widthThousandths > 0 &&
+      Number.isSafeInteger(model.depthThousandths) &&
+      model.depthThousandths > 0 &&
+      (model.shape !== "circle" || model.widthThousandths === model.depthThousandths) &&
+      Number.isSafeInteger(model.centerXThousandths) &&
+      Number.isSafeInteger(model.centerYThousandths) &&
+      Number.isSafeInteger(model.rotationMilliDegrees) &&
+      model.rotationMilliDegrees >= 0 &&
+      model.rotationMilliDegrees < 180_000,
+  );
+}
+
+function verticalOccupanciesIntersect(first, second) {
+  const firstBottom = first.elevationThousandths;
+  const firstTop = firstBottom + verticalExtent(first);
+  const secondBottom = second.elevationThousandths;
+  const secondTop = secondBottom + verticalExtent(second);
+  return Math.max(firstBottom, secondBottom) <= Math.min(firstTop, secondTop) + EPSILON;
 }
 
 export function verticalBoundariesWithin(first, second, distanceThousandths) {
@@ -170,7 +207,7 @@ function unavailableFact(formationId, reasons, modelCount) {
   };
 }
 
-function objectiveMarker(objective) {
+export function objectiveMarker(objective) {
   return {
     measurementBasis: "base",
     shape: "circle",
@@ -182,6 +219,156 @@ function objectiveMarker(objective) {
     verticalExtentThousandths: 0,
     rotationMilliDegrees: 0,
   };
+}
+
+export const ENDPOINT_CLEARANCE_FLAGS = Object.freeze({
+  modelsComplete: 1,
+  objectivesComplete: 2,
+  mask: 3,
+});
+
+export function deriveEndpointClearanceFacts({
+  positions,
+  unavailableFormationIds = new Set(),
+  objectives = [],
+}) {
+  const unavailableReasons = [];
+  const models = [];
+  let modelCount = 0;
+  for (const [formationId, position] of positions ?? []) {
+    const positionedModels = Array.isArray(position?.models) ? position.models : [];
+    modelCount += positionedModels.length;
+    if (unavailableFormationIds.has(formationId)) {
+      unavailableReasons.push(`formation_geometry_unavailable:${formationId}`);
+      continue;
+    }
+    for (const model of positionedModels) {
+      if (!modelFootprintGeometryIsReady(model)) {
+        unavailableReasons.push(
+          `model_geometry_unavailable:${formationId}:${model?.modelId ?? ""}`,
+        );
+        continue;
+      }
+      models.push({ formationId, model });
+    }
+  }
+  const objectiveMarkers = [];
+  for (const objective of objectives ?? []) {
+    if (
+      !objective?.objectiveId ||
+      !Number.isSafeInteger(objective.xThousandths) ||
+      !Number.isSafeInteger(objective.yThousandths)
+    ) {
+      unavailableReasons.push(`objective_geometry_unavailable:${objective?.objectiveId ?? ""}`);
+      continue;
+    }
+    objectiveMarkers.push({
+      objectiveId: objective.objectiveId,
+      marker: objectiveMarker(objective),
+    });
+  }
+  const modelPairs = [];
+  for (let firstIndex = 0; firstIndex < models.length; firstIndex += 1) {
+    for (let secondIndex = firstIndex + 1; secondIndex < models.length; secondIndex += 1) {
+      const first = models[firstIndex];
+      const second = models[secondIndex];
+      if (
+        verticalOccupanciesIntersect(first.model, second.model) &&
+        horizontalFootprintsOverlap(first.model, second.model)
+      ) {
+        modelPairs.push({
+          firstFormationId: first.formationId,
+          firstModelId: first.model.modelId,
+          secondFormationId: second.formationId,
+          secondModelId: second.model.modelId,
+        });
+      }
+    }
+  }
+  const objectivePairs = [];
+  for (const entry of models) {
+    for (const objective of objectiveMarkers) {
+      if (
+        verticalOccupanciesIntersect(entry.model, objective.marker) &&
+        horizontalFootprintsOverlap(entry.model, objective.marker)
+      ) {
+        objectivePairs.push({
+          formationId: entry.formationId,
+          modelId: entry.model.modelId,
+          objectiveId: objective.objectiveId,
+        });
+      }
+    }
+  }
+  modelPairs.sort((left, right) =>
+    `${left.firstFormationId}:${left.firstModelId}:${left.secondFormationId}:${left.secondModelId}`.localeCompare(
+      `${right.firstFormationId}:${right.firstModelId}:${right.secondFormationId}:${right.secondModelId}`,
+    ),
+  );
+  objectivePairs.sort((left, right) =>
+    `${left.formationId}:${left.modelId}:${left.objectiveId}`.localeCompare(
+      `${right.formationId}:${right.modelId}:${right.objectiveId}`,
+    ),
+  );
+  const reasons = [...new Set(unavailableReasons)].sort();
+  const flags =
+    (models.length === modelCount ? ENDPOINT_CLEARANCE_FLAGS.modelsComplete : 0) |
+    (objectiveMarkers.length === (objectives?.length ?? 0)
+      ? ENDPOINT_CLEARANCE_FLAGS.objectivesComplete
+      : 0);
+  return {
+    executable: flags === ENDPOINT_CLEARANCE_FLAGS.mask,
+    status:
+      modelPairs.length > 0 || objectivePairs.length > 0
+        ? "collision"
+        : flags === ENDPOINT_CLEARANCE_FLAGS.mask
+          ? "clear"
+          : "unknown",
+    unavailableReasons: reasons,
+    modelCount,
+    readyModelCount: models.length,
+    objectiveCount: objectives?.length ?? 0,
+    readyObjectiveCount: objectiveMarkers.length,
+    modelPairs,
+    objectivePairs,
+    flags,
+  };
+}
+
+export function endpointClearanceFactValues(fact) {
+  return [
+    fact.modelCount,
+    fact.readyModelCount,
+    fact.objectiveCount,
+    fact.readyObjectiveCount,
+    fact.modelPairs.length,
+    fact.objectivePairs.length,
+    fact.flags,
+  ];
+}
+
+export function endpointClearanceFactValuesAreValid(
+  modelCount,
+  readyModelCount,
+  objectiveCount,
+  readyObjectiveCount,
+  modelPairCount,
+  objectivePairCount,
+  flags,
+) {
+  return Boolean(
+    modelCount <= 1000 &&
+      readyModelCount <= modelCount &&
+      objectiveCount <= 12 &&
+      readyObjectiveCount <= objectiveCount &&
+      modelPairCount <= (readyModelCount * (readyModelCount - 1)) / 2 &&
+      objectivePairCount <= readyModelCount * readyObjectiveCount &&
+      (flags & ~ENDPOINT_CLEARANCE_FLAGS.mask) === 0 &&
+      Boolean(flags & ENDPOINT_CLEARANCE_FLAGS.modelsComplete) ===
+        (readyModelCount === modelCount) &&
+      Boolean(flags & ENDPOINT_CLEARANCE_FLAGS.objectivesComplete) ===
+        (readyObjectiveCount === objectiveCount),
+  );
 }
 
 export function deriveSpatialFacts({ formations, positions, staleFormationIds, objectives }) {

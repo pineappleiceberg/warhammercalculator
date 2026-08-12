@@ -1856,6 +1856,15 @@ int main(void) {
     assert(!whc_model_position_set_is_valid(5u, 5u, 5u, 5u, 5u, 5u, 5u, 5u,
                                             UINT32_MAX, 6u, 2u, 2u, 5u, 5u, 5u, 5u, 5u,
                                             5u, 5u, WHC_MODEL_POSITION_FLAGS_MASK));
+    assert(whc_endpoint_clearance_facts_are_valid(5u, 5u, 4u, 4u, 0u, 0u,
+                                                   WHC_ENDPOINT_CLEARANCE_FLAGS_MASK));
+    assert(whc_endpoint_clearance_facts_are_valid(5u, 5u, 4u, 4u, 2u, 3u,
+                                                   WHC_ENDPOINT_CLEARANCE_FLAGS_MASK));
+    assert(whc_endpoint_clearance_facts_are_valid(5u, 4u, 4u, 4u, 6u, 16u, 2u));
+    assert(!whc_endpoint_clearance_facts_are_valid(5u, 4u, 4u, 4u, 7u, 0u, 2u));
+    assert(!whc_endpoint_clearance_facts_are_valid(5u, 5u, 4u, 4u, 0u, 0u, 2u));
+    assert(!whc_endpoint_clearance_facts_are_valid(1001u, 1001u, 4u, 4u, 0u, 0u,
+                                                    WHC_ENDPOINT_CLEARANCE_FLAGS_MASK));
     assert(whc_objective_control_facts_are_valid(
         2u, 2u, 6u, 1u, 1u, 0u, WHC_OBJECTIVE_CONTROL_FACTS_FLAGS_MASK));
     assert(whc_objective_control_facts_are_valid(

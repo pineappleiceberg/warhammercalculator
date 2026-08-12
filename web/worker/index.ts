@@ -36,7 +36,12 @@ import {
   unitStartingSizeStatus,
 } from "../lib/loadout.mjs";
 import type { Catalogue, CatalogueCombatPreset } from "../lib/catalogue";
-import { spatialFactValues, spatialFactValuesAreValid } from "../lib/spatial-facts.mjs";
+import {
+  endpointClearanceFactValues,
+  endpointClearanceFactValuesAreValid,
+  spatialFactValues,
+  spatialFactValuesAreValid,
+} from "../lib/spatial-facts.mjs";
 import {
   objectiveControlFactValues,
   objectiveControlFactValuesAreValid,
@@ -381,6 +386,7 @@ type CalculatorExports = {
   whc_model_placement_set_is_valid(...values: number[]): number;
   whc_model_position_set_is_valid(...values: number[]): number;
   whc_spatial_facts_are_valid(...values: number[]): number;
+  whc_endpoint_clearance_facts_are_valid(...values: number[]): number;
   whc_objective_control_facts_are_valid(...values: number[]): number;
   whc_visibility_facts_are_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
@@ -618,6 +624,7 @@ async function loadCalculator() {
       typeof calculator.whc_model_placement_set_is_valid !== "function" ||
       typeof calculator.whc_model_position_set_is_valid !== "function" ||
       typeof calculator.whc_spatial_facts_are_valid !== "function" ||
+      typeof calculator.whc_endpoint_clearance_facts_are_valid !== "function" ||
       typeof calculator.whc_objective_control_facts_are_valid !== "function" ||
       typeof calculator.whc_visibility_facts_are_valid !== "function" ||
       typeof calculator.whc_start_battle_clock !== "function" ||
@@ -1037,6 +1044,18 @@ async function replayFormationHealth(
         throw new ServiceUnavailableError(
           "Executable spatial facts diverged from the C/WebAssembly predicate",
           "SPATIAL_FACTS_DIVERGENCE",
+        );
+      }
+    }
+    {
+      const fact = replayedState.endpointClearanceFacts;
+      const values = endpointClearanceFactValues(fact);
+      const javascriptValid = endpointClearanceFactValuesAreValid(...values);
+      const nativeValid = Boolean(calculator.whc_endpoint_clearance_facts_are_valid(...values));
+      if (!javascriptValid || javascriptValid !== nativeValid) {
+        throw new ServiceUnavailableError(
+          "Endpoint clearance diverged from the C/WebAssembly predicate",
+          "ENDPOINT_CLEARANCE_DIVERGENCE",
         );
       }
     }
@@ -1890,6 +1909,7 @@ async function replayFormationHealth(
       modelLocationHistory: Object.fromEntries(replayed.modelLocationHistoryByFormation),
       geometryStaleFormationIds: [...replayed.geometryStaleFormationIds].sort(),
       spatialFacts: Object.fromEntries(replayed.spatialFactsByFormation),
+      endpointClearanceFacts: replayed.endpointClearanceFacts,
       objectiveControlFacts: Object.fromEntries(replayed.objectiveControlFacts),
       visibilityFacts: Object.fromEntries(
         [...replayed.visibilityFactsByFormation].map(([formationId, targets]) => [

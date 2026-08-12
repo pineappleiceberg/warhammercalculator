@@ -13,7 +13,7 @@ import { normalizeDefensiveEquipmentCounts } from "./defensive-equipment.mjs";
 import { normalizeBattleRuleCoverageBinding } from "./battle-rule-selection.mjs";
 import { chapterApprovedTableBinding } from "./mission-pack.mjs";
 import { deriveObjectiveControlFacts } from "./objective-control-facts.mjs";
-import { deriveSpatialFacts } from "./spatial-facts.mjs";
+import { deriveEndpointClearanceFacts, deriveSpatialFacts } from "./spatial-facts.mjs";
 import {
   deriveVisibilityFacts,
   TERRAIN_VISIBILITY_FEATURES,
@@ -24,7 +24,8 @@ import {
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 35;
+export const BATTLE_STATE_VERSION = 36;
+export const ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION = 36;
 export const OBJECTIVE_CONTROL_BATTLE_STATE_VERSION = 35;
 export const CONVEX_SILHOUETTE_BATTLE_STATE_VERSION = 34;
 export const RANGED_GEOMETRY_BATTLE_STATE_VERSION = 33;
@@ -4862,6 +4863,7 @@ export function normalizeBattleState(candidate) {
       TERRAIN_VISIBILITY_BATTLE_STATE_VERSION,
       RANGED_GEOMETRY_BATTLE_STATE_VERSION,
       CONVEX_SILHOUETTE_BATTLE_STATE_VERSION,
+      OBJECTIVE_CONTROL_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -4929,6 +4931,7 @@ export function normalizeBattleState(candidate) {
         TERRAIN_VISIBILITY_BATTLE_STATE_VERSION,
         RANGED_GEOMETRY_BATTLE_STATE_VERSION,
         CONVEX_SILHOUETTE_BATTLE_STATE_VERSION,
+        OBJECTIVE_CONTROL_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -5153,6 +5156,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyEndpointClearanceThroughSequence = nonnegativeInteger(
+        migration.legacyEndpointClearanceThroughSequence,
+        "Legacy endpoint clearance event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -5161,6 +5171,8 @@ export function normalizeBattleState(candidate) {
         ["formation_registered", "formation_configured"].includes(event.type) &&
         event.formation.weaponBearerTracking === "legacy_aggregate",
     ) &&
+    normalized.migration?.sourceVersion !== ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== OBJECTIVE_CONTROL_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== SPATIAL_FACTS_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== CONVEX_SILHOUETTE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== RANGED_GEOMETRY_BATTLE_STATE_VERSION &&
@@ -6194,6 +6206,7 @@ export function replayBattleState(state) {
   const modelLocationHistoryByFormation = new Map();
   const currentModelPositionsByFormation = new Map();
   const geometryStaleFormationIds = new Set();
+  const legacyEndpointClearanceFormationIds = new Set();
   const setupDestroyedFormationIds = new Set();
   const reserveArrivals = new Map();
   const embarkedByFormation = new Map();
@@ -6338,6 +6351,10 @@ export function replayBattleState(state) {
     state.version < SPATIAL_FACTS_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacySpatialFactsThroughSequence ?? 0);
+  const legacyEndpointClearanceThroughSequence =
+    state.version < ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyEndpointClearanceThroughSequence ?? 0);
   const legacyTerrainVisibilityThroughSequence =
     state.version < TERRAIN_VISIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -6609,6 +6626,51 @@ export function replayBattleState(state) {
     }).get(formationId);
     if (fact?.executable && fact.coherency.status !== "coherent") {
       throw new Error("Reviewed model positions do not end in executable unit coherency");
+    }
+  };
+  const currentEndpointClearanceFacts = () => {
+    const eligiblePositions = new Map(
+      [...currentModelPositionsByFormation].filter(([formationId]) => {
+        const formation = formations.get(formationId);
+        return (
+          formation &&
+          !formationDestroyed(formation) &&
+          formationIsOnBattlefield(
+            formationId,
+            deploymentByFormation,
+            deployedFormationIds,
+            embarkedByFormation,
+          )
+        );
+      }),
+    );
+    const unavailableFormationIds = new Set(
+      [...eligiblePositions.keys()].filter(
+        (formationId) =>
+          geometryStaleFormationIds.has(formationId) ||
+          legacyEndpointClearanceFormationIds.has(formationId),
+      ),
+    );
+    return deriveEndpointClearanceFacts({
+      positions: eligiblePositions,
+      unavailableFormationIds,
+      objectives: tableGeometry?.objectivePositions ?? [],
+    });
+  };
+  const requireEndpointClearance = (sequence) => {
+    if (sequence <= legacyEndpointClearanceThroughSequence) return;
+    const facts = currentEndpointClearanceFacts();
+    if (facts.modelPairs.length > 0) {
+      const collision = facts.modelPairs[0];
+      throw new Error(
+        `Model endpoint overlaps another model: ${collision.firstModelId} and ${collision.secondModelId}`,
+      );
+    }
+    if (facts.objectivePairs.length > 0) {
+      const collision = facts.objectivePairs[0];
+      throw new Error(
+        `Model endpoint overlaps objective marker: ${collision.modelId} and ${collision.objectiveId}`,
+      );
     }
   };
   const recordModelLocation = (
@@ -7156,6 +7218,12 @@ export function replayBattleState(state) {
         });
       }
       geometryStaleFormationIds.delete(event.formationId);
+      if (event.sequence <= legacyEndpointClearanceThroughSequence) {
+        legacyEndpointClearanceFormationIds.add(event.formationId);
+      } else {
+        legacyEndpointClearanceFormationIds.delete(event.formationId);
+      }
+      requireEndpointClearance(event.sequence);
       requireExecutableCoherency(event.formationId, event.sequence);
       if (!migratedPlacement) pendingDeploymentPlacement = null;
       continue;
@@ -7279,6 +7347,8 @@ export function replayBattleState(state) {
         });
       }
       geometryStaleFormationIds.delete(event.formationId);
+      legacyEndpointClearanceFormationIds.delete(event.formationId);
+      requireEndpointClearance(event.sequence);
       requireExecutableCoherency(event.formationId, event.sequence);
       pendingModelPosition = queuedModelPositions.shift() ?? null;
       if (completed.fireOverwatchTrigger) {
@@ -10282,6 +10352,7 @@ export function replayBattleState(state) {
     staleFormationIds: geometryStaleFormationIds,
     objectives: tableGeometry?.objectivePositions ?? [],
   });
+  const endpointClearanceFacts = currentEndpointClearanceFacts();
   const objectiveControlEligibleFormationIds = new Set(
     [...formations.keys()].filter(
       (formationId) =>
@@ -10330,6 +10401,7 @@ export function replayBattleState(state) {
     currentModelPositionsByFormation,
     geometryStaleFormationIds,
     spatialFactsByFormation,
+    endpointClearanceFacts,
     objectiveControlFacts,
     visibilityFactsByFormation,
     pendingDeploymentPlacement,

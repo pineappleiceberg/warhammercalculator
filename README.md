@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 35 as soon as both lists are selected. Every
+creates battle-state version 36 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -679,9 +679,10 @@ boundary-bottom elevation, vertical extent, and rotation. Based models use a
 zero vertical extent because measurements are made to the base; baseless models
 record the measured hull height. Rotated footprint extents must remain inside the table;
 missing, duplicate, unrecognized, unsupported, or out-of-bounds models fail
-closed. Because flat coordinates cannot safely prove multilevel or irregular
-physical clearance, model/model and model/objective non-overlap are retained as
-explicit player-reviewed facts. Version 28 extends that stable identity through
+closed. Version 36 derives strict 3D endpoint clearance from those footprints:
+positive model/model or model/recommended-40-mm-objective overlap is rejected,
+while boundary contact remains legal. Stale or legacy vertical geometry stays
+an explicit player-reviewed unknown. Version 28 extends that stable identity through
 Normal, Advance, and Fall Back moves and through Reserves or Rapid Ingress setup.
 Each exact action pauses before its end-of-move or set-up reaction window until
 the event log contains every surviving model's locked footprint, endpoint,
@@ -689,8 +690,9 @@ optional intermediate path points, measured farthest-part distance, and reviewed
 maximum distance. The engine rejects missing or duplicate live identities,
 wrong per-segment survivor counts, changed footprints, mismatched path starts or
 endpoints, paths outside the table, distances shorter than the centre path, and
-distances above the reviewed allowance. Terrain clearance and model overlap
-remain explicit reason-bearing tabletop reviews. Casualties mark the
+distances above the reviewed allowance. Terrain and complete-path clearance
+remain explicit reason-bearing tabletop reviews; exact endpoint overlap is
+executable in version 36. Casualties mark the
 last position snapshot stale until the next snapshot identifies the surviving
 models; undo restores freshness when the identities match again. If a Charge,
 Pile In, Consolidation, or other reviewed physical move made the saved start
@@ -1423,10 +1425,9 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 
 1. Derive movement and placement terrain clearance from the shared 3D geometry,
    including climb, overhang, and irregular-surface cases.
-2. Prove model/model and model/objective non-overlap at every required endpoint.
-3. Connect exact objective control to source-backed mission scoring without
+2. Connect exact objective control to source-backed mission scoring without
    inventing unavailable mission-card text.
-4. Add a reviewed visibility-inspection view that highlights the exact bearer,
+3. Add a reviewed visibility-inspection view that highlights the exact bearer,
    target model, ray, and terrain feature behind every proof or fallback.
 
 ## Current boundaries

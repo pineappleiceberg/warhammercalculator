@@ -3,6 +3,7 @@ import {
   BATTLE_EVENT_VERSION,
   BATTLE_STATE_VERSION,
   CONVEX_SILHOUETTE_BATTLE_STATE_VERSION,
+  ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION,
   RANGED_GEOMETRY_BATTLE_STATE_VERSION,
   TERRAIN_VISIBILITY_BATTLE_STATE_VERSION,
   EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION,
@@ -701,6 +702,10 @@ export function initializeBattleForLists({
             sourceVersion < OBJECTIVE_CONTROL_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyObjectiveControlThroughSequence ?? 0),
+          legacyEndpointClearanceThroughSequence:
+            sourceVersion < ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyEndpointClearanceThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {
