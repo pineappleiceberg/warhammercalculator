@@ -27,19 +27,29 @@ state.
 
 ## Prioritized backlog
 
-1. Add measured 3D model silhouettes, terrain height, and Ruin-wall/opening
-   subgeometry so visibility and Benefit of Cover can be resolved without
-   converting uncertain tabletop facts into guesses.
-2. Make movement clearance, model/objective overlap, and objective control
+1. Make movement clearance, model/objective overlap, and objective control
    executable from exact per-model geometry and current Objective Control,
    Battle-shock, and contested-unit state.
-3. Implement source-locked mission scoring and secondary-card/action tracking
+2. Implement source-locked mission scoring and secondary-card/action tracking
    for the selected Chapter Approved combination while keeping unavailable card
    text fail-closed.
+3. Expand reviewed terrain beyond rectangular footprints and wall panels where
+   a supported layout needs irregular or elevated movement geometry.
 4. Deliver full guided-game replay scenarios before adding deterministic
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-11: Advanced reviewed model geometry to battle-state version 34.
+  Players can optionally replace a model's conservative primitive envelope with
+  a three-to-sixteen-vertex strictly convex counter-clockwise outline extruded
+  through its reviewed height. Exact rotated segment/prism intersection removes
+  false line-of-sight blockers, while bounding-volume proofs can establish full
+  visibility only when every possible model obstruction is safely excluded;
+  ambiguous terrain or model geometry remains unknown. Version-33 games migrate
+  without invented outlines. Guided Play, persistence, replay/API output,
+  JavaScript, and an ACSL-specified C/WebAssembly validator share malformed,
+  rotation, migration, integration, and differential coverage.
 
 - 2026-08-11: Advanced exact battlefield geometry to battle-state version 31.
   Circular, elliptical, and rotated rectangular model boundaries now derive

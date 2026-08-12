@@ -143,7 +143,7 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    exact 20 A-T mission combinations, eight terrain layouts, and their allowed
    pairings. Next replace guided mission scoring and physical terrain boundaries
    with executable handlers as their state becomes representable.
-7. **In progress:** version 33 records the canonical 60-by-44-inch battlefield,
+7. **In progress:** version 34 records the canonical 60-by-44-inch battlefield,
    exact mission/layout binding, objective centres, official terrain-section
    inventory, twelve rotated and non-overlapping area-terrain outlines,
    single/separate section grouping, stable coordinate origin, review method,
@@ -157,12 +157,13 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    identities in replayable snapshots or explicit Transport location
    transitions. Multiple forced passenger formations queue
    independently before play can continue. Reviewed terrain panels, openings,
-   model silhouettes, coherency, objective range, Engagement Range, directional
-   visibility, and per-model Benefit of Cover are now executable and replayed.
+   primitive or optional convex-prism model silhouettes, coherency, objective
+   range, Engagement Range, directional visibility, and per-model Benefit of
+   Cover are now executable and replayed.
    Ranged target declarations bind exact weapon bearers or Transport observers
    to those facts, require an explicit review when a proof is unknown, and carry
-   model-specific cover into ordered damage allocation. Next improve silhouette
-   geometry, derive terrain movement clearance, and execute objective control
+   model-specific cover into ordered damage allocation. Next derive terrain
+   movement clearance and execute objective control
    and mission scoring while retaining explicit reviewed fallbacks.
 8. Deliver the complete guided battle workflow and full-game replay corpus.
 9. Add deterministic automated policies, batch battle simulation, and calibrated

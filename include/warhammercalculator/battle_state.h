@@ -157,6 +157,11 @@
 #define WHC_RANGED_GEOMETRY_VISIBILITY_MASK 27u
 #define WHC_RANGED_GEOMETRY_INDIRECT_MASK 31u
 #define WHC_RANGED_GEOMETRY_FULL_VISIBILITY_MASK 224u
+#define WHC_CONVEX_SILHOUETTE_REVIEWED 1u
+#define WHC_CONVEX_SILHOUETTE_FLAGS_MASK 1u
+#define WHC_CONVEX_SILHOUETTE_MIN_VERTICES 3u
+#define WHC_CONVEX_SILHOUETTE_MAX_VERTICES 16u
+#define WHC_CONVEX_SILHOUETTE_COORDINATE_LIMIT 30000
 
 enum whc_fire_overwatch_trigger {
     WHC_FIRE_OVERWATCH_SET_UP = 1u,
@@ -692,6 +697,30 @@ bool whc_visibility_facts_are_valid(
     uint32_t not_fully_visible_model_pair_count, uint32_t unknown_model_pair_count,
     uint32_t target_model_count, uint32_t cover_yes_count, uint32_t cover_no_count,
     uint32_t cover_unknown_count, uint32_t flags);
+
+/*@ requires vertices == \null || vertex_count < WHC_CONVEX_SILHOUETTE_MIN_VERTICES ||
+             vertex_count > WHC_CONVEX_SILHOUETTE_MAX_VERTICES ||
+             \valid_read(vertices + (0 .. vertex_count * 2 - 1));
+    assigns \nothing;
+    ensures \result ==> vertices != \null;
+    ensures \result ==> WHC_CONVEX_SILHOUETTE_MIN_VERTICES <= vertex_count <=
+                         WHC_CONVEX_SILHOUETTE_MAX_VERTICES;
+    ensures \result ==> flags == WHC_CONVEX_SILHOUETTE_REVIEWED;
+    ensures \result ==> \forall integer index; 0 <= index < vertex_count * 2 ==>
+                -WHC_CONVEX_SILHOUETTE_COORDINATE_LIMIT <= vertices[index] <=
+                 WHC_CONVEX_SILHOUETTE_COORDINATE_LIMIT;
+    ensures \result ==> \forall integer edge, point;
+                0 <= edge < vertex_count && 0 <= point < vertex_count &&
+                point != edge && point != (edge + 1 == vertex_count ? 0 : edge + 1) ==>
+                (vertices[(edge + 1 == vertex_count ? 0 : edge + 1) * 2] -
+                 vertices[edge * 2]) *
+                    (vertices[point * 2 + 1] - vertices[edge * 2 + 1]) -
+                (vertices[(edge + 1 == vertex_count ? 0 : edge + 1) * 2 + 1] -
+                 vertices[edge * 2 + 1]) *
+                    (vertices[point * 2] - vertices[edge * 2]) > 0;
+*/
+bool whc_convex_silhouette_is_valid(const int32_t *vertices, uint32_t vertex_count,
+                                    uint32_t flags);
 
 /*@ assigns \nothing;
     ensures \result <==>

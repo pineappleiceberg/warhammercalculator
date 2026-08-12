@@ -7,9 +7,41 @@ export const TERRAIN_VISIBILITY_LIMITS = Object.freeze({
   maximumPanels: 256,
   maximumOpeningsPerPanel: 32,
   maximumSightPointsPerModel: 16,
+  maximumConvexVerticesPerModel: 16,
   maximumCoordinateThousandths: 100_000,
   maximumHeightThousandths: 30_000,
 });
+
+export function convexSilhouetteIsValid(vertices, flags = 1) {
+  if (
+    flags !== 1 ||
+    !Array.isArray(vertices) ||
+    vertices.length < 3 ||
+    vertices.length > TERRAIN_VISIBILITY_LIMITS.maximumConvexVerticesPerModel ||
+    vertices.some(
+      (vertex) =>
+        !integerBetween(vertex?.xOffsetThousandths, -30_000, 30_000) ||
+        !integerBetween(vertex?.yOffsetThousandths, -30_000, 30_000),
+    )
+  ) {
+    return false;
+  }
+  for (let edgeIndex = 0; edgeIndex < vertices.length; edgeIndex += 1) {
+    const nextIndex = (edgeIndex + 1) % vertices.length;
+    const start = vertices[edgeIndex];
+    const end = vertices[nextIndex];
+    const edgeX = end.xOffsetThousandths - start.xOffsetThousandths;
+    const edgeY = end.yOffsetThousandths - start.yOffsetThousandths;
+    for (let pointIndex = 0; pointIndex < vertices.length; pointIndex += 1) {
+      if (pointIndex === edgeIndex || pointIndex === nextIndex) continue;
+      const point = vertices[pointIndex];
+      const pointX = point.xOffsetThousandths - start.xOffsetThousandths;
+      const pointY = point.yOffsetThousandths - start.yOffsetThousandths;
+      if (edgeX * pointY - edgeY * pointX <= 0) return false;
+    }
+  }
+  return true;
+}
 
 function integerBetween(value, minimum, maximum) {
   return Number.isSafeInteger(value) && value >= minimum && value <= maximum;
@@ -23,7 +55,7 @@ function rotate(x, y, milliDegrees) {
 }
 
 function inverseRotate(x, y, milliDegrees) {
-  return rotate(x, y, (180_000 - milliDegrees) % 180_000);
+  return rotate(x, y, -milliDegrees);
 }
 
 function shapeSupport(shape, width, depth, angleMilliDegrees) {
@@ -46,6 +78,7 @@ function shapeSupport(shape, width, depth, angleMilliDegrees) {
 
 function silhouetteReady(model) {
   const silhouette = model?.silhouette;
+  const geometryMode = silhouette?.geometryMode ?? "primitive";
   return Boolean(
     silhouette &&
       ["circle", "ellipse", "rectangle"].includes(silhouette.shape) &&
@@ -65,7 +98,11 @@ function silhouetteReady(model) {
           integerBetween(point.heightThousandths, 0, silhouette.heightThousandths),
       ) &&
       silhouette.envelopeReviewed === true &&
-      silhouette.sightPointsReviewed === true,
+      silhouette.sightPointsReviewed === true &&
+      ["primitive", "convex_prism"].includes(geometryMode) &&
+      (geometryMode !== "convex_prism" ||
+        (silhouette.convexReviewed === true &&
+          convexSilhouetteIsValid(silhouette.convexVertices, 1))),
   );
 }
 
@@ -83,6 +120,25 @@ function silhouetteCenter(model) {
 
 function silhouetteBox(model) {
   const center = silhouetteCenter(model);
+  if (model.silhouette.geometryMode === "convex_prism") {
+    const vertices = model.silhouette.convexVertices.map((vertex) => {
+      const offset = rotate(
+        vertex.xOffsetThousandths,
+        vertex.yOffsetThousandths,
+        model.rotationMilliDegrees,
+      );
+      return { x: center.x + offset.x, y: center.y + offset.y };
+    });
+    const minimumZ = model.elevationThousandths + model.silhouette.bottomOffsetThousandths;
+    return {
+      minimumX: Math.min(...vertices.map((vertex) => vertex.x)),
+      maximumX: Math.max(...vertices.map((vertex) => vertex.x)),
+      minimumY: Math.min(...vertices.map((vertex) => vertex.y)),
+      maximumY: Math.max(...vertices.map((vertex) => vertex.y)),
+      minimumZ,
+      maximumZ: minimumZ + model.silhouette.heightThousandths,
+    };
+  }
   const support = shapeSupport(
     model.silhouette.shape,
     model.silhouette.widthThousandths,
@@ -98,6 +154,31 @@ function silhouetteBox(model) {
     minimumZ,
     maximumZ: minimumZ + model.silhouette.heightThousandths,
   };
+}
+
+function silhouetteVertices(model) {
+  const box = silhouetteBox(model);
+  const planar =
+    model.silhouette.geometryMode === "convex_prism"
+      ? model.silhouette.convexVertices.map((vertex) => {
+          const center = silhouetteCenter(model);
+          const offset = rotate(
+            vertex.xOffsetThousandths,
+            vertex.yOffsetThousandths,
+            model.rotationMilliDegrees,
+          );
+          return { x: center.x + offset.x, y: center.y + offset.y };
+        })
+      : [
+          { x: box.minimumX, y: box.minimumY },
+          { x: box.maximumX, y: box.minimumY },
+          { x: box.maximumX, y: box.maximumY },
+          { x: box.minimumX, y: box.maximumY },
+        ];
+  return planar.flatMap((vertex) => [
+    { ...vertex, z: box.minimumZ },
+    { ...vertex, z: box.maximumZ },
+  ]);
 }
 
 function sightPoints(model) {
@@ -266,6 +347,136 @@ function segmentIntersectsBox(start, end, box) {
   return upper >= EPSILON && lower <= 1 - EPSILON;
 }
 
+function segmentIntersectsConvexPrism(start, end, model) {
+  const center = silhouetteCenter(model);
+  const localStart = inverseRotate(
+    start.x - center.x,
+    start.y - center.y,
+    model.rotationMilliDegrees,
+  );
+  const localEnd = inverseRotate(end.x - center.x, end.y - center.y, model.rotationMilliDegrees);
+  const minimumZ = model.elevationThousandths + model.silhouette.bottomOffsetThousandths;
+  const maximumZ = minimumZ + model.silhouette.heightThousandths;
+  let lower = 0;
+  let upper = 1;
+  for (let index = 0; index < model.silhouette.convexVertices.length; index += 1) {
+    const first = model.silhouette.convexVertices[index];
+    const second =
+      model.silhouette.convexVertices[(index + 1) % model.silhouette.convexVertices.length];
+    const edgeX = second.xOffsetThousandths - first.xOffsetThousandths;
+    const edgeY = second.yOffsetThousandths - first.yOffsetThousandths;
+    const startValue =
+      edgeX * (localStart.y - first.yOffsetThousandths) -
+      edgeY * (localStart.x - first.xOffsetThousandths);
+    const endValue =
+      edgeX * (localEnd.y - first.yOffsetThousandths) -
+      edgeY * (localEnd.x - first.xOffsetThousandths);
+    const delta = endValue - startValue;
+    if (Math.abs(delta) <= EPSILON) {
+      if (startValue < -EPSILON) return false;
+      continue;
+    }
+    const boundary = -startValue / delta;
+    if (delta > 0) lower = Math.max(lower, boundary);
+    else upper = Math.min(upper, boundary);
+    if (lower > upper + EPSILON) return false;
+  }
+  for (const [origin, delta, minimum, maximum] of [
+    [start.z, end.z - start.z, minimumZ, maximumZ],
+  ]) {
+    if (Math.abs(delta) <= EPSILON) {
+      if (origin < minimum - EPSILON || origin > maximum + EPSILON) return false;
+      continue;
+    }
+    const first = (minimum - EPSILON - origin) / delta;
+    const second = (maximum + EPSILON - origin) / delta;
+    lower = Math.max(lower, Math.min(first, second));
+    upper = Math.min(upper, Math.max(first, second));
+    if (lower > upper + EPSILON) return false;
+  }
+  return upper >= EPSILON && lower <= 1 - EPSILON;
+}
+
+function segmentIntersectsSilhouette(start, end, model) {
+  return model.silhouette.geometryMode === "convex_prism"
+    ? segmentIntersectsConvexPrism(start, end, model)
+    : segmentIntersectsBox(start, end, silhouetteBox(model));
+}
+
+function silhouetteBoundingSphere(model) {
+  const box = silhouetteBox(model);
+  const center = {
+    x: (box.minimumX + box.maximumX) / 2,
+    y: (box.minimumY + box.maximumY) / 2,
+    z: (box.minimumZ + box.maximumZ) / 2,
+  };
+  const radius = Math.max(
+    ...silhouetteVertices(model).map((vertex) =>
+      Math.hypot(vertex.x - center.x, vertex.y - center.y, vertex.z - center.z),
+    ),
+  );
+  return { center, radius };
+}
+
+function minimumDistanceToBox(point, box) {
+  return Math.hypot(
+    Math.max(box.minimumX - point.x, 0, point.x - box.maximumX),
+    Math.max(box.minimumY - point.y, 0, point.y - box.maximumY),
+    Math.max(box.minimumZ - point.z, 0, point.z - box.maximumZ),
+  );
+}
+
+function maximumDistanceToBox(point, box) {
+  return Math.hypot(
+    Math.max(Math.abs(box.minimumX - point.x), Math.abs(box.maximumX - point.x)),
+    Math.max(Math.abs(box.minimumY - point.y), Math.abs(box.maximumY - point.y)),
+    Math.max(Math.abs(box.minimumZ - point.z), Math.abs(box.maximumZ - point.z)),
+  );
+}
+
+function modelCouldOccludeFromPoint(observerPoint, target, blocker) {
+  if (
+    minimumDistanceToBox(observerPoint, silhouetteBox(blocker)) >=
+    maximumDistanceToBox(observerPoint, silhouetteBox(target)) - EPSILON
+  ) {
+    return false;
+  }
+  const targetSphere = silhouetteBoundingSphere(target);
+  const blockerSphere = silhouetteBoundingSphere(blocker);
+  const targetVector = {
+    x: targetSphere.center.x - observerPoint.x,
+    y: targetSphere.center.y - observerPoint.y,
+    z: targetSphere.center.z - observerPoint.z,
+  };
+  const blockerVector = {
+    x: blockerSphere.center.x - observerPoint.x,
+    y: blockerSphere.center.y - observerPoint.y,
+    z: blockerSphere.center.z - observerPoint.z,
+  };
+  const targetDistance = Math.hypot(targetVector.x, targetVector.y, targetVector.z);
+  const blockerDistance = Math.hypot(blockerVector.x, blockerVector.y, blockerVector.z);
+  if (blockerDistance - blockerSphere.radius >= targetDistance + targetSphere.radius - EPSILON) {
+    return false;
+  }
+  if (targetDistance <= targetSphere.radius + EPSILON || blockerDistance <= blockerSphere.radius) {
+    return true;
+  }
+  const cosine = Math.max(
+    -1,
+    Math.min(
+      1,
+      (targetVector.x * blockerVector.x +
+        targetVector.y * blockerVector.y +
+        targetVector.z * blockerVector.z) /
+        (targetDistance * blockerDistance),
+    ),
+  );
+  const separation = Math.acos(cosine);
+  const targetAngle = Math.asin(Math.min(1, targetSphere.radius / targetDistance));
+  const blockerAngle = Math.asin(Math.min(1, blockerSphere.radius / blockerDistance));
+  return separation <= targetAngle + blockerAngle + EPSILON;
+}
+
 function boxesOverlap(first, second) {
   return (
     first.maximumX >= second.minimumX - EPSILON &&
@@ -366,7 +577,7 @@ function rayIsClear(
       if (panelIntersection(start, end, panel) !== "clear") return false;
     }
   }
-  return blockingModels.every((model) => !segmentIntersectsBox(start, end, silhouetteBox(model)));
+  return blockingModels.every((model) => !segmentIntersectsSilhouette(start, end, model));
 }
 
 function modelPairFullyVisible(
@@ -385,34 +596,45 @@ function modelPairFullyVisible(
   ) {
     return "not_fully_visible";
   }
-  const corridor = corridorBox(silhouetteBox(observer), silhouetteBox(target));
-  if (blockingModels.some((model) => boxesOverlap(corridor, silhouetteBox(model))))
-    return "unknown";
-  for (const section of sections) {
-    if (section.panels.some((panel) => boxesOverlap(corridor, panelBox(panel)))) return "unknown";
-    if (exemptFromAreaTerrain) continue;
-    const observerInside = modelInsideSection(observer, section, terrainFootprints);
-    const targetInside = modelInsideSection(target, section, terrainFootprints);
-    if (section.featureType === "ruins" && !observerInside && !targetInside) {
+  const targetBox = silhouetteBox(target);
+  for (const observerPoint of sightPoints(observer)) {
+    if (blockingModels.some((model) => modelCouldOccludeFromPoint(observerPoint, target, model))) {
+      continue;
+    }
+    const pointBox = {
+      minimumX: observerPoint.x,
+      maximumX: observerPoint.x,
+      minimumY: observerPoint.y,
+      maximumY: observerPoint.y,
+      minimumZ: observerPoint.z,
+      maximumZ: observerPoint.z,
+    };
+    const corridor = corridorBox(pointBox, targetBox);
+    let terrainCouldObscure = false;
+    for (const section of sections) {
+      if (section.panels.some((panel) => boxesOverlap(corridor, panelBox(panel)))) {
+        terrainCouldObscure = true;
+        break;
+      }
+      if (exemptFromAreaTerrain) continue;
+      const observerInside = modelInsideSection(observer, section, terrainFootprints);
+      const targetInside = modelInsideSection(target, section, terrainFootprints);
+      const relevantAreaTerrain =
+        (section.featureType === "ruins" && !observerInside && !targetInside) ||
+        section.featureType === "woods";
       if (
+        relevantAreaTerrain &&
         sectionFootprints(section, terrainFootprints).some((footprint) =>
           boxesOverlap(corridor, footprintBox(footprint)),
         )
       ) {
-        return "unknown";
+        terrainCouldObscure = true;
+        break;
       }
     }
-    if (section.featureType === "woods") {
-      if (
-        sectionFootprints(section, terrainFootprints).some((footprint) =>
-          boxesOverlap(corridor, footprintBox(footprint)),
-        )
-      ) {
-        return "unknown";
-      }
-    }
+    if (!terrainCouldObscure) return "fully_visible";
   }
-  return "fully_visible";
+  return "unknown";
 }
 
 function liveModels(formation, position) {

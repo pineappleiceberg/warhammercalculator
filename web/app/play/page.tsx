@@ -157,6 +157,12 @@ type ModelSilhouette = {
   }>;
   envelopeReviewed: boolean;
   sightPointsReviewed: boolean;
+  geometryMode?: "primitive" | "convex_prism";
+  convexVertices?: Array<{
+    xOffsetThousandths: number;
+    yOffsetThousandths: number;
+  }>;
+  convexReviewed?: boolean;
 };
 
 function parseModelSilhouette(data: FormData, prefix: string): ModelSilhouette {
@@ -197,6 +203,27 @@ function parseModelSilhouette(data: FormData, prefix: string): ModelSilhouette {
   if (sightPoints.length < 1 || sightPoints.length > 16) {
     throw new Error(`${prefix} requires 1 to 16 physical sight points`);
   }
+  const convexReviewed = data.get(`${prefix}-convex-reviewed`) === "on";
+  const convexVertices = String(data.get(`${prefix}-convex-vertices`) || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const values = line.split(",").map((value) => Number(value.trim()));
+      if (
+        values.length !== 2 ||
+        values.some((value) => !Number.isFinite(value) || value < -30 || value > 30)
+      ) {
+        throw new Error(`${prefix} convex vertices must be x-offset, y-offset in inches`);
+      }
+      return {
+        xOffsetThousandths: Math.round(values[0] * 1000),
+        yOffsetThousandths: Math.round(values[1] * 1000),
+      };
+    });
+  if (convexReviewed && (convexVertices.length < 3 || convexVertices.length > 16)) {
+    throw new Error(`${prefix} requires 3 to 16 counter-clockwise convex vertices`);
+  }
   return {
     shape: String(data.get(`${prefix}-shape`) || "circle"),
     widthThousandths: inches("width", 0.001, 30),
@@ -208,6 +235,9 @@ function parseModelSilhouette(data: FormData, prefix: string): ModelSilhouette {
     sightPoints,
     envelopeReviewed: data.get(`${prefix}-envelope-reviewed`) === "on",
     sightPointsReviewed: data.get(`${prefix}-points-reviewed`) === "on",
+    geometryMode: convexReviewed ? "convex_prism" : "primitive",
+    convexVertices,
+    convexReviewed,
   };
 }
 
@@ -262,6 +292,20 @@ function SilhouetteInputs({ prefix }: { prefix: string }) {
       <label className="confirmation-row">
         <input name={`${prefix}-points-reviewed`} type="checkbox" required />
         Sight points are on physical parts of the model
+      </label>
+      <label>
+        <span>Optional convex outline</span>
+        <textarea
+          name={`${prefix}-convex-vertices`}
+          rows={4}
+          placeholder={
+            "Counter-clockwise x-offset, y-offset per line\n-0.5, -0.5\n0.5, -0.5\n0.5, 0.5\n-0.5, 0.5"
+          }
+        />
+      </label>
+      <label className="confirmation-row">
+        <input name={`${prefix}-convex-reviewed`} type="checkbox" />
+        Use this strictly convex outline as the model&apos;s reviewed vertical prism
       </label>
     </div>
   );

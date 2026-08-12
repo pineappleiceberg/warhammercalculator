@@ -525,6 +525,91 @@ bool whc_visibility_facts_are_valid(
            flags == WHC_VISIBILITY_FACTS_FLAGS_MASK;
 }
 
+bool whc_convex_silhouette_is_valid(const int32_t *vertices, uint32_t vertex_count,
+                                    uint32_t flags) {
+    uint32_t edge_index;
+
+    if (vertices == NULL || vertex_count < WHC_CONVEX_SILHOUETTE_MIN_VERTICES ||
+        vertex_count > WHC_CONVEX_SILHOUETTE_MAX_VERTICES ||
+        flags != WHC_CONVEX_SILHOUETTE_REVIEWED) {
+        return false;
+    }
+    /*@ loop invariant 0 <= edge_index <= vertex_count;
+        loop invariant \forall integer index; 0 <= index < edge_index * 2 ==>
+            -WHC_CONVEX_SILHOUETTE_COORDINATE_LIMIT <= vertices[index] <=
+             WHC_CONVEX_SILHOUETTE_COORDINATE_LIMIT;
+        loop assigns edge_index;
+        loop variant vertex_count - edge_index;
+    */
+    for (edge_index = 0u; edge_index < vertex_count; edge_index++) {
+        uint32_t coordinate_index = edge_index * 2u;
+        if (vertices[coordinate_index] < -WHC_CONVEX_SILHOUETTE_COORDINATE_LIMIT ||
+            vertices[coordinate_index] > WHC_CONVEX_SILHOUETTE_COORDINATE_LIMIT ||
+            vertices[coordinate_index + 1u] < -WHC_CONVEX_SILHOUETTE_COORDINATE_LIMIT ||
+            vertices[coordinate_index + 1u] > WHC_CONVEX_SILHOUETTE_COORDINATE_LIMIT) {
+            return false;
+        }
+    }
+    /*@ assert \forall integer index; 0 <= index < vertex_count * 2 ==>
+            -WHC_CONVEX_SILHOUETTE_COORDINATE_LIMIT <= vertices[index] <=
+             WHC_CONVEX_SILHOUETTE_COORDINATE_LIMIT;
+    */
+    /*@ loop invariant 0 <= edge_index <= vertex_count;
+        loop invariant \forall integer index; 0 <= index < vertex_count * 2 ==>
+            -WHC_CONVEX_SILHOUETTE_COORDINATE_LIMIT <= vertices[index] <=
+             WHC_CONVEX_SILHOUETTE_COORDINATE_LIMIT;
+        loop invariant \forall integer edge, point;
+            0 <= edge < edge_index && 0 <= point < vertex_count &&
+            point != edge && point != (edge + 1 == vertex_count ? 0 : edge + 1) ==>
+            (vertices[(edge + 1 == vertex_count ? 0 : edge + 1) * 2] -
+             vertices[edge * 2]) *
+                (vertices[point * 2 + 1] - vertices[edge * 2 + 1]) -
+            (vertices[(edge + 1 == vertex_count ? 0 : edge + 1) * 2 + 1] -
+             vertices[edge * 2 + 1]) *
+                (vertices[point * 2] - vertices[edge * 2]) > 0;
+        loop assigns edge_index;
+        loop variant vertex_count - edge_index;
+    */
+    for (edge_index = 0u; edge_index < vertex_count; edge_index++) {
+        uint32_t next_index = edge_index + 1u == vertex_count ? 0u : edge_index + 1u;
+        uint32_t point_index;
+        int64_t edge_x = (int64_t)vertices[next_index * 2u] - vertices[edge_index * 2u];
+        int64_t edge_y =
+            (int64_t)vertices[next_index * 2u + 1u] - vertices[edge_index * 2u + 1u];
+
+        /*@ loop invariant 0 <= point_index <= vertex_count;
+            loop invariant \forall integer index; 0 <= index < vertex_count * 2 ==>
+                -WHC_CONVEX_SILHOUETTE_COORDINATE_LIMIT <= vertices[index] <=
+                 WHC_CONVEX_SILHOUETTE_COORDINATE_LIMIT;
+            loop invariant \forall integer point; 0 <= point < point_index &&
+                point != edge_index && point != next_index ==>
+                (vertices[next_index * 2] - vertices[edge_index * 2]) *
+                    (vertices[point * 2 + 1] - vertices[edge_index * 2 + 1]) -
+                (vertices[next_index * 2 + 1] - vertices[edge_index * 2 + 1]) *
+                    (vertices[point * 2] - vertices[edge_index * 2]) > 0;
+            loop assigns point_index;
+            loop variant vertex_count - point_index;
+        */
+        for (point_index = 0u; point_index < vertex_count; point_index++) {
+            int64_t point_x;
+            int64_t point_y;
+            int64_t cross;
+            if (point_index == edge_index || point_index == next_index) {
+                continue;
+            }
+            point_x =
+                (int64_t)vertices[point_index * 2u] - vertices[edge_index * 2u];
+            point_y =
+                (int64_t)vertices[point_index * 2u + 1u] - vertices[edge_index * 2u + 1u];
+            cross = edge_x * point_y - edge_y * point_x;
+            if (cross <= 0) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 bool whc_ranged_geometry_resolution_is_valid(
     uint32_t observer_count, uint32_t proven_observer_count, uint32_t target_model_count,
     uint32_t cover_proven_count, uint32_t cover_override_count, uint32_t flags) {
