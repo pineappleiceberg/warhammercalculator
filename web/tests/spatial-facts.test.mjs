@@ -8,7 +8,9 @@ import {
   endpointClearanceFactValuesAreValid,
   horizontalBoundariesWithin,
   horizontalFootprintsOverlap,
+  formationBoundariesWithinDistance,
   modelBoundariesWithin,
+  modelBoundariesWithinDistance,
   spatialFactValues,
   spatialFactValuesAreValid,
 } from "../lib/spatial-facts.mjs";
@@ -164,6 +166,19 @@ test("vertical proximity uses base planes and baseless hull intervals", () => {
     modelBoundariesWithin(hull, model("upper", 5_000, 5_000, 12_000), 1_000, 5_000),
     true,
   );
+});
+
+test("straight-line boundary distance combines horizontal and vertical separation", () => {
+  const first = model("first", 5_000, 5_000);
+  const exact = model("exact", 10_800, 5_000, 3_600);
+  const beyond = model("beyond", 10_800, 5_000, 3_601);
+  assert.equal(modelBoundariesWithinDistance(first, exact, 6_000), true);
+  assert.equal(modelBoundariesWithinDistance(first, beyond, 6_000), false);
+  assert.equal(
+    formationBoundariesWithinDistance({ models: [first] }, { models: [exact] }, 6_000),
+    true,
+  );
+  assert.equal(formationBoundariesWithinDistance({ models: [] }, { models: [exact] }, 6_000), null);
 });
 
 test("derived facts execute coherency, Engagement Range, and objective proximity", () => {

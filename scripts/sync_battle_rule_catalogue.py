@@ -20,6 +20,8 @@ SOURCE_ID = "wahapedia-profile-export-2026-06-13"
 MISSION_SOURCE_ID = "chapter-approved-tournament-companion-2025-26-v1.4"
 NECRONS_FAQ_SOURCE_ID = "codex-necrons-faq-v1.2"
 NECRONS_FAQ_SHA256 = "52d2b25f175e2a5ef760402a18683544e281be6a9e693ffe1389b9bb6eed7c6d"
+TYRANIDS_FACTION_PACK_SOURCE_ID = "tyranids-faction-pack-v1.0"
+TYRANIDS_FACTION_PACK_SHA256 = "de2105f97171812369288cb5d5da3da9730f47dc7daa67aa06b1ebc771ad6c36"
 MISSION_PROCEDURES = {
     "sourcePages": [2, 3, 4, 5],
     "battleRounds": 5,
@@ -62,6 +64,8 @@ GENERATED_PREFIXES = (
     "terrain.catalogue-",
     "faction.oath-of-moment",
     "faction.reanimation-protocols",
+    "faction.shadow-in-the-warp",
+    "faction.synapse-battle-shock",
 )
 
 
@@ -125,6 +129,24 @@ def reanimation_protocols_rule():
                 "records": [{"type": "faction", "id": "NEC:ability:000008369"}],
             },
             {"id": NECRONS_FAQ_SOURCE_ID, "pages": [2]},
+        ],
+    }
+
+
+def tyranids_battle_shock_rule(rule_id, name):
+    ability_id = "000000707" if rule_id == "faction.shadow-in-the-warp" else "000000705"
+    return {
+        "id": rule_id,
+        "category": "faction",
+        "name": name,
+        "status": "executable",
+        "introducedBattleStateVersion": 44,
+        "sources": [
+            {
+                "id": SOURCE_ID,
+                "records": [{"type": "faction", "id": f"TYR:ability:{ability_id}"}],
+            },
+            {"id": TYRANIDS_FACTION_PACK_SOURCE_ID, "pages": [19, 21]},
         ],
     }
 
@@ -234,6 +256,7 @@ def expected_documents():
             "exact enhancement identities selected for each detachment",
             "exact datasheet identities and source-linked rules selected by saved units",
             "published per-model Objective Control characteristics used by exact battle formations",
+            "published per-model Leadership characteristics used by exact Battle-shock tests",
             "exact Oath of Moment target-selection timing and Hit-roll re-roll effect",
             "exact Reanimation Protocols timing, D3 roll, wound restoration, and destroyed-model return order",
         ],
@@ -280,9 +303,27 @@ def expected_documents():
         entry for entry in sources["sources"] if entry["id"] != NECRONS_FAQ_SOURCE_ID
     ]
     sources["sources"].append(necrons_faq_source_entry)
+    tyranids_source_entry = {
+        "id": TYRANIDS_FACTION_PACK_SOURCE_ID,
+        "title": "Tyranids Faction Pack",
+        "edition": "Warhammer 40,000 10th Edition",
+        "version": "1.0",
+        "url": "https://assets.warhammer-community.com/eng_09-06_warhammer40000_faction_pack_tyranids-avhhzmcte8-j0kseag7td.pdf",
+        "retrievedAt": "2026-08-12",
+        "sha256": TYRANIDS_FACTION_PACK_SHA256,
+        "pages": [19, 21],
+        "usedFor": [
+            "exact once-per-battle Shadow in the Warp timing, source-unit battlefield requirement, enemy-unit Battle-shock tests, and Synapse-range penalty",
+            "exact Synapse 3D6 Battle-shock test replacement and the Insane Bravery timing boundary",
+        ],
+    }
+    sources["sources"] = [
+        entry for entry in sources["sources"] if entry["id"] != TYRANIDS_FACTION_PACK_SOURCE_ID
+    ]
+    sources["sources"].append(tyranids_source_entry)
 
     coverage["snapshotId"] = (
-        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-v43"
+        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v44"
     )
     coverage["sourceLocks"] = [
         lock for lock in coverage["sourceLocks"] if lock["id"] != SOURCE_ID
@@ -300,6 +341,12 @@ def expected_documents():
     coverage["sourceLocks"].append(
         {"id": NECRONS_FAQ_SOURCE_ID, "sha256": NECRONS_FAQ_SHA256}
     )
+    coverage["sourceLocks"] = [
+        lock for lock in coverage["sourceLocks"] if lock["id"] != TYRANIDS_FACTION_PACK_SOURCE_ID
+    ]
+    coverage["sourceLocks"].append(
+        {"id": TYRANIDS_FACTION_PACK_SOURCE_ID, "sha256": TYRANIDS_FACTION_PACK_SHA256}
+    )
     coverage["rules"] = [
         rule
         for rule in coverage["rules"]
@@ -310,6 +357,12 @@ def expected_documents():
     )
     coverage["rules"].append(oath_of_moment_rule())
     coverage["rules"].append(reanimation_protocols_rule())
+    coverage["rules"].append(
+        tyranids_battle_shock_rule("faction.shadow-in-the-warp", "Shadow in the Warp")
+    )
+    coverage["rules"].append(
+        tyranids_battle_shock_rule("faction.synapse-battle-shock", "Synapse Battle-shock")
+    )
     coverage["rules"].extend(
         generated_rule("detachment", entry["id"], entry["name"]) for entry in detachments
     )

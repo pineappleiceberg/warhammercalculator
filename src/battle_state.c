@@ -625,6 +625,30 @@ bool whc_reanimation_protocols_transition_is_valid(
     return bounded && (healed || returned);
 }
 
+bool whc_shadow_in_the_warp_test_is_valid(
+    uint32_t source_faction_tyranids, uint32_t once_per_battle_available,
+    uint32_t source_ability_on_battlefield, uint32_t command_phase,
+    uint32_t target_on_battlefield, uint32_t target_faction_tyranids,
+    uint32_t target_within_own_synapse, uint32_t target_within_source_synapse,
+    uint32_t dice_count, uint32_t raw_roll, uint32_t leadership,
+    uint32_t battle_shocked_before, uint32_t failed, uint32_t battle_shocked_after) {
+    const bool flags_valid = target_faction_tyranids <= 1u && target_within_own_synapse <= 1u &&
+                             target_within_source_synapse <= 1u && battle_shocked_before <= 1u &&
+                             failed <= 1u && battle_shocked_after <= 1u;
+    const uint32_t expected_dice_count =
+        target_faction_tyranids == 1u && target_within_own_synapse == 1u ? 3u : 2u;
+    const bool bounded = flags_valid && leadership >= 2u && leadership <= 12u &&
+                         dice_count == expected_dice_count && raw_roll >= dice_count &&
+                         raw_roll <= dice_count * 6u;
+    const uint32_t expected_failed =
+        bounded && raw_roll - target_within_source_synapse > leadership ? 1u : 0u;
+
+    return source_faction_tyranids == 1u && once_per_battle_available == 1u &&
+           source_ability_on_battlefield == 1u && command_phase == 1u &&
+           target_on_battlefield == 1u && bounded && failed == expected_failed &&
+           battle_shocked_after == (battle_shocked_before == 1u || failed == 1u ? 1u : 0u);
+}
+
 bool whc_objective_control_facts_are_valid(uint32_t player_count, uint32_t score_entry_count,
                                            uint32_t top_score, uint32_t top_score_player_count,
                                            uint32_t controller_count, uint32_t contested,

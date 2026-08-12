@@ -543,6 +543,7 @@ export function battleSegmentsForWeaponBearers(modelInstances, weaponInventory, 
       role: base.role,
       keywords: base.model.keywords ?? [],
       wounds: base.model.wounds ?? 1,
+      leadership: base.model.leadership,
       objectiveControl: base.model.objectiveControl,
       feelNoPain: base.model.feelNoPain ?? 0,
       startingModels: modelIds.length,
@@ -689,6 +690,9 @@ export function savedFormationBattleRegistration(
   const reanimationProtocolSavedUnitIds = formation.components
     .filter((component) => (component.catalogueUnit?.factionAbilityIds ?? []).includes("000008369"))
     .map((component) => component.unit.id);
+  const hasShadowInTheWarpAbility = formation.components.some((component) =>
+    (component.catalogueUnit?.factionAbilityIds ?? []).includes("000000707"),
+  );
   return {
     id,
     playerId,
@@ -699,6 +703,7 @@ export function savedFormationBattleRegistration(
     keywords: formationKeywords,
     hasWaaaghAbility,
     hasOathOfMomentAbility,
+    hasShadowInTheWarpAbility,
     reanimationProtocolSavedUnitIds,
     deploymentTraits: {
       dedicatedTransport: normalizedFormationKeywords.has("dedicated transport"),

@@ -85,6 +85,12 @@ const attachedGoldenBattleReplay = JSON.parse(
     "utf8",
   ),
 );
+const shadowGoldenBattleReplay = JSON.parse(
+  await readFile(
+    new URL("./fixtures/golden-battle-tyranids-vs-space-marines-v1.json", import.meta.url),
+    "utf8",
+  ),
+);
 
 function createD1Mock() {
   const rows = [];
@@ -313,7 +319,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const coverage = (await coverageResponse.json()).data;
   assert.equal(
     coverage.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-v43",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v44",
   );
   assert.equal(coverage.sourceLocked, true);
   assert.equal(coverage.rules.length, coveredRuleCoverageMatrix.rules.length);
@@ -2915,6 +2921,29 @@ test("replays the complete source-locked golden battle through the public API an
   assert.deepEqual(result.data.health, completeGoldenBattleReplay.expected.formations[1].health);
   assert.equal(result.data.scoringEvents.length, 20);
   assert.equal(result.data.deployment.complete, true);
+});
+
+test("replays Shadow in the Warp through the public API and C/Wasm predicate", async () => {
+  const worker = await loadWorker();
+  const context = { waitUntil() {}, passThroughOnException() {} };
+  const formationId = shadowGoldenBattleReplay.expected.formations[1].id;
+  const response = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: shadowGoldenBattleReplay.state, formationId }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  const result = await response.json();
+  assert.equal(result.data.factionRules.shadowInTheWarp.length, 1);
+  const activation = result.data.factionRules.shadowInTheWarp[0];
+  assert.equal(activation.sourceFactionId, "TYR");
+  assert.equal(activation.sourceAbilityId, "000000707");
+  assert.deepEqual(activation.resolutions[0].dice, [6, 5]);
+  assert.equal(activation.resolutions[0].failed, true);
 });
 
 test("replays the action-heavy golden battle and casualties through the public API and C ABI", async () => {

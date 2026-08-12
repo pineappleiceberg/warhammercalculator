@@ -156,6 +156,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_grim_resolve_model_objective_control_is_valid, "function");
   assert.equal(typeof calculator._whc_oath_of_moment_attack_state_is_valid, "function");
   assert.equal(typeof calculator._whc_reanimation_protocols_transition_is_valid, "function");
+  assert.equal(typeof calculator._whc_shadow_in_the_warp_test_is_valid, "function");
   assert.equal(typeof calculator._whc_objective_control_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_visibility_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_convex_silhouette_is_valid, "function");
@@ -198,6 +199,14 @@ test("Reanimation Protocols predicate matches healing and returning one wound", 
   assert.equal(validate(1, 1, 1, 1, 3, 3, 1, 3, 3, 2, 1, 2, 0), 1);
   assert.equal(validate(1, 1, 1, 1, 3, 2, 2, 3, 3, 2, 0, 3, 2), 1);
   assert.equal(validate(1, 1, 0, 1, 3, 2, 2, 3, 3, 2, 0, 3, 2), 0);
+});
+
+test("Shadow in the Warp predicate matches Synapse dice, penalty, and sticky Battle-shock", () => {
+  const validate = calculator._whc_shadow_in_the_warp_test_is_valid;
+  assert.equal(validate(1, 1, 1, 1, 1, 0, 0, 0, 2, 8, 7, 0, 1, 1), 1);
+  assert.equal(validate(1, 1, 1, 1, 1, 1, 1, 1, 3, 8, 7, 1, 0, 1), 1);
+  assert.equal(validate(1, 0, 1, 1, 1, 0, 0, 0, 2, 8, 7, 0, 1, 1), 0);
+  assert.equal(validate(1, 1, 1, 1, 1, 1, 1, 0, 2, 8, 7, 0, 1, 1), 0);
 });
 
 test("WebAssembly and JavaScript agree on reviewed simple terrain surfaces", () => {

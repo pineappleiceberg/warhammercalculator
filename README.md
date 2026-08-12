@@ -825,6 +825,19 @@ destroyed Bodyguard unit. Guided Play exposes each required activation and
 one-wound resolution; the API and C/WebAssembly replay independently validate
 every health transition. Version-42 and older histories retain an explicit
 migration boundary and never receive invented activations or restored wounds.
+Version 44 makes Tyranids Shadow in the Warp an executable, source-locked
+once-per-battle Command-phase transition. Every living enemy unit on the
+battlefield takes a recorded Battle-shock test against the lowest Leadership
+among its surviving models. Exact 3D model-boundary geometry determines both
+6-inch Synapse ranges when complete; otherwise Guided Play requires an explicit
+reviewed measurement and reason. Enemy units within the Tyranids source's
+Synapse range subtract 1 from the test, while Tyranids targets within their own
+Synapse range roll 3D6 instead of 2D6. Passing does not clear an existing
+Battle-shocked state. The API independently verifies every result through the
+ACSL-specified C/WebAssembly predicate, and a complete five-round Tyranids
+fixture locks the behavior into replay. Version-43 and older histories retain
+an explicit migration boundary and never receive an invented activation or
+test result.
 Version-25
 games migrate without invented terrain footprints, version-26 games migrate
 without invented deployment positions, and version-27 games migrate without
@@ -1491,8 +1504,9 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 1. Add source-backed faction and detachment state transitions to canonical
    battle replay, apply their consequences to attacks, objectives, and bounded
    resources, and lock each transition into another full-game faction/mission
-   fixture. Waaagh!, Grim Resolve, Oath of Moment, and Reanimation Protocols are
-   executable; next, source-lock another high-impact army or detachment
+   fixture. Waaagh!, Grim Resolve, Oath of Moment, Reanimation Protocols, Shadow
+   in the Warp, and Shadow-specific Synapse Battle-shock dice are executable;
+   next, source-lock another high-impact army or detachment
    transition and continue the corpus across every supported faction and
    mission.
 2. Add reviewed curved movement-surface primitives only when panels and simple
@@ -1535,6 +1549,10 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
   eligible Necrons player's Command phase. It heals wounded models before
   returning destroyed models and preserves the official surviving-Leader versus
   destroyed-Bodyguard boundary.
+- Canonical Shadow in the Warp resolves its global once-per-battle Battle-shock
+  tests and both Synapse proximity effects. The ordinary Command-phase
+  Battle-shock step and other Synapse-dependent abilities remain guided until
+  their complete timing and consequence boundaries are executable.
 
 ## 10th edition profile database
 
