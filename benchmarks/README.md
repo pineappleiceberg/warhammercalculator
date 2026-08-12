@@ -1,11 +1,12 @@
 # Large-volley benchmarks
 
-`benchmark_volley.c` exercises three deterministic exact-distribution workloads:
+`benchmark_volley.c` exercises four deterministic exact-distribution workloads:
 
 - 80 attacks with multi-model damage allocation and Feel No Pain
-- the maximum 32 ordered weapons against the maximum 16 mixed target segments
+- the maximum 32 ordered weapons against the maximum 64 mixed target segments
 - a rules-sensitive volley that must defer Devastating Wounds until ordinary
   attacks have resolved
+- a prefix-tightened Devastating Wounds case that exercises sparse deferred state
 
 Enable the benchmark target in a native or Emscripten build with
 `-DWHC_BUILD_BENCHMARKS=ON`. The executable accepts an iteration count followed

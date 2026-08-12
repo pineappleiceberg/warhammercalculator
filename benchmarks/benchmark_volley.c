@@ -51,7 +51,7 @@ static void dense_case(struct benchmark_case *benchmark) {
 static void mixed_case(struct benchmark_case *benchmark) {
     uint16_t index = 0u;
     memset(benchmark, 0, sizeof(*benchmark));
-    benchmark->name = "mixed_32_weapon_16_target";
+    benchmark->name = "mixed_32_weapon_64_target";
     benchmark->weapon_count = MAX_VOLLEY_WEAPONS;
     benchmark->target_count = MAX_TARGET_SEGMENTS;
     while (index < benchmark->weapon_count) {
@@ -186,7 +186,7 @@ int main(int argc, char **argv) {
         }
         index++;
     }
-    checksum_matches = checksum == UINT64_C(9998691095) * iterations;
+    checksum_matches = checksum == UINT64_C(13001730522) * iterations;
     printf("],\"checksum\":%" PRIu64 ",\"checksumMatches\":%s}\n", checksum,
            checksum_matches ? "true" : "false");
     return checksum_matches ? 0 : 1;
