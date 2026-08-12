@@ -83,6 +83,7 @@ import {
   rapidIngressPlacementIsLegal,
   RULE_COVERAGE_BATTLE_STATE_VERSION,
   rangedTargetEligibilityIsValid,
+  rangedGeometryResolutionIsValid,
   replayBattleState,
   modelPlacementFlags,
   modelPlacementSetFacts,
@@ -354,6 +355,7 @@ type CalculatorExports = {
   whc_estimate_ordered_volley_complexity(...values: number[]): number;
   whc_replay_battle_health_events(...values: number[]): number;
   whc_ranged_target_eligibility_is_valid(...values: number[]): number;
+  whc_ranged_geometry_resolution_is_valid(...values: number[]): number;
   whc_weapon_inventory_declaration_is_valid(...values: number[]): number;
   whc_weapon_bearer_declaration_is_valid(...values: number[]): number;
   whc_charge_resolution_is_valid(...values: number[]): number;
@@ -393,6 +395,7 @@ type OrderedTargetSegment = {
   allocatedAttackDamageReplacementUses: number;
   allocatedAttackDamageReplacementSkip: number;
   modelCount: number;
+  benefitOfCover?: boolean;
 };
 
 const API_HEADERS = {
@@ -589,6 +592,7 @@ async function loadCalculator() {
       typeof calculator.whc_estimate_ordered_volley_complexity !== "function" ||
       typeof calculator.whc_replay_battle_health_events !== "function" ||
       typeof calculator.whc_ranged_target_eligibility_is_valid !== "function" ||
+      typeof calculator.whc_ranged_geometry_resolution_is_valid !== "function" ||
       typeof calculator.whc_weapon_inventory_declaration_is_valid !== "function" ||
       typeof calculator.whc_weapon_bearer_declaration_is_valid !== "function" ||
       typeof calculator.whc_charge_resolution_is_valid !== "function" ||
@@ -1106,6 +1110,29 @@ async function replayFormationHealth(
             "Canonical ranged target eligibility diverged from the web replay",
             "TARGET_ELIGIBILITY_DIVERGENCE",
           );
+        }
+        if (fact.geometryDecision) {
+          const coverProvenCount = fact.geometryDecision.cover.filter(
+            (entry: { resolution: string }) => entry.resolution === "geometry_proof",
+          ).length;
+          const geometryValues = [
+            fact.geometryDecision.observerModelIds.length,
+            fact.geometryDecision.provenObserverModelIds.length,
+            fact.geometryDecision.targetModelIds.length,
+            coverProvenCount,
+            fact.geometryDecision.cover.length - coverProvenCount,
+            fact.geometryDecision.flags,
+          ];
+          const javascriptGeometry = rangedGeometryResolutionIsValid(...geometryValues);
+          const nativeGeometry = Boolean(
+            calculator.whc_ranged_geometry_resolution_is_valid(...geometryValues),
+          );
+          if (!javascriptGeometry || javascriptGeometry !== nativeGeometry) {
+            throw new ServiceUnavailableError(
+              "Canonical ranged geometry diverged from the C/WebAssembly predicate",
+              "RANGED_GEOMETRY_DIVERGENCE",
+            );
+          }
         }
         return { ...fact, eligible: javascriptEligible };
       })
@@ -2311,8 +2338,8 @@ async function exactVolley(
   if (profiles.length < 1 || profiles.length > 32) {
     throw new Error("profiles must contain 1 to 32 weapon profiles");
   }
-  if (targets.length < 1 || targets.length > 16) {
-    throw new Error("targets must contain 1 to 16 ordered profile segments");
+  if (targets.length < 1 || targets.length > 64) {
+    throw new Error("targets must contain 1 to 64 ordered profile segments");
   }
   const capacity = targets.reduce((sum, target) => sum + target.wounds * target.modelCount, 0);
   if (
@@ -2326,7 +2353,7 @@ async function exactVolley(
 
   const calculator = await loadCalculator();
   const weaponFields = 37;
-  const targetFields = 13;
+  const targetFields = 14;
   const weaponsPointer = calculator.malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator.malloc(targets.length * targetFields * 4);
   const summaryPointer = calculator.malloc(10 * 4);
@@ -2401,6 +2428,7 @@ async function exactVolley(
         target.allocatedAttackDamageReplacement,
         target.allocatedAttackDamageReplacementUses,
         target.allocatedAttackDamageReplacementSkip,
+        target.benefitOfCover ? 1 : 0,
       ]),
     );
     const ok = calculator.whc_calculate_ordered_volley_summary(
@@ -2446,12 +2474,12 @@ async function volleyComplexity(
   if (profiles.length < 1 || profiles.length > 32) {
     throw new Error("profiles must contain 1 to 32 weapon profiles");
   }
-  if (targets.length < 1 || targets.length > 16) {
-    throw new Error("targets must contain 1 to 16 ordered profile segments");
+  if (targets.length < 1 || targets.length > 64) {
+    throw new Error("targets must contain 1 to 64 ordered profile segments");
   }
   const calculator = await loadCalculator();
   const weaponFields = 37;
-  const targetFields = 13;
+  const targetFields = 14;
   const weaponsPointer = calculator.malloc(profiles.length * weaponFields * 4);
   const targetsPointer = calculator.malloc(targets.length * targetFields * 4);
   const outputPointer = calculator.malloc(6 * 4);
@@ -2516,6 +2544,7 @@ async function volleyComplexity(
         target.allocatedAttackDamageReplacement,
         target.allocatedAttackDamageReplacementUses,
         target.allocatedAttackDamageReplacementSkip,
+        target.benefitOfCover ? 1 : 0,
       ]),
     );
     const ok = calculator.whc_estimate_ordered_volley_complexity(
@@ -2611,6 +2640,7 @@ function orderedTargets(value: unknown): OrderedTargetSegment[] {
           ? 0
           : integer("allocatedAttackDamageReplacementSkip", 0, 1024),
       modelCount: integer("modelCount", 1, 1000),
+      benefitOfCover: target.benefitOfCover === undefined ? false : Boolean(target.benefitOfCover),
     };
   });
   if (new Set(targets.map((target) => String(target.firstFailedSaveDamageReplacement))).size > 1) {

@@ -22,7 +22,8 @@ import {
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 32;
+export const BATTLE_STATE_VERSION = 33;
+export const RANGED_GEOMETRY_BATTLE_STATE_VERSION = 33;
 export const TERRAIN_VISIBILITY_BATTLE_STATE_VERSION = 32;
 export const SPATIAL_FACTS_BATTLE_STATE_VERSION = 31;
 export const TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION = 30;
@@ -706,6 +707,19 @@ export const RANGED_DECLARATION_FLAGS = Object.freeze({
   mask: 63,
 });
 
+export const RANGED_GEOMETRY_FLAGS = Object.freeze({
+  directVisible: 1,
+  indirectFire: 2,
+  weaponHasIndirect: 4,
+  visibilityProof: 8,
+  visibilityOverride: 16,
+  fullyVisible: 32,
+  fullVisibilityProof: 64,
+  fullVisibilityOverride: 128,
+  reviewedByPlayer: 256,
+  mask: 511,
+});
+
 export function rangedDeclarationIsValid(
   declarationCount,
   uniqueDeclarationCount,
@@ -916,7 +930,7 @@ function normalizeRangedAttackSnapshot(value) {
   if (
     !Array.isArray(snapshot.targets) ||
     snapshot.targets.length < 1 ||
-    snapshot.targets.length > 16 ||
+    snapshot.targets.length > 64 ||
     !snapshot.targets.every(
       (target) =>
         target &&
@@ -932,9 +946,15 @@ function normalizeRangedAttackSnapshot(value) {
     !Array.isArray(snapshot.segmentIds) ||
     snapshot.segmentIds.length !== snapshot.targets.length ||
     snapshot.segmentIds.some((id) => typeof id !== "string" || !id || id.length > 100) ||
-    new Set(snapshot.segmentIds).size !== snapshot.segmentIds.length
+    (snapshot.targetModelIds === undefined &&
+      new Set(snapshot.segmentIds).size !== snapshot.segmentIds.length) ||
+    (snapshot.targetModelIds !== undefined &&
+      (!Array.isArray(snapshot.targetModelIds) ||
+        snapshot.targetModelIds.length !== snapshot.targets.length ||
+        snapshot.targetModelIds.some((id) => typeof id !== "string" || !id || id.length > 200) ||
+        new Set(snapshot.targetModelIds).size !== snapshot.targetModelIds.length))
   ) {
-    throw new Error("Ranged attack snapshot segment ids must uniquely match its targets");
+    throw new Error("Ranged attack snapshot model and segment ids must match its targets");
   }
   nonnegativeInteger(snapshot.initialWoundsLost, "Ranged snapshot initial wounds", 1024);
   const summary = record(snapshot.summary, "Ranged attack snapshot summary must be an object");
@@ -942,6 +962,85 @@ function normalizeRangedAttackSnapshot(value) {
   boundedString(summary.weapon, "Ranged snapshot weapon", 200);
   boundedString(summary.target, "Ranged snapshot target", 200);
   return snapshot;
+}
+
+function normalizeRangedGeometryDecision(value) {
+  const decision = record(value, "Ranged geometry decision must be an object");
+  const modelIds = (candidate, name, maximum = 1000, unique = true) => {
+    if (
+      !Array.isArray(candidate) ||
+      candidate.length < 1 ||
+      candidate.length > maximum ||
+      candidate.some((id) => typeof id !== "string" || !id || id.length > 200) ||
+      (unique && new Set(candidate).size !== candidate.length)
+    ) {
+      throw new Error(`${name} must contain valid model ids`);
+    }
+    return [...candidate];
+  };
+  const normalized = {
+    observerModelIds: modelIds(decision.observerModelIds, "Ranged geometry observers"),
+    declaredBearerModelIds: modelIds(
+      decision.declaredBearerModelIds,
+      "Ranged geometry declared bearers",
+      1000,
+      false,
+    ),
+    provenObserverModelIds:
+      Array.isArray(decision.provenObserverModelIds) && decision.provenObserverModelIds.length > 0
+        ? modelIds(decision.provenObserverModelIds, "Ranged geometry proven observers", 1000)
+        : [],
+    targetModelIds: modelIds(decision.targetModelIds, "Ranged geometry target models"),
+    visibilityResolution: boundedString(
+      decision.visibilityResolution,
+      "Ranged visibility resolution",
+      30,
+    ),
+    fullVisibilityResolution: boundedString(
+      decision.fullVisibilityResolution,
+      "Ranged full visibility resolution",
+      30,
+    ),
+    visibilityOverrideReason: decision.visibilityOverrideReason
+      ? boundedString(decision.visibilityOverrideReason, "Ranged visibility override", 300).trim()
+      : "",
+    fullVisibilityOverrideReason: decision.fullVisibilityOverrideReason
+      ? boundedString(
+          decision.fullVisibilityOverrideReason,
+          "Ranged full visibility override",
+          300,
+        ).trim()
+      : "",
+    coverOverrideReason: decision.coverOverrideReason
+      ? boundedString(decision.coverOverrideReason, "Ranged cover override", 300).trim()
+      : "",
+    flags: nonnegativeInteger(decision.flags, "Ranged geometry flags", 511),
+  };
+  if (
+    !["geometry_proof", "player_override", "indirect_fire"].includes(
+      normalized.visibilityResolution,
+    ) ||
+    !["geometry_proof", "player_override", "not_fully_visible"].includes(
+      normalized.fullVisibilityResolution,
+    ) ||
+    !Array.isArray(decision.cover) ||
+    decision.cover.length !== normalized.targetModelIds.length
+  ) {
+    throw new Error("Ranged geometry decision has unsupported resolutions");
+  }
+  normalized.cover = decision.cover.map((entry, index) => {
+    const item = record(entry, "Ranged cover decision must be an object");
+    const modelId = boundedString(item.modelId, "Ranged cover model id", 200);
+    const resolution = boundedString(item.resolution, "Ranged cover resolution", 30);
+    if (
+      modelId !== normalized.targetModelIds[index] ||
+      !["geometry_proof", "player_override"].includes(resolution)
+    ) {
+      throw new Error("Ranged cover decisions must match the target model order");
+    }
+    return { modelId, benefitOfCover: Boolean(item.benefitOfCover), resolution };
+  });
+  return normalized;
 }
 
 export function goToGroundIsValid(
@@ -1169,6 +1268,64 @@ export function rangedTargetEligibilityIsValid(fact, declaredWeaponCount) {
       (fact.publishedRangeThousandths === fact.effectiveRangeThousandths ||
         Boolean(fact.rangeOverrideReason?.trim())),
   );
+}
+
+export function rangedGeometryResolutionIsValid(
+  observerCount,
+  provenObserverCount,
+  targetModelCount,
+  coverProvenCount,
+  coverOverrideCount,
+  flags,
+) {
+  if (
+    ![
+      observerCount,
+      provenObserverCount,
+      targetModelCount,
+      coverProvenCount,
+      coverOverrideCount,
+    ].every(Number.isSafeInteger) ||
+    observerCount < 1 ||
+    observerCount > 1000 ||
+    provenObserverCount < 0 ||
+    provenObserverCount > observerCount ||
+    targetModelCount < 1 ||
+    targetModelCount > 1000 ||
+    coverProvenCount < 0 ||
+    coverProvenCount > targetModelCount ||
+    coverOverrideCount !== targetModelCount - coverProvenCount ||
+    !Number.isSafeInteger(flags) ||
+    (flags & ~RANGED_GEOMETRY_FLAGS.mask) !== 0 ||
+    (flags & RANGED_GEOMETRY_FLAGS.reviewedByPlayer) === 0
+  ) {
+    return false;
+  }
+  const directVisible = (flags & RANGED_GEOMETRY_FLAGS.directVisible) !== 0;
+  const indirectFire = (flags & RANGED_GEOMETRY_FLAGS.indirectFire) !== 0;
+  const visibilityProof = (flags & RANGED_GEOMETRY_FLAGS.visibilityProof) !== 0;
+  const visibilityOverride = (flags & RANGED_GEOMETRY_FLAGS.visibilityOverride) !== 0;
+  const fullyVisible = (flags & RANGED_GEOMETRY_FLAGS.fullyVisible) !== 0;
+  const fullProof = (flags & RANGED_GEOMETRY_FLAGS.fullVisibilityProof) !== 0;
+  const fullOverride = (flags & RANGED_GEOMETRY_FLAGS.fullVisibilityOverride) !== 0;
+  const directValid =
+    directVisible &&
+    !indirectFire &&
+    ((visibilityProof && !visibilityOverride && provenObserverCount === observerCount) ||
+      (!visibilityProof && visibilityOverride && provenObserverCount < observerCount));
+  const indirectValid =
+    !directVisible &&
+    indirectFire &&
+    (flags & RANGED_GEOMETRY_FLAGS.weaponHasIndirect) !== 0 &&
+    !visibilityProof &&
+    !visibilityOverride &&
+    provenObserverCount < observerCount;
+  const fullValid =
+    (fullyVisible &&
+      directVisible &&
+      ((fullProof && !fullOverride) || (!fullProof && fullOverride))) ||
+    (!fullyVisible && !fullProof && !fullOverride);
+  return (directValid || indirectValid) && fullValid;
 }
 
 export function weaponInventoryDeclarationIsValid(
@@ -4398,6 +4555,9 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     ) {
       throw new Error("Weapon range override must name the rule or effect changing Range");
     }
+    if (stateVersion >= RANGED_GEOMETRY_BATTLE_STATE_VERSION && event.geometryDecision != null) {
+      normalized.geometryDecision = normalizeRangedGeometryDecision(event.geometryDecision);
+    }
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
@@ -4627,6 +4787,7 @@ export function normalizeBattleState(candidate) {
       EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION,
       TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION,
       SPATIAL_FACTS_BATTLE_STATE_VERSION,
+      TERRAIN_VISIBILITY_BATTLE_STATE_VERSION,
       BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
@@ -4691,6 +4852,7 @@ export function normalizeBattleState(candidate) {
         EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION,
         TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION,
         SPATIAL_FACTS_BATTLE_STATE_VERSION,
+        TERRAIN_VISIBILITY_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -4894,6 +5056,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= RANGED_GEOMETRY_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyRangedGeometryThroughSequence = nonnegativeInteger(
+        migration.legacyRangedGeometryThroughSequence,
+        "Legacy ranged geometry event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -4903,6 +5072,7 @@ export function normalizeBattleState(candidate) {
         event.formation.weaponBearerTracking === "legacy_aggregate",
     ) &&
     normalized.migration?.sourceVersion !== SPATIAL_FACTS_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== TERRAIN_VISIBILITY_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== TRANSPORT_MODEL_LOCATION_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== EXTENDED_MODEL_POSITION_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== MODEL_POSITION_BATTLE_STATE_VERSION &&
@@ -4971,6 +5141,297 @@ function formationWeaponProfile(formation, sourceSavedUnitId, groupId, weaponId)
   );
   const profile = group?.profiles.find((candidate) => candidate.weaponId === weaponId);
   return group && profile ? { group, profile } : null;
+}
+
+function formationLiveModelIds(formation) {
+  return formation.segments.flatMap((segment) =>
+    segment.modelIds.slice(0, formation.health[segment.id].modelsRemaining),
+  );
+}
+
+function rangedGeometryDecisionFlags(decision, reviewedByPlayer, weaponHasIndirect) {
+  return (
+    (decision.visible ? RANGED_GEOMETRY_FLAGS.directVisible : 0) |
+    (decision.indirectFire ? RANGED_GEOMETRY_FLAGS.indirectFire : 0) |
+    (weaponHasIndirect ? RANGED_GEOMETRY_FLAGS.weaponHasIndirect : 0) |
+    (decision.visibilityResolution === "geometry_proof"
+      ? RANGED_GEOMETRY_FLAGS.visibilityProof
+      : 0) |
+    (decision.visibilityResolution === "player_override"
+      ? RANGED_GEOMETRY_FLAGS.visibilityOverride
+      : 0) |
+    (decision.fullyVisible ? RANGED_GEOMETRY_FLAGS.fullyVisible : 0) |
+    (decision.fullVisibilityResolution === "geometry_proof"
+      ? RANGED_GEOMETRY_FLAGS.fullVisibilityProof
+      : 0) |
+    (decision.fullVisibilityResolution === "player_override"
+      ? RANGED_GEOMETRY_FLAGS.fullVisibilityOverride
+      : 0) |
+    (reviewedByPlayer ? RANGED_GEOMETRY_FLAGS.reviewedByPlayer : 0)
+  );
+}
+
+function sameOrderedValues(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function rangedGeometryDecisionMatchesState(
+  decision,
+  event,
+  attacker,
+  target,
+  source,
+  inventory,
+  facts,
+) {
+  const sourceLiveModelIds = formationLiveModelIds(source);
+  const sourceLiveSet = new Set(sourceLiveModelIds);
+  const survivingBearerModelIds =
+    source.weaponBearerTracking === "exact"
+      ? inventory.bearerModelIds.filter((modelId) => sourceLiveSet.has(modelId))
+      : sourceLiveModelIds;
+  const declaredCount = event.declaredWeaponCount || event.eligibleWeaponCount;
+  const alreadyUsed = Math.max(0, survivingBearerModelIds.length - event.eligibleWeaponCount);
+  let expectedBearers = survivingBearerModelIds.slice(alreadyUsed, alreadyUsed + declaredCount);
+  if (expectedBearers.length < declaredCount && sourceLiveModelIds.length > 0) {
+    expectedBearers = Array.from(
+      { length: declaredCount },
+      (_, index) => sourceLiveModelIds[index % sourceLiveModelIds.length],
+    );
+  }
+  const expectedObservers = [
+    ...new Set(source.id === attacker.id ? expectedBearers : formationLiveModelIds(attacker)),
+  ];
+  const expectedTargets = formationLiveModelIds(target);
+  const expectedProvenObservers = expectedObservers.filter((observerModelId) =>
+    (facts?.modelPairs ?? []).some(
+      (pair) => pair.observerModelId === observerModelId && pair.visible,
+    ),
+  );
+  if (
+    !sameOrderedValues(decision.declaredBearerModelIds, expectedBearers) ||
+    !sameOrderedValues(decision.observerModelIds, expectedObservers) ||
+    !sameOrderedValues(decision.targetModelIds, expectedTargets) ||
+    !sameOrderedValues(decision.provenObserverModelIds, expectedProvenObservers) ||
+    (decision.visibilityResolution === "geometry_proof") !==
+      (expectedObservers.length > 0 &&
+        expectedProvenObservers.length === expectedObservers.length) ||
+    (decision.visibilityResolution === "player_override" && !decision.visibilityOverrideReason) ||
+    (decision.fullVisibilityResolution === "geometry_proof" &&
+      facts?.fullVisibility.status !== "fully_visible") ||
+    (decision.fullVisibilityResolution === "player_override" &&
+      !decision.fullVisibilityOverrideReason)
+  ) {
+    return false;
+  }
+  const coverYes = new Set(facts?.cover.yesModelIds ?? []);
+  const coverNo = new Set(facts?.cover.noModelIds ?? []);
+  for (const cover of decision.cover) {
+    if (
+      (coverYes.has(cover.modelId) &&
+        (cover.resolution !== "geometry_proof" || !cover.benefitOfCover)) ||
+      (coverNo.has(cover.modelId) &&
+        (cover.resolution !== "geometry_proof" || cover.benefitOfCover)) ||
+      (!coverYes.has(cover.modelId) &&
+        !coverNo.has(cover.modelId) &&
+        (cover.resolution !== "player_override" || !decision.coverOverrideReason))
+    ) {
+      return false;
+    }
+  }
+  const expectedFlags = rangedGeometryDecisionFlags(
+    {
+      visible: event.visible,
+      indirectFire: event.indirectFire,
+      fullyVisible: event.fullyVisible,
+      visibilityResolution: decision.visibilityResolution,
+      fullVisibilityResolution: decision.fullVisibilityResolution,
+    },
+    event.reviewedByPlayer,
+    event.weaponHasIndirect,
+  );
+  const coverProvenCount = decision.cover.filter(
+    (entry) => entry.resolution === "geometry_proof",
+  ).length;
+  return Boolean(
+    decision.flags === expectedFlags &&
+      rangedGeometryResolutionIsValid(
+        decision.observerModelIds.length,
+        decision.provenObserverModelIds.length,
+        decision.targetModelIds.length,
+        coverProvenCount,
+        decision.cover.length - coverProvenCount,
+        decision.flags,
+      ),
+  );
+}
+
+export function battleRangedGeometryDecision(
+  state,
+  {
+    attackerFormationId,
+    targetFormationId,
+    weaponSourceFormationId,
+    sourceSavedUnitId,
+    weaponGroupId,
+    eligibleWeaponCount,
+    declaredWeaponCount,
+    requestedVisible = false,
+    requestedFullyVisible = false,
+    indirectFire = false,
+    weaponHasIndirect = false,
+    reviewedByPlayer = false,
+    visibilityOverrideReason = "",
+    fullVisibilityOverrideReason = "",
+    coverOverrideReason = "",
+    fallbackTargetCover = false,
+  },
+) {
+  const replayed = replayBattleState(state);
+  const attacker = replayed.formations.get(attackerFormationId);
+  const target = replayed.formations.get(targetFormationId);
+  const source = replayed.formations.get(weaponSourceFormationId);
+  const inventory = source
+    ? source.weaponInventory.find(
+        (group) => group.sourceSavedUnitId === sourceSavedUnitId && group.groupId === weaponGroupId,
+      )
+    : null;
+  if (!attacker || !target || !source || !inventory) {
+    throw new Error("Ranged geometry requires registered attacker, target, and weapon source");
+  }
+  const sourceLiveModelIds = formationLiveModelIds(source);
+  const sourceLiveSet = new Set(sourceLiveModelIds);
+  const survivingBearerModelIds =
+    source.weaponBearerTracking === "exact"
+      ? inventory.bearerModelIds.filter((modelId) => sourceLiveSet.has(modelId))
+      : sourceLiveModelIds;
+  const alreadyUsed = Math.max(0, survivingBearerModelIds.length - eligibleWeaponCount);
+  let declaredBearerModelIds = survivingBearerModelIds.slice(
+    alreadyUsed,
+    alreadyUsed + declaredWeaponCount,
+  );
+  if (declaredBearerModelIds.length < declaredWeaponCount && sourceLiveModelIds.length > 0) {
+    declaredBearerModelIds = Array.from(
+      { length: declaredWeaponCount },
+      (_, index) => sourceLiveModelIds[index % sourceLiveModelIds.length],
+    );
+  }
+  const observerModelIds = [
+    ...new Set(
+      source.id === attacker.id ? declaredBearerModelIds : formationLiveModelIds(attacker),
+    ),
+  ];
+  const targetModelIds = formationLiveModelIds(target);
+  const facts = replayed.visibilityFactsByFormation
+    .get(attackerFormationId)
+    ?.get(targetFormationId);
+  const provenObserverModelIds = observerModelIds.filter((observerModelId) =>
+    (facts?.modelPairs ?? []).some(
+      (pair) => pair.observerModelId === observerModelId && pair.visible,
+    ),
+  );
+  const visibilityProven =
+    observerModelIds.length > 0 && provenObserverModelIds.length === observerModelIds.length;
+  const directVisible = !indirectFire && (visibilityProven || requestedVisible);
+  const visibilityResolution = indirectFire
+    ? "indirect_fire"
+    : visibilityProven
+      ? "geometry_proof"
+      : "player_override";
+  const fullVisibilityProven = facts?.fullVisibility.status === "fully_visible";
+  const fullyVisible = directVisible && (fullVisibilityProven || requestedFullyVisible);
+  const fullVisibilityResolution = fullyVisible
+    ? fullVisibilityProven
+      ? "geometry_proof"
+      : "player_override"
+    : "not_fully_visible";
+  const coverYes = new Set(facts?.cover.yesModelIds ?? []);
+  const coverNo = new Set(facts?.cover.noModelIds ?? []);
+  const cover = targetModelIds.map((modelId) => {
+    if (coverYes.has(modelId)) {
+      return { modelId, benefitOfCover: true, resolution: "geometry_proof" };
+    }
+    if (coverNo.has(modelId)) {
+      return { modelId, benefitOfCover: false, resolution: "geometry_proof" };
+    }
+    return {
+      modelId,
+      benefitOfCover: Boolean(fallbackTargetCover),
+      resolution: "player_override",
+    };
+  });
+  const decision = {
+    observerModelIds,
+    declaredBearerModelIds,
+    provenObserverModelIds,
+    targetModelIds,
+    visible: directVisible,
+    fullyVisible,
+    indirectFire,
+    visibilityResolution,
+    fullVisibilityResolution,
+    visibilityOverrideReason: visibilityOverrideReason.trim(),
+    fullVisibilityOverrideReason: fullVisibilityOverrideReason.trim(),
+    coverOverrideReason: coverOverrideReason.trim(),
+    cover,
+  };
+  decision.flags = rangedGeometryDecisionFlags(decision, reviewedByPlayer, weaponHasIndirect);
+  const coverProvenCount = cover.filter((entry) => entry.resolution === "geometry_proof").length;
+  const coverOverrideCount = coverOverrideReason.trim() ? cover.length - coverProvenCount : 0;
+  decision.valid = Boolean(
+    declaredBearerModelIds.length === declaredWeaponCount &&
+      (!directVisible ||
+        visibilityResolution !== "player_override" ||
+        visibilityOverrideReason.trim()) &&
+      (!fullyVisible ||
+        fullVisibilityResolution !== "player_override" ||
+        fullVisibilityOverrideReason.trim()) &&
+      rangedGeometryResolutionIsValid(
+        observerModelIds.length,
+        provenObserverModelIds.length,
+        targetModelIds.length,
+        coverProvenCount,
+        coverOverrideCount,
+        decision.flags,
+      ),
+  );
+  return decision;
+}
+
+export function buildModelLevelTargetSequence(formation, segmentIds, targets, coverDecisions) {
+  if (!formation || segmentIds.length !== targets.length || !Array.isArray(coverDecisions)) {
+    throw new Error("Model-level target sequence input is invalid");
+  }
+  const coverByModelId = new Map(
+    coverDecisions.map((decision) => [decision.modelId, decision.benefitOfCover]),
+  );
+  const sequence = segmentIds.flatMap((segmentId, index) => {
+    const segment = formation.segments.find((candidate) => candidate.id === segmentId);
+    const target = targets[index];
+    if (!segment || !target || target.modelCount < 1) {
+      throw new Error("Model-level target sequence references an invalid segment");
+    }
+    return segment.modelIds
+      .slice(0, target.modelCount)
+      .reverse()
+      .map((modelId) => ({
+        segmentId,
+        targetModelId: modelId,
+        target: {
+          ...target,
+          modelCount: 1,
+          benefitOfCover: Boolean(coverByModelId.get(modelId)),
+        },
+      }));
+  });
+  if (sequence.length < 1 || sequence.length > 64) {
+    throw new Error("Model-level target sequence must contain 1 to 64 models");
+  }
+  return {
+    segmentIds: sequence.map((entry) => entry.segmentId),
+    targetModelIds: sequence.map((entry) => entry.targetModelId),
+    targets: sequence.map((entry) => entry.target),
+  };
 }
 
 function weaponProfileFlags(profile) {
@@ -5778,6 +6239,10 @@ export function replayBattleState(state) {
     state.version < TERRAIN_VISIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyTerrainVisibilityThroughSequence ?? 0);
+  const legacyRangedGeometryThroughSequence =
+    state.version < RANGED_GEOMETRY_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyRangedGeometryThroughSequence ?? 0);
   const legacyTargetEligibilityThroughSequence =
     state.version < TARGET_ELIGIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -9002,6 +9467,59 @@ export function replayBattleState(state) {
           throw new Error("Target eligibility exceeds the surviving locked weapon inventory");
         }
       }
+      if (event.sequence > legacyRangedGeometryThroughSequence) {
+        const source = formations.get(event.weaponSourceFormationId);
+        const inventory = source
+          ? formationWeaponProfile(
+              source,
+              event.sourceSavedUnitId,
+              event.weaponGroupId,
+              event.weaponId,
+            )
+          : null;
+        const visibilityFacts = deriveVisibilityFacts({
+          formations,
+          positions: currentModelPositionsByFormation,
+          staleFormationIds: geometryStaleFormationIds,
+          terrainFootprints,
+          terrainVisibility,
+        })
+          .get(event.attackerFormationId)
+          ?.get(event.targetFormationId);
+        if (
+          !event.geometryDecision ||
+          !source ||
+          !inventory ||
+          !rangedGeometryDecisionMatchesState(
+            event.geometryDecision,
+            event,
+            attacker,
+            target,
+            source,
+            inventory.group,
+            visibilityFacts,
+          )
+        ) {
+          throw new Error("Ranged geometry decision does not match replayed battlefield facts");
+        }
+        if (event.attackSnapshot) {
+          const snapshotModelIds = event.attackSnapshot.targetModelIds;
+          const coverByModelId = new Map(
+            event.geometryDecision.cover.map((entry) => [entry.modelId, entry.benefitOfCover]),
+          );
+          if (
+            !Array.isArray(snapshotModelIds) ||
+            snapshotModelIds.length !== event.attackSnapshot.targets.length ||
+            snapshotModelIds.some(
+              (modelId, index) =>
+                event.attackSnapshot.targets[index].benefitOfCover !==
+                Boolean(coverByModelId.get(modelId)),
+            )
+          ) {
+            throw new Error("Ranged attack cover sequence does not match its geometry decision");
+          }
+        }
+      }
       if (
         event.sequence > legacyGoToGroundThroughSequence &&
         event.sequence <= legacyRangedDeclarationsThroughSequence &&
@@ -9050,12 +9568,31 @@ export function replayBattleState(state) {
         if (profileWeaponCount !== event.declaredWeaponCount) {
           throw new Error("Ranged attack snapshot weapon count differs from its declaration");
         }
-        const snapshotHealthValid = event.attackSnapshot.segmentIds.every((segmentId, index) => {
-          const health = target.health[segmentId];
-          return (
-            health && health.modelsRemaining === event.attackSnapshot.targets[index].modelCount
-          );
-        });
+        const snapshotHealthValid = event.attackSnapshot.targetModelIds
+          ? target.segments.every((segment) => {
+              const indices = event.attackSnapshot.segmentIds.flatMap((segmentId, index) =>
+                segmentId === segment.id ? [index] : [],
+              );
+              const health = target.health[segment.id];
+              const liveModelIds = new Set(segment.modelIds.slice(0, health.modelsRemaining));
+              return (
+                indices.reduce(
+                  (total, index) => total + event.attackSnapshot.targets[index].modelCount,
+                  0,
+                ) === health.modelsRemaining &&
+                indices.every(
+                  (index) =>
+                    event.attackSnapshot.targets[index].modelCount === 1 &&
+                    liveModelIds.has(event.attackSnapshot.targetModelIds[index]),
+                )
+              );
+            })
+          : event.attackSnapshot.segmentIds.every((segmentId, index) => {
+              const health = target.health[segmentId];
+              return (
+                health && health.modelsRemaining === event.attackSnapshot.targets[index].modelCount
+              );
+            });
         if (
           !snapshotHealthValid ||
           target.health[event.attackSnapshot.segmentIds[0]]?.woundsLost !==
@@ -10428,12 +10965,59 @@ export function recordRangedTargetEligibility(
     reviewedByPlayer = false,
     reviewReason = "",
     rangeOverrideReason = "",
+    visibilityOverrideReason = "",
+    fullVisibilityOverrideReason = "",
+    coverOverrideReason = "",
+    fallbackTargetCover = false,
   },
   id,
   at,
 ) {
   const replayed = replayBattleState(state);
   const clock = replayed.clock;
+  if (!reviewedByPlayer) {
+    throw new Error("Target measurement must be reviewed by a player");
+  }
+  if (!reviewReason.trim()) {
+    throw new Error("Target measurement review must explain the checked tabletop facts");
+  }
+  const geometryDecision = battleRangedGeometryDecision(state, {
+    attackerFormationId,
+    targetFormationId,
+    weaponSourceFormationId,
+    sourceSavedUnitId,
+    weaponGroupId,
+    eligibleWeaponCount,
+    declaredWeaponCount: declaredWeaponCount || eligibleWeaponCount,
+    requestedVisible: visible,
+    requestedFullyVisible: fullyVisible,
+    indirectFire,
+    weaponHasIndirect,
+    reviewedByPlayer,
+    visibilityOverrideReason: visibilityOverrideReason || reviewReason,
+    fullVisibilityOverrideReason: fullVisibilityOverrideReason || reviewReason,
+    coverOverrideReason: coverOverrideReason || reviewReason,
+    fallbackTargetCover,
+  });
+  if (!geometryDecision.valid) {
+    throw new Error("Ranged geometry must be proven or explicitly reviewed before declaration");
+  }
+  let resolvedAttackSnapshot = attackSnapshot;
+  if (attackSnapshot && !attackSnapshot.targetModelIds) {
+    const target = replayed.formations.get(targetFormationId);
+    const modelSequence = buildModelLevelTargetSequence(
+      target,
+      attackSnapshot.segmentIds,
+      attackSnapshot.targets,
+      geometryDecision.cover,
+    );
+    resolvedAttackSnapshot = {
+      ...attackSnapshot,
+      targets: modelSequence.targets,
+      segmentIds: modelSequence.segmentIds,
+      targetModelIds: modelSequence.targetModelIds,
+    };
+  }
   return appendEvent(state, {
     version: BATTLE_EVENT_VERSION,
     id,
@@ -10450,18 +11034,19 @@ export function recordRangedTargetEligibility(
     publishedRangeThousandths,
     effectiveRangeThousandths,
     measuredDistanceThousandths,
-    visible,
-    fullyVisible,
-    indirectFire,
+    visible: geometryDecision.visible,
+    fullyVisible: geometryDecision.fullyVisible,
+    indirectFire: geometryDecision.indirectFire,
     weaponHasIndirect,
     eligibleWeaponCount,
     declaredWeaponCount,
-    attackSnapshot,
+    attackSnapshot: resolvedAttackSnapshot,
     activationEventId: replayed.activeActivation?.id ?? "",
     method,
     reviewedByPlayer,
     reviewReason,
     rangeOverrideReason,
+    geometryDecision,
     clock,
   });
 }
@@ -11600,26 +12185,53 @@ export function appendResolvedAttack(
   if (segmentIds.length !== targets.length || segmentIds.length < 1) {
     throw new Error("Attack segment ids must match the resolved target sequence");
   }
-  const before = segmentIds.map((segmentId, index) => {
+  const uniqueSegmentIds = [...new Set(segmentIds)];
+  if (
+    uniqueSegmentIds.some((segmentId) => {
+      const indices = segmentIds.flatMap((candidate, index) =>
+        candidate === segmentId ? [index] : [],
+      );
+      return indices.at(-1) - indices[0] + 1 !== indices.length;
+    })
+  ) {
+    throw new Error("Attack target models for each segment must be contiguous");
+  }
+  const before = uniqueSegmentIds.map((segmentId, segmentIndex) => {
     const health = formation.health[segmentId];
     if (!health) throw new Error("Attack references an unregistered target segment");
-    if (health.modelsRemaining !== targets[index].modelCount) {
+    const indices = segmentIds.flatMap((candidate, index) =>
+      candidate === segmentId ? [index] : [],
+    );
+    const targetModelCount = indices.reduce((total, index) => total + targets[index].modelCount, 0);
+    if (health.modelsRemaining !== targetModelCount) {
       throw new Error("Attack target model count does not match battle state");
     }
-    if ((index === 0 ? initialWoundsLost : 0) !== health.woundsLost) {
+    if ((segmentIndex === 0 ? initialWoundsLost : 0) !== health.woundsLost) {
       throw new Error("Attack target wounds do not match battle state");
     }
     return { ...health };
   });
   const after = targetSequenceState(initialWoundsLost + result.appliedDamage, targets);
-  const allocations = segmentIds.map((segmentId, index) => ({
-    segmentId,
-    before: before[index],
-    after: {
-      modelsRemaining: after[index].modelsRemaining,
-      woundsLost: after[index].woundsLost,
-    },
-  }));
+  const allocations = uniqueSegmentIds.map((segmentId, segmentIndex) => {
+    const indices = segmentIds.flatMap((candidate, index) =>
+      candidate === segmentId ? [index] : [],
+    );
+    const modelsRemaining = indices.reduce(
+      (total, index) => total + after[index].modelsRemaining,
+      0,
+    );
+    const surviving = indices
+      .map((index) => after[index])
+      .find((entry) => entry.modelsRemaining > 0);
+    return {
+      segmentId,
+      before: before[segmentIndex],
+      after: {
+        modelsRemaining,
+        woundsLost: surviving?.woundsLost ?? 0,
+      },
+    };
+  });
   return appendEvent(state, {
     version: BATTLE_EVENT_VERSION,
     id,

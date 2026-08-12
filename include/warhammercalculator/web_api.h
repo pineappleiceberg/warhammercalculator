@@ -101,6 +101,7 @@ struct whc_web_target_input {
     uint32_t allocated_attack_damage_replacement;
     uint32_t allocated_attack_damage_replacement_uses;
     uint32_t allocated_attack_damage_replacement_skip;
+    uint32_t benefit_of_cover;
 };
 
 struct whc_web_applied_summary {

@@ -44,6 +44,7 @@ import {
   modelPositionSetIsValid,
   normalizeBattleState,
   rangedDeclarationIsValid,
+  rangedGeometryResolutionIsValid,
   rangedTargetEligibilityIsValid,
   replayBattleState,
   weaponBearerDeclarationIsValid,
@@ -116,6 +117,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_estimate_ordered_volley_complexity, "function");
   assert.equal(typeof calculator._whc_replay_battle_health_events, "function");
   assert.equal(typeof calculator._whc_ranged_target_eligibility_is_valid, "function");
+  assert.equal(typeof calculator._whc_ranged_geometry_resolution_is_valid, "function");
   assert.equal(typeof calculator._whc_weapon_inventory_declaration_is_valid, "function");
   assert.equal(typeof calculator._whc_weapon_bearer_declaration_is_valid, "function");
   assert.equal(typeof calculator._whc_charge_resolution_is_valid, "function");
@@ -173,6 +175,24 @@ test("WebAssembly and JavaScript agree on visibility and cover fact partitions",
     assert.equal(
       Boolean(calculator._whc_visibility_facts_are_valid(...values)),
       visibilityFactValuesAreValid(...values),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on ranged geometry resolutions", () => {
+  const cases = [
+    [2, 2, 3, 3, 0, 265],
+    [2, 0, 3, 2, 1, 262],
+    [2, 1, 3, 2, 1, 273],
+    [2, 1, 3, 3, 0, 265],
+    [0, 0, 3, 3, 0, 265],
+    [2, 2, 3, 2, 0, 265],
+    [2, 2, 3, 3, 0, 9],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_ranged_geometry_resolution_is_valid(...values)),
+      rangedGeometryResolutionIsValid(...values),
     );
   }
 });
@@ -2745,15 +2765,16 @@ function currentWeaponInput(weapon) {
 }
 
 function currentTargetInput(target) {
-  if (target.length === 13) return target;
-  if (target.length === 10) return [...target, 0, 0, 0];
+  if (target.length === 14) return target;
+  if (target.length === 13) return [...target, 0];
+  if (target.length === 10) return [...target, 0, 0, 0, 0];
   const current = target.length === 8 ? target : [...target, 1];
-  return [...current, 0, 0, 0, 0, 0];
+  return [...current, 0, 0, 0, 0, 0, 0];
 }
 
 function orderedVolley(weapons, targets, initialWoundsLost = 0) {
   const weaponFields = 37;
-  const targetFields = 13;
+  const targetFields = 14;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
   const summaryPointer = calculator._malloc(10 * 4);
@@ -2800,7 +2821,7 @@ function orderedVolley(weapons, targets, initialWoundsLost = 0) {
 
 function orderedVolleyComplexity(weapons, targets, initialWoundsLost = 0) {
   const weaponFields = 37;
-  const targetFields = 13;
+  const targetFields = 14;
   const weaponsPointer = calculator._malloc(weapons.length * weaponFields * 4);
   const targetsPointer = calculator._malloc(targets.length * targetFields * 4);
   const outputPointer = calculator._malloc(24);
@@ -3153,6 +3174,29 @@ test("C/Wasm carries ordered damage across partial wounds and mixed target profi
 
   const partial = orderedVolley([heavy], [[1, 7, 0, 0, 2, 0, 2]], 1);
   assert.equal(partial.maximum, 1);
+});
+
+test("C/Wasm applies Benefit of Cover per allocated target model", () => {
+  const weapon = Array(37).fill(0);
+  weapon[2] = 1;
+  weapon[4] = 1;
+  weapon[5] = 2;
+  weapon[6] = 10;
+  weapon[7] = 1;
+  weapon[10] = 1;
+  weapon[11] = 6;
+  weapon[12] = 16;
+  weapon[29] = 1;
+  weapon[30] = 1;
+  weapon[31] = 1;
+  const withoutCover = [1, 3, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0];
+  const withCover = [1, 3, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1];
+  const plain = orderedVolley([weapon], [withoutCover]);
+  const covered = orderedVolley([weapon], [withCover]);
+  assert.ok(
+    covered.mean.numerator * plain.mean.denominator <
+      plain.mean.numerator * covered.mean.denominator,
+  );
 });
 
 test("C/Wasm shares one characteristic roll across grouped ordered weapon profiles", () => {

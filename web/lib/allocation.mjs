@@ -31,7 +31,7 @@ function validTargetSequence(targets) {
   return (
     Array.isArray(targets) &&
     targets.length > 0 &&
-    targets.length <= 16 &&
+    targets.length <= 64 &&
     targets.every(
       (target) =>
         target !== null &&

@@ -894,16 +894,29 @@ function appendReadyZeroDamageAttack(state, id) {
   const declaration = replayed.readyRangedAttacks[0];
   assert.ok(declaration, "Expected an activation-wide ranged declaration");
   const target = replayed.formations.get(declaration.targetFormationId);
-  const segmentIds = declaration.attackSnapshot.segmentIds.filter(
-    (segmentId) => target.health[segmentId].modelsRemaining > 0,
+  const liveModelIds = new Set(
+    target.segments.flatMap((segment) =>
+      segment.modelIds.slice(0, target.health[segment.id].modelsRemaining),
+    ),
   );
-  const currentTargets = segmentIds.map((segmentId) => {
-    const index = declaration.attackSnapshot.segmentIds.indexOf(segmentId);
-    return {
-      ...declaration.attackSnapshot.targets[index],
-      modelCount: target.health[segmentId].modelsRemaining,
-    };
-  });
+  const current = declaration.attackSnapshot.segmentIds
+    .map((segmentId, index) => ({
+      segmentId,
+      targetModelId: declaration.attackSnapshot.targetModelIds?.[index] ?? "",
+      target: declaration.attackSnapshot.targets[index],
+    }))
+    .filter(
+      (entry) =>
+        target.health[entry.segmentId].modelsRemaining > 0 &&
+        (!declaration.attackSnapshot.targetModelIds || liveModelIds.has(entry.targetModelId)),
+    );
+  const segmentIds = current.map((entry) => entry.segmentId);
+  const currentTargets = current.map((entry) => ({
+    ...entry.target,
+    modelCount: declaration.attackSnapshot.targetModelIds
+      ? 1
+      : target.health[entry.segmentId].modelsRemaining,
+  }));
   return appendResolvedAttackEvent(state, {
     id,
     at: state.events.length + 1,
@@ -1143,6 +1156,17 @@ test("replays reviewed range, visibility, Indirect Fire, and eligible weapon cou
   const fact = replayBattleState(state).targetEligibilityFacts.get(indirectEligibilityId);
   assert.equal(fact.method, "uwb");
   assert.equal(fact.measuredDistanceThousandths, 32000);
+  assert.equal(fact.geometryDecision.visibilityResolution, "indirect_fire");
+  assert.equal(fact.geometryDecision.targetModelIds.length, 3);
+  assert.equal(fact.attackSnapshot.targetModelIds.length, 3);
+  assert.ok(fact.attackSnapshot.targets.every((target) => target.modelCount === 1));
+
+  const forgedGeometry = structuredClone(state);
+  const forgedDecision = forgedGeometry.events.find(
+    (event) => event.id === indirectEligibilityId,
+  ).geometryDecision;
+  forgedDecision.cover[0].benefitOfCover = !forgedDecision.cover[0].benefitOfCover;
+  assert.throws(() => normalizeBattleState(forgedGeometry), /geometry decision|cover sequence/i);
 
   const forgedAbility = structuredClone(state);
   forgedAbility.events.find((event) => event.id === indirectEligibilityId).weaponHasIndirect =

@@ -144,6 +144,19 @@
 #define WHC_VISIBILITY_FACTS_EXECUTABLE 1u
 #define WHC_VISIBILITY_FACTS_SOURCE_LOCKED 2u
 #define WHC_VISIBILITY_FACTS_FLAGS_MASK 3u
+#define WHC_RANGED_GEOMETRY_DIRECT_VISIBLE 1u
+#define WHC_RANGED_GEOMETRY_INDIRECT_FIRE 2u
+#define WHC_RANGED_GEOMETRY_WEAPON_HAS_INDIRECT 4u
+#define WHC_RANGED_GEOMETRY_VISIBILITY_PROOF 8u
+#define WHC_RANGED_GEOMETRY_VISIBILITY_OVERRIDE 16u
+#define WHC_RANGED_GEOMETRY_FULLY_VISIBLE 32u
+#define WHC_RANGED_GEOMETRY_FULL_VISIBILITY_PROOF 64u
+#define WHC_RANGED_GEOMETRY_FULL_VISIBILITY_OVERRIDE 128u
+#define WHC_RANGED_GEOMETRY_REVIEWED_BY_PLAYER 256u
+#define WHC_RANGED_GEOMETRY_FLAGS_MASK 511u
+#define WHC_RANGED_GEOMETRY_VISIBILITY_MASK 27u
+#define WHC_RANGED_GEOMETRY_INDIRECT_MASK 31u
+#define WHC_RANGED_GEOMETRY_FULL_VISIBILITY_MASK 224u
 
 enum whc_fire_overwatch_trigger {
     WHC_FIRE_OVERWATCH_SET_UP = 1u,
@@ -679,6 +692,30 @@ bool whc_visibility_facts_are_valid(
     uint32_t not_fully_visible_model_pair_count, uint32_t unknown_model_pair_count,
     uint32_t target_model_count, uint32_t cover_yes_count, uint32_t cover_no_count,
     uint32_t cover_unknown_count, uint32_t flags);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        observer_count > 0 && observer_count <= 1000 &&
+        proven_observer_count <= observer_count &&
+        target_model_count > 0 && target_model_count <= 1000 &&
+        cover_proven_count <= target_model_count &&
+        cover_override_count == target_model_count - cover_proven_count &&
+        (flags & ~WHC_RANGED_GEOMETRY_FLAGS_MASK) == 0 &&
+        (flags & WHC_RANGED_GEOMETRY_REVIEWED_BY_PLAYER) != 0 &&
+        (((flags & WHC_RANGED_GEOMETRY_VISIBILITY_MASK) == 9 &&
+          proven_observer_count == observer_count) ||
+         ((flags & WHC_RANGED_GEOMETRY_VISIBILITY_MASK) == 17 &&
+          proven_observer_count < observer_count) ||
+         ((flags & WHC_RANGED_GEOMETRY_INDIRECT_MASK) == 6 &&
+          proven_observer_count < observer_count)) &&
+        ((flags & WHC_RANGED_GEOMETRY_FULL_VISIBILITY_MASK) == 0 ||
+         ((flags & WHC_RANGED_GEOMETRY_DIRECT_VISIBLE) != 0 &&
+          ((flags & WHC_RANGED_GEOMETRY_FULL_VISIBILITY_MASK) == 96 ||
+           (flags & WHC_RANGED_GEOMETRY_FULL_VISIBILITY_MASK) == 160)));
+*/
+bool whc_ranged_geometry_resolution_is_valid(
+    uint32_t observer_count, uint32_t proven_observer_count, uint32_t target_model_count,
+    uint32_t cover_proven_count, uint32_t cover_override_count, uint32_t flags);
 
 /*@ requires first_player_index <= 1;
     requires \valid(clock + (0 .. WHC_BATTLE_CLOCK_FIELDS - 1));
