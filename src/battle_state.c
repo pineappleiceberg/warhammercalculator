@@ -503,6 +503,28 @@ bool whc_spatial_facts_are_valid(uint32_t model_count, uint32_t ready_model_coun
            objective_in_range_count <= objective_count && flags == WHC_SPATIAL_FACTS_FLAGS_MASK;
 }
 
+bool whc_visibility_facts_are_valid(
+    uint32_t model_pair_count, uint32_t ready_model_pair_count,
+    uint32_t visible_model_pair_count, uint32_t fully_visible_model_pair_count,
+    uint32_t not_fully_visible_model_pair_count, uint32_t unknown_model_pair_count,
+    uint32_t target_model_count, uint32_t cover_yes_count, uint32_t cover_no_count,
+    uint32_t cover_unknown_count, uint32_t flags) {
+    return model_pair_count > 0u && model_pair_count <= 1000000u &&
+           ready_model_pair_count == model_pair_count &&
+           visible_model_pair_count <= model_pair_count &&
+           fully_visible_model_pair_count <= model_pair_count &&
+           not_fully_visible_model_pair_count <= model_pair_count &&
+           unknown_model_pair_count <= model_pair_count &&
+           fully_visible_model_pair_count + not_fully_visible_model_pair_count +
+                   unknown_model_pair_count ==
+               model_pair_count &&
+           target_model_count > 0u && target_model_count <= 1000u &&
+           cover_yes_count <= target_model_count && cover_no_count <= target_model_count &&
+           cover_unknown_count <= target_model_count &&
+           cover_yes_count + cover_no_count + cover_unknown_count == target_model_count &&
+           flags == WHC_VISIBILITY_FACTS_FLAGS_MASK;
+}
+
 bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_count,
                                      const uint32_t *events, uint32_t event_count,
                                      uint32_t *health) {

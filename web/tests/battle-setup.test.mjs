@@ -15,6 +15,7 @@ import {
   configureBattleRuleCoverage,
   configureBattleTableGeometry,
   configureBattleTerrainFootprints,
+  configureBattleTerrainVisibility,
   configureUnengagedBattleFormation,
   declareFormationCharge,
   declareFormationDeployment,
@@ -305,6 +306,54 @@ function reviewedTerrainFootprints(state, overrides = {}) {
   };
 }
 
+function reviewedTerrainVisibility(state, overrides = {}) {
+  const replayed = replayBattleState(state);
+  assert.ok(replayed.terrainFootprints);
+  return {
+    missionSourceId: replayed.terrainFootprints.missionSourceId,
+    terrainSourceId: replayed.terrainFootprints.terrainSourceId,
+    sections: [
+      ...new Set(
+        replayed.terrainFootprints.footprints.map((footprint) => footprint.areaTerrainSectionId),
+      ),
+    ].map((sectionId) => ({
+      sectionId,
+      featureType: "ruins",
+      geometryComplete: true,
+      panels: [],
+    })),
+    allFeaturesRecorded: true,
+    reviewedByPlayer: true,
+    method: "manual",
+    reviewReason: "Players reviewed every terrain section and confirmed its complete wall geometry",
+    ...overrides,
+  };
+}
+
+function addReviewedTerrainVisibility(state, id = "record-terrain-visibility") {
+  return configureBattleTerrainVisibility(
+    state,
+    reviewedTerrainVisibility(state),
+    id,
+    state.events.length + 1,
+  );
+}
+
+function reviewedSilhouette() {
+  return {
+    shape: "circle",
+    widthThousandths: 1_000,
+    depthThousandths: 1_000,
+    heightThousandths: 2_000,
+    bottomOffsetThousandths: 0,
+    centerOffsetXThousandths: 0,
+    centerOffsetYThousandths: 0,
+    sightPoints: [{ xOffsetThousandths: 0, yOffsetThousandths: 0, heightThousandths: 1_000 }],
+    envelopeReviewed: true,
+    sightPointsReviewed: true,
+  };
+}
+
 function reviewedDeploymentModelPlacements(state, formationId, referenceEventId, overrides = {}) {
   const replayed = replayBattleState(state);
   const formation = replayed.formations.get(formationId);
@@ -329,6 +378,7 @@ function reviewedDeploymentModelPlacements(state, formationId, referenceEventId,
       centerYThousandths: 5_000 + Math.floor(index / 20) * 2_000,
       elevationThousandths: 0,
       rotationMilliDegrees: 0,
+      silhouette: reviewedSilhouette(),
     })),
     measurementBoundariesReviewed: true,
     positionsReviewed: true,
@@ -366,6 +416,7 @@ function reviewedModelPositions(state, formationId, context, referenceEventId, o
       centerYThousandths: 35_000,
       elevationThousandths: 0,
       rotationMilliDegrees: 0,
+      silhouette: reviewedSilhouette(),
     };
     const endpoint = pathMovement
       ? { ...start, centerXThousandths: start.centerXThousandths + 1_000 }
@@ -378,6 +429,7 @@ function reviewedModelPositions(state, formationId, context, referenceEventId, o
     });
     return {
       ...endpoint,
+      silhouette: prior?.silhouette ?? reviewedSilhouette(),
       path: pathMovement ? [point(start), point(endpoint)] : [point(endpoint)],
       distanceMovedThousandths: pathMovement ? 1_000 : 0,
       maximumDistanceThousandths: pathMovement
@@ -543,6 +595,45 @@ test("requires reviewed table geometry and terrain footprints before exact deplo
     state.events.length + 1,
   );
   assert.deepEqual(replayBattleState(state).terrainFootprints, terrain);
+  assert.throws(
+    () =>
+      declareFormationDeployment(
+        state,
+        replayBattleState(state).formations.keys().next().value,
+        "battlefield",
+        {},
+        "visibility-required",
+        state.events.length + 1,
+      ),
+    /reviewed terrain visibility geometry/i,
+  );
+  assert.throws(
+    () =>
+      configureBattleTerrainVisibility(
+        state,
+        { ...reviewedTerrainVisibility(state), terrainSourceId: "wrong-terrain" },
+        "wrong-visibility-source",
+        state.events.length + 1,
+      ),
+    /does not match the reviewed terrain layout/i,
+  );
+  assert.throws(
+    () =>
+      configureBattleTerrainVisibility(
+        state,
+        {
+          ...reviewedTerrainVisibility(state),
+          sections: reviewedTerrainVisibility(state).sections.map((section, index) =>
+            index === 0 ? { ...section, geometryComplete: false } : section,
+          ),
+        },
+        "incomplete-visibility-source",
+        state.events.length + 1,
+      ),
+    /structurally invalid/i,
+  );
+  state = addReviewedTerrainVisibility(state);
+  assert.deepEqual(replayBattleState(state).terrainVisibility, reviewedTerrainVisibility(state));
   assert.doesNotThrow(() => deployAllOnBattlefield(state));
   assert.throws(
     () =>
@@ -683,6 +774,7 @@ test("requires a reviewed exact-model placement snapshot after each battlefield 
     "placement-terrain-footprints",
     state.events.length + 1,
   );
+  state = addReviewedTerrainVisibility(state, "placement-terrain-visibility");
   for (const formation of replayBattleState(state).formations.values()) {
     const mustStartInReserves =
       formation.deploymentTraits.aircraft && !formation.deploymentTraits.hover;
@@ -1178,6 +1270,7 @@ test("records exact disembarkation positions before the set-up reaction window",
     "disembark-terrain-footprints",
     state.events.length + 1,
   );
+  state = addReviewedTerrainVisibility(state, "disembark-terrain-visibility");
   state = declareFormationDeployment(
     state,
     "player-1:trukk",
@@ -1500,6 +1593,7 @@ test("queues exact normal and Emergency Disembarkation positions for every destr
     "destroyed-transport-terrain",
     state.events.length + 1,
   );
+  state = addReviewedTerrainVisibility(state, "destroyed-transport-visibility");
   for (const [formationId, location, transportFormationId] of [
     ["player-1:trukk", "battlefield", ""],
     ["player-1:lootas", "embarked", "player-1:trukk"],
@@ -1948,6 +2042,14 @@ test("validates circular, elliptical, and rotated rectangular model footprints a
 
 function deployAllOnBattlefield(state) {
   let next = state;
+  const setup = replayBattleState(next);
+  if (
+    next.version === BATTLE_STATE_VERSION &&
+    setup.terrainFootprints &&
+    !setup.terrainVisibility
+  ) {
+    next = addReviewedTerrainVisibility(next, `record-terrain-visibility-${next.id}`);
+  }
   for (const formation of replayBattleState(next).formations.values()) {
     const aircraft = formation.deploymentTraits.aircraft;
     const hover = formation.deploymentTraits.hover;
@@ -1995,6 +2097,17 @@ function deployAllOnBattlefield(state) {
     }
   }
   return next;
+}
+
+function asLegacyBattleState(state, version) {
+  return {
+    ...state,
+    version,
+    migration: undefined,
+    events: state.events
+      .filter((event) => event.type !== "terrain_visibility_recorded")
+      .map((event, index) => ({ ...event, sequence: index + 1 })),
+  };
 }
 
 function withoutRuleCoverageEvent(state) {
@@ -2390,6 +2503,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacyExtendedModelPositionsThroughSequence: 3,
     legacyTransportModelLocationsThroughSequence: 3,
     legacySpatialFactsThroughSequence: 3,
+    legacyTerrainVisibilityThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -2431,6 +2545,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacyExtendedModelPositionsThroughSequence: 3,
     legacyTransportModelLocationsThroughSequence: 3,
     legacySpatialFactsThroughSequence: 3,
+    legacyTerrainVisibilityThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -2477,6 +2592,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacyExtendedModelPositionsThroughSequence: 2,
     legacyTransportModelLocationsThroughSequence: 2,
     legacySpatialFactsThroughSequence: 2,
+    legacyTerrainVisibilityThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -2516,6 +2632,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacyExtendedModelPositionsThroughSequence: 2,
     legacyTransportModelLocationsThroughSequence: 2,
     legacySpatialFactsThroughSequence: 2,
+    legacyTerrainVisibilityThroughSequence: 2,
   });
 });
 
@@ -2554,6 +2671,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacyExtendedModelPositionsThroughSequence: 2,
     legacyTransportModelLocationsThroughSequence: 2,
     legacySpatialFactsThroughSequence: 2,
+    legacyTerrainVisibilityThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -2598,6 +2716,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacyExtendedModelPositionsThroughSequence: 2,
     legacyTransportModelLocationsThroughSequence: 2,
     legacySpatialFactsThroughSequence: 2,
+    legacyTerrainVisibilityThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -2637,6 +2756,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacyExtendedModelPositionsThroughSequence: 2,
     legacyTransportModelLocationsThroughSequence: 2,
     legacySpatialFactsThroughSequence: 2,
+    legacyTerrainVisibilityThroughSequence: 2,
   });
 });
 
@@ -2675,6 +2795,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacyExtendedModelPositionsThroughSequence: 2,
     legacyTransportModelLocationsThroughSequence: 2,
     legacySpatialFactsThroughSequence: 2,
+    legacyTerrainVisibilityThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -3090,8 +3211,7 @@ test("migrates version-27 placement snapshots without inventing movement history
     versionTwentySeven.events.length + 1,
   );
   versionTwentySeven = deployAllOnBattlefield(versionTwentySeven);
-  versionTwentySeven.version = 27;
-  delete versionTwentySeven.migration;
+  versionTwentySeven = asLegacyBattleState(versionTwentySeven, 27);
   const legacyEventCount = versionTwentySeven.events.length;
   const migrated = initializeBattleForLists({
     catalogue,
@@ -3129,8 +3249,7 @@ test("migrates version-28 paths without inventing extended physical movement sna
     versionTwentyEight.events.length + 1,
   );
   versionTwentyEight = deployAllOnBattlefield(versionTwentyEight);
-  versionTwentyEight.version = 28;
-  delete versionTwentyEight.migration;
+  versionTwentyEight = asLegacyBattleState(versionTwentyEight, 28);
   const legacyEventCount = versionTwentyEight.events.length;
   const migrated = initializeBattleForLists({
     catalogue,
@@ -3168,8 +3287,7 @@ test("migrates version-29 geometry without inventing Transport location transiti
     versionTwentyNine.events.length + 1,
   );
   versionTwentyNine = deployAllOnBattlefield(versionTwentyNine);
-  versionTwentyNine.version = 29;
-  delete versionTwentyNine.migration;
+  versionTwentyNine = asLegacyBattleState(versionTwentyNine, 29);
   const legacyEventCount = versionTwentyNine.events.length;
   const migrated = initializeBattleForLists({
     catalogue,
@@ -3208,8 +3326,7 @@ test("migrates version-30 positions without inventing baseless vertical extents"
     versionThirty.events.length + 1,
   );
   versionThirty = deployAllOnBattlefield(versionThirty);
-  versionThirty.version = 30;
-  delete versionThirty.migration;
+  versionThirty = asLegacyBattleState(versionThirty, 30);
   versionThirty.events = versionThirty.events.map((event) =>
     event.type === "model_placements_recorded"
       ? {
@@ -3249,6 +3366,112 @@ test("migrates version-30 positions without inventing baseless vertical extents"
   assert.ok([...replayed.spatialFactsByFormation.values()].every((fact) => fact.executable));
 });
 
+test("migrates version-31 spatial games without inventing 3D visibility geometry", () => {
+  let versionThirtyOne = exactMissionSetup("version-31-terrain-visibility");
+  versionThirtyOne = configureBattleTableGeometry(
+    versionThirtyOne,
+    reviewedTableGeometry(versionThirtyOne),
+    "version-31-table-geometry",
+    versionThirtyOne.events.length + 1,
+  );
+  versionThirtyOne = configureBattleTerrainFootprints(
+    versionThirtyOne,
+    reviewedTerrainFootprints(versionThirtyOne),
+    "version-31-terrain-footprints",
+    versionThirtyOne.events.length + 1,
+  );
+  versionThirtyOne = deployAllOnBattlefield(versionThirtyOne);
+  versionThirtyOne = asLegacyBattleState(versionThirtyOne, 31);
+  versionThirtyOne.events = versionThirtyOne.events.map((event) =>
+    event.type === "model_placements_recorded"
+      ? {
+          ...event,
+          placement: {
+            ...event.placement,
+            models: event.placement.models.map((model) => {
+              const legacyModel = { ...model };
+              delete legacyModel.silhouette;
+              return legacyModel;
+            }),
+          },
+        }
+      : event,
+  );
+  const legacyEventCount = versionThirtyOne.events.length;
+  let migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: normalizeBattleState(versionThirtyOne),
+    id: versionThirtyOne.id,
+  });
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 31);
+  assert.equal(migrated.migration.legacyTerrainVisibilityThroughSequence, legacyEventCount);
+  assert.equal(replayBattleState(migrated).terrainVisibility, null);
+  assert.ok(
+    [...replayBattleState(migrated).currentModelPositionsByFormation.values()].every((position) =>
+      position.models.every((model) => model.silhouette === null),
+    ),
+  );
+  migrated = addReviewedTerrainVisibility(migrated, "migrated-terrain-visibility");
+  assert.equal(replayBattleState(migrated).terrainVisibility.allFeaturesRecorded, true);
+  migrated = startBattle(
+    migrated,
+    "player-2",
+    "start-migrated-visibility-battle",
+    migrated.events.length + 1,
+  );
+  while (replayBattleState(migrated).clock.step !== "move_units") {
+    migrated = advanceBattleClock(
+      migrated,
+      `advance-migrated-visibility-${migrated.events.length + 1}`,
+      migrated.events.length + 1,
+    );
+  }
+  migrated = startFormationMovement(
+    migrated,
+    "player-2:brutalis",
+    "normal",
+    "start-migrated-visibility-move",
+    migrated.events.length + 1,
+  );
+  migrated = passFireOverwatch(
+    migrated,
+    "No Fire Overwatch declared",
+    "pass-migrated-visibility-overwatch",
+    migrated.events.length + 1,
+  );
+  migrated = completeFormationMovement(
+    migrated,
+    "player-2:brutalis",
+    "normal",
+    "complete-migrated-visibility-move",
+    migrated.events.length + 1,
+  );
+  migrated = recordModelPositions(
+    migrated,
+    "player-2:brutalis",
+    reviewedModelPositions(
+      migrated,
+      "player-2:brutalis",
+      "movement",
+      "complete-migrated-visibility-move",
+    ),
+    "record-migrated-visibility-move",
+    migrated.events.length + 1,
+  );
+  assert.ok(
+    replayBattleState(migrated)
+      .currentModelPositionsByFormation.get("player-2:brutalis")
+      .models.every((model) => model.silhouette?.envelopeReviewed),
+  );
+});
+
 test("marks exact geometry stale when casualties change live model identities and clears on undo", () => {
   let legacy = exactMissionSetup("version-28-casualty-geometry");
   legacy = configureBattleTableGeometry(
@@ -3264,8 +3487,7 @@ test("marks exact geometry stale when casualties change live model identities an
     legacy.events.length + 1,
   );
   legacy = deployAllOnBattlefield(legacy);
-  legacy.version = 27;
-  delete legacy.migration;
+  legacy = asLegacyBattleState(legacy, 27);
   let state = initializeBattleForLists({
     catalogue,
     firstList: attackers,

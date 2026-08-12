@@ -16,6 +16,7 @@ import {
   configureBattleMission,
   configureBattleTableGeometry,
   configureBattleTerrainFootprints,
+  configureBattleTerrainVisibility,
   createBattleState as createUncoveredBattleState,
   declareFormationDeployment,
   deployFormation,
@@ -2887,6 +2888,24 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
     players,
     ruleCoverage: coveredExactBattleRuleBinding(players),
   });
+  const observer = {
+    id: "table-geometry-observer",
+    playerId: "player-1",
+    sourceFormationId: "table-geometry-observer",
+    name: "Geometry observer",
+    keywords: ["Infantry"],
+    segments: [
+      {
+        id: "table-geometry-observer-model",
+        savedUnitId: "table-geometry-observer",
+        unitName: "Geometry observer",
+        modelName: "Geometry observer",
+        role: "standalone",
+        wounds: 2,
+        startingModels: 1,
+      },
+    ],
+  };
   const target = {
     id: "table-geometry-target",
     playerId: "player-2",
@@ -2905,7 +2924,8 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
       },
     ],
   };
-  state = registerBattleFormation(state, target, "register-table-geometry-target", 1);
+  state = registerBattleFormation(state, observer, "register-table-geometry-observer", 1);
+  state = registerBattleFormation(state, target, "register-table-geometry-target", 2);
   state = configureBattleMission(
     state,
     {
@@ -2995,20 +3015,104 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
     "record-terrain-footprints",
     4,
   );
+  const terrainVisibility = {
+    missionSourceId: geometry.missionSourceId,
+    terrainSourceId: geometry.terrainSourceId,
+    sections: terrainFootprints.footprints.map((footprint) => ({
+      sectionId: footprint.areaTerrainSectionId,
+      featureType: "ruins",
+      geometryComplete: true,
+      panels: [],
+    })),
+    allFeaturesRecorded: true,
+    reviewedByPlayer: true,
+    method: "manual",
+    reviewReason: "Players classified every section and checked that no wall panels were present",
+  };
+  state = configureBattleTerrainVisibility(
+    state,
+    terrainVisibility,
+    "record-terrain-visibility",
+    5,
+  );
+  state = declareFormationDeployment(
+    state,
+    observer.id,
+    "battlefield",
+    {},
+    "declare-table-geometry-observer",
+    6,
+  );
   state = declareFormationDeployment(
     state,
     target.id,
     "battlefield",
     {},
     "declare-table-geometry-target",
-    5,
+    7,
+  );
+  state = deployFormation(
+    state,
+    observer.id,
+    { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
+    "deploy-table-geometry-observer",
+    8,
+  );
+  const registeredObserver = replayBattleState(state).formations.get(observer.id);
+  assert.ok(registeredObserver);
+  const observerPlacements = {
+    context: "deployment",
+    referenceEventId: "deploy-table-geometry-observer",
+    missionSourceId: geometry.missionSourceId,
+    terrainSourceId: geometry.terrainSourceId,
+    battlefieldWidthThousandths: geometry.battlefieldWidthThousandths,
+    battlefieldHeightThousandths: geometry.battlefieldHeightThousandths,
+    origin: geometry.origin,
+    models: registeredObserver.modelInstances.map((model) => ({
+      modelId: model.id,
+      measurementBasis: "base",
+      shape: "circle",
+      widthThousandths: 1_000,
+      depthThousandths: 1_000,
+      verticalExtentThousandths: 0,
+      centerXThousandths: 25_000,
+      centerYThousandths: 22_000,
+      elevationThousandths: 0,
+      rotationMilliDegrees: 0,
+      silhouette: {
+        shape: "circle",
+        widthThousandths: 1_000,
+        depthThousandths: 1_000,
+        heightThousandths: 2_000,
+        bottomOffsetThousandths: 0,
+        centerOffsetXThousandths: 0,
+        centerOffsetYThousandths: 0,
+        sightPoints: [{ xOffsetThousandths: 0, yOffsetThousandths: 0, heightThousandths: 1_000 }],
+        envelopeReviewed: true,
+        sightPointsReviewed: true,
+      },
+    })),
+    measurementBoundariesReviewed: true,
+    positionsReviewed: true,
+    noModelOverlapReviewed: true,
+    objectiveClearanceReviewed: true,
+    reviewedByPlayer: true,
+    method: "manual",
+    reviewReason: "The observer base, silhouette, sight point, and position were measured",
+  };
+  state = recordDeploymentModelPlacements(
+    state,
+    observer.id,
+    observerPlacements,
+    "record-table-geometry-observer-placement",
+    9,
   );
   state = deployFormation(
     state,
     target.id,
     { placementConfirmed: true, placementReason: "Legal deployment-zone position" },
     "deploy-table-geometry-target",
-    6,
+    10,
   );
   const replayedAfterDeployment = replayBattleState(state);
   const registeredTarget = replayedAfterDeployment.formations.get(target.id);
@@ -3032,6 +3136,18 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
       centerYThousandths: 22_000,
       elevationThousandths: 0,
       rotationMilliDegrees: 45_000,
+      silhouette: {
+        shape: "rectangle",
+        widthThousandths: 3_000,
+        depthThousandths: 2_000,
+        heightThousandths: 3_000,
+        bottomOffsetThousandths: 0,
+        centerOffsetXThousandths: 0,
+        centerOffsetYThousandths: 0,
+        sightPoints: [{ xOffsetThousandths: 0, yOffsetThousandths: 0, heightThousandths: 1_500 }],
+        envelopeReviewed: true,
+        sightPointsReviewed: true,
+      },
     })),
     measurementBoundariesReviewed: true,
     positionsReviewed: true,
@@ -3046,9 +3162,9 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
     target.id,
     modelPlacements,
     "record-table-geometry-target-placement",
-    7,
+    11,
   );
-  state = startBattle(state, "player-2", "start-table-geometry-battle", 8);
+  state = startBattle(state, "player-2", "start-table-geometry-battle", 12);
   while (replayBattleState(state).clock.step !== "move_units") {
     state = advanceBattleClock(
       state,
@@ -3136,14 +3252,34 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
   assert.equal(body.data.schemaVersion, BATTLE_STATE_VERSION);
   assert.deepEqual(body.data.tableGeometry, geometry);
   assert.deepEqual(body.data.terrainFootprints, terrainFootprints);
-  assert.deepEqual(body.data.modelPlacements, { [target.id]: modelPlacements });
+  assert.deepEqual(body.data.terrainVisibility, terrainVisibility);
+  assert.deepEqual(body.data.modelPlacements, {
+    [observer.id]: observerPlacements,
+    [target.id]: modelPlacements,
+  });
   assert.deepEqual(body.data.currentModelPositions, {
+    [observer.id]: observerPlacements,
     [target.id]: modelPositions,
   });
+  assert.equal(body.data.visibilityFacts[observer.id][target.id].executable, true);
+  assert.equal(body.data.visibilityFacts[observer.id][target.id].visibility.status, "visible");
+  assert.equal(body.data.visibilityFacts[target.id][observer.id].executable, true);
   assert.deepEqual(body.data.modelPositionHistory, {
+    [observer.id]: [observerPlacements],
     [target.id]: [{ ...modelPlacements, context: "deployment" }, modelPositions],
   });
   assert.deepEqual(body.data.modelLocationHistory, {
+    [observer.id]: [
+      {
+        context: "deployment",
+        referenceEventId: observerPlacements.referenceEventId,
+        sequence: state.events.find(
+          (event) => event.id === "record-table-geometry-observer-placement",
+        ).sequence,
+        location: "battlefield",
+        transportFormationId: "",
+      },
+    ],
     [target.id]: [
       {
         context: "deployment",

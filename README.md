@@ -646,7 +646,7 @@ update matching records. Optional defensive-equipment defaults remain compatible
 with older version-1 backups and synchronize with the rest of each saved unit.
 Unfinished list drafts and Play Mode selections, overrides, limited ability
 uses, and battle state recover automatically on the current device. Play Mode
-creates battle-state version 31 as soon as both lists are selected. Every
+creates battle-state version 32 as soon as both lists are selected. Every
 formation from both saved roster revisions receives a stable player-and-saved-unit
 identity before combat, so attackers and targets never appear implicitly on
 their first attack. A later roster edit fails closed instead of mixing a changed
@@ -722,8 +722,24 @@ baseless hulls without a measured height report `unknown` instead of producing a
 guess. Version-30 histories gain an explicit migration boundary and zero-valued
 legacy hull heights; no missing baseless height is invented. Visibility, Benefit
 of Cover, terrain clearance, and objective control remain separately reviewed
-because the current terrain representation does not contain sufficient 3D wall,
-opening, or model silhouette geometry.
+when their required geometry is unavailable.
+Version 32 adds reviewed 3D terrain and model geometry without turning uncertain
+measurements into rules claims. Every source-locked area-terrain section records
+its Ruins, Woods, or other classification; vertical wall panels; rectangular
+openings; completeness; measurement method; and player review. Every current
+model snapshot records a conservative enclosing silhouette plus one to sixteen
+reviewed points on physical parts of the model. Replay derives directional
+model-pair visibility, target full visibility, and model-level Benefit of Cover.
+A clear ray proves visibility, but an obstructed sampled ray never proves
+invisibility. Incomplete terrain, stale positions, missing silhouettes, possible
+model occlusion, and ambiguous partial obstruction therefore remain `unknown`.
+The observer can see through its own unit, while other models in the target unit
+remain conservative blockers. Ruins and Woods apply their Core Rules footprint
+semantics, including Aircraft and Towering exceptions. C/WebAssembly validates
+the executable visibility and cover partitions independently, and the replay API
+returns both the reviewed geometry and all directional facts. Version-31 games
+migrate without fabricated terrain heights, walls, openings, silhouettes, or
+visibility results and can add their first reviewed geometry after migration.
 Version-25
 games migrate without invented terrain footprints, version-26 games migrate
 without invented deployment positions, and version-27 games migrate without
@@ -1141,8 +1157,10 @@ static catalogue is `/chapter-approved-2025-26-v1.4.json`; the hosted API expose
 `GET /api/v1/missions` and `GET /api/v1/terrain?mission=...`. The guided-review reason
 records that players will resolve non-executable text at the physical table; it
 does not label that text executable. Unknown catalogue IDs still fail closed.
-Mission-card scoring text, terrain height subregions, and Ruin wall geometry
-remain guided. The version-30
+Mission-card scoring text and unrecorded or irregular terrain geometry remain
+guided. The version-32 visibility layer accepts reviewed terrain heights, wall
+panels, and openings but deliberately withholds claims where its conservative
+envelopes cannot prove the result. The version-30
 geometry history makes the exact mission/layout identity,
 battlefield dimensions, objective centres, and published terrain-section
 inventory executable and replayable before deployment. It also records the
@@ -1362,6 +1380,19 @@ cmake --build build/wasm
 
 This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 
+## Prioritized correctness backlog
+
+1. Bind proven v32 visibility and model-level cover facts into ranged-target
+   eligibility and attack allocation while preserving an explicit reviewed
+   override whenever the proof is unknown.
+2. Replace conservative silhouette boxes with reviewed convex or mesh geometry
+   where needed to prove partial occlusion and full visibility without false
+   certainty.
+3. Derive movement and placement terrain clearance from the shared 3D geometry,
+   including climb, overhang, and irregular-surface cases.
+4. Make objective control executable from current model geometry and OC, then
+   connect it to source-backed mission scoring without inventing mission text.
+
 ## Current boundaries
 
 - AP is stored as a nonnegative magnitude.
@@ -1382,8 +1413,10 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 - Deferred Devastating Wounds exact evaluation uses at most 2,047 live sparse
   states. Its preflight number is a conservative upper bound and can therefore
   recommend simulation for a volley that exact evaluation still solves.
-- Exact position snapshots execute proximity rules, but do not claim line of
-  sight or cover from flat terrain outlines.
+- Exact position snapshots execute proximity rules. Version-32 snapshots can
+  additionally prove directional visibility, full visibility, and Benefit of
+  Cover when reviewed silhouettes and complete 3D terrain geometry suffice;
+  all other cases remain explicitly unknown.
 
 ## 10th edition profile database
 
