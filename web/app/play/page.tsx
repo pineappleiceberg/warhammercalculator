@@ -7629,7 +7629,11 @@ export default function PlayMode() {
                     );
                     if (faction?.sourceId !== "ORK") return null;
                     return canCall ? (
-                      <button key={player.id} type="button" onClick={() => callPlayerWaaagh(player.id)}>
+                      <button
+                        key={player.id}
+                        type="button"
+                        onClick={() => callPlayerWaaagh(player.id)}
+                      >
                         Call Waaagh! · {player.name}
                       </button>
                     ) : waaagh.active ? (

@@ -426,7 +426,9 @@ function newOrksBattle() {
   };
   const factionIndex = coverage.report.results.findIndex((result) => result.id === "faction.test");
   const factionResult = coverage.report.results[factionIndex];
-  const detachmentResult = coverage.report.results.find((result) => result.id === "detachment.test");
+  const detachmentResult = coverage.report.results.find(
+    (result) => result.id === "detachment.test",
+  );
   const datasheetResult = coverage.report.results.find((result) => result.id === "datasheet.test");
   coverage.report.results.splice(
     factionIndex,
@@ -3992,7 +3994,10 @@ test("executes the source-locked Waaagh! timing, duration, and Advance charge ru
   state = startBattle(deployAllOnBattlefield(state), "player-1", "start-waaagh", 3);
   state = callWaaagh(state, "player-1", "call-waaagh", state.events.length + 1);
   assert.deepEqual(
-    { available: battleWaaaghState(state, "player-1").available, active: battleWaaaghState(state, "player-1").active },
+    {
+      available: battleWaaaghState(state, "player-1").available,
+      active: battleWaaaghState(state, "player-1").active,
+    },
     { available: false, active: true },
   );
   assert.throws(
@@ -4005,7 +4010,11 @@ test("executes the source-locked Waaagh! timing, duration, and Advance charge ru
       replayBattleState(state).clock.step === "move_units"
     )
   ) {
-    state = advanceBattleClock(state, `waaagh-to-move-${state.events.length}`, state.events.length + 1);
+    state = advanceBattleClock(
+      state,
+      `waaagh-to-move-${state.events.length}`,
+      state.events.length + 1,
+    );
   }
   state = recordFormationMovement(
     state,
@@ -4020,7 +4029,11 @@ test("executes the source-locked Waaagh! timing, duration, and Advance charge ru
       replayBattleState(state).clock.step === "charge_moves"
     )
   ) {
-    state = advanceBattleClock(state, `waaagh-to-charge-${state.events.length}`, state.events.length + 1);
+    state = advanceBattleClock(
+      state,
+      `waaagh-to-charge-${state.events.length}`,
+      state.events.length + 1,
+    );
   }
   assert.doesNotThrow(() =>
     recordFormationCharge(
@@ -4048,7 +4061,11 @@ test("rejects Waaagh! without its source, outside its timing, and after expiry",
   state = startBattle(deployAllOnBattlefield(state), "player-1", "start-orks", 3);
   state = callWaaagh(state, "player-1", "valid-waaagh", 4);
   do {
-    state = advanceBattleClock(state, `waaagh-expiry-${state.events.length}`, state.events.length + 1);
+    state = advanceBattleClock(
+      state,
+      `waaagh-expiry-${state.events.length}`,
+      state.events.length + 1,
+    );
   } while (
     !(
       replayBattleState(state).clock.activePlayerId === "player-1" &&

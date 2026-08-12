@@ -3482,10 +3482,7 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
   ) {
     throw new Error("Rule coverage configuration requires battle-state version 24");
   }
-  if (
-    stateVersion < FACTION_RULE_STATE_BATTLE_STATE_VERSION &&
-    event.type === "waaagh_called"
-  ) {
+  if (stateVersion < FACTION_RULE_STATE_BATTLE_STATE_VERSION && event.type === "waaagh_called") {
     throw new Error("Executable faction-rule state requires battle-state version 40");
   }
   if (
@@ -8151,10 +8148,7 @@ export function replayBattleState(state) {
         throw new Error("Battle clock advance has an incorrect effect-expiry set");
       }
       for (const id of expiredEffectIds) effects.delete(id);
-      if (
-        commandPhaseStarted(expected) &&
-        activeWaaaghPlayerIds.has(expected.activePlayerId)
-      ) {
+      if (commandPhaseStarted(expected) && activeWaaaghPlayerIds.has(expected.activePlayerId)) {
         activeWaaaghPlayerIds.delete(expected.activePlayerId);
       }
       if (state.version >= TRACKER_BATTLE_STATE_VERSION && commandPhaseStarted(expected)) {
@@ -9260,18 +9254,12 @@ export function replayBattleState(state) {
       }
       if (
         currentMovement?.movement === "advance" &&
-        !(
-          activeWaaaghPlayerIds.has(formation.playerId) &&
-          formation.hasWaaaghAbility === true
-        ) &&
+        !(activeWaaaghPlayerIds.has(formation.playerId) && formation.hasWaaaghAbility === true) &&
         !event.eligibilityOverride
       ) {
         throw new Error("A formation that Advanced requires an active charge rule");
       }
-      if (
-        currentMovement?.movement === "fall_back" &&
-        !event.eligibilityOverride
-      ) {
+      if (currentMovement?.movement === "fall_back" && !event.eligibilityOverride) {
         throw new Error("A formation that Fell Back requires a charge rule override");
       }
       if (
@@ -9408,16 +9396,15 @@ export function replayBattleState(state) {
       }
       if (
         currentMovement?.movement === "advance" &&
-        !(
-          activeWaaaghPlayerIds.has(formation.playerId) &&
-          formation.hasWaaaghAbility === true
-        ) &&
+        !(activeWaaaghPlayerIds.has(formation.playerId) && formation.hasWaaaghAbility === true) &&
         !event.eligibilityOverride
       ) {
         throw new Error("A formation that Advanced requires an active charge rule");
       }
       if (currentMovement?.movement === "fall_back" && !event.eligibilityOverride) {
-        throw new Error("A formation that Fell Back requires an explicit charge eligibility override");
+        throw new Error(
+          "A formation that Fell Back requires an explicit charge eligibility override",
+        );
       }
       if (
         (currentMovement?.fromMovedTransport || currentMovement?.fromDestroyedTransport) &&
@@ -11795,9 +11782,13 @@ export function waaaghStateIsValid(
     Number.isInteger(callCount) &&
     callCount >= 0 &&
     callCount <= 1 &&
-    [active, sourceFactionOrks, calledAtCommandStart, formationHasAbility, advancedChargeAllowed].every(
-      (value) => value === 0 || value === 1,
-    ) &&
+    [
+      active,
+      sourceFactionOrks,
+      calledAtCommandStart,
+      formationHasAbility,
+      advancedChargeAllowed,
+    ].every((value) => value === 0 || value === 1) &&
     (callCount === 0 || (sourceFactionOrks === 1 && calledAtCommandStart === 1)) &&
     (active === 0 || callCount === 1) &&
     advancedChargeAllowed === benefits &&
