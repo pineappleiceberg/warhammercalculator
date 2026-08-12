@@ -1136,7 +1136,9 @@ test("records exact model paths before opening the end-of-move reaction window",
   assert.equal(replayed.pendingFireOverwatch?.trigger, "normal_move_end");
   assert.equal(replayed.modelPositionHistoryByFormation.get(formationId).length, 2);
   assert.equal(replayed.geometryStaleFormationIds.has(formationId), false);
-  assert.deepEqual(replayed.terrainClearanceFactsByFormation.get(formationId), {
+  const { inspection, ...clearanceFacts } =
+    replayed.terrainClearanceFactsByFormation.get(formationId);
+  assert.deepEqual(clearanceFacts, {
     status: "clear",
     executable: true,
     modelCount: 1,
@@ -1151,6 +1153,9 @@ test("records exact model paths before opening the end-of-move reaction window",
     flags: 7,
     reviewedFallback: false,
   });
+  assert.equal(inspection.schemaVersion, 1);
+  assert.equal(inspection.formationId, formationId);
+  assert.equal(inspection.status, "clear");
 });
 
 test("rejects an exact model path that crosses a measured terrain wall", () => {

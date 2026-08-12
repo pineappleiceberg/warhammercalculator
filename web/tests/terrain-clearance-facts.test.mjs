@@ -5,6 +5,8 @@ import {
   deriveTerrainClearanceFacts,
   terrainClearanceFactValues,
   terrainClearanceFactValuesAreValid,
+  terrainClearanceInspectionExport,
+  terrainClearanceInspectionIsValid,
 } from "../lib/terrain-clearance-facts.mjs";
 
 function silhouette(heightThousandths = 2_000) {
@@ -146,6 +148,82 @@ test("rejects a whole model crossing a measured wall and accepts a fitting openi
     terrainClearanceFactValuesAreValid(...terrainClearanceFactValues(openingFacts)),
     true,
   );
+});
+
+test("preserves an inspectable proof trail for blocked, opening, and fallback decisions", () => {
+  const blocked = facts(model([point(4_000, 10_000), point(6_000, 10_000)]));
+  assert.equal(blocked.inspection.schemaVersion, 1);
+  assert.equal(blocked.inspection.formationId, "formation-1");
+  assert.equal(blocked.inspection.traceComplete, true);
+  assert.equal(blocked.inspection.recordedCheckCount, 1);
+  assert.equal(blocked.inspection.omittedCheckCount, 0);
+  assert.equal(blocked.inspection.models[0].status, "collision");
+  assert.deepEqual(blocked.inspection.models[0].segments[0].checks[0], {
+    sectionId: "section-1",
+    obstacleType: "panel",
+    obstacleId: "wall-1",
+    status: "collision",
+    reason: "path_crosses_terrain_panel",
+  });
+  assert.deepEqual(blocked.inspection.models[0].path, [point(4_000, 10_000), point(6_000, 10_000)]);
+  assert.equal(blocked.inspection.models[0].envelope.widthThousandths, 1_000);
+  assert.equal(terrainClearanceInspectionIsValid(blocked.inspection), true);
+  const exported = terrainClearanceInspectionExport({
+    formationName: "Test formation",
+    fact: blocked,
+    terrainFootprints: { footprints: [footprint()] },
+    terrainVisibility: { allMovementGeometryRecorded: true, sections: [] },
+  });
+  assert.equal(exported.schema, "whc-terrain-clearance-inspection");
+  assert.equal(exported.schemaVersion, 1);
+  assert.equal(exported.inspection, blocked.inspection);
+  assert.equal(
+    terrainClearanceInspectionIsValid({ ...blocked.inspection, schemaVersion: 2 }),
+    false,
+  );
+
+  const throughOpening = facts(model([point(4_000, 10_000), point(6_000, 10_000)]), {
+    terrainVisibility: {
+      allMovementGeometryRecorded: true,
+      sections: [
+        {
+          sectionId: "section-1",
+          movementType: "normal",
+          movementGeometryComplete: true,
+          panels: [
+            panel({
+              openings: [
+                {
+                  startOffsetThousandths: 9_000,
+                  endOffsetThousandths: 11_000,
+                  bottomZThousandths: 0,
+                  topZThousandths: 4_000,
+                },
+              ],
+            }),
+          ],
+          surfaces: [],
+        },
+      ],
+    },
+  });
+  assert.equal(
+    throughOpening.inspection.models[0].segments[0].checks[0].reason,
+    "whole_envelope_fits_opening",
+  );
+  assert.equal(throughOpening.inspection.models[0].endpointSupport.reason, "ground_endpoint");
+
+  const legacy = facts(model([point(4_000, 10_000), point(6_000, 10_000)]), { legacy: true });
+  assert.equal(legacy.inspection.models[0].status, "unknown");
+  assert.deepEqual(legacy.inspection.models[0].segments[0].checks, [
+    {
+      sectionId: "",
+      obstacleType: "legacy",
+      obstacleId: "",
+      status: "unknown",
+      reason: "legacy_terrain_clearance_unavailable",
+    },
+  ]);
 });
 
 test("accepts an explicit climb over a wall and rejects a path below its top", () => {
@@ -306,4 +384,32 @@ test("fails closed for incomplete movement geometry, reviewed semantics, legacy 
   const pivot = facts(model([point(4_000, 8_000, 0, 0), point(6_000, 8_000, 0, 90_000)]));
   assert.equal(pivot.status, "unknown");
   assert.match(pivot.unavailableReasons.join(" "), /rotation/);
+});
+
+test("bounds adversarial inspection output without weakening the complete ruling", () => {
+  const densePanels = Array.from({ length: 256 }, (_, index) => panel({ id: `wall-${index + 1}` }));
+  const densePath = Array.from({ length: 22 }, (_, index) =>
+    point(index % 2 === 0 ? 4_000 : 6_000, 10_000),
+  );
+  const result = facts(model(densePath), {
+    terrainVisibility: {
+      allMovementGeometryRecorded: true,
+      sections: [
+        {
+          sectionId: "section-1",
+          movementType: "normal",
+          movementGeometryComplete: true,
+          panels: densePanels,
+          surfaces: [],
+        },
+      ],
+    },
+  });
+  assert.equal(result.status, "collision");
+  assert.equal(result.collisions.length, 21 * 256);
+  assert.equal(result.inspection.traceComplete, false);
+  assert.equal(result.inspection.recordedCheckCount, 5_000);
+  assert.equal(result.inspection.omittedCheckCount, 21 * 256 - 5_000);
+  assert.equal(result.inspection.models[0].status, "collision");
+  assert.equal(terrainClearanceInspectionIsValid(result.inspection), true);
 });

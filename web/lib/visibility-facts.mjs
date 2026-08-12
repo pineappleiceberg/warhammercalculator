@@ -1,5 +1,7 @@
 const EPSILON = 0.001;
 
+export const VISIBILITY_INSPECTION_SCHEMA_VERSION = 1;
+
 export const TERRAIN_VISIBILITY_FEATURES = Object.freeze(["ruins", "woods", "other"]);
 export const TERRAIN_VISIBILITY_METHODS = Object.freeze(["manual", "uwb", "camera", "imported"]);
 export const TERRAIN_VISIBILITY_LIMITS = Object.freeze({
@@ -322,6 +324,29 @@ function sightPoints(model) {
       z: minimumZ + point.heightThousandths,
     };
   });
+}
+
+function visibilityModelGeometry(model) {
+  return {
+    modelId: model.modelId,
+    point: {
+      centerXThousandths: model.centerXThousandths,
+      centerYThousandths: model.centerYThousandths,
+      elevationThousandths: model.elevationThousandths,
+      rotationMilliDegrees: model.rotationMilliDegrees,
+    },
+    envelope: {
+      geometryMode: model.silhouette.geometryMode ?? "primitive",
+      shape: model.silhouette.shape,
+      widthThousandths: model.silhouette.widthThousandths,
+      depthThousandths: model.silhouette.depthThousandths,
+      heightThousandths: model.silhouette.heightThousandths,
+      bottomOffsetThousandths: model.silhouette.bottomOffsetThousandths,
+      centerOffsetXThousandths: model.silhouette.centerOffsetXThousandths,
+      centerOffsetYThousandths: model.silhouette.centerOffsetYThousandths,
+      convexVertices: (model.silhouette.convexVertices ?? []).map((vertex) => ({ ...vertex })),
+    },
+  };
 }
 
 function pointInFootprint(point, footprint, strict = false) {
@@ -671,23 +696,32 @@ function modelInsideSection(model, section, terrainFootprints) {
   );
 }
 
-function ruinBlocksRay(start, end, observer, sections, terrainFootprints, exempt) {
-  if (exempt) return false;
-  return sections.some((section) => {
-    if (section.featureType !== "ruins") return false;
+function ruinRayBlocker(start, end, observer, sections, terrainFootprints, exempt) {
+  if (exempt) return null;
+  for (const section of sections) {
+    if (section.featureType !== "ruins") continue;
     if (
       pointInsideSection(end, section, terrainFootprints) ||
       modelInsideSection(observer, section, terrainFootprints)
     ) {
-      return false;
+      continue;
     }
-    return sectionFootprints(section, terrainFootprints).some((footprint) =>
-      segmentIntersectsFootprintInterior(start, end, footprint),
+    const footprint = sectionFootprints(section, terrainFootprints).find((candidate) =>
+      segmentIntersectsFootprintInterior(start, end, candidate),
     );
-  });
+    if (footprint) {
+      return {
+        sectionId: section.sectionId,
+        obstacleType: "area_terrain",
+        obstacleId: section.sectionId,
+        reason: "ruins_footprint_blocks_ray",
+      };
+    }
+  }
+  return null;
 }
 
-function rayIsClear(
+function rayClearance(
   start,
   end,
   observer,
@@ -696,14 +730,52 @@ function rayIsClear(
   blockingModels,
   exemptFromAreaTerrain,
 ) {
-  if (ruinBlocksRay(start, end, observer, sections, terrainFootprints, exemptFromAreaTerrain))
-    return false;
+  const ruinBlocker = ruinRayBlocker(
+    start,
+    end,
+    observer,
+    sections,
+    terrainFootprints,
+    exemptFromAreaTerrain,
+  );
+  if (ruinBlocker) return { clear: false, status: "blocked", ...ruinBlocker };
   for (const section of sections) {
     for (const panel of section.panels) {
-      if (panelIntersection(start, end, panel) !== "clear") return false;
+      const intersection = panelIntersection(start, end, panel);
+      if (intersection !== "clear") {
+        return {
+          clear: false,
+          status: intersection,
+          sectionId: section.sectionId,
+          obstacleType: "panel",
+          obstacleId: panel.id,
+          reason:
+            intersection === "blocked" ? "terrain_panel_blocks_ray" : "terrain_panel_ray_ambiguous",
+        };
+      }
     }
   }
-  return blockingModels.every((model) => !segmentIntersectsSilhouette(start, end, model));
+  const blockingModel = blockingModels.find((model) =>
+    segmentIntersectsSilhouette(start, end, model),
+  );
+  if (blockingModel) {
+    return {
+      clear: false,
+      status: "ambiguous",
+      sectionId: "",
+      obstacleType: "model",
+      obstacleId: blockingModel.modelId,
+      reason: "model_could_occlude_ray",
+    };
+  }
+  return {
+    clear: true,
+    status: "clear",
+    sectionId: "",
+    obstacleType: "none",
+    obstacleId: "",
+    reason: "sampled_ray_clear",
+  };
 }
 
 function modelPairFullyVisible(
@@ -714,17 +786,37 @@ function modelPairFullyVisible(
   blockingModels,
   exemptFromAreaTerrain,
 ) {
-  if (
-    sections.some(
-      (section) =>
-        section.featureType === "woods" && modelInsideSection(target, section, terrainFootprints),
-    )
-  ) {
-    return "not_fully_visible";
+  const containingWoods = sections.find(
+    (section) =>
+      section.featureType === "woods" && modelInsideSection(target, section, terrainFootprints),
+  );
+  if (containingWoods) {
+    return {
+      status: "not_fully_visible",
+      reason: "target_inside_woods",
+      sectionId: containingWoods.sectionId,
+      obstacleType: "area_terrain",
+      obstacleId: containingWoods.sectionId,
+      observerPoint: null,
+      corridor: null,
+    };
   }
   const targetBox = silhouetteBox(target);
+  let representative = null;
   for (const observerPoint of sightPoints(observer)) {
-    if (blockingModels.some((model) => modelCouldOccludeFromPoint(observerPoint, target, model))) {
+    const blockingModel = blockingModels.find((model) =>
+      modelCouldOccludeFromPoint(observerPoint, target, model),
+    );
+    if (blockingModel) {
+      representative ??= {
+        status: "unknown",
+        reason: "model_could_occlude_full_visibility",
+        sectionId: "",
+        obstacleType: "model",
+        obstacleId: blockingModel.modelId,
+        observerPoint,
+        corridor: null,
+      };
       continue;
     }
     const pointBox = {
@@ -736,10 +828,16 @@ function modelPairFullyVisible(
       maximumZ: observerPoint.z,
     };
     const corridor = corridorBox(pointBox, targetBox);
-    let terrainCouldObscure = false;
+    let terrainBlocker = null;
     for (const section of sections) {
-      if (section.panels.some((panel) => boxesOverlap(corridor, panelBox(panel)))) {
-        terrainCouldObscure = true;
+      const panel = section.panels.find((candidate) => boxesOverlap(corridor, panelBox(candidate)));
+      if (panel) {
+        terrainBlocker = {
+          sectionId: section.sectionId,
+          obstacleType: "panel",
+          obstacleId: panel.id,
+          reason: "terrain_panel_could_obscure_target",
+        };
         break;
       }
       if (exemptFromAreaTerrain) continue;
@@ -754,13 +852,44 @@ function modelPairFullyVisible(
           boxesOverlap(corridor, footprintBox(footprint)),
         )
       ) {
-        terrainCouldObscure = true;
+        terrainBlocker = {
+          sectionId: section.sectionId,
+          obstacleType: "area_terrain",
+          obstacleId: section.sectionId,
+          reason: "area_terrain_could_obscure_target",
+        };
         break;
       }
     }
-    if (!terrainCouldObscure) return "fully_visible";
+    if (!terrainBlocker) {
+      return {
+        status: "fully_visible",
+        reason: "target_corridor_clear",
+        sectionId: "",
+        obstacleType: "none",
+        obstacleId: "",
+        observerPoint,
+        corridor,
+      };
+    }
+    representative ??= {
+      status: "unknown",
+      ...terrainBlocker,
+      observerPoint,
+      corridor,
+    };
   }
-  return "unknown";
+  return (
+    representative ?? {
+      status: "unknown",
+      reason: "full_visibility_witness_unavailable",
+      sectionId: "",
+      obstacleType: "unknown",
+      obstacleId: "",
+      observerPoint: null,
+      corridor: null,
+    }
+  );
 }
 
 function liveModels(formation, position) {
@@ -873,12 +1002,45 @@ export function deriveVisibilityFacts({
                 ),
             )
             .map((entry) => entry.model);
-          const visible = sightPoints(observer).some((start) =>
-            sightPoints(target).some((end) =>
-              rayIsClear(start, end, observer, sections, terrainFootprints, blockingModels, exempt),
-            ),
-          );
-          const fullVisibility = modelPairFullyVisible(
+          let testedRayCount = 0;
+          let clearRay = null;
+          let representativeBlockedRay = null;
+          const blockerCounts = new Map();
+          raySearch: for (const start of sightPoints(observer)) {
+            for (const end of sightPoints(target)) {
+              testedRayCount += 1;
+              const clearance = rayClearance(
+                start,
+                end,
+                observer,
+                sections,
+                terrainFootprints,
+                blockingModels,
+                exempt,
+              );
+              const ray = { start, end, ...clearance };
+              if (clearance.clear) {
+                clearRay = ray;
+                break raySearch;
+              }
+              representativeBlockedRay ??= ray;
+              const blockerKey = [
+                clearance.reason,
+                clearance.sectionId,
+                clearance.obstacleType,
+                clearance.obstacleId,
+              ].join(":");
+              blockerCounts.set(blockerKey, {
+                reason: clearance.reason,
+                sectionId: clearance.sectionId,
+                obstacleType: clearance.obstacleType,
+                obstacleId: clearance.obstacleId,
+                count: (blockerCounts.get(blockerKey)?.count ?? 0) + 1,
+              });
+            }
+          }
+          const visible = Boolean(clearRay);
+          const fullVisibilityInspection = modelPairFullyVisible(
             observer,
             target,
             sections,
@@ -890,7 +1052,27 @@ export function deriveVisibilityFacts({
             observerModelId: observer.modelId,
             targetModelId: target.modelId,
             visible,
-            fullVisibility,
+            fullVisibility: fullVisibilityInspection.status,
+            inspection: {
+              schemaVersion: VISIBILITY_INSPECTION_SCHEMA_VERSION,
+              observer: visibilityModelGeometry(observer),
+              target: visibilityModelGeometry(target),
+              visibility: {
+                status: visible ? "visible" : "unknown",
+                testedRayCount,
+                witnessRay: clearRay ?? representativeBlockedRay,
+                blockerSummary: [...blockerCounts.values()].sort((left, right) =>
+                  [left.reason, left.sectionId, left.obstacleType, left.obstacleId]
+                    .join(":")
+                    .localeCompare(
+                      [right.reason, right.sectionId, right.obstacleType, right.obstacleId].join(
+                        ":",
+                      ),
+                    ),
+                ),
+              },
+              fullVisibility: fullVisibilityInspection,
+            },
           });
         }
       }
@@ -963,6 +1145,126 @@ export function deriveVisibilityFacts({
     }
   }
   return result;
+}
+
+function visibilityInspectionPointIsValid(point) {
+  return Boolean(
+    point && Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z),
+  );
+}
+
+function visibilityInspectionIdentityIsValid(value) {
+  return typeof value === "string" && value.length <= 500;
+}
+
+function visibilityInspectionCorridorIsValid(corridor) {
+  return Boolean(
+    corridor &&
+      Number.isFinite(corridor.minimumX) &&
+      Number.isFinite(corridor.maximumX) &&
+      Number.isFinite(corridor.minimumY) &&
+      Number.isFinite(corridor.maximumY) &&
+      Number.isFinite(corridor.minimumZ) &&
+      Number.isFinite(corridor.maximumZ) &&
+      corridor.minimumX <= corridor.maximumX &&
+      corridor.minimumY <= corridor.maximumY &&
+      corridor.minimumZ <= corridor.maximumZ,
+  );
+}
+
+function visibilityModelGeometryIsValid(geometry) {
+  return Boolean(
+    geometry &&
+      visibilityInspectionIdentityIsValid(geometry.modelId) &&
+      geometry.point &&
+      Number.isInteger(geometry.point.centerXThousandths) &&
+      Number.isInteger(geometry.point.centerYThousandths) &&
+      Number.isInteger(geometry.point.elevationThousandths) &&
+      Number.isInteger(geometry.point.rotationMilliDegrees) &&
+      geometry.envelope &&
+      visibilityInspectionIdentityIsValid(geometry.envelope.geometryMode) &&
+      visibilityInspectionIdentityIsValid(geometry.envelope.shape) &&
+      Number.isInteger(geometry.envelope.widthThousandths) &&
+      Number.isInteger(geometry.envelope.depthThousandths) &&
+      Number.isInteger(geometry.envelope.heightThousandths) &&
+      Array.isArray(geometry.envelope.convexVertices) &&
+      geometry.envelope.convexVertices.length <= 16,
+  );
+}
+
+export function visibilityInspectionIsValid(inspection) {
+  const visibility = inspection?.visibility;
+  const ray = visibility?.witnessRay;
+  const fullVisibility = inspection?.fullVisibility;
+  return Boolean(
+    inspection?.schemaVersion === VISIBILITY_INSPECTION_SCHEMA_VERSION &&
+      visibilityModelGeometryIsValid(inspection.observer) &&
+      visibilityModelGeometryIsValid(inspection.target) &&
+      visibility &&
+      ["visible", "unknown"].includes(visibility.status) &&
+      Number.isInteger(visibility.testedRayCount) &&
+      visibility.testedRayCount >= 1 &&
+      visibility.testedRayCount <= TERRAIN_VISIBILITY_LIMITS.maximumSightPointsPerModel ** 2 &&
+      ray &&
+      visibilityInspectionPointIsValid(ray.start) &&
+      visibilityInspectionPointIsValid(ray.end) &&
+      typeof ray.clear === "boolean" &&
+      ["clear", "blocked", "ambiguous"].includes(ray.status) &&
+      ray.clear === (ray.status === "clear") &&
+      visibility.status === (ray.clear ? "visible" : "unknown") &&
+      visibilityInspectionIdentityIsValid(ray.sectionId) &&
+      visibilityInspectionIdentityIsValid(ray.obstacleType) &&
+      visibilityInspectionIdentityIsValid(ray.obstacleId) &&
+      visibilityInspectionIdentityIsValid(ray.reason) &&
+      Array.isArray(visibility.blockerSummary) &&
+      visibility.blockerSummary.length <=
+        TERRAIN_VISIBILITY_LIMITS.maximumSightPointsPerModel ** 2 &&
+      visibility.blockerSummary.every(
+        (blocker) =>
+          visibilityInspectionIdentityIsValid(blocker?.reason) &&
+          visibilityInspectionIdentityIsValid(blocker?.sectionId) &&
+          visibilityInspectionIdentityIsValid(blocker?.obstacleType) &&
+          visibilityInspectionIdentityIsValid(blocker?.obstacleId) &&
+          Number.isInteger(blocker?.count) &&
+          blocker.count > 0 &&
+          blocker.count <= visibility.testedRayCount,
+      ) &&
+      fullVisibility &&
+      ["fully_visible", "not_fully_visible", "unknown"].includes(fullVisibility.status) &&
+      visibilityInspectionIdentityIsValid(fullVisibility.reason) &&
+      visibilityInspectionIdentityIsValid(fullVisibility.sectionId) &&
+      visibilityInspectionIdentityIsValid(fullVisibility.obstacleType) &&
+      visibilityInspectionIdentityIsValid(fullVisibility.obstacleId) &&
+      (fullVisibility.observerPoint === null ||
+        visibilityInspectionPointIsValid(fullVisibility.observerPoint)) &&
+      (fullVisibility.corridor === null ||
+        visibilityInspectionCorridorIsValid(fullVisibility.corridor)),
+  );
+}
+
+export function visibilityInspectionExport({
+  observerFormationName,
+  targetFormationName,
+  pair,
+  terrainFootprints,
+  terrainVisibility,
+}) {
+  if (!visibilityInspectionIsValid(pair?.inspection)) {
+    throw new Error("Visibility inspection is structurally invalid");
+  }
+  return {
+    schema: "whc-visibility-inspection",
+    schemaVersion: VISIBILITY_INSPECTION_SCHEMA_VERSION,
+    observerFormationName: String(observerFormationName ?? "").slice(0, 200),
+    targetFormationName: String(targetFormationName ?? "").slice(0, 200),
+    observerModelId: pair.observerModelId,
+    targetModelId: pair.targetModelId,
+    visible: pair.visible,
+    fullVisibility: pair.fullVisibility,
+    inspection: pair.inspection,
+    terrainFootprints,
+    terrainVisibility,
+  };
 }
 
 export function visibilityFactValues(fact) {
