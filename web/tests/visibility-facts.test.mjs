@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  convexTerrainSurfaceIsValid,
   convexSilhouetteIsValid,
   deriveVisibilityFacts,
   terrainVisibilityGeometryIsValid,
@@ -169,6 +170,116 @@ test("validated wall panels require measured endpoints, height, openings, and co
           {
             ...set.sections[0],
             panels: [panel([{ ...opening, endOffsetThousandths: 11_000 }])],
+          },
+        ],
+      },
+      terrainFootprints(),
+    ),
+    false,
+  );
+  assert.equal(
+    terrainVisibilityGeometryIsValid(set, {
+      footprints: [
+        footprint(4000, 5000, 1000, 10_000),
+        { ...footprint(6000, 5000, 1000, 10_000), id: "outline-2" },
+      ],
+    }),
+    false,
+  );
+});
+
+test("movement surfaces require reviewed convex solids wholly inside one terrain section", () => {
+  const surface = {
+    id: "floor-1",
+    vertices: [
+      { xThousandths: 4500, yThousandths: 4000 },
+      { xThousandths: 5500, yThousandths: 4000 },
+      { xThousandths: 5500, yThousandths: 6000 },
+      { xThousandths: 4500, yThousandths: 6000 },
+    ],
+    bottomZThousandths: 3000,
+    topZThousandths: 3500,
+    supportsEnding: true,
+  };
+  const set = {
+    ...terrainVisibility("ruins"),
+    allMovementGeometryRecorded: true,
+    sections: [
+      {
+        ...terrainVisibility("ruins").sections[0],
+        movementType: "ruins",
+        movementGeometryComplete: true,
+        surfaces: [surface],
+      },
+    ],
+  };
+  assert.equal(convexTerrainSurfaceIsValid(surface.vertices), true);
+  assert.equal(terrainVisibilityGeometryIsValid(set, terrainFootprints()), true);
+  assert.equal(
+    terrainVisibilityGeometryIsValid(set, {
+      footprints: [
+        footprint(4000, 5000, 1000, 10_000),
+        { ...footprint(6000, 5000, 1000, 10_000), id: "outline-2" },
+      ],
+    }),
+    false,
+  );
+  assert.equal(
+    terrainVisibilityGeometryIsValid(
+      {
+        ...set,
+        sections: [
+          {
+            ...set.sections[0],
+            surfaces: [
+              {
+                ...surface,
+                vertices: [
+                  surface.vertices[0],
+                  surface.vertices[1],
+                  { xThousandths: 5000, yThousandths: 5000 },
+                  surface.vertices[2],
+                  surface.vertices[3],
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      terrainFootprints(),
+    ),
+    false,
+  );
+  assert.equal(
+    terrainVisibilityGeometryIsValid(
+      {
+        ...set,
+        sections: [
+          {
+            ...set.sections[0],
+            surfaces: [
+              {
+                ...surface,
+                vertices: surface.vertices.map((vertex, index) =>
+                  index === 0 ? { ...vertex, xThousandths: 3000 } : vertex,
+                ),
+              },
+            ],
+          },
+        ],
+      },
+      terrainFootprints(),
+    ),
+    false,
+  );
+  assert.equal(
+    terrainVisibilityGeometryIsValid(
+      {
+        ...set,
+        sections: [
+          {
+            ...set.sections[0],
+            surfaces: [{ ...surface, topZThousandths: surface.bottomZThousandths }],
           },
         ],
       },

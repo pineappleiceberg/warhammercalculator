@@ -13,6 +13,7 @@
         8,
         9,
         13,
+        15,
         16,
         17,
         18,
@@ -47,6 +48,7 @@
         "Engagement Range within 1 inch horizontally and 5 inches vertically",
         "objective-marker range within 3 inches horizontally and 5 inches vertically using the recommended 40 mm marker",
         "models cannot end movement overlapping another model, and models cannot end a move on the recommended 40 mm objective marker footprint",
+        "movement across the complete base or hull path, including ignoring terrain 2 inches or shorter, measuring vertical climbing distance, prohibiting movement through taller terrain except where a rule permits it, and prohibiting a move from ending mid-climb",
         "objective control at the end of each phase or turn by summing the Objective Control characteristics of models in range, with Battle-shocked units contributing zero and every equal total including 0-0 contesting the marker",
         "model, unit, and full visibility",
         "true line of sight from any physical part of an observing model to any physical part of a target model, with bases treated as part of the model and reviewed convex-prism silhouettes used when supplied",
@@ -95,7 +97,10 @@
         12,
         14,
         18,
-        21
+        21,
+        22,
+        25,
+        26
       ],
       "usedFor": [
         "Heroic Intervention timing, target eligibility, 6-inch range, 1CP cost, Walker restriction, sole target, out-of-phase Charge resolution, and suppressed Charge bonus",
@@ -103,6 +108,7 @@
         "Hazardous test count, failed-test bearer priority, three mortal wounds allocated without spillover, and Fire Overwatch Charge-phase deferral until after the charging unit ends its Charge move",
         "Benefit of Cover granted by a rule even when the affected unit is not within terrain",
         "duplicated Stealth abilities are not cumulative",
+        "Fly movement through the air across the complete base or hull path, including vertical distance, whole-base clearance over uneven terrain, and ending with the model flat and in coherency",
         "Rapid Ingress Deep Strike permission for complete Deep Strike units, first-round out-of-phase eligibility, the prohibition on passengers disembarking that phase, and the large-model Strategic Reserves own-edge exception with its turn-long action restriction"
       ]
     },

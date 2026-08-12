@@ -1041,8 +1041,8 @@ test("pins the official battle-state rules source", () => {
   assert.deepEqual(
     battleRuleSources.sources[0].pages,
     [
-      7, 8, 9, 13, 16, 17, 18, 19, 20, 23, 25, 26, 29, 32, 33, 34, 35, 39, 41, 42, 43, 44, 45, 46,
-      47, 48, 53, 56, 57, 58, 60,
+      7, 8, 9, 13, 15, 16, 17, 18, 19, 20, 23, 25, 26, 29, 32, 33, 34, 35, 39, 41, 42, 43, 44, 45,
+      46, 47, 48, 53, 56, 57, 58, 60,
     ],
   );
   assert.equal(
@@ -1053,7 +1053,7 @@ test("pins the official battle-state rules source", () => {
     (source) => source.id === "core-rules-updates-10e-2025-10",
   );
   assert.ok(updates);
-  assert.deepEqual(updates.pages, [7, 8, 10, 12, 14, 18, 21]);
+  assert.deepEqual(updates.pages, [7, 8, 10, 12, 14, 18, 21, 22, 25, 26]);
   assert.equal(updates.sha256, "27960a4d4affecd450af69c54d7583bcc2941b00ba5845f5786a630bdec7f4ba");
   assert.equal(
     updates.usedFor.some((usage) => /Heroic Intervention/i.test(usage)),

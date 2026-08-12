@@ -27,18 +27,30 @@ state.
 
 ## Prioritized backlog
 
-1. Make complete-path terrain clearance executable from the existing exact
-   paths, footprints, terrain panels, and openings, including climb, overhang,
-   and irregular-surface cases with reviewed fallbacks for missing geometry.
-2. Implement source-locked mission scoring and secondary-card/action tracking
+1. Implement source-locked mission scoring and secondary-card/action tracking
    for the selected Chapter Approved combination while keeping unavailable card
    text fail-closed.
-3. Expand reviewed terrain beyond rectangular footprints and wall panels where
-   a supported layout needs irregular or elevated movement geometry.
+2. Expand reviewed terrain beyond convex footprints, panels, openings, and
+   elevated surfaces where a supported layout needs concave or curved movement
+   geometry.
+3. Add a reviewed geometry-inspection view that shows the model envelope, path
+   segment, terrain solid, and reason behind every clearance proof or fallback.
 4. Deliver full guided-game replay scenarios before adding deterministic
    automated policies and calibrated batch battle simulation.
 
 ## Completed cycles
+
+- 2026-08-12: Advanced exact terrain movement to battle-state version 37. Each
+  terrain section now records its movement semantics, complete panel/opening
+  geometry, and optional convex elevated solids. Replay checks deployment
+  endpoints and the complete path of every surviving circular, elliptical,
+  rectangular, or reviewed convex-prism model envelope, including strict wall crossings, openings,
+  vertical climbs, overhang clearance, supported elevated endpoints, and Ruins
+  keyword restrictions. Incomplete geometry, unsupported semantics, pivots, and
+  version-36 histories remain explicit player-reviewed fallbacks rather than
+  false proofs. Guided Play and the replay API expose the same reason-bearing
+  facts, and JavaScript is differentially checked against an ACSL-specified
+  C/WebAssembly summary predicate.
 
 - 2026-08-11: Advanced exact battlefield geometry to battle-state version 36.
   Replay now compares every current circular, elliptical, or rotated rectangular

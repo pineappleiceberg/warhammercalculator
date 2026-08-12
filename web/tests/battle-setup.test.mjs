@@ -320,9 +320,13 @@ function reviewedTerrainVisibility(state, overrides = {}) {
       sectionId,
       featureType: "ruins",
       geometryComplete: true,
+      movementType: "ruins",
+      movementGeometryComplete: true,
       panels: [],
+      surfaces: [],
     })),
     allFeaturesRecorded: true,
+    allMovementGeometryRecorded: true,
     reviewedByPlayer: true,
     method: "manual",
     reviewReason: "Players reviewed every terrain section and confirmed its complete wall geometry",
@@ -870,6 +874,100 @@ test("requires a reviewed exact-model placement snapshot after each battlefield 
   assert.equal(replayBattleState(state).deploymentComplete, true);
 });
 
+test("rejects a deployment endpoint that intersects complete measured terrain", () => {
+  let state = exactMissionSetup("deployment-terrain-clearance");
+  state = configureBattleTableGeometry(
+    state,
+    reviewedTableGeometry(state),
+    "deployment-terrain-table",
+    state.events.length + 1,
+  );
+  state = configureBattleTerrainFootprints(
+    state,
+    reviewedTerrainFootprints(state),
+    "deployment-terrain-footprints",
+    state.events.length + 1,
+  );
+  const visibility = reviewedTerrainVisibility(state);
+  state = configureBattleTerrainVisibility(
+    state,
+    {
+      ...visibility,
+      sections: visibility.sections.map((section) =>
+        section.sectionId === "section-1"
+          ? {
+              ...section,
+              panels: [
+                {
+                  id: "deployment-wall",
+                  startXThousandths: 4_000,
+                  startYThousandths: 1_000,
+                  endXThousandths: 4_000,
+                  endYThousandths: 5_000,
+                  bottomZThousandths: 0,
+                  topZThousandths: 5_000,
+                  openings: [],
+                },
+              ],
+            }
+          : section,
+      ),
+    },
+    "deployment-terrain-visibility",
+    state.events.length + 1,
+  );
+  for (const formation of replayBattleState(state).formations.values()) {
+    const reserves = formation.deploymentTraits.aircraft && !formation.deploymentTraits.hover;
+    state = declareFormationDeployment(
+      state,
+      formation.id,
+      reserves ? "reserves" : "battlefield",
+      reserves
+        ? {
+            aircraftMode: "aircraft",
+            eligibilityConfirmed: true,
+            eligibilityReason: "Aircraft must start in Reserves",
+          }
+        : {},
+      `deployment-terrain-declare-${formation.id}`,
+      state.events.length + 1,
+    );
+  }
+  const replayed = replayBattleState(state);
+  const formation = [...replayed.formations.values()].find(
+    (candidate) =>
+      candidate.playerId === replayed.deploymentPriorityPlayerId &&
+      replayed.deploymentByFormation.get(candidate.id)?.location === "battlefield",
+  );
+  assert.ok(formation);
+  const deploymentEventId = `deployment-terrain-deploy-${formation.id}`;
+  state = deployFormation(
+    state,
+    formation.id,
+    { placementConfirmed: true, placementReason: "Reviewed deployment-zone position" },
+    deploymentEventId,
+    state.events.length + 1,
+  );
+  const placement = reviewedDeploymentModelPlacements(state, formation.id, deploymentEventId);
+  const blockedPlacement = {
+    ...placement,
+    models: placement.models.map((model, index) =>
+      index === 0 ? { ...model, centerXThousandths: 4_000, centerYThousandths: 3_000 } : model,
+    ),
+  };
+  assert.throws(
+    () =>
+      recordDeploymentModelPlacements(
+        state,
+        formation.id,
+        blockedPlacement,
+        `deployment-terrain-place-${formation.id}`,
+        state.events.length + 1,
+      ),
+    /model path intersects terrain.*path crosses terrain panel/i,
+  );
+});
+
 test("derives exact objective control from registered OC and reviewed model geometry", () => {
   let state = exactMissionSetup("exact-objective-control");
   state = configureBattleTableGeometry(
@@ -1012,6 +1110,156 @@ test("records exact model paths before opening the end-of-move reaction window",
   assert.equal(replayed.pendingFireOverwatch?.trigger, "normal_move_end");
   assert.equal(replayed.modelPositionHistoryByFormation.get(formationId).length, 2);
   assert.equal(replayed.geometryStaleFormationIds.has(formationId), false);
+  assert.deepEqual(replayed.terrainClearanceFactsByFormation.get(formationId), {
+    status: "clear",
+    executable: true,
+    modelCount: 1,
+    readyModelCount: 1,
+    sectionCount: 12,
+    readySectionCount: 12,
+    supportedSectionCount: 12,
+    pathSegmentCount: 1,
+    checkedPathSegmentCount: 1,
+    collisions: [],
+    unavailableReasons: [],
+    flags: 7,
+    reviewedFallback: false,
+  });
+});
+
+test("rejects an exact model path that crosses a measured terrain wall", () => {
+  let state = exactMissionSetup("terrain-wall-movement");
+  state = configureBattleTableGeometry(
+    state,
+    reviewedTableGeometry(state),
+    "terrain-wall-table-geometry",
+    state.events.length + 1,
+  );
+  state = configureBattleTerrainFootprints(
+    state,
+    reviewedTerrainFootprints(state),
+    "terrain-wall-footprints",
+    state.events.length + 1,
+  );
+  const formationId = "player-2:brutalis";
+  const setup = replayBattleState(state);
+  const formationSlot = [...setup.formations.keys()].indexOf(formationId);
+  const startXThousandths = formationSlot % 2 === 0 ? 5_000 : 35_000;
+  const startYThousandths = 5_000 + Math.floor(formationSlot / 2) * 10_000;
+  const footprint = [...setup.terrainFootprints.footprints].sort((first, second) => {
+    const firstDistance = Math.hypot(
+      first.centerXThousandths - startXThousandths,
+      first.centerYThousandths - startYThousandths,
+    );
+    const secondDistance = Math.hypot(
+      second.centerXThousandths - startXThousandths,
+      second.centerYThousandths - startYThousandths,
+    );
+    return firstDistance - secondDistance;
+  })[0];
+  assert.ok(footprint);
+  const side = Math.sign(startXThousandths - footprint.centerXThousandths) || 1;
+  const endpointXThousandths = footprint.centerXThousandths - side * 1_000;
+  const endpointYThousandths = footprint.centerYThousandths;
+  const distanceMovedThousandths = Math.ceil(
+    Math.hypot(endpointXThousandths - startXThousandths, endpointYThousandths - startYThousandths),
+  );
+  assert.ok(distanceMovedThousandths <= 12_000);
+  const visibility = reviewedTerrainVisibility(state);
+  state = configureBattleTerrainVisibility(
+    state,
+    {
+      ...visibility,
+      sections: visibility.sections.map((section) =>
+        section.sectionId === footprint.areaTerrainSectionId
+          ? {
+              ...section,
+              panels: [
+                {
+                  id: "blocking-wall",
+                  startXThousandths: footprint.centerXThousandths,
+                  startYThousandths: footprint.centerYThousandths - footprint.heightThousandths / 2,
+                  endXThousandths: footprint.centerXThousandths,
+                  endYThousandths: footprint.centerYThousandths + footprint.heightThousandths / 2,
+                  bottomZThousandths: 0,
+                  topZThousandths: 5_000,
+                  openings: [],
+                },
+              ],
+            }
+          : section,
+      ),
+    },
+    "terrain-wall-visibility",
+    state.events.length + 1,
+  );
+  state = deployAllOnBattlefield(state);
+  state = startBattle(state, "player-2", "terrain-wall-battle-started", state.events.length + 1);
+  state = advanceTo(state, "movement", "move_units");
+  state = startFormationMovement(
+    state,
+    formationId,
+    "normal",
+    "terrain-wall-movement-started",
+    state.events.length + 1,
+  );
+  state = passFireOverwatch(
+    state,
+    "No Fire Overwatch declared at move start",
+    "terrain-wall-overwatch-passed",
+    state.events.length + 1,
+  );
+  state = completeFormationMovement(
+    state,
+    formationId,
+    "normal",
+    "terrain-wall-movement-completed",
+    state.events.length + 1,
+  );
+  const replayed = replayBattleState(state);
+  const previous = replayed.currentModelPositionsByFormation.get(formationId);
+  const position = reviewedModelPositions(
+    state,
+    formationId,
+    "movement",
+    "terrain-wall-movement-completed",
+  );
+  const blockedPosition = {
+    ...position,
+    models: position.models.map((model) => {
+      const start = previous.models.find((candidate) => candidate.modelId === model.modelId);
+      assert.ok(start);
+      const startPoint = {
+        centerXThousandths: start.centerXThousandths,
+        centerYThousandths: start.centerYThousandths,
+        elevationThousandths: start.elevationThousandths,
+        rotationMilliDegrees: start.rotationMilliDegrees,
+      };
+      const endpoint = {
+        ...startPoint,
+        centerXThousandths: endpointXThousandths,
+        centerYThousandths: endpointYThousandths,
+      };
+      return {
+        ...model,
+        ...endpoint,
+        path: [startPoint, endpoint],
+        distanceMovedThousandths,
+        maximumDistanceThousandths: 12_000,
+      };
+    }),
+  };
+  assert.throws(
+    () =>
+      recordModelPositions(
+        state,
+        formationId,
+        blockedPosition,
+        "terrain-wall-positioned",
+        state.events.length + 1,
+      ),
+    /model path intersects terrain.*path crosses terrain panel/i,
+  );
 });
 
 test("records a reserve unit's first exact position before its set-up reaction window", () => {
@@ -2579,6 +2827,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacyConvexSilhouettesThroughSequence: 3,
     legacyObjectiveControlThroughSequence: 3,
     legacyEndpointClearanceThroughSequence: 3,
+    legacyTerrainClearanceThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -2625,6 +2874,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacyConvexSilhouettesThroughSequence: 3,
     legacyObjectiveControlThroughSequence: 3,
     legacyEndpointClearanceThroughSequence: 3,
+    legacyTerrainClearanceThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -2676,6 +2926,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacyConvexSilhouettesThroughSequence: 2,
     legacyObjectiveControlThroughSequence: 2,
     legacyEndpointClearanceThroughSequence: 2,
+    legacyTerrainClearanceThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -2720,6 +2971,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacyConvexSilhouettesThroughSequence: 2,
     legacyObjectiveControlThroughSequence: 2,
     legacyEndpointClearanceThroughSequence: 2,
+    legacyTerrainClearanceThroughSequence: 2,
   });
 });
 
@@ -2763,6 +3015,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacyConvexSilhouettesThroughSequence: 2,
     legacyObjectiveControlThroughSequence: 2,
     legacyEndpointClearanceThroughSequence: 2,
+    legacyTerrainClearanceThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -2812,6 +3065,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacyConvexSilhouettesThroughSequence: 2,
     legacyObjectiveControlThroughSequence: 2,
     legacyEndpointClearanceThroughSequence: 2,
+    legacyTerrainClearanceThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -2856,6 +3110,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacyConvexSilhouettesThroughSequence: 2,
     legacyObjectiveControlThroughSequence: 2,
     legacyEndpointClearanceThroughSequence: 2,
+    legacyTerrainClearanceThroughSequence: 2,
   });
 });
 
@@ -2899,6 +3154,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacyConvexSilhouettesThroughSequence: 2,
     legacyObjectiveControlThroughSequence: 2,
     legacyEndpointClearanceThroughSequence: 2,
+    legacyTerrainClearanceThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -3774,6 +4030,75 @@ test("migrates version-35 endpoint reviews without inventing executable clearanc
   assert.equal(facts.executable, false);
   assert.equal(facts.status, "unknown");
   assert.ok(facts.unavailableReasons.some((reason) => reason.includes("formation_geometry")));
+});
+
+test("migrates version-36 paths without inventing terrain movement geometry", () => {
+  let versionThirtySix = exactMissionSetup("version-36-terrain-clearance");
+  versionThirtySix = configureBattleTableGeometry(
+    versionThirtySix,
+    reviewedTableGeometry(versionThirtySix),
+    "version-36-table-geometry",
+    versionThirtySix.events.length + 1,
+  );
+  versionThirtySix = configureBattleTerrainFootprints(
+    versionThirtySix,
+    reviewedTerrainFootprints(versionThirtySix),
+    "version-36-terrain-footprints",
+    versionThirtySix.events.length + 1,
+  );
+  versionThirtySix = deployAllOnBattlefield(versionThirtySix);
+  versionThirtySix = structuredClone(versionThirtySix);
+  versionThirtySix.version = 36;
+  versionThirtySix.migration = undefined;
+  versionThirtySix.events = versionThirtySix.events.map((event) => {
+    if (event.type !== "terrain_visibility_recorded") return event;
+    const { allMovementGeometryRecorded, ...visibility } = event.terrainVisibility;
+    void allMovementGeometryRecorded;
+    return {
+      ...event,
+      terrainVisibility: {
+        ...visibility,
+        sections: visibility.sections.map((section) => {
+          const { movementType, movementGeometryComplete, surfaces, ...legacySection } = section;
+          void movementType;
+          void movementGeometryComplete;
+          void surfaces;
+          return legacySection;
+        }),
+      },
+    };
+  });
+  const legacyEventCount = versionThirtySix.events.length;
+  const migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: normalizeBattleState(versionThirtySix),
+    id: versionThirtySix.id,
+  });
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 36);
+  assert.equal(migrated.migration.legacyTerrainClearanceThroughSequence, legacyEventCount);
+  const replayed = replayBattleState(migrated);
+  assert.equal(replayed.terrainVisibility.allMovementGeometryRecorded, false);
+  assert.ok(
+    replayed.terrainVisibility.sections.every(
+      (section) =>
+        section.movementType === "ruins" &&
+        section.movementGeometryComplete === false &&
+        section.surfaces.length === 0,
+    ),
+  );
+  assert.equal(replayed.terrainClearanceFactsByFormation.size, 1);
+  const facts = [...replayed.terrainClearanceFactsByFormation.values()][0];
+  assert.equal(facts.status, "unknown");
+  assert.equal(facts.executable, false);
+  assert.deepEqual(facts.collisions, []);
+  assert.ok(facts.unavailableReasons.includes("legacy_terrain_clearance_unavailable"));
 });
 
 test("marks exact geometry stale when casualties change live model identities and clears on undo", () => {

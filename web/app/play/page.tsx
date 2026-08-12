@@ -3910,6 +3910,7 @@ export default function PlayMode() {
       };
       const sections = sectionIds.map((sectionId) => {
         let rawPanels: unknown;
+        let rawSurfaces: unknown;
         try {
           rawPanels = JSON.parse(String(data.get(`visibility-panels-${sectionId}`) || "[]"));
         } catch {
@@ -3918,10 +3919,20 @@ export default function PlayMode() {
         if (!Array.isArray(rawPanels)) {
           throw new Error(`${sectionId} wall panels must be a JSON array`);
         }
+        try {
+          rawSurfaces = JSON.parse(String(data.get(`movement-surfaces-${sectionId}`) || "[]"));
+        } catch {
+          throw new Error(`${sectionId} movement surfaces must be valid JSON`);
+        }
+        if (!Array.isArray(rawSurfaces)) {
+          throw new Error(`${sectionId} movement surfaces must be a JSON array`);
+        }
         return {
           sectionId,
           featureType: String(data.get(`visibility-feature-${sectionId}`) || "ruins"),
           geometryComplete: data.get(`visibility-complete-${sectionId}`) === "on",
+          movementType: String(data.get(`movement-type-${sectionId}`) || "ruins"),
+          movementGeometryComplete: data.get(`movement-complete-${sectionId}`) === "on",
           panels: rawPanels.map((candidate, panelIndex) => {
             if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
               throw new Error(`${sectionId} panel ${panelIndex + 1} must be an object`);
@@ -3967,6 +3978,32 @@ export default function PlayMode() {
               }),
             };
           }),
+          surfaces: rawSurfaces.map((candidate, surfaceIndex) => {
+            if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+              throw new Error(`${sectionId} surface ${surfaceIndex + 1} must be an object`);
+            }
+            const surface = candidate as Record<string, unknown>;
+            if (!Array.isArray(surface.points) || surface.points.length < 3) {
+              throw new Error(`${sectionId} surface ${surfaceIndex + 1} needs at least 3 points`);
+            }
+            return {
+              id: String(surface.id || `${sectionId}-surface-${surfaceIndex + 1}`),
+              vertices: surface.points.map((candidatePoint, pointIndex) => {
+                if (!Array.isArray(candidatePoint) || candidatePoint.length !== 2) {
+                  throw new Error(
+                    `${sectionId} surface ${surfaceIndex + 1} point ${pointIndex + 1} must be [x,y]`,
+                  );
+                }
+                return {
+                  xThousandths: thousandths(candidatePoint[0], "Surface X", 60),
+                  yThousandths: thousandths(candidatePoint[1], "Surface Y", 44),
+                };
+              }),
+              bottomZThousandths: thousandths(surface.bottom, "Surface bottom", 30),
+              topZThousandths: thousandths(surface.top, "Surface top", 30),
+              supportsEnding: surface.supportsEnding === true,
+            };
+          }),
         };
       });
       const next = configureBattleTerrainVisibility(
@@ -3976,6 +4013,7 @@ export default function PlayMode() {
           terrainSourceId: terrain.terrainSourceId,
           sections,
           allFeaturesRecorded: data.get("visibility-all-features") === "on",
+          allMovementGeometryRecorded: data.get("movement-all-features") === "on",
           reviewedByPlayer: data.get("visibility-player-reviewed") === "on",
           method: String(data.get("visibility-method") || "manual"),
           reviewReason: String(data.get("visibility-reason") || "").trim(),
@@ -6516,7 +6554,28 @@ export default function PlayMode() {
                 </span>
                 <small>
                   Positive 3D footprint overlap is rejected; touching boundaries remain legal.
-                  Complete movement paths and terrain clearance remain player-reviewed.
+                </small>
+              </div>
+            )}
+            {replayedBattle?.terrainClearanceFactsByFormation.size > 0 && (
+              <div className="loadout-warnings" data-testid="terrain-clearance-facts">
+                <strong>Movement terrain clearance</strong>
+                {[...replayedBattle.terrainClearanceFactsByFormation.entries()].map(
+                  ([formationId, fact]) => (
+                    <span key={formationId}>
+                      {replayedBattle.formations.get(formationId)?.name ?? formationId}:{" "}
+                      {fact.status === "clear"
+                        ? `${fact.checkedPathSegmentCount} complete path segments clear`
+                        : fact.status === "collision"
+                          ? `${fact.collisions.length} illegal terrain intersection${fact.collisions.length === 1 ? "" : "s"}`
+                          : `reviewed fallback (${fact.unavailableReasons.join(", ").replaceAll("_", " ")})`}
+                    </span>
+                  ),
+                )}
+                <small>
+                  The whole reviewed model envelope must fit through openings and beneath overhangs.
+                  Explicit vertical waypoints prove climbs; elevated endpoints require full base or
+                  hull support.
                 </small>
               </div>
             )}
@@ -8069,7 +8128,7 @@ export default function PlayMode() {
                     ["position-paths-reviewed", "Every complete path and distance was checked"],
                     [
                       "position-terrain-reviewed",
-                      "Terrain clearance and vertical movement were checked",
+                      "Fallback review: terrain clearance and vertical movement were checked",
                     ],
                     ["position-coherency-reviewed", "The formation ends in unit coherency"],
                     ["position-engagement-reviewed", "Engagement Range restrictions were checked"],
@@ -9712,8 +9771,9 @@ export default function PlayMode() {
                   <div>
                     <strong>Record 3D terrain visibility</strong>
                     <span>
-                      Classify every area terrain section. Enter measured wall panels and openings;
-                      an empty array means the section has no physical wall panels.
+                      Classify every area terrain section. Enter measured wall panels, openings, and
+                      convex floor or overhang solids; an empty array means that kind of physical
+                      geometry is absent.
                     </span>
                   </div>
                   {[
@@ -9735,6 +9795,16 @@ export default function PlayMode() {
                         </select>
                       </label>
                       <label>
+                        <span>Movement rules</span>
+                        <select name={`movement-type-${sectionId}`} defaultValue="ruins">
+                          <option value="ruins">Ruins</option>
+                          <option value="woods">Woods / normal terrain</option>
+                          <option value="normal">Normal climbable terrain</option>
+                          <option value="no_end">Obstacle; cannot end on top</option>
+                          <option value="reviewed">Other; player-reviewed fallback</option>
+                        </select>
+                      </label>
+                      <label>
                         <span>Wall panels JSON (inches)</span>
                         <textarea
                           name={`visibility-panels-${sectionId}`}
@@ -9744,9 +9814,23 @@ export default function PlayMode() {
                           required
                         />
                       </label>
+                      <label>
+                        <span>Floor / overhang solids JSON (inches)</span>
+                        <textarea
+                          name={`movement-surfaces-${sectionId}`}
+                          rows={3}
+                          defaultValue="[]"
+                          placeholder='[{"id":"floor-1","points":[[1,2],[5,2],[5,4],[1,4]],"bottom":2.8,"top":3,"supportsEnding":true}]'
+                          required
+                        />
+                      </label>
                       <label className="confirmation-row">
                         <input name={`visibility-complete-${sectionId}`} type="checkbox" />
                         Every physical wall panel and opening in this section is recorded
+                      </label>
+                      <label className="confirmation-row">
+                        <input name={`movement-complete-${sectionId}`} type="checkbox" />
+                        Every wall, floor, ceiling, overhang, and movement surface is recorded
                       </label>
                     </fieldset>
                   ))}
@@ -9764,8 +9848,12 @@ export default function PlayMode() {
                     Every terrain feature and section is recorded completely
                   </label>
                   <label className="confirmation-row">
+                    <input name="movement-all-features" type="checkbox" />
+                    Every terrain feature has complete movement geometry
+                  </label>
+                  <label className="confirmation-row">
                     <input name="visibility-player-reviewed" type="checkbox" required />A player
-                    reviewed these classifications, panels, openings, and completeness flags
+                    reviewed these classifications, panels, openings, solids, and completeness flags
                   </label>
                   <label>
                     <span>Review record</span>
@@ -9773,7 +9861,7 @@ export default function PlayMode() {
                       name="visibility-reason"
                       maxLength={500}
                       required
-                      placeholder="Terrain types, wall endpoints, heights, openings, and omissions checked"
+                      placeholder="Terrain rules, walls, openings, floors, overhangs, and omissions checked"
                     />
                   </label>
                   <button type="submit">Lock reviewed visibility geometry</button>
@@ -9781,7 +9869,7 @@ export default function PlayMode() {
               )}
             {battleClock.status === "setup" && replayedBattle.terrainVisibility && (
               <div className="action-tracker" data-testid="terrain-visibility-summary">
-                <strong>3D visibility geometry · {replayedBattle.terrainVisibility.method}</strong>
+                <strong>3D terrain geometry · {replayedBattle.terrainVisibility.method}</strong>
                 <span>
                   {replayedBattle.terrainVisibility.sections.length} sections ·{" "}
                   {replayedBattle.terrainVisibility.sections.reduce(
@@ -9790,9 +9878,21 @@ export default function PlayMode() {
                     0,
                   )}{" "}
                   wall panels ·{" "}
+                  {replayedBattle.terrainVisibility.sections.reduce(
+                    (total: number, section: { surfaces?: unknown[] }) =>
+                      total + (section.surfaces?.length ?? 0),
+                    0,
+                  )}{" "}
+                  floor / overhang solids ·{" "}
                   {replayedBattle.terrainVisibility.allFeaturesRecorded
                     ? "complete"
                     : "partial; unresolved lines remain unknown"}
+                </span>
+                <span>
+                  Movement geometry:{" "}
+                  {replayedBattle.terrainVisibility.allMovementGeometryRecorded
+                    ? "complete and executable where movement rules are classified"
+                    : "partial; paths use reviewed fallback where proof is unavailable"}
                 </span>
                 <span>{replayedBattle.terrainVisibility.reviewReason}</span>
               </div>

@@ -6,11 +6,21 @@ export const TERRAIN_VISIBILITY_LIMITS = Object.freeze({
   maximumSections: 24,
   maximumPanels: 256,
   maximumOpeningsPerPanel: 32,
+  maximumSurfaces: 256,
+  maximumVerticesPerSurface: 16,
   maximumSightPointsPerModel: 16,
   maximumConvexVerticesPerModel: 16,
   maximumCoordinateThousandths: 100_000,
   maximumHeightThousandths: 30_000,
 });
+
+export const TERRAIN_MOVEMENT_TYPES = Object.freeze([
+  "ruins",
+  "woods",
+  "normal",
+  "no_end",
+  "reviewed",
+]);
 
 export function convexSilhouetteIsValid(vertices, flags = 1) {
   if (
@@ -45,6 +55,36 @@ export function convexSilhouetteIsValid(vertices, flags = 1) {
 
 function integerBetween(value, minimum, maximum) {
   return Number.isSafeInteger(value) && value >= minimum && value <= maximum;
+}
+
+export function convexTerrainSurfaceIsValid(vertices) {
+  if (
+    !Array.isArray(vertices) ||
+    vertices.length < 3 ||
+    vertices.length > TERRAIN_VISIBILITY_LIMITS.maximumVerticesPerSurface ||
+    vertices.some(
+      (vertex) =>
+        !integerBetween(vertex?.xThousandths, 0, 60_000) ||
+        !integerBetween(vertex?.yThousandths, 0, 44_000),
+    )
+  ) {
+    return false;
+  }
+  for (let edgeIndex = 0; edgeIndex < vertices.length; edgeIndex += 1) {
+    const nextIndex = (edgeIndex + 1) % vertices.length;
+    const start = vertices[edgeIndex];
+    const end = vertices[nextIndex];
+    const edgeX = end.xThousandths - start.xThousandths;
+    const edgeY = end.yThousandths - start.yThousandths;
+    for (let pointIndex = 0; pointIndex < vertices.length; pointIndex += 1) {
+      if (pointIndex === edgeIndex || pointIndex === nextIndex) continue;
+      const point = vertices[pointIndex];
+      const pointX = point.xThousandths - start.xThousandths;
+      const pointY = point.yThousandths - start.yThousandths;
+      if (edgeX * pointY - edgeY * pointX <= 0) return false;
+    }
+  }
+  return true;
 }
 
 function rotate(x, y, milliDegrees) {
@@ -917,7 +957,29 @@ export function terrainVisibilityGeometryIsValid(set, terrainFootprints) {
     return false;
   }
   let panelCount = 0;
+  let surfaceCount = 0;
   const panelIds = new Set();
+  const surfaceIds = new Set();
+  const movementSchemaPresent =
+    set.allMovementGeometryRecorded !== undefined ||
+    set.sections.some(
+      (section) =>
+        section.movementType !== undefined ||
+        section.movementGeometryComplete !== undefined ||
+        section.surfaces !== undefined,
+    );
+  if (
+    movementSchemaPresent &&
+    (typeof set.allMovementGeometryRecorded !== "boolean" ||
+      set.sections.some(
+        (section) =>
+          !TERRAIN_MOVEMENT_TYPES.includes(section.movementType) ||
+          typeof section.movementGeometryComplete !== "boolean" ||
+          !Array.isArray(section.surfaces),
+      ))
+  ) {
+    return false;
+  }
   for (const section of set.sections) {
     if (
       !TERRAIN_VISIBILITY_FEATURES.includes(section.featureType) ||
@@ -977,10 +1039,35 @@ export function terrainVisibilityGeometryIsValid(set, terrainFootprints) {
         }
       }
     }
+    for (const surface of section.surfaces ?? []) {
+      surfaceCount += 1;
+      if (
+        surfaceIds.has(surface.id) ||
+        typeof surface.id !== "string" ||
+        !surface.id ||
+        !integerBetween(surface.bottomZThousandths, 0, 30_000) ||
+        !integerBetween(surface.topZThousandths, 1, 30_000) ||
+        surface.topZThousandths <= surface.bottomZThousandths ||
+        typeof surface.supportsEnding !== "boolean" ||
+        !convexTerrainSurfaceIsValid(surface.vertices) ||
+        !footprints.some((footprint) =>
+          surface.vertices.every((vertex) =>
+            pointInFootprint({ x: vertex.xThousandths, y: vertex.yThousandths }, footprint),
+          ),
+        )
+      ) {
+        return false;
+      }
+      surfaceIds.add(surface.id);
+    }
   }
   return (
     panelCount <= TERRAIN_VISIBILITY_LIMITS.maximumPanels &&
-    (!set.allFeaturesRecorded || set.sections.every((section) => section.geometryComplete))
+    surfaceCount <= TERRAIN_VISIBILITY_LIMITS.maximumSurfaces &&
+    (!set.allFeaturesRecorded || set.sections.every((section) => section.geometryComplete)) &&
+    (!movementSchemaPresent ||
+      !set.allMovementGeometryRecorded ||
+      set.sections.every((section) => section.movementGeometryComplete))
   );
 }
 

@@ -2,6 +2,7 @@ import {
   ACTION_BATTLE_STATE_VERSION,
   BATTLE_EVENT_VERSION,
   BATTLE_STATE_VERSION,
+  TERRAIN_CLEARANCE_BATTLE_STATE_VERSION,
   CONVEX_SILHOUETTE_BATTLE_STATE_VERSION,
   ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION,
   RANGED_GEOMETRY_BATTLE_STATE_VERSION,
@@ -706,6 +707,10 @@ export function initializeBattleForLists({
             sourceVersion < ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyEndpointClearanceThroughSequence ?? 0),
+          legacyTerrainClearanceThroughSequence:
+            sourceVersion < TERRAIN_CLEARANCE_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyTerrainClearanceThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {
