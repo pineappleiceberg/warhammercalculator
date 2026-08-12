@@ -682,5 +682,25 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
                                          has_ability, charge_allowed, attacks_modifier,
                                          strength_modifier, invulnerable) == expected);
     }
+    {
+        const uint32_t source_detachment = next_byte(&input);
+        const uint32_t eligible_adeptus_astartes = next_byte(&input);
+        const uint32_t selected = next_byte(&input);
+        const uint32_t battle_shocked = next_byte(&input);
+        const uint32_t base_objective_control = next_byte(&input);
+        const uint32_t resolved_objective_control = next_byte(&input);
+        const uint32_t eligible =
+            source_detachment == 1u && eligible_adeptus_astartes == 1u;
+        const uint32_t replacement =
+            battle_shocked == 1u ? (eligible ? 1u : 0u) : base_objective_control;
+        const uint32_t modifier = eligible && selected == 1u ? 1u : 0u;
+        const bool expected =
+            source_detachment <= 1u && eligible_adeptus_astartes <= 1u && selected <= 1u &&
+            battle_shocked <= 1u && (!selected || eligible) &&
+            resolved_objective_control == replacement + modifier;
+        assert(whc_grim_resolve_model_objective_control_is_valid(
+                   source_detachment, eligible_adeptus_astartes, selected, battle_shocked,
+                   base_objective_control, resolved_objective_control) == expected);
+    }
     return 0;
 }

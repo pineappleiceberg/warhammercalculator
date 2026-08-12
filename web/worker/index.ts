@@ -71,6 +71,7 @@ import {
   battleInitialDeploymentRules,
   battleFormation,
   battleFormationHealth,
+  battleGrimResolveFormationFacts,
   battleWaaaghFormationFacts,
   battleSurvivingWeaponCount,
   chargeResolutionFlags,
@@ -399,6 +400,7 @@ type CalculatorExports = {
   whc_objective_control_facts_are_valid(...values: number[]): number;
   whc_visibility_facts_are_valid(...values: number[]): number;
   whc_waaagh_state_is_valid(...values: number[]): number;
+  whc_grim_resolve_model_objective_control_is_valid(...values: number[]): number;
   whc_start_battle_clock(firstPlayerIndex: number, clockPointer: number): number;
   whc_next_battle_clock(currentPointer: number, nextPointer: number): number;
 };
@@ -1945,11 +1947,42 @@ async function replayFormationHealth(
         return publicFacts;
       })
       .sort((left, right) => left.formationId.localeCompare(right.formationId));
+    const grimResolvePlayerIds = new Set(
+      (replayed.ruleCoverage?.plan.players ?? [])
+        .filter(
+          (player) =>
+            player.detachment?.sourceId === "000000834" &&
+            player.detachment.ruleIds.includes("detachment.catalogue-000000834"),
+        )
+        .map((player) => player.playerId),
+    );
+    const grimResolve = [...replayed.formations.values()]
+      .filter((formation) => grimResolvePlayerIds.has(formation.playerId))
+      .flatMap((formation) => {
+        const facts = battleGrimResolveFormationFacts(state, formation.id, replayed);
+        const models = facts.models.map((model) => {
+          const nativeValid = Boolean(
+            calculator.whc_grim_resolve_model_objective_control_is_valid(...model.values),
+          );
+          if (nativeValid !== model.valid || !model.valid) {
+            throw new ServiceUnavailableError(
+              "Grim Resolve Objective Control diverged from the C/WebAssembly predicate",
+              "GRIM_RESOLVE_STATE_DIVERGENCE",
+            );
+          }
+          const { values, ...publicModel } = model;
+          void values;
+          return publicModel;
+        });
+        return [{ ...facts, models }];
+      })
+      .sort((left, right) => left.formationId.localeCompare(right.formationId));
     return {
       schemaVersion: state.version,
       rulesSnapshot: state.rulesSnapshot,
       ruleCoverage: replayed.ruleCoverage,
       factionRules: { waaagh },
+      detachmentRules: { grimResolve },
       tableGeometry: replayed.tableGeometry,
       terrainFootprints: replayed.terrainFootprints,
       terrainVisibility: replayed.terrainVisibility,

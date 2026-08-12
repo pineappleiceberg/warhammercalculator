@@ -25,6 +25,7 @@ import {
   battleEmbarkationOptions,
   battleCanDeclareRangedAttack,
   battleCanResolveAttack,
+  battleGrimResolveState,
   battleWaaaghState,
   battleFormation,
   battleFormationIsOnBattlefield,
@@ -89,6 +90,7 @@ import {
   scoreBattlePoints,
   scoreMissionPoints,
   scoreSecondaryMissionCard,
+  selectGrimResolveFormation,
   setBattleObjectiveControl,
   setFormationBattleShocked,
   startBattle,
@@ -4525,6 +4527,26 @@ export default function PlayMode() {
     }
   };
 
+  const selectPlayerGrimResolveFormation = (playerId: string, formationId: string) => {
+    if (!battleState) return;
+    try {
+      const next = selectGrimResolveFormation(
+        battleState,
+        playerId,
+        formationId,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      const formation = replayBattleState(next).formations.get(formationId);
+      setStatus(
+        `Grim Resolve selected ${formation?.name ?? formationId} until this player's next Command phase`,
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Grim Resolve could not be selected");
+    }
+  };
+
   const recordSelectedMovement = (movement: "stationary" | "normal" | "advance" | "fall_back") => {
     if (!battleState || !attackerBattleFormationId) return;
     try {
@@ -7642,6 +7664,40 @@ export default function PlayMode() {
                       <span key={player.id}>Waaagh! spent · {player.name}</span>
                     );
                   })}
+                  {battleState.players.map((player) => {
+                    const grimResolve = battleGrimResolveState(
+                      battleState,
+                      player.id,
+                      replayedBattle,
+                    );
+                    if (!grimResolve.sourceLocked) return null;
+                    if (grimResolve.available) {
+                      return (
+                        <div key={player.id} className="battle-log-actions">
+                          <strong>Grim Resolve · choose {player.name}&apos;s unit:</strong>
+                          {grimResolve.eligibleFormationIds.map((formationId) => (
+                            <button
+                              key={formationId}
+                              type="button"
+                              onClick={() =>
+                                selectPlayerGrimResolveFormation(player.id, formationId)
+                              }
+                            >
+                              {replayedBattle.formations.get(formationId)?.name ?? formationId}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    }
+                    if (!grimResolve.activeFormationId) return null;
+                    return (
+                      <strong key={player.id}>
+                        Grim Resolve ·{" "}
+                        {replayedBattle.formations.get(grimResolve.activeFormationId)?.name ??
+                          grimResolve.activeFormationId}
+                      </strong>
+                    );
+                  })}
                   <button
                     type="button"
                     disabled={
@@ -7653,7 +7709,11 @@ export default function PlayMode() {
                       replayedBattle.chargeDeclarationsByFormation.size > 0 ||
                       Boolean(pendingHeroicIntervention) ||
                       Boolean(pendingRapidIngress) ||
-                      Boolean(pendingCounterOffensive)
+                      Boolean(pendingCounterOffensive) ||
+                      battleState.players.some(
+                        (player) =>
+                          battleGrimResolveState(battleState, player.id, replayedBattle).available,
+                      )
                     }
                     onClick={advanceGuidedBattle}
                   >

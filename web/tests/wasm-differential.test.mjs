@@ -153,6 +153,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_terrain_clearance_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_mission_tracker_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_waaagh_state_is_valid, "function");
+  assert.equal(typeof calculator._whc_grim_resolve_model_objective_control_is_valid, "function");
   assert.equal(typeof calculator._whc_objective_control_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_visibility_facts_are_valid, "function");
   assert.equal(typeof calculator._whc_convex_silhouette_is_valid, "function");
@@ -167,6 +168,16 @@ test("Waaagh! state predicate matches source-locked active and inactive facts", 
   assert.equal(calculator._whc_waaagh_state_is_valid(1, 1, 1, 1, 0, 0, 0, 0, 0), 1);
   assert.equal(calculator._whc_waaagh_state_is_valid(1, 0, 1, 1, 1, 1, 1, 1, 5), 0);
   assert.equal(calculator._whc_waaagh_state_is_valid(2, 1, 1, 1, 1, 1, 1, 1, 5), 0);
+});
+
+test("Grim Resolve predicate matches replacement-then-addition Objective Control", () => {
+  const validate = calculator._whc_grim_resolve_model_objective_control_is_valid;
+  assert.equal(validate(0, 0, 0, 0, 2, 2), 1);
+  assert.equal(validate(1, 1, 1, 0, 2, 3), 1);
+  assert.equal(validate(1, 1, 0, 1, 2, 1), 1);
+  assert.equal(validate(1, 1, 1, 1, 2, 2), 1);
+  assert.equal(validate(0, 1, 1, 0, 2, 3), 0);
+  assert.equal(validate(1, 1, 1, 1, 2, 1), 0);
 });
 
 test("WebAssembly and JavaScript agree on reviewed simple terrain surfaces", () => {

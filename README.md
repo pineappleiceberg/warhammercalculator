@@ -792,6 +792,18 @@ geometry, unmatched model identities, or legacy OC produce `unknown` instead of
 a guessed controller. Version-34 games migrate without receiving fabricated
 characteristics from the newer catalogue; C/WebAssembly independently validates
 each executable classification.
+Version 40 makes the source-locked Orks Waaagh! declaration an executable,
+once-per-battle Command-phase transition with replayed duration, Advance-and-charge
+permission, melee Attacks and Strength modifiers, and the applicable invulnerable
+save. Version 41 adds the Unforgiven Task Force's source-locked Grim Resolve
+choice in each owning Command phase. Guided Play requires one surviving Adeptus
+Astartes formation to be selected, expires the choice at that player's next
+Command phase, and applies the published modifier after the Battle-shock OC
+replacement: an eligible Battle-shocked model is OC 1, or OC 2 while selected.
+The replay API exposes per-model base and resolved OC only for armies using that
+detachment and independently checks every value against the ACSL-specified
+C/WebAssembly predicate. Version-40 and older histories retain an explicit
+migration boundary and never receive invented selections.
 Version-25
 games migrate without invented terrain footprints, version-26 games migrate
 without invented deployment positions, and version-27 games migrate without

@@ -773,6 +773,25 @@ bool whc_waaagh_state_is_valid(uint32_t call_count, uint32_t active,
 
 /*@ assigns \nothing;
     ensures \result <==>
+        source_detachment <= 1 && eligible_adeptus_astartes <= 1 && selected <= 1 &&
+        battle_shocked <= 1 && base_objective_control <= 1000000 &&
+        resolved_objective_control <= 1000001 &&
+        (selected == 0 ||
+            (source_detachment == 1 && eligible_adeptus_astartes == 1)) &&
+        resolved_objective_control ==
+            (battle_shocked == 1
+                ? (source_detachment == 1 && eligible_adeptus_astartes == 1 ? 1 : 0)
+                : base_objective_control) +
+            (source_detachment == 1 && eligible_adeptus_astartes == 1 && selected == 1
+                ? 1 : 0);
+*/
+bool whc_grim_resolve_model_objective_control_is_valid(
+    uint32_t source_detachment, uint32_t eligible_adeptus_astartes, uint32_t selected,
+    uint32_t battle_shocked, uint32_t base_objective_control,
+    uint32_t resolved_objective_control);
+
+/*@ assigns \nothing;
+    ensures \result <==>
         player_count == 2 && score_entry_count == player_count &&
         top_score <= 1000000 && top_score_player_count <= player_count &&
         controller_count <= 1 && contested <= 1 &&

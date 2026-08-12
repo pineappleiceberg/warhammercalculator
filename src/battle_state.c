@@ -575,6 +575,21 @@ bool whc_waaagh_state_is_valid(uint32_t call_count, uint32_t active,
            granted_invulnerable_save == (benefits == 1u ? 5u : 0u);
 }
 
+bool whc_grim_resolve_model_objective_control_is_valid(
+    uint32_t source_detachment, uint32_t eligible_adeptus_astartes, uint32_t selected,
+    uint32_t battle_shocked, uint32_t base_objective_control,
+    uint32_t resolved_objective_control) {
+    const uint32_t eligible = source_detachment == 1u && eligible_adeptus_astartes == 1u;
+    const uint32_t replacement = battle_shocked == 1u ? (eligible ? 1u : 0u)
+                                                       : base_objective_control;
+    const uint32_t modifier = eligible && selected == 1u ? 1u : 0u;
+
+    return source_detachment <= 1u && eligible_adeptus_astartes <= 1u && selected <= 1u &&
+           battle_shocked <= 1u && base_objective_control <= 1000000u &&
+           resolved_objective_control <= 1000001u && (!selected || eligible) &&
+           resolved_objective_control == replacement + modifier;
+}
+
 bool whc_objective_control_facts_are_valid(uint32_t player_count, uint32_t score_entry_count,
                                            uint32_t top_score, uint32_t top_score_player_count,
                                            uint32_t controller_count, uint32_t contested,
