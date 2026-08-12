@@ -11895,9 +11895,12 @@ export function missionTrackerFacts(state, playerId) {
   const active = replayed.secondaryActiveCards.get(playerId) ?? new Map();
   const drawn = replayed.secondaryDrawnCards.get(playerId) ?? new Map();
   const discarded = replayed.secondaryDiscardedCardIds.get(playerId) ?? new Set();
-  const cardPoints = [...replayed.secondaryCardPoints]
-    .filter(([key]) => key.startsWith(`${playerId}:`))
-    .map(([, points]) => points);
+  const fixedCardPoints =
+    plan?.mode === "fixed"
+      ? plan.fixedCards.map(
+          (card) => replayed.secondaryCardPoints.get(`${playerId}:${card.id}`) ?? 0,
+        )
+      : [];
   const activeActions = [...replayed.activeMissionActions.values()].filter(
     (action) => action.playerId === playerId,
   );
@@ -11917,7 +11920,7 @@ export function missionTrackerFacts(state, playerId) {
     active.size,
     totals.primary,
     totals.secondary,
-    Math.max(0, ...cardPoints),
+    Math.max(0, ...fixedCardPoints),
     totals.battle_ready,
     totals.total,
     activeActions.length,

@@ -1455,9 +1455,9 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 
 ## Prioritized correctness backlog
 
-1. Expand the source-locked full-game corpus with an on-table action-heavy pair
-   covering movement, ranged attacks, Charge, Fight, reactions, casualties,
-   objective changes, and Tactical Secondary lifecycle before automated play.
+1. Expand the source-locked corpus with an attached Leader/bodyguard and
+   mixed-profile pair on another faction and mission, including Reserves,
+   Mission Actions, faction/detachment decisions, and casualty allocation.
 2. Add reviewed curved movement-surface primitives only when panels and simple
    polygon solids cannot represent a supported physical terrain set exactly.
 3. Add deterministic automated policies and calibrated batch battle simulation

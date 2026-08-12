@@ -732,6 +732,9 @@ function verifyBattleClock(
     assertBattleClockWords(calculator, currentPointer, start.clock, state.players);
     for (const event of state.events) {
       if (event.type !== "clock_advanced") continue;
+      new Uint32Array(calculator.memory.buffer, currentPointer, BATTLE_CLOCK_FIELDS).set(
+        battleClockWords(event.from, state.players),
+      );
       if (!calculator.whc_next_battle_clock(currentPointer, nextPointer)) {
         throw new ServiceUnavailableError(
           "Canonical battle clock rejected a valid transition",
@@ -739,9 +742,6 @@ function verifyBattleClock(
         );
       }
       assertBattleClockWords(calculator, nextPointer, event.to, state.players);
-      new Uint32Array(calculator.memory.buffer, currentPointer, BATTLE_CLOCK_FIELDS).set(
-        new Uint32Array(calculator.memory.buffer, nextPointer, BATTLE_CLOCK_FIELDS),
-      );
     }
   } finally {
     calculator.free(currentPointer);

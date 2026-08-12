@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { missionTrackerFacts } from "../lib/battle-state.mjs";
 
 import {
   GOLDEN_BATTLE_REPLAY_SCHEMA,
@@ -13,6 +14,12 @@ import {
 const fixture = JSON.parse(
   await readFile(
     new URL("./fixtures/golden-battle-necrons-vs-space-marines-v1.json", import.meta.url),
+    "utf8",
+  ),
+);
+const actionFixture = JSON.parse(
+  await readFile(
+    new URL("./fixtures/golden-battle-action-necrons-vs-space-marines-v1.json", import.meta.url),
     "utf8",
   ),
 );
@@ -52,14 +59,81 @@ test("replays a source-locked real-catalogue pair through every battle phase and
 
 test("pins every golden replay source checksum to the authoritative manifest", () => {
   const manifestLocks = new Map(sourceManifest.sources.map((source) => [source.id, source.sha256]));
-  const event = fixture.state.events.find(
-    (candidate) => candidate.type === "rule_coverage_configured",
-  );
-  assert.ok(event);
+  for (const candidateFixture of [fixture, actionFixture]) {
+    const event = candidateFixture.state.events.find(
+      (candidate) => candidate.type === "rule_coverage_configured",
+    );
+    assert.ok(event);
+    assert.deepEqual(
+      [...event.coverage.sourceLocks].sort((left, right) => left.id.localeCompare(right.id)),
+      candidateFixture.expected.sourceLockIds.map((id) => ({
+        id,
+        sha256: manifestLocks.get(id),
+      })),
+    );
+  }
+});
+
+test("replays source-locked movement, reactions, combat, casualties, objectives, and Tactical cards", async () => {
+  const { replayed, summary } = await validateGoldenBattleReplay(actionFixture, sourceManifest);
+  assert.equal(actionFixture.stateDigest, digest(actionFixture.state));
+  assert.equal(actionFixture.expectedDigest, digest(actionFixture.expected));
+  assert.equal(summary.phaseStepCoverage.length, 170);
   assert.deepEqual(
-    [...event.coverage.sourceLocks].sort((left, right) => left.id.localeCompare(right.id)),
-    fixture.expected.sourceLockIds.map((id) => ({ id, sha256: manifestLocks.get(id) })),
+    {
+      movementStarted: summary.eventTypeCounts.movement_started,
+      positionsRecorded: summary.eventTypeCounts.model_positions_recorded,
+      overwatchStarted: summary.eventTypeCounts.fire_overwatch_started,
+      goToGround: summary.eventTypeCounts.go_to_ground_resolved,
+      attacks: summary.eventTypeCounts.attack_resolved,
+      charges: summary.eventTypeCounts.charge_recorded,
+      fightMoves: summary.eventTypeCounts.fight_move_recorded,
+      objectiveChanges: summary.eventTypeCounts.objective_control_changed,
+      tacticalDraws: summary.eventTypeCounts.secondary_card_drawn,
+      tacticalScores: summary.eventTypeCounts.secondary_card_scored,
+    },
+    {
+      movementStarted: 1,
+      positionsRecorded: 6,
+      overwatchStarted: 1,
+      goToGround: 1,
+      attacks: 4,
+      charges: 1,
+      fightMoves: 4,
+      objectiveChanges: 3,
+      tacticalDraws: 2,
+      tacticalScores: 1,
+    },
   );
+  assert.deepEqual(
+    summary.formations.map(({ id, health }) => ({ id, health })),
+    [
+      {
+        id: "player-1:doomstalker",
+        health: { "doomstalker:961:loadout:1": { modelsRemaining: 1, woundsLost: 1 } },
+      },
+      {
+        id: "player-2:intercessors",
+        health: { "intercessors:728:loadout:1": { modelsRemaining: 2, woundsLost: 0 } },
+      },
+    ],
+  );
+  assert.equal(replayed.activeAttackIds.length, 4);
+  assert.equal(replayed.objectives.get("objective-3").controllerPlayerId, "player-2");
+  assert.equal(replayed.secondaryCardPoints.get("player-1:player-1:tactical:hold"), 5);
+  assert.deepEqual([...replayed.secondaryDiscardedCardIds.get("player-1")].sort(), [
+    "player-1:tactical:hold",
+    "player-1:tactical:pressure",
+  ]);
+  assert.deepEqual(
+    summary.players.map((player) => player.missionPoints),
+    [
+      { primary: 0, secondary: 5, battle_ready: 10, total: 15 },
+      { primary: 0, secondary: 0, battle_ready: 10, total: 10 },
+    ],
+  );
+  assert.equal(missionTrackerFacts(actionFixture.state, "player-1").valid, true);
+  assert.equal(missionTrackerFacts(actionFixture.state, "player-2").valid, true);
 });
 
 test("rejects summary drift, source tampering, and non-canonical phase transitions", async () => {

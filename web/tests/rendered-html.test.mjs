@@ -73,6 +73,12 @@ const completeGoldenBattleReplay = JSON.parse(
     "utf8",
   ),
 );
+const actionGoldenBattleReplay = JSON.parse(
+  await readFile(
+    new URL("./fixtures/golden-battle-action-necrons-vs-space-marines-v1.json", import.meta.url),
+    "utf8",
+  ),
+);
 
 function createD1Mock() {
   const rows = [];
@@ -2903,6 +2909,36 @@ test("replays the complete source-locked golden battle through the public API an
   assert.deepEqual(result.data.health, completeGoldenBattleReplay.expected.formations[1].health);
   assert.equal(result.data.scoringEvents.length, 20);
   assert.equal(result.data.deployment.complete, true);
+});
+
+test("replays the action-heavy golden battle and casualties through the public API and C ABI", async () => {
+  const worker = await loadWorker();
+  const context = { waitUntil() {}, passThroughOnException() {} };
+  for (const expectedFormation of actionGoldenBattleReplay.expected.formations) {
+    const response = await worker.fetch(
+      new Request("http://localhost/api/v1/battle/replay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          battleState: actionGoldenBattleReplay.state,
+          formationId: expectedFormation.id,
+        }),
+      }),
+      testEnv,
+      context,
+    );
+    assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+    const result = await response.json();
+    assert.deepEqual(result.data.clock, actionGoldenBattleReplay.expected.finalClock);
+    assert.deepEqual(result.data.health, expectedFormation.health);
+    assert.equal(result.data.activeAttackIds.length, 4);
+    assert.equal(result.data.deployment.complete, true);
+    assert.equal(
+      result.data.objectives.find((objective) => objective.id === "objective-3").controllerPlayerId,
+      "player-2",
+    );
+    assert.equal(result.data.missionTracking.categoryPoints["player-1"].secondary, 5);
+  }
 });
 
 test("replays source-locked table geometry through the JavaScript and C/WebAssembly API", async () => {
