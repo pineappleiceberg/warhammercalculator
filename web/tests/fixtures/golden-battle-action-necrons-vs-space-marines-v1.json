@@ -3,7 +3,7 @@
   "schemaVersion": 1,
   "scenarioId": "necrons-doomstalker-vs-space-marines-intercessors-action",
   "title": "Canoptek Doomstalker vs Intercessor Squad · action-heavy guided battle",
-  "description": "A source-locked Chapter Approved replay with exact movement, Fire Overwatch, Go to Ground, ranged and melee casualties, a successful Charge, both Fight activations, objective transfer, Tactical Secondary lifecycle, every phase step, and a final canonical state.",
+  "description": "A source-locked Chapter Approved replay with exact movement, Fire Overwatch, Go to Ground, ranged and melee casualties, a successful Charge, both Fight activations, an enemy-crossing Fall Back and Desperate Escape test, objective transfer, Tactical Secondary lifecycle, every phase step, and a final canonical state.",
   "listPair": [
     {
       "playerId": "player-1",
@@ -23,11 +23,11 @@
     }
   ],
   "sourceManifestVersion": 1,
-  "stateDigest": "5b262abc6e61de35301a4c1e502f117191e87b7d0f31069b37ccea6586ed08b1",
-  "expectedDigest": "95c184f6fdb06d2fd5a5cbed47c3ecb992ffd5852f530488d4bee05e34ee03c4",
+  "stateDigest": "3983c1efcfa874ce1ca83ed7fdebda4e3c4377fe2c9b9ebbe16f6f9e6d86afbe",
+  "expectedDigest": "e4e15d8702775d5c652d4234289a89f63350ca0c81ab43754c76673f244a50d5",
   "expected": {
-    "stateVersion": 48,
-    "eventCount": 265,
+    "stateVersion": 49,
+    "eventCount": 271,
     "eventTypeCounts": {
       "activation_completed": 4,
       "activation_started": 3,
@@ -38,9 +38,10 @@
       "clock_advanced": 170,
       "command_battle_shock_resolved": 5,
       "deployment_declared": 2,
+      "desperate_escape_tests_recorded": 1,
       "fight_move_recorded": 4,
       "fight_priority_passed": 5,
-      "fire_overwatch_passed": 2,
+      "fire_overwatch_passed": 4,
       "fire_overwatch_started": 1,
       "formation_configured": 2,
       "formation_deployed": 2,
@@ -51,9 +52,9 @@
       "mission_configured": 1,
       "mission_score_recorded": 2,
       "model_placements_recorded": 2,
-      "model_positions_recorded": 6,
-      "movement_recorded": 1,
-      "movement_started": 1,
+      "model_positions_recorded": 7,
+      "movement_recorded": 2,
+      "movement_started": 2,
       "oath_of_moment_selected": 5,
       "objective_control_changed": 3,
       "ranged_target_eligibility_recorded": 2,
@@ -302,10 +303,10 @@
     ]
   },
   "state": {
-    "version": 48,
+    "version": 49,
     "id": "golden-action-necrons-vs-space-marines-v1",
     "createdAt": 0,
-    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:48",
+    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:49",
     "players": [
       {
         "id": "player-1",
@@ -633,7 +634,7 @@
         "type": "rule_coverage_configured",
         "coverage": {
           "schemaVersion": 1,
-          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v48",
+          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v49",
           "sourceLocks": [
             {
               "id": "core-rules-10e",
@@ -756,7 +757,7 @@
             }
           },
           "report": {
-            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v48",
+            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v49",
             "permitted": true,
             "results": [
               {
@@ -872,7 +873,7 @@
               {
                 "id": "core.desperate-escape",
                 "category": "core",
-                "name": "Battle-shocked Fall Back and Desperate Escape",
+                "name": "Fall Back and Desperate Escape",
                 "status": "executable",
                 "sourceLocked": true,
                 "acknowledgementRequired": false,
@@ -2309,6 +2310,7 @@
         "type": "movement_started",
         "formationId": "player-1:doomstalker",
         "movement": "normal",
+        "desperateEscapePlan": { "crossings": [], "reviewedByPlayer": false, "reviewReason": "" },
         "clock": {
           "status": "active",
           "battleRound": 1,
@@ -4496,9 +4498,240 @@
       },
       {
         "version": 1,
-        "id": "action-clock-89",
+        "id": "action-intercessors-fall-back-started",
         "sequence": 89,
         "at": 89,
+        "type": "movement_started",
+        "formationId": "player-2:intercessors",
+        "movement": "fall_back",
+        "desperateEscapePlan": {
+          "crossings": [
+            {
+              "modelId": "intercessors:728:model:1",
+              "enemyFormationId": "player-1:doomstalker",
+              "enemyModelId": "doomstalker:961:model:1"
+            }
+          ],
+          "reviewedByPlayer": true,
+          "reviewReason": "Every surviving Intercessor path was reviewed; the first crossed the engaged Doomstalker"
+        },
+        "clock": {
+          "status": "active",
+          "battleRound": 1,
+          "turn": 2,
+          "phase": "movement",
+          "step": "move_units",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        }
+      },
+      {
+        "version": 1,
+        "id": "action-intercessors-desperate-escape-tested",
+        "sequence": 90,
+        "at": 90,
+        "type": "desperate_escape_tests_recorded",
+        "formationId": "player-2:intercessors",
+        "movementStartEventId": "action-intercessors-fall-back-started",
+        "tests": [
+          {
+            "modelId": "intercessors:728:model:1",
+            "initialRoll": 4,
+            "reroll": 0,
+            "rerollReason": ""
+          }
+        ],
+        "clock": {
+          "status": "active",
+          "battleRound": 1,
+          "turn": 2,
+          "phase": "movement",
+          "step": "move_units",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        }
+      },
+      {
+        "version": 1,
+        "id": "action-intercessors-fall-back-start-overwatch-passed",
+        "sequence": 91,
+        "at": 91,
+        "type": "fire_overwatch_passed",
+        "triggerEventId": "action-intercessors-fall-back-started",
+        "playerId": "player-1",
+        "reason": "The Necron player declined Fire Overwatch at Fall Back start",
+        "clock": {
+          "status": "active",
+          "battleRound": 1,
+          "turn": 2,
+          "phase": "movement",
+          "step": "move_units",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        }
+      },
+      {
+        "version": 1,
+        "id": "action-intercessors-fall-back-completed",
+        "sequence": 92,
+        "at": 92,
+        "type": "movement_recorded",
+        "formationId": "player-2:intercessors",
+        "movement": "fall_back",
+        "clock": {
+          "status": "active",
+          "battleRound": 1,
+          "turn": 2,
+          "phase": "movement",
+          "step": "move_units",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        }
+      },
+      {
+        "version": 1,
+        "id": "action-intercessors-fall-back-positioned",
+        "sequence": 93,
+        "at": 93,
+        "type": "model_positions_recorded",
+        "formationId": "player-2:intercessors",
+        "position": {
+          "context": "movement",
+          "referenceEventId": "action-intercessors-fall-back-completed",
+          "missionSourceId": "chapter-approved-2025-26-v1.4-a",
+          "terrainSourceId": "chapter-approved-2025-26-v1.4-layout-1",
+          "battlefieldWidthThousandths": 60000,
+          "battlefieldHeightThousandths": 44000,
+          "origin": "attacker-left-near",
+          "models": [
+            {
+              "modelId": "intercessors:728:model:1",
+              "measurementBasis": "base",
+              "shape": "circle",
+              "widthThousandths": 1000,
+              "depthThousandths": 1000,
+              "verticalExtentThousandths": 0,
+              "centerXThousandths": 22000,
+              "centerYThousandths": 24000,
+              "elevationThousandths": 0,
+              "rotationMilliDegrees": 0,
+              "path": [
+                {
+                  "centerXThousandths": 28000,
+                  "centerYThousandths": 24000,
+                  "elevationThousandths": 0,
+                  "rotationMilliDegrees": 0
+                },
+                {
+                  "centerXThousandths": 22000,
+                  "centerYThousandths": 24000,
+                  "elevationThousandths": 0,
+                  "rotationMilliDegrees": 0
+                }
+              ],
+              "distanceMovedThousandths": 6000,
+              "maximumDistanceThousandths": 6000,
+              "silhouette": {
+                "shape": "circle",
+                "widthThousandths": 1000,
+                "depthThousandths": 1000,
+                "heightThousandths": 2000,
+                "bottomOffsetThousandths": 0,
+                "centerOffsetXThousandths": 0,
+                "centerOffsetYThousandths": 0,
+                "sightPoints": [
+                  { "xOffsetThousandths": 0, "yOffsetThousandths": 0, "heightThousandths": 1000 }
+                ],
+                "envelopeReviewed": true,
+                "sightPointsReviewed": true
+              }
+            },
+            {
+              "modelId": "intercessors:728:model:2",
+              "measurementBasis": "base",
+              "shape": "circle",
+              "widthThousandths": 1000,
+              "depthThousandths": 1000,
+              "verticalExtentThousandths": 0,
+              "centerXThousandths": 24000,
+              "centerYThousandths": 24000,
+              "elevationThousandths": 0,
+              "rotationMilliDegrees": 0,
+              "path": [
+                {
+                  "centerXThousandths": 30000,
+                  "centerYThousandths": 24000,
+                  "elevationThousandths": 0,
+                  "rotationMilliDegrees": 0
+                },
+                {
+                  "centerXThousandths": 24000,
+                  "centerYThousandths": 24000,
+                  "elevationThousandths": 0,
+                  "rotationMilliDegrees": 0
+                }
+              ],
+              "distanceMovedThousandths": 6000,
+              "maximumDistanceThousandths": 6000,
+              "silhouette": {
+                "shape": "circle",
+                "widthThousandths": 1000,
+                "depthThousandths": 1000,
+                "heightThousandths": 2000,
+                "bottomOffsetThousandths": 0,
+                "centerOffsetXThousandths": 0,
+                "centerOffsetYThousandths": 0,
+                "sightPoints": [
+                  { "xOffsetThousandths": 0, "yOffsetThousandths": 0, "heightThousandths": 1000 }
+                ],
+                "envelopeReviewed": true,
+                "sightPointsReviewed": true
+              }
+            }
+          ],
+          "measurementBoundariesReviewed": true,
+          "positionsReviewed": true,
+          "noModelOverlapReviewed": true,
+          "objectiveClearanceReviewed": true,
+          "pathsReviewed": true,
+          "terrainClearanceReviewed": true,
+          "coherencyReviewed": true,
+          "engagementRangeReviewed": true,
+          "reconcilesStaleStart": false,
+          "reviewedByPlayer": true,
+          "method": "manual",
+          "reviewReason": "Every live model path, endpoint, clearance, coherency, and range was checked"
+        }
+      },
+      {
+        "version": 1,
+        "id": "action-intercessors-fall-back-end-overwatch-passed",
+        "sequence": 94,
+        "at": 94,
+        "type": "fire_overwatch_passed",
+        "triggerEventId": "action-intercessors-fall-back-completed",
+        "playerId": "player-1",
+        "reason": "The Necron player declined Fire Overwatch at Fall Back end",
+        "clock": {
+          "status": "active",
+          "battleRound": 1,
+          "turn": 2,
+          "phase": "movement",
+          "step": "move_units",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        }
+      },
+      {
+        "version": 1,
+        "id": "action-clock-95",
+        "sequence": 95,
+        "at": 95,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -4524,9 +4757,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-90",
-        "sequence": 90,
-        "at": 90,
+        "id": "action-clock-96",
+        "sequence": 96,
+        "at": 96,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -4552,9 +4785,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-91",
-        "sequence": 91,
-        "at": 91,
+        "id": "action-clock-97",
+        "sequence": 97,
+        "at": 97,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -4580,9 +4813,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-92",
-        "sequence": 92,
-        "at": 92,
+        "id": "action-clock-98",
+        "sequence": 98,
+        "at": 98,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -4608,9 +4841,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-93",
-        "sequence": 93,
-        "at": 93,
+        "id": "action-clock-99",
+        "sequence": 99,
+        "at": 99,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -4636,9 +4869,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-94",
-        "sequence": 94,
-        "at": 94,
+        "id": "action-clock-100",
+        "sequence": 100,
+        "at": 100,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -4664,9 +4897,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-95",
-        "sequence": 95,
-        "at": 95,
+        "id": "action-clock-101",
+        "sequence": 101,
+        "at": 101,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -4692,9 +4925,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-96",
-        "sequence": 96,
-        "at": 96,
+        "id": "action-clock-102",
+        "sequence": 102,
+        "at": 102,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -4720,9 +4953,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-97",
-        "sequence": 97,
-        "at": 97,
+        "id": "action-clock-103",
+        "sequence": 103,
+        "at": 103,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -4748,9 +4981,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-98",
-        "sequence": 98,
-        "at": 98,
+        "id": "action-clock-104",
+        "sequence": 104,
+        "at": 104,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -4776,9 +5009,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-99",
-        "sequence": 99,
-        "at": 99,
+        "id": "action-clock-105",
+        "sequence": 105,
+        "at": 105,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -4804,9 +5037,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-100",
-        "sequence": 100,
-        "at": 100,
+        "id": "action-clock-106",
+        "sequence": 106,
+        "at": 106,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -4833,8 +5066,8 @@
       {
         "version": 1,
         "id": "action-tactical-turn-ended-1:2:player-2",
-        "sequence": 101,
-        "at": 101,
+        "sequence": 107,
+        "at": 107,
         "type": "secondary_turn_end_resolved",
         "playerId": "player-1",
         "achievedCardIds": [],
@@ -4854,9 +5087,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-102",
-        "sequence": 102,
-        "at": 102,
+        "id": "action-clock-108",
+        "sequence": 108,
+        "at": 108,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -4882,9 +5115,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-103",
-        "sequence": 103,
-        "at": 103,
+        "id": "action-clock-109",
+        "sequence": 109,
+        "at": 109,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -4910,9 +5143,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-104",
-        "sequence": 104,
-        "at": 104,
+        "id": "action-clock-110",
+        "sequence": 110,
+        "at": 110,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -4938,9 +5171,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-105-activate-105",
-        "sequence": 105,
-        "at": 105,
+        "id": "action-clock-111-activate-111",
+        "sequence": 111,
+        "at": 111,
         "type": "reanimation_protocols_activated",
         "playerId": "player-1",
         "formationId": "player-1:doomstalker",
@@ -4961,11 +5194,11 @@
       },
       {
         "version": 1,
-        "id": "action-clock-105-resolve-106",
-        "sequence": 106,
-        "at": 106,
+        "id": "action-clock-111-resolve-112",
+        "sequence": 112,
+        "at": 112,
         "type": "reanimation_wound_resolved",
-        "activationEventId": "action-clock-105-activate-105",
+        "activationEventId": "action-clock-111-activate-111",
         "formationId": "player-1:doomstalker",
         "unitKey": "player-1:doomstalker:standalone",
         "segmentId": "doomstalker:961:loadout:1",
@@ -4985,9 +5218,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-105",
-        "sequence": 107,
-        "at": 107,
+        "id": "action-clock-111",
+        "sequence": 113,
+        "at": 113,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -5013,174 +5246,6 @@
       },
       {
         "version": 1,
-        "id": "action-clock-108",
-        "sequence": 108,
-        "at": 108,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 1,
-          "phase": "movement",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 1,
-          "phase": "movement",
-          "step": "move_units",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-109",
-        "sequence": 109,
-        "at": 109,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 1,
-          "phase": "movement",
-          "step": "move_units",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 1,
-          "phase": "movement",
-          "step": "reinforcements",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-110",
-        "sequence": 110,
-        "at": 110,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 1,
-          "phase": "movement",
-          "step": "reinforcements",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 1,
-          "phase": "movement",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-111",
-        "sequence": 111,
-        "at": 111,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 1,
-          "phase": "movement",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-112",
-        "sequence": 112,
-        "at": 112,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "resolve_attacks",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-113",
-        "sequence": 113,
-        "at": 113,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "resolve_attacks",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
         "id": "action-clock-114",
         "sequence": 114,
         "at": 114,
@@ -5189,8 +5254,8 @@
           "status": "active",
           "battleRound": 2,
           "turn": 1,
-          "phase": "shooting",
-          "step": "end",
+          "phase": "movement",
+          "step": "start",
           "firstPlayerId": "player-1",
           "activePlayerId": "player-1",
           "priorityPlayerId": "player-1"
@@ -5199,8 +5264,8 @@
           "status": "active",
           "battleRound": 2,
           "turn": 1,
-          "phase": "charge",
-          "step": "start",
+          "phase": "movement",
+          "step": "move_units",
           "firstPlayerId": "player-1",
           "activePlayerId": "player-1",
           "priorityPlayerId": "player-1"
@@ -5217,6 +5282,174 @@
           "status": "active",
           "battleRound": 2,
           "turn": 1,
+          "phase": "movement",
+          "step": "move_units",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 1,
+          "phase": "movement",
+          "step": "reinforcements",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-116",
+        "sequence": 116,
+        "at": 116,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 1,
+          "phase": "movement",
+          "step": "reinforcements",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 1,
+          "phase": "movement",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-117",
+        "sequence": 117,
+        "at": 117,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 1,
+          "phase": "movement",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-118",
+        "sequence": 118,
+        "at": 118,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "resolve_attacks",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-119",
+        "sequence": 119,
+        "at": 119,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "resolve_attacks",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-120",
+        "sequence": 120,
+        "at": 120,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 1,
+          "phase": "charge",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-121",
+        "sequence": 121,
+        "at": 121,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 1,
           "phase": "charge",
           "step": "start",
           "firstPlayerId": "player-1",
@@ -5237,9 +5470,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-116",
-        "sequence": 116,
-        "at": 116,
+        "id": "action-clock-122",
+        "sequence": 122,
+        "at": 122,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -5265,9 +5498,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-117",
-        "sequence": 117,
-        "at": 117,
+        "id": "action-clock-123",
+        "sequence": 123,
+        "at": 123,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -5293,9 +5526,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-118",
-        "sequence": 118,
-        "at": 118,
+        "id": "action-clock-124",
+        "sequence": 124,
+        "at": 124,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -5321,9 +5554,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-119",
-        "sequence": 119,
-        "at": 119,
+        "id": "action-clock-125",
+        "sequence": 125,
+        "at": 125,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -5349,9 +5582,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-120",
-        "sequence": 120,
-        "at": 120,
+        "id": "action-clock-126",
+        "sequence": 126,
+        "at": 126,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -5378,8 +5611,8 @@
       {
         "version": 1,
         "id": "action-tactical-turn-ended-2:1:player-1",
-        "sequence": 121,
-        "at": 121,
+        "sequence": 127,
+        "at": 127,
         "type": "secondary_turn_end_resolved",
         "playerId": "player-1",
         "achievedCardIds": [],
@@ -5399,9 +5632,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-122",
-        "sequence": 122,
-        "at": 122,
+        "id": "action-clock-128",
+        "sequence": 128,
+        "at": 128,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -5428,8 +5661,8 @@
       {
         "version": 1,
         "id": "action-oath-2-2",
-        "sequence": 123,
-        "at": 123,
+        "sequence": 129,
+        "at": 129,
         "type": "oath_of_moment_selected",
         "playerId": "player-2",
         "formationId": "player-1:doomstalker",
@@ -5449,8 +5682,8 @@
       {
         "version": 1,
         "id": "action-grim-resolve-2-2",
-        "sequence": 124,
-        "at": 124,
+        "sequence": 130,
+        "at": 130,
         "type": "grim_resolve_selected",
         "playerId": "player-2",
         "formationId": "player-2:intercessors",
@@ -5469,9 +5702,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-125",
-        "sequence": 125,
-        "at": 125,
+        "id": "action-clock-131",
+        "sequence": 131,
+        "at": 131,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -5497,9 +5730,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-126-command-battle-shock-126",
-        "sequence": 126,
-        "at": 126,
+        "id": "action-clock-132-command-battle-shock-132",
+        "sequence": 132,
+        "at": 132,
         "type": "command_battle_shock_resolved",
         "formationId": "player-2:intercessors",
         "unitKey": "player-2:intercessors:standalone",
@@ -5524,9 +5757,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-126",
-        "sequence": 127,
-        "at": 127,
+        "id": "action-clock-132",
+        "sequence": 133,
+        "at": 133,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -5552,9 +5785,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-128",
-        "sequence": 128,
-        "at": 128,
+        "id": "action-clock-134",
+        "sequence": 134,
+        "at": 134,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -5580,174 +5813,6 @@
       },
       {
         "version": 1,
-        "id": "action-clock-129",
-        "sequence": 129,
-        "at": 129,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 2,
-          "phase": "movement",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 2,
-          "phase": "movement",
-          "step": "move_units",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-130",
-        "sequence": 130,
-        "at": 130,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 2,
-          "phase": "movement",
-          "step": "move_units",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 2,
-          "phase": "movement",
-          "step": "reinforcements",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-131",
-        "sequence": 131,
-        "at": 131,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 2,
-          "phase": "movement",
-          "step": "reinforcements",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 2,
-          "phase": "movement",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-132",
-        "sequence": 132,
-        "at": 132,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 2,
-          "phase": "movement",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-133",
-        "sequence": 133,
-        "at": 133,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "resolve_attacks",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-134",
-        "sequence": 134,
-        "at": 134,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "resolve_attacks",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 2,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
         "id": "action-clock-135",
         "sequence": 135,
         "at": 135,
@@ -5756,8 +5821,8 @@
           "status": "active",
           "battleRound": 2,
           "turn": 2,
-          "phase": "shooting",
-          "step": "end",
+          "phase": "movement",
+          "step": "start",
           "firstPlayerId": "player-1",
           "activePlayerId": "player-2",
           "priorityPlayerId": "player-2"
@@ -5766,8 +5831,8 @@
           "status": "active",
           "battleRound": 2,
           "turn": 2,
-          "phase": "charge",
-          "step": "start",
+          "phase": "movement",
+          "step": "move_units",
           "firstPlayerId": "player-1",
           "activePlayerId": "player-2",
           "priorityPlayerId": "player-2"
@@ -5784,6 +5849,174 @@
           "status": "active",
           "battleRound": 2,
           "turn": 2,
+          "phase": "movement",
+          "step": "move_units",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 2,
+          "phase": "movement",
+          "step": "reinforcements",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-137",
+        "sequence": 137,
+        "at": 137,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 2,
+          "phase": "movement",
+          "step": "reinforcements",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 2,
+          "phase": "movement",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-138",
+        "sequence": 138,
+        "at": 138,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 2,
+          "phase": "movement",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-139",
+        "sequence": 139,
+        "at": 139,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "resolve_attacks",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-140",
+        "sequence": 140,
+        "at": 140,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "resolve_attacks",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-141",
+        "sequence": 141,
+        "at": 141,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 2,
+          "phase": "charge",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-142",
+        "sequence": 142,
+        "at": 142,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 2,
+          "turn": 2,
           "phase": "charge",
           "step": "start",
           "firstPlayerId": "player-1",
@@ -5804,9 +6037,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-137",
-        "sequence": 137,
-        "at": 137,
+        "id": "action-clock-143",
+        "sequence": 143,
+        "at": 143,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -5832,9 +6065,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-138",
-        "sequence": 138,
-        "at": 138,
+        "id": "action-clock-144",
+        "sequence": 144,
+        "at": 144,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -5860,9 +6093,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-139",
-        "sequence": 139,
-        "at": 139,
+        "id": "action-clock-145",
+        "sequence": 145,
+        "at": 145,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -5888,9 +6121,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-140",
-        "sequence": 140,
-        "at": 140,
+        "id": "action-clock-146",
+        "sequence": 146,
+        "at": 146,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -5916,9 +6149,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-141",
-        "sequence": 141,
-        "at": 141,
+        "id": "action-clock-147",
+        "sequence": 147,
+        "at": 147,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -5945,8 +6178,8 @@
       {
         "version": 1,
         "id": "action-tactical-turn-ended-2:2:player-2",
-        "sequence": 142,
-        "at": 142,
+        "sequence": 148,
+        "at": 148,
         "type": "secondary_turn_end_resolved",
         "playerId": "player-1",
         "achievedCardIds": [],
@@ -5966,9 +6199,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-143",
-        "sequence": 143,
-        "at": 143,
+        "id": "action-clock-149",
+        "sequence": 149,
+        "at": 149,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -5994,9 +6227,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-144",
-        "sequence": 144,
-        "at": 144,
+        "id": "action-clock-150",
+        "sequence": 150,
+        "at": 150,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -6022,9 +6255,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-145",
-        "sequence": 145,
-        "at": 145,
+        "id": "action-clock-151",
+        "sequence": 151,
+        "at": 151,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -6050,9 +6283,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-146-activate-146",
-        "sequence": 146,
-        "at": 146,
+        "id": "action-clock-152-activate-152",
+        "sequence": 152,
+        "at": 152,
         "type": "reanimation_protocols_activated",
         "playerId": "player-1",
         "formationId": "player-1:doomstalker",
@@ -6073,9 +6306,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-146",
-        "sequence": 147,
-        "at": 147,
+        "id": "action-clock-152",
+        "sequence": 153,
+        "at": 153,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -6101,174 +6334,6 @@
       },
       {
         "version": 1,
-        "id": "action-clock-148",
-        "sequence": 148,
-        "at": 148,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 1,
-          "phase": "movement",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 1,
-          "phase": "movement",
-          "step": "move_units",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-149",
-        "sequence": 149,
-        "at": 149,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 1,
-          "phase": "movement",
-          "step": "move_units",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 1,
-          "phase": "movement",
-          "step": "reinforcements",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-150",
-        "sequence": 150,
-        "at": 150,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 1,
-          "phase": "movement",
-          "step": "reinforcements",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 1,
-          "phase": "movement",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-151",
-        "sequence": 151,
-        "at": 151,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 1,
-          "phase": "movement",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-152",
-        "sequence": 152,
-        "at": 152,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "resolve_attacks",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-153",
-        "sequence": 153,
-        "at": 153,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "resolve_attacks",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
         "id": "action-clock-154",
         "sequence": 154,
         "at": 154,
@@ -6277,8 +6342,8 @@
           "status": "active",
           "battleRound": 3,
           "turn": 1,
-          "phase": "shooting",
-          "step": "end",
+          "phase": "movement",
+          "step": "start",
           "firstPlayerId": "player-1",
           "activePlayerId": "player-1",
           "priorityPlayerId": "player-1"
@@ -6287,8 +6352,8 @@
           "status": "active",
           "battleRound": 3,
           "turn": 1,
-          "phase": "charge",
-          "step": "start",
+          "phase": "movement",
+          "step": "move_units",
           "firstPlayerId": "player-1",
           "activePlayerId": "player-1",
           "priorityPlayerId": "player-1"
@@ -6305,6 +6370,174 @@
           "status": "active",
           "battleRound": 3,
           "turn": 1,
+          "phase": "movement",
+          "step": "move_units",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 1,
+          "phase": "movement",
+          "step": "reinforcements",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-156",
+        "sequence": 156,
+        "at": 156,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 1,
+          "phase": "movement",
+          "step": "reinforcements",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 1,
+          "phase": "movement",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-157",
+        "sequence": 157,
+        "at": 157,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 1,
+          "phase": "movement",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-158",
+        "sequence": 158,
+        "at": 158,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "resolve_attacks",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-159",
+        "sequence": 159,
+        "at": 159,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "resolve_attacks",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-160",
+        "sequence": 160,
+        "at": 160,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 1,
+          "phase": "charge",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-161",
+        "sequence": 161,
+        "at": 161,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 1,
           "phase": "charge",
           "step": "start",
           "firstPlayerId": "player-1",
@@ -6325,9 +6558,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-156",
-        "sequence": 156,
-        "at": 156,
+        "id": "action-clock-162",
+        "sequence": 162,
+        "at": 162,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -6353,9 +6586,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-157",
-        "sequence": 157,
-        "at": 157,
+        "id": "action-clock-163",
+        "sequence": 163,
+        "at": 163,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -6381,9 +6614,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-158",
-        "sequence": 158,
-        "at": 158,
+        "id": "action-clock-164",
+        "sequence": 164,
+        "at": 164,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -6409,9 +6642,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-159",
-        "sequence": 159,
-        "at": 159,
+        "id": "action-clock-165",
+        "sequence": 165,
+        "at": 165,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -6437,9 +6670,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-160",
-        "sequence": 160,
-        "at": 160,
+        "id": "action-clock-166",
+        "sequence": 166,
+        "at": 166,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -6466,8 +6699,8 @@
       {
         "version": 1,
         "id": "action-tactical-turn-ended-3:1:player-1",
-        "sequence": 161,
-        "at": 161,
+        "sequence": 167,
+        "at": 167,
         "type": "secondary_turn_end_resolved",
         "playerId": "player-1",
         "achievedCardIds": [],
@@ -6487,9 +6720,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-162",
-        "sequence": 162,
-        "at": 162,
+        "id": "action-clock-168",
+        "sequence": 168,
+        "at": 168,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -6516,8 +6749,8 @@
       {
         "version": 1,
         "id": "action-oath-3-2",
-        "sequence": 163,
-        "at": 163,
+        "sequence": 169,
+        "at": 169,
         "type": "oath_of_moment_selected",
         "playerId": "player-2",
         "formationId": "player-1:doomstalker",
@@ -6537,8 +6770,8 @@
       {
         "version": 1,
         "id": "action-grim-resolve-3-2",
-        "sequence": 164,
-        "at": 164,
+        "sequence": 170,
+        "at": 170,
         "type": "grim_resolve_selected",
         "playerId": "player-2",
         "formationId": "player-2:intercessors",
@@ -6557,9 +6790,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-165",
-        "sequence": 165,
-        "at": 165,
+        "id": "action-clock-171",
+        "sequence": 171,
+        "at": 171,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -6585,9 +6818,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-166-command-battle-shock-166",
-        "sequence": 166,
-        "at": 166,
+        "id": "action-clock-172-command-battle-shock-172",
+        "sequence": 172,
+        "at": 172,
         "type": "command_battle_shock_resolved",
         "formationId": "player-2:intercessors",
         "unitKey": "player-2:intercessors:standalone",
@@ -6612,9 +6845,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-166",
-        "sequence": 167,
-        "at": 167,
+        "id": "action-clock-172",
+        "sequence": 173,
+        "at": 173,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -6640,9 +6873,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-168",
-        "sequence": 168,
-        "at": 168,
+        "id": "action-clock-174",
+        "sequence": 174,
+        "at": 174,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -6668,174 +6901,6 @@
       },
       {
         "version": 1,
-        "id": "action-clock-169",
-        "sequence": 169,
-        "at": 169,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 2,
-          "phase": "movement",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 2,
-          "phase": "movement",
-          "step": "move_units",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-170",
-        "sequence": 170,
-        "at": 170,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 2,
-          "phase": "movement",
-          "step": "move_units",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 2,
-          "phase": "movement",
-          "step": "reinforcements",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-171",
-        "sequence": 171,
-        "at": 171,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 2,
-          "phase": "movement",
-          "step": "reinforcements",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 2,
-          "phase": "movement",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-172",
-        "sequence": 172,
-        "at": 172,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 2,
-          "phase": "movement",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-173",
-        "sequence": 173,
-        "at": 173,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "resolve_attacks",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-174",
-        "sequence": 174,
-        "at": 174,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "resolve_attacks",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 3,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
         "id": "action-clock-175",
         "sequence": 175,
         "at": 175,
@@ -6844,8 +6909,8 @@
           "status": "active",
           "battleRound": 3,
           "turn": 2,
-          "phase": "shooting",
-          "step": "end",
+          "phase": "movement",
+          "step": "start",
           "firstPlayerId": "player-1",
           "activePlayerId": "player-2",
           "priorityPlayerId": "player-2"
@@ -6854,8 +6919,8 @@
           "status": "active",
           "battleRound": 3,
           "turn": 2,
-          "phase": "charge",
-          "step": "start",
+          "phase": "movement",
+          "step": "move_units",
           "firstPlayerId": "player-1",
           "activePlayerId": "player-2",
           "priorityPlayerId": "player-2"
@@ -6872,6 +6937,174 @@
           "status": "active",
           "battleRound": 3,
           "turn": 2,
+          "phase": "movement",
+          "step": "move_units",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 2,
+          "phase": "movement",
+          "step": "reinforcements",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-177",
+        "sequence": 177,
+        "at": 177,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 2,
+          "phase": "movement",
+          "step": "reinforcements",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 2,
+          "phase": "movement",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-178",
+        "sequence": 178,
+        "at": 178,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 2,
+          "phase": "movement",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-179",
+        "sequence": 179,
+        "at": 179,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "resolve_attacks",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-180",
+        "sequence": 180,
+        "at": 180,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "resolve_attacks",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-181",
+        "sequence": 181,
+        "at": 181,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 2,
+          "phase": "charge",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-182",
+        "sequence": 182,
+        "at": 182,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 3,
+          "turn": 2,
           "phase": "charge",
           "step": "start",
           "firstPlayerId": "player-1",
@@ -6892,9 +7125,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-177",
-        "sequence": 177,
-        "at": 177,
+        "id": "action-clock-183",
+        "sequence": 183,
+        "at": 183,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -6920,9 +7153,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-178",
-        "sequence": 178,
-        "at": 178,
+        "id": "action-clock-184",
+        "sequence": 184,
+        "at": 184,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -6948,9 +7181,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-179",
-        "sequence": 179,
-        "at": 179,
+        "id": "action-clock-185",
+        "sequence": 185,
+        "at": 185,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -6976,9 +7209,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-180",
-        "sequence": 180,
-        "at": 180,
+        "id": "action-clock-186",
+        "sequence": 186,
+        "at": 186,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -7004,9 +7237,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-181",
-        "sequence": 181,
-        "at": 181,
+        "id": "action-clock-187",
+        "sequence": 187,
+        "at": 187,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -7033,8 +7266,8 @@
       {
         "version": 1,
         "id": "action-tactical-turn-ended-3:2:player-2",
-        "sequence": 182,
-        "at": 182,
+        "sequence": 188,
+        "at": 188,
         "type": "secondary_turn_end_resolved",
         "playerId": "player-1",
         "achievedCardIds": [],
@@ -7054,9 +7287,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-183",
-        "sequence": 183,
-        "at": 183,
+        "id": "action-clock-189",
+        "sequence": 189,
+        "at": 189,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -7082,9 +7315,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-184",
-        "sequence": 184,
-        "at": 184,
+        "id": "action-clock-190",
+        "sequence": 190,
+        "at": 190,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -7110,9 +7343,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-185",
-        "sequence": 185,
-        "at": 185,
+        "id": "action-clock-191",
+        "sequence": 191,
+        "at": 191,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -7138,9 +7371,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-186-activate-186",
-        "sequence": 186,
-        "at": 186,
+        "id": "action-clock-192-activate-192",
+        "sequence": 192,
+        "at": 192,
         "type": "reanimation_protocols_activated",
         "playerId": "player-1",
         "formationId": "player-1:doomstalker",
@@ -7161,9 +7394,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-186",
-        "sequence": 187,
-        "at": 187,
+        "id": "action-clock-192",
+        "sequence": 193,
+        "at": 193,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -7189,174 +7422,6 @@
       },
       {
         "version": 1,
-        "id": "action-clock-188",
-        "sequence": 188,
-        "at": 188,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 1,
-          "phase": "movement",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 1,
-          "phase": "movement",
-          "step": "move_units",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-189",
-        "sequence": 189,
-        "at": 189,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 1,
-          "phase": "movement",
-          "step": "move_units",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 1,
-          "phase": "movement",
-          "step": "reinforcements",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-190",
-        "sequence": 190,
-        "at": 190,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 1,
-          "phase": "movement",
-          "step": "reinforcements",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 1,
-          "phase": "movement",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-191",
-        "sequence": 191,
-        "at": 191,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 1,
-          "phase": "movement",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-192",
-        "sequence": 192,
-        "at": 192,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "resolve_attacks",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-193",
-        "sequence": 193,
-        "at": 193,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "resolve_attacks",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
         "id": "action-clock-194",
         "sequence": 194,
         "at": 194,
@@ -7365,8 +7430,8 @@
           "status": "active",
           "battleRound": 4,
           "turn": 1,
-          "phase": "shooting",
-          "step": "end",
+          "phase": "movement",
+          "step": "start",
           "firstPlayerId": "player-1",
           "activePlayerId": "player-1",
           "priorityPlayerId": "player-1"
@@ -7375,8 +7440,8 @@
           "status": "active",
           "battleRound": 4,
           "turn": 1,
-          "phase": "charge",
-          "step": "start",
+          "phase": "movement",
+          "step": "move_units",
           "firstPlayerId": "player-1",
           "activePlayerId": "player-1",
           "priorityPlayerId": "player-1"
@@ -7393,6 +7458,174 @@
           "status": "active",
           "battleRound": 4,
           "turn": 1,
+          "phase": "movement",
+          "step": "move_units",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 1,
+          "phase": "movement",
+          "step": "reinforcements",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-196",
+        "sequence": 196,
+        "at": 196,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 1,
+          "phase": "movement",
+          "step": "reinforcements",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 1,
+          "phase": "movement",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-197",
+        "sequence": 197,
+        "at": 197,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 1,
+          "phase": "movement",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-198",
+        "sequence": 198,
+        "at": 198,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "resolve_attacks",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-199",
+        "sequence": 199,
+        "at": 199,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "resolve_attacks",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-200",
+        "sequence": 200,
+        "at": 200,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 1,
+          "phase": "charge",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-201",
+        "sequence": 201,
+        "at": 201,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 1,
           "phase": "charge",
           "step": "start",
           "firstPlayerId": "player-1",
@@ -7413,9 +7646,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-196",
-        "sequence": 196,
-        "at": 196,
+        "id": "action-clock-202",
+        "sequence": 202,
+        "at": 202,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -7441,9 +7674,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-197",
-        "sequence": 197,
-        "at": 197,
+        "id": "action-clock-203",
+        "sequence": 203,
+        "at": 203,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -7469,9 +7702,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-198",
-        "sequence": 198,
-        "at": 198,
+        "id": "action-clock-204",
+        "sequence": 204,
+        "at": 204,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -7497,9 +7730,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-199",
-        "sequence": 199,
-        "at": 199,
+        "id": "action-clock-205",
+        "sequence": 205,
+        "at": 205,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -7525,9 +7758,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-200",
-        "sequence": 200,
-        "at": 200,
+        "id": "action-clock-206",
+        "sequence": 206,
+        "at": 206,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -7554,8 +7787,8 @@
       {
         "version": 1,
         "id": "action-tactical-turn-ended-4:1:player-1",
-        "sequence": 201,
-        "at": 201,
+        "sequence": 207,
+        "at": 207,
         "type": "secondary_turn_end_resolved",
         "playerId": "player-1",
         "achievedCardIds": [],
@@ -7575,9 +7808,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-202",
-        "sequence": 202,
-        "at": 202,
+        "id": "action-clock-208",
+        "sequence": 208,
+        "at": 208,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -7604,8 +7837,8 @@
       {
         "version": 1,
         "id": "action-oath-4-2",
-        "sequence": 203,
-        "at": 203,
+        "sequence": 209,
+        "at": 209,
         "type": "oath_of_moment_selected",
         "playerId": "player-2",
         "formationId": "player-1:doomstalker",
@@ -7625,8 +7858,8 @@
       {
         "version": 1,
         "id": "action-grim-resolve-4-2",
-        "sequence": 204,
-        "at": 204,
+        "sequence": 210,
+        "at": 210,
         "type": "grim_resolve_selected",
         "playerId": "player-2",
         "formationId": "player-2:intercessors",
@@ -7645,9 +7878,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-205",
-        "sequence": 205,
-        "at": 205,
+        "id": "action-clock-211",
+        "sequence": 211,
+        "at": 211,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -7673,9 +7906,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-206-command-battle-shock-206",
-        "sequence": 206,
-        "at": 206,
+        "id": "action-clock-212-command-battle-shock-212",
+        "sequence": 212,
+        "at": 212,
         "type": "command_battle_shock_resolved",
         "formationId": "player-2:intercessors",
         "unitKey": "player-2:intercessors:standalone",
@@ -7700,9 +7933,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-206",
-        "sequence": 207,
-        "at": 207,
+        "id": "action-clock-212",
+        "sequence": 213,
+        "at": 213,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -7728,9 +7961,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-208",
-        "sequence": 208,
-        "at": 208,
+        "id": "action-clock-214",
+        "sequence": 214,
+        "at": 214,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -7756,174 +7989,6 @@
       },
       {
         "version": 1,
-        "id": "action-clock-209",
-        "sequence": 209,
-        "at": 209,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 2,
-          "phase": "movement",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 2,
-          "phase": "movement",
-          "step": "move_units",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-210",
-        "sequence": 210,
-        "at": 210,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 2,
-          "phase": "movement",
-          "step": "move_units",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 2,
-          "phase": "movement",
-          "step": "reinforcements",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-211",
-        "sequence": 211,
-        "at": 211,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 2,
-          "phase": "movement",
-          "step": "reinforcements",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 2,
-          "phase": "movement",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-212",
-        "sequence": 212,
-        "at": 212,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 2,
-          "phase": "movement",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-213",
-        "sequence": 213,
-        "at": 213,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "resolve_attacks",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-214",
-        "sequence": 214,
-        "at": 214,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "resolve_attacks",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 4,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
         "id": "action-clock-215",
         "sequence": 215,
         "at": 215,
@@ -7932,8 +7997,8 @@
           "status": "active",
           "battleRound": 4,
           "turn": 2,
-          "phase": "shooting",
-          "step": "end",
+          "phase": "movement",
+          "step": "start",
           "firstPlayerId": "player-1",
           "activePlayerId": "player-2",
           "priorityPlayerId": "player-2"
@@ -7942,8 +8007,8 @@
           "status": "active",
           "battleRound": 4,
           "turn": 2,
-          "phase": "charge",
-          "step": "start",
+          "phase": "movement",
+          "step": "move_units",
           "firstPlayerId": "player-1",
           "activePlayerId": "player-2",
           "priorityPlayerId": "player-2"
@@ -7960,6 +8025,174 @@
           "status": "active",
           "battleRound": 4,
           "turn": 2,
+          "phase": "movement",
+          "step": "move_units",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 2,
+          "phase": "movement",
+          "step": "reinforcements",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-217",
+        "sequence": 217,
+        "at": 217,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 2,
+          "phase": "movement",
+          "step": "reinforcements",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 2,
+          "phase": "movement",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-218",
+        "sequence": 218,
+        "at": 218,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 2,
+          "phase": "movement",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-219",
+        "sequence": 219,
+        "at": 219,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "resolve_attacks",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-220",
+        "sequence": 220,
+        "at": 220,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "resolve_attacks",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-221",
+        "sequence": 221,
+        "at": 221,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 2,
+          "phase": "charge",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-222",
+        "sequence": 222,
+        "at": 222,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 4,
+          "turn": 2,
           "phase": "charge",
           "step": "start",
           "firstPlayerId": "player-1",
@@ -7980,9 +8213,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-217",
-        "sequence": 217,
-        "at": 217,
+        "id": "action-clock-223",
+        "sequence": 223,
+        "at": 223,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8008,9 +8241,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-218",
-        "sequence": 218,
-        "at": 218,
+        "id": "action-clock-224",
+        "sequence": 224,
+        "at": 224,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8036,9 +8269,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-219",
-        "sequence": 219,
-        "at": 219,
+        "id": "action-clock-225",
+        "sequence": 225,
+        "at": 225,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8064,9 +8297,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-220",
-        "sequence": 220,
-        "at": 220,
+        "id": "action-clock-226",
+        "sequence": 226,
+        "at": 226,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8092,9 +8325,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-221",
-        "sequence": 221,
-        "at": 221,
+        "id": "action-clock-227",
+        "sequence": 227,
+        "at": 227,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8121,8 +8354,8 @@
       {
         "version": 1,
         "id": "action-tactical-turn-ended-4:2:player-2",
-        "sequence": 222,
-        "at": 222,
+        "sequence": 228,
+        "at": 228,
         "type": "secondary_turn_end_resolved",
         "playerId": "player-1",
         "achievedCardIds": [],
@@ -8142,9 +8375,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-223",
-        "sequence": 223,
-        "at": 223,
+        "id": "action-clock-229",
+        "sequence": 229,
+        "at": 229,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8170,9 +8403,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-224",
-        "sequence": 224,
-        "at": 224,
+        "id": "action-clock-230",
+        "sequence": 230,
+        "at": 230,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8198,9 +8431,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-225",
-        "sequence": 225,
-        "at": 225,
+        "id": "action-clock-231",
+        "sequence": 231,
+        "at": 231,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8226,9 +8459,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-226-activate-226",
-        "sequence": 226,
-        "at": 226,
+        "id": "action-clock-232-activate-232",
+        "sequence": 232,
+        "at": 232,
         "type": "reanimation_protocols_activated",
         "playerId": "player-1",
         "formationId": "player-1:doomstalker",
@@ -8249,9 +8482,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-226",
-        "sequence": 227,
-        "at": 227,
+        "id": "action-clock-232",
+        "sequence": 233,
+        "at": 233,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8277,174 +8510,6 @@
       },
       {
         "version": 1,
-        "id": "action-clock-228",
-        "sequence": 228,
-        "at": 228,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 1,
-          "phase": "movement",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 1,
-          "phase": "movement",
-          "step": "move_units",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-229",
-        "sequence": 229,
-        "at": 229,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 1,
-          "phase": "movement",
-          "step": "move_units",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 1,
-          "phase": "movement",
-          "step": "reinforcements",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-230",
-        "sequence": 230,
-        "at": 230,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 1,
-          "phase": "movement",
-          "step": "reinforcements",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 1,
-          "phase": "movement",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-231",
-        "sequence": 231,
-        "at": 231,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 1,
-          "phase": "movement",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-232",
-        "sequence": 232,
-        "at": 232,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "resolve_attacks",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-233",
-        "sequence": 233,
-        "at": 233,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "resolve_attacks",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 1,
-          "phase": "shooting",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-1",
-          "priorityPlayerId": "player-1"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
         "id": "action-clock-234",
         "sequence": 234,
         "at": 234,
@@ -8453,8 +8518,8 @@
           "status": "active",
           "battleRound": 5,
           "turn": 1,
-          "phase": "shooting",
-          "step": "end",
+          "phase": "movement",
+          "step": "start",
           "firstPlayerId": "player-1",
           "activePlayerId": "player-1",
           "priorityPlayerId": "player-1"
@@ -8463,8 +8528,8 @@
           "status": "active",
           "battleRound": 5,
           "turn": 1,
-          "phase": "charge",
-          "step": "start",
+          "phase": "movement",
+          "step": "move_units",
           "firstPlayerId": "player-1",
           "activePlayerId": "player-1",
           "priorityPlayerId": "player-1"
@@ -8481,6 +8546,174 @@
           "status": "active",
           "battleRound": 5,
           "turn": 1,
+          "phase": "movement",
+          "step": "move_units",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 1,
+          "phase": "movement",
+          "step": "reinforcements",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-236",
+        "sequence": 236,
+        "at": 236,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 1,
+          "phase": "movement",
+          "step": "reinforcements",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 1,
+          "phase": "movement",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-237",
+        "sequence": 237,
+        "at": 237,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 1,
+          "phase": "movement",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-238",
+        "sequence": 238,
+        "at": 238,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "resolve_attacks",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-239",
+        "sequence": 239,
+        "at": 239,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "resolve_attacks",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-240",
+        "sequence": 240,
+        "at": 240,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 1,
+          "phase": "shooting",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 1,
+          "phase": "charge",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-1",
+          "priorityPlayerId": "player-1"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-241",
+        "sequence": 241,
+        "at": 241,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 1,
           "phase": "charge",
           "step": "start",
           "firstPlayerId": "player-1",
@@ -8501,9 +8734,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-236",
-        "sequence": 236,
-        "at": 236,
+        "id": "action-clock-242",
+        "sequence": 242,
+        "at": 242,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8529,9 +8762,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-237",
-        "sequence": 237,
-        "at": 237,
+        "id": "action-clock-243",
+        "sequence": 243,
+        "at": 243,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8557,9 +8790,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-238",
-        "sequence": 238,
-        "at": 238,
+        "id": "action-clock-244",
+        "sequence": 244,
+        "at": 244,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8585,9 +8818,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-239",
-        "sequence": 239,
-        "at": 239,
+        "id": "action-clock-245",
+        "sequence": 245,
+        "at": 245,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8613,9 +8846,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-240",
-        "sequence": 240,
-        "at": 240,
+        "id": "action-clock-246",
+        "sequence": 246,
+        "at": 246,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8642,8 +8875,8 @@
       {
         "version": 1,
         "id": "action-tactical-turn-ended-5:1:player-1",
-        "sequence": 241,
-        "at": 241,
+        "sequence": 247,
+        "at": 247,
         "type": "secondary_turn_end_resolved",
         "playerId": "player-1",
         "achievedCardIds": [],
@@ -8663,9 +8896,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-242",
-        "sequence": 242,
-        "at": 242,
+        "id": "action-clock-248",
+        "sequence": 248,
+        "at": 248,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8692,8 +8925,8 @@
       {
         "version": 1,
         "id": "action-oath-5-2",
-        "sequence": 243,
-        "at": 243,
+        "sequence": 249,
+        "at": 249,
         "type": "oath_of_moment_selected",
         "playerId": "player-2",
         "formationId": "player-1:doomstalker",
@@ -8713,8 +8946,8 @@
       {
         "version": 1,
         "id": "action-grim-resolve-5-2",
-        "sequence": 244,
-        "at": 244,
+        "sequence": 250,
+        "at": 250,
         "type": "grim_resolve_selected",
         "playerId": "player-2",
         "formationId": "player-2:intercessors",
@@ -8733,9 +8966,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-245",
-        "sequence": 245,
-        "at": 245,
+        "id": "action-clock-251",
+        "sequence": 251,
+        "at": 251,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8761,9 +8994,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-246-command-battle-shock-246",
-        "sequence": 246,
-        "at": 246,
+        "id": "action-clock-252-command-battle-shock-252",
+        "sequence": 252,
+        "at": 252,
         "type": "command_battle_shock_resolved",
         "formationId": "player-2:intercessors",
         "unitKey": "player-2:intercessors:standalone",
@@ -8788,9 +9021,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-246",
-        "sequence": 247,
-        "at": 247,
+        "id": "action-clock-252",
+        "sequence": 253,
+        "at": 253,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8816,9 +9049,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-248",
-        "sequence": 248,
-        "at": 248,
+        "id": "action-clock-254",
+        "sequence": 254,
+        "at": 254,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -8844,174 +9077,6 @@
       },
       {
         "version": 1,
-        "id": "action-clock-249",
-        "sequence": 249,
-        "at": 249,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 2,
-          "phase": "movement",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 2,
-          "phase": "movement",
-          "step": "move_units",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-250",
-        "sequence": 250,
-        "at": 250,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 2,
-          "phase": "movement",
-          "step": "move_units",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 2,
-          "phase": "movement",
-          "step": "reinforcements",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-251",
-        "sequence": 251,
-        "at": 251,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 2,
-          "phase": "movement",
-          "step": "reinforcements",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 2,
-          "phase": "movement",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-252",
-        "sequence": 252,
-        "at": 252,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 2,
-          "phase": "movement",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-253",
-        "sequence": 253,
-        "at": 253,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "start",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "resolve_attacks",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
-        "id": "action-clock-254",
-        "sequence": 254,
-        "at": 254,
-        "type": "clock_advanced",
-        "from": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "resolve_attacks",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "to": {
-          "status": "active",
-          "battleRound": 5,
-          "turn": 2,
-          "phase": "shooting",
-          "step": "end",
-          "firstPlayerId": "player-1",
-          "activePlayerId": "player-2",
-          "priorityPlayerId": "player-2"
-        },
-        "expiredEffectIds": []
-      },
-      {
-        "version": 1,
         "id": "action-clock-255",
         "sequence": 255,
         "at": 255,
@@ -9020,8 +9085,8 @@
           "status": "active",
           "battleRound": 5,
           "turn": 2,
-          "phase": "shooting",
-          "step": "end",
+          "phase": "movement",
+          "step": "start",
           "firstPlayerId": "player-1",
           "activePlayerId": "player-2",
           "priorityPlayerId": "player-2"
@@ -9030,8 +9095,8 @@
           "status": "active",
           "battleRound": 5,
           "turn": 2,
-          "phase": "charge",
-          "step": "start",
+          "phase": "movement",
+          "step": "move_units",
           "firstPlayerId": "player-1",
           "activePlayerId": "player-2",
           "priorityPlayerId": "player-2"
@@ -9048,6 +9113,174 @@
           "status": "active",
           "battleRound": 5,
           "turn": 2,
+          "phase": "movement",
+          "step": "move_units",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 2,
+          "phase": "movement",
+          "step": "reinforcements",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-257",
+        "sequence": 257,
+        "at": 257,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 2,
+          "phase": "movement",
+          "step": "reinforcements",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 2,
+          "phase": "movement",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-258",
+        "sequence": 258,
+        "at": 258,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 2,
+          "phase": "movement",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-259",
+        "sequence": 259,
+        "at": 259,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "resolve_attacks",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-260",
+        "sequence": 260,
+        "at": 260,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "resolve_attacks",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-261",
+        "sequence": 261,
+        "at": 261,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 2,
+          "phase": "shooting",
+          "step": "end",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "to": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 2,
+          "phase": "charge",
+          "step": "start",
+          "firstPlayerId": "player-1",
+          "activePlayerId": "player-2",
+          "priorityPlayerId": "player-2"
+        },
+        "expiredEffectIds": []
+      },
+      {
+        "version": 1,
+        "id": "action-clock-262",
+        "sequence": 262,
+        "at": 262,
+        "type": "clock_advanced",
+        "from": {
+          "status": "active",
+          "battleRound": 5,
+          "turn": 2,
           "phase": "charge",
           "step": "start",
           "firstPlayerId": "player-1",
@@ -9068,9 +9301,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-257",
-        "sequence": 257,
-        "at": 257,
+        "id": "action-clock-263",
+        "sequence": 263,
+        "at": 263,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -9096,9 +9329,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-258",
-        "sequence": 258,
-        "at": 258,
+        "id": "action-clock-264",
+        "sequence": 264,
+        "at": 264,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -9124,9 +9357,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-259",
-        "sequence": 259,
-        "at": 259,
+        "id": "action-clock-265",
+        "sequence": 265,
+        "at": 265,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -9152,9 +9385,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-260",
-        "sequence": 260,
-        "at": 260,
+        "id": "action-clock-266",
+        "sequence": 266,
+        "at": 266,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -9180,9 +9413,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-261",
-        "sequence": 261,
-        "at": 261,
+        "id": "action-clock-267",
+        "sequence": 267,
+        "at": 267,
         "type": "clock_advanced",
         "from": {
           "status": "active",
@@ -9209,8 +9442,8 @@
       {
         "version": 1,
         "id": "action-battle-ready-player-1",
-        "sequence": 262,
-        "at": 262,
+        "sequence": 268,
+        "at": 268,
         "type": "mission_score_recorded",
         "playerId": "player-1",
         "category": "battle_ready",
@@ -9235,8 +9468,8 @@
       {
         "version": 1,
         "id": "action-battle-ready-player-2",
-        "sequence": 263,
-        "at": 263,
+        "sequence": 269,
+        "at": 269,
         "type": "mission_score_recorded",
         "playerId": "player-2",
         "category": "battle_ready",
@@ -9261,8 +9494,8 @@
       {
         "version": 1,
         "id": "action-tactical-turn-ended-5:2:player-2",
-        "sequence": 264,
-        "at": 264,
+        "sequence": 270,
+        "at": 270,
         "type": "secondary_turn_end_resolved",
         "playerId": "player-1",
         "achievedCardIds": [],
@@ -9282,9 +9515,9 @@
       },
       {
         "version": 1,
-        "id": "action-clock-265",
-        "sequence": 265,
-        "at": 265,
+        "id": "action-clock-271",
+        "sequence": 271,
+        "at": 271,
         "type": "clock_advanced",
         "from": {
           "status": "active",

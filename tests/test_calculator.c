@@ -1654,6 +1654,12 @@ static void test_desperate_escape(void) {
     assert(!whc_desperate_escape_test_is_valid(0u, 0u, false, true));
     assert(!whc_desperate_escape_test_is_valid(3u, 0u, false, true));
     assert(!whc_desperate_escape_test_is_valid(2u, 6u, false, false));
+    assert(whc_desperate_escape_model_requires_test(true, false, true, true, false));
+    assert(whc_desperate_escape_model_requires_test(false, true, false, false, false));
+    assert(!whc_desperate_escape_model_requires_test(false, true, true, false, false));
+    assert(!whc_desperate_escape_model_requires_test(false, true, false, true, false));
+    assert(!whc_desperate_escape_model_requires_test(false, false, false, false, false));
+    assert(!whc_desperate_escape_model_requires_test(true, true, false, false, true));
 }
 
 static void test_go_to_ground(void) {

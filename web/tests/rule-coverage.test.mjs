@@ -33,7 +33,7 @@ test("published coverage matrix is source-locked and identical to its data sourc
   assert.equal(matrix.sourceLocked, true);
   assert.equal(
     matrix.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v48",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v49",
   );
   assert.equal(matrix.rules.length, 2977);
   assert.deepEqual(
@@ -134,6 +134,17 @@ test("published coverage matrix is source-locked and identical to its data sourc
         { id: "core-rules-10e", pages: [11, 12] },
         { id: "core-rules-updates-10e-2025-10", pages: [1, 9, 18] },
       ],
+    },
+  );
+  assert.deepEqual(
+    matrix.rules.find((rule) => rule.id === "core.desperate-escape"),
+    {
+      id: "core.desperate-escape",
+      category: "core",
+      name: "Fall Back and Desperate Escape",
+      status: "executable",
+      introducedBattleStateVersion: 49,
+      sources: [{ id: "core-rules-10e", pages: [11, 14] }],
     },
   );
   assert.deepEqual(

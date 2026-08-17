@@ -23,6 +23,7 @@ import {
   chargeResolutionIsValid,
   commandBattleShockTestIsValid,
   counterOffensiveIsValid,
+  desperateEscapeModelRequiresTest,
   desperateEscapeTestIsValid,
   fightMoveIsValid,
   fireOverwatchIsValid,
@@ -138,6 +139,7 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_fire_overwatch_is_valid, "function");
   assert.equal(typeof calculator._whc_hazardous_resolution_is_valid, "function");
   assert.equal(typeof calculator._whc_desperate_escape_test_is_valid, "function");
+  assert.equal(typeof calculator._whc_desperate_escape_model_requires_test, "function");
   assert.equal(typeof calculator._whc_go_to_ground_is_valid, "function");
   assert.equal(typeof calculator._whc_smokescreen_is_valid, "function");
   assert.equal(typeof calculator._whc_rapid_ingress_is_valid, "function");
@@ -1076,6 +1078,20 @@ test("WebAssembly and JavaScript agree on Desperate Escape tests", () => {
     assert.equal(
       Boolean(calculator._whc_desperate_escape_test_is_valid(...values)),
       desperateEscapeTestIsValid(...values),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on per-model Desperate Escape triggers", () => {
+  for (let mask = 0; mask < 32; mask += 1) {
+    const values = Array.from({ length: 5 }, (_, index) => Boolean(mask & (1 << index)));
+    assert.equal(
+      Boolean(
+        calculator._whc_desperate_escape_model_requires_test(
+          ...values.map((value) => (value ? 1 : 0)),
+        ),
+      ),
+      desperateEscapeModelRequiresTest(...values),
     );
   }
 });

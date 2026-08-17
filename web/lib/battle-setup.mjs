@@ -4,6 +4,7 @@ import {
   BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION,
   COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION,
   DESPERATE_ESCAPE_BATTLE_STATE_VERSION,
+  DESPERATE_ESCAPE_MODEL_TRIGGER_BATTLE_STATE_VERSION,
   BATTLE_EVENT_VERSION,
   BATTLE_STATE_VERSION,
   DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION,
@@ -760,6 +761,10 @@ export function initializeBattleForLists({
             sourceVersion < ATTACHED_SEPARATION_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyAttachedSeparationThroughSequence ?? 0),
+          legacyDesperateEscapeModelTriggersThroughSequence:
+            sourceVersion < DESPERATE_ESCAPE_MODEL_TRIGGER_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyDesperateEscapeModelTriggersThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

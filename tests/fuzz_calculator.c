@@ -530,11 +530,21 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     const uint32_t desperate_final_roll =
         desperate_reroll == 0u ? desperate_initial_roll : desperate_reroll;
     assert(whc_desperate_escape_test_is_valid(desperate_initial_roll, desperate_reroll,
-                                               desperate_reroll_explained, desperate_failed) ==
+                                              desperate_reroll_explained, desperate_failed) ==
            (desperate_initial_roll >= 1u && desperate_initial_roll <= 6u &&
-            desperate_reroll <= 6u &&
-            (desperate_reroll == 0u || desperate_reroll_explained) &&
+            desperate_reroll <= 6u && (desperate_reroll == 0u || desperate_reroll_explained) &&
             desperate_failed == (desperate_final_roll <= 2u)));
+    const bool desperate_battle_shocked = next_byte(&input) % 2u != 0u;
+    const bool desperate_moves_over_enemy = next_byte(&input) % 2u != 0u;
+    const bool desperate_titanic = next_byte(&input) % 2u != 0u;
+    const bool desperate_fly = next_byte(&input) % 2u != 0u;
+    const bool desperate_already_tested = next_byte(&input) % 2u != 0u;
+    assert(whc_desperate_escape_model_requires_test(desperate_battle_shocked,
+                                                    desperate_moves_over_enemy, desperate_titanic,
+                                                    desperate_fly, desperate_already_tested) ==
+           (!desperate_already_tested &&
+            (desperate_battle_shocked ||
+             (desperate_moves_over_enemy && !desperate_titanic && !desperate_fly))));
     go_to_ground_phase = next_byte(&input);
     go_to_ground_cp_before = next_u16(&input);
     go_to_ground_cost = next_byte(&input);

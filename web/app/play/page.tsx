@@ -56,6 +56,7 @@ import {
   declareFormationCharge,
   declareFormationDeployment,
   desperateEscapeCasualtyOptions,
+  fallBackDesperateEscapePlanOptions,
   deployFormation,
   disembarkFormation,
   drawSecondaryMissionCard,
@@ -495,6 +496,11 @@ export default function PlayMode() {
   const [desperateEscapeDestroyedModelIds, setDesperateEscapeDestroyedModelIds] = useState<
     string[]
   >([]);
+  const [fallBackCrossingWitnesses, setFallBackCrossingWitnesses] = useState<
+    Record<string, string>
+  >({});
+  const [fallBackPlanReviewed, setFallBackPlanReviewed] = useState(false);
+  const [fallBackPlanReason, setFallBackPlanReason] = useState("");
   const [heroicFormationId, setHeroicFormationId] = useState("");
   const [heroicDice, setHeroicDice] = useState<[number, number]>([3, 4]);
   const [heroicRollModifier, setHeroicRollModifier] = useState(0);
@@ -569,6 +575,12 @@ export default function PlayMode() {
   const suppressRecoverySave = useRef(false);
   const latestResult = useRef<HTMLElement>(null);
   const importBattleInput = useRef<HTMLInputElement>(null);
+  const selectAttackerUnit = (unitId: string) => {
+    setAttackerUnitId(unitId);
+    setFallBackCrossingWitnesses({});
+    setFallBackPlanReviewed(false);
+    setFallBackPlanReason("");
+  };
 
   useEffect(() => {
     Promise.all([
@@ -1366,6 +1378,10 @@ export default function PlayMode() {
     battleState && pendingDesperateEscape?.testEventId
       ? desperateEscapeCasualtyOptions(battleState)
       : [];
+  const fallBackPlanOptions =
+    battleState && attackerBattleFormationId
+      ? fallBackDesperateEscapePlanOptions(battleState, attackerBattleFormationId)
+      : null;
   const hazardousOptions =
     battleState && pendingHazardous?.due ? hazardousBearerOptions(battleState) : [];
   const selectedHazardousBearerId = hazardousOptions.some(
@@ -4792,6 +4808,27 @@ export default function PlayMode() {
     try {
       const movementStarted =
         replayBattleState(battleState).movementStartsByFormation.get(attackerBattleFormationId);
+      const desperateEscapePlan =
+        movement === "fall_back" && !movementStarted
+          ? {
+              crossings: Object.entries(fallBackCrossingWitnesses).map(([modelId, witnessKey]) => {
+                const witness = fallBackPlanOptions?.enemyModels.find(
+                  (candidate: { formationId: string; modelId: string }) =>
+                    `${candidate.formationId}\u0000${candidate.modelId}` === witnessKey,
+                );
+                if (!witness) {
+                  throw new Error("Every crossing model requires a surviving enemy-model witness");
+                }
+                return {
+                  modelId,
+                  enemyFormationId: witness.formationId,
+                  enemyModelId: witness.modelId,
+                };
+              }),
+              reviewedByPlayer: fallBackPlanReviewed,
+              reviewReason: fallBackPlanReason.trim(),
+            }
+          : null;
       const next =
         movement === "stationary" || movementStarted
           ? completeFormationMovement(
@@ -4807,8 +4844,14 @@ export default function PlayMode() {
               movement,
               crypto.randomUUID(),
               battleState.events.length + 1,
+              desperateEscapePlan,
             );
       setBattleState(next);
+      if (!movementStarted && movement === "fall_back") {
+        setFallBackCrossingWitnesses({});
+        setFallBackPlanReviewed(false);
+        setFallBackPlanReason("");
+      }
       const nextReplay = replayBattleState(next);
       const pendingPosition = nextReplay.pendingModelPosition;
       refreshProfile(
@@ -5135,7 +5178,7 @@ export default function PlayMode() {
       setBattleState(next);
       setAttackerListId(shooterPlayer.listId);
       setTargetListId(targetPlayer.listId);
-      setAttackerUnitId(shooter.segments[0]?.savedUnitId ?? "");
+      selectAttackerUnit(shooter.segments[0]?.savedUnitId ?? "");
       setTargetUnitId(target.segments[0]?.savedUnitId ?? "");
       setWeaponId("");
       setProfileId("");
@@ -5805,7 +5848,7 @@ export default function PlayMode() {
     suppressRecoverySave.current = true;
     setAttackerListId("");
     setTargetListId("");
-    setAttackerUnitId("");
+    selectAttackerUnit("");
     setTargetUnitId("");
     setWeaponId("");
     setFiringDeckModels(1);
@@ -5852,7 +5895,7 @@ export default function PlayMode() {
     if (!attackerListId || !targetListId) return;
     setAttackerListId(targetListId);
     setTargetListId(attackerListId);
-    setAttackerUnitId("");
+    selectAttackerUnit("");
     setTargetUnitId("");
     setWeaponId("");
     setProfileId("");
@@ -5896,7 +5939,7 @@ export default function PlayMode() {
       setBattleState(imported);
       setAttackerListId(imported.players[0].listId);
       setTargetListId(imported.players[1].listId);
-      setAttackerUnitId("");
+      selectAttackerUnit("");
       setTargetUnitId("");
       setWeaponId("");
       setProfileId("");
@@ -5955,7 +5998,7 @@ export default function PlayMode() {
                     onChange={(event) => {
                       resetBattleForChangedLists(event.target.value, targetListId);
                       setAttackerListId(event.target.value);
-                      setAttackerUnitId("");
+                      selectAttackerUnit("");
                       setWeaponId("");
                       setFiringDeckModels(1);
                       setFiringDeckPassengerAlreadyShot(false);
@@ -6027,7 +6070,7 @@ export default function PlayMode() {
                           (total, assignment) => total + assignment.passengerUnit.modelCount,
                           0,
                         );
-                      setAttackerUnitId(event.target.value);
+                      selectAttackerUnit(event.target.value);
                       const nextCatalogueUnit = catalogue?.units.find(
                         (unit) => unit.id === nextUnit?.unitId,
                       );
@@ -9448,9 +9491,10 @@ export default function PlayMode() {
                           {!pendingDesperateEscape.testEventId ? (
                             <>
                               <span>
-                                Battle-shocked Fall Back: roll one D6 for each of the{" "}
-                                {pendingDesperateEscape.modelCount} surviving models before any
-                                model moves. Each 1–2 destroys one model you select.
+                                Roll one D6 for each of the {pendingDesperateEscape.modelCount}{" "}
+                                required models before any model moves. Battle-shock tests every
+                                model; moving over an enemy model tests that model unless it is
+                                Titanic or can Fly. Each 1–2 destroys one model you select.
                               </span>
                               <button type="button" onClick={rollPendingDesperateEscape}>
                                 Roll {pendingDesperateEscape.modelCount} Desperate Escape{" "}
@@ -9509,6 +9553,105 @@ export default function PlayMode() {
                           )}
                         </div>
                       )}
+                      {!selectedMovementStart && fallBackPlanOptions && (
+                        <details className="action-tracker">
+                          <summary>Fall Back path review</summary>
+                          <span>
+                            Before moving, mark each model whose planned path crosses at least one
+                            enemy model. Record one opposing model as the physical witness. Titanic
+                            and Fly models are exempt from this path trigger, but not from a
+                            Battle-shocked unit&apos;s test.
+                          </span>
+                          <div className="choice-grid">
+                            {fallBackPlanOptions.models.map(
+                              (model: {
+                                id: string;
+                                name: string;
+                                modelIsTitanic: boolean;
+                                modelCanFly: boolean;
+                                unitBattleShocked: boolean;
+                              }) => {
+                                const witnessKey = fallBackCrossingWitnesses[model.id] ?? "";
+                                const checked = Boolean(witnessKey);
+                                return (
+                                  <div className="action-tracker" key={model.id}>
+                                    <label className="confirmation-row">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        disabled={fallBackPlanOptions.enemyModels.length === 0}
+                                        onChange={(event) =>
+                                          setFallBackCrossingWitnesses((current) => {
+                                            const next = { ...current };
+                                            if (event.target.checked) {
+                                              const witness = fallBackPlanOptions.enemyModels[0];
+                                              next[model.id] =
+                                                `${witness.formationId}\u0000${witness.modelId}`;
+                                            } else {
+                                              delete next[model.id];
+                                            }
+                                            return next;
+                                          })
+                                        }
+                                      />
+                                      {model.name}
+                                      {model.modelIsTitanic ? " · Titanic" : ""}
+                                      {model.modelCanFly ? " · Fly" : ""}
+                                      {model.unitBattleShocked ? " · Battle-shocked" : ""}
+                                    </label>
+                                    {checked && (
+                                      <label>
+                                        <span>Crossed enemy model</span>
+                                        <select
+                                          value={witnessKey}
+                                          onChange={(event) =>
+                                            setFallBackCrossingWitnesses((current) => ({
+                                              ...current,
+                                              [model.id]: event.target.value,
+                                            }))
+                                          }
+                                        >
+                                          {fallBackPlanOptions.enemyModels.map(
+                                            (enemy: {
+                                              formationId: string;
+                                              modelId: string;
+                                              name: string;
+                                            }) => (
+                                              <option
+                                                key={`${enemy.formationId}:${enemy.modelId}`}
+                                                value={`${enemy.formationId}\u0000${enemy.modelId}`}
+                                              >
+                                                {enemy.name}
+                                              </option>
+                                            ),
+                                          )}
+                                        </select>
+                                      </label>
+                                    )}
+                                  </div>
+                                );
+                              },
+                            )}
+                          </div>
+                          <label className="confirmation-row">
+                            <input
+                              type="checkbox"
+                              checked={fallBackPlanReviewed}
+                              onChange={(event) => setFallBackPlanReviewed(event.target.checked)}
+                            />
+                            Planned paths and enemy-model crossings reviewed before movement
+                          </label>
+                          <label>
+                            <span>Review record</span>
+                            <input
+                              value={fallBackPlanReason}
+                              maxLength={500}
+                              placeholder="Measured planned Fall Back paths on the table"
+                              onChange={(event) => setFallBackPlanReason(event.target.value)}
+                            />
+                          </label>
+                        </details>
+                      )}
                       {selectedMovementCurrent ? (
                         <span>Recorded: {selectedMovement?.movement.replace("_", " ")}</span>
                       ) : (
@@ -9534,6 +9677,11 @@ export default function PlayMode() {
                               <button
                                 type="button"
                                 key={movement}
+                                disabled={
+                                  movement === "fall_back" &&
+                                  !selectedMovementStart &&
+                                  (!fallBackPlanReviewed || !fallBackPlanReason.trim())
+                                }
                                 onClick={() => recordSelectedMovement(movement)}
                               >
                                 {selectedMovementStart ? `Complete ${label.toLowerCase()}` : label}

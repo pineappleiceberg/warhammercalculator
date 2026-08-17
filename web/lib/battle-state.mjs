@@ -40,7 +40,8 @@ import {
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 48;
+export const BATTLE_STATE_VERSION = 49;
+export const DESPERATE_ESCAPE_MODEL_TRIGGER_BATTLE_STATE_VERSION = 49;
 export const ATTACHED_SEPARATION_BATTLE_STATE_VERSION = 48;
 export const DESPERATE_ESCAPE_BATTLE_STATE_VERSION = 47;
 export const COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION = 46;
@@ -1672,6 +1673,19 @@ export function desperateEscapeTestIsValid(initialRoll, reroll, rerollExplained,
       reroll <= 6 &&
       (reroll === 0 || rerollExplained) &&
       failed === finalRoll <= 2,
+  );
+}
+
+export function desperateEscapeModelRequiresTest(
+  unitBattleShocked,
+  movesOverEnemyModel,
+  modelIsTitanic,
+  modelCanFly,
+  alreadyTestedThisPhase,
+) {
+  return Boolean(
+    !alreadyTestedThisPhase &&
+      (unitBattleShocked || (movesOverEnemyModel && !modelIsTitanic && !modelCanFly)),
   );
 }
 
@@ -4289,6 +4303,62 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     if (!["normal", "advance", "fall_back"].includes(normalized.movement)) {
       throw new Error("Only a Normal, Advance, or Fall Back move has a start trigger");
     }
+    if (stateVersion >= DESPERATE_ESCAPE_MODEL_TRIGGER_BATTLE_STATE_VERSION) {
+      const plan = record(
+        event.desperateEscapePlan ?? {},
+        "Fall Back Desperate Escape plan must be an object",
+      );
+      if (!Array.isArray(plan.crossings) || plan.crossings.length > 1000) {
+        throw new Error("Fall Back Desperate Escape plan must contain at most 1000 crossings");
+      }
+      const movingFormation = formations.byId.get(normalized.formationId);
+      const movingModelIds = new Set(
+        (movingFormation.modelInstances ?? []).map((model) => model.id),
+      );
+      normalized.desperateEscapePlan = {
+        crossings: plan.crossings.map((candidate) => {
+          const crossing = record(candidate, "Each enemy-model crossing must be an object");
+          const modelId = boundedString(crossing.modelId, "Crossing model id", 200);
+          const enemyFormationId = boundedString(
+            crossing.enemyFormationId,
+            "Crossed enemy formation id",
+            100,
+          );
+          const enemyModelId = boundedString(crossing.enemyModelId, "Crossed enemy model id", 200);
+          if (!movingModelIds.has(modelId)) {
+            throw new Error("Enemy-model crossing references an unknown moving model");
+          }
+          const enemyFormation = formations.byId.get(enemyFormationId);
+          if (
+            !enemyFormation ||
+            enemyFormation.playerId === movingFormation.playerId ||
+            !(enemyFormation.modelInstances ?? []).some((model) => model.id === enemyModelId)
+          ) {
+            throw new Error("Enemy-model crossing requires a registered opposing model");
+          }
+          return { modelId, enemyFormationId, enemyModelId };
+        }),
+        reviewedByPlayer: plan.reviewedByPlayer === true,
+        reviewReason:
+          typeof plan.reviewReason === "string" && plan.reviewReason.trim()
+            ? boundedString(plan.reviewReason.trim(), "Fall Back plan review reason", 500)
+            : "",
+      };
+      if (
+        new Set(normalized.desperateEscapePlan.crossings.map((crossing) => crossing.modelId))
+          .size !== normalized.desperateEscapePlan.crossings.length
+      ) {
+        throw new Error("A moving model can have only one enemy-model crossing witness");
+      }
+      if (
+        normalized.movement !== "fall_back" &&
+        (normalized.desperateEscapePlan.crossings.length > 0 ||
+          normalized.desperateEscapePlan.reviewedByPlayer ||
+          normalized.desperateEscapePlan.reviewReason)
+      ) {
+        throw new Error("Only a Fall Back move can contain a Desperate Escape plan");
+      }
+    }
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
@@ -4308,6 +4378,14 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     normalized.tests = event.tests.map((candidate) => {
       const test = record(candidate, "Each Desperate Escape test must be an object");
       return {
+        ...(stateVersion >= DESPERATE_ESCAPE_MODEL_TRIGGER_BATTLE_STATE_VERSION
+          ? {
+              modelId:
+                typeof test.modelId === "string" && test.modelId
+                  ? boundedString(test.modelId, "Desperate Escape tested model id", 200)
+                  : "",
+            }
+          : {}),
         initialRoll: boundedInteger(test.initialRoll, "Desperate Escape initial roll", 1, 6),
         reroll: boundedInteger(test.reroll, "Desperate Escape reroll", 0, 6),
         rerollReason:
@@ -5769,6 +5847,7 @@ export function normalizeBattleState(candidate) {
       COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION,
       DESPERATE_ESCAPE_BATTLE_STATE_VERSION,
       ATTACHED_SEPARATION_BATTLE_STATE_VERSION,
+      DESPERATE_ESCAPE_MODEL_TRIGGER_BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
     throw new Error(`Unsupported battle state version: ${String(state.version)}`);
@@ -5848,6 +5927,7 @@ export function normalizeBattleState(candidate) {
         BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION,
         COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION,
         DESPERATE_ESCAPE_BATTLE_STATE_VERSION,
+        ATTACHED_SEPARATION_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -6149,6 +6229,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= DESPERATE_ESCAPE_MODEL_TRIGGER_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyDesperateEscapeModelTriggersThroughSequence = nonnegativeInteger(
+        migration.legacyDesperateEscapeModelTriggersThroughSequence,
+        "Legacy Desperate Escape model-trigger event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -6163,6 +6250,7 @@ export function normalizeBattleState(candidate) {
     normalized.migration?.sourceVersion !== BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== DESPERATE_ESCAPE_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== ATTACHED_SEPARATION_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== OBJECTIVE_CONTROL_BATTLE_STATE_VERSION &&
@@ -7722,6 +7810,10 @@ export function replayBattleState(state) {
     state.version < ATTACHED_SEPARATION_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyAttachedSeparationThroughSequence ?? 0);
+  const legacyDesperateEscapeModelTriggersThroughSequence =
+    state.version < DESPERATE_ESCAPE_MODEL_TRIGGER_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyDesperateEscapeModelTriggersThroughSequence ?? 0);
   const legacyTerrainVisibilityThroughSequence =
     state.version < TERRAIN_VISIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -10766,19 +10858,94 @@ export function replayBattleState(state) {
         throw new Error("Formation movement has already started this turn");
       }
       movementStartsByFormation.set(event.formationId, event);
-      if (
-        event.movement === "fall_back" &&
-        event.sequence > legacyDesperateEscapeThroughSequence &&
-        battleShockedFormations.has(event.formationId)
-      ) {
-        pendingDesperateEscape = {
-          formationId: event.formationId,
-          movementStartEventId: event.id,
-          modelCount: liveModelCount(formation),
-          testEventId: "",
-          failedTestCount: 0,
-          clock: { ...clock },
-        };
+      if (event.movement === "fall_back" && event.sequence > legacyDesperateEscapeThroughSequence) {
+        if (event.sequence <= legacyDesperateEscapeModelTriggersThroughSequence) {
+          if (battleShockedFormations.has(event.formationId)) {
+            pendingDesperateEscape = {
+              formationId: event.formationId,
+              movementStartEventId: event.id,
+              modelCount: liveModelCount(formation),
+              modelIds: [],
+              modelTriggerFacts: [],
+              testEventId: "",
+              failedTestCount: 0,
+              clock: { ...clock },
+            };
+          }
+        } else {
+          const plan = event.desperateEscapePlan;
+          if (!plan.reviewedByPlayer || !plan.reviewReason) {
+            throw new Error("Fall Back requires a reviewed enemy-model crossing plan");
+          }
+          const livingModelIds = liveModelIds(formation);
+          const livingModelIdSet = new Set(livingModelIds);
+          for (const crossing of plan.crossings) {
+            if (!livingModelIdSet.has(crossing.modelId)) {
+              throw new Error("Only a surviving model can move over an enemy model");
+            }
+            const enemy = formations.get(crossing.enemyFormationId);
+            if (
+              !enemy ||
+              enemy.playerId === formation.playerId ||
+              formationDestroyed(enemy) ||
+              !formationIsOnBattlefield(
+                enemy.id,
+                deploymentByFormation,
+                deployedFormationIds,
+                embarkedByFormation,
+              ) ||
+              !liveModelIds(enemy).includes(crossing.enemyModelId)
+            ) {
+              throw new Error("Enemy-model crossing witness must be a surviving opposing model");
+            }
+          }
+          const crossingModelIds = new Set(plan.crossings.map((crossing) => crossing.modelId));
+          const alreadyTestedModelIds = new Set(
+            desperateEscapeTests
+              .filter((testEvent) => samePhase(testEvent.clock, clock))
+              .flatMap((testEvent) => testEvent.tests.map((test) => test.modelId).filter(Boolean)),
+          );
+          const modelInstances = new Map(
+            (formation.modelInstances ?? []).map((model) => [model.id, model]),
+          );
+          const unitBattleShocked = battleShockedFormations.has(event.formationId);
+          const modelTriggerFacts = livingModelIds.map((modelId) => {
+            const keywords = modelInstances.get(modelId)?.keywords ?? [];
+            const fact = {
+              modelId,
+              unitBattleShocked,
+              movesOverEnemyModel: crossingModelIds.has(modelId),
+              modelIsTitanic: keywords.includes("titanic"),
+              modelCanFly: keywords.includes("fly"),
+              alreadyTestedThisPhase: alreadyTestedModelIds.has(modelId),
+            };
+            return {
+              ...fact,
+              requiresTest: desperateEscapeModelRequiresTest(
+                fact.unitBattleShocked,
+                fact.movesOverEnemyModel,
+                fact.modelIsTitanic,
+                fact.modelCanFly,
+                fact.alreadyTestedThisPhase,
+              ),
+            };
+          });
+          const modelIds = modelTriggerFacts
+            .filter((fact) => fact.requiresTest)
+            .map((fact) => fact.modelId);
+          if (modelIds.length > 0) {
+            pendingDesperateEscape = {
+              formationId: event.formationId,
+              movementStartEventId: event.id,
+              modelCount: modelIds.length,
+              modelIds,
+              modelTriggerFacts,
+              testEventId: "",
+              failedTestCount: 0,
+              clock: { ...clock },
+            };
+          }
+        }
       }
       pendingFireOverwatch = {
         triggerEventId: event.id,
@@ -10800,12 +10967,25 @@ export function replayBattleState(state) {
         throw new Error("Desperate Escape tests do not match the pending Fall Back move");
       }
       const formation = formations.get(event.formationId);
+      const currentModelTrigger =
+        event.sequence > legacyDesperateEscapeModelTriggersThroughSequence;
       if (
         !battleShockedFormations.has(event.formationId) ||
         event.tests.length !== pendingDesperateEscape.modelCount ||
-        event.tests.length !== liveModelCount(formation)
+        (!currentModelTrigger && event.tests.length !== liveModelCount(formation))
       ) {
-        throw new Error("Battle-shocked Desperate Escape requires one test per surviving model");
+        if (!currentModelTrigger) {
+          throw new Error("Battle-shocked Desperate Escape requires one test per surviving model");
+        }
+      }
+      if (
+        currentModelTrigger &&
+        (event.tests.some((test) => !test.modelId) ||
+          JSON.stringify(event.tests.map((test) => test.modelId)) !==
+            JSON.stringify(pendingDesperateEscape.modelIds) ||
+          new Set(event.tests.map((test) => test.modelId)).size !== event.tests.length)
+      ) {
+        throw new Error("Desperate Escape must test each required model exactly once");
       }
       const failedTestCount = event.tests.filter((test) => {
         const failed = (test.reroll || test.initialRoll) <= 2;
@@ -10821,7 +11001,11 @@ export function replayBattleState(state) {
         }
         return failed;
       }).length;
-      desperateEscapeTests.push({ ...event, failedTestCount });
+      desperateEscapeTests.push({
+        ...event,
+        failedTestCount,
+        modelTriggerFacts: pendingDesperateEscape.modelTriggerFacts,
+      });
       pendingDesperateEscape =
         failedTestCount > 0
           ? { ...pendingDesperateEscape, testEventId: event.id, failedTestCount }
@@ -14426,7 +14610,14 @@ export function completeFormationMovement(state, formationId, movement, id, at) 
   });
 }
 
-export function recordFormationMovement(state, formationId, movement, id, at) {
+export function recordFormationMovement(
+  state,
+  formationId,
+  movement,
+  id,
+  at,
+  desperateEscapePlan = null,
+) {
   if (state.version < FIRE_OVERWATCH_BATTLE_STATE_VERSION || movement === "stationary") {
     return completeFormationMovement(state, formationId, movement, id, at);
   }
@@ -14434,7 +14625,14 @@ export function recordFormationMovement(state, formationId, movement, id, at) {
   if (replayed.movementStartsByFormation.has(formationId)) {
     return completeFormationMovement(state, formationId, movement, id, at);
   }
-  let next = startFormationMovement(state, formationId, movement, `${id}-start`, at);
+  let next = startFormationMovement(
+    state,
+    formationId,
+    movement,
+    `${id}-start`,
+    at,
+    desperateEscapePlan,
+  );
   next = passFireOverwatch(
     next,
     "Compatibility movement helper explicitly declined Fire Overwatch at move start",
@@ -14451,7 +14649,66 @@ export function recordFormationMovement(state, formationId, movement, id, at) {
   );
 }
 
-export function startFormationMovement(state, formationId, movement, id, at) {
+export function fallBackDesperateEscapePlanOptions(state, formationId) {
+  const replayed = replayBattleState(state);
+  const formation = replayed.formations.get(formationId);
+  if (!formation) throw new Error("Fall Back formation is not registered");
+  const livingModelIds = new Set(formationLiveModelIds(formation));
+  const unitBattleShocked = replayed.battleShockedFormations.has(formationId);
+  const models = (formation.modelInstances ?? [])
+    .filter((model) => livingModelIds.has(model.id))
+    .map((model) => {
+      const modelIsTitanic = model.keywords.includes("titanic");
+      const modelCanFly = model.keywords.includes("fly");
+      return {
+        id: model.id,
+        name: `${model.modelName} · ${model.id}`,
+        modelIsTitanic,
+        modelCanFly,
+        unitBattleShocked,
+        requiresTestIfCrossing: desperateEscapeModelRequiresTest(
+          unitBattleShocked,
+          true,
+          modelIsTitanic,
+          modelCanFly,
+          false,
+        ),
+      };
+    });
+  const enemyModels = [...replayed.formations.values()]
+    .filter(
+      (enemy) =>
+        enemy.playerId !== formation.playerId &&
+        !formationDestroyed(enemy) &&
+        formationIsOnBattlefield(
+          enemy.id,
+          replayed.deploymentByFormation,
+          replayed.deployedFormationIds,
+          replayed.embarkedByFormation,
+        ),
+    )
+    .flatMap((enemy) => {
+      const liveIds = new Set(formationLiveModelIds(enemy));
+      return (enemy.modelInstances ?? [])
+        .filter((model) => liveIds.has(model.id))
+        .map((model) => ({
+          formationId: enemy.id,
+          formationName: enemy.name,
+          modelId: model.id,
+          name: `${enemy.name} · ${model.modelName} · ${model.id}`,
+        }));
+    });
+  return { formationId, unitBattleShocked, models, enemyModels };
+}
+
+export function startFormationMovement(
+  state,
+  formationId,
+  movement,
+  id,
+  at,
+  desperateEscapePlan = null,
+) {
   const clock = replayBattleState(state).clock;
   return appendEvent(state, {
     version: BATTLE_EVENT_VERSION,
@@ -14461,6 +14718,18 @@ export function startFormationMovement(state, formationId, movement, id, at) {
     type: "movement_started",
     formationId,
     movement,
+    ...(state.version >= DESPERATE_ESCAPE_MODEL_TRIGGER_BATTLE_STATE_VERSION
+      ? {
+          desperateEscapePlan:
+            movement === "fall_back"
+              ? (desperateEscapePlan ?? {
+                  crossings: [],
+                  reviewedByPlayer: false,
+                  reviewReason: "",
+                })
+              : { crossings: [], reviewedByPlayer: false, reviewReason: "" },
+        }
+      : {}),
     clock,
   });
 }
@@ -14477,7 +14746,14 @@ export function recordDesperateEscapeTests(
   if (!pending || pending.testEventId) {
     throw new Error("No Desperate Escape tests are pending");
   }
-  const resolvedTests = tests ?? rollDesperateEscapeTests(pending.modelCount, randomUint32);
+  const rolledTests = tests ?? rollDesperateEscapeTests(pending.modelCount, randomUint32);
+  const resolvedTests =
+    pending.modelIds?.length > 0
+      ? rolledTests.map((test, index) => ({
+          ...test,
+          modelId: test.modelId || pending.modelIds[index] || "",
+        }))
+      : rolledTests;
   return appendEvent(state, {
     version: BATTLE_EVENT_VERSION,
     id,

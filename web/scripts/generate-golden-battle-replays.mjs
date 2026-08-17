@@ -35,6 +35,7 @@ import {
   passHeroicIntervention,
   passRapidIngress,
   passSmokescreen,
+  recordDesperateEscapeTests,
   recordFightMove,
   recordFormationMovement,
   recordFormationCharge,
@@ -1869,6 +1870,69 @@ function buildActionFixture() {
         state.events.length + 1,
       );
       objectiveTransferred = true;
+
+      intercessors = formationBySource(state, "intercessors");
+      const survivingIntercessorModelIds = intercessors.segments.flatMap((segment) =>
+        segment.modelIds.slice(0, intercessors.health[segment.id].modelsRemaining),
+      );
+      const doomstalkerModelId = formationBySource(state, "doomstalker").modelInstances[0].id;
+      state = startFormationMovement(
+        state,
+        intercessors.id,
+        "fall_back",
+        "action-intercessors-fall-back-started",
+        state.events.length + 1,
+        {
+          crossings: [
+            {
+              modelId: survivingIntercessorModelIds[0],
+              enemyFormationId: doomstalker.id,
+              enemyModelId: doomstalkerModelId,
+            },
+          ],
+          reviewedByPlayer: true,
+          reviewReason:
+            "Every surviving Intercessor path was reviewed; the first crossed the engaged Doomstalker",
+        },
+      );
+      state = recordDesperateEscapeTests(
+        state,
+        [{ initialRoll: 4, reroll: 0, rerollReason: "" }],
+        "action-intercessors-desperate-escape-tested",
+        state.events.length + 1,
+      );
+      state = passFireOverwatch(
+        state,
+        "The Necron player declined Fire Overwatch at Fall Back start",
+        "action-intercessors-fall-back-start-overwatch-passed",
+        state.events.length + 1,
+      );
+      state = completeFormationMovement(
+        state,
+        intercessors.id,
+        "fall_back",
+        "action-intercessors-fall-back-completed",
+        state.events.length + 1,
+      );
+      state = recordModelPositions(
+        state,
+        intercessors.id,
+        reviewedModelPositions(
+          state,
+          intercessors.id,
+          "movement",
+          "action-intercessors-fall-back-completed",
+          { deltaXThousandths: -6_000 },
+        ),
+        "action-intercessors-fall-back-positioned",
+        state.events.length + 1,
+      );
+      state = passFireOverwatch(
+        state,
+        "The Necron player declined Fire Overwatch at Fall Back end",
+        "action-intercessors-fall-back-end-overwatch-passed",
+        state.events.length + 1,
+      );
     }
     if (
       !battleReadyScored &&
@@ -1918,10 +1982,11 @@ function buildActionFixture() {
       objectiveChanges: expected.eventTypeCounts.objective_control_changed,
       tacticalDraws: expected.eventTypeCounts.secondary_card_drawn,
       tacticalScores: expected.eventTypeCounts.secondary_card_scored,
+      desperateEscapeTests: expected.eventTypeCounts.desperate_escape_tests_recorded,
     },
     {
-      movementStarted: 1,
-      positionsRecorded: 6,
+      movementStarted: 2,
+      positionsRecorded: 7,
       overwatchStarted: 1,
       goToGround: 1,
       attacks: 4,
@@ -1930,6 +1995,7 @@ function buildActionFixture() {
       objectiveChanges: 3,
       tacticalDraws: 2,
       tacticalScores: 1,
+      desperateEscapeTests: 1,
     },
   );
   return {
@@ -1938,7 +2004,7 @@ function buildActionFixture() {
     scenarioId: "necrons-doomstalker-vs-space-marines-intercessors-action",
     title: "Canoptek Doomstalker vs Intercessor Squad · action-heavy guided battle",
     description:
-      "A source-locked Chapter Approved replay with exact movement, Fire Overwatch, Go to Ground, ranged and melee casualties, a successful Charge, both Fight activations, objective transfer, Tactical Secondary lifecycle, every phase step, and a final canonical state.",
+      "A source-locked Chapter Approved replay with exact movement, Fire Overwatch, Go to Ground, ranged and melee casualties, a successful Charge, both Fight activations, an enemy-crossing Fall Back and Desperate Escape test, objective transfer, Tactical Secondary lifecycle, every phase step, and a final canonical state.",
     listPair: [
       {
         playerId: "player-1",

@@ -454,6 +454,16 @@ bool whc_desperate_escape_test_is_valid(uint32_t initial_roll, uint32_t reroll,
 
 /*@ assigns \nothing;
     ensures \result <==>
+        !already_tested_this_phase &&
+        (unit_battle_shocked ||
+         (moves_over_enemy_model && !model_is_titanic && !model_can_fly));
+*/
+bool whc_desperate_escape_model_requires_test(bool unit_battle_shocked, bool moves_over_enemy_model,
+                                              bool model_is_titanic, bool model_can_fly,
+                                              bool already_tested_this_phase);
+
+/*@ assigns \nothing;
+    ensures \result <==>
         phase == WHC_BATTLE_PHASE_SHOOTING &&
         command_points_before >= 1 && command_points_before <= 100000 &&
         command_point_cost == 1 &&

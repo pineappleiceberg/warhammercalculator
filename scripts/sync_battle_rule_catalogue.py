@@ -173,9 +173,9 @@ def desperate_escape_rule():
     return {
         "id": "core.desperate-escape",
         "category": "core",
-        "name": "Battle-shocked Fall Back and Desperate Escape",
+        "name": "Fall Back and Desperate Escape",
         "status": "executable",
-        "introducedBattleStateVersion": 47,
+        "introducedBattleStateVersion": 49,
         "sources": [{"id": "core-rules-10e", "pages": [11, 14]}],
     }
 
@@ -232,9 +232,18 @@ def expected_documents():
     )
     if command_battle_shock_source not in core_source["usedFor"]:
         core_source["usedFor"].append(command_battle_shock_source)
-    desperate_escape_source = (
+    legacy_desperate_escape_source = (
         "mandatory one-D6-per-model Desperate Escape tests before a Battle-shocked unit Falls "
         "Back, with each 1-2 destroying a controller-selected surviving model"
+    )
+    core_source["usedFor"] = [
+        value for value in core_source["usedFor"] if value != legacy_desperate_escape_source
+    ]
+    desperate_escape_source = (
+        "one Desperate Escape test per model per phase before a Fall Back move when the unit is "
+        "Battle-shocked or that model will move over an enemy model, with Titanic and Fly "
+        "exempt only from the over-enemy trigger and each 1-2 destroying a controller-selected "
+        "surviving model"
     )
     if desperate_escape_source not in core_source["usedFor"]:
         core_source["usedFor"].append(desperate_escape_source)
@@ -412,7 +421,7 @@ def expected_documents():
     sources["sources"].append(tyranids_source_entry)
 
     coverage["snapshotId"] = (
-        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v48"
+        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v49"
     )
     coverage["sourceLocks"] = [
         lock for lock in coverage["sourceLocks"] if lock["id"] != SOURCE_ID
