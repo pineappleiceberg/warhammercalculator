@@ -1,5 +1,5 @@
-#include "warhammercalculator/calculator.h"
 #include "warhammercalculator/battle_state.h"
+#include "warhammercalculator/calculator.h"
 
 #include <stddef.h>
 
@@ -178,8 +178,25 @@ bool whc_prove_battle_clock_start(uint32_t first_player_index) {
     /*@ assert clock[5] == first_player_index; */
     /*@ assert clock[6] == first_player_index; */
     /*@ assert clock[7] == first_player_index; */
-    return started && clock[0] == WHC_BATTLE_CLOCK_ACTIVE && clock[1] == 1u &&
-           clock[2] == 1u && clock[3] == WHC_BATTLE_PHASE_COMMAND && clock[4] == 0u &&
+    return started && clock[0] == WHC_BATTLE_CLOCK_ACTIVE && clock[1] == 1u && clock[2] == 1u &&
+           clock[3] == WHC_BATTLE_PHASE_COMMAND && clock[4] == 0u &&
            clock[5] == first_player_index && clock[6] == first_player_index &&
            clock[7] == first_player_index;
+}
+
+/*@ assigns \nothing;
+    ensures \result;
+*/
+bool whc_prove_desperate_escape_model_trigger(bool unit_battle_shocked, bool moves_over_enemy_model,
+                                              bool model_is_titanic, bool model_can_fly,
+                                              bool already_tested_this_phase) {
+    bool required = whc_desperate_escape_model_requires_test(
+        unit_battle_shocked, moves_over_enemy_model, model_is_titanic, model_can_fly,
+        already_tested_this_phase);
+    bool expected =
+        !already_tested_this_phase &&
+        (unit_battle_shocked || (moves_over_enemy_model && !model_is_titanic && !model_can_fly));
+
+    /*@ assert required == expected; */
+    return required == expected;
 }

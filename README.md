@@ -884,6 +884,19 @@ saved roster. The public replay API reconstructs a child unit through its
 parent's earlier damage history and cross-checks the explicit no-health-change
 separation event through C/WebAssembly. Version-47 and older histories retain an
 explicit migration boundary and receive no invented separations.
+Version 49 completes the Core Rules Desperate Escape trigger. Before a Fall Back
+move, Guided Play records a reviewed per-model path plan and one surviving
+opposing-model witness for each path that crosses an enemy model. Replay combines
+those crossings with the unit's Battle-shocked state, exempts Titanic and Fly
+models from the crossing trigger, and schedules at most one test for each model
+in the phase. Battle-shock still requires every surviving model to test,
+including Titanic and Fly models. Every roll is bound to the exact tested model,
+must resolve before movement or reactions continue, and is independently checked
+through the ACSL-specified C/WebAssembly predicate by the replay API. The pinned
+official Core Rules pages 11 and 14 and a complete five-round golden battle cover
+the behavior. Version-48 and older histories retain their recorded aggregate
+tests behind an explicit migration boundary and receive no invented crossing
+facts.
 Version-25
 games migrate without invented terrain footprints, version-26 games migrate
 without invented deployment positions, and version-27 games migrate without
@@ -1548,13 +1561,11 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 
 ## Prioritized correctness backlog
 
-1. Execute Desperate Escape tests triggered by physically moving over enemy
-   models, including the Titanic and Fly exemptions and once-per-model boundary.
+1. Source-lock another high-impact faction or detachment transition and extend
+   the full-game corpus across every supported faction and mission.
 2. Add reviewed curved movement-surface primitives only when panels and simple
    polygon solids cannot represent a supported physical terrain set exactly.
-3. Source-lock another high-impact faction or detachment transition and extend
-   the full-game corpus across every supported faction and mission.
-4. Add deterministic automated policies and calibrated batch battle simulation
+3. Add deterministic automated policies and calibrated batch battle simulation
    after the guided replay corpus closes the same mandatory rule boundaries.
 
 ## Current boundaries

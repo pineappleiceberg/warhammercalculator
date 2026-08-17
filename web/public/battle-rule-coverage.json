@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v48",
+  "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v49",
   "edition": "Warhammer 40,000 10th Edition",
   "updatedAt": "2026-08-11",
   "sourceLocks": [
@@ -922,9 +922,9 @@
     {
       "id": "core.desperate-escape",
       "category": "core",
-      "name": "Battle-shocked Fall Back and Desperate Escape",
+      "name": "Fall Back and Desperate Escape",
       "status": "executable",
-      "introducedBattleStateVersion": 47,
+      "introducedBattleStateVersion": 49,
       "sources": [
         {
           "id": "core-rules-10e",

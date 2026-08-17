@@ -131,7 +131,10 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    Attached units now split into independent surviving Character and Bodyguard
    formations at the published post-attack boundary, preserve original Starting
    Strength and applicable persisting state, and remain independently selectable
-   in Guided Play and the replay API.
+   in Guided Play and the replay API. Fall Back now records reviewed per-model
+   enemy-crossing witnesses, combines them with Battle-shock into one exact
+   Desperate Escape test per eligible model, applies Titanic and Fly crossing
+   exemptions, and blocks movement until rolls and casualties resolve.
    Remaining work includes other reaction and Stratagem windows, full
    geometry-backed target eligibility, and
    geometry-backed engagement.

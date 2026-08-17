@@ -76,6 +76,7 @@ import {
   reanimationProtocolsTransitionIsValid,
   shadowInTheWarpTestIsValid,
   commandBattleShockTestIsValid,
+  desperateEscapeModelRequiresTest,
   desperateEscapeTestIsValid,
   battleWaaaghFormationFacts,
   battleSurvivingWeaponCount,
@@ -387,6 +388,7 @@ type CalculatorExports = {
   whc_fire_overwatch_is_valid(...values: number[]): number;
   whc_hazardous_resolution_is_valid(...values: number[]): number;
   whc_desperate_escape_test_is_valid(...values: number[]): number;
+  whc_desperate_escape_model_requires_test(...values: number[]): number;
   whc_go_to_ground_is_valid(...values: number[]): number;
   whc_smokescreen_is_valid(...values: number[]): number;
   whc_rapid_ingress_is_valid(...values: number[]): number;
@@ -635,6 +637,7 @@ async function loadCalculator() {
       typeof calculator.whc_fire_overwatch_is_valid !== "function" ||
       typeof calculator.whc_hazardous_resolution_is_valid !== "function" ||
       typeof calculator.whc_desperate_escape_test_is_valid !== "function" ||
+      typeof calculator.whc_desperate_escape_model_requires_test !== "function" ||
       typeof calculator.whc_go_to_ground_is_valid !== "function" ||
       typeof calculator.whc_smokescreen_is_valid !== "function" ||
       typeof calculator.whc_rapid_ingress_is_valid !== "function" ||
@@ -2309,7 +2312,41 @@ async function replayFormationHealth(
             "DESPERATE_ESCAPE_DIVERGENCE",
           );
         }
-        return { ...test, failed };
+        const trigger = event.modelTriggerFacts?.find(
+          (candidate: { modelId: string }) => candidate.modelId === test.modelId,
+        );
+        if (test.modelId && !trigger) {
+          throw new ServiceUnavailableError(
+            "Desperate Escape model trigger is missing",
+            "DESPERATE_ESCAPE_TRIGGER_MISSING",
+          );
+        }
+        if (trigger) {
+          const triggerValues = [
+            trigger.unitBattleShocked ? 1 : 0,
+            trigger.movesOverEnemyModel ? 1 : 0,
+            trigger.modelIsTitanic ? 1 : 0,
+            trigger.modelCanFly ? 1 : 0,
+            trigger.alreadyTestedThisPhase ? 1 : 0,
+          ];
+          const javascriptTrigger = desperateEscapeModelRequiresTest(
+            trigger.unitBattleShocked,
+            trigger.movesOverEnemyModel,
+            trigger.modelIsTitanic,
+            trigger.modelCanFly,
+            trigger.alreadyTestedThisPhase,
+          );
+          const nativeTrigger = Boolean(
+            calculator.whc_desperate_escape_model_requires_test(...triggerValues),
+          );
+          if (!javascriptTrigger || nativeTrigger !== javascriptTrigger) {
+            throw new ServiceUnavailableError(
+              "Desperate Escape model trigger diverged from the C/WebAssembly predicate",
+              "DESPERATE_ESCAPE_TRIGGER_DIVERGENCE",
+            );
+          }
+        }
+        return { ...test, ...(trigger ? { trigger } : {}), failed };
       });
       const casualties = replayed.desperateEscapeCasualtyResolutions.find(
         (resolution) => resolution.testEventId === event.id,

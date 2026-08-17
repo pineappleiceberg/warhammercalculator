@@ -3538,15 +3538,24 @@ test("resolves mandatory Battle-shocked Fall Back tests before any model moves",
     "escape-battle-shocked",
     state.events.length + 1,
   );
+  const plannedModelIds = replayBattleState(state)
+    .formations.get(attackerFormation.id)
+    .segments.flatMap((segment) => segment.modelIds);
   state = startFormationMovement(
     state,
     attackerFormation.id,
     "fall_back",
     "escape-fall-back-start",
     state.events.length + 1,
+    {
+      crossings: [],
+      reviewedByPlayer: true,
+      reviewReason: "Every planned Fall Back path was reviewed before movement",
+    },
   );
   let replayed = replayBattleState(state);
   assert.equal(replayed.pendingDesperateEscape.modelCount, 3);
+  assert.deepEqual(replayed.pendingDesperateEscape.modelIds, plannedModelIds);
   assert.throws(
     () => passFireOverwatch(state, "Cannot react yet", "escape-overwatch-early", 99),
     /Desperate Escape tests/i,
@@ -3563,6 +3572,10 @@ test("resolves mandatory Battle-shocked Fall Back tests before any model moves",
   );
   replayed = replayBattleState(state);
   assert.equal(replayed.pendingDesperateEscape.failedTestCount, 2);
+  assert.deepEqual(
+    replayed.desperateEscapeTests[0].tests.map((result) => result.modelId),
+    plannedModelIds,
+  );
   const casualtyOptions = desperateEscapeCasualtyOptions(state);
   const bodyguard = casualtyOptions.find((option) => option.segmentId === "bodyguard");
   const leader = casualtyOptions.find((option) => option.segmentId === "leader");
@@ -3601,6 +3614,250 @@ test("resolves mandatory Battle-shocked Fall Back tests before any model moves",
       "fall_back",
       "escape-fall-back-complete",
       state.events.length + 1,
+    ),
+  );
+});
+
+test("derives one Desperate Escape test per model across Battle-shock and enemy crossings", () => {
+  const mover = {
+    id: "escape-mixed-mover",
+    playerId: "player-1",
+    sourceFormationId: "escape-mixed-mover",
+    name: "Mixed Fall Back unit",
+    segments: [
+      {
+        id: "escape-ordinary",
+        savedUnitId: "escape-ordinary",
+        unitName: "Mixed Fall Back unit",
+        modelName: "Ordinary model",
+        role: "standalone",
+        keywords: [],
+        wounds: 3,
+        startingModels: 1,
+      },
+      {
+        id: "escape-titanic",
+        savedUnitId: "escape-titanic",
+        unitName: "Mixed Fall Back unit",
+        modelName: "Titanic model",
+        role: "standalone",
+        keywords: ["Titanic"],
+        wounds: 3,
+        startingModels: 1,
+      },
+      {
+        id: "escape-fly",
+        savedUnitId: "escape-fly",
+        unitName: "Mixed Fall Back unit",
+        modelName: "Flying model",
+        role: "standalone",
+        keywords: ["Fly"],
+        wounds: 3,
+        startingModels: 1,
+      },
+    ],
+  };
+  const enemy = {
+    id: "escape-crossing-enemy",
+    playerId: "player-2",
+    sourceFormationId: "escape-crossing-enemy",
+    name: "Crossing witness",
+    segments: [
+      {
+        id: "escape-enemy-model",
+        savedUnitId: "escape-enemy-model",
+        unitName: "Crossing witness",
+        modelName: "Enemy model",
+        role: "standalone",
+        keywords: [],
+        wounds: 2,
+        startingModels: 1,
+      },
+    ],
+  };
+  const setupMovement = (suffix, battleShocked) => {
+    let state = registerBattleFormation(
+      registerBattleFormation(newBattle(), mover, `${suffix}-register-mover`, 1),
+      enemy,
+      `${suffix}-register-enemy`,
+      2,
+    );
+    state = startBattle(deployAllOnBattlefield(state), "player-1", `${suffix}-start`, 3);
+    state = advanceTo(
+      state,
+      (clock) => clock.phase === "movement" && clock.step === "move_units",
+      `${suffix}-to-movement`,
+    );
+    if (battleShocked) {
+      state = setFormationBattleShocked(
+        state,
+        mover.id,
+        true,
+        "Failed Battle-shock test",
+        `${suffix}-battle-shocked`,
+        state.events.length + 1,
+      );
+    }
+    return state;
+  };
+  const modelIds = {
+    ordinary: "escape-ordinary:model:1",
+    titanic: "escape-titanic:model:1",
+    fly: "escape-fly:model:1",
+    enemy: "escape-enemy-model:model:1",
+  };
+  const crossings = [modelIds.ordinary, modelIds.titanic, modelIds.fly].map((modelId) => ({
+    modelId,
+    enemyFormationId: enemy.id,
+    enemyModelId: modelIds.enemy,
+  }));
+  const reviewedPlan = {
+    crossings,
+    reviewedByPlayer: true,
+    reviewReason: "Every planned path and crossing was measured before movement",
+  };
+
+  let state = setupMovement("escape-crossing", false);
+  assert.throws(
+    () =>
+      startFormationMovement(
+        state,
+        mover.id,
+        "fall_back",
+        "escape-unreviewed",
+        state.events.length + 1,
+      ),
+    /reviewed enemy-model crossing plan/i,
+  );
+  assert.throws(
+    () =>
+      startFormationMovement(
+        state,
+        mover.id,
+        "fall_back",
+        "escape-string-review",
+        state.events.length + 1,
+        {
+          crossings: [],
+          reviewedByPlayer: "true",
+          reviewReason: "Claimed review",
+        },
+      ),
+    /reviewed enemy-model crossing plan/i,
+  );
+  assert.throws(
+    () =>
+      startFormationMovement(
+        state,
+        mover.id,
+        "fall_back",
+        "escape-blank-review",
+        state.events.length + 1,
+        { crossings: [], reviewedByPlayer: true, reviewReason: "   " },
+      ),
+    /reviewed enemy-model crossing plan/i,
+  );
+  assert.throws(
+    () =>
+      startFormationMovement(
+        state,
+        mover.id,
+        "fall_back",
+        "escape-duplicate-crossing",
+        state.events.length + 1,
+        { ...reviewedPlan, crossings: [crossings[0], crossings[0]] },
+      ),
+    /only one enemy-model crossing witness/i,
+  );
+  assert.throws(
+    () =>
+      startFormationMovement(
+        state,
+        mover.id,
+        "fall_back",
+        "escape-friendly-witness",
+        state.events.length + 1,
+        {
+          ...reviewedPlan,
+          crossings: [
+            {
+              modelId: modelIds.ordinary,
+              enemyFormationId: mover.id,
+              enemyModelId: modelIds.titanic,
+            },
+          ],
+        },
+      ),
+    /registered opposing model/i,
+  );
+  state = startFormationMovement(
+    state,
+    mover.id,
+    "fall_back",
+    "escape-crossing-fall-back-start",
+    state.events.length + 1,
+    reviewedPlan,
+  );
+  let replayed = replayBattleState(state);
+  assert.deepEqual(replayed.pendingDesperateEscape.modelIds, [modelIds.ordinary]);
+  assert.deepEqual(
+    replayed.pendingDesperateEscape.modelTriggerFacts.map((fact) => ({
+      modelId: fact.modelId,
+      modelIsTitanic: fact.modelIsTitanic,
+      modelCanFly: fact.modelCanFly,
+      requiresTest: fact.requiresTest,
+    })),
+    [
+      {
+        modelId: modelIds.ordinary,
+        modelIsTitanic: false,
+        modelCanFly: false,
+        requiresTest: true,
+      },
+      {
+        modelId: modelIds.titanic,
+        modelIsTitanic: true,
+        modelCanFly: false,
+        requiresTest: false,
+      },
+      {
+        modelId: modelIds.fly,
+        modelIsTitanic: false,
+        modelCanFly: true,
+        requiresTest: false,
+      },
+    ],
+  );
+  state = recordDesperateEscapeTests(
+    state,
+    [{ initialRoll: 6, reroll: 0, rerollReason: "" }],
+    "escape-crossing-test",
+    state.events.length + 1,
+  );
+  assert.equal(
+    replayBattleState(state).desperateEscapeTests[0].tests[0].modelId,
+    modelIds.ordinary,
+  );
+
+  state = setupMovement("escape-combined", true);
+  state = startFormationMovement(
+    state,
+    mover.id,
+    "fall_back",
+    "escape-combined-fall-back-start",
+    state.events.length + 1,
+    reviewedPlan,
+  );
+  replayed = replayBattleState(state);
+  assert.deepEqual(replayed.pendingDesperateEscape.modelIds, [
+    modelIds.ordinary,
+    modelIds.titanic,
+    modelIds.fly,
+  ]);
+  assert.equal(replayed.pendingDesperateEscape.modelCount, 3);
+  assert.ok(
+    replayed.pendingDesperateEscape.modelTriggerFacts.every(
+      (fact) => fact.unitBattleShocked && fact.requiresTest && !fact.alreadyTestedThisPhase,
     ),
   );
 });

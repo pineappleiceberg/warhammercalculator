@@ -297,6 +297,13 @@ bool whc_desperate_escape_test_is_valid(uint32_t initial_roll, uint32_t reroll,
            (reroll == 0u || reroll_explained) && failed == (final_roll <= 2u);
 }
 
+bool whc_desperate_escape_model_requires_test(bool unit_battle_shocked, bool moves_over_enemy_model,
+                                              bool model_is_titanic, bool model_can_fly,
+                                              bool already_tested_this_phase) {
+    return !already_tested_this_phase &&
+           (unit_battle_shocked || (moves_over_enemy_model && !model_is_titanic && !model_can_fly));
+}
+
 bool whc_go_to_ground_is_valid(uint32_t phase, uint32_t command_points_before,
                                uint32_t command_point_cost, uint32_t command_points_after,
                                bool already_used, bool target_battle_shocked, uint32_t flags) {

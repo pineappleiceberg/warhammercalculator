@@ -197,10 +197,11 @@ test("replays source-locked movement, reactions, combat, casualties, objectives,
       objectiveChanges: summary.eventTypeCounts.objective_control_changed,
       tacticalDraws: summary.eventTypeCounts.secondary_card_drawn,
       tacticalScores: summary.eventTypeCounts.secondary_card_scored,
+      desperateEscapeTests: summary.eventTypeCounts.desperate_escape_tests_recorded,
     },
     {
-      movementStarted: 1,
-      positionsRecorded: 6,
+      movementStarted: 2,
+      positionsRecorded: 7,
       overwatchStarted: 1,
       goToGround: 1,
       attacks: 4,
@@ -209,6 +210,7 @@ test("replays source-locked movement, reactions, combat, casualties, objectives,
       objectiveChanges: 3,
       tacticalDraws: 2,
       tacticalScores: 1,
+      desperateEscapeTests: 1,
     },
   );
   assert.deepEqual(
@@ -225,6 +227,10 @@ test("replays source-locked movement, reactions, combat, casualties, objectives,
     ],
   );
   assert.equal(replayed.activeAttackIds.length, 4);
+  assert.equal(replayed.desperateEscapeTests.length, 1);
+  assert.equal(replayed.desperateEscapeTests[0].tests.length, 1);
+  assert.equal(replayed.desperateEscapeTests[0].tests[0].modelId.length > 0, true);
+  assert.equal(replayed.desperateEscapeTests[0].modelTriggerFacts[0].movesOverEnemyModel, true);
   assert.equal(summary.eventTypeCounts.reanimation_protocols_activated, 5);
   assert.equal(summary.eventTypeCounts.reanimation_wound_resolved, 1);
   assert.equal(summary.eventTypeCounts.grim_resolve_selected, 5);

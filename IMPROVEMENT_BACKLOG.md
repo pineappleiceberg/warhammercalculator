@@ -27,19 +27,30 @@ state.
 
 ## Prioritized backlog
 
-1. Execute Desperate Escape tests caused by moving over enemy models, including
-   the Titanic and Fly exemptions and the once-per-model boundary.
-2. Add source-backed faction and detachment state transitions to canonical
+1. Add source-backed faction and detachment state transitions to canonical
    battle replay, apply their consequences to attacks, objectives, and bounded
    resources, and lock each transition into another full-game faction/mission
    fixture. Then continue across every supported faction, mission, and
    composition boundary.
-3. Add reviewed curved surface primitives only when a supported physical terrain
+2. Add reviewed curved surface primitives only when a supported physical terrain
    set cannot be represented exactly by panels and simple polygon solids.
-4. Add deterministic automated policies and calibrated batch battle simulation
+3. Add deterministic automated policies and calibrated batch battle simulation
    only after the guided replay corpus closes the same rules boundaries.
 
 ## Completed cycles
+
+- 2026-08-17: Advanced canonical battle replay to version 49 with the complete
+  Core Rules Desperate Escape trigger. Every Fall Back now records a reviewed
+  per-model path plan and surviving enemy-model crossing witness before movement;
+  replay combines crossing and Battle-shock triggers, applies the Titanic and Fly
+  crossing exemptions, binds each D6 to its exact model, and schedules no more
+  than one test per model in the phase. Guided Play blocks the move until required
+  tests and exact casualties resolve. The public API independently cross-checks
+  each trigger and roll through the ACSL-specified C/WebAssembly predicates.
+  Official Core Rules pages 11 and 14, version-48 migration coverage, exhaustive
+  Wasm differential cases, native/property/fuzz/formal checks, and a five-round
+  Necrons-versus-Space-Marines enemy-crossing Fall Back replay lock the boundary.
+  Next, add another source-backed faction or detachment transition.
 
 - 2026-08-12: Advanced canonical battle replay to version 48 with executable
   Attached-unit separation. Destroying the last Bodyguard or attached Character

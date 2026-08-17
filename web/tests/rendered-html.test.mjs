@@ -321,7 +321,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const coverage = (await coverageResponse.json()).data;
   assert.equal(
     coverage.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v48",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v49",
   );
   assert.equal(coverage.sourceLocked, true);
   assert.equal(coverage.rules.length, coveredRuleCoverageMatrix.rules.length);
@@ -4299,6 +4299,9 @@ test("cross-checks Battle-shocked Fall Back and exact Desperate Escape casualtie
   ) {
     state = advanceBattleClock(state, `escape-clock-${state.events.length}`, state.events.length);
   }
+  const nonBattleShockedState = state;
+  const modelIds = replayBattleState(state).formations.get(mover.id).segments[0].modelIds;
+  const enemyModelId = replayBattleState(state).formations.get(enemy.id).segments[0].modelIds[0];
   state = setFormationBattleShocked(
     state,
     mover.id,
@@ -4313,6 +4316,11 @@ test("cross-checks Battle-shocked Fall Back and exact Desperate Escape casualtie
     "fall_back",
     "escape-move-start",
     state.events.length,
+    {
+      crossings: [],
+      reviewedByPlayer: true,
+      reviewReason: "Every planned Fall Back path was reviewed before movement",
+    },
   );
   state = recordDesperateEscapeTests(
     state,
@@ -4324,7 +4332,6 @@ test("cross-checks Battle-shocked Fall Back and exact Desperate Escape casualtie
     "escape-tests",
     state.events.length,
   );
-  const modelIds = replayBattleState(state).formations.get(mover.id).segments[0].modelIds;
   state = resolveDesperateEscapeCasualties(
     state,
     [modelIds[0], modelIds[2]],
@@ -4348,10 +4355,65 @@ test("cross-checks Battle-shocked Fall Back and exact Desperate Escape casualtie
     body.data.desperateEscape[0].tests.map((result) => result.failed),
     [true, false, true],
   );
+  assert.deepEqual(
+    body.data.desperateEscape[0].tests.map((result) => result.modelId),
+    modelIds,
+  );
+  assert.ok(
+    body.data.desperateEscape[0].tests.every(
+      (result) => result.trigger.unitBattleShocked && result.trigger.requiresTest,
+    ),
+  );
   assert.deepEqual(body.data.desperateEscape[0].destroyedModelIds, [modelIds[0], modelIds[2]]);
   assert.deepEqual(body.data.health["escape-models"], {
     modelsRemaining: 1,
     woundsLost: 0,
+  });
+
+  let crossingState = startFormationMovement(
+    nonBattleShockedState,
+    mover.id,
+    "fall_back",
+    "escape-crossing-move-start",
+    nonBattleShockedState.events.length,
+    {
+      crossings: [
+        {
+          modelId: modelIds[0],
+          enemyFormationId: enemy.id,
+          enemyModelId,
+        },
+      ],
+      reviewedByPlayer: true,
+      reviewReason: "The first mover's path crosses the recorded enemy model",
+    },
+  );
+  crossingState = recordDesperateEscapeTests(
+    crossingState,
+    [{ initialRoll: 6, reroll: 0, rerollReason: "" }],
+    "escape-crossing-test",
+    crossingState.events.length,
+  );
+  const crossingResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: crossingState, formationId: mover.id }),
+    }),
+    testEnv,
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  assert.equal(crossingResponse.status, 200, JSON.stringify(await crossingResponse.clone().json()));
+  const crossingBody = await crossingResponse.json();
+  assert.equal(crossingBody.data.desperateEscape[0].tests.length, 1);
+  assert.deepEqual(crossingBody.data.desperateEscape[0].tests[0].trigger, {
+    modelId: modelIds[0],
+    unitBattleShocked: false,
+    movesOverEnemyModel: true,
+    modelIsTitanic: false,
+    modelCanFly: false,
+    alreadyTestedThisPhase: false,
+    requiresTest: true,
   });
 });
 

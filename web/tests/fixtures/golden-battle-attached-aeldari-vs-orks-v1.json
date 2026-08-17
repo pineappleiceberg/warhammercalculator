@@ -27,10 +27,10 @@
     }
   ],
   "sourceManifestVersion": 1,
-  "stateDigest": "a69ba62a27c1bb808fb32ebd7c593f9e12c8364c421fdfb7de4db782d0d7ca09",
-  "expectedDigest": "9cd3b2b3fdc74de06c440f93dc309f1f0e3cd28031503c7cc9b4bddf2c16e7ab",
+  "stateDigest": "b8e4c2ed7d83f1f8f013f841aaa72a46b330d7e10bee397840733c5138e47df7",
+  "expectedDigest": "9e5a32c2cbb54936baa69a751788c25bbe79ae2cb57be46dfcb8bea6ef538267",
   "expected": {
-    "stateVersion": 48,
+    "stateVersion": 49,
     "eventCount": 229,
     "eventTypeCounts": {
       "activation_completed": 1,
@@ -328,10 +328,10 @@
     ]
   },
   "state": {
-    "version": 48,
+    "version": 49,
     "id": "golden-attached-aeldari-vs-orks-v1",
     "createdAt": 0,
-    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:48",
+    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:49",
     "players": [
       {
         "id": "player-1",
@@ -1333,7 +1333,7 @@
         "type": "rule_coverage_configured",
         "coverage": {
           "schemaVersion": 1,
-          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v48",
+          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v49",
           "sourceLocks": [
             {
               "id": "core-rules-10e",
@@ -1473,7 +1473,7 @@
             }
           },
           "report": {
-            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v48",
+            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v49",
             "permitted": true,
             "results": [
               {
@@ -1589,7 +1589,7 @@
               {
                 "id": "core.desperate-escape",
                 "category": "core",
-                "name": "Battle-shocked Fall Back and Desperate Escape",
+                "name": "Fall Back and Desperate Escape",
                 "status": "executable",
                 "sourceLocked": true,
                 "acknowledgementRequired": false,
