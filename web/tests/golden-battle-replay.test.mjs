@@ -123,14 +123,18 @@ test("replays attached Leaders, mixed profiles, a Mission Action, and Strategic 
     ],
   );
 
-  const guardians = summary.formations.find((formation) => formation.id === "player-1:guardians");
+  const farseer = summary.formations.find((formation) =>
+    formation.id.startsWith("player-1:guardians:unit:"),
+  );
   const rangers = summary.formations.find((formation) => formation.id === "player-1:rangers");
-  assert.deepEqual(guardians.health, {
-    "guardians:363:loadout:1": { modelsRemaining: 0, woundsLost: 0 },
-    "guardians:364:loadout:1": { modelsRemaining: 0, woundsLost: 0 },
+  assert.equal(
+    summary.formations.some((formation) => formation.id === "player-1:guardians"),
+    false,
+  );
+  assert.deepEqual(farseer.health, {
     "farseer:357:loadout:1": { modelsRemaining: 1, woundsLost: 0 },
   });
-  assert.equal(guardians.destroyed, false);
+  assert.equal(farseer.destroyed, false);
   assert.equal(rangers.deploymentLocation, "strategic_reserves");
   assert.equal(rangers.deployed, true);
   assert.equal(rangers.offBattlefield, false);

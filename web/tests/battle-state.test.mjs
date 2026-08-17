@@ -6,6 +6,7 @@ import { targetSequenceState } from "../lib/allocation.mjs";
 import {
   activeBattleAttacks,
   advanceBattleClock,
+  applyBattleEffect,
   appendResolvedAttack as appendResolvedAttackEvent,
   battleEmbarkationOptions,
   battleInitialDeploymentRules,
@@ -3573,18 +3574,17 @@ test("resolves mandatory Battle-shocked Fall Back tests before any model moves",
   );
   replayed = replayBattleState(state);
   assert.equal(replayed.pendingDesperateEscape, null);
-  assert.deepEqual(replayed.formations.get(attackerFormation.id).health, {
+  const survivingBodyguard = [...replayed.formations.values()].find(
+    (candidate) => candidate.separatedFromFormationId === attackerFormation.id,
+  );
+  assert.ok(survivingBodyguard);
+  assert.deepEqual(survivingBodyguard.health, {
     bodyguard: { modelsRemaining: 1, woundsLost: 0 },
-    leader: { modelsRemaining: 0, woundsLost: 0 },
   });
   assert.ok(
-    !replayed.formations
-      .get(attackerFormation.id)
-      .segments.flatMap((segment) =>
-        segment.modelIds.slice(
-          0,
-          replayed.formations.get(attackerFormation.id).health[segment.id].modelsRemaining,
-        ),
+    !survivingBodyguard.segments
+      .flatMap((segment) =>
+        segment.modelIds.slice(0, survivingBodyguard.health[segment.id].modelsRemaining),
       )
       .some((modelId) => [bodyguard.id, leader.id].includes(modelId)),
   );
@@ -3597,7 +3597,7 @@ test("resolves mandatory Battle-shocked Fall Back tests before any model moves",
   assert.doesNotThrow(() =>
     completeFormationMovement(
       state,
-      attackerFormation.id,
+      survivingBodyguard.id,
       "fall_back",
       "escape-fall-back-complete",
       state.events.length + 1,
@@ -4851,6 +4851,181 @@ test("resolves Counter-offensive atomically and forces its formation to fight ne
   assert.equal(replayBattleState(state).forcedFightFormationId, "");
 });
 
+test("separates an Attached unit before offering its survivors Counter-offensive", () => {
+  const meleeAttacker = {
+    ...attackerFormation,
+    weaponInventory: attackerFormation.weaponInventory.map((group) => ({
+      ...group,
+      profiles: [
+        ...group.profiles,
+        {
+          weaponId: "test-melee-weapon",
+          name: "Test melee weapon",
+          type: "Melee",
+          publishedRangeThousandths: 0,
+          hasAssault: false,
+          hasIndirect: false,
+        },
+      ],
+    })),
+  };
+  let state = registerBattleFormation(
+    registerBattleFormation(newBattle(), meleeAttacker, "split-counter-attacker", 1),
+    formation,
+    "split-counter-target",
+    2,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "split-counter-start", 3);
+  state = changeBattleResource(
+    state,
+    {
+      playerId: "player-2",
+      resourceId: "command_points",
+      name: "Command Points",
+      delta: 1,
+      reason: "Test setup",
+    },
+    "split-counter-cp",
+    state.events.length + 1,
+  );
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "split-counter-to-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    attackerFormation.id,
+    "stationary",
+    "split-counter-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "charge" && clock.step === "charge_moves",
+    "split-counter-to-charge",
+  );
+  state = recordFormationCharge(
+    state,
+    attackerFormation.id,
+    [formation.id],
+    successfulChargeOptions(formation.id),
+    "split-counter-charge",
+    state.events.length + 1,
+  );
+  state = passHeroicIntervention(
+    state,
+    "The defending player declines Heroic Intervention",
+    "split-counter-pass-heroic",
+    state.events.length + 1,
+  );
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "fight" && clock.step === "fights_first",
+    "split-counter-to-fight",
+  );
+  state = passFightPriority(
+    state,
+    "No defending Fights First unit",
+    "split-counter-pass-priority",
+    state.events.length + 1,
+  );
+  state = startFormationActivation(
+    state,
+    attackerFormation.id,
+    {},
+    "split-counter-fight-start",
+    state.events.length + 1,
+  );
+  state = recordFightMove(
+    state,
+    "pile_in",
+    enemyFightMoveOptions("pile_in"),
+    "split-counter-pile-in",
+    state.events.length + 1,
+  );
+  assert.throws(
+    () =>
+      appendResolvedAttack(state, {
+        weaponType: "Melee",
+        targetEligibilityConfirmed: true,
+        targetEligibilityReason: "The target is within Engagement Range",
+        weaponId: "cannon",
+        declaredWeaponCount: 1,
+        weaponSourceFormationId: meleeAttacker.id,
+        sourceSavedUnitId: "unit-1",
+        weaponGroupId: "test-ranged-group",
+        id: "split-counter-wrong-weapon-type",
+        at: state.events.length + 1,
+        attackerFormationId: meleeAttacker.id,
+        targetFormationId: formation.id,
+        segmentIds: ["bodyguard", "leader"],
+        targets,
+        initialWoundsLost: 0,
+        result: { appliedDamage: 0, modelsDestroyed: 0 },
+        summary: {
+          attacker: meleeAttacker.name,
+          weapon: "Ranged profile",
+          target: formation.name,
+          damage: 0,
+          successful: 0,
+        },
+      }),
+    /locked inventory for its weapon type/i,
+  );
+  state = appendResolvedAttack(state, {
+    weaponType: "Melee",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "The target is within Engagement Range",
+    weaponId: "test-melee-weapon",
+    declaredWeaponCount: 1,
+    weaponSourceFormationId: meleeAttacker.id,
+    sourceSavedUnitId: "unit-1",
+    weaponGroupId: "test-ranged-group",
+    id: "split-counter-destroy-bodyguard",
+    at: state.events.length + 1,
+    attackerFormationId: meleeAttacker.id,
+    targetFormationId: formation.id,
+    segmentIds: ["bodyguard", "leader"],
+    targets,
+    initialWoundsLost: 0,
+    result: { appliedDamage: 6, modelsDestroyed: 2 },
+    summary: {
+      attacker: attackerFormation.name,
+      weapon: "Test melee weapon",
+      target: formation.name,
+      damage: 6,
+      successful: 2,
+    },
+  });
+  state = recordFightMove(
+    state,
+    "consolidation",
+    enemyFightMoveOptions("consolidation"),
+    "split-counter-consolidation",
+    state.events.length + 1,
+  );
+  state = completeFormationActivation(state, "split-counter-complete", state.events.length + 1);
+
+  let replayed = replayBattleState(state);
+  const survivor = [...replayed.formations.values()].find(
+    (candidate) => candidate.separatedFromFormationId === formation.id,
+  );
+  assert.ok(survivor);
+  assert.deepEqual(replayed.pendingCounterOffensive.candidateFormationIds, [survivor.id]);
+  assert.equal(replayed.pendingCounterOffensive.triggerFormationId, attackerFormation.id);
+  state = resolveCounterOffensive(
+    state,
+    survivor.id,
+    "The surviving Leader is within Engagement Range of the enemy",
+    "split-counter-resolve",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  assert.equal(replayed.pendingCounterOffensive, null);
+  assert.equal(replayed.forcedFightFormationId, survivor.id);
+});
+
 test("resolves the immediate Heroic Intervention window without granting Charge Bonus", () => {
   const intervenor = {
     ...formation,
@@ -5239,6 +5414,17 @@ test("does not return a destroyed Bodyguard unit solely because its Leader survi
     },
   });
   state = completeFormationActivation(state, "complete-bodyguard-attack", state.events.length + 1);
+  let replayed = replayBattleState(state);
+  const leaderFormation = [...replayed.formations.values()].find(
+    (candidate) => candidate.separatedFromFormationId === necrons.id,
+  );
+  assert.ok(leaderFormation);
+  assert.equal(replayed.formations.has(necrons.id), false);
+  assert.equal(replayed.formationSeparations.length, 1);
+  assert.equal(replayed.formationSeparations[0].causeEventId, "destroy-bodyguard");
+  assert.deepEqual(battleFormationHealth(state, leaderFormation.id), {
+    leader: { modelsRemaining: 1, woundsLost: 0 },
+  });
   state = advanceTo(
     state,
     (clock) =>
@@ -5249,21 +5435,298 @@ test("does not return a destroyed Bodyguard unit solely because its Leader survi
   const available = battleReanimationProtocolsState(state, "player-2");
   assert.equal(available.eligibleUnits.length, 1);
   assert.deepEqual(available.eligibleUnits[0].segmentIds, ["leader"]);
-  assert.match(available.eligibleUnits[0].unitKey, /:leader:unit-2$/);
+  assert.match(available.eligibleUnits[0].unitKey, /:standalone$/);
   state = activateReanimationProtocols(
     state,
     "player-2",
-    necrons.id,
+    leaderFormation.id,
     available.eligibleUnits[0].unitKey,
     "activate-surviving-leader",
     state.events.length + 1,
     () => 2,
   );
   assert.equal(replayBattleState(state).pendingReanimationProtocols, null);
-  assert.deepEqual(battleFormationHealth(state, necrons.id), {
-    bodyguard: { modelsRemaining: 0, woundsLost: 0 },
+  assert.deepEqual(battleFormationHealth(state, leaderFormation.id), {
     leader: { modelsRemaining: 1, woundsLost: 0 },
   });
+});
+
+test("keeps an Attached unit together while a joined Bodyguard component survives", () => {
+  const joinedBodyguard = {
+    ...formation,
+    name: "Bodyguard + joined Bodyguard + Leader",
+    segments: [
+      { ...formation.segments[0], startingModels: 1 },
+      {
+        ...formation.segments[0],
+        id: "joined-bodyguard",
+        savedUnitId: "joined-bodyguard",
+        unitName: "Joined Bodyguard",
+        modelName: "Joined Guard",
+        role: "joined",
+        wounds: 2,
+        startingModels: 1,
+      },
+      formation.segments[1],
+    ],
+  };
+  let state = registeredBattle(newBattle(), joinedBodyguard);
+  state = recordVisibleRangedTarget(state, attackerFormation.id, joinedBodyguard.id, {
+    weaponId: "cannon",
+  });
+  state = appendResolvedAttack(state, {
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Target is visible and in range",
+    targetEligibilityEventId: state.events.at(-1).id,
+    weaponId: "cannon",
+    declaredWeaponCount: 1,
+    weaponSourceFormationId: attackerFormation.id,
+    sourceSavedUnitId: "unit-1",
+    weaponGroupId: "test-ranged-group",
+    id: "destroy-primary-bodyguard",
+    at: state.events.length + 1,
+    attackerFormationId: attackerFormation.id,
+    targetFormationId: joinedBodyguard.id,
+    segmentIds: ["bodyguard", "joined-bodyguard", "leader"],
+    targets: [
+      { wounds: 3, modelCount: 1 },
+      { wounds: 2, modelCount: 1 },
+      { wounds: 5, modelCount: 1 },
+    ],
+    initialWoundsLost: 0,
+    result: { appliedDamage: 3, modelsDestroyed: 1 },
+    summary: {
+      attacker: attackerFormation.name,
+      weapon: "Cannon",
+      target: joinedBodyguard.name,
+      damage: 3,
+      successful: 1,
+    },
+  });
+  state = completeFormationActivation(
+    state,
+    "complete-joined-bodyguard-attack",
+    state.events.length + 1,
+  );
+
+  const replayed = replayBattleState(state);
+  assert.equal(replayed.formations.has(joinedBodyguard.id), true);
+  assert.equal(replayed.formationSeparations.length, 0);
+  assert.equal(replayed.pendingAttachedSeparations.length, 0);
+  assert.deepEqual(replayed.formations.get(joinedBodyguard.id).health, {
+    bodyguard: { modelsRemaining: 0, woundsLost: 0 },
+    "joined-bodyguard": { modelsRemaining: 1, woundsLost: 0 },
+    leader: { modelsRemaining: 1, woundsLost: 0 },
+  });
+});
+
+test("separates every surviving Character only after the attacking unit finishes", () => {
+  const multiLeader = {
+    ...formation,
+    name: "Bodyguard + two Leaders",
+    segments: [
+      { ...formation.segments[0], startingModels: 1 },
+      { ...formation.segments[1], id: "leader-a", savedUnitId: "leader-a", unitName: "Leader A" },
+      { ...formation.segments[1], id: "leader-b", savedUnitId: "leader-b", unitName: "Leader B" },
+    ],
+  };
+  let state = registeredBattle(newBattle(), multiLeader);
+  state = setFormationBattleShocked(
+    state,
+    multiLeader.id,
+    true,
+    "Persisting effect inherited by separated survivors",
+    "shock-attached",
+    state.events.length + 1,
+  );
+  state = applyBattleEffect(
+    state,
+    {
+      id: "e".repeat(100),
+      name: "Persisting source effect",
+      ownerPlayerId: "player-2",
+      sourceFormationId: multiLeader.id,
+      duration: "end_of_turn",
+    },
+    "effect-attached",
+    state.events.length + 1,
+  );
+  state = recordVisibleRangedTarget(state, attackerFormation.id, multiLeader.id, {
+    weaponId: "cannon",
+  });
+  state = appendResolvedAttack(state, {
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Target is visible and in range",
+    targetEligibilityEventId: state.events.at(-1).id,
+    weaponId: "cannon",
+    declaredWeaponCount: 1,
+    weaponSourceFormationId: attackerFormation.id,
+    sourceSavedUnitId: "unit-1",
+    weaponGroupId: "test-ranged-group",
+    id: "destroy-single-bodyguard",
+    at: state.events.length + 1,
+    attackerFormationId: attackerFormation.id,
+    targetFormationId: multiLeader.id,
+    segmentIds: ["bodyguard", "leader-a", "leader-b"],
+    targets: [
+      { wounds: 3, modelCount: 1 },
+      { wounds: 5, modelCount: 1 },
+      { wounds: 5, modelCount: 1 },
+    ],
+    initialWoundsLost: 0,
+    result: { appliedDamage: 3, modelsDestroyed: 1 },
+    summary: {
+      attacker: attackerFormation.name,
+      weapon: "Cannon",
+      target: multiLeader.name,
+      damage: 3,
+      successful: 1,
+    },
+  });
+  let replayed = replayBattleState(state);
+  assert.equal(replayed.formations.has(multiLeader.id), true);
+  assert.deepEqual(
+    replayed.pendingAttachedSeparations.map(({ parentFormationId, causeEventId, due }) => ({
+      parentFormationId,
+      causeEventId,
+      due,
+    })),
+    [
+      {
+        parentFormationId: multiLeader.id,
+        causeEventId: "destroy-single-bodyguard",
+        due: false,
+      },
+    ],
+  );
+
+  state = completeFormationActivation(
+    state,
+    "complete-multi-leader-attack",
+    state.events.length + 1,
+  );
+  replayed = replayBattleState(state);
+  const children = [...replayed.formations.values()].filter(
+    (candidate) => candidate.separatedFromFormationId === multiLeader.id,
+  );
+  assert.equal(children.length, 2);
+  assert.deepEqual(children.map((child) => child.name).sort(), ["Leader A", "Leader B"]);
+  assert.equal(replayed.formations.has(multiLeader.id), false);
+  assert.equal(replayed.pendingAttachedSeparations.length, 0);
+  assert.ok(children.every((child) => replayed.deployedFormationIds.has(child.id)));
+  assert.ok(children.every((child) => replayed.battleShockedFormations.has(child.id)));
+  const splitEffects = [...replayed.effects.values()].filter(
+    (effect) => effect.name === "Persisting source effect",
+  );
+  assert.equal(splitEffects.length, 2);
+  assert.deepEqual(
+    splitEffects.map((effect) => effect.sourceFormationId).sort(),
+    children.map((child) => child.id).sort(),
+  );
+  assert.ok(splitEffects.every((effect) => effect.id.length <= 100));
+  assert.ok(
+    children.every((child) => child.segments.every((segment) => segment.role === "standalone")),
+  );
+
+  const tampered = structuredClone(state);
+  const separation = tampered.events.find((event) => event.type === "formation_separated");
+  separation.children[0].health[separation.children[0].formation.segments[0].id].woundsLost = 1;
+  assert.throws(() => normalizeBattleState(tampered), /canonical surviving units/i);
+});
+
+test("keeps Oath of Moment on every unit that survives an Attached-unit separation", () => {
+  const astartes = { ...attackerFormation, hasOathOfMomentAbility: true };
+  const attached = {
+    ...formation,
+    name: "Oath target + two Leaders",
+    segments: [
+      { ...formation.segments[0], startingModels: 1 },
+      { ...formation.segments[1], id: "oath-leader-a", savedUnitId: "oath-leader-a" },
+      { ...formation.segments[1], id: "oath-leader-b", savedUnitId: "oath-leader-b" },
+    ],
+  };
+  let state = registerBattleFormation(
+    registerBattleFormation(newSpaceMarinesBattle(), astartes, "oath-split-attacker", 1),
+    attached,
+    "oath-split-target",
+    2,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "oath-split-start", 3);
+  state = selectOathOfMomentTarget(
+    state,
+    "player-1",
+    attached.id,
+    "oath-split-select",
+    state.events.length + 1,
+  );
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "movement" && clock.step === "move_units",
+    "oath-split-to-movement",
+  );
+  state = recordFormationMovement(
+    state,
+    astartes.id,
+    "stationary",
+    "oath-split-stationary",
+    state.events.length + 1,
+  );
+  state = advanceTo(state, battleAttackWindow, "oath-split-to-shooting");
+  state = startFormationActivation(
+    state,
+    astartes.id,
+    {},
+    "oath-split-activation",
+    state.events.length + 1,
+  );
+  state = recordVisibleRangedTarget(state, astartes.id, attached.id, { weaponId: "cannon" });
+  state = appendResolvedAttack(state, {
+    weaponType: "Ranged",
+    targetEligibilityConfirmed: true,
+    targetEligibilityReason: "Target is visible and in range",
+    targetEligibilityEventId: state.events.at(-1).id,
+    weaponId: "cannon",
+    declaredWeaponCount: 1,
+    weaponSourceFormationId: astartes.id,
+    sourceSavedUnitId: "unit-1",
+    weaponGroupId: "test-ranged-group",
+    id: "oath-split-destroy-bodyguard",
+    at: state.events.length + 1,
+    attackerFormationId: astartes.id,
+    targetFormationId: attached.id,
+    segmentIds: ["bodyguard", "oath-leader-a", "oath-leader-b"],
+    targets: [
+      { wounds: 3, modelCount: 1 },
+      { wounds: 5, modelCount: 1 },
+      { wounds: 5, modelCount: 1 },
+    ],
+    initialWoundsLost: 0,
+    result: { appliedDamage: 3, modelsDestroyed: 1 },
+    summary: {
+      attacker: astartes.name,
+      weapon: "Cannon",
+      target: attached.name,
+      damage: 3,
+      successful: 1,
+    },
+  });
+  state = completeFormationActivation(state, "oath-split-complete", state.events.length + 1);
+  const replayed = replayBattleState(state);
+  const childIds = [...replayed.formations.values()]
+    .filter((candidate) => candidate.separatedFromFormationId === attached.id)
+    .map((candidate) => candidate.id)
+    .sort();
+  const oath = battleOathOfMomentState(state, "player-1", replayed);
+  assert.equal(childIds.length, 2);
+  assert.deepEqual([...oath.activeTargetFormationIds].sort(), childIds);
+  assert.deepEqual(
+    [
+      ...battleOathOfMomentAttackFacts(state, astartes.id, replayed).activeTargetFormationIds,
+    ].sort(),
+    childIds,
+  );
 });
 
 test("replays mission, CP, VP, objectives, Battle-shock, and bounded resources", () => {

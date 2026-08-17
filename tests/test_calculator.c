@@ -1329,6 +1329,37 @@ static void test_battle_health_replay(void) {
 }
 
 /*@ terminates \true; */
+static void test_battle_formation_separation_replay(void) {
+    uint32_t profiles[WHC_BATTLE_PROFILE_FIELDS] = {5u, 1u};
+    uint32_t events[2u * WHC_BATTLE_EVENT_FIELDS] = {0u};
+    uint32_t health[WHC_BATTLE_HEALTH_FIELDS] = {91u, 92u};
+    const uint32_t separation = WHC_BATTLE_EVENT_FIELDS;
+
+    events[0] = WHC_BATTLE_EVENT_VERSION;
+    events[1] = WHC_BATTLE_EVENT_ATTACK;
+    events[2] = 1u;
+    events[4] = 2u;
+    events[WHC_BATTLE_EVENT_HEADER_FIELDS] = 0u;
+    events[WHC_BATTLE_EVENT_HEADER_FIELDS + 1u] = 1u;
+    events[WHC_BATTLE_EVENT_HEADER_FIELDS + 2u] = 0u;
+    events[WHC_BATTLE_EVENT_HEADER_FIELDS + 3u] = 1u;
+    events[WHC_BATTLE_EVENT_HEADER_FIELDS + 4u] = 2u;
+    events[separation] = WHC_BATTLE_EVENT_VERSION;
+    events[separation + 1u] = WHC_BATTLE_EVENT_FORMATION_SEPARATION;
+
+    assert(whc_replay_battle_health_events(profiles, 1u, events, 2u, health));
+    assert(health[0] == 1u);
+    assert(health[1] == 2u);
+
+    events[separation + 2u] = 1u;
+    health[0] = 91u;
+    health[1] = 92u;
+    assert(!whc_replay_battle_health_events(profiles, 1u, events, 2u, health));
+    assert(health[0] == 91u);
+    assert(health[1] == 92u);
+}
+
+/*@ terminates \true; */
 static void test_battle_replay_reanimation_protocols(void) {
     uint32_t profiles[WHC_BATTLE_PROFILE_FIELDS] = {2u, 3u};
     uint32_t events[4u * WHC_BATTLE_EVENT_FIELDS] = {0u};
@@ -1882,6 +1913,7 @@ int main(void) {
     test_first_failed_save_damage_replacement();
     test_allocated_attack_damage_replacement();
     test_battle_health_replay();
+    test_battle_formation_separation_replay();
     test_battle_replay_reanimation_protocols();
     test_transport_damage_replay();
     test_ranged_target_eligibility();

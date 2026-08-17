@@ -802,17 +802,49 @@ async function replayFormationHealth(
       );
     }
   }
+  const formation = battleFormation(state, requestedFormationId);
+  if (!formation) throw new Error("formationId is not registered in the battle state");
+  const historyFormationId = formation.separatedFromFormationId ?? requestedFormationId;
   const registration = state.events.find(
-    (event) => event.type === "formation_registered" && event.formation.id === requestedFormationId,
+    (event) => event.type === "formation_registered" && event.formation.id === historyFormationId,
   );
   if (!registration || registration.type !== "formation_registered") {
     throw new Error("formationId is not registered in the battle state");
   }
-  const formation = battleFormation(state, requestedFormationId);
-  if (!formation) throw new Error("formationId is not registered in the battle state");
   const segmentIndices = new Map(formation.segments.map((segment, index) => [segment.id, index]));
+  const projectedSummary = (
+    allocations: Array<{
+      segmentId: string;
+      before: { modelsRemaining: number; woundsLost: number };
+      after: { modelsRemaining: number; woundsLost: number };
+    }>,
+  ) =>
+    allocations.reduce(
+      (summary, allocation) => {
+        const segment = formation.segments.find(
+          (candidate) => candidate.id === allocation.segmentId,
+        );
+        if (!segment) throw new Error("Projected health allocation segment is unknown");
+        summary.damage +=
+          (allocation.before.modelsRemaining - allocation.after.modelsRemaining) * segment.wounds +
+          allocation.after.woundsLost -
+          allocation.before.woundsLost;
+        summary.modelsDestroyed +=
+          allocation.before.modelsRemaining - allocation.after.modelsRemaining;
+        return summary;
+      },
+      { damage: 0, modelsDestroyed: 0 },
+    );
   const selectedEvents: Array<{
     event: (typeof state.events)[number];
+    attackProjection?: {
+      summary: { damage: number; modelsDestroyed: number };
+      allocations: Array<{
+        segmentId: string;
+        before: { modelsRemaining: number; woundsLost: number };
+        after: { modelsRemaining: number; woundsLost: number };
+      }>;
+    };
     transportPassenger?: {
       summary: { damage: number; modelsDestroyed: number };
       allocations: Array<{
@@ -840,41 +872,81 @@ async function replayFormationHealth(
   }> = [];
   const attackIndices = new Map<string, number>();
   for (const event of state.events) {
-    if (event.type === "attack_resolved" && event.targetFormationId === requestedFormationId) {
+    if (
+      event.type === "attack_resolved" &&
+      [requestedFormationId, historyFormationId].includes(event.targetFormationId)
+    ) {
+      const allocations = event.allocations.filter((allocation) =>
+        segmentIndices.has(allocation.segmentId),
+      );
+      if (allocations.length === 0) continue;
       attackIndices.set(event.id, selectedEvents.length);
-      selectedEvents.push({ event });
+      selectedEvents.push({
+        event,
+        attackProjection: { allocations, summary: projectedSummary(allocations) },
+      });
     } else if (event.type === "attack_reverted" && attackIndices.has(event.revertsEventId)) {
       selectedEvents.push({ event });
     } else if (event.type === "transport_destroyed_resolved") {
-      const transportPassenger = event.passengers.find(
-        (passenger) => passenger.formationId === requestedFormationId,
+      const transportPassenger = event.passengers.find((passenger) =>
+        [requestedFormationId, historyFormationId].includes(passenger.formationId),
       );
-      if (transportPassenger) selectedEvents.push({ event, transportPassenger });
+      if (transportPassenger) {
+        const allocations = transportPassenger.allocations.filter((allocation) =>
+          segmentIndices.has(allocation.segmentId),
+        );
+        if (allocations.length > 0) {
+          selectedEvents.push({
+            event,
+            transportPassenger: {
+              ...transportPassenger,
+              allocations,
+              summary: projectedSummary(allocations),
+            },
+          });
+        }
+      }
     } else if (
       event.type === "hazardous_damage_resolved" &&
-      event.formationId === requestedFormationId &&
-      event.allocation
+      [requestedFormationId, historyFormationId].includes(event.formationId) &&
+      event.allocation &&
+      segmentIndices.has(event.allocation.segmentId)
     ) {
       selectedEvents.push({
         event,
-        hazardousAllocation: { summary: event.summary, allocation: event.allocation },
+        hazardousAllocation: {
+          summary: projectedSummary([event.allocation]),
+          allocation: event.allocation,
+        },
       });
     } else if (
       event.type === "reanimation_wound_resolved" &&
-      event.formationId === requestedFormationId
+      [requestedFormationId, historyFormationId].includes(event.formationId) &&
+      segmentIndices.has(event.segmentId)
     ) {
       selectedEvents.push({ event });
     } else if (
       event.type === "desperate_escape_casualties_resolved" &&
-      event.formationId === requestedFormationId
+      [requestedFormationId, historyFormationId].includes(event.formationId)
     ) {
-      selectedEvents.push({
-        event,
-        desperateEscapeAllocation: {
-          summary: event.summary,
-          allocations: event.allocations,
-        },
-      });
+      const allocations = event.allocations.filter((allocation) =>
+        segmentIndices.has(allocation.segmentId),
+      );
+      if (allocations.length > 0) {
+        selectedEvents.push({
+          event,
+          desperateEscapeAllocation: {
+            summary: projectedSummary(allocations),
+            allocations,
+          },
+        });
+      }
+    } else if (
+      event.type === "formation_separated" &&
+      event.parentFormationId === historyFormationId &&
+      event.children.some((child) => child.formation.id === requestedFormationId)
+    ) {
+      selectedEvents.push({ event });
     }
   }
 
@@ -889,15 +961,24 @@ async function replayFormationHealth(
   });
   const events = new Uint32Array(selectedEvents.length * eventFields);
   selectedEvents.forEach(
-    ({ event, transportPassenger, hazardousAllocation, desperateEscapeAllocation }, index) => {
+    (
+      {
+        event,
+        attackProjection,
+        transportPassenger,
+        hazardousAllocation,
+        desperateEscapeAllocation,
+      },
+      index,
+    ) => {
       const offset = index * eventFields;
       events[offset] = event.version;
-      if (event.type === "attack_resolved") {
+      if (event.type === "attack_resolved" && attackProjection) {
         events[offset + 1] = 1;
-        events[offset + 2] = event.allocations.length;
-        events[offset + 4] = event.summary.damage;
-        events[offset + 5] = event.summary.modelsDestroyed;
-        event.allocations.forEach((allocation, allocationIndex) => {
+        events[offset + 2] = attackProjection.allocations.length;
+        events[offset + 4] = attackProjection.summary.damage;
+        events[offset + 5] = attackProjection.summary.modelsDestroyed;
+        attackProjection.allocations.forEach((allocation, allocationIndex) => {
           const segmentIndex = segmentIndices.get(allocation.segmentId);
           if (segmentIndex === undefined) throw new Error("Attack allocation segment is unknown");
           const allocationOffset = offset + eventHeaderFields + allocationIndex * allocationFields;
@@ -974,6 +1055,8 @@ async function replayFormationHealth(
           events[allocationOffset + 3] = allocation.after.modelsRemaining;
           events[allocationOffset + 4] = allocation.after.woundsLost;
         });
+      } else if (event.type === "formation_separated") {
+        events[offset + 1] = 8;
       }
     },
   );
@@ -1576,7 +1659,13 @@ async function replayFormationHealth(
     const goToGrounds = state.events
       .filter((event) => event.type === "go_to_ground_resolved")
       .map((event) => {
-        const target = replayed.formations.get(event.targetFormationId);
+        const target =
+          replayed.formations.get(event.targetFormationId) ??
+          state.events.find(
+            (candidate) =>
+              candidate.type === "formation_registered" &&
+              candidate.formation.id === event.targetFormationId,
+          )?.formation;
         if (!target) {
           throw new ServiceUnavailableError(
             "Go to Ground target is unavailable",
@@ -1638,7 +1727,13 @@ async function replayFormationHealth(
     const smokescreens = state.events
       .filter((event) => event.type === "smokescreen_resolved")
       .map((event) => {
-        const target = replayed.formations.get(event.targetFormationId);
+        const target =
+          replayed.formations.get(event.targetFormationId) ??
+          state.events.find(
+            (candidate) =>
+              candidate.type === "formation_registered" &&
+              candidate.formation.id === event.targetFormationId,
+          )?.formation;
         if (!target) {
           throw new ServiceUnavailableError(
             "Smokescreen target is unavailable",

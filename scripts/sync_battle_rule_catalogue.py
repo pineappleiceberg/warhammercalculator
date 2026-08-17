@@ -68,6 +68,7 @@ GENERATED_PREFIXES = (
     "faction.synapse-battle-shock",
     "core.command-battle-shock",
     "core.desperate-escape",
+    "core.attached-unit-separation",
 )
 
 
@@ -179,6 +180,19 @@ def desperate_escape_rule():
     }
 
 
+def attached_unit_separation_rule():
+    return {
+        "id": "core.attached-unit-separation",
+        "category": "core",
+        "name": "Attached-unit separation",
+        "status": "executable",
+        "introducedBattleStateVersion": 48,
+        "sources": [
+            {"id": "core-rules-updates-10e-2025-10", "pages": [1, 9]},
+        ],
+    }
+
+
 def generated_pdf_rule(category, source_id, name, pages):
     return {
         "id": f"{category}.catalogue-{token(source_id)}",
@@ -238,6 +252,13 @@ def expected_documents():
     )
     if command_battle_shock_updates_source not in updates_source["usedFor"]:
         updates_source["usedFor"].append(command_battle_shock_updates_source)
+    attached_separation_source = (
+        "immediate post-attack separation of surviving Character and Bodyguard units when the "
+        "other part of an Attached unit is destroyed, with original Starting Strength and "
+        "persisting effects inherited by every surviving unit"
+    )
+    if attached_separation_source not in updates_source["usedFor"]:
+        updates_source["usedFor"].append(attached_separation_source)
 
     factions = sorted(profiles.get("factions", []), key=lambda entry: entry["id"])
     detachments = sorted(profiles.get("detachments", []), key=lambda entry: entry["id"])
@@ -391,7 +412,7 @@ def expected_documents():
     sources["sources"].append(tyranids_source_entry)
 
     coverage["snapshotId"] = (
-        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v47"
+        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v48"
     )
     coverage["sourceLocks"] = [
         lock for lock in coverage["sourceLocks"] if lock["id"] != SOURCE_ID
@@ -433,6 +454,7 @@ def expected_documents():
     )
     coverage["rules"].append(command_battle_shock_rule())
     coverage["rules"].append(desperate_escape_rule())
+    coverage["rules"].append(attached_unit_separation_rule())
     coverage["rules"].extend(
         generated_rule("detachment", entry["id"], entry["name"]) for entry in detachments
     )

@@ -40,7 +40,8 @@ import {
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 47;
+export const BATTLE_STATE_VERSION = 48;
+export const ATTACHED_SEPARATION_BATTLE_STATE_VERSION = 48;
 export const DESPERATE_ESCAPE_BATTLE_STATE_VERSION = 47;
 export const COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION = 46;
 export const BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION = 45;
@@ -93,6 +94,31 @@ export const LEGACY_BATTLE_STATE_VERSION = 1;
 function record(value, message) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(message);
   return value;
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function stableIdentifierHash(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+function derivedIdentifier(base, label, discriminator, maximum = 100) {
+  const suffix = `:${label}:${stableIdentifierHash(discriminator)}`;
+  return `${base.slice(0, Math.max(1, maximum - suffix.length))}${suffix}`;
 }
 
 function boundedString(value, name, maximum = 200) {
@@ -3088,6 +3114,17 @@ function normalizeFormation(candidate, stateVersion) {
       100,
     ),
     name: boundedString(formation.name, "Formation name"),
+    ...(stateVersion >= ATTACHED_SEPARATION_BATTLE_STATE_VERSION &&
+    formation.separatedFromFormationId
+      ? {
+          separatedFromFormationId: boundedString(
+            formation.separatedFromFormationId,
+            "Separated parent formation id",
+            200,
+          ),
+          separationUnitKey: boundedString(formation.separationUnitKey, "Separated unit key", 100),
+        }
+      : {}),
     assignedTransportFormationId:
       typeof formation.assignedTransportFormationId === "string" &&
       formation.assignedTransportFormationId
@@ -3566,6 +3603,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     throw new Error("Executable Desperate Escape requires battle-state version 47");
   }
   if (
+    stateVersion < ATTACHED_SEPARATION_BATTLE_STATE_VERSION &&
+    event.type === "formation_separated"
+  ) {
+    throw new Error("Executable Attached-unit separation requires battle-state version 48");
+  }
+  if (
     stateVersion < MISSION_TRACKING_BATTLE_STATE_VERSION &&
     [
       "secondary_plan_configured",
@@ -3645,6 +3688,51 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     if (!formations.players.has(formation.playerId)) throw new Error("Formation player is unknown");
     normalized.formation = formation;
     formations.byId.set(formation.id, formation);
+    return normalized;
+  }
+  if (event.type === "formation_separated") {
+    normalized.parentFormationId = boundedString(
+      event.parentFormationId,
+      "Separated parent formation id",
+      200,
+    );
+    const parent = formations.byId.get(normalized.parentFormationId);
+    if (!parent) throw new Error("Separated parent formation is not registered");
+    normalized.causeEventId = boundedString(event.causeEventId, "Separation cause event id", 100);
+    if (!Array.isArray(event.children) || event.children.length < 1 || event.children.length > 16) {
+      throw new Error("Formation separation must contain 1 to 16 surviving units");
+    }
+    normalized.children = event.children.map((candidateChild) => {
+      const child = record(candidateChild, "Each separated unit must be an object");
+      const formation = normalizeFormation(child.formation, stateVersion);
+      if (
+        formation.playerId !== parent.playerId ||
+        formation.separatedFromFormationId !== parent.id ||
+        formations.byId.has(formation.id)
+      ) {
+        throw new Error("Separated unit identity does not match its parent formation");
+      }
+      const health = Object.fromEntries(
+        formation.segments.map((segment) => [
+          segment.id,
+          normalizeHealth(child.health?.[segment.id], segment, "Separated unit"),
+        ]),
+      );
+      formations.byId.set(formation.id, formation);
+      return { formation, health };
+    });
+    const parentSegmentIds = new Set(parent.segments.map((segment) => segment.id));
+    const childSegmentIds = normalized.children.flatMap((child) =>
+      child.formation.segments.map((segment) => segment.id),
+    );
+    if (
+      new Set(childSegmentIds).size !== childSegmentIds.length ||
+      childSegmentIds.some((segmentId) => !parentSegmentIds.has(segmentId))
+    ) {
+      throw new Error("Separated units must partition surviving parent segments");
+    }
+    formations.byId.delete(parent.id);
+    normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
   if (event.type === "formation_configured") {
@@ -5680,6 +5768,7 @@ export function normalizeBattleState(candidate) {
       BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION,
       COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION,
       DESPERATE_ESCAPE_BATTLE_STATE_VERSION,
+      ATTACHED_SEPARATION_BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
     throw new Error(`Unsupported battle state version: ${String(state.version)}`);
@@ -5758,6 +5847,7 @@ export function normalizeBattleState(candidate) {
         SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION,
         BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION,
         COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION,
+        DESPERATE_ESCAPE_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -6052,6 +6142,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= ATTACHED_SEPARATION_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyAttachedSeparationThroughSequence = nonnegativeInteger(
+        migration.legacyAttachedSeparationThroughSequence,
+        "Legacy Attached-unit separation event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -6065,6 +6162,7 @@ export function normalizeBattleState(candidate) {
     normalized.migration?.sourceVersion !== FACTION_RULE_STATE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== BATTLE_SHOCK_COMPARATOR_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION &&
+    normalized.migration?.sourceVersion !== DESPERATE_ESCAPE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== ENDPOINT_CLEARANCE_BATTLE_STATE_VERSION &&
     normalized.migration?.sourceVersion !== OBJECTIVE_CONTROL_BATTLE_STATE_VERSION &&
@@ -6109,6 +6207,111 @@ function initialHealth(formation) {
       { modelsRemaining: segment.startingModels, woundsLost: 0 },
     ]),
   );
+}
+
+function projectedSeparatedFormation(parent, segments, index) {
+  const savedUnitIds = new Set(segments.map((segment) => segment.savedUnitId));
+  const modelIds = new Set(segments.flatMap((segment) => segment.modelIds ?? []));
+  const unitNames = segments
+    .map((segment) => segment.unitName)
+    .filter((value, position, all) => all.indexOf(value) === position);
+  const separationUnitKey = [...savedUnitIds].sort().join("+");
+  const discriminator = `${index}:${separationUnitKey}`;
+  const id = derivedIdentifier(parent.id, "unit", discriminator);
+  const transportOptions = (parent.transportOptions ?? []).map((option) => ({
+    ...option,
+    assignments: option.assignments.filter((assignment) =>
+      savedUnitIds.has(assignment.sourceSavedUnitId),
+    ),
+  }));
+  return {
+    id,
+    playerId: parent.playerId,
+    sourceFormationId: segments[0].savedUnitId,
+    name: unitNames.join(" + "),
+    separatedFromFormationId: parent.id,
+    separationUnitKey:
+      separationUnitKey.length <= 100
+        ? separationUnitKey
+        : derivedIdentifier([...savedUnitIds].sort()[0], "group", separationUnitKey),
+    assignedTransportFormationId: parent.assignedTransportFormationId,
+    transportOptions,
+    keywords: [
+      ...new Set(
+        segments.flatMap((segment) => segment.keywords ?? []).map((value) => value.toLowerCase()),
+      ),
+    ],
+    hasWaaaghAbility: parent.hasWaaaghAbility,
+    hasOathOfMomentAbility: parent.hasOathOfMomentAbility,
+    hasShadowInTheWarpAbility: parent.hasShadowInTheWarpAbility,
+    reanimationProtocolSavedUnitIds: (parent.reanimationProtocolSavedUnitIds ?? []).filter(
+      (savedUnitId) => savedUnitIds.has(savedUnitId),
+    ),
+    deploymentTraits: {
+      dedicatedTransport: segments.some((segment) =>
+        (segment.keywords ?? []).some((keyword) => keyword.toLowerCase() === "dedicated transport"),
+      ),
+      aircraft: segments.some((segment) =>
+        (segment.keywords ?? []).some((keyword) => keyword.toLowerCase() === "aircraft"),
+      ),
+      hover:
+        parent.deploymentTraits?.hover === true &&
+        segments.some((segment) =>
+          (segment.keywords ?? []).some((keyword) => keyword.toLowerCase() === "aircraft"),
+        ),
+    },
+    defensiveEquipmentCounts: Object.fromEntries(
+      Object.entries(parent.defensiveEquipmentCounts ?? {}).filter(([key]) =>
+        [...savedUnitIds].some((savedUnitId) => key.startsWith(`${savedUnitId}::`)),
+      ),
+    ),
+    weaponBearerTracking: parent.weaponBearerTracking,
+    modelInstances: (parent.modelInstances ?? []).filter((model) => modelIds.has(model.id)),
+    weaponInventory: (parent.weaponInventory ?? []).filter((group) =>
+      savedUnitIds.has(group.sourceSavedUnitId),
+    ),
+    segments: segments.map((segment) => ({
+      ...segment,
+      role: "standalone",
+      modelIds: [...(segment.modelIds ?? [])],
+      weaponCopies: [...(segment.weaponCopies ?? [])],
+    })),
+  };
+}
+
+function attachedSeparationPlan(formation) {
+  const leaders = formation.segments.filter((segment) => segment.role === "leader");
+  const bodyguard = formation.segments.filter((segment) =>
+    ["bodyguard", "joined"].includes(segment.role),
+  );
+  if (leaders.length === 0 || bodyguard.length === 0) return [];
+  const live = (segment) => formation.health[segment.id].modelsRemaining > 0;
+  const liveLeaders = leaders.filter(live);
+  const liveBodyguard = bodyguard.filter(live);
+  if (liveLeaders.length > 0 === liveBodyguard.length > 0) return [];
+  const groups = [];
+  if (liveBodyguard.length > 0) {
+    groups.push(bodyguard);
+  } else {
+    const bySavedUnitId = new Map();
+    for (const segment of leaders) {
+      const group = bySavedUnitId.get(segment.savedUnitId) ?? [];
+      group.push(segment);
+      bySavedUnitId.set(segment.savedUnitId, group);
+    }
+    groups.push(...bySavedUnitId.values());
+  }
+  return groups
+    .map((segments, index) => {
+      const formationProjection = projectedSeparatedFormation(formation, segments, index);
+      return {
+        formation: formationProjection,
+        health: Object.fromEntries(
+          segments.map((segment) => [segment.id, { ...formation.health[segment.id] }]),
+        ),
+      };
+    })
+    .filter((child) => Object.values(child.health).some((health) => health.modelsRemaining > 0));
 }
 
 function commandBattleShockUnitFacts(formation) {
@@ -7323,6 +7526,8 @@ export function replayBattleState(state) {
   const movementStartsByFormation = new Map();
   const desperateEscapeTests = [];
   const desperateEscapeCasualtyResolutions = [];
+  const formationSeparations = [];
+  const pendingAttachedSeparations = [];
   const chargeDeclarationsByFormation = new Map();
   const fireOverwatches = [];
   const fireOverwatchPasses = [];
@@ -7513,6 +7718,10 @@ export function replayBattleState(state) {
     state.version < DESPERATE_ESCAPE_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyDesperateEscapeThroughSequence ?? 0);
+  const legacyAttachedSeparationThroughSequence =
+    state.version < ATTACHED_SEPARATION_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyAttachedSeparationThroughSequence ?? 0);
   const legacyTerrainVisibilityThroughSequence =
     state.version < TERRAIN_VISIBILITY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
@@ -7660,7 +7869,9 @@ export function replayBattleState(state) {
       }
     }
     for (const selection of grimResolveSelectionsByPlayer.values()) {
-      objectiveControlModifiersByFormation.set(selection.formationId, 1);
+      for (const formationId of selection.formationIds ?? [selection.formationId]) {
+        objectiveControlModifiersByFormation.set(formationId, 1);
+      }
     }
     return { battleShockedObjectiveControlByFormation, objectiveControlModifiersByFormation };
   };
@@ -8089,7 +8300,172 @@ export function replayBattleState(state) {
       });
     }
   };
+  const scheduleAttachedSeparation = (formationId, causeEventId, due) => {
+    const formation = formations.get(formationId);
+    const planned = formation ? attachedSeparationPlan(formation) : [];
+    const existingIndex = pendingAttachedSeparations.findIndex(
+      (pending) => pending.parentFormationId === formationId,
+    );
+    if (planned.length === 0) {
+      if (existingIndex >= 0) pendingAttachedSeparations.splice(existingIndex, 1);
+      return;
+    }
+    const pending = { parentFormationId: formationId, causeEventId, due };
+    if (existingIndex >= 0) pendingAttachedSeparations[existingIndex] = pending;
+    else pendingAttachedSeparations.push(pending);
+  };
+  const dueAttachedSeparation = () => pendingAttachedSeparations.find((pending) => pending.due);
+  const moveKeyedFormationState = (map, parentId, children, transform = (value) => value) => {
+    if (!map.has(parentId)) return;
+    const value = map.get(parentId);
+    map.delete(parentId);
+    for (const child of children) map.set(child.formation.id, transform(value, child));
+  };
+  const splitPosition = (position, child) => {
+    if (!position?.models) return position;
+    const modelIds = new Set(child.formation.modelInstances.map((model) => model.id));
+    return { ...position, models: position.models.filter((model) => modelIds.has(model.modelId)) };
+  };
+  const applyAttachedSeparation = (parent, children) => {
+    const parentId = parent.id;
+    const childIds = children.map((child) => child.formation.id);
+    formations.delete(parentId);
+    for (const child of children) {
+      formations.set(child.formation.id, {
+        ...child.formation,
+        health: structuredClone(child.health),
+      });
+    }
+    moveKeyedFormationState(deploymentByFormation, parentId, children, (value, child) => ({
+      ...value,
+      formationId: child.formation.id,
+    }));
+    if (deployedFormationIds.delete(parentId))
+      childIds.forEach((id) => deployedFormationIds.add(id));
+    moveKeyedFormationState(modelPlacementsByFormation, parentId, children, splitPosition);
+    moveKeyedFormationState(currentModelPositionsByFormation, parentId, children, splitPosition);
+    moveKeyedFormationState(modelPositionHistoryByFormation, parentId, children, (history, child) =>
+      history.map((position) => splitPosition(position, child)),
+    );
+    moveKeyedFormationState(modelLocationHistoryByFormation, parentId, children, (history) =>
+      structuredClone(history),
+    );
+    terrainClearanceFactsByFormation.delete(parentId);
+    if (geometryStaleFormationIds.delete(parentId))
+      childIds.forEach((id) => geometryStaleFormationIds.add(id));
+    moveKeyedFormationState(reserveArrivals, parentId, children, (value, child) => ({
+      ...value,
+      formationId: child.formation.id,
+    }));
+    moveKeyedFormationState(embarkedByFormation, parentId, children);
+    moveKeyedFormationState(disembarkedByFormation, parentId, children, (value, child) => ({
+      ...value,
+      formationId: child.formation.id,
+    }));
+    moveKeyedFormationState(movementByFormation, parentId, children, (value, child) => ({
+      ...value,
+      formationId: child.formation.id,
+    }));
+    moveKeyedFormationState(movementStartsByFormation, parentId, children, (value, child) => ({
+      ...value,
+      formationId: child.formation.id,
+    }));
+    moveKeyedFormationState(chargeByFormation, parentId, children, (value, child) => ({
+      ...value,
+      formationId: child.formation.id,
+    }));
+    moveKeyedFormationState(chargeDeclarationsByFormation, parentId, children, (value, child) => ({
+      ...value,
+      formationId: child.formation.id,
+    }));
+    moveKeyedFormationState(battleShockedFormations, parentId, children, (value, child) => ({
+      ...value,
+      formationId: child.formation.id,
+    }));
+    if (pendingFireOverwatch?.targetFormationId === parentId) {
+      pendingFireOverwatch = {
+        ...pendingFireOverwatch,
+        targetFormationId: childIds[0],
+        targetFormationIds: childIds,
+      };
+    }
+    if (pendingCounterOffensive) {
+      const triggerFormationIds =
+        pendingCounterOffensive.triggerFormationId === parentId
+          ? childIds
+          : (pendingCounterOffensive.triggerFormationIds ?? [
+              pendingCounterOffensive.triggerFormationId,
+            ]);
+      const candidateFormationIds = [
+        ...new Set(
+          pendingCounterOffensive.candidateFormationIds.flatMap((formationId) =>
+            formationId === parentId ? childIds : formationId,
+          ),
+        ),
+      ].sort();
+      pendingCounterOffensive = {
+        ...pendingCounterOffensive,
+        triggerFormationId: triggerFormationIds[0] ?? "",
+        triggerFormationIds,
+        candidateFormationIds,
+      };
+    }
+    for (const completedKey of [...completedActivations]) {
+      if (!completedKey.endsWith(`:${parentId}`)) continue;
+      const prefix = completedKey.slice(0, -parentId.length);
+      for (const childId of childIds) completedActivations.add(`${prefix}${childId}`);
+    }
+    for (const selections of [grimResolveSelectionsByPlayer, oathOfMomentSelectionsByPlayer]) {
+      for (const [playerId, selection] of selections) {
+        const selectedIds = selection.formationIds ?? [selection.formationId];
+        if (!selectedIds.includes(parentId)) continue;
+        const formationIds = [
+          ...new Set(
+            selectedIds.flatMap((formationId) =>
+              formationId === parentId ? childIds : formationId,
+            ),
+          ),
+        ];
+        selections.set(playerId, {
+          ...selection,
+          formationId: formationIds[0] ?? "",
+          formationIds,
+        });
+      }
+    }
+    for (const [effectId, effect] of [...effects]) {
+      if (effect.targetFormationId !== parentId && effect.sourceFormationId !== parentId) continue;
+      effects.delete(effectId);
+      for (const child of children) {
+        const childEffectId = derivedIdentifier(effectId, "split", child.formation.id);
+        effects.set(childEffectId, {
+          ...effect,
+          id: childEffectId,
+          ...(effect.targetFormationId === parentId
+            ? { targetFormationId: child.formation.id }
+            : {}),
+          ...(effect.sourceFormationId === parentId
+            ? { sourceFormationId: child.formation.id }
+            : {}),
+        });
+      }
+    }
+    if (activeMissionActions.has(parentId)) {
+      const action = activeMissionActions.get(parentId);
+      activeMissionActions.delete(parentId);
+      failedMissionActions.push({
+        ...action,
+        failureReason: "The Attached unit separated into independent units",
+        failureEventId: formationSeparations.at(-1)?.id ?? "",
+        failureClock: { ...clock },
+      });
+    }
+  };
   for (const event of state.events) {
+    const requiredSeparation = dueAttachedSeparation();
+    if (requiredSeparation && event.type !== "formation_separated") {
+      throw new Error("Resolve the pending Attached-unit separation before continuing");
+    }
     if (pendingShadowInTheWarp && event.type !== "shadow_in_the_warp_test_resolved") {
       throw new Error("Resolve every pending Shadow in the Warp test before continuing");
     }
@@ -8157,6 +8533,7 @@ export function replayBattleState(state) {
         "fire_overwatch_passed",
         "desperate_escape_tests_recorded",
         "desperate_escape_casualties_resolved",
+        "formation_separated",
       ].includes(event.type)
     ) {
       throw new Error("Resolve or pass the pending Fire Overwatch window first");
@@ -8181,7 +8558,9 @@ export function replayBattleState(state) {
     }
     if (
       pendingCounterOffensive &&
-      !["counter_offensive_resolved", "counter_offensive_passed"].includes(event.type)
+      !["formation_separated", "counter_offensive_resolved", "counter_offensive_passed"].includes(
+        event.type,
+      )
     ) {
       throw new Error("Resolve or pass the pending Counter-offensive window first");
     }
@@ -8211,6 +8590,7 @@ export function replayBattleState(state) {
         "transport_destroyed_resolved",
         "hazardous_tests_recorded",
         "hazardous_damage_resolved",
+        "formation_separated",
         "activation_completed",
       ].includes(event.type)
     ) {
@@ -8252,6 +8632,25 @@ export function replayBattleState(state) {
         })),
         health: initialHealth(event.formation),
       });
+      continue;
+    }
+    if (event.type === "formation_separated") {
+      const pending = dueAttachedSeparation();
+      const parent = formations.get(event.parentFormationId);
+      const expectedChildren = parent ? attachedSeparationPlan(parent) : [];
+      if (
+        !pending ||
+        pending.parentFormationId !== event.parentFormationId ||
+        pending.causeEventId !== event.causeEventId ||
+        !parent ||
+        !sameBattleClock(event.clock, clock) ||
+        canonicalJson(event.children) !== canonicalJson(expectedChildren)
+      ) {
+        throw new Error("Attached-unit separation does not match the canonical surviving units");
+      }
+      formationSeparations.push(event);
+      applyAttachedSeparation(parent, event.children);
+      pendingAttachedSeparations.splice(pendingAttachedSeparations.indexOf(pending), 1);
       continue;
     }
     if (event.type === "table_geometry_recorded") {
@@ -8747,6 +9146,10 @@ export function replayBattleState(state) {
       requireTerrainClearance(event.formationId, event.position, event.sequence);
       requireExecutableCoherency(event.formationId, event.sequence);
       pendingModelPosition = queuedModelPositions.shift() ?? null;
+      const waitingSeparation = pendingAttachedSeparations.find(
+        (pending) => pending.parentFormationId === event.formationId,
+      );
+      if (waitingSeparation) waitingSeparation.due = true;
       if (completed.fireOverwatchTrigger) {
         pendingFireOverwatch = {
           triggerEventId: completed.referenceEventId,
@@ -8972,7 +9375,10 @@ export function replayBattleState(state) {
       }
       grimResolveSelectionKeys.add(selectionKey);
       grimResolveSelections.push(event);
-      grimResolveSelectionsByPlayer.set(event.playerId, event);
+      grimResolveSelectionsByPlayer.set(event.playerId, {
+        ...event,
+        formationIds: [event.formationId],
+      });
       continue;
     }
     if (event.type === "oath_of_moment_selected") {
@@ -9004,7 +9410,10 @@ export function replayBattleState(state) {
       }
       oathOfMomentSelectionKeys.add(selectionKey);
       oathOfMomentSelections.push(event);
-      oathOfMomentSelectionsByPlayer.set(event.playerId, event);
+      oathOfMomentSelectionsByPlayer.set(event.playerId, {
+        ...event,
+        formationIds: [event.formationId],
+      });
       continue;
     }
     if (event.type === "reanimation_protocols_activated") {
@@ -10305,6 +10714,9 @@ export function replayBattleState(state) {
             appliedAt: event.clock,
           });
         }
+        if (event.sequence > legacyAttachedSeparationThroughSequence) {
+          scheduleAttachedSeparation(passenger.formationId, event.id, !requiresModelPosition);
+        }
         const nestedPassengers = [...embarkedByFormation]
           .filter(([, transportId]) => transportId === passenger.formationId)
           .map(([formationId]) => formationId)
@@ -10465,6 +10877,9 @@ export function replayBattleState(state) {
       refreshGeometryStaleness(event.formationId);
       desperateEscapeCasualtyResolutions.push(event);
       pendingDesperateEscape = null;
+      if (event.sequence > legacyAttachedSeparationThroughSequence) {
+        scheduleAttachedSeparation(event.formationId, event.id, true);
+      }
       if (formationDestroyed(formation)) {
         movementStartsByFormation.delete(event.formationId);
         pendingFireOverwatch = null;
@@ -10843,7 +11258,9 @@ export function replayBattleState(state) {
       if (
         !pendingFireOverwatch ||
         event.triggerEventId !== pendingFireOverwatch.triggerEventId ||
-        event.targetFormationId !== pendingFireOverwatch.targetFormationId ||
+        !(
+          pendingFireOverwatch.targetFormationIds ?? [pendingFireOverwatch.targetFormationId]
+        ).includes(event.targetFormationId) ||
         !sameBattleClock(event.clock, clock)
       ) {
         throw new Error("Fire Overwatch does not match the pending reaction window");
@@ -11502,6 +11919,9 @@ export function replayBattleState(state) {
         formation.health[segment.id] = { ...outcome.after };
       }
       refreshGeometryStaleness(event.formationId);
+      if (event.sequence > legacyAttachedSeparationThroughSequence) {
+        scheduleAttachedSeparation(event.formationId, event.id, false);
+      }
       hazardousDamageResolutions.push(event);
       const resolvedTestIndices = [...pendingHazardous.resolvedTestIndices, event.testIndex];
       const failedTestIndices = pendingHazardous.failedTestIndices.slice(1);
@@ -11566,6 +11986,7 @@ export function replayBattleState(state) {
       activeRangedDeclarationSet = null;
       rangedDeclarationDraft = [];
       readyRangedAttacks = [];
+      for (const pending of pendingAttachedSeparations) pending.due = true;
       if (event.activationType === "fight") {
         clock = {
           ...clock,
@@ -12430,8 +12851,8 @@ export function replayBattleState(state) {
               event.weaponId,
             )
           : null;
-        if (!locked) {
-          throw new Error("Attack weapon is absent from the locked Hazardous inventory");
+        if (!locked || locked.profile.type !== event.weaponType) {
+          throw new Error("Attack weapon is absent from the locked inventory for its weapon type");
         }
         hazardousWeaponUsed = locked.profile.hasHazardous;
       }
@@ -12484,6 +12905,9 @@ export function replayBattleState(state) {
         throw new Error("A formation cannot contain more than one wounded model");
       }
       refreshGeometryStaleness(event.targetFormationId);
+      if (event.sequence > legacyAttachedSeparationThroughSequence) {
+        scheduleAttachedSeparation(event.targetFormationId, event.id, false);
+      }
       attacks.set(event.id, event);
       activeAttackIds.push(event.id);
       targetedFormationIds.add(event.targetFormationId);
@@ -12571,6 +12995,13 @@ export function replayBattleState(state) {
     }
     refreshGeometryStaleness(reverted.targetFormationId);
     activeAttackIds.pop();
+    if (event.sequence > legacyAttachedSeparationThroughSequence) {
+      const previousCause = [...activeAttackIds]
+        .reverse()
+        .map((id) => attacks.get(id))
+        .find((attack) => attack?.targetFormationId === reverted.targetFormationId);
+      scheduleAttachedSeparation(reverted.targetFormationId, previousCause?.id ?? event.id, false);
+    }
     const revertedActivationWideDeclaration = activeRangedDeclarationSet?.declarations.some(
       (declaration) => declaration.id === reverted.targetEligibilityEventId,
     );
@@ -12771,6 +13202,11 @@ export function replayBattleState(state) {
     pendingShadowInTheWarp: shadowInTheWarpPendingState,
     commandBattleShockResolutions,
     pendingCommandBattleShock: commandBattleShockPending,
+    formationSeparations,
+    pendingAttachedSeparations: pendingAttachedSeparations.map((pending) => ({
+      ...pending,
+      children: attachedSeparationPlan(formations.get(pending.parentFormationId)),
+    })),
     tableGeometry,
     terrainFootprints,
     terrainVisibility,
@@ -12883,6 +13319,24 @@ export function replayBattleState(state) {
 
 function appendEvent(state, event) {
   return normalizeBattleState({ ...state, events: [...state.events, event] });
+}
+
+function resolveDueAttachedSeparations(state, idPrefix, at) {
+  let next = state;
+  let index = 0;
+  while (true) {
+    const pending = replayBattleState(next).pendingAttachedSeparations.find(
+      (candidate) => candidate.due,
+    );
+    if (!pending) return next;
+    index += 1;
+    next = resolveAttachedUnitSeparation(
+      next,
+      pending.parentFormationId,
+      derivedIdentifier(idPrefix, "separation", `${index}:${pending.parentFormationId}`),
+      at,
+    );
+  }
 }
 
 export function configureBattleTableGeometry(state, geometry, id, at) {
@@ -13044,7 +13498,7 @@ export function recordModelPositions(state, formationId, position, id, at) {
   if (!pending || pending.formationId !== formationId) {
     throw new Error("No per-model position snapshot is pending for this formation");
   }
-  return appendEvent(state, {
+  const next = appendEvent(state, {
     version: BATTLE_EVENT_VERSION,
     id,
     sequence: state.events.length + 1,
@@ -13053,6 +13507,7 @@ export function recordModelPositions(state, formationId, position, id, at) {
     formationId,
     position,
   });
+  return resolveDueAttachedSeparations(next, id, at);
 }
 
 export function arriveFromReserves(
@@ -13318,6 +13773,7 @@ export function battleGrimResolveState(state, playerId, replayedBattle = null) {
   return {
     sourceLocked,
     activeFormationId: replayed.grimResolveSelectionsByPlayer.get(playerId)?.formationId ?? "",
+    activeFormationIds: replayed.grimResolveSelectionsByPlayer.get(playerId)?.formationIds ?? [],
     selectedThisCommand: selectedThisCommand ?? null,
     eligibleFormationIds,
     available: Boolean(
@@ -13452,6 +13908,8 @@ export function battleOathOfMomentState(state, playerId, replayedBattle = null) 
     sourceLocked,
     activeTargetFormationId:
       replayed.oathOfMomentSelectionsByPlayer.get(playerId)?.formationId ?? "",
+    activeTargetFormationIds:
+      replayed.oathOfMomentSelectionsByPlayer.get(playerId)?.formationIds ?? [],
     selectedThisCommand: selectedThisCommand ?? null,
     eligibleFormationIds,
     available: Boolean(
@@ -13499,12 +13957,16 @@ export function battleOathOfMomentAttackFacts(state, formationId, replayedBattle
   if (!formation) throw new Error("Oath of Moment attacker formation is not registered");
   const oath = battleOathOfMomentState(state, formation.playerId, replayed);
   const selection = replayed.oathOfMomentSelectionsByPlayer.get(formation.playerId) ?? null;
-  const target = selection ? replayed.formations.get(selection.formationId) : null;
+  const targetFormationIds = selection?.formationIds ?? (selection ? [selection.formationId] : []);
+  const targets = targetFormationIds
+    .map((targetFormationId) => replayed.formations.get(targetFormationId))
+    .filter(Boolean);
   const sourceFaction = oath.sourceLocked ? 1 : 0;
   const activeTarget = selection ? 1 : 0;
   const selectedAtCommandStart =
     selection?.clock.phase === "command" && selection.clock.step === "start" ? 1 : 0;
-  const targetIsOpponent = target && target.playerId !== formation.playerId ? 1 : 0;
+  const targetIsOpponent =
+    targets.length > 0 && targets.every((target) => target.playerId !== formation.playerId) ? 1 : 0;
   const attackerHasAbility = formation.hasOathOfMomentAbility ? 1 : 0;
   const hitReroll = activeTarget === 1 && attackerHasAbility === 1 ? 1 : 0;
   const values = [
@@ -13521,6 +13983,7 @@ export function battleOathOfMomentAttackFacts(state, formationId, replayedBattle
     sourceLocked: sourceFaction === 1,
     hasAbility: attackerHasAbility === 1,
     activeTargetFormationId: selection?.formationId ?? "",
+    activeTargetFormationIds: targetFormationIds,
     hitReroll: hitReroll === 1,
     values,
     valid: oathOfMomentAttackStateIsValid(...values),
@@ -14068,7 +14531,7 @@ export function resolveDesperateEscapeCasualties(state, destroyedModelIds, id, a
       allocation.before.woundsLost
     );
   }, 0);
-  return appendEvent(state, {
+  const next = appendEvent(state, {
     version: BATTLE_EVENT_VERSION,
     id,
     sequence: state.events.length + 1,
@@ -14081,6 +14544,7 @@ export function resolveDesperateEscapeCasualties(state, destroyedModelIds, id, a
     summary: { damage, modelsDestroyed: destroyedModelIds.length },
     clock: replayed.clock,
   });
+  return resolveDueAttachedSeparations(next, id, at);
 }
 
 export function embarkFormation(
@@ -14187,7 +14651,7 @@ export function resolveDestroyedTransport(
       allocations: resolved.allocations,
     };
   });
-  return appendEvent(state, {
+  const next = appendEvent(state, {
     version: BATTLE_EVENT_VERSION,
     id,
     sequence: state.events.length + 1,
@@ -14200,6 +14664,7 @@ export function resolveDestroyedTransport(
     passengers,
     clock: pending.clock,
   });
+  return resolveDueAttachedSeparations(next, id, at);
 }
 
 export function battleFormationEmbarkedTransport(state, formationId) {
@@ -14767,6 +15232,7 @@ export function startFireOverwatch(
     shootingEligibilityReason = "",
     outOfPhaseRestrictionsConfirmed = false,
     outOfPhaseRestrictionsReason = "",
+    targetFormationId = "",
   } = {},
   id,
   at,
@@ -14774,6 +15240,11 @@ export function startFireOverwatch(
   const replayed = replayBattleState(state);
   const pending = replayed.pendingFireOverwatch;
   if (!pending) throw new Error("No Fire Overwatch window is pending");
+  const targetFormationIds = pending.targetFormationIds ?? [pending.targetFormationId];
+  const selectedTargetFormationId = targetFormationId || pending.targetFormationId;
+  if (!targetFormationIds.includes(selectedTargetFormationId)) {
+    throw new Error("Fire Overwatch target is not one of the surviving triggering units");
+  }
   const formation = replayed.formations.get(formationId);
   if (!formation) throw new Error("Fire Overwatch formation is unknown");
   const lowerKeywords = formation.keywords.map((keyword) => keyword.toLowerCase());
@@ -14787,7 +15258,7 @@ export function startFireOverwatch(
     type: "fire_overwatch_started",
     triggerEventId: pending.triggerEventId,
     formationId,
-    targetFormationId: pending.targetFormationId,
+    targetFormationId: selectedTargetFormationId,
     commandPointCost,
     commandPointsBefore,
     commandPointsAfter: commandPointsBefore - commandPointCost,
@@ -15007,7 +15478,7 @@ export function recordFightMove(
 export function completeFormationActivation(state, id, at) {
   const replayed = replayBattleState(state);
   if (!replayed.activeActivation) throw new Error("No formation activation is in progress");
-  return appendEvent(state, {
+  let next = appendEvent(state, {
     version: BATTLE_EVENT_VERSION,
     id,
     sequence: state.events.length + 1,
@@ -15015,6 +15486,26 @@ export function completeFormationActivation(state, id, at) {
     type: "activation_completed",
     formationId: replayed.activeActivation.formationId,
     activationType: replayed.activeActivation.activationType,
+    clock: replayed.clock,
+  });
+  return resolveDueAttachedSeparations(next, id, at);
+}
+
+export function resolveAttachedUnitSeparation(state, parentFormationId, id, at) {
+  const replayed = replayBattleState(state);
+  const pending = replayed.pendingAttachedSeparations.find(
+    (candidate) => candidate.due && candidate.parentFormationId === parentFormationId,
+  );
+  if (!pending) throw new Error("No Attached-unit separation is pending for this formation");
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "formation_separated",
+    parentFormationId,
+    causeEventId: pending.causeEventId,
+    children: pending.children,
     clock: replayed.clock,
   });
 }

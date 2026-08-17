@@ -160,11 +160,13 @@ export async function validateGoldenBattleReplay(candidate, sourceManifest) {
     if (!player || player.listId !== entry.listId) {
       throw new Error("Golden battle replay list pair does not match canonical state");
     }
-    const matchingFormation = [...replayed.formations.values()].some(
-      (formation) =>
-        formation.playerId === entry.playerId && formation.sourceFormationId === entry.savedUnitId,
+    const matchingRegistration = state.events.some(
+      (event) =>
+        event.type === "formation_registered" &&
+        event.formation.playerId === entry.playerId &&
+        event.formation.sourceFormationId === entry.savedUnitId,
     );
-    if (!matchingFormation) {
+    if (!matchingRegistration) {
       throw new Error("Golden battle replay saved-unit identity is not registered");
     }
     const selected = replayed.ruleCoverage.plan.players.find(

@@ -27,17 +27,37 @@ state.
 
 ## Prioritized backlog
 
-1. Add source-backed faction and detachment state transitions to canonical
+1. Execute Desperate Escape tests caused by moving over enemy models, including
+   the Titanic and Fly exemptions and the once-per-model boundary.
+2. Add source-backed faction and detachment state transitions to canonical
    battle replay, apply their consequences to attacks, objectives, and bounded
    resources, and lock each transition into another full-game faction/mission
    fixture. Then continue across every supported faction, mission, and
    composition boundary.
-2. Add reviewed curved surface primitives only when a supported physical terrain
+3. Add reviewed curved surface primitives only when a supported physical terrain
    set cannot be represented exactly by panels and simple polygon solids.
-3. Add deterministic automated policies and calibrated batch battle simulation
+4. Add deterministic automated policies and calibrated batch battle simulation
    only after the guided replay corpus closes the same rules boundaries.
 
 ## Completed cycles
+
+- 2026-08-12: Advanced canonical battle replay to version 48 with executable
+  Attached-unit separation. Destroying the last Bodyguard or attached Character
+  now produces independently selectable surviving units only after the attacking
+  unit finishes all attacks; multiple Characters split separately and retain
+  exact health, model and weapon identity, battlefield state, Battle-shock,
+  completed-activation state, Oath of Moment, Grim Resolve, and bounded
+  persisting effects. Joined Bodyguard components prevent premature separation,
+  and a mandatory split now precedes and remaps any Counter-offensive window.
+  Desperate Escape and destroyed-Transport casualties can trigger the same transition atomically.
+  Guided Play resolves saved-roster
+  selections to the appropriate child, and Fire Overwatch exposes a target
+  choice when multiple triggering survivors result. The public API reconstructs
+  each child through its parent's damage history, while native C and WebAssembly
+  validate an explicit no-health-change separation event. The pinned official
+  October 2025 Core Rules Updates pages 1 and 9, migration tests, regenerated
+  full-game fixtures, tamper tests, and cross-surface regression tests lock the
+  boundary. Next, execute Desperate Escape caused by moving over enemy models.
 
 - 2026-08-12: Advanced canonical battle replay to version 43 with source-locked
   Necrons Reanimation Protocols. At the end of each owning Command phase, every

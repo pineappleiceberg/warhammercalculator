@@ -866,6 +866,24 @@ casualties are recorded. Guided Play exposes the rolls and bounded casualty
 selection, while the replay API verifies every test through the ACSL-specified
 C/WebAssembly predicate. Version-46 and older histories retain an explicit
 migration boundary and receive no invented tests or casualties.
+Version 48 makes Attached-unit separation executable. When the final Bodyguard
+model or final attached Character is destroyed, replay waits until the attacking
+unit has resolved all of its attacks, then replaces the Attached formation with
+the independently surviving units at their original Starting Strength. Multiple
+surviving Characters become separate formations. Health, exact model and weapon
+identity, deployment and movement state, Battle-shock, source-locked Oath of
+Moment and Grim Resolve selections, and other persisting effects follow every
+applicable survivor; completed activations cannot be repeated after the split.
+Joined Bodyguard components count as surviving Bodyguard models, and a split at
+the end of a Fight activation is completed before Counter-offensive candidates
+are offered. Replayed attacks also fail closed if their locked weapon profile
+does not match the attack step's ranged or melee type.
+Desperate Escape and destroyed-Transport casualties resolve an immediately due
+split atomically, while Guided Play can select each resulting unit from the same
+saved roster. The public replay API reconstructs a child unit through its
+parent's earlier damage history and cross-checks the explicit no-health-change
+separation event through C/WebAssembly. Version-47 and older histories retain an
+explicit migration boundary and receive no invented separations.
 Version-25
 games migrate without invented terrain footprints, version-26 games migrate
 without invented deployment positions, and version-27 games migrate without
@@ -1530,16 +1548,13 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 
 ## Prioritized correctness backlog
 
-1. Split surviving Leader and Bodyguard units into independent live formations
-   when an Attached unit separates so Battle-shock and every later action can
-   apply independently to each resulting unit.
-2. Execute Desperate Escape tests triggered by physically moving over enemy
+1. Execute Desperate Escape tests triggered by physically moving over enemy
    models, including the Titanic and Fly exemptions and once-per-model boundary.
-3. Add reviewed curved movement-surface primitives only when panels and simple
+2. Add reviewed curved movement-surface primitives only when panels and simple
    polygon solids cannot represent a supported physical terrain set exactly.
-4. Source-lock another high-impact faction or detachment transition and extend
+3. Source-lock another high-impact faction or detachment transition and extend
    the full-game corpus across every supported faction and mission.
-5. Add deterministic automated policies and calibrated batch battle simulation
+4. Add deterministic automated policies and calibrated batch battle simulation
    after the guided replay corpus closes the same mandatory rule boundaries.
 
 ## Current boundaries

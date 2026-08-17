@@ -469,6 +469,7 @@ export default function PlayMode() {
     reviewedByPlayer: false,
   });
   const [fireOverwatchFormationId, setFireOverwatchFormationId] = useState("");
+  const [fireOverwatchTargetFormationId, setFireOverwatchTargetFormationId] = useState("");
   const [fireOverwatchDistance, setFireOverwatchDistance] = useState(24);
   const [fireOverwatchCommandPointCost, setFireOverwatchCommandPointCost] = useState(1);
   const [fireOverwatchCostOverrideReason, setFireOverwatchCostOverrideReason] = useState("");
@@ -1047,17 +1048,35 @@ export default function PlayMode() {
       if (player.listId !== targetListId) return false;
       return attackerListId !== targetListId || index === 1;
     })?.id ?? "player-2";
-  const targetBattleFormationId = targetFormation ? `${targetPlayerId}:${targetFormation.id}` : "";
-  const attackerBattleFormationId = attackerFormation
-    ? `${attackerPlayerId}:${attackerFormation.id}`
-    : "";
+  const replayedBattle = battleState ? replayBattleState(battleState) : null;
+  const currentBattleFormationId = (baseId: string, savedUnitId: string) => {
+    if (!replayedBattle || !baseId || replayedBattle.formations.has(baseId)) return baseId;
+    return (
+      [...replayedBattle.formations.values()].find(
+        (candidate) =>
+          candidate.separatedFromFormationId === baseId &&
+          candidate.segments.some((segment: { savedUnitId: string }) =>
+            savedUnitId ? segment.savedUnitId === savedUnitId : true,
+          ),
+      )?.id ?? baseId
+    );
+  };
+  const targetBattleFormationId = currentBattleFormationId(
+    targetFormation ? `${targetPlayerId}:${targetFormation.id}` : "",
+    targetUnitId,
+  );
+  const attackerBattleFormationId = currentBattleFormationId(
+    attackerFormation ? `${attackerPlayerId}:${attackerFormation.id}` : "",
+    attackerUnitId,
+  );
   const weaponSourceFormation =
     catalogue && attackerList && weaponSourceArmyUnit
       ? savedFormationForUnit(catalogue, attackerList, weaponSourceArmyUnit.id)
       : undefined;
-  const weaponSourceBattleFormationId = weaponSourceFormation
-    ? `${attackerPlayerId}:${weaponSourceFormation.id}`
-    : "";
+  const weaponSourceBattleFormationId = currentBattleFormationId(
+    weaponSourceFormation ? `${attackerPlayerId}:${weaponSourceFormation.id}` : "",
+    weaponSourceArmyUnit?.id ?? "",
+  );
   const weaponSourceFormationId = weaponSourceBattleFormationId;
   const unusedSelectedWeaponCount =
     battleState &&
@@ -1075,7 +1094,6 @@ export default function PlayMode() {
   const selectedDeclaredWeaponCount = selectedSourceEquipmentSegments.length
     ? selectedSourceEquipmentSegments.reduce((total, segment) => total + segment.count, 0)
     : profile.weaponCount;
-  const replayedBattle = battleState ? replayBattleState(battleState) : null;
   const battleRuleCoverageFailures =
     replayedBattle?.ruleCoverage?.report.results.filter(
       (entry: { permitted: boolean }) => !entry.permitted,
@@ -1276,6 +1294,14 @@ export default function PlayMode() {
   );
   const pendingBattleChoices = replayedBattle ? [...replayedBattle.pendingChoices.values()] : [];
   const pendingFireOverwatch = replayedBattle?.pendingFireOverwatch ?? null;
+  const fireOverwatchTargetFormationIds = pendingFireOverwatch
+    ? (pendingFireOverwatch.targetFormationIds ?? [pendingFireOverwatch.targetFormationId])
+    : [];
+  const selectedFireOverwatchTargetFormationId = fireOverwatchTargetFormationIds.includes(
+    fireOverwatchTargetFormationId,
+  )
+    ? fireOverwatchTargetFormationId
+    : (fireOverwatchTargetFormationIds[0] ?? "");
   const pendingGoToGround = replayedBattle?.pendingGoToGround ?? null;
   const pendingSmokescreen = replayedBattle?.pendingSmokescreen ?? null;
   const pendingRapidIngress = replayedBattle?.pendingRapidIngress ?? null;
@@ -1443,7 +1469,7 @@ export default function PlayMode() {
     : null;
   const targetFormationIsOathOfMomentTarget = Boolean(
     targetBattleFormationId &&
-      attackerOathOfMomentState?.activeTargetFormationId === targetBattleFormationId,
+      attackerOathOfMomentState?.activeTargetFormationIds.includes(targetBattleFormationId),
   );
   const targetBattleHealth =
     battleState && targetBattleFormationId
@@ -2519,8 +2545,11 @@ export default function PlayMode() {
     const nextTargetOathOfMoment = Boolean(
       battleState &&
         nextTargetBattleFormationId &&
-        battleOathOfMomentState(battleState, attackerPlayerId, replayedBattle)
-          .activeTargetFormationId === nextTargetBattleFormationId,
+        battleOathOfMomentState(
+          battleState,
+          attackerPlayerId,
+          replayedBattle,
+        ).activeTargetFormationIds.includes(nextTargetBattleFormationId),
     );
     const nextTargetOnObjective = false;
     const nextTargetObjectiveOwner = "unknown" as const;
@@ -5078,7 +5107,7 @@ export default function PlayMode() {
     try {
       const before = replayBattleState(battleState);
       const shooter = before.formations.get(selectedFireOverwatchFormationId);
-      const target = before.formations.get(pendingFireOverwatch.targetFormationId);
+      const target = before.formations.get(selectedFireOverwatchTargetFormationId);
       if (!shooter || !target) throw new Error("Fire Overwatch formations are unavailable");
       const next = startFireOverwatch(
         battleState,
@@ -5094,6 +5123,7 @@ export default function PlayMode() {
           shootingEligibilityReason: fireOverwatchEligibilityReason.trim(),
           outOfPhaseRestrictionsConfirmed: fireOverwatchOutOfPhaseConfirmed,
           outOfPhaseRestrictionsReason: fireOverwatchOutOfPhaseReason.trim(),
+          targetFormationId: selectedFireOverwatchTargetFormationId,
         },
         crypto.randomUUID(),
         battleState.events.length + 1,
@@ -7969,12 +7999,16 @@ export default function PlayMode() {
                         </div>
                       );
                     }
-                    if (!oath.activeTargetFormationId) return null;
+                    if (oath.activeTargetFormationIds.length === 0) return null;
                     return (
                       <strong key={`oath-${player.id}`}>
                         Oath of Moment ·{" "}
-                        {replayedBattle.formations.get(oath.activeTargetFormationId)?.name ??
-                          oath.activeTargetFormationId}
+                        {oath.activeTargetFormationIds
+                          .map(
+                            (formationId) =>
+                              replayedBattle.formations.get(formationId)?.name ?? formationId,
+                          )
+                          .join(" + ")}
                       </strong>
                     );
                   })}
@@ -8003,12 +8037,16 @@ export default function PlayMode() {
                         </div>
                       );
                     }
-                    if (!grimResolve.activeFormationId) return null;
+                    if (grimResolve.activeFormationIds.length === 0) return null;
                     return (
                       <strong key={player.id}>
                         Grim Resolve ·{" "}
-                        {replayedBattle.formations.get(grimResolve.activeFormationId)?.name ??
-                          grimResolve.activeFormationId}
+                        {grimResolve.activeFormationIds
+                          .map(
+                            (formationId) =>
+                              replayedBattle.formations.get(formationId)?.name ?? formationId,
+                          )
+                          .join(" + ")}
                       </strong>
                     );
                   })}
@@ -9625,6 +9663,21 @@ export default function PlayMode() {
                 </span>
                 <span>Available CP: {rapidIngressResponderCommandPoints}</span>
                 <div className="action-buttons">
+                  {fireOverwatchTargetFormationIds.length > 1 && (
+                    <label>
+                      <span>Triggering unit</span>
+                      <select
+                        value={selectedFireOverwatchTargetFormationId}
+                        onChange={(event) => setFireOverwatchTargetFormationId(event.target.value)}
+                      >
+                        {fireOverwatchTargetFormationIds.map((formationId: string) => (
+                          <option key={formationId} value={formationId}>
+                            {replayedBattle.formations.get(formationId)?.name ?? formationId}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   <label>
                     <span>Reserve formation</span>
                     <select
