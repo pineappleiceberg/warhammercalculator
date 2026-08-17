@@ -33,9 +33,9 @@ test("published coverage matrix is source-locked and identical to its data sourc
   assert.equal(matrix.sourceLocked, true);
   assert.equal(
     matrix.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v47",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v48",
   );
-  assert.equal(matrix.rules.length, 2976);
+  assert.equal(matrix.rules.length, 2977);
   assert.deepEqual(
     new Set(matrix.rules.map((rule) => rule.category)),
     new Set([
@@ -134,6 +134,17 @@ test("published coverage matrix is source-locked and identical to its data sourc
         { id: "core-rules-10e", pages: [11, 12] },
         { id: "core-rules-updates-10e-2025-10", pages: [1, 9, 18] },
       ],
+    },
+  );
+  assert.deepEqual(
+    matrix.rules.find((rule) => rule.id === "core.attached-unit-separation"),
+    {
+      id: "core.attached-unit-separation",
+      category: "core",
+      name: "Attached-unit separation",
+      status: "executable",
+      introducedBattleStateVersion: 48,
+      sources: [{ id: "core-rules-updates-10e-2025-10", pages: [1, 9] }],
     },
   );
   assert.equal(

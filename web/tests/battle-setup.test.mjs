@@ -2916,6 +2916,7 @@ test("migrates a version-2 roster battle with explicit untimed provenance", () =
     legacyBattleShockComparatorThroughSequence: 3,
     legacyCommandBattleShockThroughSequence: 3,
     legacyDesperateEscapeThroughSequence: 3,
+    legacyAttachedSeparationThroughSequence: 3,
   });
   assert.ok(migrated.events.some((event) => event.id === "legacy-attack"));
 });
@@ -2971,6 +2972,7 @@ test("migrates a partial version-1 log without changing attack ids or health", (
     legacyBattleShockComparatorThroughSequence: 3,
     legacyCommandBattleShockThroughSequence: 3,
     legacyDesperateEscapeThroughSequence: 3,
+    legacyAttachedSeparationThroughSequence: 3,
   });
   assert.deepEqual(
     migrated.events.map((event) => event.type),
@@ -3031,6 +3033,7 @@ test("migrates a version-3 guided battle without reclassifying timed events", ()
     legacyBattleShockComparatorThroughSequence: 2,
     legacyCommandBattleShockThroughSequence: 2,
     legacyDesperateEscapeThroughSequence: 2,
+    legacyAttachedSeparationThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).mission.name, "Custom mission");
 });
@@ -3084,6 +3087,7 @@ test("migrates a version-4 tracker battle with explicit unactioned provenance", 
     legacyBattleShockComparatorThroughSequence: 2,
     legacyCommandBattleShockThroughSequence: 2,
     legacyDesperateEscapeThroughSequence: 2,
+    legacyAttachedSeparationThroughSequence: 2,
   });
 });
 
@@ -3136,6 +3140,7 @@ test("migrates a version-5 action battle as already deployed without rewriting i
     legacyBattleShockComparatorThroughSequence: 2,
     legacyCommandBattleShockThroughSequence: 2,
     legacyDesperateEscapeThroughSequence: 2,
+    legacyAttachedSeparationThroughSequence: 2,
   });
   assert.equal(migrated.events.length, 3);
   migrated = startBattle(migrated, "player-1", "start-migrated", 3);
@@ -3194,6 +3199,7 @@ test("migrates a version-6 deployment battle with explicit unembarked provenance
     legacyBattleShockComparatorThroughSequence: 2,
     legacyCommandBattleShockThroughSequence: 2,
     legacyDesperateEscapeThroughSequence: 2,
+    legacyAttachedSeparationThroughSequence: 2,
   });
   assert.equal(replayBattleState(migrated).embarkedByFormation.size, 0);
 });
@@ -3247,6 +3253,7 @@ test("migrates a version-7 Transport battle with explicit legacy target provenan
     legacyBattleShockComparatorThroughSequence: 2,
     legacyCommandBattleShockThroughSequence: 2,
     legacyDesperateEscapeThroughSequence: 2,
+    legacyAttachedSeparationThroughSequence: 2,
   });
 });
 
@@ -3299,6 +3306,7 @@ test("migrates a version-8 target-eligibility battle with locked weapon provenan
     legacyBattleShockComparatorThroughSequence: 2,
     legacyCommandBattleShockThroughSequence: 2,
     legacyDesperateEscapeThroughSequence: 2,
+    legacyAttachedSeparationThroughSequence: 2,
   });
   assert.ok(battleFormation(migrated, "player-1:doom-scythe").weaponInventory.length > 0);
 });
@@ -4623,6 +4631,40 @@ test("migrates version-46 battles without inventing Desperate Escape tests", () 
   const replayed = replayBattleState(migrated);
   assert.equal(replayed.desperateEscapeTests.length, 0);
   assert.equal(replayed.pendingDesperateEscape, null);
+});
+
+test("migrates version-47 battles without inventing Attached-unit separations", () => {
+  const current = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    id: "version-47-attached-separation-state",
+  });
+  const versionFortySeven = normalizeBattleState({ ...current, version: 47 });
+  const migrated = initializeBattleForLists({
+    catalogue,
+    firstList: attackers,
+    secondList: defenders,
+    rulesSnapshot: "catalogue:test",
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: exactMissionOverrides,
+    state: versionFortySeven,
+    id: versionFortySeven.id,
+  });
+  assert.equal(migrated.version, BATTLE_STATE_VERSION);
+  assert.equal(migrated.migration.sourceVersion, 47);
+  assert.equal(
+    migrated.migration.legacyAttachedSeparationThroughSequence,
+    Math.max(...versionFortySeven.events.map((event) => event.sequence)),
+  );
+  const replayed = replayBattleState(migrated);
+  assert.equal(replayed.formationSeparations.length, 0);
+  assert.equal(replayed.pendingAttachedSeparations.length, 0);
 });
 
 test("marks exact geometry stale when casualties change live model identities and clears on undo", () => {

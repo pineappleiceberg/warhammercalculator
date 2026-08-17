@@ -128,6 +128,10 @@ ignoring a mandatory rule. Attack resolution alone does not satisfy this goal.
    Battle-shock, and repeat-use restrictions, deploys complete nested Transport
    trees as Reinforcements, keeps passengers embarked, and records the
    round-one source-rule and large-model Strategic Reserves exceptions.
+   Attached units now split into independent surviving Character and Bodyguard
+   formations at the published post-attack boundary, preserve original Starting
+   Strength and applicable persisting state, and remain independently selectable
+   in Guided Play and the replay API.
    Remaining work includes other reaction and Stratagem windows, full
    geometry-backed target eligibility, and
    geometry-backed engagement.

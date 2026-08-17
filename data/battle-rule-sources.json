@@ -118,7 +118,8 @@
         "duplicated Stealth abilities are not cumulative",
         "Fly movement through the air across the complete base or hull path, including vertical distance, whole-base clearance over uneven terrain, and ending with the model flat and in coherency",
         "Rapid Ingress Deep Strike permission for complete Deep Strike units, first-round out-of-phase eligibility, the prohibition on passengers disembarking that phase, and the large-model Strategic Reserves own-edge exception with its turn-long action restriction",
-        "Command Battle-shock duplicate-test boundary, Attached-unit split, and duration until the start of the owning player's next Command phase"
+        "Command Battle-shock duplicate-test boundary, Attached-unit split, and duration until the start of the owning player's next Command phase",
+        "immediate post-attack separation of surviving Character and Bodyguard units when the other part of an Attached unit is destroyed, with original Starting Strength and persisting effects inherited by every surviving unit"
       ]
     },
     {

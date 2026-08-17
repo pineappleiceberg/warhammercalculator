@@ -23,10 +23,10 @@
     }
   ],
   "sourceManifestVersion": 1,
-  "stateDigest": "59005252bc0e89ca7faf2ef5d1c5d82c7fb54cce6f267111d280e30aa4a3c17d",
-  "expectedDigest": "2731be9b2cf8eb3102bb51f6e3909ceb8cb6bdc7d9f334a2110be94c5d697a51",
+  "stateDigest": "2c9a711ca43798baa2d7419a181803e14eda9da21af45e4f3b5024afbefaec39",
+  "expectedDigest": "cccaca840c2cb01e53d48c56f5df3e98b3fa7ab6503f971980d6fe5a6ae28f0f",
   "expected": {
-    "stateVersion": 47,
+    "stateVersion": 48,
     "eventCount": 213,
     "eventTypeCounts": {
       "battle_started": 1,
@@ -282,10 +282,10 @@
     ]
   },
   "state": {
-    "version": 47,
+    "version": 48,
     "id": "golden-tyranids-vs-space-marines-v1",
     "createdAt": 0,
-    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:47",
+    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:48",
     "players": [
       {
         "id": "player-1",
@@ -561,7 +561,7 @@
         "type": "rule_coverage_configured",
         "coverage": {
           "schemaVersion": 1,
-          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v47",
+          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v48",
           "sourceLocks": [
             {
               "id": "core-rules-10e",
@@ -602,7 +602,8 @@
                 "core.fight-movement",
                 "core.hazardous",
                 "core.command-battle-shock",
-                "core.desperate-escape"
+                "core.desperate-escape",
+                "core.attached-unit-separation"
               ],
               "stratagemRuleIds": [
                 "stratagem.heroic-intervention",
@@ -687,7 +688,7 @@
             }
           },
           "report": {
-            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v47",
+            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v48",
             "permitted": true,
             "results": [
               {
@@ -804,6 +805,17 @@
                 "id": "core.desperate-escape",
                 "category": "core",
                 "name": "Battle-shocked Fall Back and Desperate Escape",
+                "status": "executable",
+                "sourceLocked": true,
+                "acknowledgementRequired": false,
+                "acknowledged": false,
+                "permitted": true,
+                "reason": "covered"
+              },
+              {
+                "id": "core.attached-unit-separation",
+                "category": "core",
+                "name": "Attached-unit separation",
                 "status": "executable",
                 "sourceLocked": true,
                 "acknowledgementRequired": false,

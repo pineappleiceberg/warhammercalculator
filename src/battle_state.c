@@ -1094,6 +1094,11 @@ bool whc_replay_battle_health_events(const uint32_t *profiles, uint32_t segment_
                 next[health_offset + 1u] = events[allocation_offset + 2u];
             }
             --active_count;
+        } else if (kind == WHC_BATTLE_EVENT_FORMATION_SEPARATION) {
+            if (allocation_count != 0u || reverts_event_index != 0u || expected_damage != 0u ||
+                expected_destroyed != 0u) {
+                return false;
+            }
         } else {
             return false;
         }

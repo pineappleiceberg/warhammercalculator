@@ -1480,6 +1480,44 @@ test("WebAssembly matches JavaScript for the versioned golden battle replay", as
   }
 });
 
+test("WebAssembly accepts a canonical no-health-change formation separation", () => {
+  const profiles = new Uint32Array([5, 1]);
+  const events = new Uint32Array(2 * 166);
+  events[0] = 1;
+  events[1] = 1;
+  events[2] = 1;
+  events[4] = 2;
+  events[6] = 0;
+  events[7] = 1;
+  events[8] = 0;
+  events[9] = 1;
+  events[10] = 2;
+  events[166] = 1;
+  events[167] = 8;
+  const profilesPointer = calculator._malloc(profiles.byteLength);
+  const eventsPointer = calculator._malloc(events.byteLength);
+  const healthPointer = calculator._malloc(8);
+  try {
+    new Uint32Array(calculator.HEAPU8.buffer, profilesPointer, profiles.length).set(profiles);
+    new Uint32Array(calculator.HEAPU8.buffer, eventsPointer, events.length).set(events);
+    assert.equal(
+      calculator._whc_replay_battle_health_events(
+        profilesPointer,
+        1,
+        eventsPointer,
+        2,
+        healthPointer,
+      ),
+      1,
+    );
+    assert.deepEqual([...new Uint32Array(calculator.HEAPU8.buffer, healthPointer, 2)], [1, 2]);
+  } finally {
+    calculator._free(profilesPointer);
+    calculator._free(eventsPointer);
+    calculator._free(healthPointer);
+  }
+});
+
 test("WebAssembly replays destroyed Transport passenger damage", () => {
   const profiles = new Uint32Array([2, 1]);
   const events = new Uint32Array(166);

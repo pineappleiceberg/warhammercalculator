@@ -321,7 +321,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const coverage = (await coverageResponse.json()).data;
   assert.equal(
     coverage.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v47",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v48",
   );
   assert.equal(coverage.sourceLocked, true);
   assert.equal(coverage.rules.length, coveredRuleCoverageMatrix.rules.length);
@@ -3108,6 +3108,32 @@ test("replays attached mixed-profile casualties and Reserve arrival through the 
     assert.equal(waaagh.active, false);
     assert.equal(waaagh.valid, true);
   }
+});
+
+test("replays a separated Character through its parent history in the public API and C ABI", async () => {
+  const worker = await loadWorker();
+  const context = { waitUntil() {}, passThroughOnException() {} };
+  const state = attachedGoldenBattleReplay.state;
+  const replayed = replayBattleState(state);
+  const character = [...replayed.formations.values()].find(
+    (formation) => formation.separatedFromFormationId === "player-1:guardians",
+  );
+  assert.ok(character);
+  const response = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battleState: state, formationId: character.id }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  const result = await response.json();
+  assert.deepEqual(result.data.health, character.health);
+  assert.deepEqual(result.data.health, {
+    "farseer:357:loadout:1": { modelsRemaining: 1, woundsLost: 0 },
+  });
 });
 
 test("replays source-locked table geometry through the JavaScript and C/WebAssembly API", async () => {
