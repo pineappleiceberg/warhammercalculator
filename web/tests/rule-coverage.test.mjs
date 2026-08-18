@@ -33,9 +33,9 @@ test("published coverage matrix is source-locked and identical to its data sourc
   assert.equal(matrix.sourceLocked, true);
   assert.equal(
     matrix.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v49",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-votann-v1-v50",
   );
-  assert.equal(matrix.rules.length, 2977);
+  assert.equal(matrix.rules.length, 2979);
   assert.deepEqual(
     new Set(matrix.rules.map((rule) => rule.category)),
     new Set([
@@ -122,6 +122,27 @@ test("published coverage matrix is source-locked and identical to its data sourc
       },
     );
   }
+  assert.deepEqual(
+    matrix.rules.find((rule) => rule.id === "faction.prioritised-efficiency"),
+    {
+      id: "faction.prioritised-efficiency",
+      category: "faction",
+      name: "Prioritised Efficiency",
+      status: "executable",
+      introducedBattleStateVersion: 50,
+      sources: [
+        {
+          id: "wahapedia-profile-export-2026-06-13",
+          records: [{ type: "faction", id: "LoV:ability:000010432" }],
+        },
+        { id: "leagues-of-votann-faction-pack-v1.0", pages: [1, 11] },
+      ],
+    },
+  );
+  assert.equal(
+    matrix.rules.find((rule) => rule.id === "faction.prioritised-efficiency-mobility")?.status,
+    "guided",
+  );
   assert.deepEqual(
     matrix.rules.find((rule) => rule.id === "core.command-battle-shock"),
     {
@@ -229,6 +250,37 @@ test("saved list identities select exact guided catalogue rules", () => {
     true,
   );
   assert.equal(binding.report.permitted, true);
+});
+
+test("Votann lists select executable combat rules and guided movement re-roll provenance", () => {
+  const matrix = normalizeRuleCoverageMatrix(coverageSource, sourceManifest);
+  const plan = deriveBattleRuleSelectionPlan(
+    matrix,
+    [{ id: "player-1" }, { id: "player-2" }],
+    [
+      { factionId: "LoV", units: [{ id: "uthar", unitId: "000002593" }] },
+      { factionId: "SM", units: [{ id: "brutalis", unitId: "000000136" }] },
+    ],
+    {
+      guidedReason: "Players will record final Advance and Charge rolls at the table",
+      players: {
+        "player-1": { detachmentSourceId: "000001137" },
+        "player-2": { detachmentSourceId: "000000750" },
+      },
+      missionSourceId: "chapter-approved-2025-26-v1.4-a",
+      terrainSourceId: "chapter-approved-2025-26-v1.4-layout-1",
+    },
+  );
+  assert.deepEqual(plan.players[0].faction.ruleIds, [
+    "faction.catalogue-lov",
+    "faction.prioritised-efficiency",
+    "faction.prioritised-efficiency-mobility",
+  ]);
+  assert.match(
+    plan.acknowledgements["faction.prioritised-efficiency-mobility"],
+    /Advance and Charge rolls/,
+  );
+  assert.equal(bindBattleRuleSelections(matrix, plan).report.permitted, true);
 });
 
 test("coverage gate requires acknowledgement for guided rules and fails closed", () => {

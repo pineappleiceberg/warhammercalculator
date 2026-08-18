@@ -24,6 +24,8 @@ import {
   battleGrimResolveState,
   battleOathOfMomentAttackFacts,
   battleOathOfMomentState,
+  battlePrioritisedEfficiencyAttackFacts,
+  battlePrioritisedEfficiencyState,
   battleReanimationProtocolsState,
   battleShadowInTheWarpState,
   callWaaagh,
@@ -35,6 +37,7 @@ import {
   completeFormationActivation,
   configureSecondaryMissionPlan,
   configureBattleMission,
+  configureBattleTableGeometry,
   configureBattleWeaponBearers,
   createBattleState,
   declareFormationCharge,
@@ -82,6 +85,7 @@ import {
   scoreSecondaryMissionCard,
   selectGrimResolveFormation,
   selectOathOfMomentTarget,
+  togglePrioritisedEfficiency,
   unleashShadowInTheWarp,
   setBattleObjectiveControl,
   setFormationBattleShocked,
@@ -93,6 +97,7 @@ import {
   commandBattleShockTestIsValid,
 } from "../lib/battle-state.mjs";
 import { battleAttackWindow } from "../lib/battle-clock.mjs";
+import { battleRuleSelectionIds } from "../lib/battle-rule-selection.mjs";
 import { applyFireOverwatchAttackRules } from "../lib/fire-overwatch.mjs";
 import { applyGoToGroundAttackEffects } from "../lib/go-to-ground.mjs";
 import { applySmokescreenAttackEffects } from "../lib/smokescreen.mjs";
@@ -575,6 +580,44 @@ function newTyranidsBattle() {
     datasheetResult,
     factionResult,
   );
+  return normalizeBattleState({
+    ...state,
+    events: [{ ...state.events[0], coverage }],
+  });
+}
+
+function newVotannBattle(mercenaryOathband = false) {
+  const state = newBattle();
+  const coverage = structuredClone(state.events[0].coverage);
+  coverage.plan.players[0].faction = {
+    sourceId: "LoV",
+    ruleIds: ["faction.prioritised-efficiency"],
+  };
+  if (mercenaryOathband) {
+    coverage.plan.players[0].detachment = {
+      sourceId: "000001137",
+      ruleIds: ["detachment.catalogue-000001137"],
+    };
+  }
+  const factionResult = coverage.report.results.find((result) => result.id === "faction.test");
+  const factionIndex = coverage.report.results.indexOf(factionResult);
+  coverage.report.results.splice(factionIndex, 0, {
+    ...factionResult,
+    id: "faction.prioritised-efficiency",
+    name: "Prioritised Efficiency",
+  });
+  if (mercenaryOathband) {
+    const detachmentIndex = coverage.report.results.findIndex(
+      (result) => result.id === "detachment.test",
+    );
+    coverage.report.results.splice(detachmentIndex, 0, {
+      ...coverage.report.results[detachmentIndex],
+      id: "detachment.catalogue-000001137",
+      name: "Mercenary Oathband detachment rules",
+    });
+  }
+  const resultsById = new Map(coverage.report.results.map((result) => [result.id, result]));
+  coverage.report.results = battleRuleSelectionIds(coverage.plan).map((id) => resultsById.get(id));
   return normalizeBattleState({
     ...state,
     events: [{ ...state.events[0], coverage }],
@@ -5984,6 +6027,244 @@ test("keeps Oath of Moment on every unit that survives an Attached-unit separati
     ].sort(),
     childIds,
   );
+});
+
+function setupVotannObjectiveBattle(mercenaryOathband = false) {
+  let state = registerBattleFormation(
+    registerBattleFormation(
+      newVotannBattle(mercenaryOathband),
+      { ...attackerFormation, hasPrioritisedEfficiencyAbility: true },
+      "register-votann",
+      1,
+    ),
+    formation,
+    "register-opponent",
+    2,
+  );
+  state = configureBattleMission(
+    state,
+    {
+      name: "Prioritised Efficiency fixture",
+      commandPointsPerCommandPhase: 0,
+      startingCommandPoints: { "player-1": 0, "player-2": 0 },
+      objectives: ["home", "centre-a", "centre-b", "enemy"].map((id) => ({ id, name: id })),
+    },
+    "votann-mission",
+    3,
+  );
+  state = configureBattleTableGeometry(
+    state,
+    {
+      missionSourceId: "test",
+      terrainSourceId: "test",
+      deploymentName: "Test deployment",
+      battlefieldWidthThousandths: 60000,
+      battlefieldHeightThousandths: 44000,
+      origin: "attacker-left-near",
+      objectivePositions: [
+        {
+          objectiveId: "home",
+          xThousandths: 5000,
+          yThousandths: 5000,
+          deploymentZonePlayerId: "player-1",
+        },
+        {
+          objectiveId: "centre-a",
+          xThousandths: 30000,
+          yThousandths: 18000,
+          deploymentZonePlayerId: "",
+        },
+        {
+          objectiveId: "centre-b",
+          xThousandths: 30000,
+          yThousandths: 26000,
+          deploymentZonePlayerId: "",
+        },
+        {
+          objectiveId: "enemy",
+          xThousandths: 55000,
+          yThousandths: 39000,
+          deploymentZonePlayerId: "player-2",
+        },
+      ],
+      terrainProfile: {
+        sectionCount: 12,
+        sixByFourCount: 4,
+        tenByFiveCount: 2,
+        twelveBySixCount: 6,
+        sourcePage: 7,
+      },
+      terrainLayoutReviewed: true,
+      deploymentZonesReviewed: true,
+      objectiveDeploymentZonesReviewed: true,
+      objectivePositionsReviewed: true,
+      reviewedByPlayer: true,
+      method: "manual",
+      reviewReason: "Objective centres and deployment-zone classifications reviewed",
+    },
+    "votann-geometry",
+    4,
+  );
+  state = startBattle(deployAllOnBattlefield(state), "player-1", "votann-start", 5);
+  for (const [objectiveId, playerId] of [
+    ["home", "player-1"],
+    ["centre-a", "player-1"],
+    ["centre-b", "player-1"],
+    ["enemy", "player-2"],
+  ]) {
+    state = setBattleObjectiveControl(
+      state,
+      objectiveId,
+      playerId,
+      false,
+      `control-${objectiveId}`,
+      state.events.length + 1,
+    );
+  }
+  return state;
+}
+
+test("Prioritised Efficiency awards Yield Points, switches modes, and applies attack effects", () => {
+  let state = setupVotannObjectiveBattle();
+  assert.equal(battlePrioritisedEfficiencyState(state, "player-1").mode, "");
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "command" && clock.step === "end",
+    "votann-command-end",
+  );
+  let efficiency = battlePrioritisedEfficiencyState(state, "player-1");
+  assert.equal(efficiency.yieldPoints, 1);
+  assert.equal(efficiency.mode, "hostile_acquisition");
+  assert.equal(efficiency.advanceRerollAvailable, true);
+  assert.equal(efficiency.chargeRerollAvailable, true);
+  assert.equal(efficiency.awards[0].gained, 1);
+  assert.equal(efficiency.awards[0].valid, true);
+  const hostileFacts = battlePrioritisedEfficiencyAttackFacts(
+    state,
+    attackerFormation.id,
+    formation.id,
+    {
+      attackStrength: 6,
+      targetToughness: 8,
+      targetOnObjective: true,
+      attackerOnControlledObjective: false,
+      targetVehicle: false,
+    },
+  );
+  assert.equal(hostileFacts.hitModifier, 1);
+  assert.equal(hostileFacts.woundModifier, 0);
+
+  state = advanceTo(
+    state,
+    (clock) =>
+      clock.battleRound === 2 &&
+      clock.activePlayerId === "player-1" &&
+      clock.phase === "command" &&
+      clock.step === "start",
+    "votann-round-two",
+  );
+  state = changeBattleResource(
+    state,
+    {
+      playerId: "player-1",
+      resourceId: "yield_points",
+      name: "Yield Points",
+      delta: 1,
+      reason: "Source-backed test gain",
+    },
+    "votann-extra-yield",
+    state.events.length + 1,
+  );
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "command" && clock.step === "end",
+    "votann-round-two-end",
+  );
+  efficiency = battlePrioritisedEfficiencyState(state, "player-1");
+  assert.equal(efficiency.yieldPoints, 7);
+  assert.equal(efficiency.mode, "fortify_takeover");
+  assert.equal(efficiency.advanceRerollAvailable, false);
+  assert.equal(efficiency.chargeRerollAvailable, false);
+  assert.equal(efficiency.awards.at(-1).gained, 4);
+
+  const attackFacts = battlePrioritisedEfficiencyAttackFacts(
+    state,
+    attackerFormation.id,
+    formation.id,
+    {
+      attackStrength: 10,
+      targetToughness: 8,
+      targetOnObjective: false,
+      attackerOnControlledObjective: true,
+      targetVehicle: false,
+    },
+  );
+  assert.equal(attackFacts.hitModifier, 1);
+  assert.equal(attackFacts.woundModifier, 0);
+  assert.equal(attackFacts.valid, true);
+  const defensiveFacts = battlePrioritisedEfficiencyAttackFacts(
+    state,
+    formation.id,
+    attackerFormation.id,
+    {
+      attackStrength: 10,
+      targetToughness: 8,
+      targetOnObjective: false,
+      attackerOnControlledObjective: false,
+      targetVehicle: false,
+    },
+  );
+  assert.equal(defensiveFacts.hitModifier, 0);
+  assert.equal(defensiveFacts.woundModifier, -1);
+  assert.equal(defensiveFacts.valid, true);
+
+  state = changeBattleResource(
+    state,
+    {
+      playerId: "player-1",
+      resourceId: "yield_points",
+      name: "Yield Points",
+      delta: -2,
+      reason: "Source-backed test spend",
+    },
+    "votann-spend",
+    state.events.length + 1,
+  );
+  efficiency = battlePrioritisedEfficiencyState(state, "player-1");
+  assert.equal(efficiency.yieldPoints, 5);
+  assert.equal(efficiency.mode, "fortify_takeover");
+});
+
+test("Mercenary Oathband spends exactly 3YP to toggle Prioritised Efficiency", () => {
+  let state = setupVotannObjectiveBattle(true);
+  state = advanceTo(
+    state,
+    (clock) => clock.phase === "command" && clock.step === "end",
+    "mercenary-command-end",
+  );
+  state = changeBattleResource(
+    state,
+    {
+      playerId: "player-1",
+      resourceId: "yield_points",
+      name: "Yield Points",
+      delta: 2,
+      reason: "Source-backed test gain",
+    },
+    "mercenary-extra-yield",
+    state.events.length + 1,
+  );
+  assert.equal(battlePrioritisedEfficiencyState(state, "player-1").toggleAvailable, true);
+  state = togglePrioritisedEfficiency(
+    state,
+    "player-1",
+    "mercenary-toggle",
+    state.events.length + 1,
+  );
+  const efficiency = battlePrioritisedEfficiencyState(state, "player-1");
+  assert.equal(efficiency.yieldPoints, 0);
+  assert.equal(efficiency.mode, "fortify_takeover");
+  assert.equal(efficiency.toggles.length, 1);
 });
 
 test("replays mission, CP, VP, objectives, Battle-shock, and bounded resources", () => {

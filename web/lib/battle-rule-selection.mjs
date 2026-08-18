@@ -91,6 +91,12 @@ function factionRuleIds(matrixRuleIds, sourceId) {
   if (sourceId === "TYR" && matrixRuleIds.has("faction.synapse-battle-shock")) {
     ruleIds.push("faction.synapse-battle-shock");
   }
+  if (sourceId === "LoV" && matrixRuleIds.has("faction.prioritised-efficiency")) {
+    ruleIds.push("faction.prioritised-efficiency");
+  }
+  if (sourceId === "LoV" && matrixRuleIds.has("faction.prioritised-efficiency-mobility")) {
+    ruleIds.push("faction.prioritised-efficiency-mobility");
+  }
   return ruleIds;
 }
 

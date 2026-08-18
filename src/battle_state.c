@@ -618,6 +618,59 @@ bool whc_oath_of_moment_attack_state_is_valid(uint32_t source_faction_adeptus_as
            hit_reroll == benefit;
 }
 
+bool whc_prioritised_efficiency_attack_state_is_valid(
+    uint32_t source_faction_votann, uint32_t attacker_has_ability, uint32_t attacker_mode,
+    uint32_t target_on_objective, uint32_t attacker_on_controlled_objective,
+    uint32_t target_has_ability, uint32_t target_mode, uint32_t strength_greater_than_toughness,
+    uint32_t target_vehicle, int32_t hit_modifier, int32_t wound_modifier) {
+    const int32_t expected_hit_modifier =
+        attacker_has_ability == 1u &&
+                ((attacker_mode == 1u && target_on_objective == 1u) ||
+                 (attacker_mode == 2u && attacker_on_controlled_objective == 1u))
+            ? 1
+            : 0;
+    const int32_t expected_wound_modifier = target_has_ability == 1u && target_mode == 2u &&
+                                                    strength_greater_than_toughness == 1u &&
+                                                    target_vehicle == 0u
+                                                ? -1
+                                                : 0;
+
+    return source_faction_votann <= 1u && attacker_has_ability <= 1u && attacker_mode <= 2u &&
+           target_on_objective <= 1u && attacker_on_controlled_objective <= 1u &&
+           target_has_ability <= 1u && target_mode <= 2u && strength_greater_than_toughness <= 1u &&
+           target_vehicle <= 1u && hit_modifier >= -1 && hit_modifier <= 1 &&
+           wound_modifier >= -1 && wound_modifier <= 1 &&
+           ((attacker_mode == 0u && target_mode == 0u) || source_faction_votann == 1u) &&
+           hit_modifier == expected_hit_modifier && wound_modifier == expected_wound_modifier;
+}
+
+bool whc_prioritised_efficiency_transition_is_valid(
+    uint32_t source_faction_votann, uint32_t battle_round, uint32_t own_deployment_zone_count,
+    uint32_t outside_deployment_zone_count, uint32_t controlled_objective_count,
+    uint32_t opponent_controlled_objective_count, uint32_t before, uint32_t gained, uint32_t after,
+    uint32_t own_command_phase, uint32_t mercenary_oathband, uint32_t mode_before,
+    uint32_t mode_after) {
+    const uint32_t expected_gain =
+        (own_deployment_zone_count >= 1u ? 1u : 0u) +
+        (battle_round >= 2u && outside_deployment_zone_count >= 1u ? 1u : 0u) +
+        (battle_round >= 2u && outside_deployment_zone_count >= 2u ? 1u : 0u) +
+        (battle_round >= 2u && controlled_objective_count > opponent_controlled_objective_count
+             ? 1u
+             : 0u);
+    const uint32_t expected_mode =
+        own_command_phase == 1u && mercenary_oathband == 0u ? (after >= 7u ? 2u : 1u) : mode_before;
+
+    return source_faction_votann == 1u && battle_round >= 1u &&
+           own_deployment_zone_count <= 100000u && outside_deployment_zone_count <= 100000u &&
+           controlled_objective_count <= 100000u &&
+           opponent_controlled_objective_count <= 100000u &&
+           own_deployment_zone_count + outside_deployment_zone_count ==
+               controlled_objective_count &&
+           before <= 100000u && gained <= 100000u && after <= 100000u && own_command_phase <= 1u &&
+           mercenary_oathband <= 1u && mode_before <= 2u && mode_after <= 2u &&
+           gained == expected_gain && after == before + gained && mode_after == expected_mode;
+}
+
 bool whc_reanimation_protocols_transition_is_valid(
     uint32_t source_faction_necrons, uint32_t formation_has_ability, uint32_t on_battlefield,
     uint32_t at_command_end, uint32_t activation_roll, uint32_t remaining, uint32_t action,

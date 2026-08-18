@@ -40,7 +40,8 @@ import {
   terrainVisibilityGeometryIsValid,
 } from "./visibility-facts.mjs";
 
-export const BATTLE_STATE_VERSION = 49;
+export const BATTLE_STATE_VERSION = 50;
+export const PRIORITISED_EFFICIENCY_BATTLE_STATE_VERSION = 50;
 export const DESPERATE_ESCAPE_MODEL_TRIGGER_BATTLE_STATE_VERSION = 49;
 export const ATTACHED_SEPARATION_BATTLE_STATE_VERSION = 48;
 export const DESPERATE_ESCAPE_BATTLE_STATE_VERSION = 47;
@@ -1867,7 +1868,7 @@ function normalizeMissionActionFacts(candidate) {
   return normalized;
 }
 
-function normalizeTableGeometry(candidate) {
+function normalizeTableGeometry(candidate, players, stateVersion) {
   const geometry = record(candidate, "Table geometry must be an object");
   if (
     !Array.isArray(geometry.objectivePositions) ||
@@ -1878,6 +1879,13 @@ function normalizeTableGeometry(candidate) {
   }
   const objectivePositions = geometry.objectivePositions.map((candidateObjective) => {
     const objective = record(candidateObjective, "Each objective position must be an object");
+    const deploymentZonePlayerId =
+      stateVersion >= PRIORITISED_EFFICIENCY_BATTLE_STATE_VERSION
+        ? String(objective.deploymentZonePlayerId ?? "")
+        : "";
+    if (deploymentZonePlayerId && !players.has(deploymentZonePlayerId)) {
+      throw new Error("Objective deployment-zone player is unknown");
+    }
     return {
       objectiveId: boundedString(objective.objectiveId, "Geometry objective id", 100),
       xThousandths: nonnegativeInteger(
@@ -1890,6 +1898,9 @@ function normalizeTableGeometry(candidate) {
         "Objective y-coordinate thousandths",
         TABLE_GEOMETRY_CONSTANTS.heightThousandths,
       ),
+      ...(stateVersion >= PRIORITISED_EFFICIENCY_BATTLE_STATE_VERSION
+        ? { deploymentZonePlayerId }
+        : {}),
     };
   });
   if (
@@ -1924,6 +1935,11 @@ function normalizeTableGeometry(candidate) {
     },
     terrainLayoutReviewed: Boolean(geometry.terrainLayoutReviewed),
     deploymentZonesReviewed: Boolean(geometry.deploymentZonesReviewed),
+    ...(stateVersion >= PRIORITISED_EFFICIENCY_BATTLE_STATE_VERSION
+      ? {
+          objectiveDeploymentZonesReviewed: Boolean(geometry.objectiveDeploymentZonesReviewed),
+        }
+      : {}),
     objectivePositionsReviewed: Boolean(geometry.objectivePositionsReviewed),
     reviewedByPlayer: Boolean(geometry.reviewedByPlayer),
     method: boundedString(geometry.method, "Table geometry method", 20),
@@ -3169,6 +3185,11 @@ function normalizeFormation(candidate, stateVersion) {
     ...(stateVersion >= SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION
       ? { hasShadowInTheWarpAbility: Boolean(formation.hasShadowInTheWarpAbility) }
       : {}),
+    ...(stateVersion >= PRIORITISED_EFFICIENCY_BATTLE_STATE_VERSION
+      ? {
+          hasPrioritisedEfficiencyAbility: Boolean(formation.hasPrioritisedEfficiencyAbility),
+        }
+      : {}),
     segments,
   };
   if (
@@ -3623,6 +3644,12 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     throw new Error("Executable Attached-unit separation requires battle-state version 48");
   }
   if (
+    stateVersion < PRIORITISED_EFFICIENCY_BATTLE_STATE_VERSION &&
+    event.type === "prioritised_efficiency_toggled"
+  ) {
+    throw new Error("Executable Prioritised Efficiency requires battle-state version 50");
+  }
+  if (
     stateVersion < MISSION_TRACKING_BATTLE_STATE_VERSION &&
     [
       "secondary_plan_configured",
@@ -3645,7 +3672,7 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
     throw new Error("Table geometry requires battle-state version 25");
   }
   if (event.type === "table_geometry_recorded") {
-    normalized.geometry = normalizeTableGeometry(event.geometry);
+    normalized.geometry = normalizeTableGeometry(event.geometry, formations.players, stateVersion);
     return normalized;
   }
   if (
@@ -3759,6 +3786,7 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
       previous.assignedTransportFormationId !== formation.assignedTransportFormationId ||
       previous.hasWaaaghAbility !== formation.hasWaaaghAbility ||
       previous.hasOathOfMomentAbility !== formation.hasOathOfMomentAbility ||
+      previous.hasPrioritisedEfficiencyAbility !== formation.hasPrioritisedEfficiencyAbility ||
       JSON.stringify(previous.reanimationProtocolSavedUnitIds) !==
         JSON.stringify(formation.reanimationProtocolSavedUnitIds) ||
       JSON.stringify(previous.deploymentTraits) !== JSON.stringify(formation.deploymentTraits) ||
@@ -4200,6 +4228,42 @@ function normalizeEvent(candidate, sequence, formations, stateVersion) {
       throw new Error("Reviewed Synapse proximity requires a reason");
     }
     normalized.failed = Boolean(event.failed);
+    normalized.clock = normalizeClock(event.clock, formations.players);
+    return normalized;
+  }
+  if (event.type === "prioritised_efficiency_toggled") {
+    normalized.playerId = boundedString(event.playerId, "Prioritised Efficiency player id", 100);
+    if (!formations.players.has(normalized.playerId)) {
+      throw new Error("Prioritised Efficiency player is unknown");
+    }
+    normalized.previousMode = boundedString(
+      event.previousMode,
+      "Prioritised Efficiency previous mode",
+      30,
+    );
+    normalized.nextMode = boundedString(event.nextMode, "Prioritised Efficiency next mode", 30);
+    if (
+      !["hostile_acquisition", "fortify_takeover"].includes(normalized.previousMode) ||
+      !["hostile_acquisition", "fortify_takeover"].includes(normalized.nextMode) ||
+      normalized.previousMode === normalized.nextMode
+    ) {
+      throw new Error("Prioritised Efficiency toggle modes are invalid");
+    }
+    normalized.yieldPointsSpent = nonnegativeInteger(
+      event.yieldPointsSpent,
+      "Prioritised Efficiency Yield Points spent",
+      100,
+    );
+    normalized.sourceDetachmentId = boundedString(
+      event.sourceDetachmentId,
+      "Prioritised Efficiency source detachment id",
+      100,
+    );
+    normalized.sourceAbilityId = boundedString(
+      event.sourceAbilityId,
+      "Prioritised Efficiency source ability id",
+      100,
+    );
     normalized.clock = normalizeClock(event.clock, formations.players);
     return normalized;
   }
@@ -5848,6 +5912,7 @@ export function normalizeBattleState(candidate) {
       DESPERATE_ESCAPE_BATTLE_STATE_VERSION,
       ATTACHED_SEPARATION_BATTLE_STATE_VERSION,
       DESPERATE_ESCAPE_MODEL_TRIGGER_BATTLE_STATE_VERSION,
+      PRIORITISED_EFFICIENCY_BATTLE_STATE_VERSION,
     ].includes(state.version)
   ) {
     throw new Error(`Unsupported battle state version: ${String(state.version)}`);
@@ -5928,6 +5993,8 @@ export function normalizeBattleState(candidate) {
         COMMAND_BATTLE_SHOCK_BATTLE_STATE_VERSION,
         DESPERATE_ESCAPE_BATTLE_STATE_VERSION,
         ATTACHED_SEPARATION_BATTLE_STATE_VERSION,
+        DESPERATE_ESCAPE_MODEL_TRIGGER_BATTLE_STATE_VERSION,
+        PRIORITISED_EFFICIENCY_BATTLE_STATE_VERSION,
       ]
         .filter((version) => version < state.version)
         .includes(sourceVersion)
@@ -6236,6 +6303,13 @@ export function normalizeBattleState(candidate) {
         events.length,
       );
     }
+    if (state.version >= PRIORITISED_EFFICIENCY_BATTLE_STATE_VERSION) {
+      normalized.migration.legacyPrioritisedEfficiencyThroughSequence = nonnegativeInteger(
+        migration.legacyPrioritisedEfficiencyThroughSequence,
+        "Legacy Prioritised Efficiency event sequence",
+        events.length,
+      );
+    }
   }
   if (
     state.version >= WEAPON_BEARER_BATTLE_STATE_VERSION &&
@@ -6332,6 +6406,7 @@ function projectedSeparatedFormation(parent, segments, index) {
     hasWaaaghAbility: parent.hasWaaaghAbility,
     hasOathOfMomentAbility: parent.hasOathOfMomentAbility,
     hasShadowInTheWarpAbility: parent.hasShadowInTheWarpAbility,
+    hasPrioritisedEfficiencyAbility: parent.hasPrioritisedEfficiencyAbility,
     reanimationProtocolSavedUnitIds: (parent.reanimationProtocolSavedUnitIds ?? []).filter(
       (savedUnitId) => savedUnitIds.has(savedUnitId),
     ),
@@ -7679,6 +7754,9 @@ export function replayBattleState(state) {
   let pendingShadowInTheWarp = null;
   const commandBattleShockResolutions = [];
   const commandBattleShockResolvedUnitKeys = new Set();
+  const prioritisedEfficiencyModesByPlayer = new Map();
+  const yieldPointAwards = [];
+  const prioritisedEfficiencyToggles = [];
   let tableGeometry = null;
   let terrainFootprints = null;
   let terrainVisibility = null;
@@ -7830,6 +7908,10 @@ export function replayBattleState(state) {
     state.version < WEAPON_INVENTORY_BATTLE_STATE_VERSION
       ? Number.MAX_SAFE_INTEGER
       : (state.migration?.legacyWeaponInventoryThroughSequence ?? 0);
+  const legacyPrioritisedEfficiencyThroughSequence =
+    state.version < PRIORITISED_EFFICIENCY_BATTLE_STATE_VERSION
+      ? Number.MAX_SAFE_INTEGER
+      : (state.migration?.legacyPrioritisedEfficiencyThroughSequence ?? 0);
 
   const sourceLockedChapterApprovedMission = () =>
     Boolean(ruleCoverage?.plan?.mission?.sourceId?.startsWith("chapter-approved-2025-26-v1.4-"));
@@ -7873,6 +7955,20 @@ export function replayBattleState(state) {
     return Boolean(
       faction?.sourceId === "TYR" && faction.ruleIds?.includes("faction.synapse-battle-shock"),
     );
+  };
+  const playerUsesPrioritisedEfficiency = (playerId) => {
+    const faction = ruleCoverage?.plan?.players?.find(
+      (player) => player.playerId === playerId,
+    )?.faction;
+    return Boolean(
+      faction?.sourceId === "LoV" && faction.ruleIds?.includes("faction.prioritised-efficiency"),
+    );
+  };
+  const playerUsesMercenaryOathband = (playerId) => {
+    const detachment = ruleCoverage?.plan?.players?.find(
+      (player) => player.playerId === playerId,
+    )?.detachment;
+    return detachment?.sourceId === "000001137";
   };
   const liveOnBattlefieldFormation = (formation) =>
     Boolean(
@@ -8392,6 +8488,105 @@ export function replayBattleState(state) {
       });
     }
   };
+  const awardPrioritisedEfficiencyYieldPoints = (resolvedAtClock, triggerEventId) => {
+    const objectiveZones = new Map(
+      (tableGeometry?.objectivePositions ?? []).map((objective) => [
+        objective.objectiveId,
+        objective.deploymentZonePlayerId ?? "",
+      ]),
+    );
+    for (const player of state.players) {
+      if (!playerUsesPrioritisedEfficiency(player.id)) continue;
+      const trackedObjectives = [...objectives.values()];
+      if (
+        trackedObjectives.length < 1 ||
+        tableGeometry?.objectiveDeploymentZonesReviewed !== true ||
+        trackedObjectives.some(
+          (objective) =>
+            (!objective.executable && !objective.recorded) || !objectiveZones.has(objective.id),
+        )
+      ) {
+        throw new Error(
+          "Resolve every objective and its deployment-zone classification before ending a Command phase",
+        );
+      }
+      const controlled = trackedObjectives.filter(
+        (objective) => objective.controllerPlayerId === player.id,
+      );
+      const opponentControlled = trackedObjectives.filter(
+        (objective) => objective.controllerPlayerId && objective.controllerPlayerId !== player.id,
+      );
+      const ownDeploymentZoneCount = controlled.filter(
+        (objective) => objectiveZones.get(objective.id) === player.id,
+      ).length;
+      const outsideDeploymentZoneCount = controlled.length - ownDeploymentZoneCount;
+      const roundTwoOrLater = resolvedAtClock.battleRound >= 2;
+      const conditions = {
+        controlsOwnDeploymentZoneObjective: ownDeploymentZoneCount >= 1,
+        controlsOutsideDeploymentZoneObjective: roundTwoOrLater && outsideDeploymentZoneCount >= 1,
+        controlsTwoOutsideDeploymentZoneObjectives:
+          roundTwoOrLater && outsideDeploymentZoneCount >= 2,
+        controlsMoreObjectivesThanOpponent:
+          roundTwoOrLater && controlled.length > opponentControlled.length,
+      };
+      const gained = Object.values(conditions).filter(Boolean).length;
+      const playerResources = resources.get(player.id);
+      const previous = playerResources.get("yield_points") ?? {
+        id: "yield_points",
+        name: "Yield Points",
+        value: 0,
+        maximum: null,
+      };
+      const after = previous.value + gained;
+      const modeBefore = prioritisedEfficiencyModesByPlayer.get(player.id) ?? "";
+      const ownCommandPhase = resolvedAtClock.activePlayerId === player.id;
+      const modeAfter =
+        ownCommandPhase && !playerUsesMercenaryOathband(player.id)
+          ? after >= 7
+            ? "fortify_takeover"
+            : "hostile_acquisition"
+          : modeBefore;
+      playerResources.set("yield_points", { ...previous, value: after });
+      if (modeAfter) prioritisedEfficiencyModesByPlayer.set(player.id, modeAfter);
+      else prioritisedEfficiencyModesByPlayer.delete(player.id);
+      const modeValue = (mode) =>
+        mode === "hostile_acquisition" ? 1 : mode === "fortify_takeover" ? 2 : 0;
+      const values = [
+        1,
+        resolvedAtClock.battleRound,
+        ownDeploymentZoneCount,
+        outsideDeploymentZoneCount,
+        controlled.length,
+        opponentControlled.length,
+        previous.value,
+        gained,
+        after,
+        ownCommandPhase ? 1 : 0,
+        playerUsesMercenaryOathband(player.id) ? 1 : 0,
+        modeValue(modeBefore),
+        modeValue(modeAfter),
+      ];
+      yieldPointAwards.push({
+        playerId: player.id,
+        triggerEventId,
+        clock: { ...resolvedAtClock },
+        before: previous.value,
+        gained,
+        after,
+        ownCommandPhase,
+        mercenaryOathband: playerUsesMercenaryOathband(player.id),
+        modeBefore,
+        modeAfter,
+        controlledObjectiveCount: controlled.length,
+        opponentControlledObjectiveCount: opponentControlled.length,
+        ownDeploymentZoneCount,
+        outsideDeploymentZoneCount,
+        conditions,
+        values,
+        valid: prioritisedEfficiencyTransitionIsValid(...values),
+      });
+    }
+  };
   const scheduleAttachedSeparation = (formationId, causeEventId, due) => {
     const formation = formations.get(formationId);
     const planned = formation ? attachedSeparationPlan(formation) : [];
@@ -8768,7 +8963,12 @@ export function replayBattleState(state) {
         event.geometry.missionSourceId,
         event.geometry.terrainSourceId,
       );
-      if (!sourceBinding || event.geometry.deploymentName !== sourceBinding.deploymentName) {
+      if (
+        (sourceBinding && event.geometry.deploymentName !== sourceBinding.deploymentName) ||
+        (!sourceBinding &&
+          (event.geometry.missionSourceId.startsWith("chapter-approved-") ||
+            event.geometry.terrainSourceId.startsWith("chapter-approved-")))
+      ) {
         throw new Error("Table geometry does not match the source-locked deployment map");
       }
       const objectiveIds = mission.objectives.map((objective) => objective.id).sort();
@@ -9411,6 +9611,24 @@ export function replayBattleState(state) {
       if (state.version >= TRACKER_BATTLE_STATE_VERSION) {
         awardCommandPhasePoints(resources, state.players, mission);
       }
+      if (event.sequence > legacyPrioritisedEfficiencyThroughSequence) {
+        for (const player of state.players) {
+          if (!playerUsesPrioritisedEfficiency(player.id)) continue;
+          resources.get(player.id).set("yield_points", {
+            id: "yield_points",
+            name: "Yield Points",
+            value: 0,
+            maximum: null,
+          });
+          prioritisedEfficiencyModesByPlayer.set(player.id, "hostile_acquisition");
+        }
+        if (
+          playerUsesPrioritisedEfficiency(clock.activePlayerId) &&
+          !playerUsesMercenaryOathband(clock.activePlayerId)
+        ) {
+          prioritisedEfficiencyModesByPlayer.delete(clock.activePlayerId);
+        }
+      }
       continue;
     }
     if (event.type === "waaagh_called") {
@@ -9779,6 +9997,56 @@ export function replayBattleState(state) {
       }
       continue;
     }
+    if (event.type === "prioritised_efficiency_toggled") {
+      if (
+        clock.status !== "active" ||
+        clock.phase !== "command" ||
+        clock.step !== "end" ||
+        clock.activePlayerId !== event.playerId ||
+        !sameBattleClock(event.clock, clock)
+      ) {
+        throw new Error("Ruthless Reinvestment can only be used at the end of your Command phase");
+      }
+      const detachment = ruleCoverage?.plan?.players?.find(
+        (player) => player.playerId === event.playerId,
+      )?.detachment;
+      if (
+        !playerUsesPrioritisedEfficiency(event.playerId) ||
+        !playerUsesMercenaryOathband(event.playerId) ||
+        detachment?.sourceId !== "000001137" ||
+        !detachment.ruleIds?.includes("detachment.catalogue-000001137") ||
+        event.sourceDetachmentId !== "000001137" ||
+        event.sourceAbilityId !== "000010707"
+      ) {
+        throw new Error("Ruthless Reinvestment requires its source-locked detachment rule");
+      }
+      const previousMode = prioritisedEfficiencyModesByPlayer.get(event.playerId);
+      const expectedNextMode =
+        previousMode === "hostile_acquisition"
+          ? "fortify_takeover"
+          : previousMode === "fortify_takeover"
+            ? "hostile_acquisition"
+            : "";
+      if (
+        event.yieldPointsSpent !== 3 ||
+        event.previousMode !== previousMode ||
+        event.nextMode !== expectedNextMode
+      ) {
+        throw new Error("Ruthless Reinvestment mode transition is not canonical");
+      }
+      const playerResources = resources.get(event.playerId);
+      const yieldPoints = playerResources.get("yield_points");
+      if (!yieldPoints || yieldPoints.value < event.yieldPointsSpent) {
+        throw new Error("Ruthless Reinvestment requires 3 Yield Points");
+      }
+      playerResources.set("yield_points", {
+        ...yieldPoints,
+        value: yieldPoints.value - event.yieldPointsSpent,
+      });
+      prioritisedEfficiencyModesByPlayer.set(event.playerId, event.nextMode);
+      prioritisedEfficiencyToggles.push(event);
+      continue;
+    }
     if (event.type === "clock_advanced") {
       if (pendingChoices.size > 0) {
         throw new Error("Pending choices must be resolved before advancing the battle");
@@ -9818,6 +10086,16 @@ export function replayBattleState(state) {
       const expected = nextBattleClock(clock, state.players);
       if (!sameBattleClock(event.to, expected)) {
         throw new Error("Battle clock advance is not canonical");
+      }
+      if (
+        event.sequence > legacyPrioritisedEfficiencyThroughSequence &&
+        expected.status === "active" &&
+        expected.phase === "command" &&
+        expected.step === "end" &&
+        clock.step !== "end"
+      ) {
+        settleObjectiveControl(expected);
+        awardPrioritisedEfficiencyYieldPoints(expected, event.id);
       }
       if (
         event.sequence > legacyMandatoryArmyRulesThroughSequence &&
@@ -9911,6 +10189,13 @@ export function replayBattleState(state) {
       if (commandPhaseStarted(expected)) {
         grimResolveSelectionsByPlayer.delete(expected.activePlayerId);
         oathOfMomentSelectionsByPlayer.delete(expected.activePlayerId);
+        if (
+          event.sequence > legacyPrioritisedEfficiencyThroughSequence &&
+          playerUsesPrioritisedEfficiency(expected.activePlayerId) &&
+          !playerUsesMercenaryOathband(expected.activePlayerId)
+        ) {
+          prioritisedEfficiencyModesByPlayer.delete(expected.activePlayerId);
+        }
       }
       if (expected.status === "complete") {
         oathOfMomentSelectionsByPlayer.clear();
@@ -13386,6 +13671,9 @@ export function replayBattleState(state) {
     pendingShadowInTheWarp: shadowInTheWarpPendingState,
     commandBattleShockResolutions,
     pendingCommandBattleShock: commandBattleShockPending,
+    prioritisedEfficiencyModesByPlayer,
+    yieldPointAwards,
+    prioritisedEfficiencyToggles,
     formationSeparations,
     pendingAttachedSeparations: pendingAttachedSeparations.map((pending) => ({
       ...pending,
@@ -14172,6 +14460,230 @@ export function battleOathOfMomentAttackFacts(state, formationId, replayedBattle
     values,
     valid: oathOfMomentAttackStateIsValid(...values),
   };
+}
+
+export function prioritisedEfficiencyTransitionIsValid(
+  sourceFaction,
+  battleRound,
+  ownDeploymentZoneCount,
+  outsideDeploymentZoneCount,
+  controlledObjectiveCount,
+  opponentControlledObjectiveCount,
+  before,
+  gained,
+  after,
+  ownCommandPhase,
+  mercenaryOathband,
+  modeBefore,
+  modeAfter,
+) {
+  const flags = [sourceFaction, ownCommandPhase, mercenaryOathband];
+  if (
+    flags.some((value) => !Number.isInteger(value) || value < 0 || value > 1) ||
+    ![modeBefore, modeAfter].every((value) => [0, 1, 2].includes(value)) ||
+    ![
+      battleRound,
+      ownDeploymentZoneCount,
+      outsideDeploymentZoneCount,
+      controlledObjectiveCount,
+      opponentControlledObjectiveCount,
+      before,
+      gained,
+      after,
+    ].every((value) => Number.isSafeInteger(value) && value >= 0 && value <= 100000) ||
+    sourceFaction !== 1 ||
+    battleRound < 1 ||
+    ownDeploymentZoneCount + outsideDeploymentZoneCount !== controlledObjectiveCount
+  ) {
+    return false;
+  }
+  const expectedGain =
+    (ownDeploymentZoneCount >= 1 ? 1 : 0) +
+    (battleRound >= 2 && outsideDeploymentZoneCount >= 1 ? 1 : 0) +
+    (battleRound >= 2 && outsideDeploymentZoneCount >= 2 ? 1 : 0) +
+    (battleRound >= 2 && controlledObjectiveCount > opponentControlledObjectiveCount ? 1 : 0);
+  const expectedMode =
+    ownCommandPhase === 1 && mercenaryOathband === 0 ? (after >= 7 ? 2 : 1) : modeBefore;
+  return gained === expectedGain && after === before + gained && modeAfter === expectedMode;
+}
+
+export function prioritisedEfficiencyAttackStateIsValid(
+  sourceFaction,
+  attackerHasAbility,
+  attackerMode,
+  targetOnObjective,
+  attackerOnControlledObjective,
+  targetHasAbility,
+  targetMode,
+  strengthGreaterThanToughness,
+  targetVehicle,
+  hitModifier,
+  woundModifier,
+) {
+  const flags = [
+    sourceFaction,
+    attackerHasAbility,
+    targetOnObjective,
+    attackerOnControlledObjective,
+    targetHasAbility,
+    strengthGreaterThanToughness,
+    targetVehicle,
+  ];
+  if (
+    flags.some((value) => !Number.isInteger(value) || value < 0 || value > 1) ||
+    ![0, 1, 2].includes(attackerMode) ||
+    ![0, 1, 2].includes(targetMode) ||
+    ![-1, 0, 1].includes(hitModifier) ||
+    ![-1, 0, 1].includes(woundModifier) ||
+    ((attackerMode > 0 || targetMode > 0) && sourceFaction !== 1)
+  ) {
+    return false;
+  }
+  const expectedHitModifier =
+    attackerHasAbility === 1 &&
+    ((attackerMode === 1 && targetOnObjective === 1) ||
+      (attackerMode === 2 && attackerOnControlledObjective === 1))
+      ? 1
+      : 0;
+  const expectedWoundModifier =
+    targetHasAbility === 1 &&
+    targetMode === 2 &&
+    strengthGreaterThanToughness === 1 &&
+    targetVehicle === 0
+      ? -1
+      : 0;
+  return hitModifier === expectedHitModifier && woundModifier === expectedWoundModifier;
+}
+
+export function battlePrioritisedEfficiencyState(state, playerId, replayedBattle = null) {
+  const replayed = replayedBattle ?? replayBattleState(state);
+  const selection = replayed.ruleCoverage?.plan.players.find(
+    (player) => player.playerId === playerId,
+  );
+  const sourceLocked = Boolean(
+    selection?.faction.sourceId === "LoV" &&
+      selection.faction.ruleIds.includes("faction.prioritised-efficiency"),
+  );
+  const mercenaryOathband = selection?.detachment.sourceId === "000001137";
+  const mode = replayed.prioritisedEfficiencyModesByPlayer.get(playerId) ?? "";
+  const yieldPoints = replayed.resources.get(playerId)?.get("yield_points")?.value ?? 0;
+  return {
+    sourceLocked,
+    mercenaryOathband,
+    mode,
+    yieldPoints,
+    advanceRerollAvailable: sourceLocked && mode === "hostile_acquisition",
+    chargeRerollAvailable: sourceLocked && mode === "hostile_acquisition",
+    mobilityResolution: "guided",
+    awards: replayed.yieldPointAwards.filter((award) => award.playerId === playerId),
+    toggles: replayed.prioritisedEfficiencyToggles.filter((toggle) => toggle.playerId === playerId),
+    toggleAvailable: Boolean(
+      sourceLocked &&
+        mercenaryOathband &&
+        mode &&
+        yieldPoints >= 3 &&
+        replayed.clock.status === "active" &&
+        replayed.clock.phase === "command" &&
+        replayed.clock.step === "end" &&
+        replayed.clock.activePlayerId === playerId,
+    ),
+  };
+}
+
+export function battlePrioritisedEfficiencyAttackFacts(
+  state,
+  attackerFormationId,
+  targetFormationId,
+  {
+    attackStrength,
+    targetToughness,
+    targetOnObjective,
+    attackerOnControlledObjective,
+    targetVehicle,
+  },
+  replayedBattle = null,
+) {
+  const replayed = replayedBattle ?? replayBattleState(state);
+  const attacker = replayed.formations.get(attackerFormationId);
+  const target = replayed.formations.get(targetFormationId);
+  if (!attacker || !target || attacker.playerId === target.playerId) {
+    throw new Error("Prioritised Efficiency attack formations are invalid");
+  }
+  const attackerState = battlePrioritisedEfficiencyState(state, attacker.playerId, replayed);
+  const targetState = battlePrioritisedEfficiencyState(state, target.playerId, replayed);
+  const modeValue = (mode) =>
+    mode === "hostile_acquisition" ? 1 : mode === "fortify_takeover" ? 2 : 0;
+  const sourceFaction = attackerState.sourceLocked || targetState.sourceLocked ? 1 : 0;
+  const attackerHasAbility = attacker.hasPrioritisedEfficiencyAbility ? 1 : 0;
+  const targetHasAbility = target.hasPrioritisedEfficiencyAbility ? 1 : 0;
+  const attackerMode = modeValue(attackerState.mode);
+  const targetMode = modeValue(targetState.mode);
+  const targetOnObjectiveFlag = targetOnObjective ? 1 : 0;
+  const attackerOnControlledObjectiveFlag = attackerOnControlledObjective ? 1 : 0;
+  const strengthGreaterThanToughness = attackStrength > targetToughness ? 1 : 0;
+  const targetVehicleFlag = targetVehicle ? 1 : 0;
+  const hitModifier =
+    attackerHasAbility === 1 &&
+    ((attackerMode === 1 && targetOnObjectiveFlag === 1) ||
+      (attackerMode === 2 && attackerOnControlledObjectiveFlag === 1))
+      ? 1
+      : 0;
+  const woundModifier =
+    targetHasAbility === 1 &&
+    targetMode === 2 &&
+    strengthGreaterThanToughness === 1 &&
+    targetVehicleFlag === 0
+      ? -1
+      : 0;
+  const values = [
+    sourceFaction,
+    attackerHasAbility,
+    attackerMode,
+    targetOnObjectiveFlag,
+    attackerOnControlledObjectiveFlag,
+    targetHasAbility,
+    targetMode,
+    strengthGreaterThanToughness,
+    targetVehicleFlag,
+    hitModifier,
+    woundModifier,
+  ];
+  return {
+    attackerFormationId,
+    targetFormationId,
+    attackerMode: attackerState.mode,
+    targetMode: targetState.mode,
+    hitModifier,
+    woundModifier,
+    values,
+    valid: prioritisedEfficiencyAttackStateIsValid(...values),
+  };
+}
+
+export function togglePrioritisedEfficiency(state, playerId, id, at) {
+  const replayed = replayBattleState(state);
+  const previousMode = replayed.prioritisedEfficiencyModesByPlayer.get(playerId) ?? "";
+  const nextMode =
+    previousMode === "hostile_acquisition"
+      ? "fortify_takeover"
+      : previousMode === "fortify_takeover"
+        ? "hostile_acquisition"
+        : "";
+  if (!nextMode) throw new Error("Prioritised Efficiency has no active mode to toggle");
+  return appendEvent(state, {
+    version: BATTLE_EVENT_VERSION,
+    id,
+    sequence: state.events.length + 1,
+    at,
+    type: "prioritised_efficiency_toggled",
+    playerId,
+    previousMode,
+    nextMode,
+    yieldPointsSpent: 3,
+    sourceDetachmentId: "000001137",
+    sourceAbilityId: "000010707",
+    clock: replayed.clock,
+  });
 }
 
 export function openBattleChoice(state, choice, id, at) {

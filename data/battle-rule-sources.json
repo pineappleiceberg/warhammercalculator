@@ -146,7 +146,8 @@
         "published per-model Objective Control characteristics used by exact battle formations",
         "published per-model Leadership characteristics used by exact Battle-shock tests",
         "exact Oath of Moment target-selection timing and Hit-roll re-roll effect",
-        "exact Reanimation Protocols timing, D3 roll, wound restoration, and destroyed-model return order"
+        "exact Reanimation Protocols timing, D3 roll, wound restoration, and destroyed-model return order",
+        "exact Prioritised Efficiency mode timing, Yield Point income, and combat modifiers, with explicitly guided Advance and Charge re-roll provenance"
       ]
     },
     {
@@ -209,6 +210,24 @@
       "usedFor": [
         "exact once-per-battle Shadow in the Warp timing, source-unit battlefield requirement, enemy-unit Battle-shock tests, and Synapse-range penalty",
         "exact Synapse 3D6 Battle-shock test replacement and the Insane Bravery timing boundary"
+      ]
+    },
+    {
+      "id": "leagues-of-votann-faction-pack-v1.0",
+      "title": "Leagues of Votann Faction Pack",
+      "edition": "Warhammer 40,000 10th Edition",
+      "version": "1.0",
+      "url": "https://assets.warhammer-community.com/eng_09-06_warhammer40000_faction_pack_leagues_of_votann-awex3qmdiz-clwoaoyyos.pdf",
+      "retrievedAt": "2026-08-17",
+      "sha256": "82f19ac07e96a28374cc042b1afdcbe99b7c96fb32d33bce03c872d00a80c2de",
+      "pages": [
+        1,
+        11
+      ],
+      "usedFor": [
+        "current Leagues of Votann Faction Pack identity and effective date",
+        "current source boundary for Prioritised Efficiency and Yield Point rules",
+        "official Ancestral Fortune Yield Point spending erratum"
       ]
     }
   ]

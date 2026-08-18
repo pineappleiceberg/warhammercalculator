@@ -829,6 +829,52 @@ bool whc_oath_of_moment_attack_state_is_valid(uint32_t source_faction_adeptus_as
 
 /*@ assigns \nothing;
     ensures \result <==>
+        source_faction_votann <= 1 && attacker_has_ability <= 1 && attacker_mode <= 2 &&
+        target_on_objective <= 1 && attacker_on_controlled_objective <= 1 &&
+        target_has_ability <= 1 && target_mode <= 2 &&
+        strength_greater_than_toughness <= 1 && target_vehicle <= 1 &&
+        hit_modifier >= -1 && hit_modifier <= 1 &&
+        wound_modifier >= -1 && wound_modifier <= 1 &&
+        ((attacker_mode == 0 && target_mode == 0) || source_faction_votann == 1) &&
+        hit_modifier ==
+            (attacker_has_ability == 1 &&
+             ((attacker_mode == 1 && target_on_objective == 1) ||
+              (attacker_mode == 2 && attacker_on_controlled_objective == 1)) ? 1 : 0) &&
+        wound_modifier ==
+            (target_has_ability == 1 && target_mode == 2 &&
+             strength_greater_than_toughness == 1 && target_vehicle == 0 ? -1 : 0);
+*/
+bool whc_prioritised_efficiency_attack_state_is_valid(
+    uint32_t source_faction_votann, uint32_t attacker_has_ability, uint32_t attacker_mode,
+    uint32_t target_on_objective, uint32_t attacker_on_controlled_objective,
+    uint32_t target_has_ability, uint32_t target_mode, uint32_t strength_greater_than_toughness,
+    uint32_t target_vehicle, int32_t hit_modifier, int32_t wound_modifier);
+
+/*@ assigns \nothing;
+    ensures \result <==>
+        source_faction_votann == 1 && battle_round >= 1 &&
+        own_deployment_zone_count <= 100000 && outside_deployment_zone_count <= 100000 &&
+        controlled_objective_count <= 100000 && opponent_controlled_objective_count <= 100000 &&
+        own_deployment_zone_count + outside_deployment_zone_count == controlled_objective_count &&
+        before <= 100000 && gained <= 100000 && after <= 100000 &&
+        own_command_phase <= 1 && mercenary_oathband <= 1 && mode_before <= 2 && mode_after <= 2 &&
+        gained ==
+            (own_deployment_zone_count >= 1 ? 1 : 0) +
+            (battle_round >= 2 && outside_deployment_zone_count >= 1 ? 1 : 0) +
+            (battle_round >= 2 && outside_deployment_zone_count >= 2 ? 1 : 0) +
+            (battle_round >= 2 && controlled_objective_count > opponent_controlled_objective_count ?
+   1 : 0) && after == before + gained && mode_after == (own_command_phase == 1 && mercenary_oathband
+   == 0 ? (after >= 7 ? 2 : 1) : mode_before);
+*/
+bool whc_prioritised_efficiency_transition_is_valid(
+    uint32_t source_faction_votann, uint32_t battle_round, uint32_t own_deployment_zone_count,
+    uint32_t outside_deployment_zone_count, uint32_t controlled_objective_count,
+    uint32_t opponent_controlled_objective_count, uint32_t before, uint32_t gained, uint32_t after,
+    uint32_t own_command_phase, uint32_t mercenary_oathband, uint32_t mode_before,
+    uint32_t mode_after);
+
+/*@ assigns \nothing;
+    ensures \result <==>
         source_faction_necrons == 1 && formation_has_ability == 1 &&
         on_battlefield == 1 && at_command_end == 1 &&
         activation_roll >= 1 && activation_roll <= 3 &&

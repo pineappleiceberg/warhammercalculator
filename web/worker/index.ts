@@ -73,6 +73,9 @@ import {
   battleFormationHealth,
   battleGrimResolveFormationFacts,
   battleOathOfMomentAttackFacts,
+  battlePrioritisedEfficiencyAttackFacts,
+  battlePrioritisedEfficiencyState,
+  prioritisedEfficiencyTransitionIsValid,
   reanimationProtocolsTransitionIsValid,
   shadowInTheWarpTestIsValid,
   commandBattleShockTestIsValid,
@@ -411,6 +414,8 @@ type CalculatorExports = {
   whc_waaagh_state_is_valid(...values: number[]): number;
   whc_grim_resolve_model_objective_control_is_valid(...values: number[]): number;
   whc_oath_of_moment_attack_state_is_valid(...values: number[]): number;
+  whc_prioritised_efficiency_attack_state_is_valid(...values: number[]): number;
+  whc_prioritised_efficiency_transition_is_valid(...values: number[]): number;
   whc_reanimation_protocols_transition_is_valid(...values: number[]): number;
   whc_shadow_in_the_warp_test_is_valid(...values: number[]): number;
   whc_command_battle_shock_test_is_valid(...values: number[]): number;
@@ -774,6 +779,7 @@ function verifyBattleClock(
 async function replayFormationHealth(
   candidate: unknown,
   requestedFormationId: unknown,
+  requestedPrioritisedEfficiencyAttack: unknown,
   request: Request,
   env: Env,
 ) {
@@ -2167,6 +2173,84 @@ async function replayFormationHealth(
       })
       .filter((facts) => facts.sourceLocked)
       .sort((left, right) => left.formationId.localeCompare(right.formationId));
+    const prioritisedEfficiency = state.players
+      .map((player) => battlePrioritisedEfficiencyState(state, player.id, replayed))
+      .filter((facts) => facts.sourceLocked)
+      .map((facts) => ({
+        ...facts,
+        awards: facts.awards.map((award) => {
+          const javascriptValid = prioritisedEfficiencyTransitionIsValid(...award.values);
+          const nativeValid = Boolean(
+            calculator.whc_prioritised_efficiency_transition_is_valid(...award.values),
+          );
+          if (!javascriptValid || nativeValid !== javascriptValid || !award.valid) {
+            throw new ServiceUnavailableError(
+              "Prioritised Efficiency diverged from the C/WebAssembly predicate",
+              "PRIORITISED_EFFICIENCY_DIVERGENCE",
+            );
+          }
+          const { values, valid, ...publicAward } = award;
+          void values;
+          void valid;
+          return publicAward;
+        }),
+      }));
+    let prioritisedEfficiencyAttack = null;
+    if (requestedPrioritisedEfficiencyAttack !== undefined) {
+      if (
+        !requestedPrioritisedEfficiencyAttack ||
+        typeof requestedPrioritisedEfficiencyAttack !== "object" ||
+        Array.isArray(requestedPrioritisedEfficiencyAttack)
+      ) {
+        throw new Error("prioritisedEfficiencyAttack must be an object");
+      }
+      const attack = requestedPrioritisedEfficiencyAttack as Record<string, unknown>;
+      for (const field of ["attackerFormationId", "targetFormationId"] as const) {
+        if (typeof attack[field] !== "string" || !attack[field]) {
+          throw new Error(`prioritisedEfficiencyAttack.${field} must be a non-empty string`);
+        }
+      }
+      for (const field of ["attackStrength", "targetToughness"] as const) {
+        if (!Number.isSafeInteger(attack[field]) || Number(attack[field]) < 1) {
+          throw new Error(`prioritisedEfficiencyAttack.${field} must be a positive safe integer`);
+        }
+      }
+      for (const field of [
+        "targetOnObjective",
+        "attackerOnControlledObjective",
+        "targetVehicle",
+      ] as const) {
+        if (typeof attack[field] !== "boolean") {
+          throw new Error(`prioritisedEfficiencyAttack.${field} must be a boolean`);
+        }
+      }
+      const facts = battlePrioritisedEfficiencyAttackFacts(
+        state,
+        attack.attackerFormationId as string,
+        attack.targetFormationId as string,
+        {
+          attackStrength: attack.attackStrength as number,
+          targetToughness: attack.targetToughness as number,
+          targetOnObjective: attack.targetOnObjective as boolean,
+          attackerOnControlledObjective: attack.attackerOnControlledObjective as boolean,
+          targetVehicle: attack.targetVehicle as boolean,
+        },
+        replayed,
+      );
+      const nativeValid = Boolean(
+        calculator.whc_prioritised_efficiency_attack_state_is_valid(...facts.values),
+      );
+      if (!facts.valid || nativeValid !== facts.valid) {
+        throw new ServiceUnavailableError(
+          "Prioritised Efficiency attack state diverged from the C/WebAssembly predicate",
+          "PRIORITISED_EFFICIENCY_ATTACK_DIVERGENCE",
+        );
+      }
+      const { values, valid, ...publicFacts } = facts;
+      void values;
+      void valid;
+      prioritisedEfficiencyAttack = publicFacts;
+    }
     const reanimationProtocols = replayed.reanimationProtocolActivations.map((activation) => {
       const formation = replayed.formations.get(activation.formationId)!;
       const resolutions = replayed.reanimationProtocolResolutions
@@ -2366,7 +2450,14 @@ async function replayFormationHealth(
       schemaVersion: state.version,
       rulesSnapshot: state.rulesSnapshot,
       ruleCoverage: replayed.ruleCoverage,
-      factionRules: { waaagh, oathOfMoment, reanimationProtocols, shadowInTheWarp },
+      factionRules: {
+        waaagh,
+        oathOfMoment,
+        prioritisedEfficiency,
+        prioritisedEfficiencyAttack,
+        reanimationProtocols,
+        shadowInTheWarp,
+      },
       commandBattleShock,
       desperateEscape,
       detachmentRules: { grimResolve },
@@ -3977,12 +4068,19 @@ async function handleApi(request: Request, env: Env) {
       const body = (await request.json()) as {
         battleState?: unknown;
         formationId?: unknown;
+        prioritisedEfficiencyAttack?: unknown;
       };
       if (!body || body.battleState === undefined) {
         return apiError("battleState is required");
       }
       return json({
-        data: await replayFormationHealth(body.battleState, body.formationId, request, env),
+        data: await replayFormationHealth(
+          body.battleState,
+          body.formationId,
+          body.prioritisedEfficiencyAttack,
+          request,
+          env,
+        ),
         apiVersion: "v1",
       });
     }

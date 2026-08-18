@@ -11,6 +11,7 @@ import {
   arriveFromReserves,
   appendResolvedAttack,
   battleOathOfMomentState,
+  battlePrioritisedEfficiencyState,
   battleReanimationProtocolsState,
   battleShadowInTheWarpState,
   callWaaagh,
@@ -79,6 +80,10 @@ const attachedFixtureUrl = new URL(
 );
 const shadowFixtureUrl = new URL(
   "../tests/fixtures/golden-battle-tyranids-vs-space-marines-v1.json",
+  import.meta.url,
+);
+const votannFixtureUrl = new URL(
+  "../tests/fixtures/golden-battle-votann-vs-space-marines-v1.json",
   import.meta.url,
 );
 const catalogue = JSON.parse(
@@ -216,6 +221,15 @@ const shadowDefenders = oneUnitList({
   modelCount: 5,
 });
 
+const votannAttackers = oneUnitList({
+  id: "golden-votann",
+  updatedAt: 90,
+  name: "Golden Leagues of Votann",
+  unitName: "Ûthar the Destined",
+  savedUnitId: "uthar",
+  weaponName: "Volkanite disintegrator",
+});
+
 const actionAttackers = oneUnitList({
   id: "golden-action-necrons",
   updatedAt: 30,
@@ -345,6 +359,14 @@ const shadowMissionOverrides = {
   },
 };
 
+const votannMissionOverrides = {
+  ...exactMissionOverrides,
+  players: {
+    "player-1": { detachmentSourceId: "000001001" },
+    "player-2": { detachmentSourceId: "000000750" },
+  },
+};
+
 function addFixedSecondaryPlans(state) {
   let next = state;
   for (const playerId of ["player-1", "player-2"]) {
@@ -408,12 +430,19 @@ function reviewedTableGeometry(
   state,
   selection = exactMissionOverrides,
   deploymentName = "Tipping Point",
+  objectiveDeploymentZones = false,
 ) {
   const objectivePositions = replayBattleState(state).mission.objectives.map(
-    (objective, index) => ({
+    (objective, index, objectives) => ({
       objectiveId: objective.id,
       xThousandths: 10_000 + index * 8_000,
       yThousandths: 6_000 + index * 7_000,
+      ...(objectiveDeploymentZones
+        ? {
+            deploymentZonePlayerId:
+              index === 0 ? "player-1" : index === objectives.length - 1 ? "player-2" : "",
+          }
+        : {}),
     }),
   );
   return {
@@ -433,6 +462,7 @@ function reviewedTableGeometry(
     },
     terrainLayoutReviewed: true,
     deploymentZonesReviewed: true,
+    objectiveDeploymentZonesReviewed: objectiveDeploymentZones,
     objectivePositionsReviewed: true,
     reviewedByPlayer: true,
     method: "manual",
@@ -1132,6 +1162,177 @@ function buildFixture() {
         savedUnitId: attackers.units[0].id,
         datasheetId: attackers.units[0].unitId,
         datasheetName: attackers.units[0].name,
+      },
+      {
+        playerId: "player-2",
+        listId: defenders.id,
+        factionId: defenders.factionId,
+        savedUnitId: defenders.units[0].id,
+        datasheetId: defenders.units[0].unitId,
+        datasheetName: defenders.units[0].name,
+      },
+    ],
+    sourceManifestVersion: sourceManifest.version,
+    stateDigest: digest(state),
+    expectedDigest: digest(expected),
+    expected,
+    state,
+  };
+}
+
+function buildVotannFixture() {
+  let state = initializeBattleForLists({
+    catalogue,
+    firstList: votannAttackers,
+    secondList: defenders,
+    rulesSnapshot: `profile-data:${catalogue.sourceUpdatedAt}|battle-state:${BATTLE_STATE_VERSION}`,
+    ruleCoverageMatrix,
+    missionPackCatalogue,
+    ruleSelectionOverrides: votannMissionOverrides,
+    id: "golden-votann-vs-space-marines-v1",
+  });
+  state = configureBattleMission(
+    state,
+    {
+      name: "A · Take and Hold · Tipping Point",
+      pointsLimit: 2_000,
+      deploymentFirstPlayerId: "player-1",
+      commandPointsPerCommandPhase: 1,
+      startingCommandPoints: { "player-1": 0, "player-2": 0 },
+      objectives: Array.from({ length: 5 }, (_, index) => ({
+        id: `objective-${index + 1}`,
+        name: `Objective ${index + 1}`,
+      })),
+    },
+    "votann-mission-configured",
+    state.events.length + 1,
+  );
+  state = addFixedSecondaryPlans(state);
+  state = configureBattleTableGeometry(
+    state,
+    reviewedTableGeometry(state, votannMissionOverrides, "Tipping Point", true),
+    "votann-table-geometry-recorded",
+    state.events.length + 1,
+  );
+  state = configureBattleTerrainFootprints(
+    state,
+    reviewedTerrainFootprints(state),
+    "votann-terrain-footprints-recorded",
+    state.events.length + 1,
+  );
+  state = configureBattleTerrainVisibility(
+    state,
+    reviewedTerrainVisibility(state),
+    "votann-terrain-visibility-recorded",
+    state.events.length + 1,
+  );
+  state = deployAll(state);
+  state = startBattle(state, "player-1", "votann-battle-started", state.events.length + 1);
+  for (const [objectiveId, playerId] of [
+    ["objective-1", "player-1"],
+    ["objective-2", "player-1"],
+    ["objective-5", "player-2"],
+  ]) {
+    state = setBattleObjectiveControl(
+      state,
+      objectiveId,
+      playerId,
+      false,
+      `votann-control-${objectiveId}`,
+      state.events.length + 1,
+    );
+  }
+
+  const scoredPrimaryTurns = new Set();
+  const scoredSecondaryTurns = new Set();
+  while (replayBattleState(state).clock.status !== "complete") {
+    let replayed = replayBattleState(state);
+    const oath = battleOathOfMomentState(state, replayed.clock.activePlayerId, replayed);
+    if (oath.available) {
+      state = selectOathOfMomentTarget(
+        state,
+        replayed.clock.activePlayerId,
+        oath.eligibleFormationIds[0],
+        `votann-oath-${replayed.clock.battleRound}-${replayed.clock.turn}`,
+        state.events.length + 1,
+      );
+      replayed = replayBattleState(state);
+    }
+    const clock = replayed.clock;
+    const turnKey = `${clock.battleRound}:${clock.turn}:${clock.activePlayerId}`;
+    if (clock.phase === "command" && clock.step === "end" && clock.battleRound >= 2) {
+      if (!scoredPrimaryTurns.has(turnKey)) {
+        state = scoreMissionPoints(
+          state,
+          clock.activePlayerId,
+          "primary",
+          5,
+          "Votann golden replay reviewed primary condition",
+          `votann-primary-${turnKey}`,
+          state.events.length + 1,
+        );
+        scoredPrimaryTurns.add(turnKey);
+      }
+    }
+    if (clock.phase === "fight" && clock.step === "end") {
+      if (!scoredSecondaryTurns.has(turnKey)) {
+        state = scoreSecondaryMissionCard(
+          state,
+          clock.activePlayerId,
+          `${clock.activePlayerId}:fixed:1`,
+          2,
+          "Votann golden replay reviewed fixed Secondary condition",
+          `votann-secondary-${turnKey}`,
+          state.events.length + 1,
+        );
+        scoredSecondaryTurns.add(turnKey);
+      }
+      if (clock.battleRound === 5 && clock.turn === 2) {
+        for (const playerId of ["player-1", "player-2"]) {
+          state = scoreMissionPoints(
+            state,
+            playerId,
+            "battle_ready",
+            10,
+            "Votann golden replay Battle Ready review",
+            `votann-battle-ready-${playerId}`,
+            state.events.length + 1,
+          );
+        }
+      }
+    }
+    state = advanceFixtureClock(state, `votann-clock-${state.events.length + 1}`);
+  }
+
+  const expected = goldenBattleReplaySummary(state);
+  const efficiency = battlePrioritisedEfficiencyState(state, "player-1");
+  assert.equal(expected.finalClock.status, "complete");
+  assert.equal(expected.phaseStepCoverage.length, 170);
+  assert.equal(
+    efficiency.mode,
+    "fortify_takeover",
+    JSON.stringify({
+      yieldPoints: efficiency.yieldPoints,
+      awards: efficiency.awards.map((award) => [award.gained, award.after, award.modeAfter]),
+    }),
+  );
+  assert.equal(efficiency.awards.length, 10);
+  assert.ok(efficiency.awards.every((award) => award.valid));
+  return {
+    schema: "whc-golden-battle-replay",
+    schemaVersion: 1,
+    scenarioId: "votann-uthar-vs-space-marines-brutalis-prioritised-efficiency",
+    title: "Ûthar vs Brutalis Dreadnought · Prioritised Efficiency and Yield Points",
+    description:
+      "A source-locked five-round replay covering deployment-zone objectives, automatic Yield Point awards, Hostile Acquisition, Fortify Takeover, and guided movement re-roll provenance.",
+    listPair: [
+      {
+        playerId: "player-1",
+        listId: votannAttackers.id,
+        factionId: votannAttackers.factionId,
+        savedUnitId: votannAttackers.units[0].id,
+        datasheetId: votannAttackers.units[0].unitId,
+        datasheetName: votannAttackers.units[0].name,
       },
       {
         playerId: "player-2",
@@ -2477,6 +2678,7 @@ function buildAttachedFixture() {
 }
 
 const fixture = buildFixture();
+const votannFixture = buildVotannFixture();
 const shadowFixture = buildShadowFixture();
 const actionFixture = buildActionFixture();
 const attachedFixture = buildAttachedFixture();
@@ -2488,16 +2690,21 @@ const formatFixture = (value) =>
     useTabs: false,
   });
 const serialized = await formatFixture(fixture);
+const votannSerialized = await formatFixture(votannFixture);
 const shadowSerialized = await formatFixture(shadowFixture);
 const actionSerialized = await formatFixture(actionFixture);
 const attachedSerialized = await formatFixture(attachedFixture);
 if (process.argv.includes("--check")) {
   const existing = await readFile(fixtureUrl, "utf8");
+  const existingVotann = await readFile(votannFixtureUrl, "utf8");
   const existingShadow = await readFile(shadowFixtureUrl, "utf8");
   const existingAction = await readFile(actionFixtureUrl, "utf8");
   const existingAttached = await readFile(attachedFixtureUrl, "utf8");
   if (existing !== serialized) {
     throw new Error("Golden battle replay fixture is stale; regenerate it before committing");
+  }
+  if (existingVotann !== votannSerialized) {
+    throw new Error("Prioritised Efficiency golden battle replay fixture is stale");
   }
   if (existingShadow !== shadowSerialized) {
     throw new Error("Shadow in the Warp golden battle replay fixture is stale");
@@ -2514,6 +2721,7 @@ if (process.argv.includes("--check")) {
   }
 } else {
   await writeFile(fixtureUrl, serialized);
+  await writeFile(votannFixtureUrl, votannSerialized);
   await writeFile(shadowFixtureUrl, shadowSerialized);
   await writeFile(actionFixtureUrl, actionSerialized);
   await writeFile(attachedFixtureUrl, attachedSerialized);
@@ -2521,6 +2729,9 @@ if (process.argv.includes("--check")) {
 
 console.log(
   `${fixture.scenarioId}: ${fixture.expected.eventCount} events, ${fixture.expected.phaseStepCoverage.length} active clock states, ${fixture.stateDigest}`,
+);
+console.log(
+  `${votannFixture.scenarioId}: ${votannFixture.expected.eventCount} events, ${votannFixture.expected.phaseStepCoverage.length} active clock states, ${votannFixture.stateDigest}`,
 );
 console.log(
   `${shadowFixture.scenarioId}: ${shadowFixture.expected.eventCount} events, ${shadowFixture.expected.phaseStepCoverage.length} active clock states, ${shadowFixture.stateDigest}`,

@@ -93,6 +93,12 @@ const shadowGoldenBattleReplay = JSON.parse(
     "utf8",
   ),
 );
+const votannGoldenBattleReplay = JSON.parse(
+  await readFile(
+    new URL("./fixtures/golden-battle-votann-vs-space-marines-v1.json", import.meta.url),
+    "utf8",
+  ),
+);
 
 function createD1Mock() {
   const rows = [];
@@ -321,7 +327,7 @@ test("serves profile discovery, exact calculation, and CSPRNG roll APIs", async 
   const coverage = (await coverageResponse.json()).data;
   assert.equal(
     coverage.snapshotId,
-    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v49",
+    "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-votann-v1-v50",
   );
   assert.equal(coverage.sourceLocked, true);
   assert.equal(coverage.rules.length, coveredRuleCoverageMatrix.rules.length);
@@ -3077,6 +3083,91 @@ test("API exposes source-locked active Oath of Moment attack facts without nativ
   assert.ok(facts.every((entry) => !Object.hasOwn(entry, "values")));
 });
 
+test("API replays source-locked Prioritised Efficiency awards through the C/Wasm predicate", async () => {
+  const worker = await loadWorker();
+  const context = { waitUntil() {}, passThroughOnException() {} };
+  const attackerFormationId = votannGoldenBattleReplay.expected.formations.find((formation) =>
+    formation.id.startsWith("player-1:"),
+  ).id;
+  const targetFormationId = votannGoldenBattleReplay.expected.formations.find((formation) =>
+    formation.id.startsWith("player-2:"),
+  ).id;
+  const response = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        battleState: votannGoldenBattleReplay.state,
+        formationId: attackerFormationId,
+        prioritisedEfficiencyAttack: {
+          attackerFormationId,
+          targetFormationId,
+          attackStrength: 5,
+          targetToughness: 10,
+          targetOnObjective: false,
+          attackerOnControlledObjective: true,
+          targetVehicle: true,
+        },
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  const result = await response.json();
+  const efficiency = result.data.factionRules.prioritisedEfficiency;
+  assert.equal(efficiency.length, 1);
+  assert.equal(efficiency[0].sourceLocked, true);
+  assert.equal(efficiency[0].mode, "fortify_takeover");
+  assert.equal(efficiency[0].yieldPoints, 26);
+  assert.equal(efficiency[0].advanceRerollAvailable, false);
+  assert.equal(efficiency[0].chargeRerollAvailable, false);
+  assert.equal(efficiency[0].mobilityResolution, "guided");
+  assert.ok(efficiency[0].awards.length > 0);
+  assert.ok(efficiency[0].awards.every((award) => award.playerId === "player-1"));
+  assert.ok(
+    efficiency[0].awards.every(
+      (award) => !Object.hasOwn(award, "values") && !Object.hasOwn(award, "valid"),
+    ),
+  );
+  assert.ok(efficiency[0].awards.some((award) => award.modeAfter === "hostile_acquisition"));
+  assert.deepEqual(result.data.factionRules.prioritisedEfficiencyAttack, {
+    attackerFormationId,
+    targetFormationId,
+    attackerMode: "fortify_takeover",
+    targetMode: "",
+    hitModifier: 1,
+    woundModifier: 0,
+  });
+
+  const rejected = await worker.fetch(
+    new Request("http://localhost/api/v1/battle/replay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        battleState: votannGoldenBattleReplay.state,
+        formationId: attackerFormationId,
+        prioritisedEfficiencyAttack: {
+          attackerFormationId,
+          targetFormationId,
+          attackStrength: 5,
+          targetToughness: 10,
+          targetOnObjective: 1,
+          attackerOnControlledObjective: true,
+          targetVehicle: true,
+        },
+      }),
+    }),
+    testEnv,
+    context,
+  );
+  assert.equal(rejected.status, 400);
+  assert.match(
+    (await rejected.json()).error.message,
+    /prioritisedEfficiencyAttack\.targetOnObjective must be a boolean/,
+  );
+});
+
 test("replays attached mixed-profile casualties and Reserve arrival through the public API and C ABI", async () => {
   const worker = await loadWorker();
   const context = { waitUntil() {}, passThroughOnException() {} };
@@ -3212,8 +3303,18 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
     battlefieldHeightThousandths: TABLE_GEOMETRY_CONSTANTS.heightThousandths,
     origin: "attacker-left-near",
     objectivePositions: [
-      { objectiveId: "objective-1", xThousandths: 12_000, yThousandths: 11_000 },
-      { objectiveId: "objective-2", xThousandths: 48_000, yThousandths: 33_000 },
+      {
+        objectiveId: "objective-1",
+        xThousandths: 12_000,
+        yThousandths: 11_000,
+        deploymentZonePlayerId: "",
+      },
+      {
+        objectiveId: "objective-2",
+        xThousandths: 48_000,
+        yThousandths: 33_000,
+        deploymentZonePlayerId: "",
+      },
     ],
     terrainProfile: {
       sectionCount: TABLE_GEOMETRY_CONSTANTS.terrainSectionCount,
@@ -3224,6 +3325,7 @@ test("replays source-locked table geometry through the JavaScript and C/WebAssem
     },
     terrainLayoutReviewed: true,
     deploymentZonesReviewed: true,
+    objectiveDeploymentZonesReviewed: false,
     objectivePositionsReviewed: true,
     reviewedByPlayer: true,
     method: "manual",

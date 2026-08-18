@@ -326,6 +326,12 @@ int main(void) {
     assert(whc_oath_of_moment_attack_state_is_valid(1u, 1u, 1u, 1u, 1u, 1u));
     assert(whc_oath_of_moment_attack_state_is_valid(1u, 1u, 1u, 1u, 0u, 0u));
     assert(!whc_oath_of_moment_attack_state_is_valid(0u, 1u, 1u, 1u, 1u, 1u));
+    assert(whc_prioritised_efficiency_transition_is_valid(1u, 2u, 1u, 2u, 3u, 2u, 4u, 4u, 8u, 1u,
+                                                          0u, 0u, 2u));
+    assert(
+        whc_prioritised_efficiency_attack_state_is_valid(1u, 1u, 2u, 0u, 1u, 0u, 0u, 0u, 0u, 1, 0));
+    assert(whc_prioritised_efficiency_attack_state_is_valid(1u, 0u, 0u, 0u, 0u, 1u, 2u, 1u, 0u, 0,
+                                                            -1));
     assert(whc_reanimation_protocols_transition_is_valid(1u, 1u, 1u, 1u, 3u, 3u, 1u, 3u, 3u, 2u, 1u,
                                                          2u, 0u));
     assert(whc_reanimation_protocols_transition_is_valid(1u, 1u, 1u, 1u, 3u, 2u, 2u, 3u, 3u, 2u, 0u,
