@@ -27,17 +27,32 @@ state.
 
 ## Prioritized backlog
 
-1. Add source-backed faction and detachment state transitions to canonical
+1. Preserve canonical initial and rerolled Advance and Charge dice so Hostile
+   Acquisition mobility can move from guided input to executable replay.
+2. Add source-backed faction and detachment state transitions to canonical
    battle replay, apply their consequences to attacks, objectives, and bounded
    resources, and lock each transition into another full-game faction/mission
    fixture. Then continue across every supported faction, mission, and
    composition boundary.
-2. Add reviewed curved surface primitives only when a supported physical terrain
+3. Add reviewed curved surface primitives only when a supported physical terrain
    set cannot be represented exactly by panels and simple polygon solids.
-3. Add deterministic automated policies and calibrated batch battle simulation
+4. Add deterministic automated policies and calibrated batch battle simulation
    only after the guided replay corpus closes the same rules boundaries.
 
 ## Completed cycles
+
+- 2026-08-17: Advanced canonical battle replay to version 50 with the Leagues of
+  Votann Prioritised Efficiency economy. Source-locked Command-phase objective
+  state now awards each applicable Yield Point condition once, normal Oathbands
+  switch between Hostile Acquisition and Fortify Takeover at the published
+  boundary, and Mercenary Oathband can spend exactly 3YP to toggle its mode.
+  Guided Play and the replay API apply the resulting Hit and Wound modifiers,
+  with every award and attack fact independently checked through ACSL-specified
+  C/WebAssembly predicates. A complete five-round Ûthar-versus-Brutalis golden
+  replay covers ten awards, 26YP, and the Hostile-to-Fortify transition. Advance
+  and Charge rerolls remain explicitly guided because the current event model
+  records only the accepted movement result. Next, preserve both initial and
+  rerolled dice so that mobility boundary becomes executable.
 
 - 2026-08-17: Advanced canonical battle replay to version 49 with the complete
   Core Rules Desperate Escape trigger. Every Fall Back now records a reviewed
