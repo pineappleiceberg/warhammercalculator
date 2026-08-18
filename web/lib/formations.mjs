@@ -693,6 +693,9 @@ export function savedFormationBattleRegistration(
   const hasShadowInTheWarpAbility = formation.components.some((component) =>
     (component.catalogueUnit?.factionAbilityIds ?? []).includes("000000707"),
   );
+  const hasPrioritisedEfficiencyAbility = formation.components.some((component) =>
+    (component.catalogueUnit?.factionAbilityIds ?? []).includes("000010432"),
+  );
   return {
     id,
     playerId,
@@ -704,6 +707,7 @@ export function savedFormationBattleRegistration(
     hasWaaaghAbility,
     hasOathOfMomentAbility,
     hasShadowInTheWarpAbility,
+    hasPrioritisedEfficiencyAbility,
     reanimationProtocolSavedUnitIds,
     deploymentTraits: {
       dedicatedTransport: normalizedFormationKeywords.has("dedicated transport"),

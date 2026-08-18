@@ -22,6 +22,8 @@ NECRONS_FAQ_SOURCE_ID = "codex-necrons-faq-v1.2"
 NECRONS_FAQ_SHA256 = "52d2b25f175e2a5ef760402a18683544e281be6a9e693ffe1389b9bb6eed7c6d"
 TYRANIDS_FACTION_PACK_SOURCE_ID = "tyranids-faction-pack-v1.0"
 TYRANIDS_FACTION_PACK_SHA256 = "de2105f97171812369288cb5d5da3da9730f47dc7daa67aa06b1ebc771ad6c36"
+VOTANN_FACTION_PACK_SOURCE_ID = "leagues-of-votann-faction-pack-v1.0"
+VOTANN_FACTION_PACK_SHA256 = "82f19ac07e96a28374cc042b1afdcbe99b7c96fb32d33bce03c872d00a80c2de"
 MISSION_PROCEDURES = {
     "sourcePages": [2, 3, 4, 5],
     "battleRounds": 5,
@@ -66,6 +68,7 @@ GENERATED_PREFIXES = (
     "faction.reanimation-protocols",
     "faction.shadow-in-the-warp",
     "faction.synapse-battle-shock",
+    "faction.prioritised-efficiency",
     "core.command-battle-shock",
     "core.desperate-escape",
     "core.attached-unit-separation",
@@ -151,6 +154,40 @@ def tyranids_battle_shock_rule(rule_id, name):
             },
             {"id": "core-rules-10e", "pages": [11, 12]},
             {"id": TYRANIDS_FACTION_PACK_SOURCE_ID, "pages": [19, 21]},
+        ],
+    }
+
+
+def prioritised_efficiency_rule():
+    return {
+        "id": "faction.prioritised-efficiency",
+        "category": "faction",
+        "name": "Prioritised Efficiency",
+        "status": "executable",
+        "introducedBattleStateVersion": 50,
+        "sources": [
+            {
+                "id": SOURCE_ID,
+                "records": [{"type": "faction", "id": "LoV:ability:000010432"}],
+            },
+            {"id": VOTANN_FACTION_PACK_SOURCE_ID, "pages": [1, 11]},
+        ],
+    }
+
+
+def prioritised_efficiency_mobility_rule():
+    return {
+        "id": "faction.prioritised-efficiency-mobility",
+        "category": "faction",
+        "name": "Prioritised Efficiency — Advance and Charge re-rolls",
+        "status": "guided",
+        "introducedBattleStateVersion": 50,
+        "sources": [
+            {
+                "id": SOURCE_ID,
+                "records": [{"type": "faction", "id": "LoV:ability:000010432"}],
+            },
+            {"id": VOTANN_FACTION_PACK_SOURCE_ID, "pages": [11]},
         ],
     }
 
@@ -357,6 +394,7 @@ def expected_documents():
             "published per-model Leadership characteristics used by exact Battle-shock tests",
             "exact Oath of Moment target-selection timing and Hit-roll re-roll effect",
             "exact Reanimation Protocols timing, D3 roll, wound restoration, and destroyed-model return order",
+            "exact Prioritised Efficiency mode timing, Yield Point income, and combat modifiers, with explicitly guided Advance and Charge re-roll provenance",
         ],
     }
     sources["sources"] = [entry for entry in sources["sources"] if entry["id"] != SOURCE_ID]
@@ -419,9 +457,28 @@ def expected_documents():
         entry for entry in sources["sources"] if entry["id"] != TYRANIDS_FACTION_PACK_SOURCE_ID
     ]
     sources["sources"].append(tyranids_source_entry)
+    votann_source_entry = {
+        "id": VOTANN_FACTION_PACK_SOURCE_ID,
+        "title": "Leagues of Votann Faction Pack",
+        "edition": "Warhammer 40,000 10th Edition",
+        "version": "1.0",
+        "url": "https://assets.warhammer-community.com/eng_09-06_warhammer40000_faction_pack_leagues_of_votann-awex3qmdiz-clwoaoyyos.pdf",
+        "retrievedAt": "2026-08-17",
+        "sha256": VOTANN_FACTION_PACK_SHA256,
+        "pages": [1, 11],
+        "usedFor": [
+            "current Leagues of Votann Faction Pack identity and effective date",
+            "current source boundary for Prioritised Efficiency and Yield Point rules",
+            "official Ancestral Fortune Yield Point spending erratum",
+        ],
+    }
+    sources["sources"] = [
+        entry for entry in sources["sources"] if entry["id"] != VOTANN_FACTION_PACK_SOURCE_ID
+    ]
+    sources["sources"].append(votann_source_entry)
 
     coverage["snapshotId"] = (
-        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v49"
+        "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-votann-v1-v50"
     )
     coverage["sourceLocks"] = [
         lock for lock in coverage["sourceLocks"] if lock["id"] != SOURCE_ID
@@ -445,6 +502,12 @@ def expected_documents():
     coverage["sourceLocks"].append(
         {"id": TYRANIDS_FACTION_PACK_SOURCE_ID, "sha256": TYRANIDS_FACTION_PACK_SHA256}
     )
+    coverage["sourceLocks"] = [
+        lock for lock in coverage["sourceLocks"] if lock["id"] != VOTANN_FACTION_PACK_SOURCE_ID
+    ]
+    coverage["sourceLocks"].append(
+        {"id": VOTANN_FACTION_PACK_SOURCE_ID, "sha256": VOTANN_FACTION_PACK_SHA256}
+    )
     coverage["rules"] = [
         rule
         for rule in coverage["rules"]
@@ -461,6 +524,8 @@ def expected_documents():
     coverage["rules"].append(
         tyranids_battle_shock_rule("faction.synapse-battle-shock", "Synapse Battle-shock")
     )
+    coverage["rules"].append(prioritised_efficiency_rule())
+    coverage["rules"].append(prioritised_efficiency_mobility_rule())
     coverage["rules"].append(command_battle_shock_rule())
     coverage["rules"].append(desperate_escape_rule())
     coverage["rules"].append(attached_unit_separation_rule())

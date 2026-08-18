@@ -46,6 +46,8 @@ import {
   modelPositionSetFacts,
   modelPositionSetIsValid,
   normalizeBattleState,
+  prioritisedEfficiencyAttackStateIsValid,
+  prioritisedEfficiencyTransitionIsValid,
   rangedDeclarationIsValid,
   rangedGeometryResolutionIsValid,
   rangedTargetEligibilityIsValid,
@@ -160,6 +162,8 @@ test("WebAssembly exports the formally verified validators", () => {
   assert.equal(typeof calculator._whc_waaagh_state_is_valid, "function");
   assert.equal(typeof calculator._whc_grim_resolve_model_objective_control_is_valid, "function");
   assert.equal(typeof calculator._whc_oath_of_moment_attack_state_is_valid, "function");
+  assert.equal(typeof calculator._whc_prioritised_efficiency_attack_state_is_valid, "function");
+  assert.equal(typeof calculator._whc_prioritised_efficiency_transition_is_valid, "function");
   assert.equal(typeof calculator._whc_reanimation_protocols_transition_is_valid, "function");
   assert.equal(typeof calculator._whc_shadow_in_the_warp_test_is_valid, "function");
   assert.equal(typeof calculator._whc_command_battle_shock_test_is_valid, "function");
@@ -1092,6 +1096,39 @@ test("WebAssembly and JavaScript agree on per-model Desperate Escape triggers", 
         ),
       ),
       desperateEscapeModelRequiresTest(...values),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on Prioritised Efficiency transitions", () => {
+  const cases = [
+    [1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 0, 1],
+    [1, 2, 1, 2, 3, 2, 4, 4, 8, 1, 0, 0, 2],
+    [1, 2, 0, 1, 1, 2, 5, 1, 6, 0, 1, 1, 1],
+    [1, 2, 1, 2, 3, 2, 4, 3, 7, 1, 0, 0, 2],
+    [0, 2, 1, 2, 3, 2, 4, 4, 8, 1, 0, 0, 2],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_prioritised_efficiency_transition_is_valid(...values)),
+      prioritisedEfficiencyTransitionIsValid(...values),
+    );
+  }
+});
+
+test("WebAssembly and JavaScript agree on Prioritised Efficiency attack effects", () => {
+  const cases = [
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    [1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0],
+    [1, 1, 2, 0, 1, 0, 0, 0, 0, 1, 0],
+    [1, 0, 0, 0, 0, 1, 2, 1, 0, 0, -1],
+    [1, 0, 0, 0, 0, 1, 2, 1, 1, 0, 0],
+    [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0],
+  ];
+  for (const values of cases) {
+    assert.equal(
+      Boolean(calculator._whc_prioritised_efficiency_attack_state_is_valid(...values)),
+      prioritisedEfficiencyAttackStateIsValid(...values),
     );
   }
 });

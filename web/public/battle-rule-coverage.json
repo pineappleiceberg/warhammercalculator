@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v49",
+  "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-votann-v1-v50",
   "edition": "Warhammer 40,000 10th Edition",
   "updatedAt": "2026-08-11",
   "sourceLocks": [
@@ -27,6 +27,10 @@
     {
       "id": "tyranids-faction-pack-v1.0",
       "sha256": "de2105f97171812369288cb5d5da3da9730f47dc7daa67aa06b1ebc771ad6c36"
+    },
+    {
+      "id": "leagues-of-votann-faction-pack-v1.0",
+      "sha256": "82f19ac07e96a28374cc042b1afdcbe99b7c96fb32d33bce03c872d00a80c2de"
     }
   ],
   "statuses": [
@@ -891,6 +895,55 @@
           "pages": [
             19,
             21
+          ]
+        }
+      ]
+    },
+    {
+      "id": "faction.prioritised-efficiency",
+      "category": "faction",
+      "name": "Prioritised Efficiency",
+      "status": "executable",
+      "introducedBattleStateVersion": 50,
+      "sources": [
+        {
+          "id": "wahapedia-profile-export-2026-06-13",
+          "records": [
+            {
+              "type": "faction",
+              "id": "LoV:ability:000010432"
+            }
+          ]
+        },
+        {
+          "id": "leagues-of-votann-faction-pack-v1.0",
+          "pages": [
+            1,
+            11
+          ]
+        }
+      ]
+    },
+    {
+      "id": "faction.prioritised-efficiency-mobility",
+      "category": "faction",
+      "name": "Prioritised Efficiency — Advance and Charge re-rolls",
+      "status": "guided",
+      "introducedBattleStateVersion": 50,
+      "sources": [
+        {
+          "id": "wahapedia-profile-export-2026-06-13",
+          "records": [
+            {
+              "type": "faction",
+              "id": "LoV:ability:000010432"
+            }
+          ]
+        },
+        {
+          "id": "leagues-of-votann-faction-pack-v1.0",
+          "pages": [
+            11
           ]
         }
       ]

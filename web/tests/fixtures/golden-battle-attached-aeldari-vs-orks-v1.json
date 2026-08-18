@@ -27,10 +27,10 @@
     }
   ],
   "sourceManifestVersion": 1,
-  "stateDigest": "b8e4c2ed7d83f1f8f013f841aaa72a46b330d7e10bee397840733c5138e47df7",
-  "expectedDigest": "9e5a32c2cbb54936baa69a751788c25bbe79ae2cb57be46dfcb8bea6ef538267",
+  "stateDigest": "d67fb2b8fca6de9a73eff0b1c851ede1f0bc7e9cb4217cc253d669defd4b77c1",
+  "expectedDigest": "6183e3d1dad4b7f3ffaf4f35971adfad2a50da9296cb4e1bb78aeb1318a77e4d",
   "expected": {
-    "stateVersion": 49,
+    "stateVersion": 50,
     "eventCount": 229,
     "eventTypeCounts": {
       "activation_completed": 1,
@@ -323,15 +323,16 @@
       "codex-necrons-faq-v1.2",
       "core-rules-10e",
       "core-rules-updates-10e-2025-10",
+      "leagues-of-votann-faction-pack-v1.0",
       "tyranids-faction-pack-v1.0",
       "wahapedia-profile-export-2026-06-13"
     ]
   },
   "state": {
-    "version": 49,
+    "version": 50,
     "id": "golden-attached-aeldari-vs-orks-v1",
     "createdAt": 0,
-    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:49",
+    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:50",
     "players": [
       {
         "id": "player-1",
@@ -375,6 +376,7 @@
           "hasOathOfMomentAbility": false,
           "reanimationProtocolSavedUnitIds": [],
           "hasShadowInTheWarpAbility": false,
+          "hasPrioritisedEfficiencyAbility": false,
           "segments": [
             {
               "id": "guardians:363:loadout:1",
@@ -833,6 +835,7 @@
           "hasOathOfMomentAbility": false,
           "reanimationProtocolSavedUnitIds": [],
           "hasShadowInTheWarpAbility": false,
+          "hasPrioritisedEfficiencyAbility": false,
           "segments": [
             {
               "id": "rangers:368:loadout:1",
@@ -937,6 +940,7 @@
           "hasOathOfMomentAbility": false,
           "reanimationProtocolSavedUnitIds": [],
           "hasShadowInTheWarpAbility": false,
+          "hasPrioritisedEfficiencyAbility": false,
           "segments": [
             {
               "id": "boyz:16:loadout:1",
@@ -1289,6 +1293,7 @@
           "hasOathOfMomentAbility": false,
           "reanimationProtocolSavedUnitIds": [],
           "hasShadowInTheWarpAbility": false,
+          "hasPrioritisedEfficiencyAbility": false,
           "segments": [
             {
               "id": "mek:12:loadout:1",
@@ -1333,7 +1338,7 @@
         "type": "rule_coverage_configured",
         "coverage": {
           "schemaVersion": 1,
-          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v49",
+          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-votann-v1-v50",
           "sourceLocks": [
             {
               "id": "core-rules-10e",
@@ -1358,6 +1363,10 @@
             {
               "id": "tyranids-faction-pack-v1.0",
               "sha256": "de2105f97171812369288cb5d5da3da9730f47dc7daa67aa06b1ebc771ad6c36"
+            },
+            {
+              "id": "leagues-of-votann-faction-pack-v1.0",
+              "sha256": "82f19ac07e96a28374cc042b1afdcbe99b7c96fb32d33bce03c872d00a80c2de"
             }
           ],
           "plan": {
@@ -1473,7 +1482,7 @@
             }
           },
           "report": {
-            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v49",
+            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-votann-v1-v50",
             "permitted": true,
             "results": [
               {
@@ -1880,11 +1889,36 @@
           "battlefieldHeightThousandths": 44000,
           "origin": "attacker-left-near",
           "objectivePositions": [
-            { "objectiveId": "objective-1", "xThousandths": 10000, "yThousandths": 6000 },
-            { "objectiveId": "objective-2", "xThousandths": 18000, "yThousandths": 13000 },
-            { "objectiveId": "objective-3", "xThousandths": 26000, "yThousandths": 20000 },
-            { "objectiveId": "objective-4", "xThousandths": 34000, "yThousandths": 27000 },
-            { "objectiveId": "objective-5", "xThousandths": 42000, "yThousandths": 34000 }
+            {
+              "objectiveId": "objective-1",
+              "xThousandths": 10000,
+              "yThousandths": 6000,
+              "deploymentZonePlayerId": ""
+            },
+            {
+              "objectiveId": "objective-2",
+              "xThousandths": 18000,
+              "yThousandths": 13000,
+              "deploymentZonePlayerId": ""
+            },
+            {
+              "objectiveId": "objective-3",
+              "xThousandths": 26000,
+              "yThousandths": 20000,
+              "deploymentZonePlayerId": ""
+            },
+            {
+              "objectiveId": "objective-4",
+              "xThousandths": 34000,
+              "yThousandths": 27000,
+              "deploymentZonePlayerId": ""
+            },
+            {
+              "objectiveId": "objective-5",
+              "xThousandths": 42000,
+              "yThousandths": 34000,
+              "deploymentZonePlayerId": ""
+            }
           ],
           "terrainProfile": {
             "sectionCount": 12,
@@ -1895,6 +1929,7 @@
           },
           "terrainLayoutReviewed": true,
           "deploymentZonesReviewed": true,
+          "objectiveDeploymentZonesReviewed": false,
           "objectivePositionsReviewed": true,
           "reviewedByPlayer": true,
           "method": "manual",
@@ -2185,6 +2220,7 @@
           "hasOathOfMomentAbility": false,
           "reanimationProtocolSavedUnitIds": [],
           "hasShadowInTheWarpAbility": false,
+          "hasPrioritisedEfficiencyAbility": false,
           "segments": [
             {
               "id": "guardians:363:loadout:1",
@@ -2654,6 +2690,7 @@
           "hasOathOfMomentAbility": false,
           "reanimationProtocolSavedUnitIds": [],
           "hasShadowInTheWarpAbility": false,
+          "hasPrioritisedEfficiencyAbility": false,
           "segments": [
             {
               "id": "guardians:363:loadout:1",
@@ -3095,6 +3132,7 @@
           "hasOathOfMomentAbility": false,
           "reanimationProtocolSavedUnitIds": [],
           "hasShadowInTheWarpAbility": false,
+          "hasPrioritisedEfficiencyAbility": false,
           "segments": [
             {
               "id": "boyz:16:loadout:1",
@@ -3456,6 +3494,7 @@
           "hasOathOfMomentAbility": false,
           "reanimationProtocolSavedUnitIds": [],
           "hasShadowInTheWarpAbility": false,
+          "hasPrioritisedEfficiencyAbility": false,
           "segments": [
             {
               "id": "boyz:16:loadout:1",
@@ -3817,6 +3856,7 @@
           "hasOathOfMomentAbility": false,
           "reanimationProtocolSavedUnitIds": [],
           "hasShadowInTheWarpAbility": false,
+          "hasPrioritisedEfficiencyAbility": false,
           "segments": [
             {
               "id": "boyz:16:loadout:1",
@@ -4178,6 +4218,7 @@
           "hasOathOfMomentAbility": false,
           "reanimationProtocolSavedUnitIds": [],
           "hasShadowInTheWarpAbility": false,
+          "hasPrioritisedEfficiencyAbility": false,
           "segments": [
             {
               "id": "boyz:16:loadout:1",
@@ -6830,6 +6871,7 @@
               "hasOathOfMomentAbility": false,
               "reanimationProtocolSavedUnitIds": [],
               "hasShadowInTheWarpAbility": false,
+              "hasPrioritisedEfficiencyAbility": false,
               "segments": [
                 {
                   "id": "farseer:357:loadout:1",

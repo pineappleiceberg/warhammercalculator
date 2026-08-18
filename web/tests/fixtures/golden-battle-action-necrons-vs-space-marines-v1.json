@@ -23,10 +23,10 @@
     }
   ],
   "sourceManifestVersion": 1,
-  "stateDigest": "3983c1efcfa874ce1ca83ed7fdebda4e3c4377fe2c9b9ebbe16f6f9e6d86afbe",
-  "expectedDigest": "e4e15d8702775d5c652d4234289a89f63350ca0c81ab43754c76673f244a50d5",
+  "stateDigest": "63026753120a9bf0f555b2cfc708abdbf5121e55b6b4187ff35d882eb838f207",
+  "expectedDigest": "523e89d1d41d01280c308142a57bdceb201c5b10d22fa91ce62c69f8875617a6",
   "expected": {
-    "stateVersion": 49,
+    "stateVersion": 50,
     "eventCount": 271,
     "eventTypeCounts": {
       "activation_completed": 4,
@@ -298,15 +298,16 @@
       "codex-necrons-faq-v1.2",
       "core-rules-10e",
       "core-rules-updates-10e-2025-10",
+      "leagues-of-votann-faction-pack-v1.0",
       "tyranids-faction-pack-v1.0",
       "wahapedia-profile-export-2026-06-13"
     ]
   },
   "state": {
-    "version": 49,
+    "version": 50,
     "id": "golden-action-necrons-vs-space-marines-v1",
     "createdAt": 0,
-    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:49",
+    "rulesSnapshot": "profile-data:2026-06-13 12:02:41|battle-state:50",
     "players": [
       {
         "id": "player-1",
@@ -339,6 +340,7 @@
           "hasOathOfMomentAbility": false,
           "reanimationProtocolSavedUnitIds": ["doomstalker"],
           "hasShadowInTheWarpAbility": false,
+          "hasPrioritisedEfficiencyAbility": false,
           "segments": [
             {
               "id": "doomstalker:961:loadout:1",
@@ -444,6 +446,7 @@
           "hasOathOfMomentAbility": true,
           "reanimationProtocolSavedUnitIds": [],
           "hasShadowInTheWarpAbility": false,
+          "hasPrioritisedEfficiencyAbility": false,
           "segments": [
             {
               "id": "intercessors:728:loadout:1",
@@ -634,7 +637,7 @@
         "type": "rule_coverage_configured",
         "coverage": {
           "schemaVersion": 1,
-          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v49",
+          "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-votann-v1-v50",
           "sourceLocks": [
             {
               "id": "core-rules-10e",
@@ -659,6 +662,10 @@
             {
               "id": "tyranids-faction-pack-v1.0",
               "sha256": "de2105f97171812369288cb5d5da3da9730f47dc7daa67aa06b1ebc771ad6c36"
+            },
+            {
+              "id": "leagues-of-votann-faction-pack-v1.0",
+              "sha256": "82f19ac07e96a28374cc042b1afdcbe99b7c96fb32d33bce03c872d00a80c2de"
             }
           ],
           "plan": {
@@ -757,7 +764,7 @@
             }
           },
           "report": {
-            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-v49",
+            "snapshotId": "wh40k-10e-core-2025-10-army-rules-2026-06-13-chapter-approved-v1-4-necrons-faq-v1-2-tyranids-v1-votann-v1-v50",
             "permitted": true,
             "results": [
               {
@@ -1142,11 +1149,36 @@
           "battlefieldHeightThousandths": 44000,
           "origin": "attacker-left-near",
           "objectivePositions": [
-            { "objectiveId": "objective-1", "xThousandths": 10000, "yThousandths": 6000 },
-            { "objectiveId": "objective-2", "xThousandths": 18000, "yThousandths": 13000 },
-            { "objectiveId": "objective-3", "xThousandths": 26000, "yThousandths": 20000 },
-            { "objectiveId": "objective-4", "xThousandths": 34000, "yThousandths": 27000 },
-            { "objectiveId": "objective-5", "xThousandths": 42000, "yThousandths": 34000 }
+            {
+              "objectiveId": "objective-1",
+              "xThousandths": 10000,
+              "yThousandths": 6000,
+              "deploymentZonePlayerId": ""
+            },
+            {
+              "objectiveId": "objective-2",
+              "xThousandths": 18000,
+              "yThousandths": 13000,
+              "deploymentZonePlayerId": ""
+            },
+            {
+              "objectiveId": "objective-3",
+              "xThousandths": 26000,
+              "yThousandths": 20000,
+              "deploymentZonePlayerId": ""
+            },
+            {
+              "objectiveId": "objective-4",
+              "xThousandths": 34000,
+              "yThousandths": 27000,
+              "deploymentZonePlayerId": ""
+            },
+            {
+              "objectiveId": "objective-5",
+              "xThousandths": 42000,
+              "yThousandths": 34000,
+              "deploymentZonePlayerId": ""
+            }
           ],
           "terrainProfile": {
             "sectionCount": 12,
@@ -1157,6 +1189,7 @@
           },
           "terrainLayoutReviewed": true,
           "deploymentZonesReviewed": true,
+          "objectiveDeploymentZonesReviewed": false,
           "objectivePositionsReviewed": true,
           "reviewedByPlayer": true,
           "method": "manual",
@@ -1444,6 +1477,7 @@
           "hasOathOfMomentAbility": true,
           "reanimationProtocolSavedUnitIds": [],
           "hasShadowInTheWarpAbility": false,
+          "hasPrioritisedEfficiencyAbility": false,
           "segments": [
             {
               "id": "intercessors:728:loadout:1",
@@ -1651,6 +1685,7 @@
           "hasOathOfMomentAbility": true,
           "reanimationProtocolSavedUnitIds": [],
           "hasShadowInTheWarpAbility": false,
+          "hasPrioritisedEfficiencyAbility": false,
           "segments": [
             {
               "id": "intercessors:728:loadout:1",

@@ -897,6 +897,22 @@ official Core Rules pages 11 and 14 and a complete five-round golden battle cove
 the behavior. Version-48 and older histories retain their recorded aggregate
 tests behind an explicit migration boundary and receive no invented crossing
 facts.
+Version 50 makes the Leagues of Votann Prioritised Efficiency economy and
+combat modes executable. Every end-of-Command-phase transition derives reviewed
+objective ownership and deployment-zone classification, awards each applicable
+Yield Point condition once, and changes a normal Oathband between Hostile
+Acquisition and Fortify Takeover only at the published owning Command-phase
+boundary. Mercenary Oathband instead preserves its current mode and can spend
+exactly 3YP to toggle it at that boundary. Guided Play applies the relevant Hit
+and Wound modifiers to editable attack profiles, while the replay API checks
+every award and combat fact against ACSL-specified C/WebAssembly predicates. A
+source-locked five-round Ûthar-versus-Brutalis fixture covers ten awards and the
+Hostile-to-Fortify transition. Hostile Acquisition's Advance and Charge re-rolls
+are surfaced but remain explicitly guided until movement events preserve both
+initial and rerolled dice; that limitation is a separately selected, acknowledged
+coverage rule rather than an executable claim. Version-49 and older histories
+retain an explicit migration boundary and receive no invented Yield Points or
+mode transitions.
 Version-25
 games migrate without invented terrain footprints, version-26 games migrate
 without invented deployment positions, and version-27 games migrate without
@@ -1208,7 +1224,10 @@ and WebAssembly for version-1 through version-39 JSON battle envelopes.
 It validates attack transitions, damage and casualty totals, the one-wounded-model
 invariant, and last-in-first-out compensating undo without modifying its output
 when an event stream is invalid. `POST /api/v1/battle/replay` accepts
-`{ "battleState": ..., "formationId": ... }`, validates the canonical JSON log,
+`{ "battleState": ..., "formationId": ... }` and an optional
+`prioritisedEfficiencyAttack` object containing attacker and target formation
+IDs, Strength, Toughness, objective state, and the target Vehicle flag. It
+validates the canonical JSON log,
 replays the selected formation through Wasm, cross-checks the result against the
 web replay, independently cross-checks every guided clock transition through
 the C/WebAssembly clock, and returns per-segment health, active attack IDs, the
@@ -1561,11 +1580,13 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
 
 ## Prioritized correctness backlog
 
-1. Source-lock another high-impact faction or detachment transition and extend
+1. Add canonical Advance-roll and Charge re-roll provenance so Hostile
+   Acquisition mobility can move from guided to executable.
+2. Source-lock another high-impact faction or detachment transition and extend
    the full-game corpus across every supported faction and mission.
-2. Add reviewed curved movement-surface primitives only when panels and simple
+3. Add reviewed curved movement-surface primitives only when panels and simple
    polygon solids cannot represent a supported physical terrain set exactly.
-3. Add deterministic automated policies and calibrated batch battle simulation
+4. Add deterministic automated policies and calibrated batch battle simulation
    after the guided replay corpus closes the same mandatory rule boundaries.
 
 ## Current boundaries
@@ -1608,6 +1629,10 @@ This produces `calculator.js` and `calculator.wasm` in `build/wasm/`.
   Battle-shock step and Battle-shocked Fall Back consequence are executable;
   other Synapse-dependent abilities remain guided until their complete timing
   and consequence boundaries are executable.
+- Canonical Prioritised Efficiency resolves Yield Points, mode timing, combat
+  modifiers, and the Mercenary Oathband 3YP toggle. Hostile Acquisition Advance
+  and Charge re-roll availability is shown, but the final roll is player-recorded
+  until initial and rerolled movement dice have canonical event provenance.
 
 ## 10th edition profile database
 

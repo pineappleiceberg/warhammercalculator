@@ -27,6 +27,8 @@ import {
   battleCanResolveAttack,
   battleGrimResolveState,
   battleOathOfMomentState,
+  battlePrioritisedEfficiencyAttackFacts,
+  battlePrioritisedEfficiencyState,
   battleReanimationProtocolsState,
   battleShadowInTheWarpState,
   battleWaaaghState,
@@ -112,6 +114,7 @@ import {
   startFormationMovement,
   startFormationActivation,
   TABLE_GEOMETRY_CONSTANTS,
+  togglePrioritisedEfficiency,
 } from "../../lib/battle-state.mjs";
 
 import { battleClockLabel } from "../../lib/battle-clock.mjs";
@@ -575,6 +578,7 @@ export default function PlayMode() {
   const suppressRecoverySave = useRef(false);
   const latestResult = useRef<HTMLElement>(null);
   const importBattleInput = useRef<HTMLInputElement>(null);
+  const appliedPrioritisedEfficiencySignature = useRef("");
   const selectAttackerUnit = (unitId: string) => {
     setAttackerUnitId(unitId);
     setFallBackCrossingWitnesses({});
@@ -1487,6 +1491,12 @@ export default function PlayMode() {
     targetBattleFormationId &&
       attackerOathOfMomentState?.activeTargetFormationIds.includes(targetBattleFormationId),
   );
+  const prioritisedEfficiencySignature = [
+    attackerBattleFormationId,
+    replayedBattle?.prioritisedEfficiencyModesByPlayer.get(attackerPlayerId) ?? "",
+    targetBattleFormationId,
+    replayedBattle?.prioritisedEfficiencyModesByPlayer.get(targetPlayerId) ?? "",
+  ].join(":");
   const targetBattleHealth =
     battleState && targetBattleFormationId
       ? battleFormationHealth(battleState, targetBattleFormationId)
@@ -1842,196 +1852,12 @@ export default function PlayMode() {
       sourceEquipmentSegments.length === 1
         ? (sourceEquipmentSegments[0].sourceEquipmentPresetIds ?? [])
         : [];
-    setProfile(
-      applyCombatPresets(
-        applyWeaponProfile(
-          {
-            ...applyTargetProfile(DEFAULT_PROFILE, model),
-            weaponCount,
-            targetModels: targetFormation?.modelCount ?? targetUnit?.modelCount ?? 1,
-            targetDistance: nextTargetDistance,
-            attackerUnitModels: nextAttackerUnitModels,
-            nearbyEnemyModels: nextNearbyEnemyModels,
-            nearbyEnemyUnits: nextNearbyEnemyUnits,
-            enemyCharacterModelsDestroyed: nextEnemyCharacterModelsDestroyed,
-            destructiveFightPhases: nextDestructiveFightPhases,
-            embarkedModels: nextEmbarkedModels,
-            embarkedWracksModels: nextEmbarkedWracksModels,
-            attackerCharged: nextAttackerCharged,
-            attackerRemainedStationary: nextAttackerRemainedStationary,
-            attackerAttached: nextAttackerAttached,
-            targetAttached: nextTargetAttached,
-            attackerWaaaghActive: nextAttackerWaaaghActive,
-            targetWaaaghActive: nextTargetWaaaghActive,
-            targetOathOfMoment: nextTargetOathOfMoment,
-            attackerOathWoundBonusEligible: nextAttackerOathWoundBonusEligible,
-            attackerOnObjective: nextAttackerOnObjective,
-            targetOnObjective: nextTargetOnObjective,
-            attackerObjectiveOwner: nextAttackerObjectiveOwner,
-            targetObjectiveOwner: nextTargetObjectiveOwner,
-            attackerOnAttackerSelectedObjective: nextAttackerOnAttackerSelectedObjective,
-            targetOnAttackerSelectedObjective: nextTargetOnAttackerSelectedObjective,
-            attackerOnTargetSelectedObjective: nextAttackerOnTargetSelectedObjective,
-            targetOnTargetSelectedObjective: nextTargetOnTargetSelectedObjective,
-            attackerGuidedAgainstTarget: nextAttackerGuidedAgainstTarget,
-            targetSpotted: nextTargetSpotted,
-            targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
-            targetClosestEligible: nextTargetClosestEligible,
-            attackerSourceTargetDistance: nextAttackerSourceTargetDistance,
-            targetSourceAttackerDistance: nextTargetSourceAttackerDistance,
-            attackerSourceCanSeeTarget: nextAttackerSourceCanSeeTarget,
-            targetSourceCanSeeAttacker: nextTargetSourceCanSeeAttacker,
-            attackerBattleShocked: nextAttackerBattleShocked,
-            targetBattleShocked: nextTargetBattleShocked,
-            targetStrengthState: nextTargetStrengthState,
-            supportDistance: nextSupportDistance,
-            targetSupportDistance: nextTargetSupportDistance,
-          },
-          weapon,
-          model.keywords,
-        ),
-        [
-          ...selectedCombatPresets(
-            [...nextAttackerPresetIds, ...fullSourceEquipmentPresetIds],
-            attackerFormationCatalogueUnit,
-            weapon,
-            model.keywords,
-            nextTargetDistance,
-            nextAttackerCharged,
-            nextAttackerBattleShocked,
-            nextTargetBattleShocked,
-            nextTargetStrengthState,
-            nextAttackerRemainedStationary,
-            nextAttackerAttached,
-            nextAttackerWaaaghActive,
-            nextTargetOathOfMoment,
-            nextAttackerOathWoundBonusEligible,
-            nextAttackerOnObjective,
-            nextTargetOnObjective,
-            nextAttackerOnObjective && nextAttackerObjectiveOwner === "attacker",
-            nextTargetOnObjective && ["target", "uncontrolled"].includes(nextTargetObjectiveOwner),
-            nextAttackerOnAttackerSelectedObjective,
-            nextTargetOnAttackerSelectedObjective,
-            nextAttackerBattleShocked,
-            nextAttackerGuidedAgainstTarget,
-            nextTargetSpotted,
-            nextTargetSpottedByMarkerlightObserver,
-            "self",
-            [],
-            0,
-            nextTargetClosestEligible,
-            nextAttackerSourceTargetDistance,
-            nextAttackerSourceCanSeeTarget,
-            attackerFormationKeywords,
-          ),
-          ...selectedCombatPresets(
-            nextSupportPresetIds,
-            nextSupportCatalogueUnit,
-            weapon,
-            model.keywords,
-            nextTargetDistance,
-            nextAttackerCharged,
-            nextAttackerBattleShocked,
-            nextTargetBattleShocked,
-            nextTargetStrengthState,
-            nextAttackerRemainedStationary,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            nextAttackerGuidedAgainstTarget,
-            nextTargetSpotted,
-            nextTargetSpottedByMarkerlightObserver,
-            "supporting_unit",
-            attackerFormationKeywords,
-            nextSupportDistance,
-            nextTargetClosestEligible,
-            nextAttackerSourceTargetDistance,
-            nextAttackerSourceCanSeeTarget,
-            attackerFormationKeywords,
-          ),
-        ],
-        [
-          ...selectedCombatPresets(
-            nextTargetPresetIds,
-            targetFormationCatalogueUnit,
-            weapon,
-            model.keywords,
-            nextTargetDistance,
-            nextAttackerCharged,
-            nextAttackerBattleShocked,
-            nextTargetBattleShocked,
-            nextTargetStrengthState,
-            nextAttackerRemainedStationary,
-            nextTargetAttached,
-            nextTargetWaaaghActive,
-            false,
-            false,
-            nextTargetOnObjective,
-            nextAttackerOnObjective,
-            nextTargetOnObjective && nextTargetObjectiveOwner === "target",
-            nextAttackerOnObjective &&
-              ["attacker", "uncontrolled"].includes(nextAttackerObjectiveOwner),
-            nextTargetOnTargetSelectedObjective,
-            nextAttackerOnTargetSelectedObjective,
-            nextTargetBattleShocked,
-            false,
-            nextTargetSpotted,
-            nextTargetSpottedByMarkerlightObserver,
-            "self",
-            [],
-            0,
-            nextTargetClosestEligible,
-            nextTargetSourceAttackerDistance,
-            nextTargetSourceCanSeeAttacker,
-            attackerFormationKeywords,
-          ),
-          ...selectedCombatPresets(
-            nextTargetSupportPresetIds,
-            nextTargetSupportCatalogueUnit,
-            weapon,
-            model.keywords,
-            nextTargetDistance,
-            nextAttackerCharged,
-            nextAttackerBattleShocked,
-            nextTargetBattleShocked,
-            nextTargetStrengthState,
-            nextAttackerRemainedStationary,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            false,
-            nextTargetSpotted,
-            nextTargetSpottedByMarkerlightObserver,
-            "supporting_unit",
-            model.keywords,
-            nextTargetSupportDistance,
-            nextTargetClosestEligible,
-            nextTargetSourceAttackerDistance,
-            nextTargetSourceCanSeeAttacker,
-            attackerFormationKeywords,
-          ),
-        ],
-        weapon.type,
+    const resolvedProfile = applyCombatPresets(
+      applyWeaponProfile(
         {
-          targetKeywords: model.keywords,
-          attackerKeywords: attackerFormationKeywords,
-          attackKeywords: attackKeywordsForWeapon(weapon),
+          ...applyTargetProfile(DEFAULT_PROFILE, model),
+          weaponCount,
+          targetModels: targetFormation?.modelCount ?? targetUnit?.modelCount ?? 1,
           targetDistance: nextTargetDistance,
           attackerUnitModels: nextAttackerUnitModels,
           nearbyEnemyModels: nextNearbyEnemyModels,
@@ -2068,12 +1894,225 @@ export default function PlayMode() {
           targetBattleShocked: nextTargetBattleShocked,
           targetStrengthState: nextTargetStrengthState,
           supportDistance: nextSupportDistance,
-          supportedUnitKeywords: attackerFormationKeywords,
           targetSupportDistance: nextTargetSupportDistance,
-          targetSupportedUnitKeywords: model.keywords,
         },
+        weapon,
+        model.keywords,
       ),
+      [
+        ...selectedCombatPresets(
+          [...nextAttackerPresetIds, ...fullSourceEquipmentPresetIds],
+          attackerFormationCatalogueUnit,
+          weapon,
+          model.keywords,
+          nextTargetDistance,
+          nextAttackerCharged,
+          nextAttackerBattleShocked,
+          nextTargetBattleShocked,
+          nextTargetStrengthState,
+          nextAttackerRemainedStationary,
+          nextAttackerAttached,
+          nextAttackerWaaaghActive,
+          nextTargetOathOfMoment,
+          nextAttackerOathWoundBonusEligible,
+          nextAttackerOnObjective,
+          nextTargetOnObjective,
+          nextAttackerOnObjective && nextAttackerObjectiveOwner === "attacker",
+          nextTargetOnObjective && ["target", "uncontrolled"].includes(nextTargetObjectiveOwner),
+          nextAttackerOnAttackerSelectedObjective,
+          nextTargetOnAttackerSelectedObjective,
+          nextAttackerBattleShocked,
+          nextAttackerGuidedAgainstTarget,
+          nextTargetSpotted,
+          nextTargetSpottedByMarkerlightObserver,
+          "self",
+          [],
+          0,
+          nextTargetClosestEligible,
+          nextAttackerSourceTargetDistance,
+          nextAttackerSourceCanSeeTarget,
+          attackerFormationKeywords,
+        ),
+        ...selectedCombatPresets(
+          nextSupportPresetIds,
+          nextSupportCatalogueUnit,
+          weapon,
+          model.keywords,
+          nextTargetDistance,
+          nextAttackerCharged,
+          nextAttackerBattleShocked,
+          nextTargetBattleShocked,
+          nextTargetStrengthState,
+          nextAttackerRemainedStationary,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          nextAttackerGuidedAgainstTarget,
+          nextTargetSpotted,
+          nextTargetSpottedByMarkerlightObserver,
+          "supporting_unit",
+          attackerFormationKeywords,
+          nextSupportDistance,
+          nextTargetClosestEligible,
+          nextAttackerSourceTargetDistance,
+          nextAttackerSourceCanSeeTarget,
+          attackerFormationKeywords,
+        ),
+      ],
+      [
+        ...selectedCombatPresets(
+          nextTargetPresetIds,
+          targetFormationCatalogueUnit,
+          weapon,
+          model.keywords,
+          nextTargetDistance,
+          nextAttackerCharged,
+          nextAttackerBattleShocked,
+          nextTargetBattleShocked,
+          nextTargetStrengthState,
+          nextAttackerRemainedStationary,
+          nextTargetAttached,
+          nextTargetWaaaghActive,
+          false,
+          false,
+          nextTargetOnObjective,
+          nextAttackerOnObjective,
+          nextTargetOnObjective && nextTargetObjectiveOwner === "target",
+          nextAttackerOnObjective &&
+            ["attacker", "uncontrolled"].includes(nextAttackerObjectiveOwner),
+          nextTargetOnTargetSelectedObjective,
+          nextAttackerOnTargetSelectedObjective,
+          nextTargetBattleShocked,
+          false,
+          nextTargetSpotted,
+          nextTargetSpottedByMarkerlightObserver,
+          "self",
+          [],
+          0,
+          nextTargetClosestEligible,
+          nextTargetSourceAttackerDistance,
+          nextTargetSourceCanSeeAttacker,
+          attackerFormationKeywords,
+        ),
+        ...selectedCombatPresets(
+          nextTargetSupportPresetIds,
+          nextTargetSupportCatalogueUnit,
+          weapon,
+          model.keywords,
+          nextTargetDistance,
+          nextAttackerCharged,
+          nextAttackerBattleShocked,
+          nextTargetBattleShocked,
+          nextTargetStrengthState,
+          nextAttackerRemainedStationary,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          nextTargetSpotted,
+          nextTargetSpottedByMarkerlightObserver,
+          "supporting_unit",
+          model.keywords,
+          nextTargetSupportDistance,
+          nextTargetClosestEligible,
+          nextTargetSourceAttackerDistance,
+          nextTargetSourceCanSeeAttacker,
+          attackerFormationKeywords,
+        ),
+      ],
+      weapon.type,
+      {
+        targetKeywords: model.keywords,
+        attackerKeywords: attackerFormationKeywords,
+        attackKeywords: attackKeywordsForWeapon(weapon),
+        targetDistance: nextTargetDistance,
+        attackerUnitModels: nextAttackerUnitModels,
+        nearbyEnemyModels: nextNearbyEnemyModels,
+        nearbyEnemyUnits: nextNearbyEnemyUnits,
+        enemyCharacterModelsDestroyed: nextEnemyCharacterModelsDestroyed,
+        destructiveFightPhases: nextDestructiveFightPhases,
+        embarkedModels: nextEmbarkedModels,
+        embarkedWracksModels: nextEmbarkedWracksModels,
+        attackerCharged: nextAttackerCharged,
+        attackerRemainedStationary: nextAttackerRemainedStationary,
+        attackerAttached: nextAttackerAttached,
+        targetAttached: nextTargetAttached,
+        attackerWaaaghActive: nextAttackerWaaaghActive,
+        targetWaaaghActive: nextTargetWaaaghActive,
+        targetOathOfMoment: nextTargetOathOfMoment,
+        attackerOathWoundBonusEligible: nextAttackerOathWoundBonusEligible,
+        attackerOnObjective: nextAttackerOnObjective,
+        targetOnObjective: nextTargetOnObjective,
+        attackerObjectiveOwner: nextAttackerObjectiveOwner,
+        targetObjectiveOwner: nextTargetObjectiveOwner,
+        attackerOnAttackerSelectedObjective: nextAttackerOnAttackerSelectedObjective,
+        targetOnAttackerSelectedObjective: nextTargetOnAttackerSelectedObjective,
+        attackerOnTargetSelectedObjective: nextAttackerOnTargetSelectedObjective,
+        targetOnTargetSelectedObjective: nextTargetOnTargetSelectedObjective,
+        attackerGuidedAgainstTarget: nextAttackerGuidedAgainstTarget,
+        targetSpotted: nextTargetSpotted,
+        targetSpottedByMarkerlightObserver: nextTargetSpottedByMarkerlightObserver,
+        targetClosestEligible: nextTargetClosestEligible,
+        attackerSourceTargetDistance: nextAttackerSourceTargetDistance,
+        targetSourceAttackerDistance: nextTargetSourceAttackerDistance,
+        attackerSourceCanSeeTarget: nextAttackerSourceCanSeeTarget,
+        targetSourceCanSeeAttacker: nextTargetSourceCanSeeAttacker,
+        attackerBattleShocked: nextAttackerBattleShocked,
+        targetBattleShocked: nextTargetBattleShocked,
+        targetStrengthState: nextTargetStrengthState,
+        supportDistance: nextSupportDistance,
+        supportedUnitKeywords: attackerFormationKeywords,
+        targetSupportDistance: nextTargetSupportDistance,
+        targetSupportedUnitKeywords: model.keywords,
+      },
     );
+    const prioritisedEfficiencyFacts =
+      battleState && attackerBattleFormationId && targetBattleFormationId
+        ? battlePrioritisedEfficiencyAttackFacts(
+            battleState,
+            attackerBattleFormationId,
+            targetBattleFormationId,
+            {
+              attackStrength: resolvedProfile.strength,
+              targetToughness: resolvedProfile.toughness,
+              targetOnObjective: nextTargetOnObjective,
+              attackerOnControlledObjective:
+                nextAttackerOnObjective && nextAttackerObjectiveOwner === "attacker",
+              targetVehicle: model.keywords.some((keyword) => keyword.toLowerCase() === "vehicle"),
+            },
+            replayedBattle,
+          )
+        : null;
+    setProfile({
+      ...resolvedProfile,
+      hitModifier: Math.max(
+        -1,
+        Math.min(1, resolvedProfile.hitModifier + (prioritisedEfficiencyFacts?.hitModifier ?? 0)),
+      ),
+      woundModifier: Math.max(
+        -1,
+        Math.min(
+          1,
+          resolvedProfile.woundModifier + (prioritisedEfficiencyFacts?.woundModifier ?? 0),
+        ),
+      ),
+    });
     setResult(null);
   };
 
@@ -2082,13 +2121,15 @@ export default function PlayMode() {
       battleClock?.status !== "active" ||
       (profile.attackerWaaaghActive === attackerFormationWaaaghActive &&
         profile.targetWaaaghActive === targetFormationWaaaghActive &&
-        profile.targetOathOfMoment === targetFormationIsOathOfMomentTarget)
+        profile.targetOathOfMoment === targetFormationIsOathOfMomentTarget &&
+        appliedPrioritisedEfficiencySignature.current === prioritisedEfficiencySignature)
     ) {
       return;
     }
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
+      appliedPrioritisedEfficiencySignature.current = prioritisedEfficiencySignature;
       refreshProfile(
         weaponId,
         targetModelId,
@@ -3954,6 +3995,7 @@ export default function PlayMode() {
               objectiveId: objective.id,
               xThousandths: coordinate(`objective-x-${objective.id}`, 60),
               yThousandths: coordinate(`objective-y-${objective.id}`, 44),
+              deploymentZonePlayerId: String(data.get(`objective-zone-${objective.id}`) || ""),
             }),
           ),
           terrainProfile: {
@@ -3965,6 +4007,7 @@ export default function PlayMode() {
           },
           terrainLayoutReviewed: data.get("terrain-reviewed") === "on",
           deploymentZonesReviewed: data.get("deployment-reviewed") === "on",
+          objectiveDeploymentZonesReviewed: data.get("objective-zones-reviewed") === "on",
           objectivePositionsReviewed: data.get("objectives-reviewed") === "on",
           reviewedByPlayer: data.get("player-reviewed") === "on",
           method: String(data.get("geometry-method") || "manual"),
@@ -4606,6 +4649,27 @@ export default function PlayMode() {
       setStatus("Waaagh! is active until the start of this player's next Command phase");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Waaagh! could not be called");
+    }
+  };
+
+  const togglePlayerPrioritisedEfficiency = (playerId: string) => {
+    if (!battleState) return;
+    try {
+      const next = togglePrioritisedEfficiency(
+        battleState,
+        playerId,
+        crypto.randomUUID(),
+        battleState.events.length + 1,
+      );
+      setBattleState(next);
+      const state = battlePrioritisedEfficiencyState(next, playerId);
+      setStatus(
+        `Spent 3 Yield Points; ${state.mode === "fortify_takeover" ? "Fortify Takeover" : "Hostile Acquisition"} is active`,
+      );
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "Prioritised Efficiency could not be toggled",
+      );
     }
   };
 
@@ -7993,6 +8057,45 @@ export default function PlayMode() {
                       <span key={player.id}>Waaagh! spent · {player.name}</span>
                     );
                   })}
+                  {battleState.players.map((player) => {
+                    const efficiency = battlePrioritisedEfficiencyState(
+                      battleState,
+                      player.id,
+                      replayedBattle,
+                    );
+                    if (!efficiency.sourceLocked) return null;
+                    const modeLabel =
+                      efficiency.mode === "fortify_takeover"
+                        ? "Fortify Takeover"
+                        : efficiency.mode === "hostile_acquisition"
+                          ? "Hostile Acquisition"
+                          : "Mode changes at Command phase end";
+                    return (
+                      <div
+                        key={`prioritised-efficiency-${player.id}`}
+                        className="battle-log-actions"
+                      >
+                        <strong>
+                          Prioritised Efficiency · {player.name} · {efficiency.yieldPoints}YP ·{" "}
+                          {modeLabel}
+                        </strong>
+                        {efficiency.advanceRerollAvailable && (
+                          <span>Re-roll Advance and Charge rolls · record the final result</span>
+                        )}
+                        {efficiency.toggleAvailable && (
+                          <button
+                            type="button"
+                            onClick={() => togglePlayerPrioritisedEfficiency(player.id)}
+                          >
+                            Spend 3YP · toggle mode
+                          </button>
+                        )}
+                        {efficiency.awards.at(-1) && (
+                          <span>Last Command phase: +{efficiency.awards.at(-1).gained}YP</span>
+                        )}
+                      </div>
+                    );
+                  })}
                   {replayedBattle.pendingCommandBattleShock.length > 0 && (
                     <div className="battle-log-actions">
                       <strong>
@@ -10330,7 +10433,15 @@ export default function PlayMode() {
                         disabled={!selectedChargeDeclaration}
                         onClick={rollSelectedCharge}
                       >
-                        Roll 2D6 securely
+                        {battleState &&
+                        attackerPlayerId &&
+                        battlePrioritisedEfficiencyState(
+                          battleState,
+                          attackerPlayerId,
+                          replayedBattle,
+                        ).chargeRerollAvailable
+                          ? "Roll / re-roll 2D6 securely"
+                          : "Roll 2D6 securely"}
                       </button>
                       <label>
                         <span>Effective Charge distance (inches)</span>
@@ -11044,6 +11155,17 @@ export default function PlayMode() {
                             required
                           />
                         </label>
+                        <label>
+                          <span>Deployment-zone location</span>
+                          <select name={"objective-zone-" + objective.id} defaultValue="">
+                            <option value="">Outside both deployment zones</option>
+                            {battleState.players.map((player) => (
+                              <option key={player.id} value={player.id}>
+                                Inside {player.name}&apos;s deployment zone
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                       </fieldset>
                     ),
                   )}
@@ -11066,6 +11188,10 @@ export default function PlayMode() {
                   <label>
                     <input name="deployment-reviewed" type="checkbox" required />
                     <span>{geometryMission.deployment} deployment zones reviewed</span>
+                  </label>
+                  <label>
+                    <input name="objective-zones-reviewed" type="checkbox" required />
+                    <span>Every objective classified against both deployment zones</span>
                   </label>
                   <label>
                     <input name="objectives-reviewed" type="checkbox" required />

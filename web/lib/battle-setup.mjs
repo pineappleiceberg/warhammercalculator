@@ -9,6 +9,7 @@ import {
   BATTLE_STATE_VERSION,
   DETACHMENT_RULE_STATE_BATTLE_STATE_VERSION,
   OATH_OF_MOMENT_BATTLE_STATE_VERSION,
+  PRIORITISED_EFFICIENCY_BATTLE_STATE_VERSION,
   REANIMATION_PROTOCOLS_BATTLE_STATE_VERSION,
   SHADOW_IN_THE_WARP_BATTLE_STATE_VERSION,
   MISSION_TRACKING_BATTLE_STATE_VERSION,
@@ -414,6 +415,7 @@ function registerCompleteRosters(catalogue, state, firstList, secondList, equipm
             hasWaaaghAbility: formation.hasWaaaghAbility,
             hasOathOfMomentAbility: formation.hasOathOfMomentAbility,
             hasShadowInTheWarpAbility: formation.hasShadowInTheWarpAbility,
+            hasPrioritisedEfficiencyAbility: formation.hasPrioritisedEfficiencyAbility,
             reanimationProtocolSavedUnitIds: formation.reanimationProtocolSavedUnitIds,
             deploymentTraits: formation.deploymentTraits,
             defensiveEquipmentCounts: formation.defensiveEquipmentCounts,
@@ -765,6 +767,10 @@ export function initializeBattleForLists({
             sourceVersion < DESPERATE_ESCAPE_MODEL_TRIGGER_BATTLE_STATE_VERSION
               ? next.events.length
               : (next.migration?.legacyDesperateEscapeModelTriggersThroughSequence ?? 0),
+          legacyPrioritisedEfficiencyThroughSequence:
+            sourceVersion < PRIORITISED_EFFICIENCY_BATTLE_STATE_VERSION
+              ? next.events.length
+              : (next.migration?.legacyPrioritisedEfficiencyThroughSequence ?? 0),
         },
       });
     } else if (!battleRosterRevisionsMatch(next, firstList, secondList)) {

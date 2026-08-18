@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { missionTrackerFacts } from "../lib/battle-state.mjs";
+import { battlePrioritisedEfficiencyState, missionTrackerFacts } from "../lib/battle-state.mjs";
 
 import {
   GOLDEN_BATTLE_REPLAY_SCHEMA,
@@ -32,6 +32,12 @@ const attachedFixture = JSON.parse(
 const shadowFixture = JSON.parse(
   await readFile(
     new URL("./fixtures/golden-battle-tyranids-vs-space-marines-v1.json", import.meta.url),
+    "utf8",
+  ),
+);
+const votannFixture = JSON.parse(
+  await readFile(
+    new URL("./fixtures/golden-battle-votann-vs-space-marines-v1.json", import.meta.url),
     "utf8",
   ),
 );
@@ -71,7 +77,13 @@ test("replays a source-locked real-catalogue pair through every battle phase and
 
 test("pins every golden replay source checksum to the authoritative manifest", () => {
   const manifestLocks = new Map(sourceManifest.sources.map((source) => [source.id, source.sha256]));
-  for (const candidateFixture of [fixture, actionFixture, attachedFixture, shadowFixture]) {
+  for (const candidateFixture of [
+    fixture,
+    actionFixture,
+    attachedFixture,
+    shadowFixture,
+    votannFixture,
+  ]) {
     const event = candidateFixture.state.events.find(
       (candidate) => candidate.type === "rule_coverage_configured",
     );
@@ -84,6 +96,27 @@ test("pins every golden replay source checksum to the authoritative manifest", (
       })),
     );
   }
+});
+
+test("replays complete Votann Yield Point and Prioritised Efficiency transitions", async () => {
+  const { replayed, summary } = await validateGoldenBattleReplay(votannFixture, sourceManifest);
+  assert.equal(votannFixture.stateDigest, digest(votannFixture.state));
+  assert.equal(votannFixture.expectedDigest, digest(votannFixture.expected));
+  assert.equal(summary.phaseStepCoverage.length, 170);
+  assert.equal(replayed.ruleCoverage.plan.players[0].faction.sourceId, "LoV");
+  assert.ok(
+    replayed.ruleCoverage.plan.players[0].faction.ruleIds.includes(
+      "faction.prioritised-efficiency-mobility",
+    ),
+  );
+  const efficiency = battlePrioritisedEfficiencyState(votannFixture.state, "player-1", replayed);
+  assert.equal(efficiency.yieldPoints, 26);
+  assert.equal(efficiency.mode, "fortify_takeover");
+  assert.equal(efficiency.awards.length, 10);
+  assert.ok(efficiency.awards.every((award) => award.valid));
+  assert.ok(efficiency.awards.some((award) => award.modeAfter === "hostile_acquisition"));
+  assert.ok(efficiency.awards.some((award) => award.modeAfter === "fortify_takeover"));
+  assert.equal(efficiency.advanceRerollAvailable, false);
 });
 
 test("replays a complete source-locked Shadow in the Warp battle", async () => {
